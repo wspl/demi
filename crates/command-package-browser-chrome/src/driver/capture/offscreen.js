@@ -159,18 +159,21 @@ function configure(state, still) {
 }
 
 // Encode the latest picture when it changed, a key frame is due, or it has
-// stood still long enough to send once more at higher quality, within the
-// frames the module lets be in flight.
+// stood still long enough to send once more at higher quality, while the
+// viewers' windows have room for it: the module says how many frames past the
+// newest they had may come, and a picture that comes meanwhile replaces the
+// one waiting. A frame in the encoder counts as sent.
 function encode(state) {
-  if (!state.latest || state.sequence - state.ack >= state.window) return;
+  if (!state.latest || state.sequence + state.encoding - state.ack >= state.window) return;
   if (socket.bufferedAmount > 1024 * 1024) return;
-  if (state.encoder?.encodeQueueSize > 1 || performance.now() < state.nextEncode) return;
+  if (performance.now() < state.nextEncode) return;
   const refine = !state.settled && performance.now() - state.lastCaptureAt >= 500;
   if (!state.dirty && !state.force && !refine) return;
   if (!state.encoder) {
     state.encoder = new VideoEncoder({
       output(chunk) {
         if (captures.get(state.id) !== state) return;
+        state.encoding--;
         socket.send(pack(chunk, state));
       },
       error(error) {
@@ -203,6 +206,7 @@ function encode(state) {
   });
   try {
     state.encoder.encode(frame, { keyFrame: state.force });
+    state.encoding++;
   } finally {
     frame.close();
   }
@@ -221,8 +225,10 @@ async function start(message) {
     id: message.capture,
     fps: message.fps,
     bitrate: message.bitrate,
-    window: 4,
+    window: 1,
     sequence: 0,
+    // Frames in the encoder, which the window counts as sent.
+    encoding: 0,
     ack: 0,
     force: true,
     dirty: false,

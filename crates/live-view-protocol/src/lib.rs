@@ -6,16 +6,27 @@
 //! messages. It holds types and their checks only; the Host's side of them is
 //! `live-view`, the page's `@demicodes/web-ui`'s live module.
 
+use bytes::{Buf, Bytes, BytesMut};
 use demi_shared_types::{DecodeError, MAX_SAFE_INTEGER};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 /// A frame's kind, the byte after its length: a JSON control message.
 pub const CONTROL_FRAME: u8 = 1;
-/// A video frame: [`VideoHeader`], then H.264 Annex B data. A source's own
-/// protocol numbers its other kinds from 3.
+/// A chunk of a video frame, from the Host: [`VideoHeader`], then its part
+/// of the frame's H.264 Annex B data.
 pub const VIDEO_FRAME: u8 = 2;
+/// The page's acknowledgements of video chunks: one or more [`ChunkAck`]s.
+/// A source's own protocol numbers its other kinds from 4.
+pub const ACK_FRAME: u8 = 3;
+/// The most bytes a video chunk takes on the wire, its length and kind
+/// included, so that every 16 KiB the sender puts on the path is
+/// acknowledged on its own (`live-view.md` § Framing and versions).
+pub const CHUNK_BYTES: usize = 16 * 1024;
 /// The video frames' codec as WebCodecs names it: H.264 High profile (`64`),
 /// no constraint flags (`00`), level 5.1 (`33`). Every source encodes with
 /// it, and the page asks the user's browser for a decoder of it before it
@@ -27,13 +38,75 @@ pub const VIDEO_CODEC: &str = "avc1.640033";
 /// ("Failed to initialize OpenH264 encoder", measured with the pinned Chrome
 /// between 288 and 299 Mbps), so a budget never asks for more.
 pub const VIDEO_MAX_BITRATE: u32 = 240_000_000;
-/// The largest frame after its length: a key frame, or a source's largest
-/// message.
+/// The largest frame after its length: a source's largest message.
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// How often the Host speaks at least, so a still picture is told from a stall.
 pub const HEARTBEAT_MS: u64 = 250;
 /// Silence after which the page shows the stream as stalled and stops sending input.
 pub const STALL_MS: u64 = 1000;
+
+/// One frame of a live view's stream: its kind and payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Frame {
+    pub kind: u8,
+    pub payload: Bytes,
+}
+
+/// A frame the protocol refuses (`live-view.md` § Framing and versions).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum FrameError {
+    #[error("a live frame is empty or too large")]
+    Length,
+}
+
+/// Splits a live view's bytes into its frames, a four-byte big-endian length,
+/// a kind and the payload, as they arrive: the stream has no message
+/// boundaries.
+#[derive(Debug, Default)]
+pub struct FrameSplitter {
+    pending: BytesMut,
+}
+
+impl FrameSplitter {
+    pub fn push(&mut self, bytes: &[u8]) {
+        self.pending.extend_from_slice(bytes);
+    }
+
+    /// The next whole frame, the whole of it as it came, its length and kind
+    /// included; none until more bytes arrive.
+    pub fn next_raw(&mut self) -> Result<Option<Bytes>, FrameError> {
+        let Some(length) = self.pending.first_chunk::<4>() else {
+            return Ok(None);
+        };
+        let length = usize::try_from(u32::from_be_bytes(*length)).unwrap_or(usize::MAX);
+        if length == 0 || length > MAX_FRAME_BYTES {
+            return Err(FrameError::Length);
+        }
+        if self.pending.len() < 4 + length {
+            return Ok(None);
+        }
+        Ok(Some(self.pending.split_to(4 + length).freeze()))
+    }
+
+    /// The next whole frame; none until more bytes arrive.
+    pub fn next(&mut self) -> Result<Option<Frame>, FrameError> {
+        Ok(self.next_raw()?.map(|mut raw| {
+            raw.advance(4);
+            let kind = raw.get_u8();
+            Frame { kind, payload: raw }
+        }))
+    }
+
+    /// Whether a frame was cut short: bytes wait that make no whole frame.
+    pub fn is_empty(&self) -> bool {
+        self.pending.is_empty()
+    }
+}
+
+/// The kind of a whole frame as [`FrameSplitter::next_raw`] gives it.
+pub fn raw_kind(raw: &[u8]) -> u8 {
+    raw[4]
+}
 
 /// What a picture's source is called in its view, such as a browser tab's
 /// `t1`: ASCII without control characters, at most
@@ -62,16 +135,20 @@ impl TryFrom<&str> for SourceId {
     }
 }
 
-/// A video frame's header, big-endian: the source's ID (ASCII, padded with
-/// zero bytes to 16), the stream generation (u32), the sequence number
-/// (u32), flags (u8, 1 = key frame), three reserved bytes, the timestamp in
+/// A video chunk's header, big-endian: the source's ID (ASCII, padded with
+/// zero bytes to 16), the stream generation (u32), the frame's sequence
+/// number (u32), the chunk's index and the frame's chunk count (u16 each),
+/// flags (u8, 1 = key frame), three reserved bytes, the frame's timestamp in
 /// microseconds (f64), and the picture's width and height in pixels (u16
-/// each).
+/// each). Every chunk but a frame's last carries [`VideoHeader::CHUNK_DATA`]
+/// bytes of its data, so a chunk's index places its data in the frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoHeader {
     pub source: SourceId,
     pub generation: u32,
     pub sequence: u32,
+    pub chunk: u16,
+    pub chunks: u16,
     pub key: bool,
     pub timestamp: f64,
     pub width: u16,
@@ -79,10 +156,13 @@ pub struct VideoHeader {
 }
 
 impl VideoHeader {
-    pub const BYTES: usize = 40;
+    pub const BYTES: usize = 44;
     /// The source ID's field, which holds the longest browser tab ID, `t` and
     /// 15 digits.
     pub const SOURCE_BYTES: usize = 16;
+    /// The frame data a chunk carries, but for a frame's last: what
+    /// [`CHUNK_BYTES`] leaves after the length, the kind and the header.
+    pub const CHUNK_DATA: usize = CHUNK_BYTES - 5 - Self::BYTES;
 
     /// Appends the header to `bytes`.
     pub fn write(&self, bytes: &mut Vec<u8>) {
@@ -91,6 +171,8 @@ impl VideoHeader {
         bytes.resize(bytes.len() + Self::SOURCE_BYTES - source.len(), 0);
         bytes.extend_from_slice(&self.generation.to_be_bytes());
         bytes.extend_from_slice(&self.sequence.to_be_bytes());
+        bytes.extend_from_slice(&self.chunk.to_be_bytes());
+        bytes.extend_from_slice(&self.chunks.to_be_bytes());
         bytes.push(u8::from(self.key));
         bytes.extend_from_slice(&[0; 3]);
         bytes.extend_from_slice(&self.timestamp.to_be_bytes());
@@ -98,11 +180,11 @@ impl VideoHeader {
         bytes.extend_from_slice(&self.height.to_be_bytes());
     }
 
-    /// Splits a video frame's payload into its header and data.
+    /// Splits a video chunk's payload into its header and data.
     pub fn split(payload: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         let Some((header, data)) = payload.split_first_chunk::<{ Self::BYTES }>() else {
             return Err(DecodeError::Invalid(
-                "a video frame is shorter than its header".into(),
+                "a video chunk is shorter than its header".into(),
             ));
         };
         let (source, fields) = header.split_at(Self::SOURCE_BYTES);
@@ -118,12 +200,68 @@ impl VideoHeader {
             source,
             generation: u32::from_be_bytes(bytes(0, 4).try_into().expect("four bytes")),
             sequence: u32::from_be_bytes(bytes(4, 4).try_into().expect("four bytes")),
-            key: fields[8] & 1 == 1,
-            timestamp: f64::from_be_bytes(bytes(12, 8).try_into().expect("eight bytes")),
-            width: u16::from_be_bytes(bytes(20, 2).try_into().expect("two bytes")),
-            height: u16::from_be_bytes(bytes(22, 2).try_into().expect("two bytes")),
+            chunk: u16::from_be_bytes(bytes(8, 2).try_into().expect("two bytes")),
+            chunks: u16::from_be_bytes(bytes(10, 2).try_into().expect("two bytes")),
+            key: fields[12] & 1 == 1,
+            timestamp: f64::from_be_bytes(bytes(16, 8).try_into().expect("eight bytes")),
+            width: u16::from_be_bytes(bytes(24, 2).try_into().expect("two bytes")),
+            height: u16::from_be_bytes(bytes(26, 2).try_into().expect("two bytes")),
         };
+        if header.chunks == 0 || header.chunk >= header.chunks {
+            return Err(DecodeError::Invalid(format!(
+                "chunk {} of a frame of {} chunks",
+                header.chunk, header.chunks
+            )));
+        }
         Ok((header, data))
+    }
+}
+
+/// The page's acknowledgement of one video chunk, big-endian: the stream
+/// generation and the frame's sequence number (u32 each), the chunk's index
+/// (u16), two reserved bytes, and when the page received the chunk, in
+/// milliseconds on a clock of the page's own (f64), whose differences alone
+/// mean anything.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChunkAck {
+    pub generation: u32,
+    pub sequence: u32,
+    pub chunk: u16,
+    pub received: f64,
+}
+
+impl ChunkAck {
+    pub const BYTES: usize = 20;
+
+    /// Appends the acknowledgement to `bytes`.
+    pub fn write(&self, bytes: &mut Vec<u8>) {
+        bytes.extend_from_slice(&self.generation.to_be_bytes());
+        bytes.extend_from_slice(&self.sequence.to_be_bytes());
+        bytes.extend_from_slice(&self.chunk.to_be_bytes());
+        bytes.extend_from_slice(&[0; 2]);
+        bytes.extend_from_slice(&self.received.to_be_bytes());
+    }
+
+    /// The acknowledgements of an acknowledgement frame's payload.
+    pub fn split(payload: &[u8]) -> Result<Vec<Self>, DecodeError> {
+        if payload.is_empty() || payload.len() % Self::BYTES != 0 {
+            return Err(DecodeError::Invalid(format!(
+                "an acknowledgement frame of {} bytes",
+                payload.len()
+            )));
+        }
+        Ok(payload
+            .chunks_exact(Self::BYTES)
+            .map(|entry| {
+                let bytes = |at: usize, count: usize| &entry[at..at + count];
+                Self {
+                    generation: u32::from_be_bytes(bytes(0, 4).try_into().expect("four bytes")),
+                    sequence: u32::from_be_bytes(bytes(4, 4).try_into().expect("four bytes")),
+                    chunk: u16::from_be_bytes(bytes(8, 2).try_into().expect("two bytes")),
+                    received: f64::from_be_bytes(bytes(12, 8).try_into().expect("eight bytes")),
+                }
+            })
+            .collect())
     }
 }
 
@@ -289,19 +427,8 @@ pub struct LiveHello {
     pub platform: Platform,
 }
 
-/// The page showed this frame; the Host paces the pictures by these.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LiveAck {
-    #[garde(skip)]
-    pub generation: u32,
-    #[garde(skip)]
-    pub sequence: u32,
-    #[garde(skip)]
-    pub decode_queue: u32,
-}
-
-/// The page's decoder lost the stream; the next frame must be a key frame.
+/// The page's decoder could not decode a frame of `generation`; the next
+/// frame must be a key frame (`live-view.md` § Delivery).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveKeyframe {

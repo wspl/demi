@@ -1,18 +1,27 @@
 /**
  * A live view's stream on the page, whatever its source (`live-view.md`
  * § The stream, `mobile.md` § The live view): it opens the plugin's user
- * stream, reads its frames, watches its silence and its stalls, hands the
- * pictures of the generation the view shows to a decoder, acknowledges
- * what the viewer saw and asks for key frames, and opens a view that ended
+ * stream, reads its frames, watches its silence and its stalls, joins the
+ * pictures' chunks and acknowledges each with when it arrived (`live-view.md`
+ * § Backpressure), hands the frames of the generation the view shows to a
+ * decoder in sequence, asks for a key frame after one it could not decode,
+ * and opens a view that ended
  * again after the page's reconnect waits (`web-application.md` § Liveness
  * and reconnection). What a source's view says over it is its own: the
  * session that uses a link reads its messages and sends its own.
  */
 import type { OpenUserStream, StreamBytes, UserStream } from '../plugins/streams'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'
-import type { LiveVideoFrame } from './frames'
+import { LiveFrameAssembler, encodeAcks, type LiveChunkAck, type LiveVideoChunk } from './frames'
 import type { LivePictureStream, PictureSink } from './pictures'
 import { LIVE_STALL_MS } from './protocol'
+
+/** The most acknowledgements one message carries. */
+const ACKS_PER_MESSAGE = 8
+/** The most bytes the page holds of frames not yet whole and of generations not yet announced (`live-view.md` § Two paths, one protocol). */
+export const LIVE_HELD_BYTES = 8 * 1024 * 1024
+/** The longest a whole frame waits for an earlier one. */
+export const LIVE_WAIT_MS = 2000
 
 export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
@@ -48,8 +57,6 @@ export interface LiveLinkHandlers<F, S extends LivePictureStream> {
   stalled(): void
   /** The generation's pictures are for the view now, as against a source it no longer watches. */
   watching(stream: S): boolean
-  /** The page painted `sequence` of `stream`'s generation; the module paces itself by these. */
-  acknowledge(stream: S, sequence: number, decodeQueue: number): void
   /** The decoder needs a key frame of `stream`'s generation. */
   keyframe(stream: S): void
   /** Reports a defect of the page, such as a frame the protocol refuses. */
@@ -66,6 +73,19 @@ export class LiveLink<F, S extends LivePictureStream> {
   private received: number
   /** When the page last asked for a key frame; never, at first. */
   private resynced = Number.NEGATIVE_INFINITY
+  /** Joins the stream's chunks into frames, from its first byte. */
+  private frames = new LiveFrameAssembler()
+  /**
+   * Chunks of generations not announced yet, which may come before their
+   * announcement on the direct path, by generation, with their bytes.
+   */
+  private early = new Map<number, LiveVideoChunk[]>()
+  private earlyBytes = 0
+  /** The newest generation announced; none before the first. */
+  private announced = 0
+  /** Acknowledgements of the chunks one task received, which leave together at its end. */
+  private acks: LiveChunkAck[] = []
+  private acking = false
   /** Views that ended in a row since one last worked. */
   private failures = 0
   private reopening: ReconnectWait | null = null
@@ -112,7 +132,7 @@ export class LiveLink<F, S extends LivePictureStream> {
           this.end(reason)
         }
       },
-    })
+    }, { live: true })
     this.stream = stream
     // The module speaks at least every quarter second, so the page's rule
     // for a silent socket holds for the view as for its other sockets.
@@ -171,6 +191,11 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.silence = null
     this.pictures?.stop()
     this.video = null
+    this.frames = new LiveFrameAssembler()
+    this.early.clear()
+    this.earlyBytes = 0
+    this.announced = 0
+    this.acks = []
     const stream = this.stream
     this.stream = null
     stream?.close()
@@ -180,9 +205,8 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.received = this.time()
     this.silence?.heard()
     if (this.state.connection === 'stalled') {
+      // Both paths deliver every chunk: the decoder missed nothing.
       this.state.connection = 'live'
-      // What the decoder missed while nothing arrived starts again.
-      this.resync()
     }
     let read: F[]
     try {
@@ -202,7 +226,11 @@ export class LiveLink<F, S extends LivePictureStream> {
     }
   }
 
-  /** What shows the pictures, once the view has a canvas; a canvas that comes late asks for a key frame. */
+  /**
+   * What shows the pictures, once the view has a canvas. A canvas that comes
+   * late missed the key frame its decoder needs, so it asks for one, as for
+   * a frame it could not decode: a still page sends no frame after it.
+   */
   attach(pictures: PictureSink<S>): void {
     this.pictures?.stop()
     this.pictures = pictures
@@ -222,7 +250,18 @@ export class LiveLink<F, S extends LivePictureStream> {
   /** Pictures of `stream`'s generation follow. */
   generation(stream: S): void {
     this.video = stream
+    this.announced = Math.max(this.announced, stream.generation)
     this.pictures?.start(stream)
+    // The chunks that came ahead of the announcement are its pictures; those
+    // of generations before it will never be shown.
+    const early = this.early.get(stream.generation) ?? []
+    for (const generation of [...this.early.keys()]) {
+      if (generation <= stream.generation)
+        this.early.delete(generation)
+    }
+    this.earlyBytes = [...this.early.values()].flat().reduce((bytes, chunk) => bytes + chunk.data.length, 0)
+    for (const chunk of early)
+      this.assemble(chunk)
   }
 
   /** The view watches nothing it had pictures of: decoding ends. */
@@ -231,23 +270,79 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.video = null
   }
 
-  /** A picture: shown when it is of the generation the view shows; answers whether it was. */
-  show(frame: LiveVideoFrame): boolean {
-    if (frame.generation !== this.video?.generation) {
+  /**
+   * A picture's chunk: acknowledged with when it arrived, whatever its
+   * generation, so the Host's window frees; its frame is shown once it is
+   * whole and its turn came, when it is of the generation the view shows.
+   * Answers whether it was of that generation.
+   */
+  show(chunk: LiveVideoChunk): boolean {
+    this.acknowledge({ generation: chunk.generation, sequence: chunk.sequence, chunk: chunk.chunk, received: this.received })
+    if (chunk.generation > this.announced) {
+      // Ahead of its announcement, which the other channel still carries.
+      const early = this.early.get(chunk.generation) ?? []
+      early.push(chunk)
+      this.early.set(chunk.generation, early)
+      this.earlyBytes += chunk.data.length
+      this.bound()
       return false
     }
-    this.pictures?.show(frame)
+    if (chunk.generation !== this.video?.generation) {
+      return false
+    }
+    this.assemble(chunk)
     return true
   }
 
-  /** The page painted a picture. */
-  showed(generation: number, sequence: number, decodeQueue: number): void {
-    if (this.video && generation === this.video.generation) {
-      this.handlers.acknowledge(this.video, sequence, decodeQueue)
+  private assemble(chunk: LiveVideoChunk): void {
+    for (const frame of this.frames.add(chunk, this.time())) {
+      this.pictures?.show(frame)
+    }
+    this.bound()
+  }
+
+  /**
+   * Past the bytes the page holds or the time a frame waits, what it holds
+   * goes, and the decoder starts again from a key frame.
+   */
+  private bound(): void {
+    const since = this.frames.waitingSince
+    const late = since !== null && this.time() - since > LIVE_WAIT_MS
+    if (!late && this.earlyBytes + this.frames.held <= LIVE_HELD_BYTES) {
+      return
+    }
+    this.frames.clear()
+    this.early.clear()
+    this.earlyBytes = 0
+    this.resync()
+  }
+
+  /** Sends `ack` with the others the same task received, a few to a message. */
+  private acknowledge(ack: LiveChunkAck): void {
+    this.acks.push(ack)
+    if (this.acks.length >= ACKS_PER_MESSAGE) {
+      this.flush()
+      return
+    }
+    if (!this.acking) {
+      this.acking = true
+      queueMicrotask(() => {
+        this.acking = false
+        this.flush()
+      })
     }
   }
 
-  /** The decoder lost the stream: the next frame must be a key frame, asked for at most once a second. */
+  private flush(): void {
+    if (this.acks.length === 0) {
+      return
+    }
+    const acks = this.acks
+    this.acks = []
+    this.stream?.send(encodeAcks(acks))
+  }
+
+  /** The decoder could not decode a frame: the next must be a key frame, asked for at most once a second. */
   resync(): void {
     const now = this.time()
     if (!this.video || now - this.resynced < 1000) {
@@ -259,6 +354,7 @@ export class LiveLink<F, S extends LivePictureStream> {
 
   /** Time passes: without a byte for a second the connection is stalled. */
   tick(): void {
+    this.bound()
     if (this.state.connection === 'live' && this.time() - this.received > LIVE_STALL_MS) {
       this.state.connection = 'stalled'
       this.handlers.stalled()

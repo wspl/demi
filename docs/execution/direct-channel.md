@@ -40,7 +40,7 @@ for a conversation whose primary Host is a paired device:
 
 | Operation | Relay form | Direct form |
 | --- | --- | --- |
-| A user stream, such as the [live browser view](../browser/live-view.md) | `WS …/streams/<name>` and a service stream | One data channel carrying the same bytes |
+| A user stream, such as the [live browser view](../browser/live-view.md) | `WS …/streams/<name>` and a service stream | One data channel carrying the same bytes, and for a live view a second, `video` ([Two paths, one protocol](../browser/live-view.md#two-paths-one-protocol)) |
 | A file's bytes, read or a range of them | `GET …/fs/raw` | A `read` channel |
 | A file written by the page, such as an upload | `PUT …/fs/raw` | A `write` channel |
 | A file's text | `GET …/fs/file` | A `text` channel |
@@ -97,6 +97,32 @@ tunnel interface is point-to-point, so a fake address a VPN client gives
 (such as `198.18.0.1` of a TUN mode) is never offered: WebKit's encryption
 handshake times out over one. `127.0.0.1` serves Chrome and Safari; Firefox
 ignores loopback candidates and connects to a local network address.
+
+A page keeps two peers with a device: one for files and calls, whose SCTP
+association has its standard congestion window, and one for live views,
+whose association runs without it. A live view's sender limits what it puts
+on the wire by its own rate control ([Delivery](../browser/live-view.md#delivery)),
+which a loss only delays; SCTP's window halves the rate at every loss,
+which at 2 % loss holds a picture near 1 Mbps on a link of 8. The live
+views' association also resends a lost chunk after 50 ms at the least, 250
+ms at first and 2 s at the most, where SCTP's defaults wait a second at the
+least, and queues up to 2 MiB on its `video` channels, since the view's own
+window, not the queue, is its limit. A bulk file transfer has no such
+control of its own, so it keeps the window. The change is the runner's
+sender alone, a setting of the SCTP library it embeds; the browser's side is
+unchanged.
+
+Both peers are introduced over the page's one signaling socket for the
+device: each of the page's messages names its peer, `files` or `live`, and
+the backend gives each its own peer id toward the runner, whose
+`direct_offer` says `live: true` for the live one. The `live` peer carries
+only the live views' `stream` and `video` channels; it opens when the page
+opens a live view on a device whose choice is `direct` and closes a minute
+after its last view ends or when the choice leaves `direct`. Measuring the
+paths and choosing between them concern the `files` peer alone, so the
+`live` peer has no `probe` channel and is ready when its first `video`
+channel opens. Each peer
+counts toward the runner's limit of peers.
 
 The encryption keys' fingerprints travel in the offer and the answer, so
 each end knows it talks to the one the backend introduced. The channel is
@@ -162,6 +188,7 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `text` | `{ path, version? }` | `{ ok, version, unchanged, readAt }`, then the text unless it is unchanged; `readAt` is the Host's number before it read, as the relay's `X-Demi-Read-At` |
 | `list` | `{ path? }` | `{ ok, path, home, entries, readAt }` |
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
+| `video` | The live view's acknowledgements | The live view's video chunks; the channel is reliable and unordered, opened beside the view's `stream` channel and ending with it: the page opens it first with `{ op: "video" }`, which the runner answers with its number on the peer, and then the view's `stream` naming that number, which binds the two; a `video` on a peer that is not `live` is refused |
 | `watch` | The relay's `subscribe`, `unsubscribe` and `renew` messages | The relay's `live`, `changed`, `unavailable`, `refused`, `renewed`, `offline` and `heartbeat` messages ([File watch](../product/web-api-hosts.md#file-watch)) |
 
 The `probe` channel is the one exception to one channel per operation: it

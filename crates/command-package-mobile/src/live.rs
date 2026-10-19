@@ -14,10 +14,7 @@ use std::{
     time::Duration,
 };
 
-use tokio::{
-    sync::{mpsc, watch},
-    time::MissedTickBehavior,
-};
+use tokio::sync::{mpsc, watch};
 use tokio_util::{
     sync::CancellationToken,
     task::{AbortOnDropHandle, TaskTracker},
@@ -37,7 +34,7 @@ use demi_live_view::{
     writer::Writer,
 };
 use demi_live_view_protocol::{
-    CONTROL_FRAME, KeyAction, LiveAck, LiveInputs, LiveKeyframe, LiveRelease, PointerAction,
+    ACK_FRAME, CONTROL_FRAME, ChunkAck, KeyAction, LiveInputs, LiveKeyframe, LiveRelease, PointerAction,
     PointerKind, SourceId, TouchAction, ViewerInput,
 };
 
@@ -113,9 +110,9 @@ impl Capture for DeviceCaptureOf {
         self.0.next().await
     }
 
-    // The helper encodes as the screen draws and the viewers' writers drop
-    // what their paths cannot take, so it needs no window.
-    fn ack(&self, _sequence: u32, _window: u32) {}
+    fn ack(&self, sequence: u32, window: u32) {
+        self.0.ack(sequence, window);
+    }
 
     fn key_frame(&self) {
         self.0.key_frame();
@@ -418,7 +415,7 @@ pub async fn serve(
 /// interrupted would leave its demand for input open, and the next read
 /// would make a second one, which the runner refuses. The channel ends with
 /// the page's side, after a refusal of a frame the protocol refuses.
-fn read(mut reader: Reader) -> (mpsc::Receiver<Result<LiveViewerMessage, String>>, AbortOnDropHandle<()>) {
+fn read(mut reader: Reader) -> (mpsc::Receiver<Result<FromPage, String>>, AbortOnDropHandle<()>) {
     let (messages, inbound) = mpsc::channel(64);
     let task = tokio::spawn(async move {
         loop {
@@ -439,18 +436,28 @@ fn read(mut reader: Reader) -> (mpsc::Receiver<Result<LiveViewerMessage, String>
     (inbound, AbortOnDropHandle::new(task))
 }
 
+/// What the page sends: control messages, and acknowledgements of the video
+/// chunks.
+enum FromPage {
+    Message(LiveViewerMessage),
+    Acks(Vec<ChunkAck>),
+}
+
 /// The page's next message; none once it ended its side, a refusal for a
 /// frame the protocol refuses.
-async fn next(reader: &mut Reader) -> Result<Option<LiveViewerMessage>, String> {
+async fn next(reader: &mut Reader) -> Result<Option<FromPage>, String> {
     let Some(frame) = reader.next().await.map_err(|error| error.to_string())? else {
         return Ok(None);
     };
-    if frame.kind != CONTROL_FRAME {
-        return Err(format!("the page sent a frame of kind {}, which it does not send", frame.kind));
+    match frame.kind {
+        CONTROL_FRAME => demi_shared_types::decode_slice(&frame.payload)
+            .map(|message| Some(FromPage::Message(message)))
+            .map_err(|error| error.to_string()),
+        ACK_FRAME => ChunkAck::split(&frame.payload)
+            .map(|acks| Some(FromPage::Acks(acks)))
+            .map_err(|error| error.to_string()),
+        kind => Err(format!("the page sent a frame of kind {kind}, which it does not send")),
     }
-    demi_shared_types::decode_slice(&frame.payload)
-        .map(Some)
-        .map_err(|error| error.to_string())
 }
 
 /// The view itself; `Err(None)` when it was cancelled, `Err(Some(_))` when
@@ -472,7 +479,7 @@ async fn view(
     tokio::select! {
         _ = cancellation.cancelled() => return Err(None),
         first = inbound.recv() => match first.transpose().map_err(Some)? {
-            Some(LiveViewerMessage::Hello(_)) => {}
+            Some(FromPage::Message(LiveViewerMessage::Hello(_))) => {}
             Some(_) => return Err(Some("a view starts with hello".into())),
             None => return Ok(()),
         },
@@ -490,10 +497,9 @@ async fn view(
     let mut revisions = devices.revisions();
     let mut watched: Option<Watched> = None;
     let mut delivery = Delivery::new();
-    let mut ticks = tokio::time::interval(Duration::from_secs(1));
-    ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
     state(devices, conversation, &watched, writer).await;
     let result = loop {
+        let due = delivery.due();
         // The watched device's pictures and the agent's activity on it.
         let from_device = async {
             match watched.as_mut() {
@@ -510,7 +516,10 @@ async fn view(
             message = inbound.recv() => match message.transpose() {
                 Err(error) => break Err(Some(error)),
                 Ok(None) => break Ok(()),
-                Ok(Some(message)) => match message {
+                Ok(Some(FromPage::Acks(acks))) => {
+                    delivery.acknowledged(&acks, watched.as_ref().map(|watched| &watched.stream));
+                }
+                Ok(Some(FromPage::Message(message))) => match message {
                     LiveViewerMessage::Hello(_) => break Err(Some("a view says hello once".into())),
                     LiveViewerMessage::Watch { device } => {
                         let open = device.and_then(|device| devices.get(conversation, &device).ok());
@@ -521,9 +530,6 @@ async fn view(
                         if watched.as_ref().is_some_and(|watched| watched.open.handle == device) {
                             input.send(message);
                         }
-                    }
-                    LiveViewerMessage::Ack(LiveAck { generation, sequence, decode_queue }) => {
-                        delivery.acknowledged(generation, sequence, decode_queue, watched.as_ref().map(|watched| &watched.stream));
                     }
                     LiveViewerMessage::Keyframe(LiveKeyframe { generation }) => {
                         delivery.key_frame(generation, watched.as_ref().map(|watched| &watched.stream));
@@ -570,7 +576,9 @@ async fn view(
                 }
                 state(devices, conversation, &watched, writer).await;
             }
-            _ = ticks.tick() => delivery.tick(writer.queued(), watched.as_ref().map(|watched| &watched.stream)),
+            _ = tokio::time::sleep_until(due.unwrap_or_else(tokio::time::Instant::now)), if due.is_some() => {
+                delivery.release(writer);
+            }
         }
     };
     rewatch(hub, &mut watched, None, viewer, &input, &mut delivery, writer).await;
@@ -718,8 +726,9 @@ async fn picture(
             height,
             layout,
             scale,
+            sequence,
         } => {
-            let generation = delivery.restart(epoch, width, height);
+            let generation = delivery.restart(epoch, width, height, scale, sequence, Some(&watched.stream));
             writer
                 .control(&LiveModuleMessage::Stream {
                     device,
@@ -733,7 +742,7 @@ async fn picture(
                 })
                 .await;
         }
-        Event::Frame(frame) => delivery.frame(&watched.source, &frame, writer, Some(&watched.stream)),
+        Event::Frame(frame) => delivery.frame(&watched.source, &frame, Some(&watched.stream)),
         Event::Unavailable(reason) => {
             writer
                 .notice(demi_command_package_mobile_protocol::live::CAPTURE_UNAVAILABLE, &reason)

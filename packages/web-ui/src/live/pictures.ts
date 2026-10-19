@@ -1,7 +1,8 @@
 /**
  * A live view's pictures on a canvas (`live-view.md` § Delivery,
- * `mobile.md` § The live view): WebCodecs decodes the Host's H.264, the
- * page shows the newest frame it has, and tells the Host what it showed.
+ * `mobile.md` § The live view): WebCodecs decodes the Host's H.264 frames in
+ * sequence, and the page draws the newest picture it has at the next
+ * refresh.
  * Whatever the source, a browser tab or a simulator, its pictures come so.
  */
 import { LIVE_VIDEO_CODEC } from '@demicodes/protocol'
@@ -9,8 +10,6 @@ import type { LiveVideoFrame } from './frames'
 
 /** The live protocol's codec, as every source encodes it, decoded with the least delay. */
 const DECODER: VideoDecoderConfig = { codec: LIVE_VIDEO_CODEC, optimizeForLatency: true }
-/** Beyond this the page is behind: it drops the stream and asks for a key frame. */
-const DECODE_QUEUE = 12
 
 /** A generation of pictures, as the Host announced it. */
 export interface LivePictureStream {
@@ -27,9 +26,9 @@ export interface PictureSink<S extends LivePictureStream = LivePictureStream> {
 }
 
 export interface PictureHandlers<S extends LivePictureStream> {
-  /** The page painted this frame of `stream`'s generation. */
-  shown(stream: S, sequence: number, decodeQueue: number): void
-  /** The stream cannot continue; the Host must send a key frame. */
+  /** The page painted a picture of `stream`'s generation. */
+  shown(stream: S): void
+  /** A frame could not be decoded; the Host must send a key frame. */
   lost(): void
 }
 
@@ -56,8 +55,9 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
   private decoder: VideoDecoder | null = null
   /** The generation whose frames follow; none before the first. */
   private stream: S | null = null
-  private latest: { frame: VideoFrame; sequence: number; generation: number } | null = null
-  private readonly pending = new Map<number, { sequence: number; generation: number }>()
+  private latest: { frame: VideoFrame; generation: number } | null = null
+  /** The generation of each frame in the decoder, by the timestamp its picture comes back with. */
+  private readonly pending = new Map<number, number>()
   private painting: number | null = null
 
   constructor(
@@ -93,11 +93,6 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
       })
       this.decoder.configure(DECODER)
     }
-    if (this.decoder.decodeQueueSize > DECODE_QUEUE) {
-      this.release()
-      this.handlers.lost()
-      return
-    }
     const chunk = new EncodedVideoChunk({
       type: frame.key ? 'key' : 'delta',
       timestamp: frame.timestamp,
@@ -105,7 +100,7 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
     })
     // The picture comes back with the chunk's timestamp, whole microseconds,
     // which a source's own (a fraction, from a capture clock) is not.
-    this.pending.set(chunk.timestamp, { sequence: frame.sequence, generation: frame.generation })
+    this.pending.set(chunk.timestamp, frame.generation)
     this.decoder.decode(chunk)
   }
 
@@ -115,15 +110,15 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
   }
 
   private decoded(picture: VideoFrame): void {
-    const about = this.pending.get(picture.timestamp)
+    const generation = this.pending.get(picture.timestamp)
     this.pending.delete(picture.timestamp)
-    if (!about || about.generation !== this.stream?.generation) {
+    if (generation === undefined || generation !== this.stream?.generation) {
       picture.close()
       return
     }
     // Only the newest picture is worth painting.
     this.latest?.frame.close()
-    this.latest = { frame: picture, sequence: about.sequence, generation: about.generation }
+    this.latest = { frame: picture, generation }
     this.painting ??= requestAnimationFrame(() => this.paint())
   }
 
@@ -145,7 +140,7 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
         this.canvas.height = latest.frame.displayHeight
       }
       context?.drawImage(latest.frame, 0, 0)
-      this.handlers.shown(stream, latest.sequence, this.decoder?.decodeQueueSize ?? 0)
+      this.handlers.shown(stream)
     } finally {
       latest.frame.close()
     }

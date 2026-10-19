@@ -22,6 +22,10 @@ pub const MESSAGE_BYTES: usize = 64 * 1024;
 /// The most bytes either end keeps queued on one channel; it writes more as
 /// the queue drains. Larger queues measured slower, not faster.
 pub const QUEUE_BYTES: usize = 256 * 1024;
+/// The most bytes the runner keeps queued on a live view's `video` channel:
+/// the view's own window, not the queue, limits it (`direct-channel.md`
+/// § Making the channel).
+pub const VIDEO_QUEUE_BYTES: usize = 2 * 1024 * 1024;
 /// The most peers a runner keeps; it refuses another offer with `busy`.
 pub const MAX_PEERS: usize = 8;
 /// The most channels one peer keeps open; another is refused with `busy`.
@@ -192,6 +196,12 @@ pub enum Introduced {
     Page {
         #[garde(dive)]
         page: Introduction,
+        /// The page's peer for live views, whose association runs without
+        /// SCTP's congestion window and carries only their `stream` and
+        /// `video` channels (`direct-channel.md` § Making the channel).
+        #[serde(default)]
+        #[garde(skip)]
+        live: bool,
     },
     Runner {
         #[garde(length(min = 1))]
@@ -221,7 +231,9 @@ pub enum OfferRefusal {
     deny_unknown_fields
 )]
 pub enum ChannelHeader {
-    /// Opens the user stream `stream`; its input bytes follow.
+    /// Opens the user stream `stream`; its input bytes follow. A live
+    /// view's names the `video` channel opened for it on a live peer, which
+    /// carries its pictures' chunks and their acknowledgements.
     Stream {
         #[garde(custom(conversation_name))]
         conversation: String,
@@ -233,7 +245,14 @@ pub enum ChannelHeader {
         #[garde(skip)]
         #[schemars(with = "Option<BTreeMap<String, serde_json::Value>>")]
         args: Option<serde_json::Map<String, serde_json::Value>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        video: Option<u32>,
     },
+    /// A live view's `video` channel, reliable and unordered, which the
+    /// runner answers with [`VideoOpened`]; the view's `stream` then names
+    /// it.
+    Video {},
     /// A file's bytes from `offset`, `length` of them or to the end; a
     /// `version` the file no longer has answers `file_changed`.
     Read {
@@ -317,7 +336,9 @@ pub enum ChannelHeader {
 impl ChannelHeader {
     /// The conversation the operation acts for, and the directory its work
     /// starts in on the device, as the conversation's summary names them.
-    pub fn scope(&self) -> Scope<'_> {
+    /// The conversation and directory the operation acts in; none for a
+    /// `video` channel, whose stream names them.
+    pub fn scope(&self) -> Option<Scope<'_>> {
         let (Self::Stream { conversation, cwd, .. }
         | Self::Read { conversation, cwd, .. }
         | Self::Write { conversation, cwd, .. }
@@ -325,8 +346,11 @@ impl ChannelHeader {
         | Self::List { conversation, cwd, .. }
         | Self::Mkdir { conversation, cwd, .. }
         | Self::Delete { conversation, cwd, .. }
-        | Self::Watch { conversation, cwd }) = self;
-        Scope { conversation, cwd }
+        | Self::Watch { conversation, cwd }) = self
+        else {
+            return None;
+        };
+        Some(Scope { conversation, cwd })
     }
 }
 
@@ -437,6 +461,15 @@ impl Default for Opened {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// A `video` channel's answer: its number on the peer, which the view's
+/// `stream` names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VideoOpened {
+    pub ok: bool,
+    pub id: u32,
 }
 
 /// A `read`'s answer: the file's size, version and modification time,

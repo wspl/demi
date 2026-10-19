@@ -1,0 +1,235 @@
+# SDP negotiation
+
+> SDP Offer/Answer has been a nightmare from day one :) ([source][quote])
+
+str0m does not follow the exact specification for SDP negotiation, however, almost no one does.
+
+## MSID identity in offers and answers
+
+When a remote offer first creates an m-line, str0m normally copies its
+`a=msid` stream and track IDs into `Media`. These are exposed by
+`Media::stream_id()` and `Media::track_id()` and used in str0m's own offers and
+answers. If that offer has no `a=msid`, str0m generates both IDs. Media
+created locally uses the IDs supplied to `SdpApi::add_media()`, or generated
+defaults.
+
+The chosen IDs belong to that m-line for its lifetime. A later remote SDP
+cannot replace them. In particular, changing direction from `sendrecv` to
+`inactive` and back to `sendrecv` keeps the same `a=msid`. This follows the
+stability rule for non-stopped transceivers in [RFC 9429 sections 5.2.2 and
+5.3.2][rfc9429]: previously present `a=msid` lines stay the same in later
+locally generated offers and answers, regardless of direction or track changes.
+Stopping a transceiver is different: its m-line is rejected and its `a=msid`
+lines are removed. Reusing a rejected m-line for a new transceiver is outside
+this policy.
+
+An offered stream ID of `-` is the exception: it means the offered track has no
+MediaStream. For this case, generate a new stream and track ID rather than copy
+that sentinel into our answer. Those generated IDs then remain fixed for that
+m-line too.
+
+[RFC 8830 section 3.2.3][rfc8830] says that an offer's `a=msid` values do not
+influence the answer. Copying ordinary offered IDs is a deliberate departure
+from that procedure to preserve the existing `Media` API behavior. str0m does
+not maintain separate incoming and outgoing MSIDs.
+
+## The SDP Offer/Answer spec
+
+These quotes are from the [spec section 6.1][sdpspec]:
+
+> For recvonly RTP streams, the payload type numbers indicate the value of the payload type field
+> in RTP packets the offerer is expecting to receive for that codec. For sendonly RTP streams,
+> the payload type numbers indicate the value of the payload type field in RTP packets
+> the offerer is planning to send for that codec. For sendrecv RTP streams, the payload type
+> numbers indicate the value of the payload type field the offerer expects to receive, and would
+> prefer to send.
+
+I.e. an OFFER or ANSWER, when the direction is `sendrecv` or `recvonly` (and notice
+the direction is mirrored in an ANSWER), the payload types (and PT numbers) mean "this is
+what I **expect to receive**". They are not suggestions, they are a MUST.
+
+For an OFFER with `sendonly`, the payload types (and PT numbers) mean "this is what
+I **hope to send**". They are suggestions the ANSWER can change.
+
+For an ANSWER with `sendonly`, the payload types (and PT numbers) indicating what it hopes to send.
+I conclude they are not interesting, because the receiving side (the OFFER), has already dictated
+"this is what I expect to receive". The ANSWER side is not allowed use anything else – it might as well
+just mirror the OFFER.
+
+TL;DR In an OFFER or ANSWER, if the direction is `sendrecv` or `recvonly`, the payload types
+are what the receiving side expects.
+
+### Asymmetrical PT
+
+> However, for sendonly and sendrecv streams, the answer might indicate different
+> payload type numbers for the same codecs, in which case, the offerer MUST send with
+> the payload type numbers from the answer.
+>
+> Different payload type numbers may be needed in each direction
+> because of interoperability concerns with H.323.
+>
+> [...]
+>
+> The answerer MUST be prepared to receive media for recvonly or sendrecv streams using any
+> media formats listed for those streams in the answer [...] In the case of RTP,
+> **it MUST use the payload type numbers from the offer, even if they differ from those in the
+> answer** (emphasis mine).
+
+Example:
+
+- OFFER is `sendrecv` VP8 with PT (Payload Type) 100
+- ANSWER is `sendrecv` VP8 with PT 96
+
+The OFFER details the receiving capabilties. It _expects_ VP8 to arrive at PT 100. This
+is not a suggestion.
+
+Similarly the ANSWER is talking about its receiving capabilities. It _expects_ VP8 to arrive
+at PT 96. This is also not a suggestion.
+
+We have an asymmetry…
+
+This means a spec compliant WebRTC implementation must maintain separate PTs for sending and receiving.
+The only library that appears to do this is libWebRTC (please correct me).
+
+### The solution: SHOULD becomes MUST
+
+All WebRTC libraries we've looked at (apart from libWebRTC), maintain a single PT/codec config list
+for the entire BUNDLE/session and does not have separate PT mappings for receive and send. This works
+de-facto, because the spec also says:
+
+> In the case of RTP, if a particular codec was referenced with a specific payload type number in
+> the offer, that same payload type number SHOULD be used for that codec in the answer.
+
+Safari/Chrome/FF all respond with the PT in the OFFER. There probably is no reason in WebRTC to do
+anything else. It's as if we collectively pretend that SHOULD is a MUST, and implement accordingly.
+
+str0m does this too. Sauce for the goose…
+
+### TWCC feedback across m-lines
+
+str0m assumes `fb_transport_cc` is a per-PT capability shared across the
+BUNDLE/session. For each PT, the first matching remote payload parameters
+determine whether TWCC feedback is enabled, provided it is enabled locally.
+Later m-lines using that PT do not change the result, even if they advertise
+different `a=rtcp-fb:<pt> transport-cc` support. We do not model that distinction.
+The transport sequence number header extension must still be negotiated on
+the m-line carrying the RTP packets. As with other codec parameters, feedback
+capabilities are retained when an existing m-line is renegotiated.
+
+### Telephone-event ranges across m-lines
+
+str0m keeps one negotiated telephone-event range per payload type in
+`Session::codec_config`. It takes the smaller local and remote maximum and uses
+that range in both directions and on every m-line sharing the PT. SDP can
+express different receive capabilities in each direction and on different
+m-lines; str0m does not model those distinctions.
+
+### Renegotiation and narrowed PT lists
+
+On renegotiation of an existing m-line, str0m keeps the remote payload type list
+from the first negotiation. Strictly following SDP offer/answer would mean an
+answer that narrows the `sendrecv`/`recvonly` PT list should also narrow what we
+consider valid to send on that m-line. In practice, browsers keep stable PT/codec
+sets for an existing m-line, and we have not seen a real interoperability problem
+from keeping the initial list.
+
+### Side note about asymmetry
+
+> The answerer MUST send using a media format in the offer that is also listed in the answer,
+> and SHOULD send using the most preferred media format in the offer that is also listed in the answer.
+
+This bit stands out, because it means that although there can be an asymmetry in PT numbers, there can't
+be one in codecs. If you want to send a specific codec, you must also be prepared to receive it.
+
+Example:
+
+- OFFER `sendrecv` VP8 PT 100, H264 PT 102
+- ANSWER `sendrecv` VP8 PT 96
+
+The answer side is not allowed to send H264 in the direction of the offer side, because it is not
+prepared to receive it. We do however have an asymmetry in payload types (96 vs 100).
+
+Thus, a spec compliant implementation does not have to maintain separate codecs per direction,
+only separate payload type numbers.
+
+## Direction change from Inactive
+
+This is the behavior of libWebRTC:
+
+- SFU adds first media for something we intend to send later.
+- OFFER from SFU for Inactive m-line: mid1
+- ANSWER from client confirming Inactive mid1
+
+- Client adds media it wants to send.
+- OFFER from client for new m-line: mid2, _mid1 is now OFFERed as RecvOnly_
+- ANSWER _should confirm that mid1 is still inactive_
+
+This is because the client is talking about it's receive capabilities. "I can receive on mid1". If the
+SFU blindly follows the client OFFER, it would thus transition (the SFU created)
+mid1 `Inactive` -> `SendOnly`, when the user (probably) didn't intend to.
+
+To get around this str0m breaks with the spec. str0m keeps track of whether a `Media` (m-line) is created
+by str0m or the client. For media str0m creates, it refuses to allow the client to do the specific
+transition `Inactive` -> `RecvOnly`. All other transitions are fine, i.e. a client can change, also a
+str0m created media, from `Inactive` to `SendRecv`.
+
+## BUNDLE and Bundle Policies
+
+str0m only supports a single ICE transport, meaning all m-lines must
+be bundled together. The `a=group:BUNDLE` attribute in the SDP lists
+which m-lines share transport.
+
+### max-bundle vs max-compat
+
+[RFC 8843][rfc8843] defines bundle policies that control how ports are set in SDP offers:
+
+- **max-bundle**: Only the first m-line in the bundle has a real port
+  (typically 9). Subsequent bundled m-lines use `port=0` to indicate
+  they share transport with the first m-line.
+- **max-compat**: All m-lines use a non-zero port (typically 9), for
+    backwards compatibility with endpoints that don't understand
+    BUNDLE.
+
+The bundle policy is a local choice made by the offerer and is **not
+explicitly stated** in the SDP. It can only be inferred by looking at
+the port values on bundled m-lines.
+
+Example max-bundle offer:
+
+```
+a=group:BUNDLE 0 1
+m=audio 9 UDP/TLS/RTP/SAVPF 111   <- port 9
+m=video 0 UDP/TLS/RTP/SAVPF 96   <- port 0 (bundled, NOT rejected)
+```
+
+Example max-compat offer:
+
+```
+a=group:BUNDLE 0 1
+m=audio 9 UDP/TLS/RTP/SAVPF 111   <- port 9
+m=video 9 UDP/TLS/RTP/SAVPF 96   <- port 9
+```
+
+### How str0m handles this
+
+**Generating SDPs**: str0m produces max-compat style SDPs. All active
+m-lines use port 9. Only truly rejected m-lines (e.g., no codec
+match) use port 0.
+
+**Receiving SDPs**: str0m accepts both styles. An m-line with `port=0`
+is only considered rejected if it is NOT listed in the
+`a=group:BUNDLE` attribute. If it is in the BUNDLE group, `port=0`
+simply indicates the m-line shares transport with the first bundled
+m-line (max-bundle style).
+
+| Port | In BUNDLE group | Meaning                                 |
+|------|-----------------|-----------------------------------------|
+| 0    | Yes             | Valid bundled m-line (max-bundle style) |
+| 0    | No              | Rejected m-line                         |
+| 9    | Yes             | Valid bundled m-line (max-compat style) |
+
+[quote]: https://mailarchive.ietf.org/arch/msg/mmusic/2N1_-eUTVrmciX3LpSjkjFH7oCU/
+[sdpspec]: https://datatracker.ietf.org/doc/html/rfc3264#section-6.1
+[rfc8843]: https://datatracker.ietf.org/doc/html/rfc8843
+[rfc8830]: https://www.rfc-editor.org/rfc/rfc8830.html#section-3.2.3
+[rfc9429]: https://www.rfc-editor.org/rfc/rfc9429.html#section-5.2.2

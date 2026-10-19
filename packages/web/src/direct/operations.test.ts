@@ -6,6 +6,9 @@ import { waitToReconnect } from '@demicodes/web-ui/transport/liveness'
 import type { DirectAttempt } from '@demicodes/web-ui/devices/direct'
 import type { ChannelHeader } from '../api/generated/web-api'
 import { DeviceDirect } from './device'
+import { DeviceLive, LIVE_IDLE_MS } from './live'
+import { encodeAcks, encodeControl, framed } from '@demicodes/web-ui/live/frames'
+import { LIVE_ACK_FRAME, LIVE_CONTROL_FRAME, LIVE_VIDEO_FRAME } from '@demicodes/protocol'
 import type { DirectRoute } from '.'
 import { directFileReads, directStream } from './operations'
 import { ChannelFailed, ChannelRefused, type ChannelMessage, type DirectPeer, type OperationChannel } from './peer'
@@ -87,7 +90,8 @@ async function directOver(peer: DirectPeer): Promise<DirectRoute> {
   await Promise.resolve()
   await Promise.resolve()
   expect(device.choice).toBe('direct')
-  return { device, scope: { conversation: 'c1', cwd: '/work' } }
+  const live = new DeviceLive({ connect: async () => peer, closed: () => {}, after: () => () => {} })
+  return { device, live, scope: { conversation: 'c1', cwd: '/work' } }
 }
 
 /** The relay's reads, each call recorded. */
@@ -230,5 +234,139 @@ test('a stream the runner refuses opens on the relay, and the channel stays the 
   expect(peer.headers[0]).toMatchObject({ op: 'stream', stream: 'browser' })
   expect(relayOpened).toEqual(['relay'])
   expect(closed).toEqual([])
+  expect(route.device.choice).toBe('direct')
+})
+
+/** A channel the test speaks for: its answer, the runner's messages as the test gives them, and what the page sent. */
+class PlayedChannel<T> implements OperationChannel<T> {
+  readonly sent: Uint8Array[] = []
+  closed = false
+  private readonly messages: (ChannelMessage | null)[] = []
+  private waiting: ((message: ChannelMessage | null) => void) | null = null
+  constructor(private readonly answered: T) {}
+
+  /** The runner sends `bytes`, or closes the channel. */
+  give(bytes: Uint8Array | null): void {
+    const message: ChannelMessage | null = bytes && { kind: 'bytes', bytes }
+    if (this.waiting) {
+      this.waiting(message)
+      this.waiting = null
+    } else {
+      this.messages.push(message)
+    }
+  }
+
+  answer = async () => this.answered
+  next(): Promise<ChannelMessage | null> {
+    if (this.messages.length)
+      return Promise.resolve(this.messages.shift()!)
+    return new Promise((resolve) => {
+      this.waiting = resolve
+    })
+  }
+  sendText = async () => {}
+  sendBytes = async (bytes: Uint8Array) => {
+    this.sent.push(bytes)
+  }
+  close(): void {
+    this.closed = true
+  }
+}
+
+/** A live peer whose channels the test plays, each header and whether it is ordered recorded. */
+class LivePeer extends ScriptedPeer {
+  readonly opened: { header: ChannelHeader; ordered: boolean; channel: PlayedChannel<unknown> }[] = []
+  override async open<T>(header: ChannelHeader, _answer?: unknown, ordered = true): Promise<OperationChannel<T>> {
+    const channel = new PlayedChannel<unknown>(header.op === 'video' ? { ok: true, id: 3 } : { ok: true })
+    this.opened.push({ header, ordered, channel })
+    return channel as OperationChannel<T>
+  }
+}
+
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 10; turn++)
+    await Promise.resolve()
+}
+
+/**
+ * A live view's stream on the direct path (`live-view.md` § Two paths, one
+ * protocol): its unordered `video` channel opens first, its `stream` names
+ * it; the page's acknowledgements go on `video` and the rest on `stream`;
+ * the view reads the chunks from `video` and whole frames from `stream`,
+ * even where a frame came in two messages. Planted defects this catches:
+ * an ordered `video`, acknowledgements on `stream`, a frame of `stream`
+ * handed on in pieces between which a chunk lands.
+ */
+test('a live view takes the live peer, its pictures and acknowledgements on its video channel', async () => {
+  const files = new ScriptedPeer([])
+  const route = await directOver(files)
+  const peer = new LivePeer([])
+  const closedPeers: string[] = []
+  let idle: (() => void) | null = null
+  route.live = new DeviceLive({
+    connect: async () => peer,
+    closed: () => closedPeers.push('live'),
+    after: (ms, run) => {
+      expect(ms).toBe(LIVE_IDLE_MS)
+      idle = run
+      return () => {
+        idle = null
+      }
+    },
+  })
+  const heard: number[][] = []
+  const relay = () => ({ send: () => {}, close: () => {} })
+  const stream = directStream(() => route, 'browser', relay)({ data: (bytes) => heard.push([...bytes]), closed: () => {} }, { live: true })
+  stream.send(encodeControl({ type: 'hello' }))
+  await settle()
+  expect(peer.opened.map(({ header, ordered }) => [header, ordered])).toEqual([
+    [{ op: 'video' }, false],
+    [{ conversation: 'c1', cwd: '/work', op: 'stream', stream: 'browser', video: 3 }, true],
+  ])
+  expect(files.headers).toEqual([])
+  const [video, control] = peer.opened.map(({ channel }) => channel) as [PlayedChannel<unknown>, PlayedChannel<unknown>]
+  const ack = encodeAcks([{ generation: 1, sequence: 1, chunk: 0, received: 5 }])
+  stream.send(ack)
+  expect(video.sent.map((bytes) => bytes[4])).toEqual([LIVE_ACK_FRAME])
+  expect(control.sent.map((bytes) => bytes[4])).toEqual([LIVE_CONTROL_FRAME])
+
+  const state = encodeControl({ type: 'state' })
+  const chunk = framed(LIVE_VIDEO_FRAME, new Uint8Array([9, 9]))
+  control.give(state.subarray(0, 7))
+  await settle()
+  video.give(chunk)
+  await settle()
+  control.give(state.subarray(7))
+  await settle()
+  expect(heard).toEqual([[...chunk], [...state]])
+
+  // The view's end closes both channels, and the peer a minute later.
+  stream.close()
+  expect([video.closed, control.closed]).toEqual([true, true])
+  expect(closedPeers).toEqual([])
+  idle!()
+  expect(closedPeers).toEqual(['live'])
+})
+
+/**
+ * A live view whose live peer cannot be made opens on the relay, which
+ * gets what the view said first, as its hello, before the fall back.
+ * Planted defect this catches: the view's first messages left in the
+ * direct stream's queue, so the module never hears the view.
+ */
+test('a live view whose live peer cannot be made opens on the relay with what it said first', async () => {
+  const route = await directOver(new ScriptedPeer([]))
+  route.live = new DeviceLive({ connect: async () => Promise.reject(new ChannelFailed('no')), closed: () => {}, after: () => () => {} })
+  const relayed: string[] = []
+  const relay = () => {
+    relayed.push('opened')
+    return { send: (bytes: Uint8Array) => relayed.push(new TextDecoder().decode(bytes.subarray(5))), close: () => {} }
+  }
+  const stream = directStream(() => route, 'browser', relay)({ data: () => {}, closed: () => {} }, { live: true })
+  stream.send(encodeControl({ type: 'hello' }))
+  stream.send(encodeControl({ type: 'watch' }))
+  await settle()
+  stream.send(encodeControl({ type: 'input' }))
+  expect(relayed).toEqual(['opened', '{"type":"hello"}', '{"type":"watch"}', '{"type":"input"}'])
   expect(route.device.choice).toBe('direct')
 })

@@ -10,7 +10,10 @@
 import type { Read } from '@demicodes/web-ui/files/file-cache'
 import type { FileReads } from '@demicodes/web-ui/files/kept-source'
 import type { FileText, FileUploadOptions } from '@demicodes/web-ui/files/types'
-import type { OpenUserStream, UserStream } from '@demicodes/web-ui/plugins/streams'
+import type { OpenUserStream, StreamBytes, UserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
+import { LiveFrameSplitter, frameKind } from '@demicodes/web-ui/live/frames'
+import { REFUSED_FRAME } from '@demicodes/web-ui/live/link'
+import { LIVE_ACK_FRAME } from '@demicodes/protocol'
 import type { WatchLink } from '@demicodes/web-ui/files/watch-channel'
 import { reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { relayWatchLink, watchReceiver, watchText, type OpenConversationWatchLink } from '../conversation/file-watch'
@@ -22,6 +25,7 @@ import {
   openedSchema,
   readOpenedSchema,
   textOpenedSchema,
+  videoOpenedSchema,
   type ChannelHeader,
   type Opened,
   type WriteEnd,
@@ -226,10 +230,11 @@ async function writeFile(
  * A plugin's user stream over either path: it opens on the path the
  * device's choice names, and when the choice changes it ends, as after a
  * lost connection, and the views waiting to reconnect connect at once, on
- * the other path (`direct-channel.md` § Choosing the path).
+ * the other path (`direct-channel.md` § Choosing the path). A live view's
+ * stream goes on the device's live peer (`live.ts`).
  */
 export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStream): OpenUserStream {
-  return (handlers) => {
+  return (handlers, options) => {
     const route = routeOf()
     const peer = route?.device.current()
     let ended = false
@@ -250,12 +255,22 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
         },
         closed: (reason) => end(reason),
       })
-    stream = route && peer ? openDirect(peer, route, name, handlers, end, () => {
-      // The runner refused the stream, such as for a service it could not
-      // start or a peer at its limit of channels: the relay serves it.
-      if (!ended)
-        stream = onRelay()
-    }) : onRelay()
+    // The runner refused the stream, such as for a service it could not
+    // start or a peer at its limit of channels: the relay serves it.
+    // Bytes the view sent before go there too, its first messages among them.
+    const refused = (unsent: StreamBytes[]) => {
+      if (ended)
+        return
+      stream = onRelay()
+      for (const bytes of unsent)
+        stream.send(bytes)
+    }
+    if (!route || !peer)
+      stream = onRelay()
+    else if (options?.live)
+      stream = openLive(route, name, handlers, end, refused)
+    else
+      stream = openDirect(peer, route, name, handlers, end, refused)
     // The choice changed: this view ends, and reopens at once on the other path.
     const stopMoving = route?.device.onChange(() => {
       end('moved')
@@ -272,6 +287,139 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
   }
 }
 
+/**
+ * A live view's stream on the device's live peer (`live-view.md` § Two
+ * paths, one protocol): its `video` channel opens first, then its `stream`
+ * channel naming it. The pictures' chunks come on `video`, each message one
+ * chunk, and the page's acknowledgements go there; everything else goes on
+ * `stream`, whose messages the page joins into whole frames before the view
+ * reads them, so that a chunk never falls inside another frame. A live peer
+ * that cannot be made, or a refusal, leaves the view to the relay; bytes
+ * sent before the channels open wait for them.
+ */
+function openLive(
+  route: DirectRoute,
+  name: string,
+  handlers: UserStreamHandlers,
+  end: (reason: string) => void,
+  refused: (unsent: StreamBytes[]) => void,
+): UserStream {
+  const lease = route.live.use()
+  let closed = false
+  const queued: StreamBytes[] = []
+  let send: ((bytes: StreamBytes) => void) | null = null
+  const channels: OperationChannel<unknown>[] = []
+  const close = () => {
+    for (const channel of channels)
+      channel.close()
+    lease.release()
+  }
+  const finish = (reason: string) => {
+    close()
+    end(reason)
+  }
+  void (async () => {
+    let peer: DirectPeer
+    let video: OperationChannel<unknown>
+    let control: OperationChannel<unknown>
+    try {
+      peer = await lease.peer
+    } catch {
+      // No live peer now: the relay serves this view, and the next one tries again.
+      lease.release()
+      if (!closed)
+        refused(queued.splice(0))
+      return
+    }
+    try {
+      const opened = await peer.open({ op: 'video' }, videoOpenedSchema, false)
+      channels.push(opened)
+      if (closed)
+        return close()
+      const { id } = await opened.answer()
+      video = opened
+      const stream = await peer.open({ ...route.scope, op: 'stream', stream: name, video: id }, openedSchema)
+      channels.push(stream)
+      if (closed)
+        return close()
+      await stream.answer()
+      control = stream
+    } catch (error) {
+      if (error instanceof ChannelRefused && !closed) {
+        close()
+        refused(queued.splice(0))
+        return
+      }
+      if (error instanceof ChannelFailed)
+        route.live.failed(peer)
+      if (!closed)
+        finish('direct_failed')
+      return
+    }
+    send = (bytes) => {
+      const channel = frameKind(bytes) === LIVE_ACK_FRAME ? video : control
+      void channel.sendBytes(bytes).catch(() => {})
+    }
+    for (const bytes of queued.splice(0))
+      send(bytes)
+    const failed = () => {
+      route.live.failed(peer)
+      if (!closed)
+        finish('direct_failed')
+    }
+    // The stream's end ends the view; its video channel ends with it.
+    void (async () => {
+      for (;;) {
+        const message = await video.next()
+        if (message === null || closed)
+          return
+        if (message.kind === 'bytes')
+          handlers.data(message.bytes)
+      }
+    })().catch(failed)
+    try {
+      const frames = new LiveFrameSplitter()
+      for (;;) {
+        const message = await control.next()
+        if (closed)
+          return
+        if (message === null) {
+          finish('completed')
+          return
+        }
+        if (message.kind === 'bytes') {
+          let whole: Uint8Array[]
+          try {
+            whole = frames.split(message.bytes)
+          } catch {
+            // The runner's module ships with this page, so a frame of an impossible size is its defect, as the view would take it.
+            finish(REFUSED_FRAME)
+            return
+          }
+          for (const frame of whole)
+            handlers.data(frame)
+        }
+      }
+    } catch {
+      failed()
+    }
+  })()
+  return {
+    send(bytes) {
+      if (send)
+        send(bytes)
+      else
+        queued.push(bytes)
+    },
+    close() {
+      if (closed)
+        return
+      closed = true
+      close()
+    },
+  }
+}
+
 /** A user stream on a `stream` channel; bytes sent before it opens wait for it. */
 function openDirect(
   peer: DirectPeer,
@@ -279,11 +427,11 @@ function openDirect(
   name: string,
   handlers: { data(bytes: Uint8Array): void },
   end: (reason: string) => void,
-  refused: () => void,
+  refused: (unsent: StreamBytes[]) => void,
 ): UserStream {
   let closed = false
-  const queued: Uint8Array[] = []
-  let send: ((bytes: Uint8Array) => void) | null = null
+  const queued: StreamBytes[] = []
+  let send: ((bytes: StreamBytes) => void) | null = null
   let close = () => {}
   void (async () => {
     let channel: OperationChannel<Opened> | undefined
@@ -297,7 +445,7 @@ function openDirect(
       await channel.answer()
     } catch (error) {
       if (error instanceof ChannelRefused && !closed) {
-        refused()
+        refused(queued.splice(0))
         return
       }
       if (error instanceof ChannelFailed)

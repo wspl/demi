@@ -145,6 +145,13 @@ final class Server: @unchecked Sendable {
     case "captureKeyFrame":
       session.captureKeyFrame(capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0))
       return ([:], nil)
+    case "captureAck":
+      session.captureAck(
+        capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0),
+        sequence: (params["sequence"] as? NSNumber)?.uint32Value ?? 0,
+        window: (params["window"] as? NSNumber)?.uint32Value ?? 0,
+        order: (params["order"] as? NSNumber)?.uint64Value ?? 0)
+      return ([:], nil)
     case "captureEncoding":
       session.captureEncoding(
         capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0),

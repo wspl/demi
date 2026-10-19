@@ -147,8 +147,23 @@ pub fn module(header: &str) -> String {
             ),
             (
                 "LIVE_VIDEO_FRAME",
-                "A live view frame's kind: its video header, then H.264 Annex B data.",
+                "A live view frame's kind: a video chunk, its header, then its part of the frame's H.264 Annex B data.",
                 u64::from(live::VIDEO_FRAME),
+            ),
+            (
+                "LIVE_ACK_FRAME",
+                "A live view frame's kind: the page's acknowledgements of video chunks.",
+                u64::from(live::ACK_FRAME),
+            ),
+            (
+                "LIVE_ACK_BYTES",
+                "One acknowledgement of a video chunk: generation, sequence, chunk index, two reserved bytes, receive time in milliseconds.",
+                count(live::ChunkAck::BYTES),
+            ),
+            (
+                "LIVE_CHUNK_DATA_BYTES",
+                "The frame data every video chunk but a frame's last carries.",
+                count(live::VideoHeader::CHUNK_DATA),
             ),
             (
                 "LIVE_MAX_FRAME_BYTES",
@@ -157,12 +172,12 @@ pub fn module(header: &str) -> String {
             ),
             (
                 "LIVE_VIDEO_HEADER_BYTES",
-                "A video frame's header.",
+                "A video chunk's header.",
                 count(live::VideoHeader::BYTES),
             ),
             (
                 "LIVE_VIDEO_SOURCE_BYTES",
-                "A video frame header's source ID, such as a browser tab's, padded with zero bytes.",
+                "A video chunk header's source ID, such as a browser tab's, padded with zero bytes.",
                 count(live::VideoHeader::SOURCE_BYTES),
             ),
             (

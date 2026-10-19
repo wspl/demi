@@ -73,8 +73,18 @@ impl Page {
     /// Offers a peer `peer` to `direct`, as the backend's introduction
     /// carries it, and serves the connection the answer makes.
     pub async fn offer(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
+        Self::offer_as(direct, peer, introduction, false).await
+    }
+
+    /// Offers the page's peer for live views (`direct-channel.md` § Making
+    /// the channel).
+    pub async fn offer_live(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
+        Self::offer_as(direct, peer, introduction, true).await
+    }
+
+    async fn offer_as(direct: &Direct, peer: &str, introduction: Introduction, live: bool) -> Result<Self, Refused> {
         Self::connect(async |offer| {
-            let introduced = Introduced::Page { page: introduction };
+            let introduced = Introduced::Page { page: introduction, live };
             let answered = direct.offer(peer.into(), offer, introduced, Vec::new()).await?;
             Ok(answered.sdp)
         })
@@ -90,7 +100,7 @@ impl Page {
         let page = Self::make(async |offer| {
             let (offer, candidate) = without_candidates(&offer);
             trickled = candidate;
-            let introduced = Introduced::Page { page: introduction };
+            let introduced = Introduced::Page { page: introduction, live: false };
             let answered = direct.offer(peer.into(), offer, introduced, Vec::new()).await?;
             Ok(without_candidates(&answered.sdp).0)
         })
@@ -182,6 +192,19 @@ impl Page {
         };
         let channel = self.channel(config).await;
         channel.text(&header.to_string());
+        channel
+    }
+
+    /// Opens a live view's `video` channel, reliable and unordered, with its
+    /// header.
+    pub async fn video(&self) -> PageChannel {
+        let config = ChannelConfig {
+            label: "video".into(),
+            ordered: false,
+            ..Default::default()
+        };
+        let channel = self.channel(config).await;
+        channel.text(r#"{"op":"video"}"#);
         channel
     }
 

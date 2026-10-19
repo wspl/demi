@@ -1,7 +1,9 @@
 // One capture of the live view: the upright picture scaled to the size
 // the view asked for, encoded with VideoToolbox as H.264 High, Annex B, in
 // real time without B-frames (`mobile.md` § iOS). A still screen sends no
-// frame; a key frame asked for is sent at once, of the picture as it is.
+// frame; a key frame asked for is sent at once, of the picture as it is. A
+// picture drawn while the viewers' windows have no room waits, replaced by
+// any newer one, until they do (`live-view.md` § Delivery).
 
 import CoreImage
 import CoreMedia
@@ -24,6 +26,16 @@ final class Encoder: @unchecked Sendable {
   private var pending = false
   private var forceKey = true
   private var sequence: UInt32 = 0
+  /// Frames handed to the encoder, which numbers them in this order.
+  private var submitted: UInt32 = 0
+  /// The newest frame the viewers had, how many more their windows take, and
+  /// the order of the message that said so, since messages can overtake one
+  /// another.
+  private var floor: UInt32 = 0
+  private var window: UInt32 = 1
+  private var acked: UInt64 = 0
+  /// A picture was drawn while the windows had no room.
+  private var waiting = false
   private var stopped = false
 
   init(capture: UInt32, width: Int, height: Int, fps: Int, bitrate: Int, session: DeviceSession, output: Output) throws {
@@ -71,6 +83,10 @@ final class Encoder: @unchecked Sendable {
   func drawn() {
     let wait = lock.withLock { () -> Double? in
       if stopped || pending { return nil }
+      if submitted &- min(floor, submitted) >= window {
+        waiting = true
+        return nil
+      }
       let elapsed = CACurrentMediaTime() - last
       if elapsed >= interval { return 0 }
       pending = true
@@ -81,6 +97,21 @@ final class Encoder: @unchecked Sendable {
       lock.withLock { pending = false }
       encode()
     }
+  }
+
+  /// The viewers' windows have room for `window` frames past `sequence`, as
+  /// message `order` says; a picture that waited goes now.
+  func ack(sequence: UInt32, window: UInt32, order: UInt64) {
+    let resume = lock.withLock { () -> Bool in
+      guard order > acked else { return false }
+      acked = order
+      floor = sequence
+      self.window = window
+      let resume = waiting && submitted &- min(floor, submitted) < window
+      if resume { waiting = false }
+      return resume
+    }
+    if resume { drawn() }
   }
 
   func keyFrame() {
@@ -119,6 +150,7 @@ final class Encoder: @unchecked Sendable {
         let key = forceKey
         forceKey = false
         last = CACurrentMediaTime()
+        submitted &+= 1
         return (compression, key)
       })
     else { return }

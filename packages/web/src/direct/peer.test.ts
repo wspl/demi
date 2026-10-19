@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import type { ChannelHeader } from '../api/generated/web-api'
-import { ChannelFailed, openOperation, type ChannelMaker, type OperationDataChannel } from './peer'
+import { ChannelFailed, PeerChannels, openOperation, type ChannelMaker, type OperationDataChannel } from './peer'
 
 // An operation's channel on a connected peer (`direct-channel.md` § Choosing
 // the path): one that closes before it opens while the connection stands,
@@ -48,11 +48,14 @@ class PlayedChannel extends EventTarget implements OperationDataChannel {
 class PlayedConnection implements ChannelMaker {
   connectionState: RTCPeerConnectionState = 'connected'
   readonly channels: PlayedChannel[] = []
+  /** Each channel's label and options, as the page made it. */
+  readonly inits: [string, RTCDataChannelInit][] = []
   private made = Promise.withResolvers<void>()
 
-  createDataChannel(): PlayedChannel {
+  createDataChannel(label: string, init: RTCDataChannelInit): PlayedChannel {
     const channel = new PlayedChannel()
     this.channels.push(channel)
+    this.inits.push([label, init])
     this.made.resolve()
     this.made = Promise.withResolvers()
     return channel
@@ -106,4 +109,34 @@ test('a second channel that never opens, or one whose connection went, fails the
   ;(await gone.channel(0)).end()
   await expect(lost).rejects.toBeInstanceOf(ChannelFailed)
   expect(gone.channels).toHaveLength(1)
+})
+
+/**
+ * The channels a peer makes before its offer (`direct-channel.md` § Making
+ * the channel): the `files` peer's probe channel, and for the `live` peer
+ * no probe channel but the first live view's `video` channel, whose open
+ * makes the peer ready and which that view then takes. Planted defects this
+ * catches: a probe channel on the live peer, a second `video` channel for
+ * the first view.
+ */
+test('the live peer is ready on its first video channel, which the first view takes, and has no probe channel', async () => {
+  const files = new PlayedConnection()
+  expect(new PeerChannels(files, false).probes).not.toBeNull()
+  expect(files.inits).toEqual([['probe', { ordered: false, maxRetransmits: 0 }]])
+
+  const connection = new PlayedConnection()
+  const channels = new PeerChannels(connection, true)
+  expect(channels.probes).toBeNull()
+  expect(connection.inits).toEqual([['video', { ordered: false }]])
+  const first = connection.channels[0]!
+  expect(channels.ready).toBe(first)
+  first.open()
+  expect(first.sent.map((text) => JSON.parse(text))).toEqual([{ op: 'video' }])
+  first.answer(JSON.stringify({ ok: true, id: 1 }))
+  const video = await channels.open({ op: 'video' }, z.object({ ok: z.literal(true), id: z.number() }), false)
+  expect(await video.answer()).toEqual({ ok: true, id: 1 })
+  expect(connection.channels).toHaveLength(1)
+  // The next view's makes a channel of its own.
+  void channels.open({ op: 'video' }, z.object({ ok: z.literal(true), id: z.number() }), false)
+  expect(connection.inits).toEqual([['video', { ordered: false }], ['video', { ordered: false }]])
 })

@@ -1,31 +1,22 @@
 //! The live view's frames over a user stream (`live-view.md`
 //! § Framing and versions): a four-byte big-endian length, a kind, then the
-//! payload. The stream itself has no message boundaries.
+//! payload. The stream itself has no message boundaries; a picture travels
+//! in chunks of at most 16 KiB.
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use serde::Serialize;
 
 use demi_command_sdk::{Input, ServiceError};
-use demi_live_view_protocol::{
-    CONTROL_FRAME, MAX_FRAME_BYTES, SourceId, VIDEO_FRAME, VideoHeader,
-};
+use demi_live_view_protocol::{CONTROL_FRAME, FrameSplitter, SourceId, VIDEO_FRAME, VideoHeader};
 
 use crate::stream::EncodedFrame;
 
-/// One frame the page sent: its kind and payload, which the source's
-/// protocol decodes.
-#[derive(Debug)]
-pub struct Frame {
-    pub kind: u8,
-    pub payload: Bytes,
-}
+pub use demi_live_view_protocol::Frame;
 
-/// A frame the protocol refuses (`live-view.md` § Framing and versions): a
-/// defect of the page, which ends the view.
+/// A stream the page ended inside a frame: a defect of the page, which ends
+/// the view.
 #[derive(Debug, thiserror::Error)]
 pub enum FrameError {
-    #[error("a live frame is empty or too large")]
-    Length,
     #[error("the stream ended inside a live frame")]
     Unfinished,
 }
@@ -33,36 +24,26 @@ pub enum FrameError {
 /// Splits the page's bytes into frames as they arrive.
 pub struct Reader {
     input: Input,
-    pending: BytesMut,
+    frames: FrameSplitter,
 }
 
 impl Reader {
     pub fn new(input: Input) -> Self {
         Self {
             input,
-            pending: BytesMut::new(),
+            frames: FrameSplitter::default(),
         }
     }
 
     /// The next frame, or none once the page ended its side.
     pub async fn next(&mut self) -> Result<Option<Frame>, ServiceError> {
         loop {
-            if self.pending.len() >= 4 {
-                let length = u32::from_be_bytes(self.pending[..4].try_into().expect("four bytes"));
-                let length = usize::try_from(length).unwrap_or(usize::MAX);
-                if length == 0 || length > MAX_FRAME_BYTES {
-                    return Err(ServiceError::failed(FrameError::Length));
-                }
-                if self.pending.len() >= 4 + length {
-                    self.pending.advance(4);
-                    let mut payload = self.pending.split_to(length).freeze();
-                    let kind = payload.get_u8();
-                    return Ok(Some(Frame { kind, payload }));
-                }
+            if let Some(frame) = self.frames.next().map_err(ServiceError::failed)? {
+                return Ok(Some(frame));
             }
             match self.input.next().await? {
-                Some(chunk) => self.pending.extend_from_slice(&chunk),
-                None if self.pending.is_empty() => return Ok(None),
+                Some(chunk) => self.frames.push(&chunk),
+                None if self.frames.is_empty() => return Ok(None),
                 None => return Err(ServiceError::failed(FrameError::Unfinished)),
             }
         }
@@ -86,64 +67,51 @@ pub fn control(message: &impl Serialize) -> Bytes {
     })
 }
 
-/// A picture of `source` to the page, in the viewer's stream generation.
-pub fn video(source: &SourceId, generation: u32, sequence: u32, frame: &EncodedFrame) -> Bytes {
-    let header = VideoHeader {
-        source: source.clone(),
-        generation,
-        sequence,
-        key: frame.key,
-        timestamp: frame.timestamp,
-        width: frame.width,
-        height: frame.height,
+/// The chunks of a picture of `source` to the page, in the viewer's stream
+/// generation; none for a frame too large to number its chunks, which no
+/// encoder sends.
+pub fn chunks(source: &SourceId, generation: u32, frame: &EncodedFrame) -> Option<Vec<Bytes>> {
+    let pieces = frame.data.chunks(VideoHeader::CHUNK_DATA);
+    let chunks = u16::try_from(pieces.len().max(1)).ok()?;
+    let header = |chunk: u16| {
+        let mut head = Vec::with_capacity(VideoHeader::BYTES);
+        VideoHeader {
+            source: source.clone(),
+            generation,
+            sequence: frame.sequence,
+            chunk,
+            chunks,
+            key: frame.key,
+            timestamp: frame.timestamp,
+            width: frame.width,
+            height: frame.height,
+        }
+        .write(&mut head);
+        head
     };
-    let mut head = Vec::with_capacity(VideoHeader::BYTES);
-    header.write(&mut head);
-    framed(VIDEO_FRAME, head.len() + frame.data.len(), |bytes| {
-        bytes.extend_from_slice(&head);
-        bytes.extend_from_slice(&frame.data);
-    })
+    if frame.data.is_empty() {
+        let head = header(0);
+        return Some(vec![framed(VIDEO_FRAME, head.len(), |bytes| bytes.extend_from_slice(&head))]);
+    }
+    Some(
+        pieces
+            .zip(0..)
+            .map(|(piece, chunk)| {
+                let head = header(chunk);
+                framed(VIDEO_FRAME, head.len() + piece.len(), |bytes| {
+                    bytes.extend_from_slice(&head);
+                    bytes.extend_from_slice(piece);
+                })
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use demi_live_view_protocol::MAX_FRAME_BYTES;
 
-    #[tokio::test]
-    async fn frames_split_across_chunks_and_join_within_one() {
-        let hello = br#"{"type":"hello","platform":"mac"}"#;
-        let release = br#"{"type":"release"}"#;
-        let mut bytes = BytesMut::new();
-        for (kind, payload) in [(CONTROL_FRAME, &hello[..]), (CONTROL_FRAME, &release[..]), (3, &b"abc"[..])] {
-            bytes.put_u32(1 + payload.len() as u32);
-            bytes.put_u8(kind);
-            bytes.put_slice(payload);
-        }
-        let bytes = bytes.freeze();
-        // One byte at a time, then everything in one chunk.
-        for chunks in [
-            bytes
-                .chunks(1)
-                .map(Bytes::copy_from_slice)
-                .collect::<Vec<_>>(),
-            vec![bytes.clone()],
-        ] {
-            let input = Input::from_stream(futures_util::stream::iter(chunks.into_iter().map(Ok)));
-            let mut reader = Reader::new(input);
-            let mut frames = Vec::new();
-            while let Some(frame) = reader.next().await.unwrap() {
-                frames.push((frame.kind, frame.payload));
-            }
-            assert_eq!(
-                frames,
-                [
-                    (CONTROL_FRAME, Bytes::from_static(hello)),
-                    (CONTROL_FRAME, Bytes::from_static(release)),
-                    (3, Bytes::from_static(b"abc")),
-                ]
-            );
-        }
-    }
+    use super::*;
 
     #[tokio::test]
     async fn a_frame_the_page_cannot_send_ends_the_stream() {

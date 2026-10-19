@@ -4,10 +4,15 @@
 //! access, and is the only check. It relays each offer to the runner and
 //! its answer to the page, each side's candidates found after them to the
 //! other, and the page's probes of the relay path and their answers, which
-//! never wait behind an offer's answer; the socket's close closes the
-//! runner's peer, and so does the user turning a plugin on or off, which the socket tells the
-//! page so that it offers again with the new introduction.
+//! never wait behind an offer's answer. The page keeps two peers with the
+//! device, one for files and one for live views, and each message names
+//! its peer; the backend gives each its own id toward the runner. The
+//! socket's close closes the runner's peers, and so does the user turning a
+//! plugin on or off, which the socket tells the page so that it offers
+//! again with the new introduction.
 
+use std::future::poll_fn;
+use std::task::Poll;
 use std::time::Duration;
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
@@ -21,7 +26,7 @@ use demi_backend_user_shard::shard::page_socket::{
     PageEnd, PageSocket, PageSocketKind, PageSocketOrigin, PageStream, open_page_socket,
 };
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduced, Introduction, OfferRefusal};
-use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectRequest, Unanswered};
+use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectPeer, DirectRequest, Unanswered};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::BoxFuture;
@@ -88,19 +93,21 @@ pub(super) async fn open(
             state,
             user: user.id,
             device,
-            peer: uuid::Uuid::new_v4().simple().to_string(),
+            files: uuid::Uuid::new_v4().simple().to_string(),
+            live: uuid::Uuid::new_v4().simple().to_string(),
         };
         signaling.serve(page, from_page).await;
     }))
 }
 
-/// One page's signaling socket for one device, with the peer id the
-/// backend gave it.
+/// One page's signaling socket for one device, with the peer ids the
+/// backend gave its two peers toward the runner.
 struct Signaling {
     state: AppState,
     user: UserId,
     device: DeviceId,
-    peer: String,
+    files: String,
+    live: String,
 }
 
 /// What an offer the backend relayed came to.
@@ -140,74 +147,125 @@ impl End {
     }
 }
 
+/// The two peers, in the order their states are kept.
+const PEERS: [DirectPeer; 2] = [DirectPeer::Files, DirectPeer::Live];
+
+fn index(peer: DirectPeer) -> usize {
+    match peer {
+        DirectPeer::Files => 0,
+        DirectPeer::Live => 1,
+    }
+}
+
+/// Where one of the page's peers is in its introduction.
+#[derive(Default)]
+struct Introducing {
+    /// The page offered it, so the runner may hold it.
+    offered: bool,
+    /// What ends the introduction the runner's peer was made with: the
+    /// user's next turn of a plugin on or off.
+    introduced: Option<CancellationToken>,
+    /// The page's candidates that came while its offer waited: they go
+    /// once the runner made the peer they belong to.
+    held: Vec<String>,
+}
+
+/// Resolves with the first of `tokens` cancelled.
+async fn switched(tokens: [Option<CancellationToken>; 2]) -> usize {
+    let [files, live] = tokens;
+    let cancelled = |token: Option<CancellationToken>| async move {
+        match token {
+            Some(token) => token.cancelled_owned().await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::select! {
+        () = cancelled(files) => 0,
+        () = cancelled(live) => 1,
+    }
+}
+
 impl Signaling {
+    /// The runner's id of `peer`.
+    fn id(&self, peer: DirectPeer) -> &str {
+        match peer {
+            DirectPeer::Files => &self.files,
+            DirectPeer::Live => &self.live,
+        }
+    }
+
     async fn serve(self, mut page: PageSocket, mut from_page: PageStream) {
         let link_ended = self.link_ended();
         tokio::pin!(link_ended);
-        let mut offered = false;
-        // What ends the introduction the runner's peer was made with: the
-        // user's next turn of a plugin on or off.
-        let mut introduced: Option<CancellationToken> = None;
-        // What the runner says of the peer: its candidates found after its
+        let mut peers: [Introducing; 2] = Default::default();
+        // What the runner says of each peer: its candidates found after its
         // answer, and its answers to the page's probes.
-        let Some(mut said) = self.peer_events().await else {
+        let (Some(files), Some(live)) = (
+            self.peer_events(DirectPeer::Files).await,
+            self.peer_events(DirectPeer::Live).await,
+        ) else {
             page.end(from_page, End::HostUnreachable.page_end()).await;
             return;
         };
-        // The offer waiting for the runner's answer, which the page's other
+        let mut said = [files, live];
+        // The offers waiting for the runner's answer, which the page's other
         // messages, its probes above all, do not wait behind.
-        let mut answering: Option<BoxFuture<'_, Option<Offered>>> = None;
-        // The page's candidates that came while its offer waited: they go
-        // once the runner made the peer they belong to.
-        let mut held: Vec<String> = Vec::new();
+        let mut answering: [Option<BoxFuture<'_, Option<Offered>>>; 2] = [None, None];
         let end = loop {
-            let switched = introduced.clone();
+            let tokens = [peers[0].introduced.clone(), peers[1].introduced.clone()];
             let request = tokio::select! {
                 biased;
                 () = &mut link_ended => break End::HostUnreachable,
-                () = async {
-                    match switched {
-                        Some(switched) => switched.cancelled_owned().await,
-                        None => std::future::pending().await,
-                    }
-                } => {
+                at = switched(tokens) => {
                     // The peer's streams are no longer the user's: the
                     // runner closes it, and the page offers again.
-                    introduced = None;
-                    self.close_peer().await;
-                    if page.send(text(&DirectMessage::Closed)).await.is_err() {
+                    peers[at].introduced = None;
+                    self.close_peer(PEERS[at]).await;
+                    if page.send(text(&DirectMessage::Closed { peer: PEERS[at] })).await.is_err() {
                         break End::PageClosed;
                     }
                     continue;
                 }
-                answer = async {
-                    match answering.as_mut() {
-                        Some(answer) => answer.await,
-                        None => std::future::pending().await,
+                (at, answer) = poll_fn(|context| {
+                    for (at, answer) in answering.iter_mut().enumerate() {
+                        if let Some(waiting) = answer
+                            && let Poll::Ready(answered) = waiting.as_mut().poll(context)
+                        {
+                            return Poll::Ready((at, answered));
+                        }
                     }
-                } => {
-                    answering = None;
+                    Poll::Pending
+                }) => {
+                    answering[at] = None;
                     let Some(Offered { message, switched }) = answer else {
                         break End::HostUnreachable;
                     };
                     // A new offer replaced the peer, and only an answered
                     // one made another, which the held candidates are for.
                     let answered = matches!(message, DirectMessage::Answer { .. });
-                    introduced = answered.then_some(switched);
-                    let candidates = std::mem::take(&mut held);
+                    peers[at].introduced = answered.then_some(switched);
+                    let candidates = std::mem::take(&mut peers[at].held);
                     if page.send(text(&message)).await.is_err() {
                         break End::PageClosed;
                     }
                     if answered {
                         for candidate in candidates {
-                            self.candidate(candidate).await;
+                            self.candidate(PEERS[at], candidate).await;
                         }
                     }
                     continue;
                 }
-                event = said.recv() => {
+                (at, event) = poll_fn(|context| {
+                    for (at, events) in said.iter_mut().enumerate() {
+                        if let Poll::Ready(event) = events.poll_recv(context) {
+                            return Poll::Ready((at, event));
+                        }
+                    }
+                    Poll::Pending
+                }) => {
+                    let peer = PEERS[at];
                     let message = match event {
-                        Some(PeerEvent::Candidate(candidate)) => DirectMessage::Candidate { candidate },
+                        Some(PeerEvent::Candidate(candidate)) => DirectMessage::Candidate { peer, candidate },
                         Some(PeerEvent::Pong(id)) => DirectMessage::Pong { id },
                         // The runner's connection ended, which the link's
                         // end says next.
@@ -238,27 +296,40 @@ impl Signaling {
                 }
             };
             match request {
-                DirectRequest::Offer { sdp } => {
+                DirectRequest::Offer { peer, sdp } => {
                     // An offer that replaces one still waiting drops it, with
                     // the candidates that came for it.
-                    offered = true;
-                    held.clear();
-                    answering = Some(self.offer(sdp).boxed());
+                    let at = index(peer);
+                    peers[at].offered = true;
+                    peers[at].held.clear();
+                    answering[at] = Some(self.offer(peer, sdp).boxed());
                 }
-                DirectRequest::Candidate { candidate } if answering.is_some() => held.push(candidate),
-                // A candidate before any offer has no peer to go to.
-                DirectRequest::Candidate { candidate } => {
-                    if offered {
-                        self.candidate(candidate).await;
+                DirectRequest::Candidate { peer, candidate } => {
+                    let at = index(peer);
+                    if answering[at].is_some() {
+                        peers[at].held.push(candidate);
+                    } else if peers[at].offered {
+                        self.candidate(peer, candidate).await;
                     }
+                    // A candidate before any offer has no peer to go to.
+                }
+                DirectRequest::Close { peer } => {
+                    let at = index(peer);
+                    if peers[at].offered {
+                        self.close_peer(peer).await;
+                    }
+                    peers[at] = Introducing::default();
+                    answering[at] = None;
                 }
                 DirectRequest::Ping { id } => self.ping(id).await,
             }
         };
-        if offered {
-            self.close_peer().await;
+        for peer in PEERS {
+            if peers[index(peer)].offered {
+                self.close_peer(peer).await;
+            }
+            self.forget_peer(peer).await;
         }
-        self.forget_peer().await;
         page.end(from_page, end.page_end()).await;
     }
 
@@ -290,9 +361,10 @@ impl Signaling {
     /// Answers what to tell the page, what is cancelled once the
     /// introduction is out of date, and the candidates the runner finds
     /// after its answer; none when the runner's connection ended.
-    async fn offer(&self, sdp: String) -> Option<Offered> {
+    async fn offer(&self, which: DirectPeer, sdp: String) -> Option<Offered> {
         let device = self.device.clone();
-        let peer = self.peer.clone();
+        let peer = self.id(which).to_owned();
+        let live = which == DirectPeer::Live;
         let streams = self.state.services.user_streams.clone();
         let stun = self.state.services.stun.clone();
         let Reported {
@@ -322,7 +394,7 @@ impl Signaling {
                     color_scheme,
                 };
                 let link = shard.devices().link(&device)?;
-                let offer = link.direct_offer(&peer, sdp, Introduced::Page { page: introduction }, stun);
+                let offer = link.direct_offer(&peer, sdp, Introduced::Page { page: introduction, live }, stun);
                 let answered = match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
                     Ok(Ok(answer)) => Ok(answer),
                     Ok(Err(_)) => return None,
@@ -335,25 +407,25 @@ impl Signaling {
             .flatten()?;
         let (answered, switched) = answered;
         let message = match answered {
-            Ok(DirectAnswer::Answer(sdp)) => DirectMessage::Answer { sdp },
+            Ok(DirectAnswer::Answer(sdp)) => DirectMessage::Answer { peer: which, sdp },
             Ok(DirectAnswer::Refused(code, message)) => {
                 tracing::debug!(device = %self.device, "a runner refused an offer: {message}");
                 let code = match code {
                     OfferRefusal::Busy => Unanswered::Busy,
                     OfferRefusal::InvalidOffer => Unanswered::InvalidOffer,
                 };
-                DirectMessage::Unanswered { code }
+                DirectMessage::Unanswered { peer: which, code }
             }
-            Err(code) => DirectMessage::Unanswered { code },
+            Err(code) => DirectMessage::Unanswered { peer: which, code },
         };
         Some(Offered { message, switched })
     }
 
     /// What the runner says of this socket's peer from now on; none when the
     /// device's runner is no longer connected.
-    async fn peer_events(&self) -> Option<mpsc::UnboundedReceiver<PeerEvent>> {
+    async fn peer_events(&self, which: DirectPeer) -> Option<mpsc::UnboundedReceiver<PeerEvent>> {
         let device = self.device.clone();
-        let peer = self.peer.clone();
+        let peer = self.id(which).to_owned();
         self.state
             .shards
             .of(&self.user)
@@ -363,10 +435,11 @@ impl Signaling {
             .flatten()
     }
 
-    /// Relays the page's probe `id` of the relay path to the runner.
+    /// Relays the page's probe `id` of the relay path to the runner, beside
+    /// the `files` peer, which the paths' measurement concerns.
     async fn ping(&self, id: u32) {
         let device = self.device.clone();
-        let peer = self.peer.clone();
+        let peer = self.files.clone();
         let relayed = self
             .state
             .shards
@@ -384,9 +457,9 @@ impl Signaling {
 
     /// Relays a candidate the page found after its offer to the runner's
     /// peer.
-    async fn candidate(&self, candidate: String) {
+    async fn candidate(&self, which: DirectPeer, candidate: String) {
         let device = self.device.clone();
-        let peer = self.peer.clone();
+        let peer = self.id(which).to_owned();
         let relayed = self
             .state
             .shards
@@ -402,9 +475,9 @@ impl Signaling {
     }
 
     /// The socket ended: what the runner says of its peer goes nowhere.
-    async fn forget_peer(&self) {
+    async fn forget_peer(&self, which: DirectPeer) {
         let device = self.device.clone();
-        let peer = self.peer.clone();
+        let peer = self.id(which).to_owned();
         let forgot = self
             .state
             .shards
@@ -420,9 +493,9 @@ impl Signaling {
     }
 
     /// The page went: the runner closes its peer.
-    async fn close_peer(&self) {
+    async fn close_peer(&self, which: DirectPeer) {
         let device = self.device.clone();
-        let peer = self.peer.clone();
+        let peer = self.id(which).to_owned();
         let closed = self
             .state
             .shards

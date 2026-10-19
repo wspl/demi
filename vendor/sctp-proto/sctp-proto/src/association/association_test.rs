@@ -4880,3 +4880,29 @@ fn test_out_of_band_init_uses_configured_sctp_ports() {
     assert_eq!(6001, a.source_port);
     assert_eq!(6002, a.destination_port);
 }
+
+#[test]
+fn test_congestion_window_floor_survives_a_retransmission_timeout() {
+    let floor = 4 * 1024 * 1024;
+    let now = Instant::now();
+    for (config, least) in [
+        (TransportConfig::default(), None),
+        (
+            TransportConfig::default().with_congestion_window_floor(floor),
+            Some(floor),
+        ),
+    ] {
+        let mut a = create_association(config);
+        a.state = AssociationState::Established;
+        a.timers.start(Timer::T3RTX, now, a.rto_mgr.get_rto());
+        a.on_retransmission_timeout(Timer::T3RTX, 1);
+        match least {
+            // RFC 4960 sec 7.2.3: slow start from one MTU.
+            None => assert_eq!(a.cwnd, a.mtu),
+            Some(least) => {
+                assert!(a.cwnd >= least, "cwnd {} fell below the floor", a.cwnd);
+                assert!(a.ssthresh >= least, "ssthresh {} fell below the floor", a.ssthresh);
+            }
+        }
+    }
+}

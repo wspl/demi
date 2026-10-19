@@ -63,11 +63,17 @@ export {
 // which every source's view shares.
 export * from '@demicodes/web-ui/live/protocol'
 export {
+  LiveFrameAssembler,
+  LiveFrameSplitter,
   LiveFrameReader,
+  decodeAcks,
+  encodeAcks,
   encodeControl,
   encodeVideo,
   framed,
+  type LiveChunkAck,
   type LiveRawFrame,
+  type LiveVideoChunk,
   type LiveVideoFrame,
 } from '@demicodes/web-ui/live/frames'
 export {

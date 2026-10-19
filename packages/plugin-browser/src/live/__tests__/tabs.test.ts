@@ -271,7 +271,7 @@ async function requestHarness() {
   report(4, false)
   // The tab shows its picture, as a page that loaded does.
   opened[0]!.data(framed({ type: 'stream', tab: 't1', generation: 1, width: 1600, height: 1200, viewport: VIEWPORT, scale: 1 }))
-  controller.session.value!.showed(1, 0, 0)
+  controller.session.value!.showed({ tab: 't1', generation: 1, width: 1600, height: 1200, viewport: VIEWPORT, scale: 1 })
   return { controller, answers, report, opened, end }
 }
 
@@ -520,7 +520,7 @@ test('a reopened tab loads until its first picture, though the list already says
   // No blank tab with Reload: no picture has shown yet.
   expect(controller.busy('p1', reopened)).toBe(true)
   opened[0]!.data(framed({ type: 'stream', tab: 't2', generation: 1, width: 1600, height: 1200, viewport: VIEWPORT, scale: 1 }))
-  controller.session.value!.showed(1, 0, 0)
+  controller.session.value!.showed({ tab: 't2', generation: 1, width: 1600, height: 1200, viewport: VIEWPORT, scale: 1 })
   expect(controller.busy('p1', reopened)).toBe(false)
   end()
 })

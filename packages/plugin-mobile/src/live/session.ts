@@ -154,8 +154,6 @@ export class MobileSession {
       },
       stalled: () => this.release(),
       watching: (stream) => stream.device === this.state.watched,
-      acknowledge: (stream, sequence, decodeQueue) =>
-        this.send({ type: 'ack', generation: stream.generation, sequence, decodeQueue }),
       keyframe: (stream) => this.send({ type: 'keyframe', generation: stream.generation }),
       defect: options.defect,
       now: options.now,
@@ -259,10 +257,6 @@ export class MobileSession {
         break
       }
     }
-  }
-
-  showed(generation: number, sequence: number, decodeQueue: number): void {
-    this.link.showed(generation, sequence, decodeQueue)
   }
 
   resync(): void {

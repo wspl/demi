@@ -374,6 +374,74 @@ have passed; a view works again, and the waits start over, when its first
 `state` arrives. An answer that cannot change, such as 404 for a conversation
 that does not exist, is not retried.
 
+### Two paths, one protocol
+
+A view's messages travel one of two ways, and the protocol on them is the
+same; the page and the Host's sender never ask which one they are on, except
+for the one difference below.
+
+```text
+                 one protocol: control messages, input, video frames in chunks,
+                 an acknowledgement for each chunk, one rate control
+                     |                                        |
+  direct (UDP)  page ==== WebRTC data channels ====> runner   relay (TCP)  page --WSS--> backend --WS--> runner
+                 control: one ordered channel                  everything in the one byte stream, in order
+                 video:   one unordered channel
+```
+
+- **Direct**, over the [direct channel](../execution/direct-channel.md) to a
+  paired device: control messages and input go on the view's ordered
+  `stream` channel, and the video chunks and their acknowledgements on a
+  second channel of the view, `video`, reliable and unordered. Every chunk
+  arrives, and the page hands a frame on as soon as all of its chunks are in,
+  without waiting for chunks of earlier frames still being retransmitted:
+  one lost packet delays only its own frame. The direct channel's peer
+  carries these channels without SCTP's own congestion window
+  ([Making the channel](../execution/direct-channel.md#making-the-channel)),
+  so the rate control below is the only limit on what the sender puts on
+  the wire.
+- **The page's side.** A chunk may arrive before the `stream` message that
+  announces its generation, since the two channels keep no order between
+  them: the page keeps it with its generation until the announcement comes,
+  never drops it. The page holds the chunks of frames not yet whole and of
+  generations not yet announced up to 8 MiB, and frames waiting for an
+  earlier one for at most two seconds; past either, it drops what it holds
+  and asks for a key frame.
+- **Relay**, over the backend's user stream: everything, control, input,
+  chunks and acknowledgements, goes in order in the stream's one byte
+  stream, as now. A lost packet then delays everything behind it until TCP
+  resends it; this is the price of a path that needs no port but the
+  backend's.
+
+A stream is a live view because the live view opened it: `web-ui`'s live
+view, which every source's panel uses, opens its user stream saying so, and
+the page's stream opening then takes the direct path's `live` peer and its
+`video` channel; a plugin declares nothing, and any other user stream takes
+the `files` peer.
+
+The page takes the direct path when the [direct channel](../execution/direct-channel.md#choosing-the-path)
+does and the relay otherwise, and a view that loses its path opens again on
+the other, as any operation does.
+
+Measured on one Mac, with the same 1080p picture, sender and page, and the
+network shaped inside the sender's socket (three runs of 20 seconds each,
+medians; a stall is a gap of more than 250 ms between two pictures shown):
+
+| Network | WebRTC video track | Direct, as above | Ordered channel, as the relay behaves |
+| --- | --- | --- | --- |
+| Loopback | 36 ms, 52 fps | 31 ms, 59 fps | 38 ms, 57 fps |
+| 20 Mbps, 50 ms round trip, 0.5 % loss | p95 829 ms, 17 fps, 11.3 s stalled | p95 147 ms, 30 fps, 0.4 s stalled | p95 170 ms, 13 fps |
+| 8 Mbps, 100 ms round trip, 2 % loss | p95 342 ms, 12 fps, 11.0 s stalled | p95 465 ms, 14 fps, 2.4 s stalled | p95 1461 ms, 2 fps |
+| 40 Mbps that drops to 5 Mbps for 8 s | 11.4 s stalled | 2.9 s stalled | 1.1 s stalled |
+
+A WebRTC video track plays its pictures in the browser's own player, which
+waits 20 to 30 ms more even when told not to buffer and refuses no frame,
+and its rate control reacts to a drop in bandwidth slowly; a data channel
+with SCTP's own window halves its rate on every loss, which caps it near
+1 Mbps at 2 % loss. Taking the encoded frames out of a video track before
+its player, with an encoded transform, kept the player's wait out but
+dropped whole frames before they reached the page on a clean link.
+
 ### Framing and versions
 
 Pipes carry bytes without message boundaries, so the protocol frames each
@@ -395,10 +463,15 @@ messages, its tabs, dialogs, clipboard and files, are defined in
 `{ type: "input", tab, input }`. The module decodes each message into them,
 and the page checks each one against the schema generated from them
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-Video frames are binary: a header naming the source, for the browser the
-tab, the stream generation, a
-sequence number, whether the frame is a key frame, its timestamp and its size,
-followed by H.264 Annex B data. The protocol also fixes the pictures' codec:
+Video travels in chunks of at most 16 KiB, so that every 16 KiB the sender
+puts on the wire is acknowledged on its own. A chunk is binary: a header
+naming the source, for the browser the tab, the stream generation, the
+frame's sequence number, the chunk's index and the frame's chunk count,
+whether the frame is a key frame, its timestamp and its size, followed by
+its part of the frame's H.264 Annex B data. The page acknowledges each chunk
+with the time it received it, a few chunks to a binary acknowledgement
+frame, each entry the chunk's generation, sequence number and index and the
+page's receive time in milliseconds, on the path the chunks came by. The protocol also fixes the pictures' codec:
 H.264 High at level 5.1, `avc1.640033` in WebCodecs' terms. The module has the
 capture extension encode with it, and the page, which receives it from
 `live-view-protocol` with the protocol's other constants, asks the
@@ -421,20 +494,14 @@ reaches the next view.
 
 ### Backpressure
 
-Each hop forwards only what the next hop accepts:
-
-```text
-page reads slowly
-  -> the edge's WebSocket send waits, and the edge stops reading the output pipe
-  -> the runner's upload of the output pipe waits
-  -> the invocation's output queue fills (four records)
-  -> the live view module cannot write, and drops frames until the next key frame
-```
-
-The edge honors its WebSocket's send backpressure: it waits for each send to
+The sender never builds a queue of pictures: it keeps at most a window of
+bytes unacknowledged on the path ([Delivery](#delivery)), and a picture that
+comes while the window is full waits in the one place before the encoder,
+where the next picture replaces it. On the relay each hop still forwards
+only what the next hop accepts: the edge waits for each WebSocket send to
 complete before it reads more from the output pipe, and the socket's write
-buffer is bounded. A relay that ignores backpressure lets pictures pile up in
-backend memory instead of dropping stale ones on the Host.
+buffer is bounded, so a page that reads slowly holds the window full rather
+than piling pictures up in backend memory.
 
 ### Ending a view
 
@@ -549,15 +616,46 @@ keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
   starts a new capture, since Chrome cannot resize a running tab capture: a
   larger size fails and a smaller one delivers no frames. Each new capture is
   a stream generation, and its first key frame names the size it really has.
-- The page acknowledges each frame it shows. The module adapts from
-  end-to-end acknowledgement delay: queueing delay is the main signal. Under
-  congestion it lowers the bit rate, then the frame rate, then the resolution.
-  The viewers of a tab share its encoding, so it follows the viewer with the
-  least room: one slow viewer lowers the picture for all of them.
-  A blocked page and a stall are pauses, not congestion. The bit rate stops
-  only at the codec level's own limit, 240 Mbps for H.264 level 5.1, past
-  which the encoder refuses to start; there is no other ceiling and no
-  Cloud-specific limit.
+- **Only the newest picture.** One place sits before the encoder, and a new
+  picture replaces the one waiting there; a picture is encoded only when the
+  window has room for it. An encoded frame is never dropped, since the
+  frames after it are coded against it.
+- **A window, not a queue.** The sender keeps at most the target bit rate
+  times the path's round trip plus 60 ms unacknowledged, and at least one
+  frame. The round trip is the least, over the last ten seconds, between
+  sending a chunk and its acknowledgement. Neither path tells the sender
+  that it sent a chunk again, and a chunk it did, such as the first key
+  frame's on a lossy link, comes back seconds late; the least of ten seconds
+  drops such a sample once a clean one arrives, so for the first ten seconds
+  of a view, when all it has may be such samples, the window counts at most
+  300 ms of round trip, and after them the least of the last ten seconds
+  whatever it is, so a path whose round trip is longer keeps its window.
+- **The rate from the acknowledgements.** The target bit rate comes from the
+  delay-based estimate of WebRTC's congestion control (Google Congestion
+  Control, as libwebrtc and str0m implement it, ported, its algorithm
+  unchanged), fed with each chunk's send time and the page's receive time,
+  which is what it takes from a video track's per-packet feedback. It starts
+  at 5 Mbps and rises by the estimate's own increase while the delay holds;
+  the sender sends no padding to probe, since the pictures themselves keep
+  the path busy. A rising delay lowers it; a loss whose
+  retransmission only delays a chunk does not. The encoder takes the target
+  as its bit rate, and the sender spreads the chunks of each frame over the
+  frame's interval instead of sending them in one burst.
+- **Less, in this order.** Below the bit rate a picture of the panel's size
+  needs, the sender lowers the frame rate, then the resolution; it raises
+  them in the reverse order as the estimate recovers.
+- The viewers of a tab share its encoding, so it follows the viewer with the
+  least room: one slow viewer lowers the picture for all of them. A blocked
+  page and a stall are pauses, not congestion. The bit rate stops only at the
+  codec level's own limit, 240 Mbps for H.264 level 5.1, past which the
+  encoder refuses to start; there is no other ceiling and no Cloud-specific
+  limit.
+- **Key frames only when needed.** Besides the ones above, a key frame is
+  sent only when the page asks after a frame it cannot decode, at most two
+  in a second; none is sent on a timer. On the page, a frame waits for the
+  frames before it in sequence before it goes to the decoder, and the
+  newest decoded picture is drawn at the next screen refresh, older ones
+  dropped.
 - Watching costs Host CPU. A small Host shares its CPU between Chrome,
   software compositing, H.264 encoding and the agent's commands, so a watched
   tab can slow the agent's commands even while its pictures arrive promptly.

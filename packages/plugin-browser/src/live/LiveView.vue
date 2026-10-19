@@ -321,10 +321,10 @@ function takePictures(): void {
 onMounted(() => {
   if (canvas.value) {
     pictures = new CanvasPictures(canvas.value, {
-      shown: (stream, sequence, queue) => {
+      shown: (stream) => {
         painted.value = true
         picture.value = stream
-        props.session?.showed(stream.generation, sequence, queue)
+        props.session?.showed(stream)
       },
       lost: () => props.session?.resync(),
     })

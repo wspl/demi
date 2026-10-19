@@ -164,6 +164,7 @@ chromiumoxide = { path = "vendor/chromiumoxide/chromiumoxide" }
 chromiumoxide_cdp = { path = "vendor/chromiumoxide/chromiumoxide_cdp" }
 jaq-core = { path = "vendor/jaq/jaq-core" }
 sctp-proto = { path = "vendor/sctp-proto/sctp-proto" }
+str0m = { path = "vendor/str0m/str0m" }
 argmax = { path = "vendor/argmax/argmax" }
 brush-builtins = { path = "vendor/brush/brush-builtins" }
 brush-core = { path = "vendor/brush/brush-core" }

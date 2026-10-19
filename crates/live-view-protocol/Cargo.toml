@@ -13,9 +13,15 @@ doctest = false
 bench = false
 
 [dependencies]
+bytes.workspace = true
 demi-shared-types = { path = "../shared-types" }
 garde.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_with.workspace = true
+thiserror.workspace = true
+
+[features]
+# A page's side of the pictures, for the tests of the crates that send them.
+testing = []

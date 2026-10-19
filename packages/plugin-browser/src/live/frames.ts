@@ -7,11 +7,11 @@
 import { liveModuleMessageSchema, type LiveModuleMessage, type LiveViewerMessage } from '../generated/plugin'
 import { LIVE_FILE_FRAME, LIVE_FILE_HEADER_BYTES } from '../generated/plugin'
 import { z } from 'zod'
-import { LiveFrameReader as RawFrameReader, encodeControl, framed, type LiveVideoFrame, type StreamBytes } from '@demicodes/plugin-sdk'
+import { LiveFrameReader as RawFrameReader, encodeControl, framed, type LiveVideoChunk, type StreamBytes } from '@demicodes/plugin-sdk'
 
 export type LiveFrame =
   | { kind: 'message'; message: LiveModuleMessage }
-  | { kind: 'video'; frame: LiveVideoFrame }
+  | { kind: 'video'; frame: LiveVideoChunk }
 
 /** JSON is UTF-8, so a control message that is not is refused rather than repaired. */
 const strictDecoder = new TextDecoder('utf-8', { fatal: true })

@@ -22,13 +22,16 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::rate::{self, FRAME_RATES, SCALES};
+use crate::rate::{FRAME_RATES, INITIAL_BITRATE, SCALES};
 
 /// Frames a viewer has not taken yet. The viewer drains them as they come
 /// and drops what its page cannot take, so a full queue means the viewer
 /// itself stopped.
 const VIEWER_QUEUE: usize = 8;
 const RETRY_LIMIT: Duration = Duration::from_secs(5);
+/// The least time between two key frames the viewers asked for: at most two
+/// in a second (`live-view.md` § Delivery).
+const KEY_FRAME_SPACING: Duration = Duration::from_millis(500);
 
 /// One encoded picture of a source: H.264 Annex B in
 /// [`VIDEO_CODEC`](demi_live_view_protocol::VIDEO_CODEC), with its size in
@@ -58,8 +61,9 @@ pub enum CaptureEvent {
 pub trait Capture: Send + 'static {
     /// The capture's next event; none once it ended.
     fn next(&mut self) -> impl Future<Output = Option<CaptureEvent>> + Send;
-    /// The viewers have the frames up to `sequence`; up to `window` more may
-    /// be in flight.
+    /// The viewers' windows have room for `window` more frames past
+    /// `sequence`, the newest they had: the capture encodes the newest
+    /// picture only while it has sent fewer than that past it.
     fn ack(&self, sequence: u32, window: u32);
     fn key_frame(&self);
     fn encoding(&self, bitrate: u32, fps: u32);
@@ -137,6 +141,9 @@ pub enum Event<L> {
         height: u32,
         layout: L,
         scale: f64,
+        /// The capture's newest frame before the viewer's first: the
+        /// viewer's pictures follow it.
+        sequence: u32,
     },
     Frame(EncodedFrame),
     /// This Host cannot capture, for this reason.
@@ -168,7 +175,8 @@ pub struct StreamView<L> {
 }
 
 impl<L> StreamView<L> {
-    /// The viewer has frames after `floor` in flight and allows `window`.
+    /// The viewer had the frames up to `floor`, and its window has room for
+    /// `window` more.
     pub fn pace(&self, epoch: u32, floor: u32, window: u32) {
         self.change(|pacing| pacing.pace = Some((epoch, floor, window)));
     }
@@ -315,6 +323,7 @@ impl<C, L: Clone> Running<C, L> {
             height,
             layout: self.layout.clone(),
             scale: self.scale,
+            sequence: self.sequence,
         })
     }
 }
@@ -328,6 +337,7 @@ async fn run<S: Source>(
     let mut viewers: HashMap<u64, Viewer<S::Layout>> = HashMap::new();
     let mut running: Option<Running<S::Capture, S::Layout>> = None;
     let mut epoch = 0;
+    let mut key_frames = KeyFrames::default();
     let mut retry = Duration::ZERO;
     let mut attempt = Instant::now();
     let mut unavailable: Option<String> = None;
@@ -353,13 +363,12 @@ async fn run<S: Source>(
         let (layout, size) = source.layout(scale);
         let laid_out = *ready.borrow_and_update();
         let capturable = source.capturable();
-        // The slowest viewer's budget; before any measured one, the budget a
-        // sharp picture of this size needs.
+        // The slowest viewer's target; before any, where every estimate starts.
         let bitrate = viewers
             .values()
             .filter_map(|viewer| viewer.bitrate)
             .min()
-            .unwrap_or_else(|| rate::initial_bitrate(u64::from(size.0) * u64::from(size.1), fps));
+            .unwrap_or(INITIAL_BITRATE);
         // A running capture does not take a new size: Chrome's tab capture
         // refuses constraints that grow it ("Cannot satisfy constraints")
         // and sends no frame after ones that shrink it. So a new size, from
@@ -497,18 +506,25 @@ async fn run<S: Source>(
                         pacing: member.pacing.clone(),
                         key_frames: 0,
                         floor: running.as_ref().map_or(0, |running| running.sequence),
-                        window: 4,
+                        window: 1,
                         bitrate: None,
                         fps: FRAME_RATES[0],
                         scale: SCALES[0],
                     });
                 }
+                // A viewer that came or went changes how far the capture may go.
+                allow(&viewers, running.as_ref());
             }
             woken = wake.changed() => {
                 if woken.is_err() {
                     return;
                 }
-                paced(&mut viewers, running.as_ref());
+                if paced(&mut viewers, running.as_ref()) {
+                    key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
+                }
+            }
+            _ = tokio::time::sleep_until(key_frames.due()), if key_frames.deferred => {
+                key_frames.ask(Instant::now(), running.as_ref().map(|running| &running.capture));
             }
             event = event => match event {
                 Some(CaptureEvent::Frame(frame)) => {
@@ -563,9 +579,41 @@ async fn run<S: Source>(
     }
 }
 
+/// The key frames the viewers ask for after a frame they could not decode,
+/// at most one per [`KEY_FRAME_SPACING`]: a request that comes sooner waits
+/// until then, joined by any that come meanwhile.
+#[derive(Default)]
+struct KeyFrames {
+    last: Option<Instant>,
+    deferred: bool,
+}
+
+impl KeyFrames {
+    fn due(&self) -> Instant {
+        self.last.map_or_else(Instant::now, |last| last + KEY_FRAME_SPACING)
+    }
+
+    /// A viewer asked at `now`: `capture` sends a key frame now or once the
+    /// spacing passed. Without a capture there is none to ask; the next
+    /// capture starts with a key frame.
+    fn ask<C: Capture>(&mut self, now: Instant, capture: Option<&C>) {
+        let Some(capture) = capture else {
+            self.deferred = false;
+            return;
+        };
+        if self.last.is_some_and(|last| now < last + KEY_FRAME_SPACING) {
+            self.deferred = true;
+            return;
+        }
+        self.last = Some(now);
+        self.deferred = false;
+        capture.key_frame();
+    }
+}
+
 /// Takes in what the viewers told the stream since it last looked: the latest
-/// pace and encoding of each, and whether one asked for a key frame.
-fn paced<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&Running<C, L>>) {
+/// pace and encoding of each; answers whether one asked for a key frame.
+fn paced<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&Running<C, L>>) -> bool {
     let mut key_frame = false;
     let mut acknowledged = false;
     for viewer in viewers.values_mut() {
@@ -587,18 +635,22 @@ fn paced<C: Capture, L>(viewers: &mut HashMap<u64, Viewer<L>>, running: Option<&
             key_frame = true;
         }
     }
+    if acknowledged {
+        allow(viewers, running);
+    }
+    key_frame
+}
+
+/// Tells the capture how far its viewers let it go: past the least of their
+/// frames, as many as the least of their windows has room for.
+fn allow<C: Capture, L>(viewers: &HashMap<u64, Viewer<L>>, running: Option<&Running<C, L>>) {
     let Some(running) = running else {
         return;
     };
-    if acknowledged {
-        let floor = viewers.values().map(|viewer| viewer.floor).min();
-        let window = viewers.values().map(|viewer| viewer.window).min();
-        if let (Some(floor), Some(window)) = (floor, window) {
-            running.capture.ack(floor, window);
-        }
-    }
-    if key_frame {
-        running.capture.key_frame();
+    let floor = viewers.values().map(|viewer| viewer.floor).min();
+    let window = viewers.values().map(|viewer| viewer.window).min();
+    if let (Some(floor), Some(window)) = (floor, window) {
+        running.capture.ack(floor, window);
     }
 }
 
@@ -844,6 +896,115 @@ mod tests {
         ));
         handle.leave(1);
         handle.leave(2);
+        drop(handle);
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn key_frames_the_viewers_ask_for_come_at_most_twice_a_second() {
+        let (_resize, size) = watch::channel(((1000, 1000), "portrait"));
+        let (told, mut heard) = mpsc::unbounded_channel();
+        let frames = Arc::new(Mutex::new(None));
+        let tasks = TaskTracker::new();
+        let source = FakeSource {
+            size,
+            frames: frames.clone(),
+            told,
+            ended: CancellationToken::new(),
+        };
+        let handle = StreamHandle::start(source, &tasks);
+        let view = handle.join(1);
+        handle.ready();
+        until(&mut heard, Told::Started((1000, 1000))).await;
+        view.key_frame();
+        until(&mut heard, Told::KeyFrame).await;
+        let first = Instant::now();
+        // A decoder that keeps failing asks again and again; they wait for
+        // one key frame half a second after the first.
+        view.key_frame();
+        view.key_frame();
+        until(&mut heard, Told::KeyFrame).await;
+        let second = Instant::now();
+        let half = Duration::from_millis(500);
+        assert!(second - first >= half, "a second key frame came after {:?}", second - first);
+        // The two asks made one key frame.
+        while let Ok(told) = heard.try_recv() {
+            assert_ne!(told, Told::KeyFrame, "two asks made two key frames");
+        }
+        view.key_frame();
+        until(&mut heard, Told::KeyFrame).await;
+        assert!(Instant::now() - second >= half);
+        handle.leave(1);
+        drop(handle);
+        tasks.close();
+        tasks.wait().await;
+    }
+
+    /// A viewer that joins a running capture starts from where it is, and
+    /// one that leaves no longer holds the others back. Planted defects
+    /// this catches: a joiner's delivery starting from sequence 0, which
+    /// tells the capture it may go no further than frame 1; a leave that
+    /// leaves the capture's allowance at the slow viewer's.
+    #[tokio::test]
+    async fn a_viewer_that_joins_or_leaves_lets_the_capture_go_on_for_the_others() {
+        tokio::time::timeout(BOUND, joins_and_leaves())
+            .await
+            .expect("the capture heard its allowance within the bound");
+    }
+
+    async fn joins_and_leaves() {
+        let (_resize, size) = watch::channel(((1000, 1000), "portrait"));
+        let (told, mut heard) = mpsc::unbounded_channel();
+        let frames = Arc::new(Mutex::new(None));
+        let tasks = TaskTracker::new();
+        let source = FakeSource {
+            size,
+            frames: frames.clone(),
+            told,
+            ended: CancellationToken::new(),
+        };
+        let handle = StreamHandle::start(source, &tasks);
+        let mut first = handle.join(1);
+        handle.ready();
+        let Some(Told::Started(sides)) = heard.recv().await else {
+            panic!("the capture starts");
+        };
+        let sender = frames.lock().unwrap().clone().expect("a capture runs");
+        for sequence in 1..=5 {
+            sender.send(frame(sequence, sequence == 1, sides)).await.unwrap();
+        }
+        let Some(Event::Restart { epoch, .. }) = first.events.recv().await else {
+            panic!("a generation starts with its size");
+        };
+        for _ in 1..=5 {
+            assert!(matches!(first.events.recv().await, Some(Event::Frame(_))));
+        }
+        first.pace(epoch, 5, 4);
+        until(&mut heard, Told::Ack(5, 4)).await;
+
+        // The second viewer's delivery starts at the capture's frame 5.
+        let mut second = handle.join(2);
+        let Some(Event::Restart { epoch: joined, width, height, scale, sequence, .. }) = second.events.recv().await else {
+            panic!("a joining viewer hears the generation");
+        };
+        assert_eq!((joined, sequence), (epoch, 5));
+        let mut delivery = crate::delivery::Delivery::new();
+        delivery.restart(joined, width, height, scale, sequence, Some(&second));
+        let next_ack = async |heard: &mut mpsc::UnboundedReceiver<Told>| loop {
+            if let Some(Told::Ack(floor, window)) = heard.recv().await {
+                return (floor, window);
+            }
+        };
+        assert_eq!(next_ack(&mut heard).await, (5, 1), "the join keeps the capture where it is");
+        assert_eq!(next_ack(&mut heard).await, (5, 1), "the joiner's pace starts where the capture is");
+
+        // The slow viewer leaves: the capture goes as far as the other lets it.
+        first.pace(epoch, 9, 4);
+        assert_eq!(next_ack(&mut heard).await, (5, 1));
+        handle.leave(2);
+        assert_eq!(next_ack(&mut heard).await, (9, 4));
+        handle.leave(1);
         drop(handle);
         tasks.close();
         tasks.wait().await;

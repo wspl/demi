@@ -1067,7 +1067,10 @@ demi-runner (executable: connection, registration, Host log, composition)
   on `127.0.0.1` and the local network's addresses, ICE, DTLS and SCTP
   through str0m, the operations' headers and the one flow control every
   channel uses, a file operation's or a forwarded TCP connection's, on a
-  thread of its own off the runner's control thread.
+  thread of its own off the runner's control thread; a live view's stream
+  split at its frames, the pictures' chunks on the `video` channel and the
+  page's acknowledgements back into the stream
+  ([Live views](../browser/live-view.md)).
 - **Public boundary:** the peers' handle the runner drives with the backend's
   `direct_*` messages, a forwarded connection's channel as a byte stream
   both ways, and the trait through which it carries out an operation: the
@@ -1931,7 +1934,7 @@ plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
 runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
 runner-host -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
-runner-direct -> runner-protocol
+runner-direct -> live-view-protocol, runner-protocol
 runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages

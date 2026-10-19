@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use bytes::{Buf as _, BytesMut};
+use demi_live_view_protocol::testing::Viewer;
 use demi_live_view_protocol::{CONTROL_FRAME, VIDEO_FRAME, VideoHeader};
 use demi_provider_common::testing::MockVendor;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -106,10 +107,12 @@ enum Frame {
 
 /// A page's view of the conversation's browser over the `browser` user
 /// stream: it frames its messages and splits the module's out of the
-/// socket's bytes, which carry no message boundaries.
+/// socket's bytes, which carry no message boundaries, joining each
+/// picture's chunks and acknowledging each as the page does.
 struct View {
     socket: Socket,
     pending: BytesMut,
+    viewer: Viewer,
 }
 
 impl View {
@@ -136,8 +139,12 @@ impl View {
                     return match kind {
                         CONTROL_FRAME => Frame::Control(serde_json::from_slice(&frame).unwrap()),
                         VIDEO_FRAME => {
-                            let (header, data) = VideoHeader::split(&frame).unwrap();
-                            Frame::Video(header, data.to_vec())
+                            let (ack, whole) = self.viewer.chunk(&frame).unwrap();
+                            self.socket.send(Message::Binary(ack.into())).await.unwrap();
+                            match whole {
+                                Some((header, data)) => Frame::Video(header, data),
+                                None => continue,
+                            }
                         }
                         kind => panic!("a frame of unknown kind {kind}"),
                     };
@@ -168,8 +175,7 @@ impl View {
     }
 
     /// The first picture of the stream `generation` names, or of the stream
-    /// that replaces it, as when the tab takes the panel's size; each
-    /// picture is acknowledged as the page acknowledges what it shows.
+    /// that replaces it, as when the tab takes the panel's size.
     async fn picture(&mut self, mut generation: u64) -> (VideoHeader, Vec<u8>) {
         loop {
             match self.next().await {
@@ -178,11 +184,6 @@ impl View {
                 }
                 Frame::Control(_) => {}
                 Frame::Video(header, data) => {
-                    self.send(json!({
-                        "type": "ack", "generation": header.generation,
-                        "sequence": header.sequence, "decodeQueue": 0,
-                    }))
-                    .await;
                     if u64::from(header.generation) == generation {
                         return (header, data);
                     }
@@ -292,6 +293,7 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
     let mut view = View {
         socket: streams::socket(&backend, &master, CONVERSATION, "browser").await,
         pending: BytesMut::new(),
+        viewer: Viewer::default(),
     };
     view.send(json!({"type": "hello", "platform": "linux"}))
         .await;

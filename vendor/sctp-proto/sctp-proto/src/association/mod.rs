@@ -290,6 +290,8 @@ pub struct Association {
     rwnd: u32,
     // slow start threshold
     pub(crate) ssthresh: u32,
+    // the least cwnd and ssthresh ever are (TransportConfig::with_congestion_window_floor)
+    congestion_window_floor: u32,
     partial_bytes_acked: u32,
     pub(crate) in_fast_recovery: bool,
     fast_recover_exit_point: u32,
@@ -391,6 +393,7 @@ impl Default for Association {
             rwnd: 0,
             // slow start threshold
             ssthresh: 0,
+            congestion_window_floor: 0,
             partial_bytes_acked: 0,
             in_fast_recovery: false,
             fast_recover_exit_point: 0,
@@ -434,7 +437,10 @@ impl Association {
         // RFC 4960 Sec 7.2.1
         // The initial cwnd before DATA transmission or after a sufficiently
         // long idle period MUST be set to min(4*MTU, max (2*MTU, 4380bytes)).
-        let cwnd = (4 * mtu).min((2 * mtu).max(4380));
+        let congestion_window_floor = config.congestion_window_floor();
+        let cwnd = (4 * mtu)
+            .min((2 * mtu).max(4380))
+            .max(congestion_window_floor);
 
         Association {
             side,
@@ -459,6 +465,7 @@ impl Association {
 
             mtu,
             cwnd,
+            congestion_window_floor,
             remote_addr,
             local_ip,
 
@@ -1479,7 +1486,7 @@ impl Association {
         //  o  The initial value of ssthresh MAY be arbitrarily high (for
         //     example, implementations MAY use the size of the receiver
         //     advertised window).
-        self.ssthresh = self.rwnd;
+        self.ssthresh = self.rwnd.max(self.congestion_window_floor);
         trace!(
             "[{}] updated cwnd={} ssthresh={} inflight={} ({})",
             self.side,
@@ -3192,7 +3199,8 @@ impl Association {
                             //     last sent, according to the formula described in Section 7.2.3.
                             self.in_fast_recovery = true;
                             self.fast_recover_exit_point = htna;
-                            self.ssthresh = core::cmp::max(self.cwnd / 2, 4 * self.mtu);
+                            self.ssthresh = core::cmp::max(self.cwnd / 2, 4 * self.mtu)
+                                .max(self.congestion_window_floor);
                             self.cwnd = self.ssthresh;
                             self.partial_bytes_acked = 0;
                             self.will_retransmit_fast = true;
@@ -4268,8 +4276,9 @@ impl Association {
                 //      ssthresh = max(cwnd/2, 4*MTU)
                 //      cwnd = 1*MTU
 
-                self.ssthresh = core::cmp::max(self.cwnd / 2, 4 * self.mtu);
-                self.cwnd = self.mtu;
+                self.ssthresh = core::cmp::max(self.cwnd / 2, 4 * self.mtu)
+                    .max(self.congestion_window_floor);
+                self.cwnd = self.mtu.max(self.congestion_window_floor);
                 trace!(
                     "[{}] updated cwnd={} ssthresh={} inflight={} (RTO)",
                     self.side,

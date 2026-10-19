@@ -13,6 +13,7 @@ use demi_runner_protocol::direct::{
     MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, TextOpened, WATCH_HEARTBEAT,
     WriteEnd,
 };
+use demi_live_view_protocol::{FrameSplitter, VIDEO_FRAME, raw_kind};
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchRequest};
 use demi_runner_protocol::wire::ReadAt;
 use futures_util::{Stream, StreamExt, future::BoxFuture};
@@ -175,20 +176,30 @@ pub(crate) fn refusal(error: ChannelError) -> Output {
     Output::Text(serde_json::to_string(&refusal).expect("a refusal serializes"))
 }
 
+/// A live view's `video` channel as its `stream` takes it (`live-view.md`
+/// § Two paths, one protocol): where the pictures' chunks go, and the
+/// page's acknowledgements of them.
+pub(crate) struct VideoEnds {
+    pub(crate) chunks: mpsc::Sender<Output>,
+    pub(crate) acks: mpsc::UnboundedReceiver<Input>,
+}
+
 /// Carries out the operation `header` names, from the page's `input`, into
-/// `output`; the channel closes when it returns and its messages are out.
+/// `output`, a live view's pictures into `video`; the channel closes when it
+/// returns and its messages are out.
 pub(crate) async fn run(
     operations: Arc<dyn Operations>,
     introduction: Arc<Introduction>,
     header: ChannelHeader,
     input: mpsc::UnboundedReceiver<Input>,
     output: mpsc::Sender<Output>,
+    video: Option<VideoEnds>,
     cancel: CancellationToken,
 ) {
     let out = Out(output);
     tokio::select! {
         () = cancel.cancelled() => {}
-        () = carry_out(operations, introduction, header, input, &out) => {}
+        () = carry_out(operations, introduction, header, input, video, &out) => {}
     }
 }
 
@@ -238,6 +249,43 @@ impl Out {
         }
         true
     }
+
+    /// A live view's `body`, split at its frames: the pictures' chunks, each
+    /// one message, go to `chunks`, everything else here as
+    /// [`Out::bytes`] sends it. A body that breaks the framing ends the
+    /// stream, as the page would end it.
+    async fn live(&self, mut body: ByteStream, chunks: mpsc::Sender<Output>) -> bool {
+        let mut frames = FrameSplitter::default();
+        while let Some(next) = body.next().await {
+            let Ok(next) = next else {
+                return false;
+            };
+            frames.push(&next);
+            loop {
+                let mut frame = match frames.next_raw() {
+                    Ok(Some(frame)) => frame,
+                    Ok(None) => break,
+                    Err(error) => {
+                        tracing::debug!("a live view's stream broke its framing: {error}");
+                        return false;
+                    }
+                };
+                if raw_kind(&frame) == VIDEO_FRAME {
+                    if chunks.send(Output::Binary(frame)).await.is_err() {
+                        return false;
+                    }
+                    continue;
+                }
+                while !frame.is_empty() {
+                    let part = frame.split_to(frame.len().min(MESSAGE_BYTES));
+                    if !self.send(Output::Binary(part)).await {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
 }
 
 async fn carry_out(
@@ -245,11 +293,16 @@ async fn carry_out(
     introduction: Arc<Introduction>,
     header: ChannelHeader,
     input: mpsc::UnboundedReceiver<Input>,
+    video: Option<VideoEnds>,
     out: &Out,
 ) {
+    // A `video` channel carries no operation of its own; its stream's does.
+    let Some(scope) = header.scope() else {
+        return;
+    };
     let scope = Scope {
-        conversation: header.scope().conversation.to_owned(),
-        cwd: header.scope().cwd.to_owned(),
+        conversation: scope.conversation.to_owned(),
+        cwd: scope.cwd.to_owned(),
     };
     match header {
         ChannelHeader::Read {
@@ -353,6 +406,8 @@ async fn carry_out(
             let watch = operations.watch(scope, requested);
             watch_messages(watch, input, requests, out).await;
         }
+        // The peer answers it, and the stream that names it carries it.
+        ChannelHeader::Video {} => {}
         ChannelHeader::Stream { stream, args, .. } => {
             let Some(binding) = introduction.streams.get(&stream).cloned() else {
                 let error =
@@ -362,17 +417,24 @@ async fn carry_out(
             };
             // Held until the channel's operation ends, or is dropped.
             let activity = operations.stream_activity(&scope.conversation, &stream).await;
+            let (chunks, input) = match video {
+                Some(VideoEnds { chunks, acks }) => (Some(chunks), live_input(input, acks)),
+                None => (None, stream_input(input)),
+            };
             let request = StreamRequest {
                 stream: activity.stream.clone(),
                 binding,
                 args,
                 introduction: introduction.clone(),
-                input: stream_input(input),
+                input,
             };
             match operations.stream(scope, request).await {
                 Ok(output) => {
                     if out.answer(&Opened::new()).await {
-                        out.bytes(output).await;
+                        match chunks {
+                            Some(chunks) => out.live(output, chunks).await,
+                            None => out.bytes(output).await,
+                        };
                     }
                 }
                 Err(error) => {
@@ -397,6 +459,63 @@ fn write_body(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
                     "the page ended the write before its last byte",
                 );
                 Some((Err(cut), None))
+            }
+        }
+    }))
+}
+
+/// A live view's input: the frames of its `stream` channel and the
+/// acknowledgements of its `video` channel, each whole, so the two never
+/// cut into one another's frames. It ends with the `stream` channel; one
+/// that breaks the framing fails it.
+fn live_input(
+    stream: mpsc::UnboundedReceiver<Input>,
+    acks: mpsc::UnboundedReceiver<Input>,
+) -> ByteStream {
+    struct Inputs {
+        stream: Option<mpsc::UnboundedReceiver<Input>>,
+        acks: Option<mpsc::UnboundedReceiver<Input>>,
+        from_stream: FrameSplitter,
+        from_acks: FrameSplitter,
+    }
+    let inputs = Inputs {
+        stream: Some(stream),
+        acks: Some(acks),
+        from_stream: FrameSplitter::default(),
+        from_acks: FrameSplitter::default(),
+    };
+    Box::pin(futures_util::stream::unfold(inputs, |mut inputs| async move {
+        loop {
+            let next = match inputs.from_stream.next_raw() {
+                Ok(None) => inputs.from_acks.next_raw(),
+                next => next,
+            };
+            match next {
+                Ok(Some(frame)) => return Some((Ok(frame), inputs)),
+                Ok(None) => {}
+                Err(error) => {
+                    // Nothing after the break is read.
+                    inputs.stream = None;
+                    inputs.from_stream = FrameSplitter::default();
+                    inputs.from_acks = FrameSplitter::default();
+                    let broken = io::Error::new(io::ErrorKind::InvalidData, error);
+                    return Some((Err(broken), inputs));
+                }
+            }
+            let stream = inputs.stream.as_mut()?;
+            tokio::select! {
+                message = stream.recv() => match message {
+                    Some(Input::Bytes(bytes)) => inputs.from_stream.push(&bytes),
+                    Some(Input::End | Input::Watch(_) | Input::Text(_)) => {}
+                    None => return None,
+                },
+                message = async { inputs.acks.as_mut()?.recv().await }, if inputs.acks.is_some() => match message {
+                    Some(Input::Bytes(bytes)) => inputs.from_acks.push(&bytes),
+                    Some(Input::End | Input::Watch(_) | Input::Text(_)) => {}
+                    // The page closed its `video` channel; the view's
+                    // pictures stop, which ends it.
+                    None => inputs.acks = None,
+                },
             }
         }
     }))
