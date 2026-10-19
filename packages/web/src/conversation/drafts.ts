@@ -264,16 +264,25 @@ export async function deleteDraft(
 }
 
 /**
- * A composer's text as the page closes (`web-application.md` § Drafts): the
- * revision it was built on, its Markdown and the files of its marks, which
- * the IndexedDB record carries. An IndexedDB write still under way when the
- * page goes can be lost, so the page writes this where the web browser writes
- * at once, and the next page of the conversation takes it over the record.
+ * What a conversation's page held as it closed (`web-application.md`
+ * § Drafts): the composer's text the backend does not have, with the
+ * revision it was built on and the files of its marks, and the messages on
+ * their way, with what their files are without their bytes, which the
+ * IndexedDB record carries. An IndexedDB write still under way when the page
+ * goes can be lost, such as a send's, whose files make it long, so the page
+ * writes this where the web browser writes at once, and the next page of the
+ * conversation takes it over the record.
  */
 const lastWordsSchema = z.object({
-  base: z.number().int().nonnegative().nullable(),
-  text: z.string(),
-  attachmentIds: z.array(z.string()),
+  composer: z
+    .object({
+      base: z.number().int().nonnegative().nullable(),
+      text: z.string(),
+      attachmentIds: z.array(z.string()),
+    })
+    .nullable(),
+  pendingSends: draftSchema.shape.pendingSends,
+  files: draftSchema.shape.files,
 })
 export type LastWords = z.infer<typeof lastWordsSchema>
 

@@ -21,6 +21,7 @@ import PendingCallBlock from './PendingCallBlock.vue'
 import WorkGroupBlock from './WorkGroupBlock.vue'
 import StepsNotSharedBlock from './StepsNotSharedBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
+import DeliveryFailure from './DeliveryFailure.vue'
 import AccountSwitchBlock from './AccountSwitchBlock.vue'
 import StoppedBlock from './StoppedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
@@ -80,6 +81,10 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
+  /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
+  editSubmission: [id: string]
+  /** Delete on the message `id`, whose delivery failed, once the user confirmed it. */
+  deleteSubmission: [id: string]
   /** Retry on a session-level failure: the session opens again. */
   retryLoad: []
 }>()
@@ -288,12 +293,11 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         class="px-[var(--agent-pad-x,2rem)]"
         data-delivery-failure
       >
-        <ErrorNotice
-          :label="t('transcript.user.notDelivered')"
-          :detail="block.submission.error"
-          :request-id="block.submission.requestId ?? undefined"
-          :action="shared('common.retry')"
-          @action="emit('retrySubmission', block.submission.id)"
+        <DeliveryFailure
+          :submission="block.submission"
+          @retry="emit('retrySubmission', block.submission.id)"
+          @edit="emit('editSubmission', block.submission.id)"
+          @delete="emit('deleteSubmission', block.submission.id)"
         />
       </div>
       <div
@@ -303,8 +307,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         <ErrorNotice
           :label="block.failure.label"
           :request-id="block.failure.requestId"
-          :action="block.failure.retry ? shared('common.retry') : undefined"
-          @action="emit('retryLoad')"
+          :actions="block.failure.retry ? [{ label: shared('common.retry'), run: () => emit('retryLoad') }] : []"
         />
       </div>
     </div>

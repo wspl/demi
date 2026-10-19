@@ -173,6 +173,8 @@ function detach(id: string): void {
         :pending-submissions="flow.pendingSubmissions.value"
         :removing="flow.removing.value"
         @retry-submission="flow.retrySubmission"
+        @edit-submission="flow.editSubmission"
+        @delete-submission="flow.deleteSubmission"
         @retry="flow.resume()"
         @abort-subagents="flow.abortSubagents"
         @abort-subagent="flow.abortSubagent"

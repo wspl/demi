@@ -9,6 +9,7 @@ import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
+import { productWould } from './product-would'
 import { demoModel, editedFile, inRun, listedFiles, shellView, withLists, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
@@ -911,14 +912,42 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /**
    * A new conversation whose first message was not delivered, as a page
    * shows it after the backend refused it: `error` in the user's words, and
-   * the request ID of a failure inside the backend.
+   * the request ID of a failure inside the backend. `lasting` is a refusal
+   * sending again cannot change, such as a file of the message that is gone,
+   * whose row offers Edit first and no Retry.
    */
-  function undelivered(content: UserContentBlock[], message: SentMessage, error: string, requestId: string | null = null): void {
+  function undelivered(content: UserContentBlock[], message: SentMessage, error: string, requestId: string | null = null, lasting = false): void {
     cancel()
     state.phase = 'idle'
     state.blocks = []
     forgetSubmissions()
-    holdMessage(content, message, error, 'send', [], requestId)
+    const id = holdMessage(content, message, error, 'send', [], requestId)
+    if (lasting) {
+      changeSubmission(id, { retryable: false })
+    }
+  }
+
+  /**
+   * Edit on the undelivered message, as the product's: its row goes, and the
+   * message goes back into the specimen's composer when it is empty; a
+   * specimen with no composer, or one holding a draft, says what the product
+   * does, which puts it after the draft.
+   */
+  function editSubmission(id: string): void {
+    if (!pendingSubmissions.value.some((pending) => pending.id === id && pending.error)) {
+      return
+    }
+    const copy = contentCopy(dropSubmission(id))
+    if (!composer?.takeBack(copy)) {
+      productWould('Put the Message Back in the Composer')
+    }
+  }
+
+  /** Delete on the undelivered message, which the user confirmed: its row goes. */
+  function deleteSubmission(id: string): void {
+    if (pendingSubmissions.value.some((pending) => pending.id === id && pending.error)) {
+      dropSubmission(id)
+    }
   }
 
   /**
@@ -1348,6 +1377,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     settleWork,
     turn,
     retrySubmission,
+    editSubmission,
+    deleteSubmission,
     undelivered,
     resume,
     stop,

@@ -98,7 +98,9 @@
       "recall": "收回",
       "recalled": "訊息已收回",
       "notDelivered": "此訊息未能送達。",
-      "fromAutomation": "自動化"
+      "fromAutomation": "自動化",
+      "deleteTitle": "刪除這則訊息？",
+      "deleteBody": "這則訊息未傳送，其文字與附件將被刪除。"
     },
     "assistant": {
       "fork": "分岔",
@@ -291,7 +293,9 @@
     "retryOrRemove": "請重試或移除未能上傳的附件",
     "waitForUpload": "請等待附件上傳完成",
     "pastedNames": "{list}：已改為貼上名稱。",
-    "couldntCopyPicture": "無法複製圖片"
+    "couldntCopyPicture": "無法複製圖片",
+    "missing": "{name} 已無法使用。請刪除，或重新加入。",
+    "deleteOrAttachAgain": "請刪除已無法使用的附件，或重新加入"
   },
   "models": {
     "parent": "上層的模型",

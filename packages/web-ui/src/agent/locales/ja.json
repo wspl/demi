@@ -98,7 +98,9 @@
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
       "notDelivered": "このメッセージは配信されませんでした。",
-      "fromAutomation": "オートメーション"
+      "fromAutomation": "オートメーション",
+      "deleteTitle": "このメッセージを削除しますか？",
+      "deleteBody": "このメッセージは送信されていません。テキストと添付ファイルは削除されます。"
     },
     "assistant": {
       "fork": "分岐",
@@ -291,7 +293,9 @@
     "retryOrRemove": "アップロードできなかった添付ファイルを再試行するか削除してください",
     "waitForUpload": "添付ファイルのアップロードが完了するまでお待ちください",
     "pastedNames": "{list}: 代わりに名前を貼り付けました。",
-    "couldntCopyPicture": "画像をコピーできませんでした"
+    "couldntCopyPicture": "画像をコピーできませんでした",
+    "missing": "{name} は利用できなくなりました。削除するか、もう一度添付してください。",
+    "deleteOrAttachAgain": "利用できなくなった添付ファイルを削除するか、もう一度添付してください"
   },
   "models": {
     "parent": "親のモデル",

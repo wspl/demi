@@ -1185,6 +1185,7 @@ const composerDrafts = {
   uploading: `Wait for ${ATTACHMENT_MARK} and ${ATTACHMENT_MARK} to arrive.`,
   attaching: `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}, pasted from another conversation.`,
   failed: `The capture ${ATTACHMENT_MARK} did not upload; the log ${ATTACHMENT_MARK} did.`,
+  missing: `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}.`,
   pasted: `Summarize ${ATTACHMENT_MARK}, then check it against ${ATTACHMENT_MARK}.`,
   lines: `Before: ${ATTACHMENT_MARK}\nAfter: ${ATTACHMENT_MARK}\nThe log ${ATTACHMENT_MARK} shows the padding change landing after the layout pass, which is why the modal jumps by one column on the first frame.`,
   long: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename, and the fixture it reads has the old name.',
@@ -1648,6 +1649,18 @@ onBeforeUnmount(() => {
                   phase: 'ready',
                   snippet: pastedSnippet,
                 },
+              ]"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="attachments · a file no longer available · delete or attach again"
+            wide
+          >
+            <GalleryComposer
+              :draft="composerDrafts.missing"
+              :attachments="[
+                { id: 'gone', name: 'image.png', phase: 'missing' },
+                { id: 'kept', name: 'after.png', src: demoImageUrl, phase: 'ready' },
               ]"
             />
           </GallerySpecimen>
@@ -3054,6 +3067,8 @@ onBeforeUnmount(() => {
                 :persisted-scroll-state="undefined"
                 read-only
                 @retry-submission="turnFlow.retrySubmission"
+                @edit-submission="turnFlow.editSubmission"
+                @delete-submission="turnFlow.deleteSubmission"
                 @recall-steer="turnFlow.recallSteer"
                 @interrupt-pending-steer="turnFlow.interruptPendingSteer"
                 @recall-queued="turnFlow.recallQueued"
@@ -3482,6 +3497,8 @@ onBeforeUnmount(() => {
                 :persisted-scroll-state="undefined"
                 read-only
                 @retry-submission="deliveryFlow.retrySubmission"
+                @edit-submission="deliveryFlow.editSubmission"
+                @delete-submission="deliveryFlow.deleteSubmission"
               />
             </div>
             <Button size="sm" class="mt-2" @click="failDelivery">Fail Again</Button>
@@ -3684,6 +3701,8 @@ onBeforeUnmount(() => {
                 :pending-submissions="sessionFlow.pendingSubmissions.value"
                 :removing="sessionFlow.removing.value"
                 @retry-submission="sessionFlow.retrySubmission"
+                @edit-submission="sessionFlow.editSubmission"
+                @delete-submission="sessionFlow.deleteSubmission"
                 @retry="sessionFlow.resume()"
                 @rename="session.title = $event"
                 @abort-subagents="sessionFlow.abortSubagents"
@@ -4048,6 +4067,8 @@ onBeforeUnmount(() => {
         :pending-submissions="sessionFlow.pendingSubmissions.value"
         :removing="sessionFlow.removing.value"
         @retry-submission="sessionFlow.retrySubmission"
+        @edit-submission="sessionFlow.editSubmission"
+        @delete-submission="sessionFlow.deleteSubmission"
         @retry="sessionFlow.resume()"
         @rename="session.title = $event"
         @save-scroll="(_id, state) => (session.scroll = state)"

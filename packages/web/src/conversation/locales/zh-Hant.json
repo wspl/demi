@@ -44,7 +44,7 @@
     "storeFailed": "此瀏覽器無法儲存你的草稿。",
     "readFailed": "此瀏覽器無法讀取已儲存的草稿。",
     "unreadable": "有一份已儲存的草稿無法讀取，已另行保留。",
-    "deliveryInterrupted": "傳送已中斷。請重試以確認。"
+    "missingFile": "檔案"
   },
   "savedDeleted": "已刪除暫存的訊息",
   "composer": {

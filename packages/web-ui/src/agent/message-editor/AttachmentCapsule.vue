@@ -15,7 +15,8 @@ import type { MessageCapsule, MessageTransfer } from './capsules'
  * name, and the device a file on another device is on. Pointed at, an image
  * or a video shows large in its preview card (`file-previews.md` § A
  * picture's preview on hover), and a text file its opening lines. An upload in progress
- * shows how far it has come; a failed one offers Retry.
+ * shows how far it has come; a failed one offers Retry; a missing one, whose
+ * bytes are gone, says so, and is deleted or attached again.
  *
  * The capsule fits inside the line it stands in, at every text size: never
  * taller than the line, never reaching into the next one (`base.css`
@@ -67,8 +68,14 @@ const attaching = computed(() => props.transfer?.phase === 'attaching')
 /** On its way: an upload, which tells how far it has come, or an attaching, which goes round. */
 const busy = computed(() => !!uploading.value || attaching.value)
 const failed = computed(() => props.transfer?.phase === 'failed')
+const missing = computed(() => props.transfer?.phase === 'missing')
+/** The file cannot go as it is: its capsule is tinted as a failure. */
+const broken = computed(() => failed.value || missing.value)
 const caption = computed(() => {
   const { host, path, name } = props.capsule
+  if (missing.value) {
+    return t('attachments.missing', { name })
+  }
   if (failed.value) {
     return t('attachments.failed', { name })
   }
@@ -85,7 +92,7 @@ const caption = computed(() => {
 const preview = computed<
   { kind: 'image' | 'video'; src: string } | { kind: 'lines'; text: string } | { kind: 'caption' }
 >(() => {
-  if (busy.value || failed.value) {
+  if (busy.value || broken.value) {
     return { kind: 'caption' }
   }
   if (image.value) {
@@ -108,7 +115,7 @@ const preview = computed<
     <span
       ref="pill"
       class="message-capsule mx-1 inline-flex h-full min-w-0 max-w-full select-none items-center gap-1 pl-[var(--capsule-inset)] pr-1.5 font-normal not-italic leading-none no-underline shadow-[var(--shadow-btn)]"
-      :class="failed
+      :class="broken
         ? selected ? 'bg-tint-danger-strong text-on-danger' : 'bg-tint-danger text-on-danger'
         : selected ? 'bg-tint-accent text-fg-emphasis' : 'bg-btn text-fg-body'"
       :data-phase="transfer?.phase"
@@ -151,7 +158,7 @@ const preview = computed<
         />
       </svg>
       <CircleAlert
-        v-else-if="failed"
+        v-else-if="broken"
         :size="14"
         class="mx-px shrink-0"
       />

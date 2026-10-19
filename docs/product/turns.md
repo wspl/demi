@@ -285,8 +285,19 @@ few milliseconds reads as the list twitching.
   delivered, its row reads as the user's next message, with no line of its
   way, from the moment the page knows it starts the turn.
 - **A message that was not delivered** waits at the end, after the turn a
-  later message started, with Retry: it is the message still to send, and
-  Retry sends it next.
+  later message started, with Retry, Edit and Delete, as Messages offers Try
+  Again and Delete for one it could not send: it is the message still to
+  send, and Retry sends it next. Edit puts its text and its files back in the
+  composer, where a file that is gone shows as missing and can be removed or
+  attached again, and takes the row away; Delete takes the row away after
+  the user confirms, since the text goes with it. A message refused for a
+  reason a resend cannot change, such as a file that is gone, offers Edit
+  first and no Retry. Only the backend's refusal, or a page check that keeps the
+  message from leaving, makes a message not delivered: one whose answer the
+  page has not heard, as after a reload or a lost connection, stays on its
+  way, sent again with its id once the session is open, until the backend
+  takes or refuses it, and offers no Edit or Delete meanwhile, since the
+  backend may already be running it.
 - **One size for the reading.** The agent's text, the user's messages and
   the transcript's rows, a step, a notice, a receipt, and a receipt's message
   an opened row shows, read at one size, the size the user picks in Settings

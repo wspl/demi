@@ -6,8 +6,11 @@ import { t } from '../locales/text'
  * A failed upload keeps its capsule, which offers Retry; the toast says why it
  * failed. `attaching` is a file a pasted message names, which the backend
  * makes an upload of from the user's own stored file, sending no bytes.
+ * `missing` is a file of a message that came back to the composer, such as
+ * one not delivered, whose bytes and upload are gone: the user deletes it or
+ * attaches it again.
  */
-export type AttachmentPhase = 'attaching' | 'uploading' | 'ready' | 'failed'
+export type AttachmentPhase = 'attaching' | 'uploading' | 'ready' | 'failed' | 'missing'
 
 /**
  * A local file on its way to the message. It is uploaded as it is added, and
@@ -267,6 +270,9 @@ export function decodeRemoteReference(reference: string): {
 export function attachmentSendBlockReason(
   phases: readonly AttachmentPhase[],
 ): string | undefined {
+  if (phases.includes('missing')) {
+    return t('attachments.deleteOrAttachAgain')
+  }
   if (phases.includes('failed')) {
     return t('attachments.retryOrRemove')
   }

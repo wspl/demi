@@ -98,7 +98,9 @@
       "recall": "Recall",
       "recalled": "Message Recalled",
       "notDelivered": "This message was not delivered.",
-      "fromAutomation": "Automation"
+      "fromAutomation": "Automation",
+      "deleteTitle": "Delete This Message?",
+      "deleteBody": "It wasn’t sent. Its text and attachments will be deleted."
     },
     "assistant": {
       "fork": "Fork",
@@ -291,7 +293,9 @@
     "retryOrRemove": "Retry or remove the attachments that did not upload",
     "waitForUpload": "Wait for attachments to finish uploading",
     "pastedNames": "{list}: pasted the name instead. | {list}: pasted the names instead.",
-    "couldntCopyPicture": "Couldn’t Copy the Picture"
+    "couldntCopyPicture": "Couldn’t Copy the Picture",
+    "missing": "{name} is no longer available. Delete it, or attach it again.",
+    "deleteOrAttachAgain": "Delete the attachments that are no longer available, or attach them again"
   },
   "models": {
     "parent": "Parent’s Model",
