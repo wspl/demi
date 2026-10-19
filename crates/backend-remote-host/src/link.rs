@@ -1605,16 +1605,21 @@ impl Link {
             }
             Outbound::PipeDone { pipe_id, ok, error } => {
                 // The HTTP exchange's end is what settles a pipe; a device
-                // reports a failed transfer early. A pipe the backend already
-                // ended fails on the device too, which says nothing new.
-                let reason = error.unwrap_or_else(|| "device transfer failed".into());
-                if !ok
-                    && self
+                // reports a failed transfer early, and a sink that stopped
+                // reading before the end while it still holds its exchange,
+                // which drains the pipe. A pipe the backend already ended
+                // fails on the device too, which says nothing new.
+                if ok {
+                    self.0.pipes.drain_from_device(&pipe_id, &self.0.device);
+                } else {
+                    let reason = error.unwrap_or_else(|| "device transfer failed".into());
+                    if self
                         .0
                         .pipes
                         .fail_from_device(&pipe_id, &self.0.device, &reason)
-                {
-                    tracing::info!(device = %self.0.device, pipe = %pipe_id, "pipe failed on the device: {reason}");
+                    {
+                        tracing::info!(device = %self.0.device, pipe = %pipe_id, "pipe failed on the device: {reason}");
+                    }
                 }
             }
             Outbound::ArtifactResolve {

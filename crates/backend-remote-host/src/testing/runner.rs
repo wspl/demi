@@ -52,6 +52,20 @@ pub struct FixtureOptions {
     /// The first answer to a download of an offered file breaks off after
     /// this many bytes, as on a flaky link.
     pub offer_breaks_after: Option<usize>,
+    /// Receives each sink's `GET` once the backend claimed the sink, and
+    /// holds its response head until the test releases it.
+    pub held_sinks: Option<mpsc::Sender<HeldSink>>,
+}
+
+/// A device's sink `GET` whose sink the backend claimed and whose response
+/// waits.
+pub struct HeldSink {
+    pub pipe_id: String,
+    /// Sends the response head.
+    pub release: oneshot::Sender<()>,
+    /// Cancelled when the request went away while held: the device dropped
+    /// its read before it was answered.
+    pub abandoned: CancellationToken,
 }
 
 /// A real runner connected to a backend end of its own.
@@ -91,6 +105,7 @@ struct Edge {
     /// Where the next answer to an offer's download from its start breaks
     /// off, until one has.
     offer_breaks_after: Arc<std::sync::Mutex<Option<usize>>>,
+    held_sinks: Option<mpsc::Sender<HeldSink>>,
 }
 
 impl RunnerFixture {
@@ -112,6 +127,7 @@ impl RunnerFixture {
             requests,
             token: TOKEN.into(),
             offer_breaks_after: Arc::new(std::sync::Mutex::new(options.offer_breaks_after)),
+            held_sinks: options.held_sinks,
         };
         let router = Router::new()
             .route("/api/runner", get(runner_socket))
@@ -569,7 +585,7 @@ async fn pipe_sink(
     let (claimed, claim) = oneshot::channel();
     if edge
         .requests
-        .send(Request::Sink { id, claimed })
+        .send(Request::Sink { id: id.clone(), claimed })
         .await
         .is_err()
     {
@@ -580,6 +596,23 @@ async fn pipe_sink(
         Ok(Err(refusal)) => return refused(refusal),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
+    if let Some(held) = &edge.held_sinks {
+        let (release, released) = oneshot::channel();
+        let abandoned = CancellationToken::new();
+        let guard = abandoned.clone().drop_guard();
+        let sent = held
+            .send(HeldSink {
+                pipe_id: id,
+                release,
+                abandoned,
+            })
+            .await;
+        // A test that no longer holds sinks lets the response go.
+        if sent.is_ok() {
+            let _released = released.await;
+        }
+        guard.disarm();
+    }
     // As the backend's edge answers (`runner.md` § Pipes and output).
     let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     Response::builder()

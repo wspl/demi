@@ -1116,6 +1116,68 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
     fixture.stop().await;
 }
 
+/// A job that ends while its read of its standard input is still waiting for
+/// the backend's answer, as a far command that ends at once without reading
+/// does, stopped reading on purpose: its runner reports so while it still
+/// holds the read, and the pipe drains rather than fails, so its writer, the
+/// calling command, ends quietly. Before, the runner dropped the waiting
+/// read, which failed the pipe as a cut response before its report came.
+/// The job waits on a FIFO the test opens only once the sink's read is
+/// claimed and held, so the job ends while its read waits for an answer.
+// About 0.5 s here: one job, a login shell.
+#[tokio::test(flavor = "local")]
+async fn a_job_that_ends_before_its_input_is_answered_drains_the_input_pipe() {
+    let (sender, mut tap) = Tap::new();
+    let (held, mut holding) = mpsc::channel(1);
+    let fixture = RunnerFixture::start(FixtureOptions {
+        tap: Some(sender),
+        held_sinks: Some(held),
+        ..FixtureOptions::default()
+    })
+    .await;
+    let gate = fixture.home_dir().join("gate");
+    let made = std::process::Command::new("mkfifo").arg(&gate).status().unwrap();
+    assert!(made.success());
+    let input = fixture.pipes().to_device(TEST_DEVICE);
+    // The caller's input stays open and says nothing.
+    let _writer = input.writer().unwrap();
+    let job = fixture
+        .host()
+        .start_job(JobStart {
+            id: RemoteHost::job_id(),
+            // Ends without reading its standard input once the gate opens.
+            script: "read -r line < gate; exit 0".into(),
+            cwd: fixture.home().into(),
+            env: BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),
+            context: test_command_context(),
+            viewable: None,
+            caller: None,
+            commands: None,
+            stdin: Some(input.wire_ref()),
+            stdout: None,
+            stop: tokio_util::sync::CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+    let sink = holding.recv().await.expect("the runner reads its input");
+    assert_eq!(sink.pipe_id, input.id());
+    // Opening the FIFO waits for the job's open of it, off the runtime.
+    tokio::task::spawn_blocking(move || std::fs::write(gate, "go\n"))
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::select! {
+        biased;
+        () = sink.abandoned.cancelled() => panic!("the runner dropped its read before it reported"),
+        done = tap.pipe_done(input.id()) => assert_eq!(done, (true, None)),
+    }
+    sink.release.send(()).unwrap();
+    assert_eq!(input.done().await, Ok(()));
+    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
+    assert!(!sink.abandoned.is_cancelled());
+    fixture.stop().await;
+}
+
 /// The input of `note add` and `note take`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

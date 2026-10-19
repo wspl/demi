@@ -175,8 +175,9 @@ every frame their runner sends: each job's end there comes from its
 `job_exit`, and they check `pipe_done` for a job's pipes, whole and refused, a
 file read whose reader left, and service streams. A scenario sees
 a missing `job_exit` as a command that never ends. The backend uses
-`pipe_done` only to fail a pipe early; the end of the pipe's HTTP exchange is
-what settles it.
+`pipe_done` only to end a pipe early, failed, or whole when its reader
+stopped reading ([Pipes and output](../execution/runner.md#pipes-and-output));
+otherwise the end of the pipe's HTTP exchange is what settles it.
 
 The usage ledger is checked by the scenarios that read it through
 `GET /api/usage`, not after every scenario

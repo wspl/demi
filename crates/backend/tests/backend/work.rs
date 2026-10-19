@@ -913,6 +913,27 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     );
     assert!(std::fs::read(a.join("push.bin")).unwrap() == payload[..250_000]);
 
+    // A far command that stops reading before the caller's input ends, as
+    // `head -1` does, ends the call as its own end: its output and exit,
+    // and nothing on standard error about the input nobody reads. The
+    // caller writes a line through a FIFO and holds it open until the call
+    // closed its output. A child bash runs this part: the job's own shell
+    // keeps no FIFO apart from the processes it starts.
+    let early = r#"bash <<'EOF'
+rm -f early && mkfifo early
+demi host shell --host alpha 'read -r l; echo "$l"' < early 2> early.err | { exec 3>early; echo hi >&3; IFS= read -r got; echo "got $got"; cat > /dev/null; exec 3>&-; }
+echo "exit=${PIPESTATUS[0]} stderr=[$(cat early.err)]"
+EOF"#;
+    let stopped = work
+        .turn(vec![shell("t2a", early, 30_000), say("read one line")])
+        .await;
+    assert_eq!(
+        shown_output(&stopped.received[0]),
+        "got hi\nexit=0 stderr=[]\n",
+        "{}",
+        stopped.received[0]
+    );
+
     // Without a script argument, stdin is the script, as `ssh host bash -s`
     // takes it: its quotes and `$` reach the far bash unchanged, and it has
     // no stdin of its own.

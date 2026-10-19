@@ -22,7 +22,7 @@ pub use process::{
 };
 #[cfg(unix)]
 pub use process::{executable, login_shell_stand_in};
-pub use runner::{FixtureOptions, RunnerFixture};
+pub use runner::{FixtureOptions, HeldSink, RunnerFixture};
 #[cfg(unix)]
 pub use terminal::Terminal;
 
