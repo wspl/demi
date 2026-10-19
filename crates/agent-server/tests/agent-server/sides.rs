@@ -363,14 +363,12 @@ async fn a_page_that_comes_back_receives_a_side_question_that_ended_while_it_was
 }
 
 /// The `side_questions` context blocks of the root's transcript.
-fn told_blocks(fixture: &Fixture) -> Vec<String> {
-    fixture
-        .server
-        .tree(&root())
+async fn told_blocks(fixture: &Fixture) -> Vec<String> {
+    let session = fixture.server.tree(&root()).unwrap().root().session().clone();
+    session
+        .history()
+        .await
         .unwrap()
-        .root()
-        .session()
-        .transcript()
         .blocks
         .iter()
         .filter_map(|block| match block {
@@ -416,7 +414,7 @@ async fn the_root_hears_of_a_side_question_with_the_users_next_message_once_and_
     client.send(send("m2", "Fix it.")).await;
     until(|| model.root_requests().len() == 2).await;
     let first = format!("{TOLD}\n\nOn \"stale cache\":\nQ: Why is it stale?\nA: Its TTL is an hour.");
-    assert_eq!(told_blocks(&fixture), [first.clone()]);
+    assert_eq!(told_blocks(&fixture).await, [first.clone()]);
     assert!(request_text(&model.root_requests()[1]).contains(&first));
 
     // A follow-up while the turn works.
@@ -432,18 +430,18 @@ async fn the_root_hears_of_a_side_question_with_the_users_next_message_once_and_
     let tree = fixture.server.tree(&root()).unwrap();
     until(|| tree.is_quiescent()).await;
     assert!(!request_text(&model.root_requests()[2]).contains("Can it be shorter?"));
-    assert_eq!(told_blocks(&fixture), [first.clone()]);
+    assert_eq!(told_blocks(&fixture).await, [first.clone()]);
 
     client.send(send("m3", "And now?")).await;
     until(|| model.root_requests().len() == 4).await;
     let more = format!("{TOLD}\n\nOn \"stale cache\":\nQ: Can it be shorter?\nA: Yes, a minute.");
-    assert_eq!(told_blocks(&fixture), [first.clone(), more.clone()]);
+    assert_eq!(told_blocks(&fixture).await, [first.clone(), more.clone()]);
     until(|| tree.is_quiescent()).await;
 
     client.send(send("m4", "Thanks.")).await;
     until(|| model.root_requests().len() == 5).await;
     until(|| tree.is_quiescent()).await;
-    assert_eq!(told_blocks(&fixture), [first.clone(), more.clone()]);
+    assert_eq!(told_blocks(&fixture).await, [first.clone(), more.clone()]);
 
     // A compaction summarizes the blocks away: as every source, it tells
     // again, with the next message, what the summary may have left out.
@@ -455,7 +453,7 @@ async fn the_root_hears_of_a_side_question_with_the_users_next_message_once_and_
     let again = format!(
         "{TOLD}\n\nOn \"stale cache\":\nQ: Why is it stale?\nA: Its TTL is an hour.\nQ: Can it be shorter?\nA: Yes, a minute."
     );
-    assert_eq!(told_blocks(&fixture), [first, more, again.clone()]);
+    assert_eq!(told_blocks(&fixture).await, [first, more, again.clone()]);
     assert!(request_text(&model.root_requests()[6]).contains(&again));
 }
 
@@ -490,7 +488,7 @@ async fn a_side_question_still_being_answered_is_told_only_once_answered() {
         tree.root().session().transcript().blocks.last().is_some_and(|block| matches!(block, Block::Response(_)))
     })
     .await;
-    assert!(told_blocks(&fixture).is_empty(), "{:?}", told_blocks(&fixture));
+    assert!(told_blocks(&fixture).await.is_empty(), "{:?}", told_blocks(&fixture).await);
     assert!(!request_text(&model.root_requests()[1]).contains("Why is it stale?"));
 
     gate.open();
@@ -498,7 +496,53 @@ async fn a_side_question_still_being_answered_is_told_only_once_answered() {
     client.send(send("m3", "And now?")).await;
     until(|| model.root_requests().len() == 3).await;
     assert_eq!(
-        told_blocks(&fixture),
+        told_blocks(&fixture).await,
         [format!("{TOLD}\n\nOn \"stale cache\":\nQ: Why is it stale?\nA: Its TTL is an hour.")]
+    );
+}
+
+// A side question's follow-up compacts its history, so its window starts
+// after the question the user first asked: the root still hears every
+// question and its answer, read from the side question's store. One tree,
+// a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_side_question_whose_history_was_compacted_still_tells_what_it_was_asked_first() {
+    let model = Model::default();
+    model.root([said("The card reads a stale cache."), said("Noted.")]);
+    model.child(
+        FIRST,
+        [
+            Turn::Events(vec![event::text("Its TTL is an hour."), event::response(95_000, 0)]),
+            said("Summary: its TTL is an hour."),
+            said("Yes, a minute."),
+        ],
+    );
+    let (fixture, client) = replied(&model).await;
+    let block = last_text(&fixture);
+    fixture
+        .server
+        .ask(&conversation(), side(), asking(block, "Why is it stale?"))
+        .await
+        .unwrap();
+    until(|| closed_phase(&fixture, &side()).is_some()).await;
+    fixture
+        .server
+        .ask_more(&conversation(), side(), "Can it be shorter?".into())
+        .await
+        .unwrap();
+    until(|| fixture.store.record(&side()).unwrap().round == 2 && closed_phase(&fixture, &side()).is_some()).await;
+    let loaded = fixture.store.checkpoint(&side()).unwrap();
+    assert!(
+        !loaded.transcript.iter().any(|block| matches!(block, Block::User(user) if user.turn_id.as_str() == side().as_str())),
+        "the side question's window starts after its first question"
+    );
+
+    client.send(send("m2", "Fix it.")).await;
+    until(|| model.root_requests().len() == 2).await;
+    assert_eq!(
+        told_blocks(&fixture).await,
+        [format!(
+            "{TOLD}\n\nOn \"stale cache\":\nQ: Why is it stale?\nA: Its TTL is an hour.\nQ: Can it be shorter?\nA: Yes, a minute."
+        )]
     );
 }

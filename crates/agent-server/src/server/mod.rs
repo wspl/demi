@@ -22,9 +22,9 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentMessageError, Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed,
+    AgentMessageError, Continuation, ForkError, ForkSeed, ModelSwitch, SessionConfig, fork_seed,
 };
-use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, SideOf, StoreError};
+use demi_agent_store::{AgentTreeStore, NodeRecord, SideOf, StoreError};
 use demi_agent_tools::{
     CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, ToolsetSource, Unavailable,
@@ -131,14 +131,11 @@ pub(crate) async fn stored_fork_seed(
     store: &dyn AgentTreeStore,
     source: &NodeId,
     end: ForkEnd<'_>,
-) -> Result<Checkpoint, ForkError> {
-    let checkpoint = store
-        .session_store(source)
-        .load()
-        .await
-        .map_err(fork_store)?
-        .ok_or(ForkError::NoCheckpoint)?;
-    fork_seed(&checkpoint.transcript, checkpoint.state, end)
+) -> Result<ForkSeed, ForkError> {
+    let session = store.session_store(source);
+    let checkpoint = session.load().await.map_err(fork_store)?.ok_or(ForkError::NoCheckpoint)?;
+    // The load reads the window; the blocks before it stay rows.
+    fork_seed(&*session, checkpoint.start, &checkpoint.transcript, checkpoint.state, end).await
 }
 
 /// The tree store of each conversation, by its root.
@@ -430,10 +427,10 @@ impl<H: HostResolver> AgentServer<H> {
         &self,
         source: &NodeId,
         target: &BlockId,
-    ) -> Result<Checkpoint, ForkError> {
+    ) -> Result<ForkSeed, ForkError> {
         let end = ForkEnd::At(target);
         if let Some(tree) = self.tree(source) {
-            return tree.root().session().prepare_fork(end);
+            return tree.root().session().prepare_fork(end).await;
         }
         let store = (self.deps.stores)(source);
         let stored = store.node(source).await.map_err(fork_store)?;
@@ -472,9 +469,9 @@ impl<H: HostResolver> AgentServer<H> {
     pub async fn initialize_fork(
         &self,
         destination: &NodeId,
-        seed: Checkpoint,
+        seed: ForkSeed,
     ) -> Result<(), ForkError> {
-        let state = &seed.state;
+        let state = &seed.checkpoint.state;
         let fresh = state.phase == SessionPhase::Idle
             && state.queue.is_empty()
             && state.agent_inputs.is_empty()
@@ -485,17 +482,11 @@ impl<H: HostResolver> AgentServer<H> {
         if !fresh {
             return Err(ForkError::InvalidSeed);
         }
-        let block_count = seed.transcript.len();
-        let initial = CheckpointUpdate {
-            state: seed.state,
-            changed_blocks: seed.transcript.into_iter().enumerate().collect(),
-            block_count,
-            moved_from: None,
-            version: false,
-        };
         let record = NodeRecord::root(destination.clone(), self.deps.clock.now());
-        (self.deps.stores)(destination)
-            .create_node(record, initial)
+        // A conversation Fork's source is a root: the prefix's node names
+        // the conversation whose tree holds its rows.
+        let source = seed.prefix.as_ref().map(|prefix| prefix.node.clone());
+        seed.create(&*(self.deps.stores)(destination), record, source.as_ref())
             .await
             .map_err(fork_store)
     }

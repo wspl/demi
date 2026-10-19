@@ -11,11 +11,11 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::{changes, media};
+use demi_agent_store::{Kind, StoreError, changes, media};
 use demi_agent_transcript::{
     PendingCall,
     estimate::context_tokens,
-    replay_start, resume_point, tool_input,
+    resume_point_within, tool_input,
 };
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
@@ -242,7 +242,7 @@ async fn stream(
     loop {
         let request = request(s, cancel).await?;
         let request_id = request.request_id.clone();
-        let start = s.read(|core| core.transcript.blocks().len());
+        let start = s.read(|core| core.transcript.len());
         let model = s.read(|core| core.model.clone());
         let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
         let mut runtime = s
@@ -261,7 +261,11 @@ async fn stream(
             }
             Err(failure) => with_request_id(failure, &request_id),
         };
-        let unwindable = s.read(|core| resume_point(core.transcript.blocks()).cut <= start);
+        // A scan that passes the whole window cuts before it.
+        let unwindable = s.read(|core| match resume_point_within(core.transcript.blocks()) {
+            Some(point) => core.transcript.start() + point.cut <= start,
+            None => core.transcript.start() > 0,
+        });
         // The same request would be refused again. Refused for its tokens:
         // one pass, then the request built from the compacted history.
         let too_long = failure.code == Some(ErrorCode::ContextLengthExceeded);
@@ -323,7 +327,7 @@ async fn compact_before_request(
 /// model again, unless its wait runs on from before any output
 /// (`rendering.md` § Waiting for the model).
 async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
-    let blocks = s.read(|core| core.transcript.blocks()[..cut].to_vec());
+    let blocks = s.read(|core| core.transcript.blocks()[..cut - core.transcript.start()].to_vec());
     persist::commit_rewrite(s, blocks).await?;
     s.update(SessionCore::start_waiting);
     Ok(())
@@ -336,8 +340,8 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     // the last compaction boundary is summarized away, so its source tells
     // the model again (`transcript.md` § Context).
     let (seen, turn) = s.read(|core| {
-        let blocks = core.transcript.blocks();
-        let seen: Vec<(String, String)> = blocks[replay_start(blocks)..]
+        let seen: Vec<(String, String)> = core
+            .replayed()
             .iter()
             .filter_map(|block| match block {
                 Block::Context(context) => Some((context.source.clone(), context.text.clone())),
@@ -629,8 +633,45 @@ async fn with_lists(
     mut view: ShellToolView,
     started_in: Option<&str>,
 ) -> ShellToolView {
+    // A request that began before the window lists its calls from its own
+    // `user` block: the shell calls between it and the window are read from
+    // the store, and nothing else of it.
+    let reaches = s.read(|core| {
+        let start = core.transcript.start();
+        let index = at(core)?;
+        let opened = core.transcript.blocks()[..index - start]
+            .iter()
+            .any(|block| matches!(block, Block::User(_)));
+        Some((start > 0 && !opened).then_some(start))
+    });
+    let Some(reaches) = reaches else {
+        return view;
+    };
+    let earlier = match reaches {
+        Some(start) => match request_calls_before(s, start).await {
+            Ok(earlier) => Some((start, earlier)),
+            Err(error) => {
+                // The lists are made of the window's calls alone: the call
+                // still completes, and a later listing of the request reads
+                // them again.
+                tracing::warn!(error = &error as &dyn std::error::Error, "the request's earlier calls were not read");
+                None
+            }
+        },
+        None => None,
+    };
     let planned = s.read(|core| {
-        at(core).map(|index| changes::plan(core.transcript.blocks(), index, &view, started_in))
+        let start = core.transcript.start();
+        let index = at(core)?;
+        let window = core.transcript.blocks();
+        Some(match &earlier {
+            // The window still starts where the calls were read up to.
+            Some((from, earlier)) if *from == start => {
+                let blocks: Vec<Block> = earlier.iter().chain(window).cloned().collect();
+                changes::plan(&blocks, index - start + earlier.len(), &view, started_in)
+            }
+            _ => changes::plan(window, index - start, &view, started_in),
+        })
     });
     let Some(planned) = planned else {
         return view;
@@ -638,6 +679,17 @@ async fn with_lists(
     let counted = changes::count(planned.uncounted(), s.store.blobs()).await;
     planned.finish(&mut view, &counted);
     view
+}
+
+/// The `user` block that opened the request the window starts inside and
+/// the tool calls after it before the window's `start`, from the store;
+/// none when no request began before the window.
+async fn request_calls_before(s: &SessionShared, start: usize) -> Result<Vec<Block>, StoreError> {
+    let Some(opened) = s.store.last_of(Kind::User, start).await? else {
+        return Ok(Vec::new());
+    };
+    let read = s.store.blocks_of(vec![Kind::User, Kind::ToolCall], opened..start).await?;
+    Ok(read.into_iter().map(|(_, block)| block).collect())
 }
 
 /// Lists again the shell calls after `tool_use_id` in its request that
@@ -650,7 +702,7 @@ async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
         let Some(index) = core.transcript.completed_call(tool_use_id) else {
             return Vec::new();
         };
-        changes::later_in_request(blocks, index)
+        changes::later_in_request(blocks, index - core.transcript.start())
             .into_iter()
             .filter_map(|at| match &blocks[at] {
                 Block::ToolCall(call) => match &call.view {

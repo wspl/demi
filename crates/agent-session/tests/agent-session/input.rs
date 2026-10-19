@@ -732,12 +732,48 @@ impl SessionStore for GatedStore {
         &self,
         position: usize,
         version: u32,
+        held_from: usize,
     ) -> LocalBoxFuture<'_, Result<demi_agent_store::Switched, StoreError>> {
-        self.inner.switch(position, version)
+        self.inner.switch(position, version, held_from)
     }
 
     fn blobs(&self) -> &dyn demi_agent_store::media::BlobStore {
         self.inner.blobs()
+    }
+    fn blocks(&self, range: std::ops::Range<usize>) -> LocalBoxFuture<'_, Result<demi_agent_store::Rows, StoreError>> {
+        self.inner.blocks(range)
+    }
+
+    fn position<'a>(&'a self, id: &'a demi_shared_types::BlockId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        self.inner.position(id)
+    }
+
+    fn last_of(&self, kind: demi_agent_store::Kind, end: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        self.inner.last_of(kind, end)
+    }
+
+    fn next_of(&self, kind: demi_agent_store::Kind, from: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        self.inner.next_of(kind, from)
+    }
+
+    fn blocks_of(
+        &self,
+        kinds: Vec<demi_agent_store::Kind>,
+        range: std::ops::Range<usize>,
+    ) -> LocalBoxFuture<'_, Result<Vec<(usize, demi_shared_types::Block)>, StoreError>> {
+        self.inner.blocks_of(kinds, range)
+    }
+
+    fn turn_position<'a>(&'a self, turn: &'a demi_shared_types::TurnId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        self.inner.turn_position(turn)
+    }
+
+    fn earlier(&self, end: usize) -> LocalBoxFuture<'_, Result<demi_agent_store::EarlierRows, StoreError>> {
+        self.inner.earlier(end)
+    }
+
+    fn prefix(&self, length: usize) -> LocalBoxFuture<'_, Result<Option<demi_agent_store::StoredPrefix>, StoreError>> {
+        self.inner.prefix(length)
     }
 }
 
@@ -814,7 +850,7 @@ async fn a_restored_message_wakes_the_session_once_and_a_written_one_is_never_de
         &later,
         test_runtime(Vec::new()),
         clock.clone(),
-    );
+    ).await;
     assert!(!continuation.interrupted);
     restored.wake();
     restored.settled().await;
@@ -830,7 +866,7 @@ async fn a_restored_message_wakes_the_session_once_and_a_written_one_is_never_de
         &later,
         test_runtime(Vec::new()),
         clock,
-    );
+    ).await;
     again.wake();
     again
         .accept_agent_message(agent_message("restored"))
@@ -1040,7 +1076,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
         &later,
         runtime,
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
-    );
+    ).await;
     assert!(continuation.interrupted);
     restored.resume(None).unwrap().await.unwrap();
     assert_eq!(steers(&later.requests()[0].items), [ended_report("17", "Build")]);
@@ -1092,7 +1128,7 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_mess
         &later,
         test_runtime(Vec::new()),
         clock.clone(),
-    );
+    ).await;
     assert!(continuation.interrupted);
     tokio::time::sleep(Duration::from_secs(5)).await;
     assert!(later.requests().is_empty());
@@ -1106,7 +1142,7 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_mess
         &later,
         test_runtime(Vec::new()),
         clock,
-    );
+    ).await;
     assert!(!continuation.interrupted);
     restored.wake();
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -1345,7 +1381,7 @@ async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first
         &later,
         test_runtime(Vec::new()),
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
-    );
+    ).await;
     assert!(!continuation.interrupted);
     restored.wake();
     restored.settled().await;
@@ -1441,7 +1477,7 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
         deps,
         &running,
     )
-    .unwrap();
+    .await.unwrap();
     assert_eq!(restored.interval_of(&running[0].command), Some(Some(300_000)));
     // The interrupted turn waits for the user, who resumes it.
     restored.resume(None).unwrap().await.unwrap();

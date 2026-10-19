@@ -250,6 +250,8 @@ impl demi_agent_tools::ContextSource for Told {
             };
             Ok(tree
                 .side_questions_context(node.node, seen)
+                .await
+                .map_err(|error| error.to_string())?
                 .map(demi_agent_tools::ContextAnswer::from))
         })
     }

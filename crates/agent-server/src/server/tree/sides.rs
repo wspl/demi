@@ -19,7 +19,7 @@ use demi_agent_session::{SessionEvent, Settle, Subscription};
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, SideOf};
 use demi_agent_tools::HostResolver;
 use demi_agent_transcript::ForkEnd;
-use demi_conversation_socket_protocol::{ServerFrame, index_u32, latest_page_start};
+use demi_conversation_socket_protocol::{ServerFrame, index_u32, latest_page_start_within};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{NodeId, QueuedMessage, TurnId, UserContentBlock, markdown_quote};
@@ -86,13 +86,23 @@ pub(crate) struct ClosedSide {
 }
 
 impl ClosedSide {
-    fn of(id: &NodeId, blocks: &[demi_shared_types::Block], revision: u64, of: Option<SideOf>) -> Self {
-        let start = latest_page_start(blocks);
+    /// Of the side question `id`, whose transcript holds `blocks` from the
+    /// position `offset` on, a session's window or a load's, and `earlier`
+    /// before them ([`Asked::earlier`]).
+    fn of(
+        id: &NodeId,
+        offset: usize,
+        earlier: &[demi_shared_types::Block],
+        blocks: &[demi_shared_types::Block],
+        revision: u64,
+        of: Option<SideOf>,
+    ) -> Self {
+        let start = latest_page_start_within(blocks, offset == 0);
         Self {
             asked_at: of.as_ref().map(|of| of.asked_at),
-            asked: of.map(|of| Asked::of(id, of, blocks, true)),
-            start,
-            length: blocks.len(),
+            asked: of.map(|of| Asked::of(id, of, earlier, blocks, true)),
+            start: offset + start,
+            length: offset + blocks.len(),
             blocks: blocks[start..].to_vec(),
             revision,
         }
@@ -216,12 +226,13 @@ impl<H: HostResolver> Tree<H> {
             let mut seed = root
                 .session()
                 .prepare_fork(ForkEnd::Side(&of.block))
+                .await
                 .map_err(|error| AskError::Target(error.to_string()))?;
             // Its first message's turn is the side question's own id, which
             // names that message to a page whatever pages it holds.
             let turn = TurnId::try_from(id.as_str()).map_err(|error| AskError::Target(error.to_string()))?;
-            seed.state.queue.push(first_message(turn, &of));
-            let runtime = tree.side_runtime(&server, &seed.state.model).await?;
+            seed.checkpoint.state.queue.push(first_message(turn, &of));
+            let runtime = tree.side_runtime(&server, &seed.checkpoint.state.model).await?;
             let now = tree.clock.now();
             let record = NodeRecord {
                 id: id.clone(),
@@ -241,7 +252,7 @@ impl<H: HostResolver> Tree<H> {
                 cwd: None,
                 side: Some(SideOf { asked_at: now, ..of }),
             };
-            let origin = Origin::Forked { record, checkpoint: seed };
+            let origin = Origin::Forked { record, seed };
             tree.start_side(&server, origin, runtime).await.map_err(AskError::Failed)?;
             Ok(true)
         });
@@ -367,9 +378,25 @@ impl<H: HostResolver> Tree<H> {
                     return;
                 }
                 if record.closed.is_some() {
-                    match self.store.session_store(&record.id).load().await {
-                        Ok(Some(checkpoint)) => {
-                            let closed = ClosedSide::of(&record.id, &checkpoint.transcript, 0, record.side.clone());
+                    let store = self.store.session_store(&record.id);
+                    let read = async {
+                        let Some(checkpoint) = store.load().await? else {
+                            return Ok(None);
+                        };
+                        let holds = Asked::opens(&record.id, &checkpoint.transcript);
+                        let earlier = Asked::earlier(&*store, &record.id, checkpoint.start, holds).await?;
+                        Ok::<_, demi_agent_store::StoreError>(Some((checkpoint, earlier)))
+                    };
+                    match read.await {
+                        Ok(Some((checkpoint, earlier))) => {
+                            let closed = ClosedSide::of(
+                                &record.id,
+                                checkpoint.start,
+                                &earlier,
+                                &checkpoint.transcript,
+                                0,
+                                record.side.clone(),
+                            );
                             self.closed_sides.borrow_mut().insert(record.id.clone(), closed);
                         }
                         Ok(None) => {}
@@ -533,35 +560,39 @@ impl<H: HostResolver> Tree<H> {
     /// the root's, only when the request follows the user's new message or
     /// steer, and only the questions asked since the agent last heard of
     /// them, about replies still in its history, in the order asked.
-    pub fn side_questions_context(&self, node: &NodeId, seen: &[&str]) -> Option<String> {
+    /// The root's path holds a reply before its window too, which its
+    /// store finds.
+    pub async fn side_questions_context(&self, node: &NodeId, seen: &[&str]) -> Result<Option<String>, demi_agent_store::StoreError> {
         if node != self.root.id() {
-            return None;
+            return Ok(None);
         }
-        let history = self.root.session().transcript().blocks;
-        if !told::follows_input(&history) {
-            return None;
+        let root = self.root.session();
+        if !root.with_window(|transcript| told::follows_input(transcript.blocks())) {
+            return Ok(None);
         }
-        let in_history = |of: &SideOf| history.iter().any(|block| block.id() == &of.block);
-        let mut asked: Vec<Asked> = self
-            .sides
-            .borrow()
-            .values()
-            .filter_map(|side| {
-                let of = side.node.record().side?;
-                let session = side.node.session();
-                let status = session.status();
-                let ended = status.settle == Settle::Settled && !status.input;
-                in_history(&of).then(|| Asked::of(side.node.id(), of, &session.transcript().blocks, ended))
-            })
-            .collect();
-        asked.extend(
-            self.closed_sides
-                .borrow()
-                .values()
-                .filter_map(|closed| closed.asked.as_ref().filter(|asked| in_history(&asked.of)).cloned()),
-        );
-        asked.sort_by_key(|asked| asked.of.asked_at);
-        told::untold(&asked, seen)
+        let live: Vec<Rc<Side<H>>> = self.sides.borrow().values().cloned().collect();
+        let mut asked: Vec<Asked> = Vec::new();
+        for side in live {
+            let Some(of) = side.node.record().side else {
+                continue;
+            };
+            let session = side.node.session();
+            let id = side.node.id();
+            let (start, holds) = session.with_window(|transcript| (transcript.start(), Asked::opens(id, transcript.blocks())));
+            let earlier = Asked::earlier(&*session.store(), id, start, holds).await?;
+            let status = session.status();
+            let ended = status.settle == Settle::Settled && !status.input;
+            asked.push(session.with_window(|transcript| Asked::of(id, of, &earlier, transcript.blocks(), ended)));
+        }
+        asked.extend(self.closed_sides.borrow().values().filter_map(|closed| closed.asked.clone()));
+        let mut held = Vec::new();
+        for asked in asked {
+            if root.holds(&asked.of.block).await? {
+                held.push(asked);
+            }
+        }
+        held.sort_by_key(|asked| asked.of.asked_at);
+        Ok(told::untold(&held, seen))
     }
 
     /// Every side question's state, the closed ones' as they ended, in the
@@ -625,10 +656,26 @@ impl<H: HostResolver> Tree<H> {
             if let Err(error) = side.node.session().dispose().await {
                 tree.report(format!("side question {id} did not save its final checkpoint: {error}"));
             }
-            let ended = {
-                let transcript = side.node.session().transcript();
-                ClosedSide::of(&id, &transcript.blocks, transcript.version.revision, side.node.record().side)
+            let session = side.node.session();
+            let (start, holds) = session.with_window(|transcript| (transcript.start(), Asked::opens(&id, transcript.blocks())));
+            let earlier = match Asked::earlier(&*session.store(), &id, start, holds).await {
+                Ok(earlier) => earlier,
+                Err(error) => {
+                    // What it asked is told from its window alone.
+                    tree.report(format!("side question {id}'s earlier messages were not read: {error}"));
+                    Vec::new()
+                }
             };
+            let ended = session.with_window(|transcript| {
+                ClosedSide::of(
+                    &id,
+                    transcript.start(),
+                    &earlier,
+                    transcript.blocks(),
+                    transcript.version().revision,
+                    side.node.record().side,
+                )
+            });
             side.events.borrow_mut().take();
             let phase = match failure {
                 Some(failure) => ClosePhase::Error { failure },
@@ -703,18 +750,9 @@ async fn side_supervision<H: HostResolver>(tree: Weak<Tree<H>>, side: Weak<Side<
 /// it is writing and its wait for the model.
 fn side_frames<H: HostResolver>(side: &Side<H>) -> [ServerFrame; 4] {
     let session = side.node.session();
-    let transcript = session.transcript();
     let id = side.node.id().clone();
-    let start = latest_page_start(&transcript.blocks);
     [
-        ServerFrame::SubagentTranscriptReset {
-            subagent_id: id.clone(),
-            start: index_u32(start),
-            length: index_u32(transcript.blocks.len()),
-            blocks: transcript.blocks[start..].to_vec(),
-            revision: transcript.version.revision,
-            failures: None,
-        },
+        session.with_window(|transcript| super::supervisor::subagent_reset(id.clone(), transcript)),
         ServerFrame::Phase {
             subagent_id: Some(id.clone()),
             phase: session.phase(),

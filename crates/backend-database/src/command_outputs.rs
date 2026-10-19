@@ -138,6 +138,35 @@ pub fn commands_of(blocks: &[Block]) -> Vec<CommandId> {
     commands
 }
 
+/// The commands the shell calls of the rows `prefix` names name, each
+/// once, read through the index of commands without decoding a block: the
+/// chain of rows from its leaf back to its node's first.
+pub fn commands_of_prefix(
+    connection: &Connection,
+    prefix: &demi_agent_store::StoredPrefix,
+) -> Result<Vec<CommandId>, StorageError> {
+    let mut statement = connection.prepare_cached(
+        "WITH RECURSIVE chain (idx, follows) AS (
+           SELECT idx, follows FROM blocks WHERE node_id = ?1 AND idx = ?2
+           UNION ALL
+           SELECT row.idx, row.follows FROM blocks AS row JOIN chain ON row.node_id = ?1 AND row.idx = chain.follows
+         )
+         SELECT DISTINCT json_extract(row.block, '$.view.commandId')
+         FROM chain JOIN blocks AS row ON row.node_id = ?1 AND row.idx = chain.idx
+         WHERE json_extract(row.block, '$.type') = 'tool_call' AND json_extract(row.block, '$.view.kind') = 'shell'",
+    )?;
+    let found = statement
+        .query_map(
+            rusqlite::params![prefix.node.as_str(), i64::try_from(prefix.leaf).expect("a row number fits")],
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    found
+        .into_iter()
+        .map(|command| decode("blocks", "block", CommandId::try_from(command)))
+        .collect()
+}
+
 /// A row read back, decoded and checked.
 fn output_row(row: &Row<'_>) -> rusqlite::Result<Result<CommandOutput, StorageError>> {
     Ok(decode_row(row))

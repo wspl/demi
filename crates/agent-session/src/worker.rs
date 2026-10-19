@@ -6,7 +6,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_transcript::{resume_point, rewind, unwind};
+use demi_agent_transcript::{opens_input_turn, resume_point, resume_point_within, rewind, unwind};
 use demi_provider_common::Ahead;
 use demi_shared_types::TurnId;
 use tokio::sync::Notify;
@@ -21,7 +21,7 @@ use super::{
     core::{ActionKind, SessionCore, StartedAction},
     editing::{self, EditError},
     input::Take,
-    persist, turn,
+    persist, turn, window,
 };
 
 /// Delivers the events a turn's end held when the action ends, on every
@@ -251,11 +251,28 @@ async fn execute(
 /// that opened it stays, with the turn's steers and every agent message after
 /// it (`failures-and-recovery.md` § Recovery is one mechanism).
 async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
-    let rewind = s
-        .read(|core| rewind(core.transcript.blocks()))
-        .ok_or_else(|| TurnError::refused(AgentCode::NothingToRetry, "There is no input turn to retry"))?;
-    persist::commit_rewrite(s, rewind.retained).await?;
-    rerun(s, cancel, rewind.turn).await
+    let turn = {
+        let _turn = s.persist_gate.acquire().await;
+        // The input turn may have begun before the window, as when a
+        // compaction ran inside it: the window then holds no block that
+        // opens it, or only an agent message of a turn that began before.
+        let rewind = loop {
+            let found = s.read(|core| {
+                let blocks = core.transcript.blocks();
+                rewind(blocks)
+                    .filter(|rewind| core.transcript.start() == 0 || opens_input_turn(&blocks[rewind.input]))
+            });
+            if let Some(found) = found {
+                break found;
+            }
+            if !window::reach_further(s).await? {
+                return Err(TurnError::refused(AgentCode::NothingToRetry, "There is no input turn to retry"));
+            }
+        };
+        persist::commit_rewrite_held(s, rewind.retained).await?;
+        rewind.turn
+    };
+    rerun(s, cancel, turn).await
 }
 
 /// Runs `turn` again from its input, which is the history's last turn.
@@ -276,11 +293,26 @@ async fn resume(
     cancel: &TurnCancel,
     reason: Option<String>,
 ) -> Result<(), TurnError> {
-    let point = s.read(|core| resume_point(core.transcript.blocks()));
-    // The unwind comes before a pending switch lands: a switch that compacts
-    // would move the cut.
-    let kept = s.read(|core| unwind(core.transcript.blocks(), point.cut));
-    persist::commit_rewrite(s, kept).await?;
+    let point = {
+        let _turn = s.persist_gate.acquire().await;
+        // The scan may pass the whole window, as one that holds a
+        // compaction and leftovers: it goes on before it.
+        let point = loop {
+            let found = s.read(|core| {
+                let blocks = core.transcript.blocks();
+                resume_point_within(blocks).or_else(|| (core.transcript.start() == 0).then(|| resume_point(blocks)))
+            });
+            if let Some(found) = found {
+                break found;
+            }
+            window::reach_further(s).await?;
+        };
+        // The unwind comes before a pending switch lands: a switch that
+        // compacts would move the cut.
+        let kept = s.read(|core| unwind(core.transcript.blocks(), point.cut));
+        persist::commit_rewrite_held(s, kept).await?;
+        point
+    };
     if let Some(turn) = point.rerun {
         return rerun(s, cancel, turn).await;
     }

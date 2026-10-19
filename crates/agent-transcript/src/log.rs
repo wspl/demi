@@ -1,5 +1,8 @@
-//! The transcript itself: its blocks in order, changed only through methods
-//! that record each change in the journal, and its version.
+//! The transcript itself: the blocks of its window in order, changed only
+//! through methods that record each change in the journal, and its version.
+//! The window is the part of the path a live session holds
+//! (`runtime.md` § What a session holds): from a position, `start`, to the
+//! path's end. Every index here is a position on the whole path.
 
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
@@ -7,7 +10,7 @@ use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion, Vers
 use demi_provider_common::{AccountSwitch, ToolCall};
 use demi_shared_types::{AutomationMark, MessageComment, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
-    CompactionMarkerBlock, ContextBlock, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
+    CompactionMarkerBlock, ContextBlock, Entry, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
@@ -17,6 +20,7 @@ use serde_json::Value;
 
 use super::{
     PatchBatch, is_interruption,
+    earlier::Earlier,
     journal::{DirtyRows, Journal, patch_index},
 };
 use crate::IdSource;
@@ -31,7 +35,12 @@ pub struct PendingCall {
 }
 
 pub struct TranscriptLog {
+    /// The position of the first block held.
+    start: usize,
+    /// The blocks from `start` to the path's end.
     blocks: Vec<Block>,
+    /// What the session keeps of the blocks before `start`.
+    earlier: Earlier,
     /// The versions at each place of the path that holds more than one
     /// (`message-editing.md` § Versions), as the store reads them; a place
     /// past the last block holds those of the block that comes there next,
@@ -50,7 +59,9 @@ impl TranscriptLog {
     pub fn new(blocks: Vec<Block>, ids: Rc<dyn IdSource>, clock: Arc<dyn Clock>) -> Self {
         let epoch = ids.next_id();
         Self {
+            start: 0,
             blocks,
+            earlier: Earlier::default(),
             versions: BTreeMap::new(),
             journal: Journal::default(),
             revision: 0,
@@ -60,8 +71,107 @@ impl TranscriptLog {
         }
     }
 
+    /// The blocks held: those from [`start`](Self::start) on.
     pub fn blocks(&self) -> &[Block] {
         &self.blocks
+    }
+
+    /// The log of a window that starts at the position `start` of its path,
+    /// with what `earlier` keeps of the blocks before it.
+    pub fn starting_at(mut self, start: usize, earlier: Earlier) -> Self {
+        self.start = start;
+        self.earlier = earlier;
+        self
+    }
+
+    /// The position of the first block held.
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    /// How many blocks the path holds.
+    pub fn len(&self) -> usize {
+        self.start + self.blocks.len()
+    }
+
+    /// Whether the path holds no block.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The block at `position`, when it is held.
+    pub fn get(&self, position: usize) -> Option<&Block> {
+        self.blocks.get(position.checked_sub(self.start)?)
+    }
+
+    /// The blocks held from `position` on; all of them for a position
+    /// before the window.
+    pub fn from(&self, position: usize) -> &[Block] {
+        let at = position.saturating_sub(self.start).min(self.blocks.len());
+        &self.blocks[at..]
+    }
+
+    /// What the session keeps of the blocks before the window.
+    pub fn earlier(&self) -> &Earlier {
+        &self.earlier
+    }
+
+    /// Where replay starts (`transcript.md` § Replay): the position of the
+    /// last `compaction_boundary` held, or the window's start.
+    pub fn replay_start(&self) -> usize {
+        self.start + crate::replay_start(&self.blocks)
+    }
+
+    /// The failure that left the last turn unfinished, when its record is
+    /// an `error` block (`failures-and-recovery.md` § The unfinished turn).
+    pub fn turn_failure(&self) -> Option<&ErrorBlock> {
+        match crate::turn_record(&self.blocks) {
+            Some(Block::Error(error)) => Some(error),
+            Some(_) => None,
+            None => self.earlier.record().flatten(),
+        }
+    }
+
+    /// The turn of the last block of a turn's input: the last turn.
+    pub fn last_turn(&self) -> Option<&TurnId> {
+        crate::last_turn(&self.blocks).or(self.earlier.last_turn())
+    }
+
+    /// The latest message the user or an automation wrote, when there is
+    /// one: the automation's run and when it came for a run's message.
+    pub fn user_input(&self) -> Option<crate::UserInput> {
+        self.blocks
+            .iter()
+            .rev()
+            .find_map(crate::user_input)
+            .or_else(|| self.earlier.user_input().cloned())
+    }
+
+    /// Holds `blocks` too, the path's from `start` up to the window, with
+    /// the versions at their places and what `earlier` keeps of the blocks
+    /// before them, as an edit of a message before the window reads them
+    /// (`runtime.md` § What a session holds).
+    pub fn extend_back(&mut self, start: usize, mut blocks: Vec<Block>, versions: BTreeMap<usize, Versions>, earlier: Earlier) {
+        assert_eq!(start + blocks.len(), self.start, "the blocks reach the window");
+        blocks.append(&mut self.blocks);
+        self.blocks = blocks;
+        self.start = start;
+        self.earlier = earlier;
+        self.versions.extend(versions);
+    }
+
+    /// Lets go of the blocks before `position`, keeping what `earlier`
+    /// keeps of them. The caller has saved them.
+    pub fn release_before(&mut self, position: usize) {
+        let count = position.saturating_sub(self.start).min(self.blocks.len());
+        if count == 0 {
+            return;
+        }
+        let rest = self.blocks.split_off(count);
+        let released = std::mem::replace(&mut self.blocks, rest);
+        self.earlier.fold(&released);
+        self.start += count;
+        self.versions = self.versions.split_off(&self.start);
     }
 
     /// The log with the versions its stored path holds.
@@ -85,7 +195,7 @@ impl TranscriptLog {
     /// The block with this id, looked for from the end, where recent changes
     /// are.
     pub fn find(&self, id: &BlockId) -> Option<&Block> {
-        self.position(id).map(|index| &self.blocks[index])
+        self.position(id).and_then(|index| self.get(index))
     }
 
     /// The patches recorded since the last call, as one batch that advances
@@ -220,20 +330,21 @@ impl TranscriptLog {
 
     /// Marks the latest stopped marker as continued.
     pub fn mark_latest_abort_resumed(&mut self) {
-        let Some(index) = self
+        let Some(at) = self
             .blocks
             .iter()
             .rposition(|block| matches!(block, Block::Abort(_)))
         else {
             return;
         };
-        if let Block::Abort(abort) = &mut self.blocks[index] {
+        if let Block::Abort(abort) = &mut self.blocks[at] {
             abort.is_resumed = true;
         }
-        self.record_replace(index);
+        self.record_replace(self.start + at);
     }
 
-    /// Replaces every block with `blocks`, as a history rewrite publishes
+    /// Replaces every block held with `blocks`, the path's from the
+    /// window's start on, as a history rewrite publishes
     /// its retained history, and answers the batch that publishes it: a
     /// `truncate` at the first block that differs and an `add` for each
     /// block from there, never the blocks before it (`transcript.md` § Patches
@@ -246,13 +357,13 @@ impl TranscriptLog {
     /// its place; the session's own rewrite stands in for what it replaced,
     /// so the place keeps its versions. The places after it hold none.
     pub fn replace_all(&mut self, blocks: Vec<Block>, version: bool) -> PatchBatch {
-        let kept = kept(&self.blocks, &blocks);
+        let kept = self.start + kept(&self.blocks, &blocks);
         let mut versions = std::mem::take(&mut self.versions);
         versions.split_off(&(kept + 1));
         if version {
             let count = match versions.get(&kept) {
                 Some(held) => held.count + 1,
-                None if self.blocks.len() > kept => 2,
+                None if self.len() > kept => 2,
                 None => 1,
             };
             versions.remove(&kept);
@@ -264,8 +375,8 @@ impl TranscriptLog {
     }
 
     /// Replaces the path from `position` on with what a switch of versions
-    /// made current: `blocks` is the whole path, and `versions` the
-    /// versions of its places from `position` on.
+    /// made current: `blocks` is the path from the window's start on, and
+    /// `versions` the versions of its places from `position` on.
     pub fn switch(&mut self, position: usize, blocks: Vec<Block>, versions: BTreeMap<usize, Versions>) -> PatchBatch {
         let mut kept = std::mem::take(&mut self.versions);
         kept.split_off(&position);
@@ -273,7 +384,25 @@ impl TranscriptLog {
         self.replace_from(position, blocks, kept)
     }
 
-    /// Publishes `blocks` from `from` on as one batch, with `versions`.
+    /// Replaces the path from `position` on with what a switch of versions
+    /// made current from a place before the window: the window starts at
+    /// `start` now, with `blocks` from there and the `versions` of their
+    /// places, and `earlier` keeps what is before it.
+    pub fn switch_window(
+        &mut self,
+        position: usize,
+        start: usize,
+        blocks: Vec<Block>,
+        versions: BTreeMap<usize, Versions>,
+        earlier: Earlier,
+    ) -> PatchBatch {
+        self.start = start;
+        self.earlier = earlier;
+        self.replace_from(position, blocks, versions)
+    }
+
+    /// Publishes `blocks`, the path's from the window's start, from `from`
+    /// on as one batch, with `versions`.
     fn replace_from(&mut self, from: usize, blocks: Vec<Block>, versions: BTreeMap<usize, Versions>) -> PatchBatch {
         self.journal = Journal::default();
         self.revision += 1;
@@ -281,7 +410,7 @@ impl TranscriptLog {
         let patches = std::iter::once(TranscriptPatch::Truncate {
             length: patch_index(from),
         })
-        .chain(blocks[from..].iter().enumerate().map(|(offset, block)| {
+        .chain(blocks[from - self.start..].iter().enumerate().map(|(offset, block)| {
             TranscriptPatch::Add {
                 index: patch_index(from + offset),
                 value: block.clone(),
@@ -323,7 +452,7 @@ impl TranscriptLog {
         self.versions
             .extend(moved.into_iter().map(|(position, versions)| (position + 1, versions)));
         self.journal.add(index, &block, None);
-        self.blocks.insert(index, block);
+        self.blocks.insert(index - self.start, block);
         id
     }
 
@@ -381,9 +510,16 @@ impl TranscriptLog {
 
     /// Whether a `user` block of the turn `turn` exists: the turn began.
     pub fn has_user_turn(&self, turn: &TurnId) -> bool {
-        self.blocks
-            .iter()
-            .any(|block| matches!(block, Block::User(user) if &user.turn_id == turn))
+        self.earlier.has_user_turn(turn)
+            || self
+                .blocks
+                .iter()
+                .any(|block| matches!(block, Block::User(user) if &user.turn_id == turn))
+    }
+
+    /// Whether the path holds the tool call `id`.
+    pub fn holds_call(&self, id: &BlockId) -> bool {
+        self.earlier.holds_call(id) || self.position(id).is_some()
     }
 
     /// Whether the last block already says why its turn is unfinished.
@@ -410,12 +546,12 @@ impl TranscriptLog {
     /// Adds reasoning text to the open reasoning block, or opens one with
     /// it: a block is open until the vendor signed it.
     pub fn append_thinking(&mut self, model: &ModelSelection, text: &str) {
-        if let Some(index) = self.blocks.len().checked_sub(1)
-            && let Block::Thinking(open) = &mut self.blocks[index]
+        if let Some(at) = self.blocks.len().checked_sub(1)
+            && let Block::Thinking(open) = &mut self.blocks[at]
             && open.signature.is_none()
         {
             open.text.push_str(text);
-            self.journal.append_text(index, text);
+            self.journal.append_text(self.start + at, text);
             return;
         }
         self.open_thinking(model, text.to_owned());
@@ -424,17 +560,17 @@ impl TranscriptLog {
     /// Signs the latest reasoning block. A signature with no reasoning block
     /// before it has nothing to sign and is dropped.
     pub fn sign_thinking(&mut self, signature: String) {
-        let Some(index) = self
+        let Some(at) = self
             .blocks
             .iter()
             .rposition(|block| matches!(block, Block::Thinking(_)))
         else {
             return;
         };
-        if let Block::Thinking(thinking) = &mut self.blocks[index] {
+        if let Block::Thinking(thinking) = &mut self.blocks[at] {
             thinking.signature = Some(signature);
         }
-        self.record_replace(index);
+        self.record_replace(self.start + at);
     }
 
     pub fn push_redacted_thinking(&mut self, model: &ModelSelection, data: String) {
@@ -452,12 +588,12 @@ impl TranscriptLog {
     /// Adds answer text to the open text block, or opens one with it: a text
     /// block is open until it is marked complete.
     pub fn append_text(&mut self, model: &ModelSelection, text: &str) {
-        if let Some(index) = self.blocks.len().checked_sub(1)
-            && let Block::Text(open) = &mut self.blocks[index]
+        if let Some(at) = self.blocks.len().checked_sub(1)
+            && let Block::Text(open) = &mut self.blocks[at]
             && !open.forkable
         {
             open.text.push_str(text);
-            self.journal.append_text(index, text);
+            self.journal.append_text(self.start + at, text);
             return;
         }
         let (id, created_at) = self.stamp();
@@ -476,10 +612,10 @@ impl TranscriptLog {
     /// Text that follows a call still executing cannot be a Fork's end, so
     /// it stays as it is.
     pub fn complete_tail_text(&mut self) -> bool {
-        let Some(index) = self.blocks.len().checked_sub(1) else {
+        let Some(at) = self.blocks.len().checked_sub(1) else {
             return false;
         };
-        let (earlier, tail) = self.blocks.split_at_mut(index);
+        let (earlier, tail) = self.blocks.split_at_mut(at);
         let Block::Text(text) = &mut tail[0] else {
             return false;
         };
@@ -490,7 +626,7 @@ impl TranscriptLog {
             return false;
         }
         text.forkable = true;
-        self.record_replace(index);
+        self.record_replace(self.start + at);
         true
     }
 
@@ -576,7 +712,7 @@ impl TranscriptLog {
             return;
         };
         let ended_at = self.clock.now();
-        if let Block::ToolCall(call) = &mut self.blocks[index] {
+        if let Block::ToolCall(call) = &mut self.blocks[index - self.start] {
             call.status = if is_error {
                 ToolCallStatus::Error
             } else {
@@ -593,23 +729,27 @@ impl TranscriptLog {
     /// latest such call, as [`complete_tool_call`](Self::complete_tool_call)
     /// finds it.
     pub fn executing_call(&self, tool_use_id: &str) -> Option<usize> {
-        self.blocks.iter().rposition(|block| {
+        let at = self.blocks.iter().rposition(|block| {
             matches!(block, Block::ToolCall(call)
                 if call.status == ToolCallStatus::Executing && call.tool_use_id == tool_use_id)
-        })
+        })?;
+        Some(self.start + at)
     }
 
     /// Where the latest call `tool_use_id` that completed stands.
     pub fn completed_call(&self, tool_use_id: &str) -> Option<usize> {
-        self.blocks.iter().rposition(|block| {
+        let at = self.blocks.iter().rposition(|block| {
             matches!(block, Block::ToolCall(call)
                 if call.status != ToolCallStatus::Executing && call.tool_use_id == tool_use_id)
-        })
+        })?;
+        Some(self.start + at)
     }
 
-    /// Where the block `id` stands, looked for from the end.
+    /// Where the block `id` stands among those held, looked for from the
+    /// end.
     pub fn position(&self, id: &BlockId) -> Option<usize> {
-        self.blocks.iter().rposition(|block| block.id() == id)
+        let at = self.blocks.iter().rposition(|block| block.id() == id)?;
+        Some(self.start + at)
     }
 
     /// Gives the call `id` the view `view`; a block that is gone, as after
@@ -618,7 +758,7 @@ impl TranscriptLog {
         let Some(index) = self.position(id) else {
             return;
         };
-        if let Block::ToolCall(call) = &mut self.blocks[index] {
+        if let Block::ToolCall(call) = &mut self.blocks[index - self.start] {
             call.view = Some(view);
             self.record_replace(index);
         }
@@ -626,11 +766,11 @@ impl TranscriptLog {
 
     /// Adds `entries` after those the block `id` holds. A block that is
     /// gone, as after an edit cut it, or one that holds none, takes none.
-    pub fn add_entries(&mut self, id: &BlockId, entries: Vec<Value>) {
-        let Some(index) = self.blocks.iter().rposition(|block| block.id() == id) else {
+    pub fn add_entries(&mut self, id: &BlockId, entries: Vec<Entry>) {
+        let Some(index) = self.position(id) else {
             return;
         };
-        let Some(held) = self.blocks[index].entries_mut() else {
+        let Some(held) = self.blocks[index - self.start].entries_mut() else {
             return;
         };
         held.extend(entries);
@@ -648,13 +788,13 @@ impl TranscriptLog {
     /// before it decide once (`rendering.md` § Work groups).
     fn append(&mut self, mut block: Block) {
         block.set_run(run_of(&self.blocks, &block));
-        let index = self.blocks.len();
+        let index = self.len();
         self.journal.add(index, &block, self.versions.get(&index).copied());
         self.blocks.push(block);
     }
 
     fn record_replace(&mut self, index: usize) {
-        self.journal.replace_block(index, &self.blocks[index]);
+        self.journal.replace_block(index, &self.blocks[index - self.start]);
     }
 }
 

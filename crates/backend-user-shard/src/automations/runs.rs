@@ -9,6 +9,7 @@
 use std::rc::Rc;
 
 use demi_agent_server::AgentServer;
+use demi_agent_store::StoreError;
 use demi_backend_database::automations::{RunCause, StoredAutomation, StoredRun};
 use demi_backend_database::conversation_index::Creation;
 use demi_backend_host_access::root_of;
@@ -390,8 +391,15 @@ impl Shard {
             let Some(turn) = run.turn.clone() else {
                 continue;
             };
-            let Some(end) = turn_end(self.agent(), conversation, &turn) else {
-                continue;
+            let end = match turn_end(self.agent(), conversation, &turn).await {
+                Ok(Some(end)) => end,
+                Ok(None) => continue,
+                Err(error) => {
+                    // The run stays running; the next settle of the
+                    // conversation reads it again.
+                    tracing::warn!(%conversation, "a run's turn was not read: {error}");
+                    continue;
+                }
             };
             match end {
                 // A run whose agent ran `demi notify send` is Notified.
@@ -451,30 +459,35 @@ enum TurnEnd {
     Failed { message: String, code: Option<String> },
 }
 
-/// How the turn `turn` of the conversation's root ended; none while its
-/// message waits or it runs.
-fn turn_end<H: demi_agent_tools::HostResolver>(
+/// How the turn `turn` of the conversation's root ended, from its blocks
+/// through the next message wherever they are (`AgentSession::turn_blocks`);
+/// none while its message waits or it runs.
+async fn turn_end<H: demi_agent_tools::HostResolver>(
     agent: &Rc<AgentServer<H>>,
     conversation: &ConversationId,
     turn: &TurnId,
-) -> Option<TurnEnd> {
-    let tree = agent.tree(&root_of(conversation))?;
+) -> Result<Option<TurnEnd>, StoreError> {
+    let Some(tree) = agent.tree(&root_of(conversation)) else {
+        return Ok(None);
+    };
     let session = tree.root().session();
-    let blocks = session.transcript().blocks;
-    let start = blocks.iter().position(|block| matches!(block, Block::User(user) if &user.turn_id == turn))?;
-    let later = blocks[start + 1..]
-        .iter()
-        .position(|block| matches!(block, Block::User(_)))
-        .map(|offset| start + 1 + offset);
+    let resting = session.phase() == SessionPhase::Idle;
+    Ok(session.turn_blocks(turn).await?.and_then(|blocks| turn_end_in(&blocks, resting)))
+}
+
+/// How a turn ended from `blocks`, the blocks after its message; none while
+/// it runs: it is not `resting` and no other message follows it.
+fn turn_end_in(blocks: &[Block], resting: bool) -> Option<TurnEnd> {
+    let later = blocks.iter().position(|block| matches!(block, Block::User(_)));
     // A turn followed by another's message has ended; the last one ends
     // when the root rests.
-    if later.is_none() && session.phase() != SessionPhase::Idle {
+    if later.is_none() && !resting {
         return None;
     }
     let end = later.unwrap_or(blocks.len());
     let mut answer = None;
     let mut failure = None;
-    for block in &blocks[start + 1..end] {
+    for block in &blocks[..end] {
         match block {
             Block::Text(text) if !demi_shared_types::is_blank(&text.text) => {
                 answer = Some(text.text.clone());

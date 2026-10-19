@@ -23,7 +23,7 @@ fn session_request(items: Vec<InferenceItem>, blocks: Vec<(usize, Vec<Value>)>) 
         .map(|(len, entries)| {
             let block = RequestBlock {
                 items: start..start + len,
-                entries,
+                entries: held(entries),
             };
             start += len;
             block
@@ -545,11 +545,11 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
         [
             ProviderEvent::Entries {
                 of: EntriesOf::Output(0),
-                entries: vec![model, thinking],
+                entries: held([model, thinking]),
             },
             ProviderEvent::Entries {
                 of: EntriesOf::Output(1),
-                entries: vec![text],
+                entries: held([text]),
             },
         ]
     );
@@ -594,7 +594,7 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
         events[0],
         ProviderEvent::Entries {
             of: EntriesOf::Item(3),
-            entries: vec![message],
+            entries: held([message]),
         }
     );
     assert!(
@@ -668,20 +668,20 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
         [
             ProviderEvent::Entries {
                 of: EntriesOf::Item(4),
-                entries: vec![reminder, call],
+                entries: held([reminder, call]),
             },
             ProviderEvent::Entries {
                 of: EntriesOf::Item(5),
-                entries: vec![result(reference)],
+                entries: held([result(reference)]),
             },
             ProviderEvent::Entries {
                 of: EntriesOf::Item(6),
-                entries: vec![folded],
+                entries: held([folded]),
             },
             ProviderEvent::TextDelta("Done".into()),
             ProviderEvent::Entries {
                 of: EntriesOf::Output(0),
-                entries: vec![answered],
+                entries: held([answered]),
             },
             ProviderEvent::Response(Some(TokenUsage {
                 input_tokens: 2,
@@ -769,7 +769,7 @@ async fn a_complete_answer_after_a_failed_stream_is_kept_once_on_its_blocks_and_
     let kept: Vec<(EntriesOf, Vec<Value>)> = events
         .into_iter()
         .filter_map(|event| match event {
-            ProviderEvent::Entries { of, entries } => Some((of, entries)),
+            ProviderEvent::Entries { of, entries } => Some((of, values(&entries))),
             _ => None,
         })
         .collect();
@@ -887,7 +887,7 @@ async fn resumed_after(stream: Vec<Value>, answer: Value, shown: Vec<InferenceIt
             (2, EntriesOf::Item(item)) => item.min(layout.len() - 1),
             other => panic!("unexpected {other:?}"),
         };
-        entries[block].extend(kept);
+        entries[block].extend(values(&kept));
     }
 
     items.push(user("next"));
@@ -1029,4 +1029,14 @@ async fn texts_an_abandoned_stream_showed_around_a_call_being_written_are_both_l
     )
     .await;
     assert_eq!(resumed, [json!([rg_call()])]);
+}
+
+/// `values` as a block holds them.
+fn held(values: impl IntoIterator<Item = Value>) -> Vec<demi_shared_types::Entry> {
+    values.into_iter().map(demi_shared_types::Entry::from).collect()
+}
+
+/// `entries` decoded.
+fn values(entries: &[demi_shared_types::Entry]) -> Vec<Value> {
+    entries.iter().map(|entry| entry.decode().unwrap()).collect()
 }

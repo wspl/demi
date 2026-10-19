@@ -247,6 +247,14 @@ impl Stores {
 }
 
 impl ConversationDb {
+    /// The file of the conversation `other`'s database, for a copy of its
+    /// rows into this one (`conversation-fork.md` § Backend creation and
+    /// retries); none when it is this one's.
+    pub(crate) fn file_of(&self, other: &ConversationId) -> Option<PathBuf> {
+        let file = DatabaseFile::of(other);
+        (file != self.file).then(|| file.path(&self.stores.directory))
+    }
+
     /// Runs `work` on the conversation's writer connection, on its thread.
     /// The first call opens the writer, and a new database receives its
     /// schema. `work` is synchronous, so a transaction it opens never spans

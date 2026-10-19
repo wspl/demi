@@ -85,7 +85,7 @@ impl Block {
 
     /// The entries of the vendor's own record of the session kept on the
     /// block; none for a block the model receives nothing of.
-    pub fn entries(&self) -> &[serde_json::Value] {
+    pub fn entries(&self) -> &[Entry] {
         match self {
             Block::User(block) => &block.entries,
             Block::Context(block) => &block.entries,
@@ -109,7 +109,7 @@ impl Block {
     }
 
     /// The same, to add to; none for a block that cannot hold entries.
-    pub fn entries_mut(&mut self) -> Option<&mut Vec<serde_json::Value>> {
+    pub fn entries_mut(&mut self) -> Option<&mut Vec<Entry>> {
         match self {
             Block::User(block) => Some(&mut block.entries),
             Block::Context(block) => Some(&mut block.entries),
@@ -160,6 +160,64 @@ impl Block {
     /// Whether the block is an editable target: only a `user` block is.
     pub fn is_editable(&self) -> bool {
         matches!(self, Block::User(_))
+    }
+}
+
+/// One entry of a vendor's own record of the session, kept on a block
+/// (`claude-code.md` § The session a process resumes), held as its JSON
+/// text: a session replays a block's entries as they came and reads a
+/// field of them seldom, so it holds the text, a third of the decoded
+/// value's size, and decodes an entry only where a field of it is read
+/// (`runtime.md` § What a session holds).
+#[derive(Debug, Clone)]
+pub struct Entry(Box<serde_json::value::RawValue>);
+
+impl Entry {
+    /// The entry `value` is.
+    pub fn new(value: &impl Serialize) -> serde_json::Result<Self> {
+        serde_json::value::to_raw_value(value).map(Self)
+    }
+
+    /// The entry as its JSON text.
+    pub fn json(&self) -> &str {
+        self.0.get()
+    }
+
+    /// The entry decoded as `T`, such as only the fields a reader needs.
+    pub fn decode<'a, T: Deserialize<'a>>(&'a self) -> serde_json::Result<T> {
+        serde_json::from_str(self.0.get())
+    }
+}
+
+impl From<serde_json::Value> for Entry {
+    fn from(value: serde_json::Value) -> Self {
+        Self::new(&value).expect("a JSON value serializes")
+    }
+}
+
+/// Two entries are one when their texts are: an entry is always written
+/// by the same serializer, compact and in its own key order.
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        self.json() == other.json()
+    }
+}
+
+impl Eq for Entry {}
+
+impl Serialize for Entry {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+/// A block is a tagged enum, which serde reads through its own buffer
+/// rather than serde_json's reader, and serde_json reads a raw value only
+/// from its own: an entry is read as a value and written back as text.
+impl<'de> Deserialize<'de> for Entry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Self::new(&value).map_err(serde::de::Error::custom)
     }
 }
 
@@ -277,7 +335,7 @@ pub struct UserBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 impl UserBlock {
@@ -351,7 +409,7 @@ pub struct ContextBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// The context source of the user's personal instructions and the
@@ -474,7 +532,7 @@ pub struct WakeupBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// What a command a `shell` call left running tells its node
@@ -627,7 +685,7 @@ pub struct SteerBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// A message from another agent of the tree. Its id is the message's.
@@ -663,7 +721,7 @@ pub struct AgentMessageBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// A receipt's block has its message's id.
@@ -706,7 +764,7 @@ pub struct ResumeBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// The agent's account reached its limit and the same request went on with
@@ -804,7 +862,7 @@ pub struct ThinkingBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// Opaque reasoning data, replayed whole; a page shows it as thinking
@@ -839,7 +897,7 @@ pub struct RedactedThinkingBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// Assistant text.
@@ -867,7 +925,7 @@ pub struct TextBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// What a stored `shell` call ran: its title and its script.
@@ -949,7 +1007,7 @@ pub struct ToolCallBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// Where a tool call is.
@@ -1082,7 +1140,7 @@ pub struct CompactionBoundaryBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(skip)]
     #[garde(skip)]
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<Entry>,
 }
 
 /// A message of the user's that a compaction kept beside its summary: a

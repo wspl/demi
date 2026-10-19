@@ -3,9 +3,9 @@
 //! message or steer, each question asked aside since it last heard of
 //! them, with its final answer, under the words it asked about.
 
-use demi_agent_store::SideOf;
+use demi_agent_store::{Kind, SessionStore, SideOf, StoreError};
 use demi_agent_transcript::bound_text;
-use demi_shared_types::{Block, NodeId, UserContentBlock};
+use demi_shared_types::{Block, NodeId, TurnId, UserContentBlock};
 
 /// The sentence the block of the side questions source starts with.
 const TOLD: &str = "The user asked these aside and was answered there; they show what the user was unsure of, for you to know, with no need to answer them again.";
@@ -20,20 +20,25 @@ pub(super) struct Asked {
 }
 
 impl Asked {
-    /// The side question `id` asking `of`, from its transcript `blocks`,
-    /// whose last turn `ended` or still works: the question the user typed,
-    /// then each later message of its own, each with the last text its turn
-    /// wrote. A turn still working, or one that wrote no text, as a failed
-    /// one, is told once it answers.
-    pub(super) fn of(id: &NodeId, of: SideOf, blocks: &[Block], ended: bool) -> Self {
-        let Some(first) = blocks
-            .iter()
-            .position(|block| matches!(block, Block::User(user) if user.turn_id.as_str() == id.as_str()))
-        else {
-            return Self { of, pairs: Vec::new() };
+    /// The side question `id` asking `of`, from its transcript: `earlier`,
+    /// the messages and texts its store holds from its first message up to
+    /// its window, read when the window does not hold that message
+    /// ([`Self::earlier`]), then the window's `blocks`; its last turn
+    /// `ended` or still works: the question the user typed, then each later
+    /// message of its own, each with the last text its turn wrote. A turn
+    /// still working, or one that wrote no text, as a failed one, is told
+    /// once it answers.
+    pub(super) fn of(id: &NodeId, of: SideOf, earlier: &[Block], blocks: &[Block], ended: bool) -> Self {
+        let first = |block: &Block| matches!(block, Block::User(user) if user.turn_id.as_str() == id.as_str());
+        let since = match earlier.iter().position(first) {
+            Some(at) => earlier[at..].iter().chain(blocks),
+            None => match blocks.iter().position(first) {
+                Some(at) => earlier[..0].iter().chain(&blocks[at..]),
+                None => return Self { of, pairs: Vec::new() },
+            },
         };
         let mut turns: Vec<(String, Option<&str>)> = Vec::new();
-        for block in &blocks[first..] {
+        for block in since {
             match block {
                 Block::User(_) if turns.is_empty() => turns.push((of.question.clone(), None)),
                 Block::User(user) => turns.push((text_of(&user.content), None)),
@@ -53,6 +58,37 @@ impl Asked {
             .filter_map(|(question, answer)| Some((question, bound_text(answer?).into_owned())))
             .collect();
         Self { of, pairs }
+    }
+}
+
+impl Asked {
+    /// What [`Asked::of`] reads before the window of the side question
+    /// `id`, whose window starts at `start` and `holds` its first message
+    /// or not: the messages and texts from that message on, read from its
+    /// `store` through the index of block types; none when the window holds
+    /// the message.
+    pub(super) async fn earlier(
+        store: &dyn SessionStore,
+        id: &NodeId,
+        start: usize,
+        holds: bool,
+    ) -> Result<Vec<Block>, StoreError> {
+        if holds || start == 0 {
+            return Ok(Vec::new());
+        }
+        let turn = TurnId::try_from(id.as_str()).map_err(|error| StoreError::Failed(error.to_string()))?;
+        let Some(first) = store.turn_position(&turn).await? else {
+            return Ok(Vec::new());
+        };
+        let read = store.blocks_of(vec![Kind::User, Kind::Text], first..start).await?;
+        Ok(read.into_iter().map(|(_, block)| block).collect())
+    }
+
+    /// Whether `blocks` hold the first message of the side question `id`.
+    pub(super) fn opens(id: &NodeId, blocks: &[Block]) -> bool {
+        blocks
+            .iter()
+            .any(|block| matches!(block, Block::User(user) if user.turn_id.as_str() == id.as_str()))
     }
 }
 

@@ -197,10 +197,10 @@ fn entries(items: &[InferenceItem], blocks: &[RequestBlock], session: &Uuid) -> 
                 if !is_call(items, block) {
                     return false;
                 }
-                match (message, call_message(block)) {
-                    (Some(batch), Some(own)) if batch != own => false,
-                    (batch, own) => {
-                        message = batch.or(own);
+                match (&message, call_message(block)) {
+                    (Some(batch), Some(own)) if *batch != own => false,
+                    (_, own) => {
+                        message = message.take().or(own);
                         true
                     }
                 }
@@ -235,12 +235,24 @@ fn is_call(items: &[InferenceItem], block: &RequestBlock) -> bool {
 
 /// The id of the assistant message the CLI wrote a tool-call block's call
 /// in, when an entry of the block records it.
-fn call_message(block: &RequestBlock) -> Option<&str> {
+fn call_message(block: &RequestBlock) -> Option<String> {
+    /// The fields of an entry the message's id is read from.
+    #[derive(serde::Deserialize)]
+    struct Recorded<'a> {
+        #[serde(rename = "type", borrow)]
+        kind: Option<std::borrow::Cow<'a, str>>,
+        message: Option<RecordedMessage>,
+    }
+    #[derive(serde::Deserialize)]
+    struct RecordedMessage {
+        id: Option<String>,
+    }
     block
         .entries
         .iter()
-        .find(|entry| entry["type"] == "assistant")
-        .and_then(|entry| entry["message"]["id"].as_str())
+        .filter_map(|entry| entry.decode::<Recorded>().ok())
+        .find(|entry| entry.kind.as_deref() == Some("assistant"))
+        .and_then(|entry| entry.message?.id)
 }
 
 /// The id of the assistant message an assistant entry belongs to that
@@ -269,10 +281,11 @@ fn block_entries(
     written: &[Value],
 ) -> (Vec<Value>, Vec<Value>) {
     let block_items = &items[block.items.clone()];
+    // Decoded here, for the request at hand: the block holds them as text.
     let (marks, entries): (Vec<Value>, Vec<Value>) = block
         .entries
         .iter()
-        .cloned()
+        .map(|entry| entry.decode::<Value>().expect("a held entry is JSON"))
         .partition(|entry| entry["type"] == LEFT_OUT);
     let mut kept = restored(&entries, &media(block_items)).unwrap_or_default();
     let past_summary = block_items.iter().any(|item| {

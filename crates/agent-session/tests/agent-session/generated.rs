@@ -373,6 +373,10 @@ struct Driver {
     blobs: Rc<MemoryBlobs>,
     session: AgentSession,
     restarts: u64,
+    /// How many requests the model had when the last restart took the
+    /// store: a turn the dead process never saved is no part of the
+    /// restored history, so its requests are no summary's prefix.
+    restarted_at: usize,
     /// The requests checked so far.
     checked: usize,
     /// The boundaries checked so far, by id.
@@ -423,6 +427,7 @@ impl Driver {
             blobs,
             session,
             restarts: 0,
+            restarted_at: 0,
             checked: 0,
             boundaries: HashSet::new(),
             seen: Vec::new(),
@@ -493,6 +498,7 @@ impl Driver {
     async fn restart(&mut self) {
         let copy = self.store.copy();
         self.restarts += 1;
+        self.restarted_at = self.model.0.borrow().requests.len();
         let deps = SessionDeps {
             runtime: Rc::new(test_runtime(vec![work_tool(&self.shared)])),
             store: copy.session_store(&root()),
@@ -507,7 +513,7 @@ impl Driver {
             deps,
             &[],
         )
-        .unwrap();
+        .await.unwrap();
         let old = std::mem::replace(&mut self.session, restored);
         old.abort().await;
         let _ = old.dispose().await;
@@ -593,9 +599,9 @@ impl Driver {
     }
 
     /// Checks what changed since the last check.
-    fn check(&mut self, step: usize) {
+    async fn check(&mut self, step: usize) {
         let context = format!("seed {} step {step}", self.seed);
-        let blocks = self.session.transcript().blocks;
+        let blocks = self.session.history().await.unwrap().blocks;
         self.check_kept_blocks(&blocks, &context);
         let boundaries: Vec<usize> = blocks
             .iter()
@@ -617,7 +623,7 @@ impl Driver {
                 });
             }
             if is_summary(request) {
-                let end = check_summary(&requests[..index], request, &context);
+                let end = check_summary(&requests[self.restarted_at.min(index)..index], request, &context);
                 self.history_ends.insert(end);
             }
         }
@@ -1161,7 +1167,7 @@ async fn drive(seed: u64) -> HashSet<HistoryEnd> {
     let mut driver = Driver::new(seed).await;
     for step in 0..STEPS {
         driver.step().await;
-        driver.check(step);
+        driver.check(step).await;
     }
     driver.shared.session.replace(None);
     let _ = driver.session.dispose().await;

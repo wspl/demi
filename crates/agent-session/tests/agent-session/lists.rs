@@ -14,7 +14,7 @@ use super::*;
 /// A shell tool whose input says what its command did: the files it wrote,
 /// each `[path, kind, before, after]`, and the paths it removed. The call
 /// whose input says `slow` returns once `release` fires.
-fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
+pub(super) fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
     let release = Rc::new(RefCell::new(Some(release)));
     tool("shell", move |call| {
         let input = &call.input;
@@ -78,7 +78,7 @@ fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
     })
 }
 
-fn listed(block: &Block, run: bool) -> Vec<(String, EditKind)> {
+pub(super) fn listed(block: &Block, run: bool) -> Vec<(String, EditKind)> {
     let Block::ToolCall(call) = block else {
         panic!("not a call: {block:?}");
     };

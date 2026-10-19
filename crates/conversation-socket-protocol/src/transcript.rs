@@ -315,12 +315,35 @@ pub fn page(
 /// The start of a transcript's latest page, for a reset the page named no
 /// blocks for (`rendering.md` § Where a reset starts).
 pub fn latest_page_start(blocks: &[Block]) -> usize {
+    latest_page_start_within(blocks, true)
+}
+
+/// The start of the latest page among `blocks`, the transcript's from
+/// its start when `whole`, else a window of it that a session holds
+/// (`runtime.md` § What a session holds), which starts inside the request
+/// before its first `user` block: the window's blocks before that block,
+/// the end of that request, count as a request of their own, and the page
+/// reaches no further back than the window, so that no block before it is
+/// read to size the page. For example, a window from a boundary at 23,000
+/// whose first message is at 23,600 starts its latest page at 23,600 when
+/// that request fills the page, and never at the earlier request's start.
+pub fn latest_page_start_within(blocks: &[Block], whole: bool) -> usize {
     let users: Vec<usize> = blocks
         .iter()
         .enumerate()
         .filter_map(|(index, block)| matches!(block, Block::User(_)).then_some(index))
         .collect();
-    let requests = requests(blocks.len(), &users);
+    let mut requests = requests(blocks.len(), &users);
+    if !whole
+        && let Some(&first) = users.first()
+        && first > 0
+        && let Some(leading) = requests.first_mut()
+    {
+        // The first request starts at its own `user` block, after the
+        // window's leading part.
+        leading.start = first;
+        requests.insert(0, 0..first);
+    }
     page(&requests, PageAt::Latest, |range| {
         light_bytes(&blocks[range])
     })

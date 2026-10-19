@@ -52,6 +52,7 @@ mod input;
 mod lists;
 mod recovery;
 mod requests;
+mod window;
 
 type Invoke =
     Rc<dyn Fn(ToolInvocation) -> LocalBoxFuture<'static, Result<ToolOutcome, ToolFailure>>>;
@@ -439,13 +440,13 @@ fn background_call(command: &str, interval_ms: Option<u64>, description: &str) -
 /// An edit of the `user` block of the turn `turn` in the session's
 /// transcript as it is now, to one text. Equal requests have equal
 /// digests.
-fn edit_of(
+async fn edit_of(
     session: &AgentSession,
     turn: &str,
     operation: &str,
     replacement: &str,
 ) -> EditSubmission {
-    let snapshot = session.transcript();
+    let snapshot = session.history().await.unwrap();
     let target = snapshot
         .blocks
         .iter()
@@ -579,7 +580,7 @@ async fn start_with(
 }
 
 /// Restores the node `root` from `checkpoint`, saving into `store`.
-fn restore_session(
+async fn restore_session(
     checkpoint: demi_agent_store::Checkpoint,
     store: &Rc<MemoryTreeStore>,
     provider: &ScriptedRuntime,
@@ -594,11 +595,12 @@ fn restore_session(
         clock,
         SessionConfig::default(),
     )
+    .await
 }
 
 /// Restores the node `root` from `checkpoint` with `config`, saving into
 /// `store`.
-fn restore_configured(
+async fn restore_configured(
     checkpoint: demi_agent_store::Checkpoint,
     store: &Rc<MemoryTreeStore>,
     provider: &ScriptedRuntime,
@@ -613,7 +615,7 @@ fn restore_configured(
         clock,
         config,
     };
-    AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps, &[]).unwrap()
+    AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps, &[]).await.unwrap()
 }
 
 /// Which runtime of a [`NumberedRuntime`]'s family served each request, and
@@ -1446,7 +1448,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
     }];
     let (restored, continuation) =
         AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps, &running)
-            .unwrap();
+            .await.unwrap();
 
     assert!(continuation.interrupted);
     assert_eq!(restored.phase(), SessionPhase::Idle);
@@ -1559,12 +1561,48 @@ impl SessionStore for SlowStore {
         &self,
         position: usize,
         version: u32,
+        held_from: usize,
     ) -> LocalBoxFuture<'_, Result<demi_agent_store::Switched, StoreError>> {
-        self.inner.switch(position, version)
+        self.inner.switch(position, version, held_from)
     }
 
     fn blobs(&self) -> &dyn demi_agent_store::media::BlobStore {
         self.inner.blobs()
+    }
+    fn blocks(&self, range: std::ops::Range<usize>) -> LocalBoxFuture<'_, Result<demi_agent_store::Rows, StoreError>> {
+        self.inner.blocks(range)
+    }
+
+    fn position<'a>(&'a self, id: &'a demi_shared_types::BlockId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        self.inner.position(id)
+    }
+
+    fn last_of(&self, kind: demi_agent_store::Kind, end: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        self.inner.last_of(kind, end)
+    }
+
+    fn next_of(&self, kind: demi_agent_store::Kind, from: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        self.inner.next_of(kind, from)
+    }
+
+    fn blocks_of(
+        &self,
+        kinds: Vec<demi_agent_store::Kind>,
+        range: std::ops::Range<usize>,
+    ) -> LocalBoxFuture<'_, Result<Vec<(usize, demi_shared_types::Block)>, StoreError>> {
+        self.inner.blocks_of(kinds, range)
+    }
+
+    fn turn_position<'a>(&'a self, turn: &'a demi_shared_types::TurnId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        self.inner.turn_position(turn)
+    }
+
+    fn earlier(&self, end: usize) -> LocalBoxFuture<'_, Result<demi_agent_store::EarlierRows, StoreError>> {
+        self.inner.earlier(end)
+    }
+
+    fn prefix(&self, length: usize) -> LocalBoxFuture<'_, Result<Option<demi_agent_store::StoredPrefix>, StoreError>> {
+        self.inner.prefix(length)
     }
 }
 
@@ -2135,7 +2173,7 @@ async fn a_streamed_delta_touches_only_its_turns_blocks_on_a_long_transcript() {
         &streaming,
         test_runtime(Vec::new()),
         Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-    );
+    ).await;
     let batches = Rc::new(RefCell::new(Vec::new()));
     let _subscription = session.subscribe({
         let batches = batches.clone();
@@ -2250,7 +2288,7 @@ async fn each_request_says_how_many_of_its_items_the_latest_answered_request_car
 async fn a_runs_entries_are_kept_on_the_blocks_they_name_and_come_back_with_them() {
     let entries = |of: EntriesOf, names: &[&str]| ProviderEvent::Entries {
         of,
-        entries: names.iter().map(|name| json!({ "uuid": name })).collect(),
+        entries: names.iter().map(|name| json!({ "uuid": name }).into()).collect(),
     };
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![
@@ -2310,7 +2348,7 @@ async fn a_runs_entries_are_kept_on_the_blocks_they_name_and_come_back_with_them
         block
             .entries()
             .iter()
-            .map(|entry| entry["uuid"].as_str().unwrap().to_owned())
+            .map(|entry| entry.decode::<serde_json::Value>().unwrap()["uuid"].as_str().unwrap().to_owned())
             .collect()
     };
     let kept: Vec<Vec<String>> = blocks[..4].iter().map(names).collect();
@@ -2339,7 +2377,7 @@ async fn a_runs_entries_are_kept_on_the_blocks_they_name_and_come_back_with_them
             let names = block
                 .entries
                 .iter()
-                .map(|entry| entry["uuid"].as_str().unwrap().to_owned())
+                .map(|entry| entry.decode::<serde_json::Value>().unwrap()["uuid"].as_str().unwrap().to_owned())
                 .collect();
             (block.items.clone(), names)
         })

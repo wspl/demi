@@ -12,15 +12,15 @@ use std::{
 use demi_provider_common::UserPart;
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, BlockId, CommandEnd, CommandId, FileExtension, Model, ModelSelection, NodeId,
-    QueuedMessage, Sequence, Timestamp, UserContentBlock,
+    QueuedMessage, Sequence, Timestamp, TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 
 use demi_conversation_socket_protocol::Versions;
 
 use crate::{
-    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, NodeClose, NodeRecord,
-    RunningCommand, SessionStore, StoreError, StoredCommand, StoredSubagent, Switched,
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, EarlierRows, Kind, NodeClose,
+    NodeRecord, Rows, RunningCommand, SessionStore, StoreError, StoredCommand, StoredPrefix, StoredSubagent, Switched, SwitchedBefore,
     media::BlobStore,
     versions::{Sibling, version_rows, versions_of},
 };
@@ -142,10 +142,12 @@ struct StoredNode {
     cut: Option<u64>,
 }
 
-/// One row of a node's tree.
+/// One row of a node's tree. Its block is shared, so a node that starts
+/// with another's rows shares their blocks, as the database copies rows
+/// without the process holding them.
 #[derive(Debug, Clone)]
 struct StoredRow {
-    block: Block,
+    block: Rc<Block>,
     follows: Option<u64>,
     replaces: Option<u64>,
 }
@@ -155,16 +157,43 @@ impl StoredNode {
         &self.rows[usize::try_from(row).expect("a row number fits")]
     }
 
-    /// The rows that follow `parent`, with the rows they replace.
-    fn siblings(&self, parent: Option<u64>) -> Vec<Sibling> {
-        (0u64..)
-            .zip(&self.rows)
-            .filter(|(_, row)| row.follows == parent)
-            .map(|(number, row)| Sibling {
-                row: number,
-                replaces: row.replaces,
-            })
-            .collect()
+    /// The blocks at the positions `range` of the path.
+    fn blocks(&self, range: std::ops::Range<usize>) -> Vec<Block> {
+        self.path[range].iter().map(|row| Block::clone(&self.row(*row).block)).collect()
+    }
+
+    /// The position of the path's first block of `kind` from `from` on.
+    fn next_of(&self, kind: Kind, from: usize) -> Option<usize> {
+        let from = from.min(self.path.len());
+        self.path[from..]
+            .iter()
+            .position(|row| kind.holds(&self.row(*row).block))
+            .map(|at| from + at)
+    }
+
+    /// What [`SessionStore::earlier`] reads before `end`.
+    fn earlier(&self, end: usize) -> EarlierRows {
+        let end = end.min(self.path.len());
+        let mut rows = EarlierRows::default();
+        for row in &self.path[..end] {
+            match &*self.row(*row).block {
+                Block::User(user) => rows.user_turns.push(user.turn_id.clone()),
+                Block::ToolCall(call) => rows.calls.push(call.id.clone()),
+                _ => {}
+            }
+        }
+        let last = |kind: Kind| self.last_of(kind, end).map(|at| self.blocks(at..at + 1).remove(0));
+        rows.last_input = last(Kind::Input);
+        rows.last_user_input = last(Kind::UserInput);
+        rows.last_record = last(Kind::Record);
+        rows
+    }
+
+    /// The position of the path's last block of `kind` before `end`.
+    fn last_of(&self, kind: Kind, end: usize) -> Option<usize> {
+        self.path[..end.min(self.path.len())]
+            .iter()
+            .rposition(|row| kind.holds(&self.row(*row).block))
     }
 
     /// The row `row` was carried from through every compaction that
@@ -185,10 +214,10 @@ impl StoredNode {
     /// The parent of the place whose versions `position` shows: its own,
     /// or, for a block a compaction carried whose own place holds none,
     /// the place it was carried from.
-    fn shown_place(&self, position: usize) -> Option<u64> {
+    fn shown_place(&self, position: usize, following: &Following) -> Option<u64> {
         let own = position.checked_sub(1).map(|before| self.path[before]);
         let row = self.path[position];
-        if versions_of(&self.siblings(own), row).is_some() {
+        if versions_of(following.of(own), row).is_some() {
             return own;
         }
         self.row(self.carried(row)).follows
@@ -199,15 +228,38 @@ impl StoredNode {
     /// from there, which the boundary then stands in for without showing
     /// them (`message-editing.md` § Versions).
     fn versions(&self, from: usize) -> BTreeMap<usize, Versions> {
+        let following = Following::of_rows(&self.rows);
         let mut shown: BTreeMap<Option<u64>, (usize, Versions)> = BTreeMap::new();
         for position in 0..self.path.len() {
-            let parent = self.shown_place(position);
+            let parent = self.shown_place(position, &following);
             let row = self.carried(self.path[position]);
-            if let Some(versions) = versions_of(&self.siblings(parent), row) {
+            if let Some(versions) = versions_of(following.of(parent), row) {
                 shown.insert(parent, (position, versions));
             }
         }
         shown.into_values().filter(|(position, _)| *position >= from).collect()
+    }
+}
+
+/// The rows that follow each row, read in one pass: asking each place of
+/// a path for its siblings apart reads every row per place, which makes a
+/// load of a long path (`tests/held`) minutes.
+struct Following(BTreeMap<Option<u64>, Vec<Sibling>>);
+
+impl Following {
+    fn of_rows(rows: &[StoredRow]) -> Self {
+        let mut following: BTreeMap<Option<u64>, Vec<Sibling>> = BTreeMap::new();
+        for (number, row) in (0u64..).zip(rows) {
+            following.entry(row.follows).or_default().push(Sibling {
+                row: number,
+                replaces: row.replaces,
+            });
+        }
+        Self(following)
+    }
+
+    fn of(&self, parent: Option<u64>) -> &[Sibling] {
+        self.0.get(&parent).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -338,13 +390,23 @@ impl MemoryTreeStore {
             .borrow()
             .nodes
             .get(id)
-            .map(|node| node.rows.iter().map(|row| row.block.clone()).collect())
+            .map(|node| node.rows.iter().map(|row| Block::clone(&row.block)).collect())
             .unwrap_or_default()
     }
 
-    /// The node's checkpoint as the store keeps it.
+    /// The node's checkpoint as a load reads it: its window.
     pub fn checkpoint(&self, id: &NodeId) -> Option<Checkpoint> {
         load(&self.stored.borrow(), id).ok().flatten()
+    }
+
+    /// The blocks of the node's whole current path.
+    pub fn path(&self, id: &NodeId) -> Vec<Block> {
+        self.stored
+            .borrow()
+            .nodes
+            .get(id)
+            .map(|node| node.blocks(0..node.path.len()))
+            .unwrap_or_default()
     }
 
     pub fn record(&self, id: &NodeId) -> Option<NodeRecord> {
@@ -416,11 +478,18 @@ fn load(stored: &Stored, id: &NodeId) -> Result<Option<Checkpoint>, StoreError> 
     let Some(node) = stored.nodes.get(id) else {
         return Ok(None);
     };
+    let start = node.last_of(Kind::CompactionBoundary, node.path.len()).unwrap_or(0);
     Ok(Some(Checkpoint {
         state: node.state.clone(),
-        transcript: node.path.iter().map(|row| node.row(*row).block.clone()).collect(),
-        versions: node.versions(0),
+        start,
+        transcript: node.blocks(start..node.path.len()),
+        versions: node.versions(start),
     }))
+}
+
+/// The node `id` of `stored`, or the failure of a read of one it lacks.
+fn node<'a>(stored: &'a Stored, id: &NodeId) -> Result<&'a StoredNode, StoreError> {
+    stored.nodes.get(id).ok_or_else(|| missing(id))
 }
 
 /// Applies a save to its node, and marks delivered the child rounds whose
@@ -452,7 +521,7 @@ fn apply_save(
     for (position, block) in &update.changed_blocks {
         if *position < cut {
             let row = usize::try_from(node.path[*position]).expect("a row number fits");
-            node.rows[row].block = block.clone();
+            node.rows[row].block = Rc::new(block.clone());
             continue;
         }
         if *position != node.path.len() {
@@ -467,7 +536,7 @@ fn apply_save(
             None => node.cut.take().filter(|cut| node.row(*cut).follows == follows),
         };
         node.rows.push(StoredRow {
-            block: block.clone(),
+            block: Rc::new(block.clone()),
             follows,
             replaces,
         });
@@ -518,14 +587,95 @@ impl SessionStore for MemorySessionStore {
         Box::pin(async move { load(&self.stored.borrow(), &self.id) })
     }
 
-    fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
+    fn blocks(&self, range: std::ops::Range<usize>) -> LocalBoxFuture<'_, Result<Rows, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let node = node(&stored, &self.id)?;
+            if range.end > node.path.len() {
+                return Err(StoreError::Failed(format!("the path of node {} ends before {}", self.id, range.end)));
+            }
+            let mut versions = node.versions(range.start);
+            versions.retain(|position, _| *position < range.end);
+            Ok(Rows {
+                blocks: node.blocks(range),
+                versions,
+            })
+        })
+    }
+
+    fn position<'a>(&'a self, id: &'a BlockId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let node = node(&stored, &self.id)?;
+            Ok(node.path.iter().position(|row| node.row(*row).block.id() == id))
+        })
+    }
+
+    fn last_of(&self, kind: Kind, end: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        Box::pin(async move { Ok(node(&self.stored.borrow(), &self.id)?.last_of(kind, end)) })
+    }
+
+    fn next_of(&self, kind: Kind, from: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        Box::pin(async move { Ok(node(&self.stored.borrow(), &self.id)?.next_of(kind, from)) })
+    }
+
+    fn blocks_of(
+        &self,
+        kinds: Vec<Kind>,
+        range: std::ops::Range<usize>,
+    ) -> LocalBoxFuture<'_, Result<Vec<(usize, Block)>, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let node = node(&stored, &self.id)?;
+            let end = range.end.min(node.path.len());
+            Ok((range.start.min(end)..end)
+                .filter_map(|at| {
+                    let block = &node.row(node.path[at]).block;
+                    kinds.iter().any(|kind| kind.holds(block)).then(|| (at, Block::clone(block)))
+                })
+                .collect())
+        })
+    }
+
+    fn turn_position<'a>(&'a self, turn: &'a TurnId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let node = node(&stored, &self.id)?;
+            Ok(node
+                .path
+                .iter()
+                .position(|row| matches!(&*node.row(*row).block, Block::User(user) if &user.turn_id == turn)))
+        })
+    }
+
+    fn earlier(&self, end: usize) -> LocalBoxFuture<'_, Result<EarlierRows, StoreError>> {
+        Box::pin(async move { Ok(node(&self.stored.borrow(), &self.id)?.earlier(end)) })
+    }
+
+    fn prefix(&self, length: usize) -> LocalBoxFuture<'_, Result<Option<StoredPrefix>, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let node = node(&stored, &self.id)?;
+            if length > node.path.len() {
+                return Err(StoreError::Failed(format!("the path of node {} ends before {length}", self.id)));
+            }
+            Ok(length.checked_sub(1).map(|last| StoredPrefix {
+                node: self.id.clone(),
+                leaf: node.path[last],
+                length,
+            }))
+        })
+    }
+
+    fn switch(&self, position: usize, version: u32, held_from: usize) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
         Box::pin(async move {
             let mut stored = self.stored.borrow_mut();
             let node = stored.nodes.get_mut(&self.id).ok_or_else(|| missing(&self.id))?;
             if position >= node.path.len() {
                 return Err(StoreError::Failed(format!("the path of node {} ends before {position}", self.id)));
             }
-            let parent = node.shown_place(position);
+            let following = Following::of_rows(&node.rows);
+            let parent = node.shown_place(position, &following);
             let from = match parent {
                 None => 0,
                 Some(parent) => node
@@ -535,7 +685,7 @@ impl SessionStore for MemorySessionStore {
                     .ok_or_else(|| StoreError::Failed(format!("the path of node {} leaves its place", self.id)))?
                     + 1,
             };
-            let members = version_rows(&node.siblings(parent), version)
+            let members = version_rows(following.of(parent), version)
                 .ok_or_else(|| StoreError::Failed(format!("position {position} holds no version {version}")))?;
             // A row follows an older one, so one pass in order finds every
             // row below the version's; the latest of them is a leaf.
@@ -556,10 +706,24 @@ impl SessionStore for MemorySessionStore {
             node.path.truncate(from);
             node.path.extend(tail);
             node.cut = None;
+            let before = (from < held_from).then(|| {
+                let start = node.last_of(Kind::CompactionBoundary, from + 1).unwrap_or(0);
+                let mut versions = node.versions(start);
+                versions.retain(|position, _| *position < from);
+                SwitchedBefore {
+                    start,
+                    rows: Rows {
+                        blocks: node.blocks(start..from),
+                        versions,
+                    },
+                    earlier: node.earlier(start),
+                }
+            });
             Ok(Switched {
                 from,
-                blocks: node.path[from..].iter().map(|row| node.row(*row).block.clone()).collect(),
+                blocks: node.blocks(from..node.path.len()),
                 versions: node.versions(from),
+                before,
             })
         })
     }
@@ -661,6 +825,52 @@ impl AgentTreeStore for MemoryTreeStore {
                     state: initial.state.clone(),
                     rows: Vec::new(),
                     path: Vec::new(),
+                    cut: None,
+                },
+            );
+            apply_save(&mut stored, &id, initial)
+        })
+    }
+
+    /// One store holds every tree a test makes, so the rows of `prefix`
+    /// are this store's whatever `root` they belong to.
+    fn create_node_after<'a>(
+        &'a self,
+        record: NodeRecord,
+        _root: Option<&'a NodeId>,
+        prefix: &'a StoredPrefix,
+        initial: CheckpointUpdate,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let mut stored = self.stored.borrow_mut();
+            if stored.nodes.contains_key(&record.id) {
+                return Err(StoreError::Failed(format!("node {} already exists", record.id)));
+            }
+            let source = node(&stored, &prefix.node)?;
+            let mut chain = vec![prefix.leaf];
+            while let Some(follows) = source.row(*chain.last().expect("the chain has a row")).follows {
+                chain.push(follows);
+            }
+            chain.reverse();
+            if chain.len() != prefix.length {
+                return Err(StoreError::Failed(format!("the prefix of node {} is not {} rows", prefix.node, prefix.length)));
+            }
+            let rows: Vec<StoredRow> = (0u64..)
+                .zip(&chain)
+                .map(|(number, row)| StoredRow {
+                    block: source.row(*row).block.clone(),
+                    follows: number.checked_sub(1),
+                    replaces: None,
+                })
+                .collect();
+            let id = record.id.clone();
+            stored.nodes.insert(
+                id.clone(),
+                StoredNode {
+                    record,
+                    state: initial.state.clone(),
+                    path: (0..u64::try_from(rows.len()).expect("a row number fits")).collect(),
+                    rows,
                     cut: None,
                 },
             );
@@ -869,7 +1079,7 @@ pub mod store_contract {
 
     use super::{test_model, text};
     use crate::{
-        AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose,
+        AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, Kind, NodeClose,
         NodeRecord, PendingAgentInput, Placement,
     };
 
@@ -909,6 +1119,12 @@ pub mod store_contract {
                 directory: "/work".to_owned(),
             },
         }
+    }
+
+    /// Creates `record` after the rows `prefix` of `root`'s tree, as a
+    /// Fork does.
+    async fn create_after(store: &dyn AgentTreeStore, record: NodeRecord, prefix: &crate::StoredPrefix, initial: CheckpointUpdate) {
+        store.create_node_after(record, None, prefix, initial).await.expect("the node is created");
     }
 
     fn update(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
@@ -1071,16 +1287,30 @@ pub mod store_contract {
         let (_, held) = load().await;
         assert_eq!(held.into_iter().collect::<Vec<_>>(), [(2, versions(2, 2))]);
 
-        // Back to the first version: its rows as they were written.
-        let switched = root.switch(2, 1).await.expect("the switch commits");
+        // Rows captured to start a Fork with stay as they were captured
+        // whatever the source switches to later.
+        let captured = root.prefix(4).await.expect("the store reads").expect("four blocks are rows");
+
+        // Back to the first version: its rows as they were written, and,
+        // for a caller whose window starts after the place, the path
+        // before it.
+        let switched = root.switch(2, 1, 3).await.expect("the switch commits");
         assert_eq!(switched.blocks, [said("u2"), said("a2")]);
+        let before = switched.before.expect("the place is before the caller's window");
+        assert_eq!((before.start, before.rows.blocks), (0, vec![said("u1"), said("a1")]));
         assert_eq!(switched.versions.into_iter().collect::<Vec<_>>(), [(2, versions(1, 2))]);
         assert_eq!(load().await.0, first);
         // And to the second again: where that branch ended, the retry.
-        let switched = root.switch(2, 2).await.expect("the switch commits");
+        let switched = root.switch(2, 2, 0).await.expect("the switch commits");
         assert_eq!(switched.blocks, [said("u2-edited"), said("a2-retried")]);
-        assert!(root.switch(2, 3).await.is_err(), "a version its place lacks");
-        assert!(root.switch(4, 1).await.is_err(), "a place past the path");
+        assert!(root.switch(2, 3, 0).await.is_err(), "a version its place lacks");
+        assert!(root.switch(4, 1, 0).await.is_err(), "a place past the path");
+        let mut after = update(Vec::new(), Vec::new());
+        after.block_count = 4;
+        after.moved_from = None;
+        create_after(store, record("fork", Some("root"), 7), &captured, after).await;
+        let fork = store.session_store(&id("fork")).load().await.expect("the store reads").expect("the node has one");
+        assert_eq!(fork.transcript, [said("u1"), said("a1"), said("u2-edited"), said("a2-retried")]);
 
         // Regenerate cuts after the message; the answer that follows in a
         // later save is a version of its own, and the retry's row and the
@@ -1130,6 +1360,100 @@ pub mod store_contract {
         assert_eq!(started, [(1, true), (2, false), (3, true), (4, true)]);
     }
 
+    /// `runtime.md` § Restoring: a load reads the current path's window,
+    /// from its last `compaction_boundary` on, and nothing before it; what
+    /// a session reads of the blocks before is read by range, by id, by
+    /// kind and as the ids it keeps.
+    pub async fn a_load_reads_the_window_and_the_rest_on_demand(store: &dyn AgentTreeStore) {
+        let user = |turn: &str| {
+            Block::User(UserBlock {
+                comments: Vec::new(),
+                entries: Vec::new(),
+                id: format!("user-{turn}").as_str().try_into().expect("a test block id is not empty"),
+                turn_id: TurnId::try_from(turn).expect("a test turn id is not empty"),
+                created_at: Timestamp::UNIX_EPOCH,
+                model: test_model(),
+                content: text(turn),
+                preamble: None,
+                automation: None,
+            })
+        };
+        let boundary = |name: &str| {
+            Block::CompactionBoundary(demi_shared_types::CompactionBoundaryBlock {
+                id: name.try_into().expect("a test block id is not empty"),
+                created_at: Timestamp::UNIX_EPOCH,
+                model: test_model(),
+                summary: format!("summary {name}"),
+                summary_tokens: 10,
+                kept: Vec::new(),
+                entries: Vec::new(),
+            })
+        };
+        let call = Block::ToolCall(demi_shared_types::ToolCallBlock {
+            run: None,
+            id: "call".try_into().expect("a test block id is not empty"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            tool_use_id: "use-1".to_owned(),
+            tool_name: "shell".to_owned(),
+            input: "{}".to_owned(),
+            status: demi_shared_types::ToolCallStatus::Completed,
+            output: Vec::new(),
+            view: None,
+            ended_at: None,
+            entries: Vec::new(),
+        });
+        let path = vec![
+            user("t1"),
+            said("a1"),
+            boundary("b1"),
+            user("t2"),
+            call.clone(),
+            boundary("b2"),
+            said("a3"),
+        ];
+        create(store, record("root", None, 0), update(Vec::new(), path.clone())).await;
+        let root = store.session_store(&id("root"));
+        let loaded = root.load().await.expect("the store reads").expect("the node has one");
+        assert_eq!((loaded.start, loaded.transcript), (5, path[5..].to_vec()));
+        assert_eq!(root.blocks(0..2).await.expect("the store reads").blocks, path[..2]);
+        assert_eq!(root.position(path[1].id()).await.expect("the store reads"), Some(1));
+        assert_eq!(root.position(&"elsewhere".try_into().unwrap()).await.expect("the store reads"), None);
+        assert_eq!(root.last_of(Kind::CompactionBoundary, 5).await.expect("the store reads"), Some(2));
+        assert_eq!(root.last_of(Kind::User, 3).await.expect("the store reads"), Some(0));
+        assert_eq!(root.last_of(Kind::CompactionBoundary, 2).await.expect("the store reads"), None);
+        let earlier = root.earlier(5).await.expect("the store reads");
+        assert_eq!(earlier.user_turns, [TurnId::try_from("t1").unwrap(), TurnId::try_from("t2").unwrap()]);
+        assert_eq!(earlier.calls, [call.id().clone()]);
+        assert_eq!(earlier.last_input.as_ref(), Some(&path[3]));
+        assert_eq!(earlier.last_user_input.as_ref(), Some(&path[3]));
+        // A boundary is no turn's record.
+        assert_eq!(earlier.last_record.as_ref(), Some(&path[4]));
+        assert!(root.blocks(5..8).await.is_err(), "a range past the path");
+        assert_eq!(root.next_of(Kind::User, 1).await.expect("the store reads"), Some(3));
+        assert_eq!(root.next_of(Kind::User, 4).await.expect("the store reads"), None);
+        assert_eq!(
+            root.blocks_of(vec![Kind::User, Kind::ToolCall], 0..5).await.expect("the store reads"),
+            [(0, path[0].clone()), (3, path[3].clone()), (4, path[4].clone())]
+        );
+        assert_eq!(root.turn_position(&TurnId::try_from("t2").unwrap()).await.expect("the store reads"), Some(3));
+        assert_eq!(root.turn_position(&TurnId::try_from("t9").unwrap()).await.expect("the store reads"), None);
+
+        // A node that starts with the first five rows, copied by the
+        // store, holds them as its own: its window from their boundary.
+        let prefix = root.prefix(5).await.expect("the store reads").expect("five blocks are rows");
+        let mut after = update(Vec::new(), Vec::new());
+        after.changed_blocks = vec![(5, said("forked"))];
+        after.block_count = 6;
+        after.moved_from = Some(5);
+        create_after(store, record("fork", Some("root"), 7), &prefix, after).await;
+        let fork = store.session_store(&id("fork"));
+        let loaded = fork.load().await.expect("the store reads").expect("the node has one");
+        assert_eq!((loaded.start, loaded.transcript), (2, [&path[2..5], &[said("forked")]].concat()));
+        assert_eq!(fork.blocks(0..2).await.expect("the store reads").blocks, path[..2]);
+        assert_eq!(root.prefix(0).await.expect("the store reads"), None);
+    }
+
     /// `message-editing.md` § Versions: a message that compaction carries
     /// past its boundary keeps its versions, which its new position shows
     /// and the boundary does not, and switching there brings back the
@@ -1159,11 +1483,11 @@ pub mod store_contract {
         assert_eq!(load().await, (carried.clone(), vec![(3, versions(2, 2))]));
 
         // Its first version is the branch before the compaction.
-        let switched = root.switch(3, 1).await.expect("the switch commits");
+        let switched = root.switch(3, 1, 0).await.expect("the switch commits");
         assert_eq!(switched.from, 2);
         assert_eq!(switched.blocks, [said("u2"), said("a2")]);
         assert_eq!(load().await, (first, vec![(2, versions(1, 2))]));
-        let switched = root.switch(2, 2).await.expect("the switch commits");
+        let switched = root.switch(2, 2, 0).await.expect("the switch commits");
         assert_eq!(switched.blocks, carried[2..]);
         assert_eq!(load().await, (carried, vec![(3, versions(2, 2))]));
     }

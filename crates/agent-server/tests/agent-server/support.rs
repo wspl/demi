@@ -1361,12 +1361,13 @@ impl ContextSource for SideQuestionsSource {
         _: &'a TurnId,
         seen: &'a [&'a str],
     ) -> LocalBoxFuture<'a, Result<Option<demi_agent_tools::ContextAnswer>, String>> {
-        let told = self
-            .server
-            .borrow()
-            .upgrade()
-            .and_then(|server| server.tree(node.root))
-            .and_then(|tree| tree.side_questions_context(node.node, seen));
-        Box::pin(async move { Ok(told.map(demi_agent_tools::ContextAnswer::from)) })
+        let tree = self.server.borrow().upgrade().and_then(|server| server.tree(node.root));
+        Box::pin(async move {
+            let Some(tree) = tree else {
+                return Ok(None);
+            };
+            let told = tree.side_questions_context(node.node, seen).await.map_err(|error| error.to_string())?;
+            Ok(told.map(demi_agent_tools::ContextAnswer::from))
+        })
     }
 }

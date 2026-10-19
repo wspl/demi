@@ -712,7 +712,7 @@ mod tests {
         });
         let mut page: TranscriptPage = serde_json::from_value(wire.clone()).unwrap();
         *page.blocks[0].entries_mut().unwrap() =
-            vec![serde_json::json!({ "type": "assistant", "uuid": "kept" })];
+            vec![serde_json::json!({ "type": "assistant", "uuid": "kept" }).into()];
         assert_eq!(serde_json::to_value(&page).unwrap(), wire);
     }
 

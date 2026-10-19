@@ -432,7 +432,7 @@ impl InferenceRequest {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RequestBlock {
     pub items: std::ops::Range<usize>,
-    pub entries: Vec<serde_json::Value>,
+    pub entries: Vec<demi_shared_types::Entry>,
 }
 
 /// One entry of the transcript as a provider replays it. Its media hold
@@ -598,7 +598,7 @@ pub enum ProviderEvent {
     /// nothing the model sees in this run.
     Entries {
         of: EntriesOf,
-        entries: Vec<serde_json::Value>,
+        entries: Vec<demi_shared_types::Entry>,
     },
     /// One call to the vendor of a run that makes several, such as a Claude
     /// Code run in which the CLI calls the vendor more than once, for the

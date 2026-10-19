@@ -666,7 +666,7 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
         .await
         .unwrap();
     let mut running = cold.clone();
-    running.state.phase = SessionPhase::Running;
+    running.checkpoint.state.phase = SessionPhase::Running;
     let destination = NodeId::try_from("fork").unwrap();
     let invalid = fixture.server.initialize_fork(&destination, running).await;
     fixture
@@ -676,9 +676,9 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
         .unwrap();
 
     assert_eq!(live, cold);
-    assert_eq!(live.transcript[..], blocks[..2]);
-    assert_eq!(live.state.phase, SessionPhase::Idle);
-    assert!(live.state.queue.is_empty() && live.state.edits.is_empty());
+    assert_eq!(live.checkpoint.transcript[..], blocks[..2]);
+    assert_eq!(live.checkpoint.state.phase, SessionPhase::Idle);
+    assert!(live.checkpoint.state.queue.is_empty() && live.checkpoint.state.edits.is_empty());
     assert_eq!(not_text, Err(ForkError::Target(CutError::NotCompletedText)));
     assert_eq!(invalid, Err(ForkError::InvalidSeed));
     let record = fixture.store.record(&destination).unwrap();
