@@ -34,9 +34,10 @@ const { opens, open } = useCapsuleOpening(() => props.editable, () => capsule.va
     :capsule="capsule"
     :transfer="transfer"
     :selected="selected"
+    :retryable="!!transfers?.retry"
     :class="opens ? 'cursor-pointer' : ''"
     data-drag-handle
     @click="open"
-    @retry="transfers?.retry(capsule.id)"
+    @retry="transfers?.retry?.(capsule.id)"
   />
 </template>

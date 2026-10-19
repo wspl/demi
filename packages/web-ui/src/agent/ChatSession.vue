@@ -27,6 +27,7 @@ import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
+import UndeliveredRetryChip from './UndeliveredRetryChip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
@@ -238,11 +239,15 @@ const emit = defineEmits<{
   /** Expose Port on the turn's failure: the port of the user's device it named, then the turn resumes. */
   exposePort: [deviceId: string, port: number]
   retryLoad: []
-  /** Retry on the message `id`, whose delivery failed. */
-  retrySubmission: [id: string]
+  /**
+   * The dock's Retry: the messages not delivered go again in the order they
+   * were sent, each as a new message at the end, but one a resend cannot
+   * deliver (`turns.md` § Following the agent's work).
+   */
+  retryUndelivered: []
   /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
   editSubmission: [id: string]
-  /** Delete on the message `id`, whose delivery failed, once the user confirmed it. */
+  /** Delete on the message `id`, whose delivery failed: it goes at once. */
   deleteSubmission: [id: string]
   abortSubagents: []
   abortSubagent: [id: string]
@@ -423,13 +428,13 @@ watch(
 provideLabelRoom(() => titleRoom.value)
 // Recovery of an unfinished turn needs a provider and a conversation that is
 // neither archived nor being edited, whose session has told its turn. A
-// message the user sent, still on its way or waiting for the backend, is the
-// other way forward.
+// message the user sent and still on its way is the other way forward; one
+// not delivered is not, and the dock's Retry stands before Resume for it.
 const canRecover = computed(
   () =>
     props.hasProvider &&
     !props.messageEdit &&
-    !props.pendingSubmissions?.length &&
+    !props.pendingSubmissions?.some((submission) => submission.error === null) &&
     !props.conversation.archived &&
     sessionShown(props.conversation.load),
 )
@@ -799,7 +804,6 @@ watch(
             :edit-target-id="messageEdit?.request.targetBlockId"
             :commenting="commenting"
             :asking="shownAsking"
-            @retry-submission="(id) => emit('retrySubmission', id)"
             @edit-submission="(id) => emit('editSubmission', id)"
             @delete-submission="(id) => emit('deleteSubmission', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
@@ -833,7 +837,12 @@ watch(
               />
             </template>
             <template #chips>
-              <!-- The transcript says what happened; the one recovery control is here, over the input. -->
+              <!-- The transcript says what happened; the recovery controls are here, over the input. -->
+              <UndeliveredRetryChip
+                v-if="hasProvider && !conversation.archived"
+                :pending-submissions="pendingSubmissions ?? []"
+                @retry="emit('retryUndelivered')"
+              />
               <SessionDockChip v-if="recovery" @click="recover">
                 <Play :size="ICON_PX.in28" />
                 {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}

@@ -98,9 +98,7 @@
       "recall": "收回",
       "recalled": "訊息已收回",
       "notDelivered": "此訊息未能送達。",
-      "fromAutomation": "自動化",
-      "deleteTitle": "刪除這則訊息？",
-      "deleteBody": "這則訊息未傳送，其文字與附件將被刪除。"
+      "fromAutomation": "自動化"
     },
     "assistant": {
       "fork": "分岔",

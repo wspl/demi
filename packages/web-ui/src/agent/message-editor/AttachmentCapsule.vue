@@ -15,7 +15,8 @@ import type { MessageCapsule, MessageTransfer } from './capsules'
  * name, and the device a file on another device is on. Pointed at, an image
  * or a video shows large in its preview card (`file-previews.md` § A
  * picture's preview on hover), and a text file its opening lines. An upload in progress
- * shows how far it has come; a failed one offers Retry; a missing one, whose
+ * shows how far it has come; a failed one says so, with Retry where it can
+ * be uploaded from there, as in the composer; a missing one, whose
  * bytes are gone, says so, and is deleted or attached again.
  *
  * The capsule fits inside the line it stands in, at every text size: never
@@ -32,6 +33,8 @@ const props = defineProps<{
   transfer?: MessageTransfer
   /** The editor holds it as its selection, which it shows by a fill, never by the focus ring. */
   selected?: boolean
+  /** A failed upload offers Retry here. */
+  retryable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -185,7 +188,7 @@ const preview = computed<
         class="shrink-0 text-fg-muted"
       >· {{ capsule.host }}</span>
       <button
-        v-if="failed"
+        v-if="failed && retryable"
         type="button"
         class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong phone:-my-1.5 phone:-mr-2 phone:size-hit-xs phone:[&>svg]:size-3.5"
         :aria-label="shared('common.retry')"

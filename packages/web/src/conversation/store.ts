@@ -36,12 +36,13 @@ import {
   type ModelSettings,
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
-import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
+import { hasAcceptedSubmission, isWritten } from '@demicodes/web-ui/agent/submission'
 import { runningSubagents, subagentJobFields } from '@demicodes/web-ui/agent/subagents'
 import { workToStop } from '@demicodes/web-ui/hosts/move-question'
 import { runningTerminals } from '@demicodes/web-ui/agent/terminals'
-import { agentWorks, chooseSendWay, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
+import { agentWorks, chooseSendWay, markSent, markWithdrawn, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
+  applyAttachmentUpdate,
   composerAttachmentFromFile,
   composerRemoteAttachment,
   isComposerFile,
@@ -915,8 +916,18 @@ export const useConversations = defineStore('conversations', () => {
     // The page starts from what storage held: saving the restored draft
     // unchanged could only replace a newer one another tab saved since.
     changedDraft(conversation.id, persisted(conversation))
+    // A file of a message not delivered whose upload did not finish failed
+    // with it: its capsule says so, as before the page closed, and only the
+    // dock's Retry uploads it again (`composer.md` § Writing a message). One
+    // with nothing to upload from is gone, which it says already.
+    const undelivered = new Set(conversation.pendingSends.flatMap((pending) => pending.error === null ? [] : pending.fileIds))
     for (const file of conversation.files) {
-      if (isComposerFile(file) && !file.upload) {
+      if (undelivered.has(file.id) && isComposerFile(file) && !file.upload && (file.file || file.claim)) {
+        applyAttachmentUpdate(file, { phase: 'failed' })
+      }
+    }
+    for (const file of conversation.files) {
+      if (isComposerFile(file) && !file.upload && !undelivered.has(file.id)) {
         // A pasted file whose attaching the page did not see end attaches
         // again, and falls back as a paste does (`composer.md` § Writing a message).
         // Any other failure its capsule shows, with Retry.
@@ -2604,25 +2615,54 @@ export const useConversations = defineStore('conversations', () => {
     const id = crypto.randomUUID()
     // Plain copies: the page keeps its messages on their way in the web browser's storage.
     const carried = comments.map((comment) => ({ ...comment }))
-    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, comments: carried, error: null, ...(saved ? { saved } : {}) }]
+    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, comments: carried, error: null, followers: [], ...(saved ? { saved } : {}) }]
+    sentNow(conversation, id)
     return conversation.pendingSends.find((pending) => pending.id === id)!
   }
 
   /**
-   * Retry on a message whose delivery failed: it goes again with its id,
-   * after the messages on their way, as a message. A steer the session
-   * already holds is not sent again, and one it does not hold is answered
-   * next, or queued while a turn runs or a message on its way starts one.
+   * The dock's Retry (`turns.md` § Following the agent's work): each message
+   * whose delivery failed goes again with its id, in the order they were
+   * sent, as a new message at the end, after the messages on their way: the
+   * first is answered next, or queued while a turn runs or a message on its
+   * way starts one, and the rest are queued after it. A steer the session
+   * already holds is not sent again. One a resend cannot deliver stays where
+   * it is, for its Edit.
    */
-  async function retrySend(conversation: Conversation, id: string): Promise<void> {
-    const pending = conversation.pendingSends.find((each) => each.id === id)
-    if (conversation.archived || pending?.error == null || !resendable(conversation, pending)) {
+  async function retrySends(conversation: Conversation): Promise<void> {
+    if (conversation.archived) {
       return
     }
-    pending.way = agentWorks(conversation.phase, conversation.pendingSends) ? 'queue' : 'send'
-    pending.error = null
-    delete pending.requestId
-    await deliverInOrder(conversation, pending)
+    const again = conversation.pendingSends.filter((pending) => pending.error !== null && resendable(conversation, pending))
+    const delivered = again.map((pending) => {
+      withdrawSend(conversation, pending)
+      pending.followers = []
+      pending.way = agentWorks(conversation.phase, conversation.pendingSends) ? 'queue' : 'send'
+      pending.error = null
+      delete pending.requestId
+      conversation.pendingSends = [...conversation.pendingSends, pending]
+      sentNow(conversation, pending.id)
+      return deliverInOrder(conversation, pending)
+    })
+    await Promise.all(delivered)
+  }
+
+  /**
+   * The message leaves the messages on their way without being delivered:
+   * the messages it followed keep their place before the one sent after it.
+   */
+  function withdrawSend(conversation: Conversation, pending: PendingSend): void {
+    conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
+    markWithdrawn(conversation.pendingSends, pending.id)
+  }
+
+  /**
+   * The message `id` is sent now, after every message held: each follows
+   * it with `id`, but one a message after which the transcript holds
+   * already, which stands before that one for good.
+   */
+  function sentNow(conversation: Conversation, id: string): void {
+    markSent(conversation.pendingSends, id, (message) => message.followers.some((each) => isWritten(conversation, each)))
   }
 
   /** Delivers the message once the conversation's messages sent before it are delivered or failed. */
@@ -2688,18 +2728,18 @@ export const useConversations = defineStore('conversations', () => {
         stopRemoving(conversation, pending.id)
         if (wish === 'recall' && pending.saved) {
           // One from the list the user took back meanwhile is listed again.
-          dropSubmission(conversation, pending.id)
+          dropSubmission(conversation, pending.id, 'withdrawn')
           recordSync.unsend(conversation, pending.id)
         } else if (wish === 'recall' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length) && conversation.comments.length === 0) {
           // One the user took back meanwhile goes back into the empty
           // composer as it was, its files and its comments with it.
-          conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
+          withdrawSend(conversation, pending)
           refill(conversation, pending.text, pending.fileIds)
           setComments(conversation, pending.comments)
         } else if (commentSends.has(pending.id)) {
           // A comment's Send Now not delivered: its comment waits with the
           // others again, the draft and they as they were, and says why.
-          conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
+          withdrawSend(conversation, pending)
           setComments(conversation, [...conversation.comments, ...pending.comments])
           report(t('failures.sendComment'), error)
         } else {
@@ -2734,7 +2774,7 @@ export const useConversations = defineStore('conversations', () => {
     if (await runtime.sendSaved(saved, pending.id, delivery)) {
       clearSubmission(conversation, pending.id)
     } else {
-      dropSubmission(conversation, pending.id)
+      dropSubmission(conversation, pending.id, 'withdrawn')
     }
     recordSync.sent(conversation, pending.id)
     saveDrafts()
@@ -2827,6 +2867,7 @@ export const useConversations = defineStore('conversations', () => {
       error: pending.error,
       requestId: pending.requestId ?? null,
       ...(pending.error !== null && !resendable(conversation, pending) ? { retryable: false } : {}),
+      ...(pending.followers.length > 0 ? { followers: [...pending.followers] } : {}),
     }))
   }
 
@@ -2864,7 +2905,7 @@ export const useConversations = defineStore('conversations', () => {
     const text = pending.text + ATTACHMENT_MARK.repeat(Math.max(0, pending.fileIds.length - marks))
     atOnce(() => {
       wishes.delete(id)
-      conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== id)
+      withdrawSend(conversation, pending)
       conversation.files.push(...files.filter((file) => !conversation.files.includes(file)))
       const fileIds = [...conversation.attachmentIds, ...files.map((file) => file.id)]
       const draft = conversation.draft.trimEnd()
@@ -2878,8 +2919,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Delete on a message not delivered, which the user confirmed: it goes
-   * with its files. One sent from the list goes from the list, as the
+   * Delete on a message not delivered: it goes at once, with its files. One sent from the list goes from the list, as the
    * list's Delete takes it.
    */
   function deleteSend(conversation: Conversation, id: string): void {
@@ -2893,19 +2933,19 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     wishes.delete(id)
-    dropSubmission(conversation, id)
+    dropSubmission(conversation, id, 'withdrawn')
   }
 
   /** The message `id`, sent from the list and not delivered, is no longer on its way, and is listed again. */
   function backToList(conversation: Conversation, id: string): void {
     wishes.delete(id)
-    dropSubmission(conversation, id)
+    dropSubmission(conversation, id, 'withdrawn')
     recordSync.unsend(conversation, id)
   }
 
   /** The session holds the message `id`: it leaves the messages on their way, and a wish kept for it is carried out. */
   function clearSubmission(conversation: Conversation, id: string): void {
-    if (!dropSubmission(conversation, id)) {
+    if (!dropSubmission(conversation, id, 'delivered')) {
       return
     }
     const wish = wishes.get(id)
@@ -2916,15 +2956,20 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Takes the message `id` out of those on their way, with its files;
-   * answers whether it was one.
+   * Takes the message `id` out of those on their way, with its files, as
+   * the session took it or as the user withdrew it; answers whether it was
+   * one.
    */
-  function dropSubmission(conversation: Conversation, id: string): boolean {
+  function dropSubmission(conversation: Conversation, id: string, fate: 'delivered' | 'withdrawn'): boolean {
     const pending = conversation.pendingSends.find((each) => each.id === id)
     if (!pending) {
       return false
     }
-    conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== id)
+    if (fate === 'withdrawn') {
+      withdrawSend(conversation, pending)
+    } else {
+      conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== id)
+    }
     for (const fileId of pending.fileIds) {
       removeFile(conversation, fileId)
     }
@@ -2998,7 +3043,13 @@ export const useConversations = defineStore('conversations', () => {
       ? takeBack(conversation, { copy: contentCopy(waiting.content), comments: waiting.comments ?? [] }, steer ? 'steer' : 'queue', removal)
       : null
     void removal
-      .catch((error) => {
+      .then(() => {
+        // The message no longer waits anywhere: a message not delivered
+        // keeps its place by the ones sent after it. A removal refused
+        // leaves it where it was, and the order with it.
+        markWithdrawn(conversation.pendingSends, id)
+        saveDrafts()
+      }, (error) => {
         if (back) {
           giveBack(conversation, back)
         }
@@ -3354,7 +3405,7 @@ export const useConversations = defineStore('conversations', () => {
     changeWorkflow,
     settleStartingWorkflow,
     send,
-    retrySend,
+    retrySends,
     editSend,
     deleteSend,
     submissions,

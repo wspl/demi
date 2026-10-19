@@ -2,7 +2,7 @@ import { computed, ref, toRaw, watch, type ComputedRef } from 'vue'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import type { PendingAction } from './activity-slot'
-import { listTailBlocks } from './list-tail'
+import { listTailBlocks, rowMessageId, submissionRows, undeliveredPlaces } from './list-tail'
 import type { ActivitySlotRow, MessageListBlock, StepsNotSharedRow } from './pending-steers'
 import { rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
@@ -115,6 +115,30 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     },
     { immediate: true },
   )
+  // Where each message not delivered stands: before the first message sent
+  // after it that shows, by the messages each row shows.
+  const undelivered = computed(() => {
+    const input = source()
+    const shown = new Set(blocks.value.flatMap((block) =>
+      block.type === 'user' ? [block.turnId] : block.type === 'steer' ? [block.id] : []))
+    if (input.latest) {
+      for (const message of [...input.pendingSteers, ...input.queue]) {
+        shown.add(message.id)
+      }
+      for (const submission of input.pendingSubmissions ?? []) {
+        if (submission.error === null) {
+          shown.add(submission.id)
+        }
+      }
+    }
+    return undeliveredPlaces({
+      submissions: input.pendingSubmissions ?? [],
+      shown,
+      removing: new Set(input.removing),
+      latest: input.latest,
+      atStart: input.atStart,
+    })
+  })
   const tail = computed(() => {
     const input = source()
     return !input.latest ? { turn: [], waiting: [] } : listTailBlocks({
@@ -125,6 +149,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
       queue: input.queue,
       pendingSubmissions: input.pendingSubmissions ?? [],
       removing: input.removing,
+      elsewhere: new Set([...undelivered.value].flatMap(([id, place]) => place === 'end' ? [] : [id])),
     })
   })
   // The calls the model is writing are the newest steps of the work: each is a row of its own after its run.
@@ -182,7 +207,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     ? [{ type: 'activity_slot', id: `tail-row:${waits.value}`, slot: slot.value }]
     : [])
   // A share's runs of steps not shared, each after the row it follows.
-  const transcriptListRows = computed<MessageListBlock[]>(() => {
+  const sharedRows = computed<MessageListBlock[]>(() => {
     const rows = turnRows.value.filter((row) => row.id !== hiddenId.value)
     const steps = source().stepsNotShared ?? []
     if (steps.length === 0) {
@@ -191,15 +216,40 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     const after = (id: string | null) => steps.filter((row) => row.after === id)
     return [...after(null), ...rows.flatMap((row) => [row, ...after(row.id)])]
   })
+  // The messages not delivered that stand before a message sent after them,
+  // with the rows that tell their failures, by that message's id, in the
+  // order they were sent.
+  const placed = computed(() => {
+    const before = new Map<string, MessageListBlock[]>()
+    for (const submission of source().pendingSubmissions ?? []) {
+      const place = undelivered.value.get(submission.id)
+      if (place !== undefined && typeof place === 'object') {
+        before.set(place.before, [...before.get(place.before) ?? [], ...submissionRows(submission)])
+      }
+    }
+    return before
+  })
   const rows = computed<MessageListBlock[]>(() => {
     const failure = source().failure
-    return [
-      ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
-      ...transcriptListRows.value,
+    const tailRows: MessageListBlock[] = [
       ...otherTurnBlocks.value,
       ...slotRow.value,
       ...(failure ? [{ type: 'session_failure', id: 'session-failure', failure } as const] : []),
       ...tail.value.waiting,
+    ]
+    const before = placed.value
+    const inPlace = (list: readonly MessageListBlock[]) => before.size === 0 ? list : list.flatMap((row) => {
+      const sent = rowMessageId(row)
+      return sent === undefined ? [row] : [...before.get(sent) ?? [], row]
+    })
+    // One whose message shows in no row after all stands at the end of the transcript.
+    const present = new Set([...sharedRows.value, ...tailRows].flatMap((row) => rowMessageId(row) ?? []))
+    const unplaced = [...before].flatMap(([sent, list]) => present.has(sent) ? [] : list)
+    return [
+      ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
+      ...inPlace(sharedRows.value),
+      ...unplaced,
+      ...inPlace(tailRows),
       ...(source().atEnd ? [] : [{ type: 'history_edge', id: 'history-after' } as const]),
     ]
   })

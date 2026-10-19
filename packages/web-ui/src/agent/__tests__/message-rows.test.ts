@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
 import type { Block } from '@demicodes/protocol'
 import { addPage, EMPTY_TRANSCRIPT, heldBlocks } from '@demicodes/conversation-client'
@@ -800,4 +800,90 @@ test('a turn that streams leaves the rows of the runs before it the same rows, w
   expect(runOf('c-3')).toBeDefined()
   expect(list.rows.value.at(-1)!.id).toBe('a-3')
   scope.stop()
+})
+
+// A message not delivered stays where it was sent, as Messages keeps one it
+// could not send in place (`turns.md` § Following the agent's work): before
+// the first message sent after it that shows, in the transcript, among the
+// steers, in the queue or on its way.
+describe('a message not delivered stays where it was sent', () => {
+  /** The rows drawn for a conversation answered to m-1, changed by `change`, without the tail row. */
+  function rows(change: (state: MessageRowsSource) => void): string[] {
+    const state = answered()
+    change(state)
+    const scope = effectScope()
+    const list = scope.run(() => useMessageRows(() => state))!
+    const drawn = drawnRows(list).filter((key) => !key.startsWith('tail-row:'))
+    scope.stop()
+    return drawn
+  }
+  const refused = { attachments: [], error: 'The device is offline.' }
+
+  test('above a message sent after it and its answer, and so is one sent between them', () => {
+    const first = { ...refused, id: 'm-2', way: 'send' as const, text: 'First try', followers: ['m-3', 'm-4', 'm-5'] }
+    const second = { ...refused, id: 'm-4', way: 'send' as const, text: 'Second try', followers: ['m-5'] }
+    const third = [userBlock('u-3', 'm-3', 'Meanwhile this'), text('a-3', 'Done.')]
+    // m-5 is on its way: m-4 stands above it.
+    expect(rows((state) => {
+      state.blocks = [...state.blocks, ...third]
+      state.pendingSubmissions = [first, second, { id: 'm-5', way: 'send', text: 'Then this', attachments: [], error: null }]
+    })).toEqual([
+      'message:m-1', 'a-1',
+      'message:m-2', 'delivery-failure:m-2',
+      'message:m-3', 'a-3',
+      'message:m-4', 'delivery-failure:m-4',
+      'message:m-5',
+    ])
+    expect(rows((state) => {
+      state.blocks = [...state.blocks, ...third, userBlock('u-5', 'm-5', 'Then this'), text('a-5', 'Also done.')]
+      state.pendingSubmissions = [first, second]
+    })).toEqual([
+      'message:m-1', 'a-1',
+      'message:m-2', 'delivery-failure:m-2',
+      'message:m-3', 'a-3',
+      'message:m-4', 'delivery-failure:m-4',
+      'message:m-5', 'a-5',
+    ])
+  })
+
+  test('above a message sent after it that waits in the queue, or on its way to it', () => {
+    const queued = (state: MessageRowsSource) => {
+      state.phase = 'running'
+      state.pendingSubmissions = [{ ...refused, id: 'm-2', way: 'queue', text: 'With a file', followers: ['m-3'] }]
+    }
+    expect(rows((state) => {
+      queued(state)
+      state.queue = [{ id: 'm-3', content: [{ type: 'text', text: 'Text alone' }] }]
+    })).toEqual(['message:m-1', 'a-1', 'queue-divider', 'message:m-2', 'delivery-failure:m-2', 'message:m-3'])
+    expect(rows((state) => {
+      queued(state)
+      state.pendingSubmissions = [...state.pendingSubmissions!, { id: 'm-3', way: 'queue', text: 'Text alone', attachments: [], error: null }]
+    })).toEqual(['message:m-1', 'a-1', 'queue-divider', 'message:m-2', 'delivery-failure:m-2', 'message:m-3'])
+  })
+
+  test('above the next message sent after it while the one between is taken back', () => {
+    expect(rows((state) => {
+      state.phase = 'running'
+      state.pendingSubmissions = [{ ...refused, id: 'm-2', way: 'queue', text: 'With a file', followers: ['m-3', 'm-4'] }]
+      state.queue = [{ id: 'm-3', content: [{ type: 'text', text: 'Recalled' }] }, { id: 'm-4', content: [{ type: 'text', text: 'Kept' }] }]
+      state.removing = ['m-3']
+    })).toEqual(['message:m-1', 'a-1', 'queue-divider', 'message:m-2', 'delivery-failure:m-2', 'message:m-4'])
+  })
+
+  test('outside a window that does not hold the message sent after it, and above it in one that does', () => {
+    const failed = { ...refused, id: 'm-2', way: 'send' as const, text: 'First try', followers: ['m-3'] }
+    // The latest window starts after m-3: m-2 is earlier, not at the end.
+    expect(rows((state) => {
+      state.atStart = false
+      state.blocks = [userBlock('u-9', 'm-9', 'Much later'), text('a-9', 'Later answer.')]
+      state.pendingSubmissions = [failed]
+    })).toEqual(['history-before', 'message:m-9', 'a-9'])
+    // A window of history that holds m-3, opened from search.
+    expect(rows((state) => {
+      state.latest = false
+      state.atEnd = false
+      state.blocks = [...state.blocks, userBlock('u-3', 'm-3', 'Meanwhile this'), text('a-3', 'Done.')]
+      state.pendingSubmissions = [failed]
+    })).toEqual(['message:m-1', 'a-1', 'message:m-2', 'delivery-failure:m-2', 'message:m-3', 'a-3', 'history-after'])
+  })
 })

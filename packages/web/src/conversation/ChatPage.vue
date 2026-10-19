@@ -331,7 +331,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @decide-permission="(id, decision, credential) => permissions.decide(conversation!.id, id, decision, credential)"
     :pending-submissions="store.submissions(conversation)"
     :removing="conversation.removing"
-    @retry-submission="store.retrySend(conversation, $event)"
+    @retry-undelivered="store.retrySends(conversation)"
     @edit-submission="store.editSend(conversation, $event)"
     @delete-submission="store.deleteSend(conversation, $event)"
     @retry="store.start(conversation)"

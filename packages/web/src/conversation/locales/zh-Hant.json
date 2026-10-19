@@ -52,5 +52,9 @@
   },
   "workflows": {
     "hostSilent": "主機沒有回應。"
+  },
+  "uploads": {
+    "notUploaded": "{name} 未能上傳。{reason}",
+    "notKept": "{name} 未上傳。請重新加入。"
   }
 }

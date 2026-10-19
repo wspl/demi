@@ -98,9 +98,7 @@
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
       "notDelivered": "このメッセージは配信されませんでした。",
-      "fromAutomation": "オートメーション",
-      "deleteTitle": "このメッセージを削除しますか？",
-      "deleteBody": "このメッセージは送信されていません。テキストと添付ファイルは削除されます。"
+      "fromAutomation": "オートメーション"
     },
     "assistant": {
       "fork": "分岐",

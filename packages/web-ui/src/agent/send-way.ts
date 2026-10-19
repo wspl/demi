@@ -45,6 +45,54 @@ export interface MessageOnItsWay {
 }
 
 /**
+ * A message the user sent, with the ids of the messages sent after it, in
+ * the order they were sent. A message not delivered keeps its place by
+ * them: before the first of them that shows (`turns.md` § Following the
+ * agent's work).
+ */
+export interface SentInOrder {
+  id: string
+  followers: string[]
+}
+
+/**
+ * The message `id` is sent now: every other message held follows it with
+ * `id`, but one that `settled` says no longer needs more, as one a message
+ * after which the transcript holds already stands before for good.
+ */
+export function markSent(sent: readonly SentInOrder[], id: string, settled: (message: SentInOrder) => boolean = () => false): void {
+  for (const message of sent) {
+    if (message.id !== id && !message.followers.includes(id) && !settled(message)) {
+      message.followers.push(id)
+    }
+  }
+}
+
+/**
+ * The message `id` leaves the order without being delivered, or without
+ * staying where the session held it: Edit or Delete takes it away, Recall
+ * takes it back once its removal is done, or Retry makes it a new message
+ * at the end. The messages sent before it keep their place by the ones sent
+ * after it.
+ */
+export function markWithdrawn(sent: readonly SentInOrder[], id: string): void {
+  for (const message of sent) {
+    const at = message.followers.indexOf(id)
+    if (at !== -1) {
+      message.followers.splice(at, 1)
+    }
+  }
+}
+
+/**
+ * Whether the dock offers Retry (`turns.md` § Recovering an unfinished
+ * turn): a message was not delivered, and sending it again can deliver it.
+ */
+export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: false })[]): boolean {
+  return sent.some((message) => message.error !== null && message.retryable !== false)
+}
+
+/**
  * The message on its way that starts a turn, or undefined while none does:
  * the one reading for the composer's Stop and its way of sending, the
  * transcript's Requesting row, Stop's wait and Retry's way. Its turn is as

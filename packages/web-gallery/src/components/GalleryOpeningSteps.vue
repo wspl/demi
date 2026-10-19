@@ -105,7 +105,7 @@ const step = computed(() => {
         @pin="productWould('Pin the Conversation')"
         @archive="productWould('Archive the Conversation')"
         @delete="productWould('Delete the Conversation')"
-        @retry-submission="productWould('Send the Message Again')"
+        @retry-undelivered="productWould('Send the Messages Again')"
         @edit-submission="productWould('Put the Message Back in the Composer')"
         @delete-submission="productWould('Delete the Message')"
         @recall-queued="productWould('Edit the Queued Message')"

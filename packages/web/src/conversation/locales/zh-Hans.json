@@ -52,5 +52,9 @@
   },
   "workflows": {
     "hostSilent": "主机没有响应。"
+  },
+  "uploads": {
+    "notUploaded": "{name} 未能上传。{reason}",
+    "notKept": "{name} 未上传。请重新添加。"
   }
 }

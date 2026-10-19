@@ -288,7 +288,7 @@ export function useMessageEditComposer(options: {
   }
 
   /** The uploads of the edit's added files, which their capsules read. */
-  const transfers: TransferContext = {
+  const transfers: Required<TransferContext> = {
     transfer: (id) => added.value.get(id)?.transfer ?? undefined,
     carries,
     retry: (id) => {
