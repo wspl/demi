@@ -252,9 +252,11 @@ pub struct RunningCommand {
     /// The turn of the call; none for a command recorded before records
     /// kept it.
     pub turn: Option<TurnId>,
-    /// The title its reports name (`shell-tool.md` § Command reports); empty
-    /// for a command recorded before records kept it.
+    /// The title its reports name (`shell-tool.md` § Command reports).
     pub title: String,
+    /// Its call's script, which the pages' view of it carries with its
+    /// title (`rendering.md` § Frame protocol).
+    pub script: String,
     /// How often its call asked it to report, or only its end when none
     /// (`shell-tool.md` § Command reports): an interrupted call's command
     /// keeps it.

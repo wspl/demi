@@ -539,6 +539,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     tool_use_id: row.tool_use_id,
                     turn: row.turn,
                     title: row.title,
+                    script: row.script,
                     interval_ms: row.interval_ms,
                     started: row.started,
                     unsent: row.unsent,

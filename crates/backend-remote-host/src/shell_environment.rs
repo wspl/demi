@@ -133,6 +133,9 @@ pub trait CommandKeeper {
 pub struct KeptStart {
     pub caller: JobCaller,
     pub title: String,
+    /// The call's script, which the record keeps with its title for the
+    /// pages' view (`rendering.md` § Frame protocol).
+    pub script: String,
     pub interval_ms: Option<u32>,
 }
 
@@ -320,6 +323,7 @@ impl RemoteShellEnvironment {
             command.clone(),
             request.caller.tool_use_id.clone(),
             request.title.clone(),
+            &request.script,
         );
         let (running, record) = self.hold(&command, record, cancel.child_token());
         let environment = self.clone();
@@ -351,6 +355,7 @@ impl RemoteShellEnvironment {
             job,
             caller,
             title,
+            script,
             interval_ms,
             running,
             seen,
@@ -363,6 +368,7 @@ impl RemoteShellEnvironment {
             command.clone(),
             caller.tool_use_id.clone(),
             title.clone(),
+            &script,
             running,
             seen,
         );
@@ -437,6 +443,7 @@ impl RemoteShellEnvironment {
                 let start = KeptStart {
                     caller: request.caller.clone(),
                     title: request.title.clone(),
+                    script: request.script.clone(),
                     interval_ms: request.interval_ms,
                 };
                 let unsent = UnsentStart {

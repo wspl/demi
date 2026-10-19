@@ -929,6 +929,7 @@ mod tests {
             "17".try_into().unwrap(),
             "call".into(),
             "Run the test".into(),
+            "cargo test",
         );
         record.append_output(StreamKind::Stdout, "done\nre");
         record.append_output(StreamKind::Stderr, "a");

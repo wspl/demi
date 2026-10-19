@@ -1286,9 +1286,12 @@ async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
 
 // The backend restarted while an aborted child's command, and its aborted
 // child's, still stopped: restore skips the closed children but takes up
-// their commands, which show as stopping again under their child, are asked
-// to stop again, and end as their runners report (`subagents.md` § Abort).
-// About 0.02 s.
+// their commands, which show as stopping again under their child, titled by
+// their records, are asked to stop again, and end as their runners report
+// (`subagents.md` § Abort). A page holds no transcript of a closed child, so
+// the frames' title and script are all its Running tab has to name such a
+// command by (`rendering.md` § Rendering boundary); production showed bare
+// numbers there. About 0.02 s.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     let store = MemoryTreeStore::new();
@@ -1314,6 +1317,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
                 tool_use_id: format!("call-{command}"),
                 turn: None,
                 title: "Read the pipe".into(),
+                script: "cat pipe".into(),
                 interval_ms: None,
                 started: Timestamp::UNIX_EPOCH,
                 place: Seen::default(),
@@ -1332,6 +1336,18 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     let mut frames = page.received();
     frames.extend(page.next_until(is_child_command(&nested, true)).await);
     assert!(frames.iter().any(is_child_command(&stopped, true)), "{frames:?}");
+    let named: Vec<(&str, &str, &str)> = frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::ShellOutput { status, .. } => {
+                let command = status.command();
+                Some((command.command_id.as_str(), command.title.as_str(), command.script.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(!named.is_empty(), "{frames:?}");
+    assert!(named.iter().all(|(_, title, script)| (*title, *script) == ("Read the pipe", "cat pipe")), "{named:?}");
     let status = shell_command(&server, &root(), "status", json!({ "id": ["4"] })).await;
     assert!(status.stdout.contains("status: running"), "{status:?}");
 
@@ -1392,6 +1408,7 @@ async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
             tool_use_id: "call-4".into(),
             turn: None,
             title: "Serve".into(),
+            script: "true".into(),
             interval_ms: None,
             started: Timestamp::UNIX_EPOCH,
             place: Seen::default(),

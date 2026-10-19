@@ -19,9 +19,9 @@ export type TerminalPhase = ShellViewStatus
  */
 export interface TerminalRecord {
   id: string
-  /** Its tab's title: the `shell` call's title, as its row shows it, or its command id when no call is known. */
+  /** Its tab's title: the `shell` call's title, as its frames or its call's row give it. */
   title: string
-  /** The `shell` call's script, which the terminal opens with; absent when no call is known. */
+  /** The `shell` call's script, which the terminal opens with; absent when neither its frames nor a call gave it. */
   script?: string
   phase: TerminalPhase
   startedAt: string
@@ -189,8 +189,9 @@ export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>
 
 /**
  * The command a page shows after its frame `status` at `now`, given the
- * record it showed before, if any, and the `shell` call that started it,
- * when the transcript has it. Its start is the server's, how long it has
+ * record it showed before, if any: titled by the title and script of the
+ * `shell` call that started it, which the frame carries from the command's
+ * record (`rendering.md` § Rendering boundary). Its start is the server's, how long it has
  * run as the frame says, so a page that attached late, after a reload or
  * in a new tab, times it from when it truly started; its end is that start
  * and how long its last frame says it ran.
@@ -198,15 +199,14 @@ export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>
 export function followFrame(
   current: TerminalRecord | undefined,
   status: CommandFrame,
-  call: { title: string; script?: string } | undefined,
   subagentId: string | undefined,
   now: number,
 ): TerminalRecord {
   const startedAt = current?.startedAt ?? new Date(now - status.runningMs).toISOString()
   return {
     id: status.commandId,
-    title: call?.title ?? status.commandId,
-    script: call?.script,
+    title: status.title,
+    script: status.script,
     phase: status.status,
     startedAt,
     ...(status.status !== 'running'

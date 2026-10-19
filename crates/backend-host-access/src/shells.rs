@@ -292,6 +292,7 @@ impl Keeper {
             tool_use_id: start.caller.tool_use_id.clone(),
             turn: start.caller.turn.clone(),
             title: start.title.clone(),
+            script: start.script.clone(),
             interval_ms: start.interval_ms,
             started: self.clock.now(),
             places: Default::default(),

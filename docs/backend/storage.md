@@ -463,7 +463,8 @@ blob, on the conversation's read-only connection.
 A running command has a row of its own in `running_commands`, written when
 its job starts, or when it starts waiting for its offline device, and deleted in the transaction that writes its
 `command_outputs` row: its number, the node that ran it, its device, its
-job's id on that device, the tool call that started it, when it started,
+job's id on that device, the tool call that started it, the call's title
+and script, when it started,
 the interval it reports at (null for a resident one), what it will start
 while it waits, not yet sent (`unsent`), and the place in its output each node has looked to, which a look or a
 report moves ([Command reports](../agent/shell-tool.md#command-reports)).

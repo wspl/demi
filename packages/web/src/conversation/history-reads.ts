@@ -198,7 +198,7 @@ export function createHistoryReads<T extends HistoryHolder>(
     readAfter: (holder: T, node: string | null) => readBeside(holder, node, 'after'),
     readAround,
     /**
-     * Reads a block whole, for a row the page holds light or a command's call
+     * Reads a block whole, for a row the page holds light
      * (`web-api-conversations.md` § Light form): a block the page holds is replaced by it,
      * and the block is the answer.
      */
