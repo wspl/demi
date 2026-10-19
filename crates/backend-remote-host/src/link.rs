@@ -456,6 +456,8 @@ struct Waiting {
 pub(crate) struct Shared<E, C> {
     state: RefCell<SharedState<E, C>>,
     changed: watch::Sender<u64>,
+    /// Whether one of its rpc calls waits for the user's answer.
+    awaits_user: watch::Sender<bool>,
 }
 
 struct SharedState<E, C> {
@@ -463,6 +465,9 @@ struct SharedState<E, C> {
     end: Option<E>,
     /// The running declared commands' hints, first registered first.
     hints: Vec<(String, String)>,
+    /// The keys of the rpc calls that wait for the user's answer, whose
+    /// lines are among the hints.
+    asking: Vec<String>,
     /// The background tasks that keep a job running once its script has
     /// ended, by their command lines; empty while the script runs.
     outliving: Vec<String>,
@@ -487,9 +492,11 @@ impl<E: Clone, C> Shared<E, C> {
                 output: VecDeque::new(),
                 end: None,
                 hints: Vec::new(),
+                asking: Vec::new(),
                 outliving: Vec::new(),
             }),
             changed: watch::Sender::new(0),
+            awaits_user: watch::Sender::new(false),
         })
     }
 
@@ -515,8 +522,10 @@ impl<E: Clone, C> Shared<E, C> {
         }
         state.end = Some(end);
         state.hints.clear();
+        state.asking.clear();
         state.outliving.clear();
         drop(state);
+        self.awaits_user.send_replace(false);
         self.bump();
     }
 
@@ -532,6 +541,28 @@ impl<E: Clone, C> Shared<E, C> {
                 None => state.hints.push((invocation, hint)),
             },
         }
+    }
+
+    /// The rpc call `call` waits for the user's answer, with `line` for the
+    /// model meanwhile, or no longer does with none.
+    pub(crate) fn await_user(&self, call: String, line: Option<String>) {
+        let mut state = self.state.borrow_mut();
+        if state.end.is_some() {
+            return;
+        }
+        state.asking.retain(|asking| *asking != call);
+        if line.is_some() {
+            state.asking.push(call.clone());
+        }
+        let awaits = !state.asking.is_empty();
+        drop(state);
+        self.hint(call, line);
+        self.awaits_user.send_if_modified(|current| std::mem::replace(current, awaits) != awaits);
+    }
+
+    /// Whether one of the job's rpc calls waits for the user's answer.
+    pub(crate) fn awaits_user(&self) -> watch::Receiver<bool> {
+        self.awaits_user.subscribe()
     }
 
     /// The job's script has ended, and `tasks` still run.

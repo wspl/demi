@@ -69,7 +69,13 @@ struct World {
 }
 
 async fn opened(scripts: &Arc<Scripts>) -> World {
-    let harness = Harness::new().with_skill_repos(&repos());
+    opened_on(scripts, Harness::new()).await
+}
+
+/// [`opened`] on `harness`, such as one whose shards run on the test's own
+/// runtime.
+async fn opened_on(scripts: &Arc<Scripts>, harness: Harness) -> World {
+    let harness = harness.with_skill_repos(&repos());
     let (harness, backend, master, device, _, provider) = tree_on(scripts, harness).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
@@ -200,15 +206,6 @@ pub(crate) async fn settled(scripts: &Scripts, backend: &TestBackend, session: &
     last_asked(scripts, id)
 }
 
-/// The progress reports in `history`, each from its headline to the line
-/// that says how often it reports.
-fn progress_reports(history: &str) -> impl Iterator<Item = &str> {
-    history
-        .match_indices("is still running after")
-        .map(|(at, _)| &history[at..])
-        .map(|report| &report[..report.find("It reports every").expect("a report's last line")])
-}
-
 /// The command a result names, by the number after `commandId: `.
 fn command_id(text: &str) -> String {
     let at = text.find("commandId: ").expect("a command's handle") + "commandId: ".len();
@@ -246,9 +243,10 @@ fn notes(count: usize) -> Vec<crate::subagents::Answer> {
     (0..count).map(|_| say("noted")).collect()
 }
 
-// Several seconds: a real device runs the shell jobs of two conversations,
-// one reporting its progress every half second while it waits.
-#[tokio::test]
+// Several seconds: a real device runs the shell jobs of two conversations;
+// the first waits for the user through ten of its half-second intervals,
+// which a jump of the shard's clock passes at once.
+#[tokio::test(flavor = "local")]
 async fn a_command_without_the_grant_waits_and_runs_once_the_user_allows_it() {
     let scripts = Arc::new(Scripts::default());
     let World {
@@ -258,11 +256,16 @@ async fn a_command_without_the_grant_waits_and_runs_once_the_user_allows_it() {
         mut socket,
         _device,
         provider,
-    } = opened(&scripts).await;
+    } = opened_on(&scripts, {
+        // Its shard's timers are the test's, whose clock the wait jumps.
+        let mut harness = Harness::new();
+        harness.shards = Some(demi_backend_user_shard::shard::ShardPlacement::Inline);
+        harness
+    })
+    .await;
 
     let mut answers = vec![
-        // It runs on a little after the call, so that a report comes then.
-        watched("t1", "demi skills add acme/tools; echo exit=$?; sleep 2", 500),
+        watched("t1", "demi skills add acme/tools; echo exit=$?", 500),
         say("I asked the user"),
     ];
     answers.extend(notes(40));
@@ -271,6 +274,9 @@ async fn a_command_without_the_grant_waits_and_runs_once_the_user_allows_it() {
     // The call's window passed: the command still runs, and says why.
     let waiting = last_asked(&scripts, FIRST);
     assert!(waiting.contains("status: running") && waiting.contains(WAITING), "{waiting}");
+    let asked_before = scripts.asked(|session| session == FIRST).len();
+    // Ten of its intervals pass while it waits.
+    crate::support::elapse(std::time::Duration::from_secs(5)).await;
     // The plugin received nothing: nothing was fetched or added.
     assert_eq!(sources(&harness), 0);
     let asked = permissions(&backend, &master, FIRST).await;
@@ -283,27 +289,15 @@ async fn a_command_without_the_grant_waits_and_runs_once_the_user_allows_it() {
     assert_eq!(categories(request)[0].action.as_deref(), Some("manage skills"));
     assert!(granted(&harness, FIRST).is_empty());
     assert_eq!(summary(&backend, &master, FIRST).await.permission_requests, 1);
-    // Its progress reports say so too.
-    let reported = until_asked(&scripts, |session| session == FIRST, "is still running after").await;
-    let report = reported
-        .iter()
-        .find(|asked| asked.contains("is still running after"))
-        .unwrap();
-    let report = &report[report.find("is still running after").unwrap()..];
-    let report = &report[..report.find("It reports every").unwrap()];
-    assert!(report.contains(WAITING), "{report}");
+    // A waiting command reports no progress: nothing woke the agent.
+    assert_eq!(scripts.asked(|session| session == FIRST).len(), asked_before);
 
     // Allow: the waiting command runs once, its end reports to the agent,
     // and the decision's message says only what the user decided.
     let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     let last = settled(&scripts, &backend, &master, FIRST, &["exit=0", ALLOWED, "ended with exit code 0"]).await;
-    // The reports once the call ended no longer say that it waits.
-    let after: Vec<&str> = progress_reports(&last)
-        .skip_while(|report| !report.contains("exit=0"))
-        .collect();
-    assert!(!after.is_empty(), "a report came after the call ended: {last}");
-    assert!(after.iter().all(|report| !report.contains(WAITING)), "{after:?}");
+    assert!(!last.contains("is still running after"), "{last}");
     assert_eq!(last.matches("Added acme/tools at").count(), 1, "{last}");
     assert!(last.contains("Turned on: lint, review"), "{last}");
     assert!(!last.contains("can now run"), "{last}");

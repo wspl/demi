@@ -169,6 +169,15 @@ pub trait SessionRuntime {
         Box::pin(std::future::pending())
     }
 
+    /// Whether `command`, which a `shell` call left running, waits for the
+    /// user's answer, as it changes: it reports no progress meanwhile
+    /// (`permissions.md` § The check). None for a command that the node's
+    /// shells do not hold or whose job has not started, and by default.
+    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
+        let _ = command;
+        None
+    }
+
     /// What `command`, which a `shell` call left running and which reports
     /// every `interval_ms` while it runs, tells the node now (`shell-tool.md`
     /// § Command reports), named by the title its record keeps: its

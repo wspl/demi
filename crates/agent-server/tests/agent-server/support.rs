@@ -480,8 +480,8 @@ impl PortTransport for NodePort {
                 PortRequest::ReadStdin {} | PortRequest::ReadLiveStdin {} => {
                     Ok(PortResponse::Input { bytes: None })
                 }
-                // A test's job has no line a model reads.
-                PortRequest::Hint { .. } => Ok(PortResponse::Written {}),
+                // A test's job never waits for the user.
+                PortRequest::AwaitsUser { .. } => Ok(PortResponse::Written {}),
             }
         })
     }
@@ -1129,7 +1129,7 @@ impl ShellEnvironment for ScriptedShell {
         Ok(self.record(command)?.borrow().quiet())
     }
 
-    fn hint(&self, _: &CommandId) -> Option<String> {
+    fn awaits_user(&self, _: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
         None
     }
 

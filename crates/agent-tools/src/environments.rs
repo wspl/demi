@@ -413,7 +413,7 @@ mod tests {
             Vec::new()
         }
 
-        fn hint(&self, _: &CommandId) -> Option<String> {
+        fn awaits_user(&self, _: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
             None
         }
 

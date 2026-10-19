@@ -25,17 +25,15 @@ pub enum EndOf {
 }
 
 /// The report of `command`, which still runs and reports every
-/// `interval_ms`: how long it has run and printed nothing, and the line its
-/// running declared command gives the model, `hint`. Its output is read
-/// when the report is written ([`fill_output`]), which moves the node's
-/// place then.
+/// `interval_ms`: how long it has run and printed nothing. Its output is
+/// read when the report is written ([`fill_output`]), which moves the
+/// node's place then.
 pub fn progress_report(
     command: &CommandId,
     title: &str,
     running_ms: u64,
     idle_ms: u64,
     interval_ms: u32,
-    hint: Option<String>,
 ) -> CommandReport {
     report(
         command,
@@ -44,7 +42,6 @@ pub fn progress_report(
             running_ms,
             idle_ms,
             interval_ms,
-            hint,
         },
     )
 }

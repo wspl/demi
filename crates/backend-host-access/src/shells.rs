@@ -559,8 +559,8 @@ impl ShellEnvironment for Registered {
         self.environment.outliving(command)
     }
 
-    fn hint(&self, command: &CommandId) -> Option<String> {
-        self.environment.hint(command)
+    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
+        self.environment.awaits_user(command)
     }
 
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {

@@ -1,7 +1,8 @@
 //! Command reports (`shell-tool.md` § Command reports): the commands the
 //! session's `shell` calls left running, each with how often it reports and
 //! the task that watches it. The task reports the command's progress every
-//! interval while it runs, and its end once it ends; what each report says
+//! interval while it runs, except while it waits for the user's answer, and
+//! its end once it ends; what each report says
 //! is the node's to tell ([`SessionRuntime::report`]), and the session admits
 //! it as input waiting for a boundary.
 //!
@@ -18,6 +19,7 @@ use demi_shared_types::{CommandId, ReportEvent};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{SessionShared, input::Opens};
+use crate::SessionRuntime;
 
 /// The commands the session's calls left running, in the order they were
 /// left running.
@@ -134,7 +136,7 @@ pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId, ran: Durat
 /// Reports `command`'s progress every `interval_ms` from its start, `ran`
 /// ago, while it runs, and its end once it ends; then the session no longer
 /// watches it. The task holds the session only while it hands it a report.
-async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Option<u32>, mut ran: Duration) {
+async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Option<u32>, ran: Duration) {
     let Some(s) = session.upgrade() else {
         return;
     };
@@ -142,14 +144,11 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
     drop(s);
     let ended = runtime.command_ended(&command);
     tokio::pin!(ended);
+    let mut ran = Some(ran);
     loop {
         let progress = async {
             match interval_ms {
-                Some(interval) => {
-                    let interval = u64::from(interval);
-                    let since = u64::try_from(ran.as_millis()).unwrap_or(u64::MAX) % interval;
-                    tokio::time::sleep(Duration::from_millis(interval - since)).await;
-                }
+                Some(interval) => next_progress(&*runtime, &command, interval, ran.take().unwrap_or_default()).await,
                 None => std::future::pending().await,
             }
         };
@@ -157,7 +156,6 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
             () = &mut ended => true,
             () = progress => false,
         };
-        ran = Duration::ZERO;
         report(&session, &command).await;
         if ended_now {
             if let Some(s) = session.upgrade() {
@@ -168,6 +166,46 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
             return;
         }
     }
+}
+
+/// Waits until `command`'s next progress report is due, `interval_ms` after
+/// its last, `ran` ago. A command that waits for the user's answer reports
+/// nothing, since nothing about it changes until the user answers; its
+/// interval counts again from the moment it goes on (`permissions.md`
+/// § The check).
+async fn next_progress(runtime: &dyn SessionRuntime, command: &CommandId, interval_ms: u32, mut ran: Duration) {
+    let interval = Duration::from_millis(u64::from(interval_ms));
+    loop {
+        let Some(mut awaits) = runtime.awaits_user(command) else {
+            tokio::time::sleep(until_next(interval, ran)).await;
+            return;
+        };
+        if *awaits.borrow_and_update() {
+            // A job gone has ended, which the command's end tells.
+            if awaits.wait_for(|awaits| !*awaits).await.is_err() {
+                return std::future::pending().await;
+            }
+            ran = Duration::ZERO;
+        }
+        tokio::select! {
+            () = tokio::time::sleep(until_next(interval, ran)) => return,
+            began = awaits.wait_for(|awaits| *awaits) => {
+                if began.is_err() {
+                    return std::future::pending().await;
+                }
+                // It counts again once the wait that began now is over,
+                // however soon that is.
+                ran = Duration::ZERO;
+            }
+        }
+    }
+}
+
+/// How long after `ran` the next whole `interval` comes.
+fn until_next(interval: Duration, ran: Duration) -> Duration {
+    let interval_ms = u64::try_from(interval.as_millis()).unwrap_or(u64::MAX).max(1);
+    let since = u64::try_from(ran.as_millis()).unwrap_or(u64::MAX) % interval_ms;
+    Duration::from_millis(interval_ms - since)
 }
 
 /// Asks the node for `command`'s report now, and admits it as input when

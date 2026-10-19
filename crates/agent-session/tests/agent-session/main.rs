@@ -99,6 +99,8 @@ struct TestCommands {
     /// Whether a command a call watches ends when the call is stopped, as
     /// a real command does.
     end_on_stop: Cell<bool>,
+    /// Whether each waits for the user's answer.
+    awaits: RefCell<std::collections::HashMap<CommandId, tokio::sync::watch::Sender<bool>>>,
 }
 
 impl TestCommands {
@@ -110,7 +112,17 @@ impl TestCommands {
             .borrow_mut()
             .insert(command.clone(), tokio::sync::watch::Sender::new(false));
         self.titles.borrow_mut().insert(command.clone(), title.to_owned());
+        self.awaits
+            .borrow_mut()
+            .insert(command.clone(), tokio::sync::watch::Sender::new(false));
         command
+    }
+
+    /// The command `id` waits for the user's answer from now on, or no
+    /// longer.
+    fn await_user(&self, id: &str, awaits: bool) {
+        let command = CommandId::try_from(id).unwrap();
+        self.awaits.borrow()[&command].send_replace(awaits);
     }
 
     /// The title the record of `command` keeps.
@@ -235,6 +247,14 @@ impl SessionRuntime for TestRuntime {
                 let _ = ended.wait_for(|ended| *ended).await;
             }
         })
+    }
+
+    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
+        self.commands
+            .awaits
+            .borrow()
+            .get(command)
+            .map(tokio::sync::watch::Sender::subscribe)
     }
 
     /// The nth progress report, as having run n seconds, and the end once
@@ -2522,7 +2542,6 @@ fn running(count: u32, interval_ms: u32) -> ReportEvent {
         running_ms: u64::from(count) * 1000,
         idle_ms: 0,
         interval_ms,
-        hint: None,
     }
 }
 
