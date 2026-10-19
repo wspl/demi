@@ -13,6 +13,8 @@ pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
     let command = CommandView {
         command_id: view.command_id,
         tool_use_id: view.tool_use_id,
+        title: view.title,
+        script: view.script.to_string(),
         tail: view.tail,
         chars: view.chars,
         running_ms: view.running_ms,

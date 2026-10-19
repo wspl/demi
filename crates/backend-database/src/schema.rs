@@ -1307,7 +1307,7 @@ CREATE TABLE plugin_oauth_clients (
 /// `0.1.22-dev.20261015T134426Z` deployed, of format 9, and the one
 /// `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees of
 /// rows. 0.1.22 shipped that one too, before a running command kept its
-/// turn.
+/// turn, and 0.1.33 the one before a running command kept its call's script.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1391,8 +1391,57 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.28.sql"),
             migration: Migration::Code(conversation_from_0_1_28),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.33.sql"),
+            migration: Migration::Code(conversation_from_0_1_33),
+        },
     ],
 };
+
+/// From 0.1.33's conversation schema, which 0.1.33 shipped, to the current
+/// one: a running command keeps its call's script beside its title, which
+/// the pages' view of it carries (`rendering.md` § Frame protocol). A
+/// command recorded before takes both from the call that started it, the
+/// latest of its id in its node's transcript; one whose call names no
+/// title is titled by its number, and one whose call names no script keeps
+/// none. A title a record kept stays.
+fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch("ALTER TABLE running_commands ADD COLUMN script TEXT NOT NULL DEFAULT '';")?;
+    let rows = transaction
+        .prepare("SELECT command_id, node_id, tool_use_id, title FROM running_commands")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut call = transaction.prepare(
+        "SELECT json_extract(block, '$.input') FROM blocks
+         WHERE node_id = ?1 AND json_extract(block, '$.type') = 'tool_call'
+           AND json_extract(block, '$.toolUseId') = ?2
+         ORDER BY idx DESC LIMIT 1",
+    )?;
+    let mut update = transaction.prepare("UPDATE running_commands SET title = ?2, script = ?3 WHERE command_id = ?1")?;
+    for (command, node, tool_use_id, title) in rows {
+        let input: Option<String> = call
+            .query_row(rusqlite::params![node, tool_use_id], |row| row.get(0))
+            .optional()?;
+        // The input is the model's JSON text, which need not decode: such a
+        // call names neither.
+        let input = input
+            .and_then(|input| serde_json::from_str::<serde_json::Value>(&input).ok())
+            .unwrap_or_default();
+        let named = |field: &str| input.get(field).and_then(serde_json::Value::as_str).map(str::to_owned);
+        let title = if title.is_empty() {
+            named("description")
+                .map(|description| demi_shared_types::trim(&description).to_owned())
+                .filter(|description| !description.is_empty())
+                .unwrap_or_else(|| command.clone())
+        } else {
+            title
+        };
+        update.execute(rusqlite::params![command, title, named("script").unwrap_or_default()])?;
+    }
+    Ok(())
+}
 
 /// From 0.1.22's conversation schema to 0.1.27's: a running
 /// command keeps the turn
@@ -4335,9 +4384,9 @@ CREATE TABLE command_outputs (
 -- that device, the call that started it, when it started, how far each
 -- node that looked at it has seen its output, a JSON object of each node's
 -- bytes of stdout and stderr by the node's id, the title of the call that
--- started it, empty for a command recorded before records kept it, and the
--- interval in milliseconds that call asked it to report at, null for one
--- that reports only its end.
+-- started it, the interval in milliseconds that call asked it to report at,
+-- null for one that reports only its end, and the call's script, which the
+-- pages' view of it carries with its title (rendering.md § Frame protocol).
 CREATE TABLE running_commands (
   command_id  TEXT PRIMARY KEY,
   node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
@@ -4355,7 +4404,8 @@ CREATE TABLE running_commands (
   -- What it starts once its Host is back, while its start waits for it and
   -- was never sent; null once sent. running_commands.unsent: unsent start
   -- format 1.
-  unsent      TEXT
+  unsent      TEXT,
+  script      TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
@@ -6121,6 +6171,86 @@ mod tests {
         assert_eq!(
             intervals,
             [("1".to_owned(), Some(30_000)), ("2".to_owned(), None), ("3".to_owned(), Some(15_000))]
+        );
+    }
+
+    /// A command that ran under 0.1.33 takes its call's script, which the
+    /// pages' view of it carries with its title, and a title when its record
+    /// had none: its call's description, or its number when the call is gone
+    /// or names none; a title its record kept stays. Planted defects this
+    /// catches: a migration that leaves the script empty, so a taken-up
+    /// command's terminal opens without its prompt line, and one that leaves
+    /// an empty title, so its Running tab has no name.
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_running_command_of_0_1_33_takes_its_calls_script_and_a_title() {
+        use demi_shared_types::{Block, NodeId, ToolCallBlock, ToolCallStatus};
+
+        use crate::running;
+
+        let call = |id: &str, input: String| {
+            Block::ToolCall(ToolCallBlock {
+                id: id.try_into().unwrap(),
+                created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
+                model: demi_agent_store::testing::test_model(),
+                tool_use_id: id.to_owned(),
+                tool_name: "shell".to_owned(),
+                input,
+                status: ToolCallStatus::Completed,
+                output: Vec::new(),
+                view: None,
+                ended_at: None,
+                run: None,
+                entries: Vec::new(),
+            })
+        };
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.33.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, parent_id, description, round, started_at, can_spawn, delivered, state,
+                    output_revision, cwd, cwd_under, leaf)
+                 VALUES ('root', 0, NULL, '', 1, 0, 1, 0, ?1, 0, NULL, NULL, 2)",
+                [serde_json::to_string(&crate::tree::tests::state()).unwrap()],
+            )
+            .unwrap();
+        let blocks = [
+            call("c1", serde_json::json!({"script": "git clone https://example.test/repo.git", "description": " Clone the repository "}).to_string()),
+            call("c2", serde_json::json!({"script": "make", "description": "Build it"}).to_string()),
+            call("c4", "{\"script\": \"ma".to_owned()),
+        ];
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', ?1, ?2, nullif(?1 - 1, -1))",
+                    rusqlite::params![i64::try_from(index).unwrap(), to_json(block)],
+                )
+                .unwrap();
+        }
+        for (command, call, title) in [("1", "c1", ""), ("2", "c2", "Build"), ("3", "gone", ""), ("4", "c4", "")] {
+            connection
+                .execute(
+                    "INSERT INTO running_commands (command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title)
+                     VALUES (?1, 'root', 'device', ?1, ?2, 0, '{}', ?3)",
+                    rusqlite::params![command, call, title],
+                )
+                .unwrap();
+        }
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let running = running::of_node(&connection, &NodeId::try_from("root").unwrap()).unwrap();
+        let named: Vec<(&str, &str, &str)> = running
+            .iter()
+            .map(|command| (command.command.as_str(), command.title.as_str(), command.script.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                ("1", "Clone the repository", "git clone https://example.test/repo.git"),
+                ("2", "Build", "make"),
+                ("3", "3", ""),
+                ("4", "4", ""),
+            ]
         );
     }
 

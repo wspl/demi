@@ -310,6 +310,8 @@
       "status": "running",
       "commandId": "cmd-1",
       "toolUseId": "toolu_1",
+      "title": "Run the tests",
+      "script": "cargo test",
       "tail": "ok 12 tests\n",
       "chars": 12,
       "runningMs": 1200
@@ -322,6 +324,8 @@
       "status": "exited",
       "commandId": "cmd-2",
       "toolUseId": "toolu_2",
+      "title": "Write the archive",
+      "script": "tar -c . > out.tar",
       "tail": "[... 20000000 bytes of stdout not shown ...]\n<binary stdout: 20000000 bytes, exceeds the 16777216-byte binary limit; raw bytes at /home/demi/.demi/output/cmd-2/stdout.txt>\n",
       "chars": 180,
       "runningMs": 1200,
@@ -334,6 +338,8 @@
       "status": "aborted",
       "commandId": "cmd-1",
       "toolUseId": "toolu_1",
+      "title": "Run the tests",
+      "script": "cargo test",
       "tail": "ok 12 tests\n",
       "chars": 12,
       "runningMs": 1500

@@ -1090,6 +1090,7 @@ impl ShellEnvironment for ScriptedShell {
             command.clone(),
             request.caller.tool_use_id,
             request.title,
+            &request.script,
         )));
         self.hold(&record);
         Box::pin(async move { Ok(command) })
@@ -1217,6 +1218,7 @@ impl ShellEnvironment for ScriptedShell {
             taken.command,
             taken.caller.tool_use_id,
             taken.title,
+            &taken.script,
             taken.running,
             taken.seen,
         )));

@@ -198,7 +198,7 @@ pub struct Unreachable {
 }
 
 /// A command an environment takes up again: the call `caller` names,
-/// titled `title`, started it as the job `job` on the environment's Host
+/// titled `title`, started it with `script` as the job `job` on the environment's Host
 /// for its node, it has run for `running` since, and the node had seen
 /// `seen` of its output (`storage.md` § Command outputs).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,6 +207,7 @@ pub struct TakenUp {
     pub job: String,
     pub caller: JobCaller,
     pub title: String,
+    pub script: String,
     /// How often it reports while it runs, or only its end when none.
     pub interval_ms: Option<u32>,
     pub running: Duration,

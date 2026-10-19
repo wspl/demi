@@ -408,6 +408,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 turn: running.turn.clone(),
             },
             title: running.title.clone(),
+            script: running.script.clone(),
             interval_ms: running.interval_ms,
             running: ran,
             seen: running.place,

@@ -99,12 +99,10 @@ import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
-import { findCallBlock, shellCallOf } from './terminals'
 import { createConversationCopies } from './offline'
 import { readConversationCopy, type AgentCopy } from '../state/offline'
 import { t } from './locales/text'
-import { EMPTY_TRANSCRIPT, addPage, heldBlocks, heldTranscript } from '@demicodes/web-ui/transport/protocol'
-import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import { EMPTY_TRANSCRIPT, addPage, heldTranscript } from '@demicodes/web-ui/transport/protocol'
 import {
   deleteDraft,
   readDraft,
@@ -216,44 +214,6 @@ export const useConversations = defineStore('conversations', () => {
   )
   /** The copies of the conversations opened here, for opening offline (`web-application.md` § Installing and opening offline). */
   const copies = createConversationCopies(() => items.value, () => session.user?.id ?? null)
-  /** The commands whose call the page has gone to read whole, each once. */
-  const callReads = new WeakSet<TerminalRecord>()
-
-  /**
-   * Gives a command without its script its call's title and script
-   * (`web-api-conversations.md` § Light form): a call the page holds light, with its input
-   * cut, is read whole by its id; a call the page does not hold is found by
-   * the command's id first. A call the page holds whole names the command
-   * from its frames already.
-   */
-  async function readCommandCall(conversation: Conversation, terminal: TerminalRecord): Promise<void> {
-    const record = toRaw(terminal)
-    if (record.script !== undefined || callReads.has(record)) {
-      return
-    }
-    const node = record.subagentId ?? null
-    const blocks = heldBlocks(node === null
-      ? conversation.history
-      : conversation.subagents.find((agent) => agent.id === node)?.history ?? EMPTY_TRANSCRIPT)
-    const held = record.toolUseId === undefined ? undefined : findCallBlock(blocks, record.toolUseId)
-    if (held && !held.light) {
-      return
-    }
-    callReads.add(record)
-    try {
-      const at = held ? { node, blockId: held.id } : await history.findCommand(conversation, record.id)
-      const call = shellCallOf(await history.readWhole(conversation, at.node, at.blockId))
-      if (call && terminal.script === undefined) {
-        terminal.title = call.title
-        terminal.script = call.script
-      }
-    } catch (error) {
-      // The tab keeps the command's id as its title and shows its output
-      // without the prompt line; only its name is missing.
-      console.warn('The command\'s call was not read', error)
-    }
-  }
-
   /**
    * Counts the times New gave the user the draft already shown, whose
    * composer then takes the focus again.
@@ -1338,12 +1298,6 @@ export const useConversations = defineStore('conversations', () => {
         else if (next.type === 'cost_rows')
           followCostRows(conversation, next.rows)
         reconcileSubmission(conversation)
-        if (next.type === 'shell_output') {
-          const terminal = conversation.terminals.find((candidate) => candidate.id === next.status.commandId)
-          if (terminal) {
-            void readCommandCall(conversation, terminal)
-          }
-        }
       },
     })
     entry.runtime = runtime

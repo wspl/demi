@@ -30,6 +30,9 @@ pub struct CommandRecord {
     /// command names, whatever became of the call (`shell-tool.md` § Command
     /// reports).
     title: String,
+    /// That call's script, which the pages' view of the command carries
+    /// with its title (`rendering.md` § Frame protocol).
+    script: Arc<str>,
     started: Instant,
     last_output: Instant,
     phase: Phase,
@@ -79,13 +82,16 @@ impl PageText {
 }
 
 /// A command as the pages see it (`shell-tool.md` § Live output): its handle,
-/// the `shell` call that started it, where it is, the last
-/// [`TAIL_CHARS`] characters of the pages' view of its output, and how many
-/// characters that view has held since the command started.
+/// the `shell` call that started it, with that call's title and script as
+/// the command's record keeps them, where it is, the last [`TAIL_CHARS`]
+/// characters of the pages' view of its output, and how many characters
+/// that view has held since the command started.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageView {
     pub command_id: CommandId,
     pub tool_use_id: String,
+    pub title: String,
+    pub script: Arc<str>,
     pub state: PageState,
     pub tail: String,
     pub chars: u64,
@@ -161,19 +167,21 @@ pub enum Ending {
 
 impl CommandRecord {
     /// A running command that the `shell` call `tool_use_id`, titled
-    /// `title`, started.
-    pub fn new(command_id: CommandId, tool_use_id: String, title: String) -> Self {
-        Self::taken_up(command_id, tool_use_id, title, std::time::Duration::ZERO, Seen::default())
+    /// `title`, started with `script`.
+    pub fn new(command_id: CommandId, tool_use_id: String, title: String, script: &str) -> Self {
+        Self::taken_up(command_id, tool_use_id, title, script, std::time::Duration::ZERO, Seen::default())
     }
 
     /// A running command that the `shell` call `tool_use_id`, titled
-    /// `title`, started `running` ago and that is taken up again, whose
-    /// output the model had seen as far as `seen`: its output arrives again
-    /// from its start, and the model's view passes over what it saw.
+    /// `title`, started with `script` `running` ago and that is taken up
+    /// again, whose output the model had seen as far as `seen`: its output
+    /// arrives again from its start, and the model's view passes over what
+    /// it saw.
     pub fn taken_up(
         command_id: CommandId,
         tool_use_id: String,
         title: String,
+        script: &str,
         running: std::time::Duration,
         seen: Seen,
     ) -> Self {
@@ -182,6 +190,7 @@ impl CommandRecord {
             command_id,
             tool_use_id,
             title,
+            script: Arc::from(script),
             started: now.checked_sub(running).unwrap_or(now),
             last_output: now,
             phase: Phase::Running,
@@ -463,6 +472,8 @@ impl CommandRecord {
         PageView {
             command_id: self.command_id.clone(),
             tool_use_id: self.tool_use_id.clone(),
+            title: self.title.clone(),
+            script: Arc::clone(&self.script),
             state: match &self.phase {
                 Phase::Running => PageState::Running,
                 Phase::Waiting { host } => PageState::Waiting { host: host.clone() },

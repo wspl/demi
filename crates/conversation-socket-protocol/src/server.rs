@@ -757,6 +757,15 @@ pub struct CommandView {
     /// when the frame names one.
     #[garde(skip)]
     pub tool_use_id: String,
+    /// That call's title, its `description`, as the command's record keeps
+    /// it from its start, which its tab in the Running window shows whether
+    /// or not the page holds the call (`rendering.md` § Rendering boundary).
+    #[garde(skip)]
+    pub title: String,
+    /// That call's script, as the command's record keeps it, which its
+    /// terminal opens with.
+    #[garde(skip)]
+    pub script: String,
     /// The last 4,096 characters of the pages' view of its output: its
     /// output in the order it reached the backend, with a note where the
     /// runner left some out.

@@ -58,8 +58,9 @@ Live frames add to the transcript; they do not replace it:
   (`toolUseId`, in the subagent's transcript when `subagentId` is set). Once
   the call has returned, a command that still runs is one of the
   conversation's running commands: the dock's Running chip counts it, its
-  panel shows it in a tab titled by the call's `description` (cut at the
-  end, whole in its tooltip), and its output keeps coming there, while
+  panel shows it in a tab titled by the call's `description`, which the
+  frame carries as `title` (cut at the end, whole in its tooltip), whether
+  or not the page holds the call, and its output keeps coming there, while
   the call keeps the view its result stored. The panel's terminal opens with
   the script as a terminal shows what was typed: `$ ` and the first line, a
   continuation line `> ` for each further line, wrapped at the terminal's
@@ -429,7 +430,7 @@ Host, with the handle checks of [Running shell tools](shell-tool.md#running-shel
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
-| `shell_output` | A command's live view ([Live output](shell-tool.md#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
+| `shell_output` | A command's live view ([Live output](shell-tool.md#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, its `title` and `script` as its record keeps them from its start, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
 | `remove_result` | The steer's or queued message's id and an `outcome`: `removed`, or `gone_on` when the turn had already taken it or the session never held it |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |

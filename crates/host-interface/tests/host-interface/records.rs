@@ -12,6 +12,7 @@ fn new_record() -> CommandRecord {
         CommandId::try_from("command").unwrap(),
         "call".into(),
         "Run the command".into(),
+        "make",
     )
 }
 

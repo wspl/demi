@@ -1,14 +1,12 @@
 import {
   EMPTY_TRANSCRIPT,
   applyTranscriptPatches,
-  heldBlocks,
   resetTranscript,
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation } from '../state/types'
 import { sideFor } from './side-records'
-import { findShellCall } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followFrame, isTerminalRunning } from '@demicodes/web-ui/agent/terminals'
 import { subagentJobFields } from '@demicodes/web-ui/agent/subagents'
@@ -135,25 +133,14 @@ export function applyConversationEvent(
   } else if (event.type === 'shell_output') {
     // A command's live view, the same for every page (`shell-tool.md` § Live
     // output): what it adds to the output shown, under its call while the
-    // call runs and in the dock after.
+    // call runs and in the dock after. The frame names the command by its
+    // call's title and script, which its record keeps, so its tab needs no
+    // call the page holds (`rendering.md` § Rendering boundary).
     const { subagentId, status } = event
     const current = conversation.terminals.find(
       (terminal) => terminal.id === status.commandId,
     )
-    // The call may lie in any window the page holds, not only the latest.
-    const blocks = heldBlocks(subagentId === undefined
-      ? conversation.history
-      : conversation.subagents.find((agent) => agent.id === subagentId)?.history ?? EMPTY_TRANSCRIPT)
-    // The call that started it names it; the command's id stands in until the
-    // page has the call. Until the record has the call's script, each frame
-    // looks for the call again: the transcript may not have held it yet, or
-    // held it light, without a long script, which the store then reads whole
-    // (`web-api-conversations.md` § Light form). A record with its script keeps its call,
-    // which a later call that reuses the id does not rename.
-    const call = current?.script !== undefined
-      ? current
-      : findShellCall(blocks, status.toolUseId) ?? current
-    const record = followFrame(current, status, call, subagentId, Date.now())
+    const record = followFrame(current, status, subagentId, Date.now())
     if (current) {
       Object.assign(current, record)
     } else {

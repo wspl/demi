@@ -385,16 +385,16 @@ test('a reloaded page times a running command from the start the server reported
     input: '{"script":"sleep 600","description":"Wait"}', status: 'executing', endedAt: null, output: [], view: null,
   }
   const loadedAt = Date.parse('2026-09-24T12:05:00.000Z')
-  const frame = { status: 'running', commandId: '17', toolUseId: 'call-1', tail: '', chars: 0, runningMs: 92_000 } as const
-  const command = followFrame(undefined, frame, { title: 'Wait' }, undefined, loadedAt)
+  const frame = { status: 'running', commandId: '17', toolUseId: 'call-1', title: 'Wait', script: 'sleep 600', tail: '', chars: 0, runningMs: 92_000 } as const
+  const command = followFrame(undefined, frame, undefined, loadedAt)
   const time = shellRowTime(call, command)
   expect(time).toEqual({ kind: 'running', since: loadedAt - 92_000 })
   // The page's clock reads the time it has run since that start.
   expect(runningTime(loadedAt - (time?.kind === 'running' ? time.since : 0))).toBe('1m 32s')
   // A later frame keeps the start; the end frame says how long it ran in all.
-  const later = followFrame(command, { ...frame, runningMs: 95_000 }, undefined, undefined, loadedAt + 3_500)
+  const later = followFrame(command, { ...frame, runningMs: 95_000 }, undefined, loadedAt + 3_500)
   expect(later.startedAt).toBe(command.startedAt)
-  const ended = followFrame(later, { ...frame, status: 'exited', exitCode: 0, runningMs: 100_000 }, undefined, undefined, loadedAt + 8_200)
+  const ended = followFrame(later, { ...frame, status: 'exited', exitCode: 0, runningMs: 100_000 }, undefined, loadedAt + 8_200)
   expect(shellRowTime({ ...call, status: 'completed' }, ended)).toEqual({ kind: 'ran', ms: 100_000 })
   // A call that returned with its command ended, after a reload with no frame, times it by its stored view.
   const view: ShellToolView = { kind: 'shell', status: 'exited', exitCode: 1, commandId: '17', runningMs: 47_000, idleMs: 0, chunks: [], viewTruncated: false }

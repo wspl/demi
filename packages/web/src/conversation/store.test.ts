@@ -707,9 +707,9 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
 }
 
 // `shell-tool.md` § Live output and § Rendering boundary: every page keeps one
-// record of a command from its live frames, titled by its call's description
-// and opening with its script, and adds only the characters beyond those it
-// has shown.
+// record of a command from its live frames, titled by its call's title and
+// opening with its script as the frames carry them, and adds only the
+// characters beyond those it has shown.
 test('a command\'s live frames build what the page shows of it, until its end', () => {
   const conversation = useConversations().items[0]!
   conversation.history = wholeHistory([execCall('call-1', 'npm test', 'executing', 'Run the unit tests')])
@@ -717,8 +717,8 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   const frame = (status: 'running' | 'exited', tail: string, chars: number) => ({
     type: 'shell_output' as const,
     status: status === 'running'
-      ? { status, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10 }
-      : { status, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10, exitCode: 0 },
+      ? { status, commandId: 'cmd', toolUseId: 'call-1', title: 'Run the unit tests', script: 'npm test', tail, chars, runningMs: 10 }
+      : { status, commandId: 'cmd', toolUseId: 'call-1', title: 'Run the unit tests', script: 'npm test', tail, chars, runningMs: 10, exitCode: 0 },
   })
   applyConversationEvent(conversation, frame('running', 'one\n', 4))
   // The frame's tail holds only the newest characters; the page adds them.
@@ -735,7 +735,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   expect(toRaw(conversation.terminals)).toMatchObject([{ phase: 'exited', exitCode: 0, output: 'ninety\nend\n' }])
   expect(conversation.terminals[0]?.endedAt).toBeDefined()
 
-  // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
+  // A subagent's command is titled as its frames say, as the root's is.
   const job = {
     subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
@@ -746,38 +746,11 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   })
   applyConversationEvent(conversation, {
     type: 'shell_output', subagentId: 'child',
-    status: { status: 'running', commandId: 'cmd-2', toolUseId: 'call-1', tail: 'Compiling\n', chars: 10, runningMs: 5 },
+    status: { status: 'running', commandId: 'cmd-2', toolUseId: 'call-1', title: 'cargo build', script: 'cargo build', tail: 'Compiling\n', chars: 10, runningMs: 5 },
   })
   expect(toRaw(conversation.terminals)[1]).toMatchObject({
     id: 'cmd-2', title: 'cargo build', script: 'cargo build', subagentId: 'child', toolUseId: 'call-1', output: 'Compiling\n',
   })
-})
-
-// The command's id stands in for its title only until the transcript has its
-// call, and a call the page then holds light, without its script, takes away
-// no script the command's record had.
-test('a command named by its id takes its call\'s title and script once the transcript has the call', () => {
-  const conversation = useConversations().items[0]!
-  conversation.history = wholeHistory([])
-  conversation.terminals = []
-  const frame = (tail: string, chars: number) => ({
-    type: 'shell_output' as const,
-    status: { status: 'running' as const, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10 },
-  })
-  applyConversationEvent(conversation, frame('one\n', 4))
-  expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', title: 'cmd' }])
-  expect(conversation.terminals[0]?.script).toBeUndefined()
-  conversation.history = wholeHistory([execCall('call-1', 'bun run web:gallery', 'completed', 'Start the gallery')])
-  applyConversationEvent(conversation, frame('two\n', 8))
-  expect(toRaw(conversation.terminals)).toMatchObject([
-    { id: 'cmd', title: 'Start the gallery', script: 'bun run web:gallery', output: 'one\ntwo\n' },
-  ])
-  const light = { ...execCall('call-1', 'bun run web:gallery', 'completed'), input: JSON.stringify({ description: 'Start the gallery' }), light: true as const }
-  conversation.history = wholeHistory([light])
-  applyConversationEvent(conversation, frame('three\n', 14))
-  expect(toRaw(conversation.terminals)).toMatchObject([
-    { title: 'Start the gallery', script: 'bun run web:gallery', output: 'one\ntwo\nthree\n' },
-  ])
 })
 
 // A command the user or the agent stopped shows as stopped, never as done.
@@ -785,7 +758,7 @@ test('a stopped command stays stopped', () => {
   const conversation = useConversations().items[0]!
   conversation.history = wholeHistory([execCall('call-1', 'npm run watch', 'executing')])
   conversation.terminals = []
-  const view = { commandId: 'cmd', toolUseId: 'call-1', tail: 'watching\n', chars: 9, runningMs: 10 }
+  const view = { commandId: 'cmd', toolUseId: 'call-1', title: 'Watch', script: 'npm run watch', tail: 'watching\n', chars: 9, runningMs: 10 }
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'running', ...view } })
   applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'aborted', ...view } })
   expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
@@ -2979,7 +2952,7 @@ test('a conversation opens in two steps: its transcript with its agents, then it
     { type: 'subagents', subagents: subagents.map((summary) => ({ ...summary, revision: 2 })) },
     {
       type: 'shell_output',
-      status: { status: 'running', commandId: 'cmd-1', toolUseId: 'call-cmd-1', tail: 'one\n', chars: 4, runningMs: 10 },
+      status: { status: 'running', commandId: 'cmd-1', toolUseId: 'call-cmd-1', title: 'Serve cmd-1', script: 'serve cmd-1', tail: 'one\n', chars: 4, runningMs: 10 },
     },
   )
   await opening
@@ -3244,7 +3217,7 @@ test('a conversation that opens again after its socket dropped shows what ended 
   const command = (commandId: string) => ({
     type: 'shell_output' as const,
     subagentId: 'reader',
-    status: { status: 'running' as const, commandId, toolUseId: `call-${commandId}`, tail: 'one\n', chars: 4, runningMs: 10 },
+    status: { status: 'running' as const, commandId, toolUseId: `call-${commandId}`, title: `Serve ${commandId}`, script: `serve ${commandId}`, tail: 'one\n', chars: 4, runningMs: 10 },
   })
   const handshake: ServerFrame[] = [
     { type: 'subagents', subagents: [{ ...running, revision: 3 }] },
@@ -3277,7 +3250,7 @@ test('a conversation that opens again after its socket dropped shows what ended 
     },
     {
       type: 'shell_output', subagentId: 'reader',
-      status: { status: 'exited', commandId: 'cmd-1', toolUseId: 'call-cmd-1', tail: 'one\ntwo\n', chars: 8, runningMs: 20, exitCode: 0 },
+      status: { status: 'exited', commandId: 'cmd-1', toolUseId: 'call-cmd-1', title: 'Serve cmd-1', script: 'serve cmd-1', tail: 'one\ntwo\n', chars: 8, runningMs: 20, exitCode: 0 },
     },
     { type: 'context_usage', node: FIRST, usage: null },
   )
@@ -3448,61 +3421,53 @@ test('an archive the backend refuses keeps the open conversation\'s transcript a
   expect(loads).toEqual([])
 })
 
-// `web-api-conversations.md` § Light form: a running command's tab needs its call's
-// script, which the page reads whole when it holds the call light with its
-// input cut, or finds by the command when it does not hold the call at all.
-test('a running command\'s tab reads its call whole when the page holds it light or not at all', async () => {
-  const { conversation, sockets } = await openWithSession(FIRST)
-  const longScript = `for i in $(seq 1 25); do echo "line $i"; done\n${'# keep serving\n'.repeat(40)}exec bun run web:gallery`
-  const lightCall = {
-    ...execCall('call-light', longScript, 'completed', 'Start the gallery from the main checkout'),
-    input: JSON.stringify({ description: 'Start the gallery from the main checkout' }),
-    light: true as const,
+// Production: research subagents' commands showed in the Running window as
+// `70460`, `70477`…: the first frame of a subagent's command came while its
+// call still ran, the page held no transcript of the child, and the read of
+// the call by the command found none yet and was never tried again. A
+// command's tab takes its title and script from its frames, which carry
+// them from the command's record (`rendering.md` § Rendering boundary): a
+// page that holds no call of it titles it before the call returns and after
+// it opens again, and reads nothing for it
+// (`web-api-conversations.md` § Light form). Cost: two openings, no wait.
+test('a subagent\'s running command is titled from its frames, whether or not the page holds its call', async () => {
+  const view = {
+    commandId: '70460', toolUseId: 'call-clone', title: 'Clone the repository',
+    script: 'git clone https://example.test/repo.git', runningMs: 10,
   }
-  conversation.history = wholeHistory([shownBlock, lightCall])
-  const older = execCall('call-old', 'python3 -m http.server 18915', 'completed', 'Serve the folder')
+  const frame = (tail: string, chars: number) => ({
+    type: 'shell_output' as const, subagentId: 'researcher',
+    status: { status: 'running' as const, ...view, tail, chars },
+  })
+  const handshake: ServerFrame[] = [
+    { type: 'subagents', subagents: [{ ...child('researcher', 1, 'running'), revision: 2 }] },
+    frame('Cloning\n', 8),
+  ]
   const reads: string[] = []
   const answering = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
+  globalThis.fetch = ((input, init) => {
     const path = String(input)
-    if (path === `/api/conversations/${FIRST}/transcript/blocks/${lightCall.id}`) {
+    if (path.includes('/commands/') || path.includes('/transcript/blocks/'))
       reads.push(path)
-      return Response.json({ block: execCall('call-light', longScript, 'completed', 'Start the gallery from the main checkout'), failures: {} })
-    }
-    if (path === `/api/conversations/${FIRST}/commands/cmd-old`) {
-      reads.push(path)
-      return Response.json({ commandId: 'cmd-old', subagentId: null, blockId: older.id })
-    }
-    if (path === `/api/conversations/${FIRST}/transcript/blocks/${older.id}`) {
-      reads.push(path)
-      return Response.json({ block: older, failures: {} })
-    }
     return answering(input, init)
   }) as typeof fetch
-  const frame = (commandId: string, toolUseId: string, tail: string, chars: number) => ({
-    type: 'shell_output' as const,
-    status: { status: 'running' as const, commandId, toolUseId, tail, chars, runningMs: 1_800_000 },
-  })
-  sockets[0]!.receive(frame('cmd-light', 'call-light', 'VITE ready\n', 11))
-  sockets[0]!.receive(frame('cmd-old', 'call-old', 'Serving HTTP\n', 13))
+  const { conversation, sockets } = await openWithSession(FIRST, handshake)
+  const tabs = () => toRaw(conversation.terminals).map(({ id, title, script, subagentId }) => ({ id, title, script, subagentId }))
+  const titled = { id: '70460', title: 'Clone the repository', script: 'git clone https://example.test/repo.git', subagentId: 'researcher' }
+  expect(conversation.subagents.find((agent) => agent.id === 'researcher')?.history.windows).toEqual([])
+  expect(tabs()).toEqual([titled])
+
+  // The page opens again, as after a reload, and the command's next frame
+  // names it as the first did.
+  handshake.splice(1, 1, frame('Cloning\nReceiving objects\n', 26))
+  sockets[0]!.end()
+  await pageReturned()
   await waitFor(
-    () => conversation.terminals.every((terminal) => terminal.script !== undefined),
-    () => `a tab has no script: ${JSON.stringify(conversation.terminals.map(({ id, title, script }) => ({ id, title, script })))}`,
+    () => sockets[1]?.sent.length === 1 && conversation.load === 'ready',
+    () => `it did not open again: ${sockets.length} sockets`,
   )
-  expect(toRaw(conversation.terminals)).toMatchObject([
-    { id: 'cmd-light', title: 'Start the gallery from the main checkout', script: longScript, output: 'VITE ready\n' },
-    { id: 'cmd-old', title: 'Serve the folder', script: 'python3 -m http.server 18915', output: 'Serving HTTP\n' },
-  ])
-  // The light call the page held is whole now, and later frames read nothing again.
-  expect(latestBlocks(conversation.history).find((block) => block.id === lightCall.id)?.light).toBeUndefined()
-  sockets[0]!.receive(frame('cmd-light', 'call-light', 'VITE ready\nhmr update\n', 22))
-  sockets[0]!.receive(frame('cmd-old', 'call-old', 'Serving HTTP\nGET /\n', 19))
-  await waitFor(() => conversation.terminals[1]?.output.endsWith('GET /\n') === true)
-  expect(reads).toEqual([
-    `/api/conversations/${FIRST}/transcript/blocks/${lightCall.id}`,
-    `/api/conversations/${FIRST}/commands/cmd-old`,
-    `/api/conversations/${FIRST}/transcript/blocks/${older.id}`,
-  ])
+  expect(tabs()).toEqual([titled])
+  expect(reads).toEqual([])
 })
 
 test('deleted rows leave at once, and a deletion that fails brings its row back and says why', async () => {
