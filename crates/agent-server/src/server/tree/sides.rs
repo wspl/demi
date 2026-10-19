@@ -35,7 +35,7 @@ use super::{
 use crate::{
     Node,
     node::{self, NodeRole, NodeSpec, Origin},
-    server::{AgentServer, commands::with_runtime_groups},
+    server::AgentServer,
 };
 
 /// What makes a question a side question, between what it asks about and
@@ -444,7 +444,8 @@ impl<H: HostResolver> Tree<H> {
         let activity = self.admission.enter(Purpose::Demand).await;
         let id = origin.record().id.clone();
         let inherited = self.root.inherited_commands().clone();
-        let commands = with_runtime_groups(&inherited, server, origin.record().can_spawn_subagents)
+        let commands = server
+            .runtime_commands(&inherited, origin.record().can_spawn_subagents)
             .map_err(|error| error.to_string())?;
         let assembled = node::assemble(NodeSpec {
             origin,
@@ -459,7 +460,7 @@ impl<H: HostResolver> Tree<H> {
             preamble: None,
             context: deps.context.clone(),
             inherited,
-            commands: Rc::new(commands),
+            commands,
             store: self.store.clone(),
             shells: deps.shells.clone(),
             feed: self.live.feed(Some(id.clone())),

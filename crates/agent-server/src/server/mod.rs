@@ -27,7 +27,7 @@ use demi_agent_session::{
 use demi_agent_store::{AgentTreeStore, NodeRecord, SideOf, StoreError};
 use demi_agent_tools::{
     CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
-    SubagentSource, ToolsetSource, Unavailable,
+    SubagentSource, Toolset, ToolsetSource, Unavailable,
 };
 use demi_agent_transcript::{ForkEnd, IdSource};
 
@@ -223,6 +223,8 @@ pub struct AgentServer<H: HostResolver> {
     /// The disposals of trees that stayed detached and quiescent.
     evictions: TaskTracker,
     next_connection: Cell<u64>,
+    /// The command sets the nodes of every tree share.
+    command_sets: commands::NodeCommandSets,
 }
 
 impl<H: HostResolver> AgentServer<H> {
@@ -233,6 +235,7 @@ impl<H: HostResolver> AgentServer<H> {
             opening: KeyedSerialGate::new(),
             evictions: TaskTracker::new(),
             next_connection: Cell::new(0),
+            command_sets: commands::NodeCommandSets::default(),
         })
     }
 
@@ -248,15 +251,42 @@ impl<H: HostResolver> AgentServer<H> {
         Connection::new(self.clone(), id, root, resolver)
     }
 
-    /// The commands a root node starts from when the product's are
-    /// `product`: those with the server's `demi agent` and `demi shell`
-    /// groups grafted, whose declarations, such as their permission
-    /// categories, the product reads beside its own.
-    pub fn node_commands(
+    /// The commands a root node that opens now starts from: the product's
+    /// current ones with the server's `demi agent` and `demi shell` groups
+    /// grafted, whose declarations, such as their permission categories,
+    /// the product reads beside its own.
+    pub async fn node_commands(self: &Rc<Self>) -> Result<Rc<CommandSet>, String> {
+        let toolset = self.toolset().await?;
+        self.runtime_commands(&toolset.commands, true)
+            .map_err(|error| error.to_string())
+    }
+
+    /// The product's toolset now: the one a node holds of the product's
+    /// current revision, else the product's, composed once and kept while
+    /// a node holds it. Trees that opened with another keep theirs.
+    async fn toolset(&self) -> Result<Toolset, String> {
+        let revision = self.deps.toolsets.revision().await?;
+        if let Some(held) = self.command_sets.toolset(&revision) {
+            return Ok(held);
+        }
+        let composed = self.deps.toolsets.current().await?;
+        Ok(self.command_sets.hold_toolset(composed))
+    }
+
+    /// `inherited` with the server's `demi agent` and `demi shell` groups for
+    /// a node with the spawning right `can_spawn`: the set another node of
+    /// the same two holds, or a new one that later nodes share.
+    fn runtime_commands(
         self: &Rc<Self>,
-        product: &CommandSet,
-    ) -> Result<CommandSet, RegisterError> {
-        commands::with_runtime_groups(product, self, true)
+        inherited: &Rc<CommandSet>,
+        can_spawn: bool,
+    ) -> Result<Rc<CommandSet>, RegisterError> {
+        if let Some(held) = self.command_sets.grafted(inherited, can_spawn) {
+            return Ok(held);
+        }
+        let commands = Rc::new(commands::with_runtime_groups(inherited, self, can_spawn)?);
+        self.command_sets.hold_grafted(inherited, can_spawn, &commands);
+        Ok(commands)
     }
 
     /// The conversation's live tree, if it has one.

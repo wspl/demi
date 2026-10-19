@@ -6,7 +6,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_agent_tools::ToolsetSource;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::CredentialSeal;
@@ -23,7 +22,6 @@ use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
 
 use super::{Shard, Shards};
-use crate::conversation::product::ShardToolsets;
 
 impl PermissionShard for Shard {
     fn control(&self) -> &ControlService {
@@ -44,15 +42,8 @@ impl PermissionShard for Shard {
 
     fn categories(&self) -> LocalBoxFuture<'_, Result<Vec<Category>, String>> {
         Box::pin(async move {
-            let toolsets = ShardToolsets {
-                shard: self.this.clone(),
-            };
-            let toolset = toolsets.current().await?;
             // The agent runtime's groups declare categories of their own.
-            let commands = self
-                .agent()
-                .node_commands(&toolset.commands)
-                .map_err(|error| error.to_string())?;
+            let commands = self.agent().node_commands().await?;
             Ok(commands
                 .declarations()
                 .flat_map(Node::categories)

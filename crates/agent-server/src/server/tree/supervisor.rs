@@ -42,7 +42,7 @@ use super::profiles::Limits;
 use crate::{
     Node,
     node::{self, Instructions, NodeRole, NodeSpec, Origin},
-    server::{AgentServer, commands::with_runtime_groups, stored_fork_seed},
+    server::{AgentServer, stored_fork_seed},
 };
 
 /// The bound of a completion's result and of `show`'s last assistant text,
@@ -697,7 +697,8 @@ impl<H: HostResolver> Tree<H> {
         };
         let inherited = owner.inherited_commands().clone();
         let can_spawn = record.can_spawn_subagents;
-        let commands = with_runtime_groups(&inherited, server, can_spawn)
+        let commands = server
+            .runtime_commands(&inherited, can_spawn)
             .map_err(|error| error.to_string())?;
         let preamble = subagent_preamble(record.number, owner.record().number, can_spawn);
         let feed = self.live.feed(Some(record.id.clone()));
@@ -714,7 +715,7 @@ impl<H: HostResolver> Tree<H> {
             preamble: Some(preamble),
             context: deps.context.clone(),
             inherited,
-            commands: Rc::new(commands),
+            commands,
             store: self.store.clone(),
             shells: deps.shells.clone(),
             feed,
