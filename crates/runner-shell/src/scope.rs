@@ -792,7 +792,6 @@ impl uucore::context::Control for UtilityControl {
         mut context: uucore::context::Context,
         args: Vec<std::ffi::OsString>,
     ) -> io::Result<Box<dyn uucore::context::UtilityRun>> {
-        #[cfg(unix)]
         if context.name == crate::timeout::NAME {
             return crate::timeout::start(self, context, args);
         }

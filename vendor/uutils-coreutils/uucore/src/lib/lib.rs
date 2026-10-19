@@ -62,6 +62,8 @@ pub use crate::features::hardware;
 pub use crate::features::i18n;
 #[cfg(feature = "lines")]
 pub use crate::features::lines;
+#[cfg(feature = "mode")]
+pub use crate::features::mode;
 #[cfg(any(
     feature = "parser",
     feature = "parser-num",
@@ -89,9 +91,6 @@ pub use crate::features::uptime;
 pub use crate::features::version_cmp;
 
 // * (platform-specific) feature-gated modules
-// ** non-windows (i.e. Unix + Fuchsia)
-#[cfg(all(not(windows), feature = "mode"))]
-pub use crate::features::mode;
 // ** unix-only
 #[cfg(all(unix, feature = "entries"))]
 pub use crate::features::entries;

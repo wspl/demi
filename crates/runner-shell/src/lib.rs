@@ -9,7 +9,7 @@ mod interpreter;
 mod job;
 mod process_builtins;
 mod scope;
-#[cfg(unix)]
+mod signals;
 mod timeout;
 mod timing;
 #[cfg(feature = "testing")]

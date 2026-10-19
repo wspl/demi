@@ -140,10 +140,11 @@ fn strings(args: &[std::ffi::OsString]) -> Vec<String> {
 /// (`runner.md` § Standard utilities); a path names a program.
 pub(crate) fn named(program: &std::ffi::OsStr) -> Option<&'static str> {
     let program = program.to_str()?;
-    let names = UTILITIES.iter().map(|(name, _)| *name);
-    #[cfg(unix)]
-    let names = names.chain([crate::timeout::NAME]);
-    names.into_iter().find(|name| *name == program)
+    let mut names = UTILITIES
+        .iter()
+        .map(|(name, _)| *name)
+        .chain([crate::timeout::NAME]);
+    names.find(|name| *name == program)
 }
 
 /// Starts the utility `context.name`, which a utility started as its child

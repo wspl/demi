@@ -10,9 +10,6 @@
 use std::fmt::{self, Display};
 use std::ops::Range;
 
-#[cfg(windows)]
-use libc::umask;
-
 use crate::translate;
 
 /// A mode string that does not parse, and the part of it that is at fault.

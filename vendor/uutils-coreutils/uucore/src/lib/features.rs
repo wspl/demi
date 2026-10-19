@@ -43,6 +43,8 @@ pub mod fsext;
 pub mod i18n;
 #[cfg(feature = "lines")]
 pub mod lines;
+#[cfg(feature = "mode")]
+pub mod mode;
 #[cfg(any(
     feature = "parser",
     feature = "parser-num",
@@ -68,10 +70,6 @@ pub mod uptime;
 pub mod version_cmp;
 
 // * (platform-specific) feature-gated modules
-// ** non-windows (i.e. Unix + Fuchsia)
-#[cfg(all(not(windows), feature = "mode"))]
-pub mod mode;
-
 // ** unix-only
 #[cfg(all(unix, feature = "entries"))]
 pub mod entries;
