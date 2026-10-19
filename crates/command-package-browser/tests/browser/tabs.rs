@@ -187,35 +187,84 @@ async fn a_failed_number_draw_fails_only_the_step_that_needs_a_number() {
     assert_eq!(answering.await.unwrap(), [8, 8, 8, 8]);
 }
 
-/// An action works in a tab that is not the front tab of its window: its
-/// hidden document runs no animation frames (`browser.md` § Actionability
-/// and coordinates).
+/// Every input action works at once in a tab behind another, such as the
+/// older of two open tabs: Demi has every tab it drives render, because
+/// Chrome delivers mouse input only with a frame (`browser.md` §
+/// Actionability and coordinates). Without that a move answered after
+/// about 5 s and a click, a drag or a scroll not at all; each action here
+/// has a five-second deadline, which a hang uses up.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
-async fn an_action_works_in_the_older_of_two_open_tabs() {
+async fn every_input_action_works_in_the_older_of_two_open_tabs() {
     with_browser_fixture(|fixture| async move {
-        let older = fixture.open("popups.html").await;
+        let path = fixture.root.path().join("inputs.html");
+        std::fs::write(
+            &path,
+            "<!doctype html><meta charset=utf-8><title>Inputs</title>\
+             <style>body{margin:0;height:5000px}</style>\
+             <button id=stay onclick=\"window.stays=(window.stays||0)+1\">Stay</button>\
+             <input id=field>\
+             <script>for (const type of ['wheel','pointermove','pointerdown','pointerup','keydown'])\
+             addEventListener(type, () => document.getElementById(type) ||\
+             document.body.append(Object.assign(document.createElement('p'), {id: type})), true);</script>",
+        )
+        .unwrap();
+        let url = url::Url::from_file_path(path).unwrap();
+        let older = fixture.call("browser.open", json!({"url": url.as_str()})).await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         let newer = fixture.open("popups.html").await;
-        let visibility = |tab: &str| {
-            fixture.call(
-                "browser.eval",
-                json!({"tab": tab, "expression": "document.visibilityState"}),
-            )
+        let eval = async |expression: &str| {
+            fixture
+                .call(
+                    "browser.eval",
+                    json!({"tab": older, "expression": expression}),
+                )
+                .await["value"]
+                .clone()
         };
-        assert_eq!(visibility(&older).await["value"], "hidden");
-        assert_eq!(visibility(&newer).await["value"], "visible");
-        fixture
-            .call("browser.click", json!({"tab": older, "css": "#stay"}))
-            .await;
-        let clicks = fixture
+        // Behind the newer tab, its document renders as the front tab's does.
+        assert_eq!(eval("document.visibilityState").await, "visible");
+        let visible = fixture
             .call(
                 "browser.eval",
-                json!({"tab": older, "expression": "window.stays"}),
+                json!({"tab": newer, "expression": "document.visibilityState"}),
             )
             .await;
-        assert_eq!(clicks["value"], 1);
-        // Neither tab came to the front.
-        assert_eq!(visibility(&older).await["value"], "hidden");
+        assert_eq!(visible["value"], "visible");
+        let actions = [
+            ("browser.click", json!({"css": "#stay"})),
+            ("browser.move", json!({"xy": "300,300"})),
+            ("browser.drag", json!({"point": ["300,300", "320,320"]})),
+            ("browser.type", json!({"css": "#field", "text": "ab"})),
+            ("browser.key", json!({"key": "Enter"})),
+            ("browser.scroll", json!({"dy": 200})),
+        ];
+        let mut failed = Vec::new();
+        for (operation, mut args) in actions {
+            args["tab"] = json!(older);
+            args["timeout"] = json!(5000);
+            let (code, result) = fixture
+                .result(operation, args, CancellationToken::new())
+                .await;
+            if code != 0 {
+                failed.push(format!("{operation}: {result}"));
+            }
+        }
+        assert!(failed.is_empty(), "{failed:#?}");
+        assert_eq!(eval("window.stays").await, 1);
+        assert_eq!(eval("document.querySelector('#field').value").await, "ab");
+        // The page handles input after Chrome answered the action, so the
+        // page's marks of each kind of event are waited for.
+        for kind in ["keydown", "pointerdown", "pointermove", "pointerup", "wheel"] {
+            fixture
+                .call(
+                    "browser.wait",
+                    json!({"tab": older, "css": format!("#{kind}"), "state": "attached", "timeout": 5000}),
+                )
+                .await;
+        }
         fixture
     })
     .await;
@@ -351,3 +400,4 @@ async fn commands_answer_readable_text_unless_json_is_asked() {
     })
     .await;
 }
+

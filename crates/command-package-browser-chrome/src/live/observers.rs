@@ -13,7 +13,6 @@ use std::{
 use chromiumoxide::cdp::{
     browser_protocol::{
         dom::{DescribeNodeParams, GetBoxModelParams, GetFrameOwnerParams, SetFileInputFilesParams},
-        emulation::SetFocusEmulationEnabledParams,
         page::{
             AddScriptToEvaluateOnNewDocumentParams, CreateIsolatedWorldParams, EventFrameNavigated,
             FrameId,
@@ -132,11 +131,6 @@ pub(crate) async fn start(
 ) -> Result<Arc<Observed>> {
     let (heard, mut hearing) = mpsc::channel(64);
     listen(tab.page(), true, heard.clone(), tab.ended().clone(), tasks).await?;
-    // The tab a viewer watches is the one in front, as the viewer's page
-    // is in the user's browser.
-    tab.page()
-        .execute(SetFocusEmulationEnabledParams::new(true))
-        .await?;
     // The observer reads what the page writes to a clipboard that is
     // the browser's own, as the agent's clipboard commands do.
     if crate::page::clipboard::unisolated().is_none() {

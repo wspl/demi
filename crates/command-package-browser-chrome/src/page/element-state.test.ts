@@ -34,7 +34,6 @@ function animated() {
   let x = 0
   let frame: (() => void) | undefined
   const view = {
-    document: { visibilityState: 'visible' },
     innerWidth: 1280,
     innerHeight: 720,
     requestAnimationFrame(callback: () => void): number {

@@ -24,6 +24,7 @@ use std::{
 use chromiumoxide::{
     Page,
     cdp::browser_protocol::{
+        emulation::SetFocusEmulationEnabledParams,
         page::StopLoadingParams,
         target::{
             CloseTargetParams, EventAttachedToTarget, EventTargetCreated, EventTargetDestroyed,
@@ -719,6 +720,13 @@ impl Context {
                 self.changes.clone(),
             )
             .await?;
+            // Every tab renders and runs animation frames as the front tab
+            // of its window does, also one behind another: Chrome delivers
+            // mouse input only with a frame (`browser.md` § Actionability
+            // and coordinates). This session holds the emulation for the
+            // tab's whole life.
+            page.execute(SetFocusEmulationEnabledParams::new(true))
+                .await?;
             let tab = BrowserTab::new(
                 page,
                 self.browser.clone(),
