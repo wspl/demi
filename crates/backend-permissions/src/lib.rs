@@ -1,13 +1,14 @@
 //! Conversation permissions (`permissions.md`): the check every `rpc` call
-//! passes in the backend's dispatch before its handler; the requests a
-//! refused call raises; the user's decisions, the grants an allow records,
-//! each kept for the conversation's life, and the message each decision
-//! sends the agent that asked, delivered again at start when a restart cut
-//! it off. And the conversation's other requests, which share the list, the
-//! mark and the routes (`credentials.md` § Requests and routes): an agent's
-//! request for a credential, which its command waits for, and a read of a
-//! credential the conversation may not use yet, which asks for an allowance
-//! as a refused command asks for a grant.
+//! passes in the backend's dispatch before its handler; the requests a call
+//! without a grant raises, which the call waits on until the user decides;
+//! the user's decisions, which end those waits, the grants an allow
+//! records, each kept for the conversation's life, and the message each
+//! decision sends the agent that asked, delivered again at start when a
+//! restart cut it off. And the conversation's other requests, which share
+//! the list, the mark and the routes (`credentials.md` § Requests and
+//! routes): an agent's request for a credential, which its command waits
+//! for, and a read of a credential the conversation may not use yet, which
+//! fails and asks for an allowance.
 //!
 //! Every command source passes through the check, a plugin's, the product's
 //! and the agent runtime's alike, so it belongs to none of them. What it
@@ -29,7 +30,7 @@ use demi_backend_database::permissions::{
 };
 use demi_backend_page_sync::{Part, Revisions, UserMarks};
 use demi_command_declarations::Category;
-use demi_host_interface::{RpcError, RpcInvocation};
+use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
 use demi_web_api_protocol::credentials::{Keep, RequestedValues};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -83,7 +84,7 @@ pub trait PermissionShard {
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn PermissionShard>;
 
-    /// The commands that wait for the answers to their credential requests.
+    /// The calls that wait for the answers to their requests.
     fn waits(&self) -> &Waits;
 
     /// What seals and opens the values of the user's credentials.
@@ -107,6 +108,11 @@ pub trait PermissionShard {
     /// `request`, which the user's browsers are notified of (`turns.md`
     /// § Notifications).
     fn asked(&self, conversation: &ConversationId, request: PermissionRequestId, ask: PushAsk);
+
+    /// A call's request is stored and its pages told, before the call
+    /// waits for the answer: where a test holds the check, to decide the
+    /// request meanwhile. Nothing happens here otherwise.
+    fn raised(&self) -> LocalBoxFuture<'_, ()>;
 }
 
 /// How a credential request was answered, which its waiting command
@@ -125,28 +131,63 @@ pub enum Answer {
     Withdrawn,
 }
 
-/// The commands that wait for the answers to their credential requests, by
-/// request.
+/// How the wait of a call for its permission request ended
+/// (`permissions.md` § The check).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Decided {
+    Allowed,
+    Denied,
+    /// A newer request of the same agent and need took its place.
+    Replaced,
+}
+
+/// The calls that wait for the answers to their requests, by request: a
+/// credential request's command, and a call held for a permission request.
 #[derive(Default)]
 pub struct Waits(RefCell<HashMap<PermissionRequestId, Waiting>>);
 
 struct Waiting {
     conversation: ConversationId,
-    answer: oneshot::Sender<Answer>,
+    answer: Answering,
+}
+
+/// What a waiting call is told.
+enum Answering {
+    Credential(oneshot::Sender<Answer>),
+    Permission(oneshot::Sender<Decided>),
 }
 
 impl Waits {
+    fn wait(&self, request: PermissionRequestId, conversation: ConversationId, answer: Answering) {
+        self.0.borrow_mut().insert(request, Waiting { conversation, answer });
+    }
+
+    /// Answers the command of the credential request `request`.
     fn answer(&self, request: &PermissionRequestId, answer: Answer) {
-        if let Some(waiting) = self.0.borrow_mut().remove(request) {
+        if let Some(Answering::Credential(sender)) = self.take(request) {
             // A command that stopped waiting withdraws its request itself.
-            let _ = waiting.answer.send(answer);
+            let _ = sender.send(answer);
         }
+    }
+
+    /// Ends the wait of the call held for the permission request `request`.
+    fn decided(&self, request: &PermissionRequestId, decided: Decided) {
+        if let Some(Answering::Permission(sender)) = self.take(request) {
+            // A call that stopped waiting leaves its request as it is.
+            let _ = sender.send(decided);
+        }
+    }
+
+    fn take(&self, request: &PermissionRequestId) -> Option<Answering> {
+        self.0.borrow_mut().remove(request).map(|waiting| waiting.answer)
     }
 }
 
-/// A command's wait for the answer to its request: once it ends without
-/// one, whether it was stopped or its handler dropped, the request is
-/// withdrawn, since nobody waits for its answer.
+/// A call's wait for the answer to its request, which ends its entry in
+/// [`Waits`] however the call ends. A credential request that ends without
+/// an answer, whether its command was stopped or its handler dropped, is
+/// withdrawn, since nobody waits for it; a permission request stays for the
+/// user to decide (`permissions.md` § The check).
 struct Wait {
     shard: Rc<dyn PermissionShard>,
     conversation: ConversationId,
@@ -155,10 +196,9 @@ struct Wait {
 
 impl Drop for Wait {
     fn drop(&mut self) {
-        let waiting = self.shard.waits().0.borrow_mut().remove(&self.request);
-        if waiting.is_none() {
+        let Some(Answering::Credential(_)) = self.shard.waits().take(&self.request) else {
             return;
-        }
+        };
         let shard = self.shard.clone();
         let conversation = self.conversation.clone();
         let request = self.request.clone();
@@ -214,9 +254,18 @@ pub enum Need<'a> {
 /// The check of one `rpc` call that needs `need` (`permissions.md` § The
 /// check, § Hosts): it passes when the call's conversation has the grant of
 /// the category or may reach the host, whichever agent of its tree runs it.
-/// Otherwise it records the request and fails the call with the message the
-/// agent reads, and no handler runs.
-pub async fn check(shard: &dyn PermissionShard, invocation: &RpcInvocation, need: Need<'_>) -> Result<(), RpcError> {
+/// Otherwise it records the request and holds the call until the user
+/// decides, with the waiting line on its job, while no handler runs: an
+/// allow passes it, and a deny or a newer request of the same agent and
+/// need fails it with the line the agent reads. A call stopped meanwhile
+/// fails, an allow ready at the same moment notwithstanding, and leaves its
+/// request to the user.
+pub async fn check(
+    shard: &dyn PermissionShard,
+    invocation: &RpcInvocation,
+    need: Need<'_>,
+    port: &RpcPort,
+) -> Result<(), RpcError> {
     let Asking {
         conversation,
         agent,
@@ -250,21 +299,94 @@ pub async fn check(shard: &dyn PermissionShard, invocation: &RpcInvocation, need
             (Needed::Host(host), action, ask)
         }
     };
+    // The pass an allow of a pairing gives, which the call it lets through
+    // uses up.
+    let pairing = match &needed {
+        Needed::Host(AskedHost::Pairing(code)) => Some(code.clone()),
+        Needed::Category(_) | Needed::Host(AskedHost::Device(_)) => None,
+    };
+    let request = new_request_id();
+    // Waiting before the request is stored, so that an allow of another
+    // request that grants its need finds the call once the request is
+    // there, whatever the order of the two transactions.
+    let (answer, decided) = oneshot::channel();
+    shard
+        .waits()
+        .wait(request.clone(), conversation.clone(), Answering::Permission(answer));
+    let _wait = Wait {
+        shard: shard.this(),
+        conversation: conversation.clone(),
+        request: request.clone(),
+    };
     let checked = shard
         .control()
-        .check_permission(conversation.clone(), needed, command, agent)
+        .check_permission(conversation.clone(), request.clone(), needed, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
-    match checked {
-        Checked::Granted => Ok(()),
-        Checked::Raised { id } => {
-            changed(shard, &conversation);
-            shard.asked(&conversation, id, ask);
-            Err(RpcError::Failed(format!(
-                "this conversation needs the user's permission to {action}; the request was sent to the user, and you will be told when the user decides"
-            )))
-        }
+    let Checked::Raised { replaced } = checked else {
+        return Ok(());
+    };
+    for older in &replaced {
+        shard.waits().decided(older, Decided::Replaced);
     }
+    changed(shard, &conversation);
+    shard.asked(&conversation, request, ask);
+    shard.raised().await;
+    port.hint(Some(&format!(
+        "waiting for the user's permission to {action}; its end will report to you, so do not run it again"
+    )))
+    .await?;
+    let passed = async {
+        if let Some(code) = pairing {
+            shard
+                .control()
+                .use_pairing_pass(conversation.clone(), code)
+                .await
+                .map_err(|error| RpcError::Failed(error.to_string()))?;
+        }
+        Ok(())
+    };
+    match held(decided, port, passed).await? {
+        Decided::Allowed => Ok(()),
+        Decided::Denied => Err(RpcError::Failed(format!(
+            "the user denied this conversation permission to {action}; the command was not run"
+        ))),
+        Decided::Replaced => Err(RpcError::Failed(
+            "a newer run of this command asks the user instead; this one was not run".into(),
+        )),
+    }
+}
+
+/// Holds a call until `decided` ends its wait; once allowed, takes its
+/// waiting line off its job and does `passed`, what passing it uses up. A
+/// call stopped meanwhile is never passed on, even when the allow is ready
+/// at the same moment: the stop is looked at last, after every wait, right
+/// before the dispatch would run the handler.
+async fn held(
+    decided: oneshot::Receiver<Decided>,
+    port: &RpcPort,
+    passed: impl Future<Output = Result<(), RpcError>>,
+) -> Result<Decided, RpcError> {
+    let stopped = || RpcError::Port(PortError::Ended("the call was stopped".into()));
+    let decided = tokio::select! {
+        biased;
+        () = port.cancelled() => return Err(stopped()),
+        // The sender goes only with a decision, or with the shard as the
+        // backend stops.
+        decided = decided => decided.map_err(|_| RpcError::Failed("the backend stopped while the call waited for the user's answer".into()))?,
+    };
+    if decided == Decided::Allowed {
+        port.hint(None).await?;
+        passed.await?;
+    }
+    if port.is_cancelled() {
+        return Err(stopped());
+    }
+    Ok(decided)
+}
+
+fn new_request_id() -> PermissionRequestId {
+    PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty")
 }
 
 /// What reaching `host` lets the conversation do, as the card's title, the
@@ -318,18 +440,13 @@ pub async fn ask_credential(
         agent,
         command,
     } = asking(shard, invocation)?;
-    let request = PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string())
-        .expect("a UUID is not empty");
+    let request = new_request_id();
     // Waiting before the request is stored, so an answer that comes at
     // once finds its command.
     let (answer, answered) = oneshot::channel();
-    shard.waits().0.borrow_mut().insert(
-        request.clone(),
-        Waiting {
-            conversation: conversation.clone(),
-            answer,
-        },
-    );
+    shard
+        .waits()
+        .wait(request.clone(), conversation.clone(), Answering::Credential(answer));
     let _wait = Wait {
         shard: shard.this(),
         conversation: conversation.clone(),
@@ -367,7 +484,9 @@ pub fn withdrawn(shard: &dyn PermissionShard, conversation: &ConversationId) {
         .0
         .borrow()
         .iter()
-        .filter(|(_, waiting)| waiting.conversation == *conversation)
+        .filter(|(_, waiting)| {
+            waiting.conversation == *conversation && matches!(waiting.answer, Answering::Credential(_))
+        })
         .map(|(request, _)| request.clone())
         .collect();
     for request in requests {
@@ -520,7 +639,8 @@ pub async fn read(
 /// an allow of a permission request grants its categories to the
 /// conversation and decides each request whose categories are then all
 /// granted, an allow of an allowance request allows its credential and
-/// decides each request to use it, a deny decides this one alone. Each
+/// decides each request to use it, a deny decides this one alone. The call
+/// held for each permission request decided goes on or fails, and each
 /// agent that asked is sent its message after the answer. A credential
 /// request is allowed with `credential`, its values, which saves the
 /// credential for the request's keep and allows it in the conversation;
@@ -568,9 +688,19 @@ pub async fn decide(
                 .await??;
             changed(shard, conversation);
             for request in decided {
-                if let StoredAsk::Credential { .. } = request.ask {
-                    shard.waits().answer(&request.id, Answer::Declined);
-                    continue;
+                match request.ask {
+                    StoredAsk::Credential { .. } => {
+                        shard.waits().answer(&request.id, Answer::Declined);
+                        continue;
+                    }
+                    StoredAsk::Permission(_) => shard.waits().decided(
+                        &request.id,
+                        match outcome {
+                            PermissionOutcome::Allowed => Decided::Allowed,
+                            PermissionOutcome::Denied => Decided::Denied,
+                        },
+                    ),
+                    StoredAsk::Allowance { .. } => {}
                 }
                 let this = shard.this();
                 shard.spawn(Box::pin(async move { deliver(this, request).await }));
@@ -661,8 +791,11 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     }
 }
 
-/// The message the agent reads (`permissions.md` § The decision's message);
-/// one delivered to an ancestor of the closed subagent that asked names it.
+/// The message the agent reads (`permissions.md` § The decision's message):
+/// the decision alone for a permission request, whose call that waited says
+/// itself whether it ran, and with the command line for the use of a
+/// credential, whose read failed (`credentials.md` § Using a credential).
+/// One delivered to an ancestor of the closed subagent that asked names it.
 fn content(
     request: &StoredRequest,
     outcome: PermissionOutcome,
@@ -670,19 +803,28 @@ fn content(
     recipient: &NodeId,
 ) -> String {
     let command = &request.command;
-    let mut text = match outcome {
-        PermissionOutcome::Allowed => format!(
+    let mut text = match (&request.ask, outcome) {
+        (StoredAsk::Allowance { .. }, PermissionOutcome::Allowed) => format!(
             "The user allowed this conversation to {action}; the command `{command}` can now run."
         ),
-        PermissionOutcome::Denied => format!(
+        (StoredAsk::Allowance { .. }, PermissionOutcome::Denied) => format!(
             "The user denied this conversation permission to {action}; the command `{command}` was not run."
         ),
+        (_, PermissionOutcome::Allowed) => format!("The user allowed this conversation to {action}."),
+        (_, PermissionOutcome::Denied) => {
+            format!("The user denied this conversation permission to {action}.")
+        }
     };
     if recipient != &request.agent.node
         && let Some(subagent) = &request.agent.subagent
     {
+        let did = match request.ask {
+            // Its message names the command the subagent ran.
+            StoredAsk::Allowance { .. } => "ran it",
+            _ => "asked",
+        };
         text.push_str(&format!(
-            " Agent {} ({}) ran it and has closed since.",
+            " Agent {} ({}) {did} and has closed since.",
             subagent.number, subagent.description
         ));
     }
@@ -698,5 +840,29 @@ async fn declared(shard: &dyn PermissionShard) -> Vec<Category> {
             tracing::warn!("the permission categories were not read: {error}");
             Vec::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use demi_host_interface::testing::MemoryPort;
+    use tokio_util::sync::CancellationToken;
+
+    use super::*;
+
+    // The user stops a held call and allows its request at the same moment
+    // (`permissions.md` § Acceptance): both are ready before the call looks
+    // again, and the call fails stopped, so the dispatch never runs its
+    // handler. A scenario cannot order the two; here both are settled
+    // before the hold is polled. Instant.
+    #[tokio::test]
+    async fn a_call_stopped_as_its_request_is_allowed_is_not_passed_on() {
+        let stop = CancellationToken::new();
+        let port = MemoryPort::new().port(stop.clone());
+        let (answer, decided) = oneshot::channel();
+        answer.send(Decided::Allowed).unwrap();
+        stop.cancel();
+        let held = held(decided, &port, async { Ok(()) }).await;
+        assert!(matches!(held, Err(RpcError::Port(PortError::Ended(_)))), "{held:?}");
     }
 }

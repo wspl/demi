@@ -70,6 +70,13 @@ pub trait ShellEnvironment {
     /// hold.
     fn outliving(&self, command: &CommandId) -> Vec<String>;
 
+    /// The line a running declared command of `command` gives the model,
+    /// such as that of a call that waits for the user's permission, which
+    /// its result and its progress reports carry (`shell-tool.md` § Results
+    /// and previews); none for a command that ended or that the environment
+    /// does not hold.
+    fn hint(&self, command: &CommandId) -> Option<String>;
+
     /// How long the Host of `command`, which runs, has been unreachable as
     /// far as the environment knows, and how long its runner keeps it so
     /// (`shell-tool.md` § Command reports); none while its connection serves

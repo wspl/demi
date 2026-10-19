@@ -125,9 +125,9 @@ pub enum Checked {
     /// The conversation has every grant: the call is dispatched.
     Granted,
     /// The grant or the host is missing: the request was recorded, in
-    /// place of the undecided one of the same need from the same agent, if
-    /// any.
-    Raised { id: PermissionRequestId },
+    /// place of the undecided ones of the same need from the same agent,
+    /// `replaced`.
+    Raised { replaced: Vec<PermissionRequestId> },
 }
 
 /// Why a decision changed nothing.
@@ -202,13 +202,14 @@ pub struct Undelivered {
 impl ControlService {
     /// The check of one call (`permissions.md` § The check): whether the
     /// conversation has the grant `needed` names or may reach its host, and
-    /// when it lacks it, the request recorded for `command`, which replaces
-    /// the undecided request of the same need from the same agent. A
-    /// pairing code the user let the conversation pair is used up by the
-    /// call it passes.
+    /// when it lacks it, the request `id` recorded for `command`, which
+    /// replaces the undecided requests of the same need from the same
+    /// agent. A pairing code the user let the conversation pair is used up
+    /// by the call it passes.
     pub async fn check_permission(
         &self,
         conversation: ConversationId,
+        id: PermissionRequestId,
         needed: Needed,
         command: String,
         agent: AskingAgent,
@@ -217,22 +218,27 @@ impl ControlService {
             let transaction = connection.transaction()?;
             if has(&transaction, &conversation, &needed)? {
                 if let Needed::Host(AskedHost::Pairing(code)) = &needed {
-                    transaction.execute(
-                        "DELETE FROM pairing_passes WHERE conversation_id = ?1 AND code = ?2",
-                        params![conversation.as_str(), code],
-                    )?;
+                    use_pass(&transaction, &conversation, code)?;
                     transaction.commit()?;
                 }
                 return Ok(Checked::Granted);
             }
             let (stored, device, code) = need_columns(&needed);
-            transaction.execute(
-                "DELETE FROM permission_requests
-                 WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2 AND node_id = ?3
-                   AND host_device_id IS ?4 AND pairing_code IS ?5 AND decision IS NULL",
-                params![conversation.as_str(), stored, agent.node.as_str(), device, code],
-            )?;
-            let id = new_request_id();
+            let replaced = transaction
+                .prepare_cached(
+                    "DELETE FROM permission_requests
+                     WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2 AND node_id = ?3
+                       AND host_device_id IS ?4 AND pairing_code IS ?5 AND decision IS NULL
+                     RETURNING id",
+                )?
+                .query_map(
+                    params![conversation.as_str(), stored, agent.node.as_str(), device, code],
+                    |row| row.get::<_, String>(0),
+                )?
+                .map(|id| {
+                    decode(REQUESTS, "id", PermissionRequestId::try_from(id?))
+                })
+                .collect::<Result<Vec<_>, StorageError>>()?;
             insert_request(
                 &transaction,
                 &id,
@@ -249,9 +255,17 @@ impl ControlService {
                 now,
             )?;
             transaction.commit()?;
-            Ok(Checked::Raised { id })
+            Ok(Checked::Raised { replaced })
         })
         .await
+    }
+
+    /// Uses up the pass to pair the computer under `code` that the user's
+    /// allow gave the conversation, as the call that waited for the allow
+    /// is dispatched (`permissions.md` § Hosts); none there changes nothing.
+    pub async fn use_pairing_pass(&self, conversation: ConversationId, code: String) -> Result<(), StorageError> {
+        self.call(move |connection, _| use_pass(connection, &conversation, &code))
+            .await
     }
 
     /// The conversation's undecided requests, oldest first, each credential
@@ -740,6 +754,15 @@ fn reaches(connection: &Connection, conversation: &ConversationId, host: &AskedH
             |row| row.get(0),
         )?),
     }
+}
+
+/// Deletes the conversation's pass to pair the computer under `code`.
+fn use_pass(connection: &Connection, conversation: &ConversationId, code: &str) -> Result<(), StorageError> {
+    connection.execute(
+        "DELETE FROM pairing_passes WHERE conversation_id = ?1 AND code = ?2",
+        params![conversation.as_str(), code],
+    )?;
+    Ok(())
 }
 
 fn new_request_id() -> PermissionRequestId {

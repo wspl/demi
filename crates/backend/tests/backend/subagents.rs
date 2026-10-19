@@ -85,6 +85,14 @@ impl Scripts {
             .extend(answers);
     }
 
+    /// The answers of the root of `conversation` from now on, in place of
+    /// those left: a scenario whose earlier turns the reports woke an
+    /// unknown number of times scripts the next turn so.
+    pub(crate) fn root_anew(&self, conversation: &str, answers: Vec<Answer>) {
+        let mut state = self.state.lock().unwrap();
+        state.roots.insert(conversation.to_owned(), answers.into());
+    }
+
     pub(crate) fn child(&self, answers: Vec<Answer>) {
         self.state
             .lock()
@@ -122,6 +130,19 @@ impl Scripts {
         let hold = (Arc::new(Notify::new()), Arc::new(Notify::new()));
         *self.health_hold.lock().unwrap() = Some(hold.clone());
         hold
+    }
+
+    /// The sessions `keep` picks that were asked, in the order each was
+    /// first asked.
+    pub(crate) fn sessions(&self, keep: impl Fn(&str) -> bool) -> Vec<String> {
+        let state = self.state.lock().unwrap();
+        let mut sessions: Vec<String> = Vec::new();
+        for (session, _) in &state.asked {
+            if keep(session) && !sessions.contains(session) {
+                sessions.push(session.clone());
+            }
+        }
+        sessions
     }
 
     /// What the requests of the sessions `keep` accepts carried, in order.
@@ -172,6 +193,35 @@ pub(crate) fn shell(id: &str, script: &str) -> Answer {
             id,
             "shell",
             json!({ "description": id, "script": script, "intervalMs": 60_000 }),
+        ),
+        event::response(1, 1),
+    ]
+}
+
+/// The model's shell call `id` running `script` that reports only its end:
+/// the call returns once the command has been quiet for 2 seconds, so a
+/// command that waits moves to the background (`shell-tool.md` § Command
+/// reports).
+pub(crate) fn background(id: &str, script: &str) -> Answer {
+    vec![
+        event::tool_call(
+            id,
+            "shell",
+            json!({ "description": id, "script": script, "intervalMs": null }),
+        ),
+        event::response(1, 1),
+    ]
+}
+
+/// The model's shell call `id` running `script` that reports every
+/// `interval_ms`, its call's window: a command that runs longer returns
+/// running then, and reports its progress at that interval.
+pub(crate) fn watched(id: &str, script: &str, interval_ms: u32) -> Answer {
+    vec![
+        event::tool_call(
+            id,
+            "shell",
+            json!({ "description": id, "script": script, "intervalMs": interval_ms }),
         ),
         event::response(1, 1),
     ]

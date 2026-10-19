@@ -580,6 +580,12 @@ pub enum ReportEvent {
         idle_ms: u64,
         #[garde(skip)]
         interval_ms: u32,
+        /// The line its running declared command gives the model, such as
+        /// that it waits for the user's permission and is not to be run
+        /// again (`permissions.md` § The check).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        hint: Option<String>,
     },
     /// It exited, with its status when its end was recorded.
     Ended {

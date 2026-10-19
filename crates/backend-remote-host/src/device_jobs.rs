@@ -60,6 +60,9 @@ pub(crate) struct JobEntry {
     pub(crate) commands: Option<CommandSelection>,
     /// Cancelled when the job ends: its artifact resolutions stop.
     pub(crate) cancel: CancellationToken,
+    /// Cancelled when the job's command is stopped, which stops each of its
+    /// rpc calls at once, the token each handler watches being its child.
+    pub(crate) stop: CancellationToken,
     /// Holds the Host's admission while the job runs.
     pub(crate) _lease: Option<GateLease>,
     /// The connection it runs on now; none while it waits for the next.
@@ -260,6 +263,7 @@ impl DeviceJobs {
                 origin: entry.origin,
                 commands: entry.commands,
                 cancel: CancellationToken::new(),
+                stop: entry.stop,
                 _lease: entry.lease,
                 attached: Some(link.downgrade()),
                 away_since: None,
@@ -318,6 +322,7 @@ impl DeviceJobs {
             origin: None,
             commands: None,
             cancel: CancellationToken::new(),
+            stop: entry.stop.clone(),
             _lease: None,
             attached: None,
             away_since: Some(Instant::now()),
@@ -333,6 +338,9 @@ impl DeviceJobs {
         });
         job.parked = false;
         job.origin = entry.origin;
+        // Its calls, which each run once the job is claimed, stop with the
+        // command that took it up.
+        job.stop = entry.stop;
         job.claimed.send_replace(true);
         job.commands = entry.commands;
         job._lease = entry.lease;
@@ -606,6 +614,7 @@ pub(crate) struct NewJob {
     pub(crate) origin: Option<Rc<JobOrigin>>,
     pub(crate) commands: Option<CommandSelection>,
     pub(crate) lease: Option<GateLease>,
+    pub(crate) stop: CancellationToken,
 }
 
 impl JobEntry {
@@ -618,6 +627,7 @@ impl JobEntry {
             origin: None,
             commands: None,
             cancel: CancellationToken::new(),
+            stop: CancellationToken::new(),
             _lease: None,
             attached: None,
             away_since: None,

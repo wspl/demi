@@ -163,6 +163,7 @@ impl RemoteHost {
             origin: Some(origin),
             commands: job.commands.clone(),
             lease,
+            stop: job.stop.clone(),
         };
         let Ok(link) = self.link() else {
             entry.shared.finish(JobEnd::lost("runner disconnected"));
@@ -211,13 +212,14 @@ impl RemoteHost {
     /// persistence): its runner's hello says whether it goes on, ended or
     /// was lost, now or when the runner connects.
     /// Its rpc calls act for `caller` with `context`; without a context
-    /// they are refused.
+    /// they are refused, and they stop when `stop` is cancelled.
     pub fn adopt_job(
         &self,
         id: String,
         context: Option<CommandContext>,
         caller: Option<JobCaller>,
         commands: Option<CommandSelection>,
+        stop: CancellationToken,
     ) -> RemoteJob {
         let origin = context.map(|context| {
             Rc::new(JobOrigin {
@@ -237,6 +239,7 @@ impl RemoteHost {
                 origin,
                 commands,
                 lease,
+                stop,
             },
         );
         self.job(id, claimed)
@@ -984,6 +987,10 @@ pub struct JobStart {
     /// ends are elsewhere.
     pub stdin: Option<PipeRef>,
     pub stdout: Option<PipeRef>,
+    /// Cancelled when the job's command is stopped: its rpc calls stop with
+    /// it at once, before the runner hears of the stop
+    /// (`permissions.md` § The check).
+    pub stop: CancellationToken,
 }
 
 /// One shell job on the runner, over whichever connection of its device

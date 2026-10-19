@@ -988,6 +988,15 @@ impl TestBackend {
         self.backend.hold_watches(step)
     }
 
+    /// Holds every call's permission check at `step` from now on, until the
+    /// hold is released or dropped.
+    pub fn hold_permissions(
+        &self,
+        step: demi_backend_user_shard::holds::PermissionStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
+        self.backend.hold_permissions(step)
+    }
+
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released or dropped.
     pub fn hold_sync(

@@ -584,6 +584,16 @@ impl Backend {
         self.services.watches.hold(step)
     }
 
+    /// Holds every call's permission check at `step` from now on, until the
+    /// hold is released.
+    #[cfg(feature = "testing")]
+    pub fn hold_permissions(
+        &self,
+        step: demi_backend_user_shard::holds::PermissionStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
+        self.services.permissions.hold(step)
+    }
+
     /// Downloads the media catalog now, as its daily download does.
     #[cfg(feature = "testing")]
     pub async fn refresh_media_catalog(&self) {

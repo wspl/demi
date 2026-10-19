@@ -37,7 +37,7 @@ use web_push_native::p256::SecretKey;
 use web_push_native::p256::elliptic_curve::sec1::ToEncodedPoint;
 
 use crate::conversations::{FIRST, Socket};
-use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
+use crate::subagents::{Scripts, WAIT, background, say, shell, tree_on};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend};
 
 /// The push services as the backend reaches them in these tests: every
@@ -430,7 +430,7 @@ async fn each_turn_notifies_as_it_ended_and_work_that_ends_none_notifies_nothing
     assert!(received.try_recv().is_err(), "nothing more was pushed");
 }
 
-// About a second: a real device runs one refused command.
+// A few seconds: a real device runs one command that waits for the user.
 #[tokio::test]
 async fn a_permission_request_notifies_once() {
     let scripts = Arc::new(Scripts::default());
@@ -442,7 +442,7 @@ async fn a_permission_request_notifies_once() {
     let browsers = [&browser];
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    scripts.root(FIRST, vec![shell("t1", "demi skills add acme/tools"), say("I asked the user")]);
+    scripts.root(FIRST, vec![background("t1", "demi skills add acme/tools"), say("I asked the user")]);
     socket.chat("m1", "Install acme/tools").await;
     let (_, _, asked) = next(&mut received, &browsers).await;
     let PushMessage::Permission { conversation_id, ask, .. } = &asked else {

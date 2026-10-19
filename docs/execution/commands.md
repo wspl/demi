@@ -268,7 +268,7 @@ or a PDF, from a file or a pipe. Each group's entry, its operations' names and t
 Help displays a complete usage template, value placeholders, required and
 optional arguments, enum choices, and repeatable options. A leaf with a
 `permission` adds one line: the command needs the user's permission in each
-conversation, and without it the command fails and the user is asked. Stdin bodies appear
+conversation, and without it the command asks the user and waits for the answer. Stdin bodies appear
 in their own section and in a quoted heredoc template. `--json` appears only
 on commands with a JSON output schema. Usage templates are generated from the
 declaration; declarations do not carry separate examples to keep in sync.

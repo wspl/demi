@@ -67,6 +67,10 @@ impl Stop {
 pub(crate) struct CallEntry {
     pub(crate) job_id: String,
     stopped: CancellationToken,
+    /// What the handler's port watches once the call runs: a child of its
+    /// job's stop, so that a Stop of the command stops the handler at once,
+    /// before the runner hears of it, and cancelled too when the call stops.
+    handler: RefCell<Option<CancellationToken>>,
     /// The first cause that stopped the call.
     cause: RefCell<Option<Stop>>,
     live: RefCell<Live>,
@@ -97,6 +101,7 @@ impl CallEntry {
         Rc::new(Self {
             job_id,
             stopped: CancellationToken::new(),
+            handler: RefCell::new(None),
             cause: RefCell::new(None),
             live: RefCell::new(Live::Idle),
             pipes: RefCell::new(None),
@@ -140,6 +145,9 @@ impl CallEntry {
         let reason = cause.text().to_owned();
         *self.cause.borrow_mut() = Some(cause);
         self.stopped.cancel();
+        if let Some(handler) = &*self.handler.borrow() {
+            handler.cancel();
+        }
         self.end_live_input();
         for pipe in self.pipes.borrow().iter().flat_map(CallPipes::iter) {
             pipe.fail(&reason);
@@ -355,11 +363,19 @@ async fn run(
         stdin: RefCell::new(stdin.clone().map(Stdin::Unread)),
         stdin_turn: SerialGate::new(),
     });
-    let handler = link.policy().dispatch(
-        origin,
-        invocation,
-        RpcPort::new(port.clone(), entry.stopped.clone()),
-    );
+    // The job is claimed by now, so its stop is the stop of the command
+    // that runs it.
+    let cancel = link
+        .device_jobs()
+        .with(&entry.job_id, |job| job.stop.child_token())
+        // A job the device no longer holds has ended: the call stops with
+        // its own end.
+        .unwrap_or_default();
+    if entry.stopped.is_cancelled() {
+        cancel.cancel();
+    }
+    *entry.handler.borrow_mut() = Some(cancel.clone());
+    let handler = link.policy().dispatch(origin, invocation, RpcPort::new(port.clone(), cancel));
     // A relayed pipe that fails stops the call; the handler is awaited to
     // its end all the same, since it may be committing, until the
     // connection's end gives up on it after its grace (`link::END_GRACE`).
@@ -528,7 +544,31 @@ impl PortTransport for RelayPort {
                         .await?
                         .map(B64Bytes::new),
                 }),
+                PortRequest::Hint { text } => {
+                    self.hint(text);
+                    Ok(PortResponse::Written {})
+                }
             }
         })
+    }
+}
+
+impl RelayPort {
+    /// Shows `text` as the line of the call's job, beside the lines its
+    /// runner registered, under a key of the call's own.
+    fn hint(&self, text: Option<String>) {
+        let key = format!("call:{}", self.call_id);
+        // A job the device no longer holds has ended, and its lines with it.
+        let _ = self
+            .link
+            .device_jobs()
+            .with(&self.entry.job_id, |job| job.shared.hint(key, text));
+    }
+}
+
+impl Drop for RelayPort {
+    /// The call ended, however it ended: its line goes with it.
+    fn drop(&mut self) {
+        self.hint(None);
     }
 }

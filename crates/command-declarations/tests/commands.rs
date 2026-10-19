@@ -625,7 +625,7 @@ fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_sa
     declared.validate().unwrap();
     let help = help(&declared, &["skills", "add"]);
     assert!(
-        help.contains("\nPermission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),
+        help.contains("\nPermission: needs the user's permission (skills.manage) in each conversation; without it, the command asks the user and waits for the answer."),
         "{help}"
     );
 

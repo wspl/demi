@@ -145,10 +145,10 @@ order:
 - **What the user sees.** The work panel beside the conversation shows the
   conversation's changes, files and browser tabs; the user watches and
   operates the browser there.
-- **Permissions.** A command refused for the user's permission has asked the
-  user in the app. The model says what it needs the permission for, goes on
-  with what it can do without it, and does not run the command again until
-  the user grants it.
+- **Permissions.** A command that needs the user's permission asks the user
+  in the app and waits for the answer; its end reports as any command's
+  does, so the model never runs it again while it waits. The model says what
+  it needs the permission for and goes on with what it can do without it.
 - **Context blocks and attachments.** A `context` block is a fact the
   application supplies, not the user's words; the instructions block is the
   one that holds instructions to follow, the user's personal ones and the

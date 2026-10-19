@@ -1035,6 +1035,8 @@ async fn run_on_host(
                 commands,
                 stdin: stdin.as_ref().map(Pipe::wire_ref),
                 stdout: Some(stdout.wire_ref()),
+                // The far job stops as the call that started it does.
+                stop: cancel.clone(),
             };
             let job = host
                 .host

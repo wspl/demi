@@ -24,7 +24,7 @@ use serde_json::json;
 
 use crate::conversations::{FIRST, Socket, send, summary, transcript};
 use crate::permissions::{categories, permissions};
-use crate::subagents::{Scripts, say, shell, tree_on};
+use crate::subagents::{Scripts, background, say, shell, tree_on};
 use crate::support::{Harness, MASTER_PASSWORD, Session, TestBackend, elapse, eventually};
 
 /// The secret the user types, which only the file on the Host may hold.
@@ -349,28 +349,27 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
         .unwrap();
     assert_eq!(allowances, 1);
 
-    // A removal needs Manage Credentials, as any category does.
+    // A removal needs Manage Credentials, as any category does, and waits
+    // for the user's answer.
     scripts.root(
         FIRST,
         vec![
-            shell("t3", "demi credentials remove 'GitHub token'; echo exit=$?"),
+            background("t3", "demi credentials remove 'GITHUB TOKEN'; echo exit=$?"),
             say("I asked the user"),
+            say("removed"),
+            say("removed"),
         ],
     );
     socket.chat("m2", "Remove the token").await;
-    let refused = last_asked(&scripts, FIRST);
+    let waiting = last_asked(&scripts, FIRST);
     assert!(
-        refused.contains("demi credentials remove: this conversation needs the user's permission to manage credentials"),
-        "{refused}"
+        waiting.contains("waiting for the user's permission to manage credentials; its end will report to you, so do not run it again"),
+        "{waiting}"
     );
     assert_eq!(credentials(&backend, &master).await.credentials.len(), 1);
     let asked = permissions(&backend, &master, FIRST).await;
     assert_eq!(asked.requests.len(), 1, "{asked:?}");
     assert_eq!(categories(&asked.requests[0])[0].id, "credentials.manage");
-    scripts.root(
-        FIRST,
-        vec![shell("t4", "demi credentials remove 'GITHUB TOKEN'"), say("removed")],
-    );
     let allowed = decide(
         &backend,
         &master,
@@ -379,12 +378,15 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
     )
     .await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
-    assert!(
-        last_asked(&scripts, FIRST).contains("Removed the credential \u{201c}GitHub token\u{201d}."),
-        "{}",
-        last_asked(&scripts, FIRST)
-    );
+    let removed = crate::permissions::settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage credentials.", "(t3) ended with exit code 0"],
+    )
+    .await;
+    assert!(removed.contains("Removed the credential \u{201c}GitHub token\u{201d}."), "{removed}");
     assert!(credentials(&backend, &master).await.credentials.is_empty());
     backend.close().await;
 }

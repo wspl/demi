@@ -18,8 +18,8 @@ use serde_json::json;
 
 use crate::agent_profiles::{assert_shows, last_root};
 use crate::conversations::{FIRST, Socket};
-use crate::permissions::{decide, permissions};
-use crate::subagents::{Scripts, say, shell, tree_among};
+use crate::permissions::{decide, permissions, settled};
+use crate::subagents::{Scripts, background, say, shell, tree_among};
 use crate::support::Harness;
 use crate::usage::{Row, rows};
 
@@ -125,17 +125,45 @@ async fn a_compatible_api_and_an_elevenlabs_entry_make_audio_the_agent_asks_for(
     std::fs::write(format!("{root}/expected.mp3"), SPEECH).unwrap();
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    scripts.root(FIRST, vec![shell("t1", "demi providers edit Proxy --audio openai-speech"), say("asked")]);
-    socket.chat("m1", "Set up speech").await;
-    assert_shows(&last_root(&scripts), "demi providers edit: this conversation needs the user's permission to manage providers");
-    let requested = permissions(&backend, &master, FIRST).await;
+    // The first change waits for the permission; once allowed it runs, and
+    // a model of a kind the entry does not make is refused.
     scripts.root(
+        FIRST,
+        vec![
+            background(
+                "t1",
+                "demi providers models add Proxy --id qwen3-tts --name 'Qwen3 TTS' --kind audio; echo exit=$?",
+            ),
+            say("asked"),
+            say("refused"),
+            say("refused"),
+        ],
+    );
+    socket.chat("m1", "Set up speech").await;
+    assert_shows(
+        &last_root(&scripts),
+        "waiting for the user's permission to manage providers; its end will report to you, so do not run it again",
+    );
+    let requested = permissions(&backend, &master, FIRST).await;
+    let allowed = decide(&backend, &master, FIRST, requested.requests[0].id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&allowed.body));
+    settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage providers.", "(t1) ended with exit code 0"],
+    )
+    .await;
+    // A socket of its own, which no frame of the woken turns precedes.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root_anew(
         FIRST,
         vec![
             shell(
                 "t2",
                 &[
-                    "demi providers models add Proxy --id qwen3-tts --name 'Qwen3 TTS' --kind audio; echo exit=$?",
                     "demi providers edit Proxy --audio openai-speech > /dev/null",
                     "demi providers models add Proxy --id qwen3-tts --name 'Qwen3 TTS' --kind audio > /dev/null",
                     "demi providers show Proxy",
@@ -152,9 +180,7 @@ async fn a_compatible_api_and_an_elevenlabs_entry_make_audio_the_agent_asks_for(
             say("spoken"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, requested.requests[0].id().as_str(), "allow").await;
-    assert_eq!(allowed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&allowed.body));
-    socket.until_idle().await;
+    socket.chat("m2", "Speak").await;
     let shown = last_root(&scripts);
     assert_shows(
         &shown,
