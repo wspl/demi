@@ -44,7 +44,7 @@
     "storeFailed": "이 브라우저에서 초안을 저장할 수 없습니다.",
     "readFailed": "이 브라우저에서 저장된 초안을 읽을 수 없습니다.",
     "unreadable": "저장된 초안 하나를 읽을 수 없어 따로 저장해 두었습니다.",
-    "deliveryInterrupted": "전송이 중단되었습니다. 다시 시도하여 확인하십시오."
+    "missingFile": "파일"
   },
   "savedDeleted": "저장된 메시지를 삭제했습니다",
   "composer": {

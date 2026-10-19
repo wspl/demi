@@ -206,6 +206,22 @@ function failUpload(): void {
   )
 }
 failUpload()
+
+// A file of the message is gone, its bytes with the page that had them:
+// sending again cannot deliver it, so the row offers Edit first and no
+// Retry; Edit takes the message back to the composer, where the file shows
+// as missing.
+const goneFlow = useTurnFlow({ id: 'gallery-file-gone' })
+function loseFile(): void {
+  goneFlow.undelivered(
+    captureContent,
+    { text: captureText, attachments: [composerAttachment({ name: 'capture.png', phase: 'missing' })] },
+    'A file of this message is no longer available. Attach it again.',
+    null,
+    true,
+  )
+}
+loseFile()
 </script>
 
 <template>
@@ -241,10 +257,10 @@ failUpload()
     </GallerySection>
     <GallerySection
       title="Undelivered Message · the Notice Follows the Message"
-      note="The exact text and its attachments stay on screen; the failure follows them in flow, with Retry, which sends the message again and shows Requesting from then."
+      note="The exact text and its attachments stay on screen; the failure follows them in flow, with Retry, which sends the message again and shows Requesting from then, Edit, which takes the message back to the composer, and Delete, which asks first. A refusal sending again cannot change, such as a file that is gone, offers Edit first and no Retry."
     >
       <GallerySpecimen wide variant="Send failed">
-        <div class="flex h-[18rem] flex-col overflow-hidden rounded-lg bg-surface">
+        <div class="flex h-[18rem] flex-col overflow-hidden rounded-lg bg-surface phone:[--agent-pad-x:0.75rem]">
           <AgentMessageList
             class="min-h-0 flex-1"
             :conversation-id="undeliveredFlow.state.id"
@@ -259,12 +275,14 @@ failUpload()
             :persisted-scroll-state="undefined"
             read-only
             @retry-submission="undeliveredFlow.retrySubmission"
+            @edit-submission="undeliveredFlow.editSubmission"
+            @delete-submission="undeliveredFlow.deleteSubmission"
           />
         </div>
         <Button size="sm" class="mt-2" @click="failDelivery">Fail Again</Button>
       </GallerySpecimen>
       <GallerySpecimen wide variant="Sent while its file uploads">
-        <div class="flex h-[14rem] flex-col overflow-hidden rounded-lg bg-surface">
+        <div class="flex h-[14rem] flex-col overflow-hidden rounded-lg bg-surface phone:[--agent-pad-x:0.75rem]">
           <AgentMessageList
             class="min-h-0 flex-1"
             :conversation-id="uploadingFlow.state.id"
@@ -279,12 +297,14 @@ failUpload()
             :persisted-scroll-state="undefined"
             read-only
             @retry-submission="uploadingFlow.retrySubmission"
+            @edit-submission="uploadingFlow.editSubmission"
+            @delete-submission="uploadingFlow.deleteSubmission"
           />
         </div>
         <Button size="sm" class="mt-2" @click="sendWhileUploading">Send Again</Button>
       </GallerySpecimen>
       <GallerySpecimen wide variant="Upload failed">
-        <div class="flex h-[16rem] flex-col overflow-hidden rounded-lg bg-surface">
+        <div class="flex h-[16rem] flex-col overflow-hidden rounded-lg bg-surface phone:[--agent-pad-x:0.75rem]">
           <AgentMessageList
             class="min-h-0 flex-1"
             :conversation-id="uploadFailedFlow.state.id"
@@ -299,9 +319,33 @@ failUpload()
             :persisted-scroll-state="undefined"
             read-only
             @retry-submission="(id) => uploadFailedFlow.retrySubmission(id, uploadCapture(failedCapture))"
+            @edit-submission="uploadFailedFlow.editSubmission"
+            @delete-submission="uploadFailedFlow.deleteSubmission"
           />
         </div>
         <Button size="sm" class="mt-2" @click="failUpload">Fail Again</Button>
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="A file is gone · Edit first, no Retry">
+        <div class="flex h-[14rem] flex-col overflow-hidden rounded-lg bg-surface phone:[--agent-pad-x:0.75rem]">
+          <AgentMessageList
+            class="min-h-0 flex-1"
+            :conversation-id="goneFlow.state.id"
+            :blocks="goneFlow.state.blocks"
+            :pending-steers="[]"
+            :queue="[]"
+            :phase="goneFlow.state.phase"
+            :load="goneFlow.state.load"
+            :pending-submissions="goneFlow.pendingSubmissions.value"
+            :removing="goneFlow.removing.value"
+            :bottom-offset="0"
+            :persisted-scroll-state="undefined"
+            read-only
+            @retry-submission="goneFlow.retrySubmission"
+            @edit-submission="goneFlow.editSubmission"
+            @delete-submission="goneFlow.deleteSubmission"
+          />
+        </div>
+        <Button size="sm" class="mt-2" @click="loseFile">Fail Again</Button>
       </GallerySpecimen>
     </GallerySection>
   </div>

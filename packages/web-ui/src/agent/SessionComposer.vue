@@ -355,13 +355,14 @@ const modelState = computed(() =>
 /** The models are still loading: the page cannot tell yet whether the message can go. */
 const modelsLoading = computed(() => props.modelLoad === 'loading' && modelState.value.kind !== 'ready')
 /**
- * The phases of the draft's uploads that keep it from going: a failed one.
+ * The phases of the draft's uploads that keep it from going: a failed one,
+ * or a file that is gone.
  * A message whose files are still uploading goes, and waits for them
  * (`composer.md` § Writing a message).
  */
 const failedUploads = computed(() => carrying.value
   .filter(isComposerFile)
-  .flatMap((item) => item.phase === 'failed' ? [item.phase] : []))
+  .flatMap((item) => item.phase === 'failed' || item.phase === 'missing' ? [item.phase] : []))
 const sendDisabled = computed(
   () =>
     props.disabled ||

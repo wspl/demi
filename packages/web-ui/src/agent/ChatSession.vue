@@ -240,6 +240,10 @@ const emit = defineEmits<{
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
+  /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
+  editSubmission: [id: string]
+  /** Delete on the message `id`, whose delivery failed, once the user confirmed it. */
+  deleteSubmission: [id: string]
   abortSubagents: []
   abortSubagent: [id: string]
   abortTerminal: [id: string]
@@ -796,6 +800,8 @@ watch(
             :commenting="commenting"
             :asking="shownAsking"
             @retry-submission="(id) => emit('retrySubmission', id)"
+            @edit-submission="(id) => emit('editSubmission', id)"
+            @delete-submission="(id) => emit('deleteSubmission', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
             :reveal-block-id="reveal?.node === null ? reveal.blockId : null"

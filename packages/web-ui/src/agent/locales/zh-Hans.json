@@ -98,7 +98,9 @@
       "recall": "撤回",
       "recalled": "消息已撤回",
       "notDelivered": "此消息未能送达。",
-      "fromAutomation": "自动化"
+      "fromAutomation": "自动化",
+      "deleteTitle": "删除这条消息？",
+      "deleteBody": "这条消息未发送，其文本和附件将被删除。"
     },
     "assistant": {
       "fork": "分叉",
@@ -291,7 +293,9 @@
     "retryOrRemove": "请重试或移除未能上传的附件",
     "waitForUpload": "请等待附件上传完成",
     "pastedNames": "{list}：已改为粘贴名称。",
-    "couldntCopyPicture": "无法复制图片"
+    "couldntCopyPicture": "无法复制图片",
+    "missing": "{name} 已不可用。请删除，或重新添加。",
+    "deleteOrAttachAgain": "请删除已不可用的附件，或重新添加"
   },
   "models": {
     "parent": "上级的模型",

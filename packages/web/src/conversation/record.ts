@@ -286,13 +286,20 @@ export function createRecordSync(options: {
     }
     const record = conversation.record
     const { writing } = composerWriting(conversation)
-    if ((seen.get(conversation.id) ?? held({ text: '', files: [], comments: [] })) === held(writing)) {
+    const unsent = typing.get(conversation.id)
+    // A composer this web browser kept, restored before the draft is read,
+    // is a change on the revision it was built on whatever it holds, an
+    // empty one after a send included: there is no draft yet to compare it
+    // with, and the draft read compares with it, never the other way round.
+    // The first look counts it so; the change it makes brings this back
+    // before it is kept as the typing, and finds it seen.
+    const unread = record.revision('draft') < 0 && builtOn.has(conversation.id)
+    if (!(unread && !seen.has(conversation.id)) && (seen.get(conversation.id) ?? held({ text: '', files: [], comments: [] })) === held(writing)) {
       return
     }
     seen.set(conversation.id, held(writing))
-    const unsent = typing.get(conversation.id)
     const below = unsent ? record.below(unsent)! : record.shown.value!
-    if (sameWriting(writing, below.draft)) {
+    if (!unread && sameWriting(writing, below.draft)) {
       if (unsent) {
         record.leave([unsent])
         typing.delete(conversation.id)

@@ -2095,6 +2095,324 @@ test('a message never goes without a file its text holds a place for', async () 
   })
 })
 
+/**
+ * The page closes and opens again with `kept` as this web browser's draft of
+ * the first conversation, as a reload does; answers the sign-out of the new page.
+ */
+async function reopenWith(signOut: () => void, kept: draftStorage.SavedDraft): Promise<() => void> {
+  signOut()
+  useConversations().stopAll()
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  const next = signIn(kept)
+  // The store is there when the state comes, as the page's is.
+  useConversations()
+  await connect()
+  return next
+}
+
+/** Two pictures of one name around a line of text, uploaded, as a user pastes them one after the other. */
+async function pasteTwoPictures(current: ReturnType<typeof useConversations>['items'][number]) {
+  const taken = useConversations().addFiles(current, [
+    new File(['first shot'], 'image.png', { type: 'image/png' }),
+    new File(['second shot'], 'image.png', { type: 'image/png' }),
+  ])
+  useConversations().arrangeFiles(current, taken.map((file) => file.id))
+  current.draft = `${ATTACHMENT_MARK} between ${ATTACHMENT_MARK}`
+  await until(() => taken.every((file) => file.kind === 'file' && file.upload !== null), 'both files upload')
+}
+
+// A reload at any moment of a send restores the message on its way with
+// each file once, and it goes again by itself. Before, the draft saved halfway
+// through the send held the message both in the composer and on its way,
+// each file twice, and the restored message failed every Retry with "A file
+// of this message is no longer available".
+test('a message restored from any draft its send saved goes again with each of its files once', async () => {
+  let signOut = signIn()
+  const snapshots: draftStorage.SavedDraft[] = []
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    if (id === FIRST) snapshots.push(structuredClone(draft))
+  })
+  try {
+    await withSession(async (current) => {
+      await useConversations().activate(FIRST)
+      await pasteTwoPictures(current)
+      snapshots.length = 0
+      await useConversations().send(current)
+    })
+    writes.mockRestore()
+    const sending = snapshots.filter((snapshot) => snapshot.pendingSends.length === 1)
+    expect(sending.length).toBeGreaterThan(0)
+    for (const kept of sending) {
+      expect(kept.files.map((file) => file.id)).toEqual([...new Set(kept.files.map((file) => file.id))])
+      signOut = await reopenWith(signOut, kept)
+      await withSession(async (current, sent) => {
+        await useConversations().activate(FIRST)
+        await until(() => current.pendingSends.length === 0, 'the message goes again')
+        expect(sent.map((content) => content.filter((part) => part.type === 'upload').length)).toEqual([2])
+      })
+    }
+  } finally {
+    writes.mockRestore()
+    signOut()
+  }
+})
+
+// A reload before the page heard the backend's answer to a message: the
+// backend may already hold it, as a queued message the page's history does
+// not show yet. The message stays on its way, with no Edit or Delete, which
+// would drop the id the backend knows it by, and goes again with that id
+// once the session is open, which takes it once (`turns.md` § Following the
+// agent's work). Before, it came back as not delivered, and Edit left a copy
+// to send again while Delete let the original run.
+test('a message whose answer a reload cut off stays on its way, offers no Edit or Delete, and goes again with its id', async () => {
+  let signOut = signIn()
+  let kept: draftStorage.SavedDraft | null = null
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    if (id === FIRST) kept = structuredClone(draft)
+  })
+  try {
+    let firstId = ''
+    await withSession(async (current) => {
+      // The backend takes the message; its answer never reaches this page.
+      const unheard = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => new Promise(() => {}))
+      try {
+        await useConversations().activate(FIRST)
+        current.draft = 'Then run the whole suite'
+        void useConversations().send(current)
+        await until(() => unheard.mock.calls.length === 1, 'the message is given to the session')
+        firstId = current.pendingSends[0]!.id
+      } finally {
+        unheard.mockRestore()
+      }
+    })
+    writes.mockRestore()
+    signOut = await reopenWith(signOut, kept!)
+    await withSession(async (current) => {
+      const answer = deferred<void>()
+      const again = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => answer.promise)
+      try {
+        const store = useConversations()
+        await store.activate(FIRST)
+        await until(() => again.mock.calls.length === 1, 'the message goes again once the session is open')
+        expect(again.mock.calls[0]![1]).toBe(firstId)
+        expect(store.submissions(current).map(({ id, error }) => ({ id, error }))).toEqual([{ id: firstId, error: null }])
+        store.editSend(current, firstId)
+        store.deleteSend(current, firstId)
+        expect(current.pendingSends.map((pending) => pending.id)).toEqual([firstId])
+        expect(current.draft).toBe('')
+        answer.resolve()
+        await until(() => current.pendingSends.length === 0, 'the session takes it')
+      } finally {
+        again.mockRestore()
+      }
+    })
+  } finally {
+    writes.mockRestore()
+    signOut()
+  }
+})
+
+// A page reloaded right after Send, while the message's files still upload:
+// the IndexedDB write of the send, which carries the files, is cut off with
+// the page, and the record still holds the composer as it was before. The
+// page's last words name the message on its way, which the next page sends
+// with its files, its composer empty (`turns.md` § Following the agent's
+// work). Before, the last words held only the empty composer, which emptied
+// the restored one, and the message was gone.
+test('a message sent just before a reload that cut off its stored draft goes after the page opens again', async () => {
+  let signOut = signIn()
+  const snapshots: draftStorage.SavedDraft[] = []
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    if (id === FIRST) snapshots.push(structuredClone(draft))
+  })
+  const left = spyOn(draftStorage, 'writeLastWords').mockImplementation(() => {})
+  let before: draftStorage.SavedDraft | undefined
+  let words: draftStorage.LastWords | undefined
+  try {
+    await withSession(async (current) => {
+      const store = useConversations()
+      await store.activate(FIRST)
+      // The uploads go on slowly: the message is sent before they end.
+      FakeXhr.gate = new Promise(() => {})
+      const taken = store.addFiles(current, [
+        new File(['first shot'], 'image.png', { type: 'image/png' }),
+        new File(['second shot'], 'image.png', { type: 'image/png' }),
+      ])
+      store.arrangeFiles(current, taken.map((file) => file.id))
+      current.draft = `${ATTACHMENT_MARK} between ${ATTACHMENT_MARK}`
+      store.saveDrafts()
+      before = snapshots.at(-1)
+      expect(before?.files.length).toBe(2)
+      void store.send(current)
+      expect(current.pendingSends.length).toBe(1)
+      store.keepLastWords()
+      words = left.mock.calls.find(([, id]) => id === FIRST)?.[2]
+    })
+    writes.mockRestore()
+    FakeXhr.gate = null
+    // The next page reads the record the send's write never replaced.
+    signOut = await reopenWith(signOut, before!)
+    const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)
+    try {
+      await withSession(async (current, sent) => {
+        await useConversations().activate(FIRST)
+        await until(() => sent.length === 1, 'the message goes')
+        expect(sent[0]!.filter((part) => part.type === 'upload').length).toBe(2)
+        expect(sent[0]!.some((part) => part.type === 'text' && part.text.includes('between'))).toBe(true)
+        await until(() => current.pendingSends.length === 0, 'the session takes it')
+        expect([current.draft, current.attachmentIds]).toEqual(['', []])
+      })
+    } finally {
+      taken.mockRestore()
+    }
+  } finally {
+    writes.mockRestore()
+    left.mockRestore()
+    signOut()
+  }
+})
+
+// The same reload where the backend's draft still holds the message's text,
+// saved while it was typed: the next page's composer stays empty, as it was
+// after Send, and once the message is taken the backend's draft is emptied
+// too; a sent message's text never comes back (`turns.md` § Following the
+// agent's work). Before, the draft read put the text back in the composer,
+// since an empty composer counted as no change, and it was saved again.
+test('after a reload that cut off a send, the composer stays empty and the backend draft is emptied once the message is taken', async () => {
+  const typed = 'Compare these'
+  serverDrafts.set(FIRST, { revision: 1, text: typed, files: [], comments: [], replaced: null })
+  records[0]!.draftRevision = 1
+  let signOut = signIn()
+  const snapshots: draftStorage.SavedDraft[] = []
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    if (id === FIRST) snapshots.push(structuredClone(draft))
+  })
+  const left = spyOn(draftStorage, 'writeLastWords').mockImplementation(() => {})
+  let before: draftStorage.SavedDraft | undefined
+  let words: draftStorage.LastWords | undefined
+  try {
+    await withSession(async (current) => {
+      const store = useConversations()
+      await store.activate(FIRST)
+      await until(() => current.draft === typed, 'the composer shows the typed draft')
+      FakeXhr.gate = new Promise(() => {})
+      const [file] = store.addFiles(current, [new File(['shot'], 'image.png', { type: 'image/png' })])
+      store.arrangeFiles(current, [file!.id])
+      current.draft = `${typed} ${ATTACHMENT_MARK}`
+      store.saveDrafts()
+      before = snapshots.at(-1)
+      void store.send(current)
+      store.keepLastWords()
+      words = left.mock.calls.find(([, id]) => id === FIRST)?.[2]
+    })
+    writes.mockRestore()
+    FakeXhr.gate = null
+    requests = []
+    signOut = await reopenWith(signOut, before!)
+    const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)
+    try {
+      await withSession(async (current, sent) => {
+        await useConversations().activate(FIRST)
+        await until(() => sent.length === 1 && current.pendingSends.length === 0, 'the message goes and is taken')
+        expect(current.draft).toBe('')
+        await until(() => draftSaves().length > 0, 'the emptied draft is saved')
+        expect(draftSaves().map((request) => (request.body as { text: string }).text)).toEqual([''])
+      })
+    } finally {
+      taken.mockRestore()
+    }
+  } finally {
+    writes.mockRestore()
+    left.mockRestore()
+    signOut()
+  }
+})
+
+// A message whose text and files are out of step, whichever way, fails every
+// resend: its row offers no Retry, and Edit puts it back in the composer,
+// each place its text holds a capsule, a file gone a capsule to delete or
+// attach again, so nothing of it is lost (`turns.md` § Following the agent's work).
+test('a message whose files are out of step offers no Retry, and Edit puts it back in the composer with each file gone a capsule that says so', async () => {
+  const cases: {
+    name: string
+    change: (pending: draftStorage.SavedDraft['pendingSends'][number], draft: draftStorage.SavedDraft) => void
+    capsules: ('ready' | 'missing')[]
+  }[] = [
+    { name: 'a file it names is not kept', change: (_pending, draft) => { draft.files = draft.files.slice(0, 1) }, capsules: ['ready', 'missing'] },
+    { name: 'its text holds more places than it names files', change: (pending, draft) => { pending.fileIds = pending.fileIds.slice(0, 1); draft.files = draft.files.slice(0, 1) }, capsules: ['ready', 'missing'] },
+    { name: 'it names more files than its text holds places', change: (pending) => { pending.text = `${ATTACHMENT_MARK} between` }, capsules: ['ready', 'ready'] },
+    { name: 'a file it names has no upload and no bytes', change: (_pending, draft) => { draft.files = draft.files.map((file, index) => index === 1 && file.kind === 'file' ? { ...file, upload: null, file: null } : file) }, capsules: ['ready', 'missing'] },
+  ]
+  let signOut = signIn()
+  let kept: draftStorage.SavedDraft | null = null
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    if (id === FIRST) kept = structuredClone(draft)
+  })
+  try {
+    await withSession(async (current) => {
+      const submit = spyOn(ConversationRuntime.prototype, 'submit').mockRejectedValue(new RefusedError({ code: 'device_offline', reason: 'offline' }))
+      try {
+        await useConversations().activate(FIRST)
+        await pasteTwoPictures(current)
+        await useConversations().send(current)
+        expect(current.pendingSends[0]?.error).toBe('The device is offline.')
+      } finally {
+        submit.mockRestore()
+      }
+    })
+    writes.mockRestore()
+    const undelivered: draftStorage.SavedDraft = kept!
+    for (const { name, change, capsules } of cases) {
+      const draft = structuredClone(undelivered)
+      change(draft.pendingSends[0]!, draft)
+      // Each case's page opens on a backend that holds no draft of the one before.
+      serverDrafts = new Map()
+      signOut = await reopenWith(signOut, draft)
+      await withSession(async (current, sent) => {
+        const store = useConversations()
+        await store.activate(FIRST)
+        current.draft = 'Already typed'
+        const id = current.pendingSends[0]!.id
+        expect(store.submissions(current)[0]?.retryable, name).toBe(false)
+        await store.retrySend(current, id)
+        expect(current.pendingSends.map((pending) => pending.id), name).toEqual([id])
+        store.editSend(current, id)
+        expect(current.pendingSends, name).toEqual([])
+        expect(current.draft.startsWith('Already typed\n\n'), name).toBe(true)
+        expect(current.draft.split(ATTACHMENT_MARK).length - 1, name).toBe(capsules.length)
+        expect(current.attachmentIds.map((fileId) => {
+          const file = current.files.find((each) => each.id === fileId)
+          return file?.kind === 'file' ? file.phase : null
+        }), name).toEqual(capsules)
+        // A file gone keeps the message in the composer until it is deleted or attached again.
+        await store.send(current)
+        expect(sent.length, name).toBe(capsules.includes('missing') ? 0 : 1)
+      })
+    }
+  } finally {
+    writes.mockRestore()
+    signOut()
+  }
+})
+
+test('Delete on a message not delivered takes its row and its files away', async () => {
+  await withSession(async (current) => {
+    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockRejectedValue(new RefusedError({ code: 'device_offline', reason: 'offline' }))
+    try {
+      pastePicture(current, 'What is wrong here? ')
+      await useConversations().send(current)
+      useConversations().deleteSend(current, current.pendingSends[0]!.id)
+      expect(current.pendingSends).toEqual([])
+      expect(current.files).toEqual([])
+    } finally {
+      submit.mockRestore()
+    }
+  })
+})
+
 /** Answers claims of stored files, once `gate` opens, with an upload of the blob `SHA` names; any other the user's blobs do not hold. */
 function answerClaims(gate: Promise<void>): () => void {
   const originalFetch = globalThis.fetch
@@ -4143,7 +4461,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
     current.draft = 'Fix the login bug'
     store.keepLastWords()
     words = kept.mock.calls.find(([, id]) => id === FIRST)?.[2]
-    expect(words).toEqual({ base: 1, text: 'Fix the login bug', attachmentIds: [] })
+    expect(words).toEqual({ composer: { base: 1, text: 'Fix the login bug', attachmentIds: [] }, pendingSends: [], files: [] })
     signOut()
     store.stopAll()
     useProduct().stop()
@@ -4524,6 +4842,30 @@ test('sending a saved message shows it on its way at once as a turn of its own, 
   }
 })
 
+// Edit on a message from the list that was not delivered edits it as the
+// list's Edit does: it goes into the composer and is neither on its way nor
+// listed; Delete takes it from the list.
+test('Edit on a saved message not delivered puts it in the composer, and Delete takes it from the list', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next'), savedMessage('ipv6', 'Then the IPv6')])
+  const restore = await withStubModel(first)
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockRejectedValue(new Error('The session cannot take it.'))
+  try {
+    store.sendSaved(first, 'dns', 'send')
+    await until(() => first.pendingSends[0]?.error != null, 'the send fails')
+    store.editSend(first, first.pendingSends[0]!.id)
+    await until(() => first.draft === 'Check prod’s DNS next', 'the message is in the composer')
+    expect([listed(first), first.pendingSends]).toEqual([['Then the IPv6'], []])
+    store.sendSaved(first, 'ipv6', 'send')
+    await until(() => first.pendingSends[0]?.error != null, 'the send fails')
+    store.deleteSend(first, first.pendingSends[0]!.id)
+    expect([listed(first), first.pendingSends]).toEqual([[], []])
+    await until(() => (serverSaved.get(FIRST) ?? []).length === 0, 'the backend lists neither')
+  } finally {
+    send.mockRestore()
+    restore()
+  }
+})
+
 test('a saved message the session took leaves the list for good once read', async () => {
   const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
   const restore = await withStubModel(first)
@@ -4574,8 +4916,11 @@ test('a message sent from the list while its save is on its way goes once the sa
   }
 })
 
-// The reviewer's second finding: a reload during a saved send, then Retry.
-test('a saved send interrupted by a reload goes again from the list as the same turn on Retry, never as a new message', async () => {
+// The reviewer's second finding: a reload during a saved send. The page
+// did not hear the backend's answer, so the message is still on its way and
+// goes again by itself, from the list, as the same turn (`turns.md`
+// § Following the agent's work).
+test('a saved send interrupted by a reload goes again from the list as the same turn by itself, never as a new message', async () => {
   let signOut = signIn()
   const kept = new Map<string, draftStorage.SavedDraft>()
   const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
@@ -4597,23 +4942,21 @@ test('a saved send interrupted by a reload goes again from the list as the same 
     disposePinia(pinia)
 
     // The next page: the backend still lists the message, which is on its way here.
-    pinia = createPinia()
-    setActivePinia(pinia)
-    signOut = signIn(kept.get(FIRST)!)
-    useConversations()
-    await connect()
-    opened = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
-    restore = await withStubModel(opened.first)
-    const { store, first } = opened
-    expect(listed(first)).toEqual([])
-    expect(first.pendingSends.map(({ id, saved, error }) => ({ id, saved, failed: error !== null }))).toEqual([{ id: turnId, saved: 'dns', failed: true }])
     const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
     const again = spyOn(ConversationRuntime.prototype, 'sendSaved').mockResolvedValue(true)
     try {
-      await store.retrySend(first, turnId)
+      pinia = createPinia()
+      setActivePinia(pinia)
+      signOut = signIn(kept.get(FIRST)!)
+      useConversations()
+      await connect()
+      opened = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+      restore = await withStubModel(opened.first)
+      const { first } = opened
+      expect(listed(first)).toEqual([])
+      await until(() => first.pendingSends.length === 0, 'the message goes again by itself')
       expect(again.mock.calls).toEqual([['dns', turnId, 'message']])
       expect(submit).not.toHaveBeenCalled()
-      expect(first.pendingSends).toEqual([])
     } finally {
       again.mockRestore()
       submit.mockRestore()

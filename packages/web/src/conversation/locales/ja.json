@@ -44,7 +44,7 @@
     "storeFailed": "このブラウザーは下書きを保存できませんでした。",
     "readFailed": "このブラウザーは保存済みの下書きを読み取れませんでした。",
     "unreadable": "保存済みの下書きを 1 件読み取れなかったため、別に保管しました。",
-    "deliveryInterrupted": "送信が中断されました。再試行して確認してください。"
+    "missingFile": "ファイル"
   },
   "savedDeleted": "保存したメッセージを削除しました",
   "composer": {

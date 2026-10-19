@@ -58,6 +58,8 @@ export type MessageTransfer =
   /** A pasted message's stored file being attached, which has no progress to tell. */
   | { phase: 'attaching' }
   | { phase: 'failed' }
+  /** A file whose bytes and upload are gone, to delete or attach again. */
+  | { phase: 'missing' }
 
 /**
  * The files one composer is carrying, under their capsules' ids: how far each
@@ -132,6 +134,9 @@ export function composerTransfer(item: ComposerAttachment): MessageTransfer | un
   }
   if (item.phase === 'attaching') {
     return { phase: 'attaching' }
+  }
+  if (item.phase === 'missing') {
+    return { phase: 'missing' }
   }
   return item.phase === 'failed' ? { phase: 'failed' } : undefined
 }

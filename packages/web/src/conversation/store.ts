@@ -93,6 +93,7 @@ import { useProduct, type ProductChange } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
+import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
@@ -193,6 +194,8 @@ export const useConversations = defineStore('conversations', () => {
   const restored = reactive(new Set<string>())
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
   const savedDrafts = new Map<string, string>()
+  /** How many changes made in one step are under way (`atOnce`); none is saved halfway. */
+  let steps = 0
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report(t('failures.uploadAttachment'), error),
   )
@@ -595,10 +598,10 @@ export const useConversations = defineStore('conversations', () => {
     // have it: a new conversation's, or a change not yet confirmed.
     const unsaved = local || recordSync.unsaved(conversation)
     const sending = sendingFileIds(conversation)
-    const files = [
-      ...(unsaved ? messageFiles(conversation) : []),
-      ...conversation.files.filter((file) => sending.has(file.id)),
-    ]
+    // Each file once, under its id: the composer's message in the order of
+    // its capsules, then those of the sends not yet accepted.
+    const ids = new Set([...(unsaved ? conversation.attachmentIds : []), ...sending])
+    const files = filesById(conversation, [...ids])
     return {
       messageEdit: conversation.messageEdit
         ? structuredClone(toRaw(conversation.messageEdit))
@@ -655,6 +658,10 @@ export const useConversations = defineStore('conversations', () => {
    * copy of it would replace that.
    */
   function saveDrafts(): void {
+    // A change made in one step is saved once it is whole (`atOnce`).
+    if (steps > 0) {
+      return
+    }
     // What a composer holds is its draft's change from the first keystroke,
     // restored from this web browser's storage or not.
     for (const item of items.value) {
@@ -696,8 +703,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Writes, as the page closes, each composer's text the backend does not
-   * have yet where the web browser writes it at once; the IndexedDB writes
-   * still under way may be lost with the page.
+   * have yet, and the messages on their way, where the web browser writes
+   * at once; the IndexedDB writes still under way may be lost with the page.
    */
   function keepLastWords(): void {
     const userId = session.user?.id
@@ -705,13 +712,29 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     for (const item of items.value) {
-      if (restored.has(item.id) && (item.persistence !== 'synced' || recordSync.unsaved(item))) {
-        writeLastWords(userId, item.id, {
-          base: item.persistence === 'synced' ? recordSync.base(item) : null,
-          text: item.draft,
-          attachmentIds: [...item.attachmentIds],
-        })
+      if (!restored.has(item.id)) {
+        continue
       }
+      const unsaved = item.persistence !== 'synced' || recordSync.unsaved(item)
+      if (!unsaved && !item.pendingSends.length) {
+        continue
+      }
+      // The record's form without the files' bytes, which this storage cannot hold.
+      const { pendingSends, files } = persisted(item)
+      const sending = sendingFileIds(item)
+      writeLastWords(userId, item.id, {
+        composer: unsaved
+          ? {
+              base: item.persistence === 'synced' ? recordSync.base(item) : null,
+              text: item.draft,
+              attachmentIds: [...item.attachmentIds],
+            }
+          : null,
+        pendingSends,
+        files: files
+          .filter((file) => sending.has(file.id))
+          .map((file) => (file.kind === 'file' ? { kind: 'file', id: file.id, name: file.name, file: null, upload: file.upload, ...(file.snippet ? { snippet: file.snippet } : {}) } : file)),
+      })
     }
   }
 
@@ -834,6 +857,22 @@ export const useConversations = defineStore('conversations', () => {
     { flush: 'sync' },
   )
 
+  /**
+   * Makes `change` as one step of the drafts this web browser keeps: the
+   * drafts are saved once it is whole, never from the state halfway through
+   * it, such as a message both in the composer and on its way, which a
+   * reload at that moment would restore with its files twice.
+   */
+  function atOnce(change: () => void): void {
+    steps += 1
+    try {
+      change()
+    } finally {
+      steps -= 1
+    }
+    saveDrafts()
+  }
+
   async function restoreDraft(
     conversation: Conversation,
     signal: AbortSignal,
@@ -846,13 +885,10 @@ export const useConversations = defineStore('conversations', () => {
       const draft = saved ?? (await readDraft(session.user.id, conversation.id))
       signal.throwIfAborted()
       if (draft) {
-        // A delivery the page did not see end is a message to try again,
-        // which Retry sends as a message.
-        conversation.pendingSends = draft.pendingSends.map((pending) => ({
-          ...pending,
-          way: 'send',
-          error: pending.error || t('drafts.deliveryInterrupted'),
-        }))
+        // A message whose answer the page did not hear is still on its way,
+        // as a message: the backend may hold it already (`turns.md`
+        // § Following the agent's work). One refused stays not delivered.
+        conversation.pendingSends = draft.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         // A draft holds model settings only for a conversation without a
         // record.
@@ -868,12 +904,6 @@ export const useConversations = defineStore('conversations', () => {
         // otherwise, once read.
         recordSync.restore(conversation, draft.base)
         conversation.notSaved = draft.notSaved
-        // A message on its way from the list keeps it out of the list.
-        for (const pending of conversation.pendingSends) {
-          if (pending.saved) {
-            recordSync.hideSent(conversation, pending.saved, pending.id)
-          }
-        }
         conversation.draft = draft.text
         conversation.comments = draft.comments
         conversation.files = draft.files.map(savedAttachment)
@@ -888,11 +918,31 @@ export const useConversations = defineStore('conversations', () => {
       // record, whose last writes may not have made it.
       const words = takeLastWords(session.user.id, conversation.id)
       if (words) {
-        recordSync.restore(conversation, words.base)
-        conversation.draft = words.text
-        conversation.attachmentIds = words.attachmentIds.filter((id) =>
-          conversation.files.some((file) => file.id === id),
-        )
+        // The messages on their way then; a file of theirs the record lacks
+        // is known by its upload, or is gone.
+        conversation.pendingSends = words.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
+        conversation.files = [
+          ...conversation.files,
+          ...words.files.filter((file) => !conversation.files.some((held) => held.id === file.id)).map(savedAttachment),
+        ]
+        const sending = sendingFileIds(conversation)
+        if (words.composer) {
+          recordSync.restore(conversation, words.composer.base)
+          conversation.draft = words.composer.text
+          conversation.attachmentIds = words.composer.attachmentIds.filter((id) =>
+            conversation.files.some((file) => file.id === id),
+          )
+        } else {
+          // The composer's text is the backend's: a file the record held for
+          // it was the sent message's.
+          conversation.attachmentIds = conversation.attachmentIds.filter((id) => !sending.has(id))
+        }
+      }
+      // A message on its way from the list keeps it out of the list.
+      for (const pending of conversation.pendingSends) {
+        if (pending.saved) {
+          recordSync.hideSent(conversation, pending.saved, pending.id)
+        }
       }
     } catch (error) {
       signal.throwIfAborted()
@@ -913,6 +963,14 @@ export const useConversations = defineStore('conversations', () => {
             unattached(conversation, file)
           }
         })
+      }
+    }
+    // Each message still on its way goes again with its id once the session
+    // is open, which takes it once: one the backend already holds is not
+    // sent twice, and only its answer ends it, taken or refused.
+    for (const pending of conversation.pendingSends) {
+      if (pending.error === null) {
+        void deliverInOrder(conversation, pending)
       }
     }
   }
@@ -952,7 +1010,8 @@ export const useConversations = defineStore('conversations', () => {
         ? composerAttachmentFromFile(file.file)
         : { src: file.upload ? blobPicture(file.upload) : file.claim ? blobPicture(file.claim.file) : undefined }),
       ...file,
-      phase: file.upload ? 'ready' : file.claim ? 'attaching' : 'uploading',
+      // A file with no upload and nothing to make one from is gone.
+      phase: file.upload ? 'ready' : file.claim ? 'attaching' : file.file ? 'uploading' : 'missing',
     }
   }
 
@@ -2299,8 +2358,9 @@ export const useConversations = defineStore('conversations', () => {
   async function send(conversation: Conversation, way: SendWay = 'send'): Promise<void> {
     if (
       conversation.archived ||
-      // A file whose upload failed is retried or removed in the composer first.
-      messageFiles(conversation).some((file) => isComposerFile(file) && file.phase === 'failed') ||
+      // A file whose upload failed, or one gone, is retried, removed or
+      // attached again in the composer first.
+      messageFiles(conversation).some((file) => isComposerFile(file) && (file.phase === 'failed' || file.phase === 'missing')) ||
       (!conversation.draft.trim() && !conversation.attachmentIds.length && !conversation.comments.length)
     ) {
       return
@@ -2309,10 +2369,15 @@ export const useConversations = defineStore('conversations', () => {
     const comments = inReadingOrder(conversation.comments, latestBlocks(conversation.history).map((block) => block.id))
     // The waiting comments go with the message, whether it steers or queues.
     const fileIds = messageFiles(conversation).map((file) => file.id)
-    const pending = addPendingSend(conversation, way, conversation.draft, fileIds, { comments })
-    conversation.draft = ''
-    conversation.attachmentIds = []
-    conversation.comments = []
+    // The message leaves the composer as it becomes one on its way, in one
+    // step: no saved draft holds it in both.
+    let pending!: PendingSend
+    atOnce(() => {
+      pending = addPendingSend(conversation, way, conversation.draft, fileIds, { comments })
+      conversation.draft = ''
+      conversation.attachmentIds = []
+      conversation.comments = []
+    })
     await deliverInOrder(conversation, pending)
   }
 
@@ -2494,7 +2559,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   async function retrySend(conversation: Conversation, id: string): Promise<void> {
     const pending = conversation.pendingSends.find((each) => each.id === id)
-    if (conversation.archived || pending?.error == null) {
+    if (conversation.archived || pending?.error == null || !resendable(conversation, pending)) {
       return
     }
     pending.way = agentWorks(conversation.phase, conversation.pendingSends) ? 'queue' : 'send'
@@ -2526,9 +2591,7 @@ export const useConversations = defineStore('conversations', () => {
     pending.error = null
     delete pending.requestId
     // The files in the order of their marks in the text.
-    const files = pending.fileIds.flatMap((id) =>
-      conversation.files.filter((file) => file.id === id),
-    )
+    const files = filesById(conversation, pending.fileIds)
     saveDrafts()
     // A backend out of reach fails nothing: the record's request waits in the
     // HTTP client, and the message waits in the runtime for the conversation
@@ -2663,9 +2726,124 @@ export const useConversations = defineStore('conversations', () => {
 
   /** The files the message has, in the order of its capsules; the rest wait for an undo. */
   function messageFiles(conversation: Conversation): Conversation['files'] {
-    return conversation.attachmentIds.flatMap((id) =>
-      conversation.files.filter((file) => file.id === id),
-    )
+    return filesById(conversation, conversation.attachmentIds)
+  }
+
+  /** The conversation's file under each of `ids` it holds one under, in their order. */
+  function filesById(conversation: Conversation, ids: readonly string[]): Conversation['files'] {
+    return ids.flatMap((id) => {
+      const file = conversation.files.find((each) => each.id === id)
+      return file ? [file] : []
+    })
+  }
+
+  /** A file of the composer's with no upload and nothing to make one from: its bytes went with the page that had them. */
+  function isGone(file: ProductAttachment): boolean {
+    return isComposerFile(file) && !file.upload && !file.file && !file.claim
+  }
+
+  /**
+   * Whether sending the message again could deliver it: a file of it gone,
+   * or files that do not match the places its text holds for them, fail
+   * every time, and only Edit mends the message (`turns.md` § Following the agent's work).
+   * A message from the list goes again from there.
+   */
+  function resendable(conversation: Conversation, pending: PendingSend): boolean {
+    if (pending.saved) {
+      return true
+    }
+    const files = filesById(conversation, pending.fileIds)
+    return files.length === pending.fileIds.length &&
+      new Set(pending.fileIds).size === pending.fileIds.length &&
+      files.length === markCount(pending.text) &&
+      !files.some(isGone)
+  }
+
+  /** The messages on their way and those not delivered, as the conversation shows them. */
+  function submissions(conversation: Conversation): PendingSubmissionState[] {
+    return conversation.pendingSends.map((pending) => ({
+      id: pending.id,
+      way: pending.way,
+      text: pending.text,
+      attachments: filesById(conversation, pending.fileIds),
+      comments: pending.comments,
+      error: pending.error,
+      requestId: pending.requestId ?? null,
+      ...(pending.error !== null && !resendable(conversation, pending) ? { retryable: false } : {}),
+    }))
+  }
+
+  /**
+   * Edit on a message not delivered: its text, files and comments go back
+   * into the composer, after what it holds, as a paste at its end adds them,
+   * and its row goes, in one step. A file of it that is gone comes back as a
+   * capsule that says so, to remove or attach again; so does each place its
+   * text holds for a file it has none for, and a file it has beyond those
+   * places stands at the end of its text. One sent from the list is listed
+   * again and edited there, as the list's Edit does.
+   */
+  function editSend(conversation: Conversation, id: string): void {
+    const pending = conversation.pendingSends.find((each) => each.id === id)
+    if (conversation.archived || pending?.error == null) {
+      return
+    }
+    if (pending.saved) {
+      backToList(conversation, id)
+      void editSaved(conversation, pending.saved)
+      return
+    }
+    const marks = markCount(pending.text)
+    const taken = new Set<string>()
+    const files = Array.from({ length: Math.max(marks, pending.fileIds.length) }, (_, index): ProductAttachment => {
+      const fileId = pending.fileIds[index]
+      const held = fileId === undefined || taken.has(fileId) ? undefined : conversation.files.find((file) => file.id === fileId)
+      if (fileId !== undefined) {
+        taken.add(fileId)
+      }
+      return held && !isGone(held)
+        ? held
+        : { kind: 'file', id: crypto.randomUUID(), name: held?.name ?? t('drafts.missingFile'), phase: 'missing', file: null, upload: null }
+    })
+    const text = pending.text + ATTACHMENT_MARK.repeat(Math.max(0, pending.fileIds.length - marks))
+    atOnce(() => {
+      wishes.delete(id)
+      conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== id)
+      conversation.files.push(...files.filter((file) => !conversation.files.includes(file)))
+      const fileIds = [...conversation.attachmentIds, ...files.map((file) => file.id)]
+      const draft = conversation.draft.trimEnd()
+      const joined = draft === '' ? text : `${draft}\n\n${text}`
+      // As the editor writes the message out.
+      refill(conversation, serializeUserMarkdown(parseUserMarkdown(joined, fileIds)).markdown, fileIds)
+      conversation.comments = [...conversation.comments, ...pending.comments]
+    })
+    // The backend's draft may still hold the message as it was sent.
+    void recordSync.save(conversation).catch((error) => report(t('failures.saveDraft'), error))
+  }
+
+  /**
+   * Delete on a message not delivered, which the user confirmed: it goes
+   * with its files. One sent from the list goes from the list, as the
+   * list's Delete takes it.
+   */
+  function deleteSend(conversation: Conversation, id: string): void {
+    const pending = conversation.pendingSends.find((each) => each.id === id)
+    if (pending?.error == null) {
+      return
+    }
+    if (pending.saved) {
+      backToList(conversation, id)
+      void deleteSaved(conversation, pending.saved)
+      return
+    }
+    wishes.delete(id)
+    dropSubmission(conversation, id)
+  }
+
+  /** The message `id`, sent from the list and not delivered, is no longer on its way, and is listed again. */
+  function backToList(conversation: Conversation, id: string): void {
+    wishes.delete(id)
+    dropSubmission(conversation, id)
+    recordSync.unsend(conversation, id)
   }
 
   /** The session holds the message `id`: it leaves the messages on their way, and a wish kept for it is carried out. */
@@ -3117,6 +3295,9 @@ export const useConversations = defineStore('conversations', () => {
     settleStartingWorkflow,
     send,
     retrySend,
+    editSend,
+    deleteSend,
+    submissions,
     commenting,
     clearComments,
     editVersion: (conversation: Conversation) =>

@@ -502,18 +502,20 @@ onBeforeUnmount(() => {
       leave-to-class="opacity-0 scale-95"
     >
       <!-- A hint describes whatever is under the pointer, so it sits above
-           dialogs, popovers and toasts, including hints opened from those surfaces. -->
+           dialogs, popovers and toasts, including hints opened from those surfaces.
+           A hint as wide as its text wraps at its cap, never wider than the
+           screen less the margin `shift` keeps. -->
       <div
         v-if="visible"
         ref="floatingRef"
-        class="overlay-shell select-none pointer-events-none w-max min-w-max text-fg"
+        class="overlay-shell select-none pointer-events-none w-max text-fg"
         :class="card
           ? 'rounded-lg'
           : [
               'rounded-md',
               hasOverlay
-                ? [wide ? 'max-w-2xl' : 'max-w-xs', 'px-3 py-2 text-xs leading-relaxed']
-                : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4',
+                ? [wide ? 'max-w-[min(42rem,calc(100vw-1rem))]' : 'max-w-[min(20rem,calc(100vw-1rem))]', 'px-3 py-2 text-xs leading-relaxed']
+                : 'line-clamp-2 max-w-[min(24rem,calc(100vw-1rem))] px-2.5 py-1.5 text-[12px] leading-4',
             ]"
         :style="{ ...floatingStyles, '--elevation': elevation, zIndex: z() }"
         role="tooltip"

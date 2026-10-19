@@ -17,10 +17,15 @@ import type { SentenceText, TitleText } from './ui-text'
  *
  * One tinted bar, full width where it sits: a sentence, the upstream message
  * under it, the facts on a line of their own, wrapping where it is narrow, a control of the record's own under them
- * (the default slot), the source's payload behind a fold, and at most one
- * action beside a copy control for the support thread. It is a record in the transcript, not a
+ * (the default slot), the source's payload behind a fold, and its actions,
+ * most often one, the first the one to try first, beside a copy control for the support thread. It is a record in the transcript, not a
  * fixture of the dock, so it scrolls with what it describes.
  */
+export interface NoticeAction {
+  label: TitleText
+  run: () => void
+}
+
 withDefaults(
   defineProps<{
     label: SentenceText
@@ -32,8 +37,8 @@ withDefaults(
     raw?: string | null
     /** The response's headers, under the payload, folded under Headers: they rarely say why. */
     rawHeaders?: string | null
-    /** The single action's label; the caller decides what it does. */
-    action?: TitleText
+    /** What the reader can do about it, in the order they are offered. */
+    actions?: readonly NoticeAction[]
     /** What the copy control puts on the clipboard; no control without it. */
     copyText?: string | null
     /** The request the failure came from, named under the message. */
@@ -44,23 +49,26 @@ withDefaults(
     raw: null,
     rawHeaders: null,
     facts: () => [],
+    actions: () => [],
     copyText: null,
     requestId: null,
   },
 )
-defineEmits<{ action: [] }>()
 const rawOpen = ref(false)
 const headersOpen = ref(false)
 </script>
 
 <template>
+  <!-- The text and the controls share a line while both fit; on a narrow
+       bar the controls go under the text, from its left edge, and the text
+       keeps room for about twenty characters a line. -->
   <div
     role="alert"
-    class="flex w-full items-center gap-3 rounded-lg bg-tint-danger px-3.5 py-2.5 text-on-danger"
+    class="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-tint-danger px-3.5 py-2.5 text-on-danger"
   >
     <!-- The icon holds the first line of the text, whatever the bar's height; the
          text with its icon sits centred against the controls. -->
-    <div class="flex min-w-0 flex-1 items-start gap-3">
+    <div class="flex min-w-[calc(26px+20ch)] flex-1 items-start gap-3">
       <span class="flex h-5 shrink-0 items-center" aria-hidden="true">
         <CircleX :size="14" />
       </span>
@@ -124,16 +132,20 @@ const headersOpen = ref(false)
         </template>
       </div>
     </div>
-    <!-- Two lines: the controls sit centred. Three (with facts): they hold the first line. -->
+    <!-- Indented by the icon and its gap (14px + 12px), so that under the
+         text they start where it does. Two lines: the controls sit centred. Three (with facts): they hold the first line. -->
     <div
-      v-if="copyText || action"
-      class="on-fill flex shrink-0 items-center gap-1"
+      v-if="copyText || actions.length > 0"
+      class="on-fill flex shrink-0 items-center gap-1 pl-[26px]"
       :class="facts.length > 0 ? '-mt-0.5 self-start' : ''"
     >
       <CopyButton v-if="copyText" :source="copyText" />
-      <Button v-if="action" size="sm" @click="$emit('action')">{{
-        action
-      }}</Button>
+      <Button
+        v-for="action in actions"
+        :key="action.label"
+        size="sm"
+        @click="action.run()"
+      >{{ action.label }}</Button>
     </div>
   </div>
 </template>

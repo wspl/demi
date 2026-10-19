@@ -44,7 +44,7 @@
     "storeFailed": "This browser couldn’t store your drafts.",
     "readFailed": "This browser couldn’t read the stored drafts.",
     "unreadable": "A stored draft couldn’t be read and was set aside.",
-    "deliveryInterrupted": "Delivery was interrupted. Retry to confirm."
+    "missingFile": "File"
   },
   "savedDeleted": "Saved Message Deleted",
   "composer": {

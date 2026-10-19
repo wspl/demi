@@ -329,21 +329,11 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :deciding-permission="permissions.stateFor(conversation.id).deciding"
     :request-error="permissions.stateFor(conversation.id).error"
     @decide-permission="(id, decision, credential) => permissions.decide(conversation!.id, id, decision, credential)"
-    :pending-submissions="
-      conversation.pendingSends.map((pending) => ({
-        id: pending.id,
-        way: pending.way,
-        text: pending.text,
-        attachments: pending.fileIds.flatMap((id) =>
-          conversation?.files.filter((file) => file.id === id) ?? [],
-        ),
-        comments: pending.comments,
-        error: pending.error,
-        requestId: pending.requestId ?? null,
-      }))
-    "
+    :pending-submissions="store.submissions(conversation)"
     :removing="conversation.removing"
     @retry-submission="store.retrySend(conversation, $event)"
+    @edit-submission="store.editSend(conversation, $event)"
+    @delete-submission="store.deleteSend(conversation, $event)"
     @retry="store.start(conversation)"
     @continue-with="(providerId, credentialId) => conversation && continueWith(conversation, providerId, credentialId)"
     @open-providers="void settingsAddress.open('models')"

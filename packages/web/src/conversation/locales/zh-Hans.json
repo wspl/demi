@@ -44,7 +44,7 @@
     "storeFailed": "此浏览器无法存储你的草稿。",
     "readFailed": "此浏览器无法读取已存储的草稿。",
     "unreadable": "有一份已存储的草稿无法读取，已另行保留。",
-    "deliveryInterrupted": "发送已中断。重试以确认。"
+    "missingFile": "文件"
   },
   "savedDeleted": "已删除保存的消息",
   "composer": {

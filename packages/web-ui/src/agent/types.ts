@@ -32,6 +32,12 @@ export interface PendingSubmissionState {
   error: string | null
   /** The request ID of the refusal, shown beside `error`; null or absent with none. */
   requestId?: string | null
+  /**
+   * False for a refusal that sending again cannot change, such as a file of
+   * the message that is gone: its row offers Edit first and no Retry
+   * (`turns.md` § Following the agent's work). Absent otherwise.
+   */
+  retryable?: false
 }
 
 /** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */
