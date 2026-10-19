@@ -7,7 +7,7 @@ use std::{future::Future, sync::Arc, time::Duration};
 use chromiumoxide::cdp::browser_protocol::page::EventJavascriptDialogOpening;
 use tokio::{
     sync::{broadcast, mpsc, oneshot, watch},
-    time::{Instant, MissedTickBehavior},
+    time::Instant,
 };
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
@@ -19,7 +19,7 @@ use demi_command_package_browser_protocol::live::{
 };
 use demi_live_view::{delivery::Delivery, input::Item};
 use demi_live_view_protocol::{
-    LiveAck, LiveHello, LiveKeyframe, LiveRelease, Platform, PointerAction, SourceId, ViewerInput,
+    ChunkAck, LiveHello, LiveKeyframe, LiveRelease, Platform, PointerAction, SourceId, ViewerInput,
 };
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{Input as ServiceInput, InvocationContext, ServiceError};
@@ -83,12 +83,13 @@ pub async fn serve<B: ViewedBrowser>(
         ..
     } = context;
     let (writer, writing) = Writer::start(output);
-    let (inbound, uploads, _reading) = read(input);
+    let (inbound, acks, uploads, _reading) = read(input);
     let mut viewer = Viewer {
         browser,
         cancel: cancellation,
         writer,
         inbound,
+        acks,
         uploads: Some(uploads),
         panel: None,
         mac: false,
@@ -115,15 +116,18 @@ pub async fn serve<B: ViewedBrowser>(
 
 type Inbounds = mpsc::Receiver<Result<LiveViewerMessage, String>>;
 
-/// Splits the page's bytes into messages; chosen files go to the uploads.
+/// Splits the page's bytes into messages; acknowledgements go to the
+/// delivery, chosen files to the uploads.
 fn read(
     input: ServiceInput,
 ) -> (
     Inbounds,
+    mpsc::Receiver<Vec<ChunkAck>>,
     mpsc::Receiver<uploads::Item>,
     AbortOnDropHandle<()>,
 ) {
     let (messages, inbound) = mpsc::channel(64);
+    let (acknowledged, acks) = mpsc::channel(64);
     let (files, uploads) = mpsc::channel(64);
     let task = tokio::spawn(async move {
         let mut reader = frames::Reader::new(input);
@@ -155,13 +159,14 @@ fn read(
                     .await
                     .is_ok(),
                 Ok(Some(Inbound::Control(message))) => messages.send(Ok(message)).await.is_ok(),
+                Ok(Some(Inbound::Acks(batch))) => acknowledged.send(batch).await.is_ok(),
             };
             if !delivered {
                 break;
             }
         }
     });
-    (inbound, uploads, AbortOnDropHandle::new(task))
+    (inbound, acks, uploads, AbortOnDropHandle::new(task))
 }
 
 struct Viewer<B> {
@@ -169,6 +174,7 @@ struct Viewer<B> {
     cancel: CancellationToken,
     writer: Writer,
     inbound: Inbounds,
+    acks: mpsc::Receiver<Vec<ChunkAck>>,
     uploads: Option<mpsc::Receiver<uploads::Item>>,
     panel: Option<Panel>,
     mac: bool,
@@ -306,9 +312,8 @@ impl<B: ViewedBrowser> Viewer<B> {
         };
         session.state().await;
         let mut refresh: Option<Instant> = None;
-        let mut ticks = tokio::time::interval(Duration::from_secs(1));
-        ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let result = loop {
+            let due = session.delivery.due();
             tokio::select! {
                 biased;
                 _ = self.browser.released().cancelled() => {
@@ -345,7 +350,12 @@ impl<B: ViewedBrowser> Viewer<B> {
                     refresh = None;
                     session.state().await;
                 }
-                _ = ticks.tick() => session.tick(),
+                Some(acks) = self.acks.recv() => {
+                    session.delivery.acknowledged(&acks, stream(&session.watched));
+                }
+                _ = tokio::time::sleep_until(due.unwrap_or_else(Instant::now)), if due.is_some() => {
+                    session.delivery.release(session.writer);
+                }
             }
         };
         // The keys and buttons this viewer holds go up; capture of a tab
@@ -645,16 +655,6 @@ impl Session<'_> {
                     commands::answer(watched.tab.clone(), accept, text, self.writer.clone());
                 }
             }
-            LiveViewerMessage::Ack(LiveAck {
-                generation,
-                sequence,
-                decode_queue,
-            }) => self.delivery.acknowledged(
-                generation,
-                sequence,
-                decode_queue,
-                stream(&self.watched),
-            ),
             LiveViewerMessage::Keyframe(LiveKeyframe { generation }) => {
                 self.delivery.key_frame(generation, stream(&self.watched));
             }
@@ -718,8 +718,16 @@ impl Session<'_> {
                 height,
                 layout: viewport,
                 scale,
+                sequence,
             }) => {
-                let generation = self.delivery.restart(epoch, width, height);
+                let generation = self.delivery.restart(
+                    epoch,
+                    width,
+                    height,
+                    scale,
+                    sequence,
+                    watched.stream.as_ref(),
+                );
                 self.writer
                     .control(&LiveModuleMessage::Stream {
                         tab,
@@ -732,9 +740,8 @@ impl Session<'_> {
                     .await;
             }
             Update::Picture(Event::Frame(frame)) => {
-                let stream = watched.stream.as_ref();
                 self.delivery
-                    .frame(&watched.source, &frame, self.writer, stream);
+                    .frame(&watched.source, &frame, watched.stream.as_ref());
             }
             Update::Picture(Event::Unavailable(reason)) => {
                 self.writer
@@ -875,9 +882,4 @@ impl Session<'_> {
         }
     }
 
-    /// Adapts the picture to the path once a second.
-    fn tick(&mut self) {
-        self.delivery
-            .tick(self.writer.queued(), stream(&self.watched));
-    }
 }

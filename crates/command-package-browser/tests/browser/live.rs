@@ -15,7 +15,8 @@ use axum::{
     routing::get,
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use demi_live_view_protocol::VideoHeader;
+use demi_command_package_browser_protocol::live::FILE_FRAME;
+use demi_live_view_protocol::testing::Viewer;
 use demi_command_protocol::{CommandCaller, Completion, Record};
 use demi_command_sdk::{Input, ServiceError};
 use serde_json::{Value, json};
@@ -133,7 +134,6 @@ enum Frame {
     Video {
         tab: String,
         generation: u32,
-        sequence: u32,
         key: bool,
         width: u16,
         height: u16,
@@ -164,8 +164,12 @@ impl View {
             CancellationToken::new(),
         );
         let (frames, received) = mpsc::unbounded_channel();
+        // The page acknowledges each chunk as it arrives, while the view's
+        // input lasts: a test that ends the input ends the stream.
+        let acks = input.downgrade();
         let reading = tokio::spawn(async move {
             let mut pending = BytesMut::new();
+            let mut viewer = Viewer::default();
             while let Some(record) = records.recv().await {
                 let Record::Stdout(bytes) = record else {
                     panic!("a view writes only its stream");
@@ -181,15 +185,21 @@ impl View {
                     let parsed = match frame.get_u8() {
                         1 => Frame::Control(serde_json::from_slice(&frame).unwrap()),
                         2 => {
-                            let (header, _) = VideoHeader::split(&frame).unwrap();
+                            let (ack, whole) = viewer.chunk(&frame).unwrap();
+                            if let Some(acks) = acks.upgrade() {
+                                // The view ended input before already-sent chunks drained; they need no acknowledgement then.
+                                let _ended = acks.send(Ok(Bytes::from(ack)));
+                            }
+                            let Some((header, data)) = whole else {
+                                continue;
+                            };
                             Frame::Video {
                                 tab: header.source.as_str().to_owned(),
                                 generation: header.generation,
-                                sequence: header.sequence,
                                 key: header.key,
                                 width: header.width,
                                 height: header.height,
-                                data: frame.slice(VideoHeader::BYTES..),
+                                data: Bytes::from(data),
                             }
                         }
                         kind => panic!("unknown frame kind {kind}"),
@@ -209,25 +219,17 @@ impl View {
     }
 
     fn send(&self, message: Value) {
-        self.try_send(message).unwrap();
-    }
-
-    /// Sends the viewer's `input` to `tab`.
-    fn input(&self, tab: &str, input: Value) {
-        self.send(json!({"type": "input", "tab": tab, "input": input}));
-    }
-
-    /// Sends viewer control, retaining closure for buffered-frame acknowledgements.
-    fn try_send(
-        &self,
-        message: Value,
-    ) -> Result<(), mpsc::error::SendError<Result<Bytes, ServiceError>>> {
         let json = serde_json::to_vec(&message).unwrap();
         let mut frame = BytesMut::new();
         frame.put_u32(1 + json.len() as u32);
         frame.put_u8(1);
         frame.put_slice(&json);
-        self.input.as_ref().unwrap().send(Ok(frame.freeze()))
+        self.raw(frame.freeze());
+    }
+
+    /// Sends the viewer's `input` to `tab`.
+    fn input(&self, tab: &str, input: Value) {
+        self.send(json!({"type": "input", "tab": tab, "input": input}));
     }
 
     fn raw(&self, bytes: Bytes) {
@@ -237,30 +239,19 @@ impl View {
     fn file(&self, upload: u32, file: u32, data: &[u8]) {
         let mut frame = BytesMut::new();
         frame.put_u32(1 + 8 + data.len() as u32);
-        frame.put_u8(3);
+        frame.put_u8(FILE_FRAME);
         frame.put_u32(upload);
         frame.put_u32(file);
         frame.put_slice(data);
         self.raw(frame.freeze());
     }
 
-    /// The next frame, acknowledging video as the page shows it.
+    /// The next frame.
     async fn next(&mut self) -> Frame {
-        let frame = tokio::time::timeout(Duration::from_secs(30), self.frames.recv())
+        tokio::time::timeout(Duration::from_secs(30), self.frames.recv())
             .await
             .expect("the module went quiet")
-            .expect("the view ended");
-        if let Frame::Video {
-            generation,
-            sequence,
-            ..
-        } = &frame
-        {
-            // Closing the last tab ends input before already-buffered pictures
-            // and the final `ended` control have drained. They need no ack.
-            let _ended = self.try_send(json!({"type": "ack", "generation": generation, "sequence": sequence, "decodeQueue": 0}));
-        }
-        frame
+            .expect("the view ended")
     }
 
     /// The next control message that `wanted`, described by `what`, accepts.

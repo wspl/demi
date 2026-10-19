@@ -2814,6 +2814,7 @@ dependencies = [
  "garde",
  "serde",
  "serde_json",
+ "str0m-proto",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2824,12 +2825,14 @@ dependencies = [
 name = "demi-live-view-protocol"
 version = "0.1.32"
 dependencies = [
+ "bytes",
  "demi-shared-types",
  "garde",
  "schemars",
  "serde",
  "serde_json",
  "serde_with",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -3397,6 +3400,7 @@ version = "0.1.32"
 dependencies = [
  "bytes",
  "demi-command-protocol",
+ "demi-live-view-protocol",
  "demi-runner-direct",
  "demi-runner-protocol",
  "demi-shared-types",
@@ -10325,8 +10329,6 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.24.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e80c4a4ef148e4a9fd15b9525c7f376d97e86729f19880b591ad220f1288c0f"
 dependencies = [
  "arrayvec",
  "base64ct",

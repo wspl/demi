@@ -2,7 +2,8 @@ import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
 import { LiveFrameReader, encodeFile, encodeMessage } from '../frames'
 import { browserShortcut, inputMessage, localKey, shortcutKeys } from '../input'
-import { encodeVideo, pageReturned, pointerInput } from '@demicodes/plugin-sdk'
+import { LiveFrameSplitter, decodeAcks, encodeVideo, pageReturned, pointerInput, type LiveChunkAck } from '@demicodes/plugin-sdk'
+import { LIVE_CHUNK_DATA_BYTES } from '@demicodes/protocol'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStream, type PanelReport, type PictureSink } from '../session'
 import { cursorAt, deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
@@ -65,7 +66,7 @@ test('a viewer message and a file frame carry their kind and header', () => {
   expect(new DataView(message.buffer).getUint32(0)).toBe(message.length - 4)
   expect(message[4]).toBe(1)
   const file = encodeFile(7, 1, new Uint8Array([1, 2, 3]))
-  expect(file[4]).toBe(3)
+  expect(file[4]).toBe(4)
   const header = new DataView(file.buffer, 5)
   expect([header.getUint32(0), header.getUint32(4)]).toEqual([7, 1])
   expect([...file.subarray(13)]).toEqual([1, 2, 3])
@@ -149,6 +150,7 @@ test('the viewport menu offers Web and Mobile, and shows what the agent set', ()
 /** A session over a stream the test drives, with a clock it controls. */
 function session(options: Partial<LiveSessionOptions> = {}) {
   const sent: LiveViewerMessage[] = []
+  const acks: LiveChunkAck[] = []
   const pictures: Array<[string, number, number]> = []
   const decoder = new TextDecoder()
   let handlers: UserStreamHandlers | null = null
@@ -165,6 +167,8 @@ function session(options: Partial<LiveSessionOptions> = {}) {
         send: (bytes) => {
           if (bytes[4] === 1) {
             sent.push(JSON.parse(decoder.decode(bytes.subarray(5))) as LiveViewerMessage)
+          } else if (bytes[4] === 3) {
+            acks.push(...decodeAcks(bytes.subarray(5)))
           }
         },
         close: () => handlers?.closed('closed'),
@@ -182,6 +186,7 @@ function session(options: Partial<LiveSessionOptions> = {}) {
   return {
     live,
     sent,
+    acks,
     pictures,
     receive: (bytes: Uint8Array) => handlers!.data(bytes),
     close: (reason: string) => handlers!.closed(reason),
@@ -202,18 +207,22 @@ const TAB: LiveTab = {
   canGoForward: false,
 }
 
-test('a view says hello, learns the tabs and acknowledges what it shows', () => {
+test('a view says hello, learns the tabs and acknowledges each chunk with when it came', async () => {
   const view = session()
   expect(view.sent[0]).toEqual({ type: 'hello', platform: 'mac' })
   view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
+  view.advance(5)
   view.receive(video(TAB.id, 1, 4, true, [0, 0, 0, 1]))
-  // Frames of an older generation are not shown.
+  // Frames of an older generation are not shown, but acknowledged, which frees the Host's window.
   view.receive(video(TAB.id, 0, 5, true, [0, 0, 0, 1]))
   expect(view.pictures).toEqual([['start', 1, 1600], ['show', 1, 4]] as never)
-  view.live.showed(1, 4, 0)
-  expect(view.sent.at(-1)).toEqual({ type: 'ack', generation: 1, sequence: 4, decodeQueue: 0 })
+  await Promise.resolve()
+  expect(view.acks).toEqual([
+    { generation: 1, sequence: 4, chunk: 0, received: 5 },
+    { generation: 0, sequence: 5, chunk: 0, received: 5 },
+  ])
 })
 
 test('a canvas that comes after its stream started shows it from a key frame it asks for', () => {
@@ -234,7 +243,7 @@ test('a canvas that comes after its stream started shows it from a key frame it 
   expect(started).toEqual([2])
 })
 
-test('a stalled stream discards input and resumes from a key frame', () => {
+test('a stalled stream discards input and resumes where it was', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
@@ -250,7 +259,8 @@ test('a stalled stream discards input and resumes from a key frame', () => {
   expect(view.sent).toHaveLength(before)
   view.receive(moduleFrame({ type: 'heartbeat' }))
   expect(view.live.state.connection).toBe('live')
-  expect(view.sent.at(-1)).toEqual({ type: 'keyframe', generation: 1 })
+  // Every chunk still arrives, so the decoder needs no key frame.
+  expect(view.sent).toHaveLength(before)
 })
 
 test('a choice names the revision the viewer saw, and a dialog is answered once', () => {
@@ -559,4 +569,57 @@ test('the browser’s menu copies in the page with the platform’s own copy key
   const [cut] = shortcutKeys('t1', 'x', 'linux')
   expect(cut).toMatchObject({ type: 'input', tab: 't1', input: { type: 'key', key: 'x', code: 'KeyX', modifiers: 2 } })
   expect(cut?.type === 'input' && cut.input).not.toHaveProperty('text')
+})
+
+/**
+ * On the direct path a generation's first chunks may come on `video` before
+ * its announcement on `stream` (`live-view.md` § Two paths, one protocol):
+ * the page keeps them and shows them once it is announced. Planted defect
+ * this catches: dropping them, after which the generation's deltas wait for
+ * a key frame that never comes.
+ */
+test('chunks that come before their generation is announced are shown once it is', () => {
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
+  view.receive(video(TAB.id, 2, 1, true, [0, 0, 0, 1]))
+  view.receive(video(TAB.id, 2, 2, false, [0, 0, 0, 2]))
+  expect(view.pictures).toEqual([['start', 1, 1600]] as never)
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 2, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
+  view.receive(video(TAB.id, 2, 3, false, [0, 0, 0, 3]))
+  expect(view.pictures).toEqual([['start', 1, 1600], ['start', 2, 1600], ['show', 2, 1], ['show', 2, 2], ['show', 2, 3]] as never)
+  expect(view.sent.filter((message) => message.type === 'keyframe')).toEqual([])
+})
+
+/**
+ * A frame waits for an earlier one at most two seconds, and the page holds
+ * at most 8 MiB of frames not yet whole; past either it drops what it holds
+ * and asks for a key frame. Planted defects this catches: a wait without
+ * end, a hold without bound.
+ */
+test('a frame that waits too long, or too much held, starts the pictures again from a key frame', () => {
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
+  view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
+  // Frame 2 never comes; frame 3 waits for it.
+  view.receive(video(TAB.id, 1, 3, false, [0, 0, 0, 3]))
+  view.advance(1900)
+  view.live.tick()
+  expect(view.sent.filter((message) => message.type === 'keyframe')).toEqual([])
+  view.advance(200)
+  view.live.tick()
+  expect(view.sent.filter((message) => message.type === 'keyframe')).toEqual([{ type: 'keyframe', generation: 1 }])
+
+  // Frames of two chunks of which only the first came, past 8 MiB.
+  view.advance(1000)
+  const firstChunk = (sequence: number) => {
+    const bytes = video(TAB.id, 1, sequence, false, new Array(LIVE_CHUNK_DATA_BYTES + 1).fill(7))
+    return new LiveFrameSplitter().split(bytes)[0]!
+  }
+  for (let sequence = 10; sequence < 10 + Math.floor(8 * 1024 * 1024 / (LIVE_CHUNK_DATA_BYTES + 1)); sequence++)
+    view.receive(firstChunk(sequence))
+  expect(view.sent.filter((message) => message.type === 'keyframe')).toHaveLength(1)
+  view.receive(firstChunk(1000))
+  expect(view.sent.filter((message) => message.type === 'keyframe')).toHaveLength(2)
 })

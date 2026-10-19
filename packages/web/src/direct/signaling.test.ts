@@ -35,3 +35,40 @@ test('a signaling socket that closes after it opened tells the page at once, and
   signaling.stop()
   expect(heard).toEqual(['opened', 'dropped'])
 })
+
+/**
+ * The page's two peers share the socket (`direct-channel.md` § Making the
+ * channel): each message names its peer, and each answer, candidate and
+ * close reaches the peer it names. Planted defect this catches: one peer's
+ * answer or candidate taken by the other.
+ */
+test('each peer\'s offer, answer and candidates go by the name of its peer', async () => {
+  const closed: string[] = []
+  const signaling = new DeviceSignaling(LAPTOP, () => {}, (peer) => closed.push(peer), () => {})
+  const socket = channels.opened[0]!
+  socket.open()
+  const files = signaling.peer('files')
+  const live = signaling.peer('live')
+  const heard: string[] = []
+  files.candidates((candidate) => heard.push(`files ${candidate}`))
+  live.candidates((candidate) => heard.push(`live ${candidate}`))
+  const filesAnswer = files.offer('files offer')
+  const liveAnswer = live.offer('live offer')
+  live.candidate('c1')
+  signaling.close('live')
+  expect(socket.fromPage).toEqual([
+    { type: 'offer', peer: 'files', sdp: 'files offer' },
+    { type: 'offer', peer: 'live', sdp: 'live offer' },
+    { type: 'candidate', peer: 'live', candidate: 'c1' },
+    { type: 'close', peer: 'live' },
+  ])
+  await expect(liveAnswer).rejects.toThrow('closed the peer')
+  const message = (value: unknown) => socket.deliver(value)
+  message({ type: 'candidate', peer: 'live', candidate: 'r1' })
+  message({ type: 'answer', peer: 'files', sdp: 'files answer' })
+  message({ type: 'closed', peer: 'live' })
+  expect(await filesAnswer).toBe('files answer')
+  expect(heard).toEqual(['live r1'])
+  expect(closed).toEqual(['live'])
+  signaling.stop()
+})

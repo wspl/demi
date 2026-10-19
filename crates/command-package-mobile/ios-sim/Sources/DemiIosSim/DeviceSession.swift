@@ -382,6 +382,10 @@ final class DeviceSession: @unchecked Sendable {
     lock.withLock { captures[capture] }?.keyFrame()
   }
 
+  func captureAck(capture: UInt32, sequence: UInt32, window: UInt32, order: UInt64) {
+    lock.withLock { captures[capture] }?.ack(sequence: sequence, window: window, order: order)
+  }
+
   func captureEncoding(capture: UInt32, bitrate: Int, fps: Int) {
     lock.withLock { captures[capture] }?.encoding(bitrate: bitrate, fps: fps)
   }

@@ -1,15 +1,10 @@
 //! What a viewer's page receives (`live-view.md` § Delivery): control
-//! messages before video, video only while the path takes it, and a heartbeat
-//! whenever nothing else was sent for a while.
+//! messages before video chunks, and a heartbeat whenever nothing else was
+//! sent for a while. The viewer's delivery hands chunks on at their paced
+//! times, within its window, so video waits here only behind control
+//! messages and the path's own backpressure.
 
-use std::{
-    marker::PhantomData,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
-};
+use std::{marker::PhantomData, time::Duration};
 
 use bytes::Bytes;
 use serde::Serialize;
@@ -25,9 +20,6 @@ use crate::frames;
 /// Control messages waiting for the page. The viewer waits for room here, so
 /// a page that stops reading holds back the viewer, not memory.
 const CONTROL_QUEUE: usize = 64;
-/// Video frames waiting for the page; past this the viewer drops frames and
-/// resumes from a key frame.
-const VIDEO_QUEUE: usize = 4;
 
 /// A source's messages to the page as the writer sends them.
 pub trait ModuleMessage:
@@ -52,8 +44,8 @@ impl<M> ModuleMessage for M where
 
 pub struct Writer<M> {
     control: mpsc::Sender<Bytes>,
-    video: mpsc::Sender<Bytes>,
-    queued: Arc<AtomicUsize>,
+    /// Bounded by the delivery's window, never by this queue.
+    video: mpsc::UnboundedSender<Bytes>,
     /// Ends a wait for room in the control queue; never, for the viewer's own.
     ended: CancellationToken,
     messages: PhantomData<fn(&M)>,
@@ -64,7 +56,6 @@ impl<M> Clone for Writer<M> {
         Self {
             control: self.control.clone(),
             video: self.video.clone(),
-            queued: self.queued.clone(),
             ended: self.ended.clone(),
             messages: PhantomData,
         }
@@ -74,15 +65,13 @@ impl<M> Clone for Writer<M> {
 impl<M: ModuleMessage> Writer<M> {
     pub fn start(output: Output) -> (Self, tokio::task::JoinHandle<()>) {
         let (control, controls) = mpsc::channel(CONTROL_QUEUE);
-        let (video, videos) = mpsc::channel(VIDEO_QUEUE);
-        let queued = Arc::new(AtomicUsize::new(0));
+        let (video, videos) = mpsc::unbounded_channel();
         let heartbeat = frames::control(&M::heartbeat(LiveHeartbeat {}));
-        let task = tokio::spawn(run(output, controls, videos, queued.clone(), heartbeat));
+        let task = tokio::spawn(run(output, controls, videos, heartbeat));
         (
             Self {
                 control,
                 video,
-                queued,
                 ended: CancellationToken::new(),
                 messages: PhantomData,
             },
@@ -126,28 +115,17 @@ impl<M: ModuleMessage> Writer<M> {
         .await;
     }
 
-    /// Queues a video frame, or reports that the path has no room for it.
-    pub fn video(&self, frame: Bytes) -> bool {
-        let length = frame.len();
-        self.queued.fetch_add(length, Ordering::SeqCst);
-        if self.video.try_send(frame).is_err() {
-            self.queued.fetch_sub(length, Ordering::SeqCst);
-            return false;
-        }
-        true
-    }
-
-    /// Video bytes not yet written.
-    pub fn queued(&self) -> usize {
-        self.queued.load(Ordering::SeqCst)
+    /// Queues a video chunk; one for a view that ended goes nowhere.
+    pub fn video(&self, chunk: Bytes) {
+        // The view ended, and its page with it.
+        let _ended = self.video.send(chunk);
     }
 }
 
 async fn run(
     output: Output,
     mut controls: mpsc::Receiver<Bytes>,
-    mut videos: mpsc::Receiver<Bytes>,
-    queued: Arc<AtomicUsize>,
+    mut videos: mpsc::UnboundedReceiver<Bytes>,
     heartbeat: Bytes,
 ) {
     let quiet = Duration::from_millis(HEARTBEAT_MS);
@@ -160,10 +138,7 @@ async fn run(
                 None => break,
             },
             video = videos.recv() => match video {
-                Some(bytes) => {
-                    queued.fetch_sub(bytes.len(), Ordering::SeqCst);
-                    bytes
-                }
+                Some(bytes) => bytes,
                 None => break,
             },
             _ = tokio::time::sleep_until(written + quiet) => heartbeat.clone(),

@@ -4,14 +4,14 @@
  * whose offer goes at once; its candidates follow as the browser finds them,
  * the public one once a STUN server answers, and the runner's come the
  * other way. Each attempt records what it saw, for the device's page. Each
- * operation opens a data channel of its own, reliable and ordered; its first
- * message is the header, the runner's first the answer (§ Operations on the
- * channel).
+ * operation opens a data channel of its own, reliable and ordered but a live
+ * view's `video`, which is unordered; its first message is the header, the
+ * runner's first the answer (§ Operations on the channel).
  */
 import { z } from 'zod'
 import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_PROBE_LABEL, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'
 import type { DirectAddresses, DirectAttempt, DirectPermission, DirectStage } from '@demicodes/web-ui/devices/direct'
-import { channelRefusalSchema, type ChannelErrorCode, type ChannelHeader, type ReadAt } from '../api/generated/web-api'
+import { channelRefusalSchema, videoOpenedSchema, type ChannelErrorCode, type ChannelHeader, type ReadAt, type VideoOpened } from '../api/generated/web-api'
 
 /**
  * The channel or the peer failed under an operation: the operation runs
@@ -82,8 +82,12 @@ export interface OperationChannel<T> {
 
 /** A connected peer. */
 export interface DirectPeer {
-  /** Opens an operation's channel and sends its header; the runner's answer is checked against `answer`. */
-  open<T>(header: ChannelHeader, answer: z.ZodType<T>): Promise<OperationChannel<T>>
+  /**
+   * Opens an operation's channel and sends its header; the runner's answer
+   * is checked against `answer`. The channel is ordered unless `ordered`
+   * says otherwise.
+   */
+  open<T>(header: ChannelHeader, answer: z.ZodType<T>, ordered?: boolean): Promise<OperationChannel<T>>
   /** What the attempt that made the peer saw. */
   readonly attempt: DirectAttempt
   /** Sends probe `id` on the probe channel, unordered and never retransmitted; one that cannot go now is lost. */
@@ -125,6 +129,8 @@ export interface PeerOptions {
   permission: () => DirectPermission | null
   /** Whether a refusal of the offer is the runner's `busy`. */
   busy: (error: unknown) => boolean
+  /** The peer is the device's peer for live views, which has no probe channel. */
+  live?: boolean
   signal?: AbortSignal
 }
 
@@ -204,13 +210,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     if (connection.iceConnectionState === 'connected' || connection.iceConnectionState === 'completed')
       iceConnected = true
   })
-  // The probe channel measures the direct path (`direct-channel.md`
-  // § Measuring the paths): a probe lost stays lost, as a video packet would.
-  // Made before the offer, which so carries the data channels' section, it
-  // opens with the connection, and the peer is ready once it is open: a
-  // measurement starts as the peer connects, and a probe sent before would be
-  // counted lost.
-  const probes = connection.createDataChannel(DIRECT_PROBE_LABEL, { ordered: false, maxRetransmits: 0 })
+  const channels = new PeerChannels(connection, options.live ?? false)
   signal?.addEventListener('abort', end, { once: true })
   try {
     await connection.setLocalDescription(await connection.createOffer())
@@ -225,7 +225,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     for (const candidate of waiting.splice(0))
       add(candidate)
     await connected(connection)
-    await opened(probes, DIRECT_CONNECT_MS)
+    await opened(channels.ready, DIRECT_CONNECT_MS)
   } catch (error) {
     attempt.permission = options.permission()
     attempt.durationMs = Date.now() - started
@@ -249,7 +249,8 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
       end()
   })
   const probed = new Set<(id: number) => void>()
-  probes.addEventListener('message', (event: MessageEvent) => {
+  const probes = channels.probes
+  probes?.addEventListener('message', (event: MessageEvent) => {
     const id = probeId(event.data)
     if (id === null)
       return
@@ -257,10 +258,10 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
       listener(id)
   })
   return {
-    open: (header, answer) => openOperation(connection, header, answer),
+    open: (header, answer, ordered) => channels.open(header, answer, ordered),
     attempt,
     probe: (id) => {
-      if (probes.readyState === 'open')
+      if (probes?.readyState === 'open')
         probes.send(JSON.stringify({ id }))
     },
     onProbe: (listener) => {
@@ -269,6 +270,48 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     },
     closed: ended.promise,
     close: end,
+  }
+}
+
+/**
+ * The channels a peer makes before its offer, which so carries the data
+ * channels' section, and which open with the connection: the peer is ready
+ * once the first is open. The `files` peer's is the probe channel, which
+ * measures the direct path (`direct-channel.md` § Measuring the paths): a
+ * probe lost stays lost, as a video packet would, and a measurement starts
+ * as the peer connects, since a probe sent before would be counted lost.
+ * The `live` peer has no probe channel; its first is the `video` channel of
+ * the first live view, which takes it (§ Making the channel).
+ */
+export class PeerChannels {
+  /** The channel whose open makes the peer ready. */
+  readonly ready: OperationDataChannel
+  readonly probes: OperationDataChannel | null
+  /** The live peer's first `video` channel, until a view takes it. */
+  private video: Promise<OperationChannel<VideoOpened>> | null = null
+
+  constructor(private readonly connection: ChannelMaker, live: boolean) {
+    if (live) {
+      this.ready = connection.createDataChannel('video', { ordered: false })
+      this.probes = null
+      this.video = channelOn(connection, this.ready, { op: 'video' }, videoOpenedSchema)
+      // A view that never comes leaves it to the peer's close; its failure is the attempt's.
+      this.video.catch(() => {})
+    } else {
+      this.ready = connection.createDataChannel(DIRECT_PROBE_LABEL, { ordered: false, maxRetransmits: 0 })
+      this.probes = this.ready
+    }
+  }
+
+  /** Opens an operation's channel, as `openOperation`; the first `video` is the one the peer made. */
+  open<T>(header: ChannelHeader, answer: z.ZodType<T>, ordered?: boolean): Promise<OperationChannel<T>> {
+    const video = this.video
+    if (header.op === 'video' && video) {
+      this.video = null
+      // The runner answers a `video` channel by `VideoOpened` alone, which is what `answer` reads.
+      return video.then((channel) => ({ ...channel, answer: async () => answer.parse(await channel.answer()) }))
+    }
+    return openOperation(this.connection, header, answer, ordered)
   }
 }
 
@@ -452,13 +495,14 @@ export async function openOperation<T>(
   connection: ChannelMaker,
   header: ChannelHeader,
   answerSchema: z.ZodType<T>,
+  ordered = true,
 ): Promise<OperationChannel<T>> {
   try {
-    return await openChannel(connection, header, answerSchema)
+    return await openChannel(connection, header, answerSchema, ordered)
   } catch (error) {
     if (!(error instanceof ChannelNeverOpened))
       throw error
-    return openChannel(connection, header, answerSchema)
+    return openChannel(connection, header, answerSchema, ordered)
   }
 }
 
@@ -466,13 +510,24 @@ async function openChannel<T>(
   connection: ChannelMaker,
   header: ChannelHeader,
   answerSchema: z.ZodType<T>,
+  ordered: boolean,
 ): Promise<OperationChannel<T>> {
   let channel: OperationDataChannel
   try {
-    channel = connection.createDataChannel(header.op, { ordered: true })
+    channel = connection.createDataChannel(header.op, { ordered })
   } catch (error) {
     throw new ChannelFailed(error instanceof Error ? error.message : String(error))
   }
+  return channelOn(connection, channel, header, answerSchema)
+}
+
+/** `channel`'s operation: its header goes once it opens, and the runner's answer is checked against `answerSchema`. */
+async function channelOn<T>(
+  connection: ChannelMaker,
+  channel: OperationDataChannel,
+  header: ChannelHeader,
+  answerSchema: z.ZodType<T>,
+): Promise<OperationChannel<T>> {
   channel.binaryType = 'arraybuffer'
   channel.bufferedAmountLowThreshold = DIRECT_QUEUE_BYTES / 2
   const inbox = new Inbox()

@@ -13,6 +13,7 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-live-view-protocol = { path = "../live-view-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
 futures-util.workspace = true

@@ -163,10 +163,6 @@ export class LiveSession {
       },
       stalled: () => this.release(),
       watching: (stream) => stream.tab === this.state.watched,
-      acknowledge: (stream, sequence, decodeQueue) => {
-        this.send({ type: 'ack', generation: stream.generation, sequence, decodeQueue })
-        options.onPicture?.(stream.tab)
-      },
       keyframe: (stream) => this.send({ type: 'keyframe', generation: stream.generation }),
       defect: options.defect,
       now: options.now,
@@ -305,9 +301,9 @@ export class LiveSession {
     }
   }
 
-  /** The page showed a frame; the module paces itself by these. */
-  showed(generation: number, sequence: number, decodeQueue: number): void {
-    this.link.showed(generation, sequence, decodeQueue)
+  /** The page painted a picture of `stream`'s tab. */
+  showed(stream: LiveStream): void {
+    this.options.onPicture?.(stream.tab)
   }
 
   /** The decoder lost the stream: the next frame must be a key frame. */

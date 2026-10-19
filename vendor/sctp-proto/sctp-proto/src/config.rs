@@ -60,6 +60,14 @@ pub struct TransportConfig {
     /// Default: 60000
     rto_max_ms: u64,
 
+    /// The least the congestion window and the slow start threshold ever
+    /// are, in bytes: the initial window, a fast recovery and a T3-rtx
+    /// timeout never set them lower. A large floor turns SCTP's congestion
+    /// control off for a sender that paces itself, while loss recovery and
+    /// the receiver's window still apply.
+    /// Default: 0 (RFC 4960's congestion control)
+    congestion_window_floor: u32,
+
     /// SCTP source port when this endpoint initiates the association.
     ///
     /// Default: [`DEFAULT_SCTP_PORT`]
@@ -84,6 +92,7 @@ impl Default for TransportConfig {
             rto_initial_ms: RTO_INITIAL,
             rto_min_ms: RTO_MIN,
             rto_max_ms: RTO_MAX,
+            congestion_window_floor: 0,
             local_port: DEFAULT_SCTP_PORT,
             remote_port: DEFAULT_SCTP_PORT,
         }
@@ -174,6 +183,11 @@ impl TransportConfig {
 
     /// Set the SCTP source port used when initiating an association.
     /// A zero port is rejected by [`crate::Endpoint::connect`].
+    pub fn with_congestion_window_floor(mut self, value: u32) -> Self {
+        self.congestion_window_floor = value;
+        self
+    }
+
     pub fn with_local_port(mut self, value: u16) -> Self {
         self.local_port = value;
         self
@@ -204,6 +218,10 @@ impl TransportConfig {
 
     pub(crate) fn rto_max_ms(&self) -> u64 {
         self.rto_max_ms
+    }
+
+    pub(crate) fn congestion_window_floor(&self) -> u32 {
+        self.congestion_window_floor
     }
 
     pub(crate) fn local_port(&self) -> u16 {

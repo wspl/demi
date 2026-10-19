@@ -9,7 +9,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use demi_live_view_protocol::{
-    LiveAck, LiveActivity, LiveHeartbeat, LiveHello, LiveInputs, LiveKeyframe, LiveNotice,
+    LiveActivity, LiveHeartbeat, LiveHello, LiveInputs, LiveKeyframe, LiveNotice,
     LiveRelease, ModuleMessage, ViewerInput,
 };
 
@@ -59,7 +59,6 @@ pub enum LiveViewerMessage {
         #[garde(dive)]
         input: ViewerInput,
     },
-    Ack(#[garde(dive)] LiveAck),
     Keyframe(#[garde(dive)] LiveKeyframe),
     Release(#[garde(dive)] LiveRelease),
     /// The view lays `device` out in `width` × `height` device pixels, at

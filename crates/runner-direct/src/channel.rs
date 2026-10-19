@@ -4,7 +4,8 @@
 //! `port-forwarding.md` § Flow control).
 //!
 //! What goes out: the channel takes its producer's next message only while
-//! its queue holds less than [`QUEUE_BYTES`], so a reader paces what it
+//! its queue holds less than [`QUEUE_BYTES`], or a live view's `video`
+//! channel less than [`VIDEO_QUEUE_BYTES`], so a reader paces what it
 //! reads. A credited channel, a forwarded connection's, also sends a binary
 //! message only within the window the other side granted, which starts at
 //! [`QUEUE_BYTES`] and grows by each `{ grant }` it receives.
@@ -15,6 +16,8 @@
 
 use bytes::Bytes;
 use demi_runner_protocol::direct::QUEUE_BYTES;
+#[cfg(doc)]
+use demi_runner_protocol::direct::VIDEO_QUEUE_BYTES;
 use demi_runner_protocol::forward::Grant;
 use str0m::Rtc;
 use str0m::channel::ChannelId;
@@ -92,6 +95,9 @@ pub(crate) struct Channel {
     /// Ends the operation: cancelled when the channel goes.
     pub(crate) cancel: CancellationToken,
     credit: Option<Credit>,
+    /// The most bytes kept queued on the channel: [`QUEUE_BYTES`], but for
+    /// a live view's `video` channel.
+    queue: usize,
     /// Cancelled by a forwarded connection that ended before its bytes all
     /// went: the channel closes at once, what waits for room or for the
     /// other side's window dropped, rather than once it drained.
@@ -122,6 +128,7 @@ impl Channel {
             room: false,
             cancel: CancellationToken::new(),
             credit: None,
+            queue: QUEUE_BYTES,
             abort: None,
             aborted: false,
         }
@@ -136,6 +143,7 @@ impl Channel {
             room: false,
             cancel: CancellationToken::new(),
             credit: None,
+            queue: QUEUE_BYTES,
             abort: None,
             aborted: false,
         }
@@ -158,6 +166,7 @@ impl Channel {
             room: false,
             cancel,
             credit: credit.then(Credit::new),
+            queue: QUEUE_BYTES,
             abort: None,
             aborted: false,
         }
@@ -210,6 +219,11 @@ impl Channel {
         self.output = Some(output);
         self.room = true;
         self.credit = credit.then(Credit::new);
+    }
+
+    /// Keeps up to `bytes` queued on the channel rather than [`QUEUE_BYTES`].
+    pub(crate) fn queue(&mut self, bytes: usize) {
+        self.queue = bytes;
     }
 
     /// The channel this side opened is open.
@@ -331,7 +345,7 @@ impl Channel {
                 break;
             };
             let queued = sending.buffered_amount();
-            if queued > 0 && queued + message.len() > QUEUE_BYTES {
+            if queued > 0 && queued + message.len() > self.queue {
                 break;
             }
             let binary = matches!(message, Output::Binary(_));
@@ -368,7 +382,7 @@ impl Channel {
         self.room = self.pending.is_none()
             && self.output.is_some()
             && windowed
-            && sending.buffered_amount() < QUEUE_BYTES;
+            && sending.buffered_amount() < self.queue;
         let done = matches!(self.phase, Phase::Closing)
             && self.pending.is_none()
             && self.output.is_none()

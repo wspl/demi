@@ -1,17 +1,23 @@
 //! One viewer's pictures on their way to its page (`live-view.md`
-//! § Delivery): which frames the page has, how many may be in flight, when
-//! the next must be a key frame, and the encoding its path takes, which it
-//! tells the stream of the source it watches.
+//! § Delivery): each frame in chunks spread over the frame's interval, the
+//! window that holds what is unacknowledged, when the next frame must be a
+//! key frame, and the encoding its path takes, which it tells the stream of
+//! the source it watches.
+//!
+//! The capture encodes a picture only when the window has room for it: the
+//! delivery tells the stream how far the page's frames reach and whether one
+//! more may come, and the stream takes the least of its viewers'.
 
-use std::{collections::VecDeque, time::Duration};
+use std::collections::VecDeque;
 
+use bytes::Bytes;
 use tokio::time::Instant;
 
-use demi_live_view_protocol::{STALL_MS, SourceId};
+use demi_live_view_protocol::{ChunkAck, SourceId};
 
 use crate::{
     frames,
-    rate::{Rate, Sample},
+    rate::{ChunkId, Rate},
     stream::{EncodedFrame, StreamView},
     writer::{ModuleMessage, Writer},
 };
@@ -25,19 +31,16 @@ pub struct Delivery {
     awaiting_key: bool,
     /// The newest capture sequence seen.
     last: u32,
-    /// Frames the page has not acknowledged: sequence, when sent, bytes.
-    flight: VecDeque<(u32, Instant, usize)>,
     rate: Rate,
+    /// Chunks waiting for their time, in order: when, which, the bytes.
+    paced: VecDeque<(Instant, ChunkId, Bytes)>,
+    /// The bytes of `paced`.
+    queued: usize,
+    /// The last frame's bytes: the guess at the next one's.
+    frame_bytes: usize,
     applied: Option<(u32, u32, f64)>,
-    started: Instant,
-    ticked: Instant,
-    last_ack: Instant,
-    round_trip: f64,
-    decode_queue: u64,
-    frames: u32,
-    bytes: usize,
-    acknowledged: usize,
-    dropped: bool,
+    /// The pace the stream was last told.
+    told: Option<(u32, u32, u32)>,
 }
 
 impl Default for Delivery {
@@ -48,208 +51,183 @@ impl Default for Delivery {
 
 impl Delivery {
     pub fn new() -> Self {
-        let now = Instant::now();
         Self {
             generation: 0,
             epoch: 0,
             awaiting_key: true,
             last: 0,
-            flight: VecDeque::new(),
             rate: Rate::new(1280 * 720),
+            paced: VecDeque::new(),
+            queued: 0,
+            frame_bytes: 0,
             applied: None,
-            started: now,
-            ticked: now,
-            last_ack: now,
-            round_trip: 0.0,
-            decode_queue: 0,
-            frames: 0,
-            bytes: 0,
-            acknowledged: 0,
-            dropped: false,
+            told: None,
         }
     }
 
     /// The bit rate, frame rate and scale the viewer's path takes, once
-    /// measured; a stream the viewer starts watching takes them too.
+    /// known; a stream the viewer starts watching takes them too.
     pub fn applied(&self) -> Option<(u32, u32, f64)> {
         self.applied
     }
 
     /// The viewer watches another source, or none: its pictures start over
-    /// from a key frame.
+    /// from a key frame, and the chunks of the one before that wait for
+    /// their time are not sent.
     pub fn rewatch(&mut self) {
         self.awaiting_key = true;
-        self.flight.clear();
         self.last = 0;
+        self.paced.clear();
+        self.queued = 0;
+        self.told = None;
     }
 
-    /// Pictures of a new generation of `width` × `height` pixels follow,
-    /// from the capture `epoch`; answers the generation's number for the
-    /// page.
-    pub fn restart(&mut self, epoch: u32, width: u32, height: u32) -> u32 {
+    /// Pictures of a new generation of `width` × `height` pixels at `scale`
+    /// of the source's follow, from the capture `epoch`, after its frame
+    /// `sequence`; answers the generation's number for the page.
+    pub fn restart<L>(
+        &mut self,
+        epoch: u32,
+        width: u32,
+        height: u32,
+        scale: f64,
+        sequence: u32,
+        stream: Option<&StreamView<L>>,
+    ) -> u32 {
         self.generation += 1;
         self.epoch = epoch;
-        self.awaiting_key = true;
-        self.last = 0;
-        self.flight.clear();
-        self.rate.resize(u64::from(width) * u64::from(height));
+        self.rewatch();
+        // The capture runs on for the other viewers: this one's pictures
+        // start where it is, so its pace never holds the capture back.
+        self.last = sequence;
+        // The ladder weighs the picture at full resolution.
+        let pixels = f64::from(width) * f64::from(height) / (scale * scale).max(0.01);
+        self.rate.resize(pixels as u64);
+        self.encode(stream);
+        self.pace(stream);
         self.generation
     }
 
-    /// Sends `frame` of `source` to the page when the path takes it and the
-    /// page can decode it, and tells the stream how far the page is.
-    pub fn frame<M: ModuleMessage, L>(
-        &mut self,
-        source: &SourceId,
-        frame: &EncodedFrame,
-        writer: &Writer<M>,
-        stream: Option<&StreamView<L>>,
-    ) {
+    /// Queues `frame` of `source`'s chunks for the page, spread over the
+    /// frame's interval, when the page can decode it, and tells the stream
+    /// how far the page is.
+    pub fn frame<L>(&mut self, source: &SourceId, frame: &EncodedFrame, stream: Option<&StreamView<L>>) {
         if frame.sequence <= self.last {
             return;
         }
         // A frame the viewer never had breaks the pictures after it.
         if self.last != 0 && frame.sequence != self.last + 1 && !frame.key {
-            self.awaiting_key = true;
-            if let Some(stream) = stream {
-                stream.key_frame();
-            }
+            self.lost(stream);
         }
         self.last = frame.sequence;
         if self.awaiting_key && !frame.key {
             self.pace(stream);
             return;
         }
-        let bytes = frames::video(source, self.generation, frame.sequence, frame);
-        let length = bytes.len();
-        if writer.video(bytes) {
-            self.awaiting_key = false;
-            self.flight
-                .push_back((frame.sequence, Instant::now(), length));
-            self.frames += 1;
-            self.bytes += length;
-        } else {
-            self.dropped = true;
-            self.awaiting_key = true;
-            if let Some(stream) = stream {
-                stream.key_frame();
-            }
+        let Some(chunks) = frames::chunks(source, self.generation, frame) else {
+            tracing::warn!("live view frame of {} bytes has too many chunks", frame.data.len());
+            self.lost(stream);
+            self.pace(stream);
+            return;
+        };
+        self.awaiting_key = false;
+        let now = Instant::now();
+        let interval = std::time::Duration::from_secs_f64(1.0 / f64::from(self.rate.fps()));
+        // A frame's chunks follow the ones before them.
+        let start = self.paced.back().map_or(now, |(at, _, _)| (*at).max(now));
+        let count = chunks.len() as u32;
+        self.frame_bytes = 0;
+        for (index, chunk) in (0..).zip(chunks) {
+            let at = start + interval * u32::from(index) / count;
+            self.frame_bytes += chunk.len();
+            self.queued += chunk.len();
+            self.paced
+                .push_back((at, (self.generation, frame.sequence, index), chunk));
         }
         self.pace(stream);
     }
 
-    /// The page's decoder lost the pictures of `generation`.
+    /// When the next chunk is due; none while none waits.
+    pub fn due(&self) -> Option<Instant> {
+        self.paced.front().map(|(at, _, _)| *at)
+    }
+
+    /// Hands the chunks that are due to `writer`.
+    pub fn release<M: ModuleMessage>(&mut self, writer: &Writer<M>) {
+        let now = Instant::now();
+        while let Some((at, _, _)) = self.paced.front()
+            && *at <= now
+        {
+            let (_, id, chunk) = self.paced.pop_front().expect("a chunk is due");
+            self.queued -= chunk.len();
+            self.rate.sent(id, chunk.len(), now.into_std());
+            writer.video(chunk);
+        }
+    }
+
+    /// The page's decoder could not decode a frame of `generation`.
     pub fn key_frame<L>(&mut self, generation: u32, stream: Option<&StreamView<L>>) {
         if self.generation == generation {
-            self.awaiting_key = true;
-            if let Some(stream) = stream {
-                stream.key_frame();
-            }
+            self.lost(stream);
+            self.pace(stream);
         }
     }
 
-    /// The page showed `sequence` of `generation`, with `decode_queue`
-    /// frames waiting for its decoder.
-    pub fn acknowledged<L>(
-        &mut self,
-        generation: u32,
-        sequence: u32,
-        decode_queue: u32,
-        stream: Option<&StreamView<L>>,
-    ) {
-        if self.generation != generation {
-            return;
-        }
-        let now = Instant::now();
-        while let Some(&(sent, at, length)) = self.flight.front()
-            && sent <= sequence
-        {
-            self.flight.pop_front();
-            self.acknowledged += length;
-            if sent == sequence {
-                let round_trip = (now - at).as_secs_f64() * 1000.0;
-                self.rate.acknowledged(round_trip);
-                self.round_trip = round_trip;
-            }
-        }
-        self.decode_queue = u64::from(decode_queue);
-        self.last_ack = now;
+    /// The page acknowledged `acks` in one message.
+    pub fn acknowledged<L>(&mut self, acks: &[ChunkAck], stream: Option<&StreamView<L>>) {
+        self.rate.acknowledged(acks, Instant::now().into_std());
+        self.encode(stream);
         self.pace(stream);
     }
 
-    /// Adapts the picture to the path; the viewer calls it once a second.
-    /// `queued` is the video bytes its writer has not written yet.
-    pub fn tick<L>(&mut self, queued: usize, stream: Option<&StreamView<L>>) {
-        let now = Instant::now();
-        let elapsed = now - self.ticked;
-        self.ticked = now;
-        let stall = Duration::from_millis(STALL_MS);
-        let oldest = self.flight.front().map(|(_, sent, _)| *sent);
-        // A Host pause, or a page that acknowledges nothing, is a stall, not
-        // congestion: the budget stays. Frames the page has not acknowledged
-        // for long never hold back the capture; the page resumes from a key
-        // frame.
-        let stalled = elapsed > 3 * Duration::from_secs(1)
-            || oldest.is_some_and(|sent| now - sent > stall && self.last_ack < sent);
-        if stalled {
-            if oldest.is_some_and(|sent| now - sent > 2 * stall) {
-                self.flight.clear();
-                self.awaiting_key = true;
-                self.pace(stream);
-            }
-        } else {
-            let seconds = elapsed.as_secs_f64().max(0.001);
-            let sample = Sample {
-                now: (now - self.started).as_secs_f64() * 1000.0,
-                buffered_bytes: queued,
-                ack_age: oldest.map_or(0.0, |sent| (now - sent).as_secs_f64() * 1000.0),
-                round_trip: if self.frames > 0 { self.round_trip } else { 0.0 },
-                decode_queue: self.decode_queue,
-                active_frames: self.frames,
-                congested: self.dropped,
-                encoded_bitrate: self.bytes as f64 * 8.0 / seconds,
-                delivered_bitrate: self.acknowledged as f64 * 8.0 / seconds,
-            };
-            if let Some(cause) = self.rate.update(&sample) {
-                // Why a picture lost quality is found in the Host's log, not guessed.
-                tracing::info!(
-                    "live view rate fell to {} bps, {} fps, scale {} after {cause}: {} bytes waiting, oldest frame {:.0} ms, round trip {:.0} ms, decode queue {}, sent {:.0} bps, acknowledged {:.0} bps",
-                    self.rate.bitrate(),
-                    self.rate.fps(),
-                    self.rate.scale(),
-                    sample.buffered_bytes,
-                    sample.ack_age,
-                    sample.round_trip,
-                    sample.decode_queue,
-                    sample.encoded_bitrate,
-                    sample.delivered_bitrate,
-                );
-            }
-            let encoding = (self.rate.bitrate(), self.rate.fps(), self.rate.scale());
-            if self.applied != Some(encoding) {
-                self.applied = Some(encoding);
-                if let Some(stream) = stream {
-                    stream.encoding(encoding.0, encoding.1, encoding.2);
-                }
-            }
-        }
-        self.frames = 0;
-        self.bytes = 0;
-        self.acknowledged = 0;
-        self.dropped = false;
-    }
-
-    /// Frames up to the floor are shown or will never be: the capture may
-    /// run `window` frames past it.
-    fn floor(&self) -> u32 {
-        self.flight
-            .front()
-            .map_or(self.last, |(sequence, _, _)| sequence.saturating_sub(1))
-    }
-
-    fn pace<L>(&self, stream: Option<&StreamView<L>>) {
+    /// The next frame must be a key frame, which the stream is asked for.
+    fn lost<L>(&mut self, stream: Option<&StreamView<L>>) {
+        self.awaiting_key = true;
         if let Some(stream) = stream {
-            stream.pace(self.epoch, self.floor(), self.rate.window);
+            stream.key_frame();
+        }
+    }
+
+    /// Tells the stream the encoding the path takes when it changed enough
+    /// to matter.
+    fn encode<L>(&mut self, stream: Option<&StreamView<L>>) {
+        let encoding = (self.rate.target(), self.rate.fps(), self.rate.scale());
+        let changed = match self.applied {
+            None => true,
+            Some((bitrate, fps, scale)) => {
+                fps != encoding.1 || scale != encoding.2 || self.rate.retarget(bitrate)
+            }
+        };
+        if !changed {
+            return;
+        }
+        // Why a picture changed quality is found in the Host's log, not guessed.
+        tracing::debug!(
+            "live view encoding {} bps, {} fps, scale {}: least round trip {:?}, window {} bytes, {} in flight",
+            encoding.0,
+            encoding.1,
+            encoding.2,
+            self.rate.round_trip(),
+            self.rate.window(),
+            self.rate.in_flight(),
+        );
+        self.applied = Some(encoding);
+        if let Some(stream) = stream {
+            stream.encoding(encoding.0, encoding.1, encoding.2);
+        }
+    }
+
+    /// Tells the stream how far the page's frames reach and whether the
+    /// window has room for one more.
+    fn pace<L>(&mut self, stream: Option<&StreamView<L>>) {
+        let room = self.awaiting_key || self.rate.room(self.queued, self.frame_bytes);
+        let pace = (self.epoch, self.last, u32::from(room));
+        if self.told == Some(pace) {
+            return;
+        }
+        if let Some(stream) = stream {
+            self.told = Some(pace);
+            stream.pace(pace.0, pace.1, pace.2);
         }
     }
 }

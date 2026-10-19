@@ -42,7 +42,19 @@ struct Asked {
     newest: Option<Arc<Picture>>,
     key_frame: bool,
     encoding: Option<(u32, u32)>,
+    /// The newest frame the viewers had, and how many more their windows
+    /// have room for (`live-view.md` § Delivery).
+    allowed: Option<(u32, u32)>,
     stopped: bool,
+}
+
+impl Asked {
+    /// Whether the viewers' windows have room for the frame after `sequence`;
+    /// before they said, for one.
+    fn room(&self, sequence: u32) -> bool {
+        let (floor, window) = self.allowed.unwrap_or((0, 1));
+        sequence.saturating_sub(floor) < window
+    }
 }
 
 struct Shared {
@@ -135,6 +147,10 @@ impl DeviceCapture for AndroidCapture {
         Box::pin(self.frames.recv())
     }
 
+    fn ack(&self, sequence: u32, window: u32) {
+        self.shared.ask(|asked| asked.allowed = Some((sequence, window)));
+    }
+
     fn key_frame(&self) {
         self.shared.ask(|asked| asked.key_frame = true);
     }
@@ -215,10 +231,13 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, fps
                 }
                 // Pictures come no faster than the interval allows.
                 let due = encoded_at.map_or(Duration::ZERO, |at| interval.saturating_sub(at.elapsed()));
-                if asked.newest.is_some() && due.is_zero() {
+                // The newest picture waits for room in the viewers' windows,
+                // replaced by any newer one.
+                let room = asked.room(sequence);
+                if asked.newest.is_some() && due.is_zero() && room {
                     break asked.newest.take().expect("a picture is waiting");
                 }
-                asked = if asked.newest.is_some() {
+                asked = if asked.newest.is_some() && room {
                     shared.wake.wait_timeout(asked, due).expect("the capture's state is intact").0
                 } else {
                     shared.wake.wait(asked).expect("the capture's state is intact")

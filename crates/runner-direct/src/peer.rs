@@ -17,7 +17,7 @@ use std::task::Poll;
 
 use demi_runner_protocol::direct::{
     CONNECT_TIMEOUT, ChannelError, ChannelErrorCode, ChannelHeader, Introduction, MAX_CHANNELS,
-    PROBE_LABEL, QUEUE_BYTES, StunUrl,
+    PROBE_LABEL, QUEUE_BYTES, StunUrl, VIDEO_QUEUE_BYTES, VideoOpened,
 };
 use demi_runner_protocol::forward::{ForwardHeader, PairReason, PairSide};
 use garde::Validate;
@@ -36,12 +36,29 @@ use tokio_util::task::AbortOnDropHandle;
 use crate::channel::{Channel, Kind, Phase};
 use crate::forward::{ForwardChannel, Took};
 use crate::gathering::{self, Gathering};
-use crate::operation::{self, Input as ChannelInput, OUTPUT_MESSAGES, Operations, Output, refusal};
+use crate::operation::{
+    self, Input as ChannelInput, OUTPUT_MESSAGES, Operations, Output, VideoEnds, refusal,
+};
 
 /// The most bytes str0m queues on all of a peer's channels together: room
 /// for a full queue on several channels at once. Each channel keeps its own
 /// at [`QUEUE_BYTES`], since larger queues measured slower.
 const SCTP_BUFFER: usize = 4 * QUEUE_BYTES;
+/// What a live views' peer queues on all its channels together: room for a
+/// few views' `video` channels.
+const LIVE_SCTP_BUFFER: usize = 4 * VIDEO_QUEUE_BYTES;
+/// The least a live views' peer's SCTP congestion window ever is: far
+/// beyond what any path carries in a round trip, so the window never limits
+/// what the views' own rate control sends (`direct-channel.md` § Making the
+/// channel).
+const LIVE_CONGESTION_WINDOW: u32 = 64 * 1024 * 1024;
+/// A live views' peer resends a lost chunk after this long at the least, at
+/// first and at the most, where SCTP's defaults wait a second at the least.
+const LIVE_RTO: (std::time::Duration, std::time::Duration, std::time::Duration) = (
+    std::time::Duration::from_millis(50),
+    std::time::Duration::from_millis(250),
+    std::time::Duration::from_secs(2),
+);
 /// The most bytes of one datagram; a data channel's are well under it.
 const DATAGRAM_BYTES: usize = 2048;
 /// Datagrams received that wait for the peer's loop.
@@ -63,6 +80,9 @@ pub(crate) enum Behaviour {
     Page {
         operations: Arc<dyn Operations>,
         introduction: Arc<Introduction>,
+        /// The page's peer for live views, which carries only their `stream`
+        /// and `video` channels, without SCTP's congestion window.
+        live: bool,
     },
     /// Forwarded connections that the runner of `device` opens, which this
     /// runner connects as their forwards' Connect To.
@@ -145,11 +165,19 @@ pub(crate) enum OfferError {
 async fn bind(
     addresses: Vec<Ipv4Addr>,
     provider: Arc<CryptoProvider>,
+    live: bool,
 ) -> Result<(Rtc, Vec<Arc<UdpSocket>>), OfferError> {
-    let mut rtc = RtcConfig::new()
-        .set_crypto_provider(provider)
-        .set_sctp_max_buffered_amount(SCTP_BUFFER)
-        .build(now());
+    let config = RtcConfig::new().set_crypto_provider(provider);
+    let config = if live {
+        let (least, initial, most) = LIVE_RTO;
+        config
+            .set_sctp_max_buffered_amount(LIVE_SCTP_BUFFER)
+            .set_sctp_congestion_window_floor(LIVE_CONGESTION_WINDOW)
+            .set_sctp_rto(least, initial, most)
+    } else {
+        config.set_sctp_max_buffered_amount(SCTP_BUFFER)
+    };
+    let mut rtc = config.build(now());
     let mut sockets = Vec::new();
     let mut unbound = None;
     for address in addresses {
@@ -195,7 +223,8 @@ impl Peer {
     ) -> Result<(Self, String), OfferError> {
         let parsed =
             SdpOffer::from_sdp_string(offer).map_err(|error| OfferError::Invalid(error.to_string()))?;
-        let (mut rtc, sockets) = bind(addresses, provider).await?;
+        let live = matches!(behaviour, Behaviour::Page { live: true, .. });
+        let (mut rtc, sockets) = bind(addresses, provider, live).await?;
         let answer = rtc
             .sdp_api()
             .accept_offer(parsed)
@@ -218,7 +247,7 @@ impl Peer {
         provider: Arc<CryptoProvider>,
         stun: Vec<StunUrl>,
     ) -> Result<(Self, String), OfferError> {
-        let (mut rtc, sockets) = bind(addresses, provider).await?;
+        let (mut rtc, sockets) = bind(addresses, provider, false).await?;
         let mut changes = rtc.sdp_api();
         // A first channel, so that the offer carries one: the probe
         // channel, as a page's is.
@@ -280,6 +309,8 @@ impl Peer {
             behaviour,
             connected: false,
             took,
+            videos: HashMap::new(),
+            next_video: 0,
         };
         let give_up = Instant::now() + CONNECT_TIMEOUT;
         let end = loop {
@@ -529,6 +560,11 @@ struct Served {
     connected: bool,
     /// Where a credited channel's consumer says what it took.
     took: mpsc::UnboundedSender<(ChannelId, usize)>,
+    /// The `video` channels no stream claimed yet, by their number, with
+    /// their channel.
+    videos: HashMap<u32, (ChannelId, VideoEnds)>,
+    /// The last `video` channel's number.
+    next_video: u32,
 }
 
 impl Served {
@@ -641,6 +677,8 @@ impl Served {
             Event::ChannelClose(id) => {
                 self.channels.remove(&id);
                 self.probes.remove(&id);
+                // A `video` channel no stream claimed goes with it.
+                self.videos.retain(|_, (channel, _)| *channel != id);
             }
             _ => {}
         }
@@ -663,6 +701,7 @@ impl Served {
             Behaviour::Page {
                 operations,
                 introduction,
+                live,
             } => {
                 let header = (!data.binary)
                     .then(|| serde_json::from_slice::<ChannelHeader>(&data.data).ok())
@@ -677,6 +716,56 @@ impl Served {
                     *channel = Channel::closing(refusal(invalid));
                     return;
                 };
+                // A live views' peer carries their `stream` and `video`
+                // channels alone, and only it carries `video`.
+                let carried = match header {
+                    ChannelHeader::Stream { .. } => true,
+                    ChannelHeader::Video {} => *live,
+                    _ => !*live,
+                };
+                if !carried {
+                    let elsewhere = ChannelError::new(
+                        ChannelErrorCode::InvalidMessage,
+                        400,
+                        "The peer does not carry this operation",
+                    );
+                    *channel = Channel::closing(refusal(elsewhere));
+                    return;
+                }
+                if let ChannelHeader::Video {} = header {
+                    self.next_video += 1;
+                    let number = self.next_video;
+                    let opened = VideoOpened { ok: true, id: number };
+                    let opened = serde_json::to_string(&opened).expect("an answer serializes");
+                    outputs
+                        .try_send(Output::Text(opened))
+                        .expect("a new channel has room for its answer");
+                    channel.run(Kind::Stream, input, output, false);
+                    channel.queue(VIDEO_QUEUE_BYTES);
+                    let ends = VideoEnds {
+                        chunks: outputs,
+                        acks: inputs,
+                    };
+                    self.videos.insert(number, (data.id, ends));
+                    return;
+                }
+                let video = match &header {
+                    ChannelHeader::Stream { video: Some(number), .. } => {
+                        match self.videos.remove(number) {
+                            Some((_, ends)) => Some(ends),
+                            None => {
+                                let unknown = ChannelError::new(
+                                    ChannelErrorCode::InvalidMessage,
+                                    400,
+                                    "The stream names no video channel of the peer's",
+                                );
+                                *channel = Channel::closing(refusal(unknown));
+                                return;
+                            }
+                        }
+                    }
+                    _ => None,
+                };
                 let kind = match header {
                     ChannelHeader::Write { .. } => Kind::Write,
                     ChannelHeader::Stream { .. } => Kind::Stream,
@@ -689,6 +778,7 @@ impl Served {
                     header,
                     inputs,
                     outputs,
+                    video,
                     cancel,
                 ));
                 channel.run(kind, input, output, false);

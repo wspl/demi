@@ -1,19 +1,21 @@
 //! The browser's frames among the live view's (`live-view.md` § Framing and
-//! versions): control messages in the browser's protocol, and the bytes of
-//! files the viewer chose. The live view's reader splits the stream.
+//! versions): control messages in the browser's protocol, acknowledgements
+//! of the video chunks, and the bytes of files the viewer chose. The live
+//! view's reader splits the stream.
 
 use bytes::Bytes;
 
 use demi_command_package_browser_protocol::live::{FILE_FRAME, FileHeader, LiveViewerMessage};
 use demi_command_sdk::{Input, ServiceError};
 use demi_live_view::frames::{Frame, Reader as FrameReader};
-use demi_live_view_protocol::CONTROL_FRAME;
+use demi_live_view_protocol::{ACK_FRAME, CONTROL_FRAME, ChunkAck};
 use demi_shared_types::DecodeError;
 
 /// What the page sends.
 #[derive(Debug)]
 pub(crate) enum Inbound {
     Control(LiveViewerMessage),
+    Acks(Vec<ChunkAck>),
     /// Bytes of the `file`th file of an upload.
     File {
         upload: u32,
@@ -30,6 +32,8 @@ pub(crate) enum FrameError {
     Message(DecodeError),
     #[error("invalid file frame: {0}")]
     File(DecodeError),
+    #[error("invalid acknowledgements: {0}")]
+    Acks(DecodeError),
     #[error("unknown live frame kind {0}")]
     Kind(u8),
 }
@@ -56,6 +60,9 @@ fn decode(Frame { kind, payload }: Frame) -> Result<Inbound, ServiceError> {
         CONTROL_FRAME => LiveViewerMessage::decode(&payload)
             .map(Inbound::Control)
             .map_err(|error| ServiceError::failed(FrameError::Message(error))),
+        ACK_FRAME => ChunkAck::split(&payload)
+            .map(Inbound::Acks)
+            .map_err(|error| ServiceError::failed(FrameError::Acks(error))),
         FILE_FRAME => {
             let (header, data) = FileHeader::split(&payload)
                 .map_err(|error| ServiceError::failed(FrameError::File(error)))?;

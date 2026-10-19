@@ -93,10 +93,9 @@ function attach(): void {
     return
   }
   pictures = new CanvasPictures<DeviceStream>(canvas.value, {
-    shown: (stream, sequence, decodeQueue) => {
+    shown: (stream) => {
       picture.value = stream
       painted.value = true
-      props.session.showed(stream.generation, sequence, decodeQueue)
     },
     lost: () => props.session.resync(),
   })

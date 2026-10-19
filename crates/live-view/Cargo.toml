@@ -20,6 +20,8 @@ demi-shared-types = { path = "../shared-types" }
 garde.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Bitrate and DataSize, the units of the estimate ported from str0m (`bwe`).
+str0m-proto = { version = "0.7.0", default-features = false }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

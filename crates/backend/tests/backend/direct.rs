@@ -109,7 +109,7 @@ async fn next(socket: &mut Socket) -> Result<Value, u16> {
 }
 
 async fn send_offer(socket: &mut Socket) {
-    let offer = json!({ "type": "offer", "sdp": offer() }).to_string();
+    let offer = json!({ "type": "offer", "peer": "files", "sdp": offer() }).to_string();
     socket.send(Message::Text(offer.into())).await.unwrap();
 }
 
@@ -117,7 +117,7 @@ async fn send_offer(socket: &mut Socket) {
 /// `socket`.
 async fn connected_page(socket: &mut Socket) -> Page {
     let mut page = Page::connect(async |sdp| {
-        let offer = json!({ "type": "offer", "sdp": sdp }).to_string();
+        let offer = json!({ "type": "offer", "peer": "files", "sdp": sdp }).to_string();
         socket.send(Message::Text(offer.into())).await.unwrap();
         let answer = next(socket).await.unwrap();
         match answer["sdp"].as_str() {
@@ -153,7 +153,7 @@ async fn the_runner_answers_offers_and_a_closed_socket_frees_its_peer() {
     send_offer(&mut over).await;
     assert_eq!(
         next(&mut over).await.unwrap(),
-        json!({ "type": "unanswered", "code": "busy" })
+        json!({ "type": "unanswered", "peer": "files", "code": "busy" })
     );
 
     // The page went: the backend closes its peer, and another page's
@@ -171,7 +171,7 @@ async fn the_runner_answers_offers_and_a_closed_socket_frees_its_peer() {
     assert_eq!(answered["type"], "answer");
 
     // An offer that is no data channel's is not answered.
-    let invalid = json!({ "type": "offer", "sdp": "v=0\r\n" }).to_string();
+    let invalid = json!({ "type": "offer", "peer": "files", "sdp": "v=0\r\n" }).to_string();
     over.send(Message::Text(invalid.into())).await.unwrap();
     assert_eq!(next(&mut over).await.unwrap()["type"], "unanswered");
     // A message the page should not send closes the socket.
@@ -226,7 +226,7 @@ async fn a_probe_and_a_candidate_do_not_wait_behind_an_offers_answer() {
         }
     };
     let candidate = "candidate:1 1 udp 2122260223 192.0.2.7 50000 typ host";
-    let trickled = json!({ "type": "candidate", "candidate": candidate }).to_string();
+    let trickled = json!({ "type": "candidate", "peer": "files", "candidate": candidate }).to_string();
     socket.send(Message::Text(trickled.into())).await.unwrap();
     let ping = json!({ "type": "ping", "id": 9 }).to_string();
     socket.send(Message::Text(ping.into())).await.unwrap();
@@ -248,7 +248,7 @@ async fn a_probe_and_a_candidate_do_not_wait_behind_an_offers_answer() {
     runner.send(&Outbound::DirectAnswer { id: offer, sdp: "v=0\r\n".into() }).await;
     assert_eq!(
         next(&mut socket).await.unwrap(),
-        json!({ "type": "answer", "sdp": "v=0\r\n" })
+        json!({ "type": "answer", "peer": "files", "sdp": "v=0\r\n" })
     );
     let relayed = loop {
         match runner.next().await {
@@ -258,6 +258,61 @@ async fn a_probe_and_a_candidate_do_not_wait_behind_an_offers_answer() {
         }
     };
     assert_eq!(relayed, (peer, candidate.to_owned()));
+    backend.close().await;
+}
+
+// Under a second: the test speaks the device's runner.
+#[tokio::test]
+async fn the_live_peer_reaches_the_runner_as_a_live_peer_of_its_own() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut paired = backend.pair(&master, "laptop").await;
+    let token = paired.token().await;
+    let id = paired.id().to_owned();
+    paired.runner.stop().await;
+    backend.until_online(&master, &id, false).await;
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    backend.until_online(&master, &id, true).await;
+
+    let mut socket = signaling(&backend, &master, &paired).await;
+    let mut offered = Vec::new();
+    for peer in ["files", "live"] {
+        let offer = json!({ "type": "offer", "peer": peer, "sdp": offer() }).to_string();
+        socket.send(Message::Text(offer.into())).await.unwrap();
+        let (offer, of, live) = loop {
+            match runner.next().await {
+                Some(Inbound::DirectOffer { id, peer, introduction, .. }) => {
+                    let demi_runner_protocol::direct::Introduced::Page { live, .. } = introduction else {
+                        panic!("a page's offer introduces a page");
+                    };
+                    break (id, peer, live);
+                }
+                Some(_) => {}
+                None => panic!("the backend closed the runner's connection"),
+            }
+        };
+        assert_eq!(live, peer == "live");
+        runner.send(&Outbound::DirectAnswer { id: offer, sdp: "v=0\r\n".into() }).await;
+        assert_eq!(
+            next(&mut socket).await.unwrap(),
+            json!({ "type": "answer", "peer": peer, "sdp": "v=0\r\n" })
+        );
+        offered.push(of);
+    }
+    assert_ne!(offered[0], offered[1], "each peer has its own id");
+    // The page closes the live peer alone.
+    let close = json!({ "type": "close", "peer": "live" }).to_string();
+    socket.send(Message::Text(close.into())).await.unwrap();
+    let closed = loop {
+        match runner.next().await {
+            Some(Inbound::DirectClose { peer }) => break peer,
+            Some(_) => {}
+            None => panic!("the backend closed the runner's connection"),
+        }
+    };
+    assert_eq!(closed, offered[1]);
     backend.close().await;
 }
 
@@ -351,7 +406,7 @@ async fn a_direct_stream_installs_its_service_but_not_another_streams_and_a_plug
         .await;
     assert_eq!(switched.status, StatusCode::NO_CONTENT);
     assert_eq!(direct.next().await, Heard::Closed);
-    assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "closed" }));
+    assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "closed", "peer": "files" }));
     // The next introduction carries the user's streams as they are now.
     let page = connected_page(&mut socket).await;
     let mut gone = page.open(header("echo", json!({}))).await;
@@ -377,7 +432,7 @@ async function readDirectly(deviceId, path, offset, length) {
       if (message.type !== 'heartbeat') resolve(message)
     }
   })
-  socket.send(JSON.stringify({ type: 'offer', sdp: connection.localDescription.sdp }))
+  socket.send(JSON.stringify({ type: 'offer', peer: 'files', sdp: connection.localDescription.sdp }))
   const answer = await answered
   if (answer.type !== 'answer') return { failed: JSON.stringify(answer) }
   await connection.setRemoteDescription({ type: 'answer', sdp: answer.sdp })

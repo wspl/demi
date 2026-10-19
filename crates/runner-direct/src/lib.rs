@@ -310,9 +310,10 @@ impl DirectDriver {
                             continue;
                         }
                         let behaviour = match introduced {
-                            Introduced::Page { page } => Behaviour::Page {
+                            Introduced::Page { page, live } => Behaviour::Page {
                                 operations: self.operations.clone(),
                                 introduction: Arc::new(page),
+                                live,
                             },
                             Introduced::Runner { device } => Behaviour::Runner {
                                 operations: self.operations.clone(),

@@ -15,7 +15,7 @@ use serde_with::rust::unwrap_or_skip;
 use demi_shared_types::DecodeError;
 
 use demi_live_view_protocol::{
-    LiveAck, LiveHeartbeat, LiveHello, LiveKeyframe, LiveNotice, LiveRelease, ModuleMessage,
+    LiveHeartbeat, LiveHello, LiveKeyframe, LiveNotice, LiveRelease, ModuleMessage,
     ViewerInput,
 };
 
@@ -31,8 +31,8 @@ pub const OPERATION: &str = "browser.live";
 pub struct LiveInput {}
 
 /// A chosen file's bytes: [`FileHeader`], then the data. The live view's
-/// own frames are `live-view-protocol`'s, kinds 1 and 2.
-pub const FILE_FRAME: u8 = 3;
+/// own frames are `live-view-protocol`'s, kinds 1 to 3.
+pub const FILE_FRAME: u8 = 4;
 /// A file frame's largest data.
 pub const FILE_CHUNK_BYTES: usize = 64 * 1024;
 
@@ -249,7 +249,6 @@ pub enum LiveViewerMessage {
         #[garde(length(chars, max = 2000))]
         text: Option<String>,
     },
-    Ack(#[garde(dive)] LiveAck),
     Keyframe(#[garde(dive)] LiveKeyframe),
     Release(#[garde(dive)] LiveRelease),
     /// Try capturing again after [`CAPTURE_STOPPED`]: the module recreates

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { LiveFrameReader, encodeControl, encodeVideo, framed, type LiveRawFrame } from '../frames'
+import { LIVE_CHUNK_DATA_BYTES } from '@demicodes/protocol'
+import { LiveFrameAssembler, LiveFrameReader, encodeControl, encodeVideo, framed, type LiveRawFrame, type LiveVideoChunk } from '../frames'
 import { ClickCount, keyInput, modifiers, pointerInput, touchInput, wheelInput } from '../input'
 
 /** A picture as a Host frames it. */
@@ -27,10 +28,46 @@ test('frames split across chunks and join within one', () => {
   }
 })
 
+/** The chunks of a picture whose data is `length` bytes counting up, as the page reads them. */
+function chunks(sequence: number, key: boolean, length: number): LiveVideoChunk[] {
+  const data = Array.from({ length }, (_, index) => index % 251)
+  return new LiveFrameReader()
+    .read(video('m1', 1, sequence, key, data))
+    .map((frame) => (frame.kind === 'video' ? frame.frame : expect.unreachable()))
+}
+
+/**
+ * A direct path delivers chunks in any order: the page joins each frame
+ * whole and hands frames on in sequence, a frame waiting for the one
+ * before it, and a key frame for none. Planted defects this catches:
+ * joining chunks in arrival order, handing a frame on before the one
+ * before it, waiting before a key frame.
+ */
+test('chunks that come out of order make whole frames, handed on in sequence', () => {
+  const first = chunks(1, true, 2 * LIVE_CHUNK_DATA_BYTES + 10)
+  const second = chunks(2, false, LIVE_CHUNK_DATA_BYTES + 1)
+  const third = chunks(3, false, 5)
+  expect([first.length, second.length, third.length]).toEqual([3, 2, 1])
+  const assembler = new LiveFrameAssembler()
+  const order = [first[2]!, second[1]!, first[0]!, third[0]!, second[0]!]
+  const handed = order.map((chunk) => assembler.add(chunk).map((frame) => frame.sequence))
+  expect(handed).toEqual([[], [], [], [], []])
+  // The last chunk of the first frame lets all three go, in order and whole.
+  const released = assembler.add(first[1]!)
+  expect(released.map((frame) => frame.sequence)).toEqual([1, 2, 3])
+  expect([...released[0]!.data]).toEqual(Array.from({ length: 2 * LIVE_CHUNK_DATA_BYTES + 10 }, (_, index) => index % 251))
+  expect(released[1]!.data.length).toBe(LIVE_CHUNK_DATA_BYTES + 1)
+  // A key frame goes on without the frames before it, which no longer matter.
+  const late = chunks(4, false, 5)
+  expect(assembler.add(chunks(6, true, 5)[0]!).map((frame) => frame.sequence)).toEqual([6])
+  expect(assembler.add(late[0]!)).toEqual([])
+})
+
 test('a frame the protocol refuses is an error, never a frame', () => {
   const refused: Array<[Uint8Array, string]> = [
     [framed(3, new Uint8Array(8)), 'kind 3'],
     [framed(2, new Uint8Array([0, 0, 0, 1])), 'shorter than its header'],
+    [(() => { const bytes = video('m1', 1, 1, true, [1]); bytes[5 + 25] = 1; return bytes })(), 'outside its frame'],
     [new Uint8Array([0, 0, 0, 0]), 'impossible size'],
   ]
   for (const [bytes, reason] of refused) {

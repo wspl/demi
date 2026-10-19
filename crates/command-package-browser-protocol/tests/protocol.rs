@@ -281,7 +281,7 @@ fn live_messages_decode_as_the_page_sends_them() {
             "text": "A", "altGraph": false}}),
         json!({"type": "upload", "tab": TAB, "token": "00000000-0000-4000-8000-0000000000a1",
             "revision": 3, "upload": 1, "files": [{"name": "a.txt", "mimeType": "text/plain", "size": 3}]}),
-        json!({"type": "ack", "generation": 1, "sequence": 7, "decodeQueue": 0}),
+        json!({"type": "keyframe", "generation": 1}),
         json!({"type": "release"}),
     ] {
         let bytes = serde_json::to_vec(&message).unwrap();

@@ -241,7 +241,11 @@ impl Operations for Fake {
             .streams
             .push((request.binding.operation.clone(), request.stream.clone()));
         // Echoes the page's bytes, as a service stream's invocation answers
-        // its input.
+        // its input; as they came for a live view's, so its frames stay
+        // whole.
+        if request.args.as_ref().is_some_and(|args| args.contains_key("raw")) {
+            return Box::pin(async move { Ok(request.input) });
+        }
         let echo = request.input.map(|chunk| chunk.map(|bytes| {
             let mut echoed = b"echo:".to_vec();
             echoed.extend_from_slice(&bytes);

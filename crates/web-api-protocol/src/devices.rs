@@ -313,24 +313,44 @@ impl TryFrom<String> for LogSource {
     }
 }
 
+/// Which of the page's two peers with a device a signaling message is about
+/// (`direct-channel.md` § Making the channel): the one for files and calls,
+/// or the one for live views, which the runner makes without SCTP's
+/// congestion window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectPeer {
+    Files,
+    Live,
+}
+
 /// A message the page sends on a device's direct channel signaling socket,
 /// `WS /devices/:deviceId/direct` (`web-api-hosts.md` § Direct channel).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DirectRequest {
-    /// The page's offer for a new peer, which replaces the socket's peer.
+    /// The page's offer for a new peer, which replaces that peer.
     Offer {
+        #[garde(skip)]
+        peer: DirectPeer,
         #[garde(length(min = 1, max = MAX_OFFER_BYTES))]
         sdp: String,
     },
-    /// A candidate the browser found after the offer, the `candidate:` line
-    /// as it gives it; the runner checks it too.
+    /// A candidate the browser found after the peer's offer, the
+    /// `candidate:` line as it gives it; the runner checks it too.
     Candidate {
+        #[garde(skip)]
+        peer: DirectPeer,
         #[garde(length(min = 1, max = CANDIDATE_CHARS))]
         candidate: String,
     },
-    /// A probe of the relay path, once a second while the page uses the
-    /// device (`direct-channel.md` § Measuring the paths).
+    /// The page closed the peer: the runner closes its side.
+    Close {
+        #[garde(skip)]
+        peer: DirectPeer,
+    },
+    /// A probe of the relay path, which measures it beside the `files`
+    /// peer (`direct-channel.md` § Measuring the paths).
     Ping {
         #[garde(skip)]
         id: u32,
@@ -344,23 +364,23 @@ pub const MAX_OFFER_BYTES: usize = 64 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DirectMessage {
-    /// The runner's answer to the page's last offer.
-    Answer { sdp: String },
+    /// The runner's answer to the page's last offer for `peer`.
+    Answer { peer: DirectPeer, sdp: String },
     /// A candidate the runner found after its answer, such as the address a
     /// STUN server saw it at; it may come before the answer.
-    Candidate { candidate: String },
+    Candidate { peer: DirectPeer, candidate: String },
     /// The runner's answer to the page's probe `id`, or the backend's own,
     /// at once, to the page's `{ ping: id }` (`web-application.md`
     /// § Liveness and reconnection).
     Pong { id: u32 },
-    /// The runner did not answer the page's last offer.
-    Unanswered { code: Unanswered },
+    /// The runner did not answer the page's last offer for `peer`.
+    Unanswered { peer: DirectPeer, code: Unanswered },
     /// Nothing else was sent for 30 seconds: the socket is quiet, not dead.
     Heartbeat,
-    /// The runner closed the socket's peer, since the user turned a plugin
-    /// on or off: the page makes a new offer at once, whose introduction
-    /// carries the user's streams as they are now.
-    Closed,
+    /// The runner closed `peer`, since the user turned a plugin on or off:
+    /// the page makes a new offer for it at once, whose introduction carries
+    /// the user's streams as they are now.
+    Closed { peer: DirectPeer },
 }
 
 /// Why an offer has no answer.

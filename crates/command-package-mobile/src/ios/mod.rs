@@ -666,6 +666,7 @@ impl Device for IosDevice {
                 udid: self.udid.clone(),
                 capture,
                 frames,
+                acks: std::sync::atomic::AtomicU64::new(0),
             }) as Box<dyn DeviceCapture>)
         })
     }
@@ -690,6 +691,8 @@ struct IosCapture {
     udid: String,
     capture: u32,
     frames: mpsc::Receiver<CaptureEvent>,
+    /// Numbers the window messages in the order they were sent.
+    acks: std::sync::atomic::AtomicU64,
 }
 
 impl IosCapture {
@@ -711,6 +714,13 @@ impl IosCapture {
 impl DeviceCapture for IosCapture {
     fn next(&mut self) -> BoxFuture<'_, Option<CaptureEvent>> {
         Box::pin(self.frames.recv())
+    }
+
+    fn ack(&self, sequence: u32, window: u32) {
+        // Each message goes on a task of its own, so they can overtake one
+        // another: the helper keeps the newest by its order.
+        let order = self.acks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        self.tell("captureAck", json!({ "sequence": sequence, "window": window, "order": order }));
     }
 
     fn key_frame(&self) {

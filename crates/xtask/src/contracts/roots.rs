@@ -70,7 +70,6 @@ pub fn protocol() -> Vec<Root> {
         // carries (`mobile.md` § The live view).
         sends::<live::LiveHello>(),
         sends::<live::ViewerInput>(),
-        sends::<live::LiveAck>(),
         sends::<live::LiveKeyframe>(),
         sends::<live::LiveRelease>(),
         receives::<live::LiveHeartbeat>(),
@@ -261,6 +260,7 @@ pub fn web() -> Vec<Root> {
         receives::<direct::Opened>(),
         receives::<direct::ReadOpened>(),
         receives::<direct::TextOpened>(),
+        receives::<direct::VideoOpened>(),
         receives::<direct::Listed>(),
     ]
 }

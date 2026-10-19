@@ -222,6 +222,68 @@ async fn a_stream_carries_bytes_both_ways_and_an_unknown_name_is_refused() {
     assert_eq!(*fake.activity.borrow(), [told("c1", true), told("c1", false)]);
 }
 
+/// A live view frame of `kind` around `payload`.
+fn live_frame(kind: u8, payload: &[u8]) -> Vec<u8> {
+    let mut frame = (1 + payload.len() as u32).to_be_bytes().to_vec();
+    frame.push(kind);
+    frame.extend_from_slice(payload);
+    frame
+}
+
+// Tens of milliseconds: a live view on its peer over loopback.
+#[tokio::test]
+async fn a_live_views_pictures_go_on_its_video_channel_and_their_acknowledgements_come_back_into_its_stream() {
+    // A message on the wrong channel would leave the test waiting.
+    tokio::time::timeout(std::time::Duration::from_secs(10), live_view_channels())
+        .await
+        .expect("each message arrives on its channel");
+}
+
+async fn live_view_channels() {
+    use demi_live_view_protocol::{ACK_FRAME, CONTROL_FRAME, VIDEO_FRAME};
+    let fake = Fake::default();
+    let direct = runner(&fake);
+    let mut page = Page::offer_live(&direct, "p1", introduction())
+        .await
+        .expect("the runner answers");
+    assert!(page.wait_connected().await, "the peer connects");
+
+    let mut video = page.video().await;
+    let opened = video.next().await.json();
+    assert_eq!(opened["ok"], true);
+    let number = opened["id"].as_u64().unwrap();
+    let mut stream = page
+        .open(header("stream", json!({ "stream": "browser", "args": { "raw": true }, "video": number })))
+        .await;
+    assert_eq!(stream.next().await.json(), json!({ "ok": true }));
+
+    // The module's output, as the fake stream echoes it: a chunk goes on
+    // `video`, whole in one message; a control message stays on `stream`.
+    let chunk = live_frame(VIDEO_FRAME, &[7; 3000]);
+    let control = live_frame(CONTROL_FRAME, b"{}");
+    let mut output = chunk.clone();
+    output.extend_from_slice(&control);
+    stream.binary(&output);
+    assert_eq!(video.next().await, Heard::Binary(Bytes::from(chunk)));
+    assert_eq!(stream.next().await, Heard::Binary(Bytes::from(control.clone())));
+    // An acknowledgement on `video`, cut in two, reaches the stream's input
+    // whole, between the page's frames on `stream`.
+    let ack = live_frame(ACK_FRAME, &[1; 20]);
+    video.binary(&ack[..9]);
+    video.binary(&ack[9..]);
+    assert_eq!(stream.next().await, Heard::Binary(Bytes::from(ack)));
+
+    // A live peer carries nothing but live views; only it carries `video`.
+    let mut read = page.open(header("read", json!({ "path": "a" }))).await;
+    assert_eq!(read.next().await.json()["error"]["code"], "invalid_message");
+    let files = connected(&direct, "p2").await;
+    let mut refused = files.video().await;
+    assert_eq!(refused.next().await.json()["error"]["code"], "invalid_message");
+    // The stream's end ends its video channel.
+    stream.close();
+    assert_eq!(video.next().await, Heard::Closed);
+}
+
 fn told(conversation: &str, open: bool) -> (String, bool) {
     (conversation.to_owned(), open)
 }
@@ -404,7 +466,7 @@ async fn a_peer_offers_the_page_the_public_address_a_stun_server_saw_it_at() {
     let stun: StunUrl = format!("stun:{server}").parse().unwrap();
     let mut found = None;
     let mut page = Page::connect(async |offer| {
-        let introduced = Introduced::Page { page: introduction() };
+        let introduced = Introduced::Page { page: introduction(), live: false };
         let answered = direct.offer("p1".into(), offer, introduced, vec![stun]).await?;
         found = Some(answered.candidates);
         Ok::<_, demi_runner_direct::Refused>(answered.sdp)

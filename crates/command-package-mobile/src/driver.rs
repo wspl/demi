@@ -197,6 +197,10 @@ pub enum Frame {
 /// stops it.
 pub trait DeviceCapture: Send + 'static {
     fn next(&mut self) -> BoxFuture<'_, Option<CaptureEvent>>;
+    /// The viewers' windows have room for `window` more frames past
+    /// `sequence` (`demi_live_view::stream::Capture::ack`): the newest
+    /// picture waits until then.
+    fn ack(&self, sequence: u32, window: u32);
     fn key_frame(&self);
     fn encoding(&self, bitrate: u32, fps: u32);
 }

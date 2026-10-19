@@ -14,13 +14,15 @@ import { useProduct } from '../state/product'
 import { executionFor } from '../targets/execution'
 import { DEVICE_PATHS, statusPath, type DevicePath, type PathStatus, type DeviceRoute, type DirectStatus } from '@demicodes/web-ui/devices/direct'
 import { DeviceDirect, directState, type DirectState, type Permission } from './device'
+import { DeviceLive } from './live'
 import { DeviceMeter, meterState, type MeterState } from './meter'
 import { connectPeer } from './peer'
 import { DeviceSignaling, isBusy } from './signaling'
 
-/** A device in use, with its signaling socket and the measuring of its paths. */
+/** A device in use, with its signaling socket, its peer for live views and the measuring of its paths. */
 interface UsedDevice {
   direct: DeviceDirect
+  live: DeviceLive
   signaling: DeviceSignaling
   meter: DeviceMeter
 }
@@ -37,6 +39,8 @@ const permission = ref<Permission | null>(null)
 /** Where a conversation's operations go directly: its device's path, and the conversation and directory each header names. */
 export interface DirectRoute {
   device: DeviceDirect
+  /** The device's peer for live views, used while the device's choice is `direct`. */
+  live: DeviceLive
   scope: { conversation: string; cwd: string }
 }
 
@@ -52,8 +56,10 @@ export function directRoute(conversationId: string): DirectRoute | null {
   const execution = executionFor(summary)
   if (execution.kind !== 'device' || !execution.deviceId || execution.state !== 'online' || !execution.path)
     return null
+  const device = use(execution.deviceId)
   return {
-    device: use(execution.deviceId),
+    device: device.direct,
+    live: device.live,
     scope: { conversation: conversationId, cwd: execution.path },
   }
 }
@@ -152,46 +158,75 @@ export function tryDirect(deviceId: string): void {
 }
 
 /** The device's choice and signaling, started on its first use while its runner is connected. */
-function use(deviceId: string): DeviceDirect {
+function use(deviceId: string): UsedDevice {
   const known = used.get(deviceId)
   if (known)
-    return known.direct
+    return known
   const product = useProduct()
   const state = states.get(deviceId) ?? reactive(directState())
   states.set(deviceId, state)
   // The first open of the socket starts the first attempt, and each open
   // after one closed is a reason to try again; a peer the backend closed is
-  // made again at once; a socket that dropped took the peer with it, so the
-  // page uses the relay until a new channel is made.
-  const signaling = new DeviceSignaling(deviceId, () => direct.tryNow(), () => direct.reintroduce(), () => direct.failed())
+  // made again at once; a socket that dropped took the peers with it, so the
+  // page uses the relay until a new channel is made. A live peer the
+  // backend closed is made again by the next live view.
+  const signaling = new DeviceSignaling(
+    deviceId,
+    () => direct.tryNow(),
+    (peer) => (peer === 'files' ? direct.reintroduce() : live.lost()),
+    () => {
+      live.lost()
+      direct.failed()
+    },
+  )
+  const after = (ms: number, run: () => void) => {
+    const timer = setTimeout(run, ms)
+    return () => clearTimeout(timer)
+  }
   const direct = new DeviceDirect(
     {
       ready: () => signaling.open,
       connect: (signal) =>
         connectPeer({
-          signaling,
+          signaling: signaling.peer('files'),
           stunUrls: product.snapshot?.stunUrls ?? [],
           permission: () => permission.value,
           busy: isBusy,
           signal,
         }),
-      after: (ms, run) => {
-        const timer = setTimeout(run, ms)
-        return () => clearTimeout(timer)
-      },
+      after,
       // Automatic decides from a measurement of the new peer's path.
       connected: () => void meter.measure(),
     },
     state,
   )
+  const live = new DeviceLive({
+    connect: (signal) =>
+      connectPeer({
+        signaling: signaling.peer('live'),
+        stunUrls: product.snapshot?.stunUrls ?? [],
+        permission: () => permission.value,
+        busy: isBusy,
+        live: true,
+        signal,
+      }),
+    closed: () => signaling.close('live'),
+    after,
+  })
+  // The live peer serves only while the choice is `direct`.
+  direct.onChange((choice) => {
+    if (choice !== 'direct')
+      live.close()
+  })
   const route = (): DeviceRoute => product.snapshot?.devices.find((device) => device.id === deviceId)?.route ?? 'automatic'
   const measured = meters.get(deviceId) ?? reactive(meterState())
   meters.set(deviceId, measured)
   const meter = new DeviceMeter(direct, signaling, route, measured)
   direct.setPermission(permission.value)
   direct.setRoute(route())
-  used.set(deviceId, { direct, signaling, meter })
-  return direct
+  const device = { direct, live, signaling, meter }
+  used.set(deviceId, device)
+  return device
 }
 
 /** Ends the use of a device whose runner went or that was revoked: its peer closes with its socket. */
@@ -201,6 +236,7 @@ function release(deviceId: string): void {
     return
   used.delete(deviceId)
   device.meter.close()
+  device.live.close()
   device.direct.stop()
   device.signaling.stop()
 }

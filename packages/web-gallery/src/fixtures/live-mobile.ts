@@ -427,7 +427,6 @@ class MobileView {
         }
         break
       case 'keyframe':
-      case 'ack':
       case 'release':
         break
     }

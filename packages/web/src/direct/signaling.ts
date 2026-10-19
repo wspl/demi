@@ -1,12 +1,14 @@
 /**
  * A device's signaling socket (`web-api-hosts.md` § Direct channel): the page's
- * introduction to the device's runner. It carries one offer at a time and
+ * introduction to the device's runner, for both of the page's peers with it,
+ * `files` and `live` (`direct-channel.md` § Making the channel), each
+ * message naming its peer. It carries one offer at a time for each peer and
  * its answer, each side's candidates found after them, and the page's
  * probes of the relay path with their answers; a socket that brings nothing, not even a heartbeat, for as
  * long as the page's sockets may is broken, and a closed or broken socket
  * connects again after the page's reconnect waits (`web-application.md`
- * § Liveness and reconnection). Its close closes the runner's peer, and the
- * backend closes the peer too when the user turns a plugin on or off, which
+ * § Liveness and reconnection). Its close closes the runner's peers, and the
+ * backend closes a peer too when the user turns a plugin on or off, which
  * the socket says so that the page offers again at once.
  */
 import { schemaRefusal } from '@demicodes/protocol'
@@ -21,7 +23,7 @@ import {
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
 import { apiUrl } from '../api/client'
-import { directMessageSchema, type DirectMessage, type DirectRequest } from '../api/generated/web-api'
+import { directMessageSchema, type DirectMessage, type DirectPeer as PeerName, type DirectRequest } from '../api/generated/web-api'
 import { ChannelFailed, type PeerSignaling } from './peer'
 
 /** An offer the runner did not answer. */
@@ -37,73 +39,94 @@ export function isBusy(error: unknown): boolean {
   return error instanceof Unanswered && error.code === 'busy'
 }
 
-export class DeviceSignaling implements PeerSignaling {
+/** What the socket holds for one of the page's peers. */
+class PeerSlot {
+  /** The offer waiting for its answer. */
+  answering: PromiseWithResolvers<string> | null = null
+  /** Who hears the runner's candidates. */
+  readonly listeners = new Set<(candidate: string) => void>()
+
+  /** The offer waiting, if any, fails with `error`. */
+  fail(error: Error): void {
+    this.answering?.reject(error)
+    this.answering = null
+  }
+}
+
+export class DeviceSignaling {
   private socket: WebSocket | null = null
   private silence: SilenceWatch | null = null
   private waiting: ReconnectWait | null = null
   private failures = 0
   private stopped = false
-  /** The offer waiting for its answer. */
-  private answering: PromiseWithResolvers<string> | null = null
-  /** Who hears the runner's candidates. */
-  private readonly listeners = new Set<(candidate: string) => void>()
+  private readonly peers: Record<PeerName, PeerSlot> = { files: new PeerSlot(), live: new PeerSlot() }
   /** Who hears the runner's answers to the relay probes. */
   private readonly pongs = new Set<(id: number) => void>()
 
   /**
    * @param deviceId The paired device the socket introduces the page to.
    * @param opened Called each time the socket opens: first, and again after it closed.
-   * @param peerClosed Called when the backend closed the runner's peer, whose introduction is out of date.
-   * @param dropped Called when the socket closed or was taken as broken: the backend closes the runner's peer then, so the page's peer is gone too.
+   * @param peerClosed Called when the backend closed the runner's peer `peer`, whose introduction is out of date.
+   * @param dropped Called when the socket closed or was taken as broken: the backend closes the runner's peers then, so the page's peers are gone too.
    */
   constructor(
     private readonly deviceId: string,
     private readonly opened: () => void,
-    private readonly peerClosed: () => void,
+    private readonly peerClosed: (peer: PeerName) => void,
     private readonly dropped: () => void,
   ) {
     this.connect()
   }
 
+  /** The signaling of the page's peer `peer`, as an attempt to make it uses it. */
+  peer(peer: PeerName): PeerSignaling {
+    return {
+      offer: (sdp) => this.offer(peer, sdp),
+      candidate: (candidate) => this.send({ type: 'candidate', peer, candidate }),
+      candidates: (listener) => {
+        const listeners = this.peers[peer].listeners
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    }
+  }
+
+  /** Tells the backend that the page closed its peer `peer`, so that the runner's closes too. */
+  close(peer: PeerName): void {
+    this.peers[peer].fail(new ChannelFailed('The page closed the peer'))
+    this.send({ type: 'close', peer })
+  }
+
   /** Sends an offer and answers the runner's answer; fails when the socket is not open or closes first. */
-  offer(sdp: string): Promise<string> {
+  private offer(peer: PeerName, sdp: string): Promise<string> {
     const socket = this.socket
     if (!socket || socket.readyState !== WebSocket.OPEN)
       return Promise.reject(new ChannelFailed('The signaling socket is not open'))
-    this.answering?.reject(new ChannelFailed('Another offer replaced this one'))
-    this.answering = Promise.withResolvers()
-    const request: DirectRequest = { type: 'offer', sdp }
-    socket.send(JSON.stringify(request))
-    return this.answering.promise
+    const slot = this.peers[peer]
+    slot.fail(new ChannelFailed('Another offer replaced this one'))
+    const answering = Promise.withResolvers<string>()
+    slot.answering = answering
+    this.send({ type: 'offer', peer, sdp })
+    return answering.promise
   }
 
-  /** Sends a candidate the browser found after the offer; one for a socket that closed meanwhile has no peer left. */
-  candidate(candidate: string): void {
+  /** Sends `request`; one for a socket that is not open has no peer left, or is a probe that is lost. */
+  private send(request: DirectRequest): void {
     const socket = this.socket
     if (!socket || socket.readyState !== WebSocket.OPEN)
       return
-    const request: DirectRequest = { type: 'candidate', candidate }
     socket.send(JSON.stringify(request))
   }
 
   /** Sends a probe of the relay path; one for a socket that is not open is lost. */
   ping(id: number): void {
-    const socket = this.socket
-    if (!socket || socket.readyState !== WebSocket.OPEN)
-      return
-    const request: DirectRequest = { type: 'ping', id }
-    socket.send(JSON.stringify(request))
+    this.send({ type: 'ping', id })
   }
 
   /** Calls `listener` with the id of each probe the runner answered; the answer stops it. */
   onPong(listener: (id: number) => void): () => void {
     this.pongs.add(listener)
     return () => this.pongs.delete(listener)
-  }
-
-  candidates(listener: (candidate: string) => void): () => void {
-    this.listeners.add(listener)
-    return () => this.listeners.delete(listener)
   }
 
   /** Whether the socket is open, so an offer can go. */
@@ -167,7 +190,7 @@ export class DeviceSignaling implements PeerSignaling {
     if (message.type === 'heartbeat')
       return
     if (message.type === 'closed') {
-      this.peerClosed()
+      this.peerClosed(message.peer)
       return
     }
     if (message.type === 'pong') {
@@ -179,12 +202,13 @@ export class DeviceSignaling implements PeerSignaling {
       return
     }
     if (message.type === 'candidate') {
-      for (const listener of [...this.listeners])
+      for (const listener of [...this.peers[message.peer].listeners])
         listener(message.candidate)
       return
     }
-    const answering = this.answering
-    this.answering = null
+    const slot = this.peers[message.peer]
+    const answering = slot.answering
+    slot.answering = null
     if (message.type === 'answer')
       answering?.resolve(message.sdp)
     else
@@ -209,8 +233,8 @@ export class DeviceSignaling implements PeerSignaling {
   private drop(): void {
     this.silence?.stop()
     this.silence = null
-    this.answering?.reject(new ChannelFailed('The signaling socket closed'))
-    this.answering = null
+    for (const slot of Object.values(this.peers))
+      slot.fail(new ChannelFailed('The signaling socket closed'))
     const socket = this.socket
     this.socket = null
     socket?.close()
