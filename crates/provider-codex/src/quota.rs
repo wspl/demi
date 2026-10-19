@@ -224,6 +224,7 @@ fn window_of(
             .map(|minutes| minutes * 60.0)
             .filter(|seconds| *seconds >= 1.0 && seconds.fract() == 0.0)
             .map(|seconds| seconds as u64),
+        requested_at: None,
         severity: severity(used_percent),
         scope: None,
     }

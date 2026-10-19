@@ -534,13 +534,14 @@ impl MediaCall<'_> {
         let mut retried = false;
         loop {
             let (headers, token) = credentials(refused.take()).await.map_err(MediaFailure::SignIn)?;
+            let requested_at = self.clock.now();
             let response = follow(http, ask, &headers, &ask.url).await?;
             let status = response.status();
             if let Some(quota) = self.quota {
                 let reported = quota.observe(Observation::Response {
                     status,
                     headers: response.headers(),
-                });
+                }, requested_at);
                 // The row merges a window reported twice, as a turn's does.
                 observed.extend(reported.into_iter().flatten());
             }

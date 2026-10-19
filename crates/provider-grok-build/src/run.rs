@@ -66,6 +66,7 @@ pub(crate) fn run(
                     return;
                 }
             };
+            let requested_at = shared.clock.now();
             let send = http
                 .post(shared.chat_url.clone())
                 .headers(request::inference_headers(&credentials, &shared.releases, &ids))
@@ -86,7 +87,7 @@ pub(crate) fn run(
             if let Some(observed) = shared.quota.observed(Observation::Response {
                 status: response.status(),
                 headers: response.headers(),
-            }) {
+            }, requested_at) {
                 yield observed;
             }
             if response.status() == StatusCode::UNAUTHORIZED && refused_token.is_none() {

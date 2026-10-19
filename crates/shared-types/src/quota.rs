@@ -94,6 +94,14 @@ pub struct QuotaWindow {
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub period_seconds: Option<u64>,
+    /// When the request whose response gave this value started, the
+    /// probe's or the inference request's (`usage-and-quota.md` § Probe and
+    /// observation); null when unknown, which any update replaces. A
+    /// snapshot stored before windows kept it reads as unknown.
+    #[serde(default)]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub requested_at: Option<Timestamp>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<QuotaSeverity>")]
     #[garde(skip)]

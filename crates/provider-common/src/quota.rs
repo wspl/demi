@@ -65,14 +65,16 @@ impl ProviderQuota {
 
     /// Asks the vendor's usage endpoint about the account and merges the
     /// answer into its snapshot: the probe sets the plan and the account
-    /// label and replaces the windows it names. A family whose probe would
-    /// spend an inference request is never probed.
+    /// label and replaces the windows it names whose value comes from a
+    /// request that started no later than the probe. A family whose probe
+    /// would spend an inference request is never probed.
     pub async fn probe(&self) -> Result<Arc<QuotaSnapshot>, QuotaError> {
         match self.source.probe_cost() {
             None => return Err(QuotaError::Unsupported),
             Some(ProbeCost::Inference) => return Err(QuotaError::RequiresInference),
             Some(ProbeCost::Free) => {}
         }
+        let requested_at = self.clock.now();
         let reading = self.source.probe().await?;
         let observed_at = self.clock.now();
         let mut reading = Some(reading);
@@ -80,23 +82,29 @@ impl ProviderQuota {
             // The store calls the merge once; a second call would find the
             // reading taken and merge an empty one.
             let reading = reading.take().unwrap_or_default();
-            merge(previous, Update::Probe(reading), observed_at)
+            merge(previous, Update::Probe(reading), requested_at, observed_at)
         }))
     }
 
     /// Merges the windows a live response reports into the account's
     /// snapshot, keeping its plan and label, and answers them, which the
     /// call's usage ledger row keeps (`usage-and-quota.md` § Usage ledger).
-    /// A response the source cannot read changes nothing and answers none,
-    /// and observing never fails the request.
-    pub fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+    /// `requested_at` is when the inference request whose response it reads
+    /// started: a window whose value comes from a request that started later
+    /// keeps it. A response the source cannot read changes nothing and
+    /// answers none, and observing never fails the request.
+    pub fn observe(
+        &self,
+        observation: Observation<'_>,
+        requested_at: Timestamp,
+    ) -> Option<Vec<QuotaWindow>> {
         let report = self.source.observe(observation)?;
         let windows = report.windows.clone();
         let observed_at = self.clock.now();
         let mut merged = Some(report);
         self.store.update(&mut |previous| {
             let report = merged.take().unwrap_or_default();
-            merge(previous, Update::Observation(report), observed_at)
+            merge(previous, Update::Observation(report), requested_at, observed_at)
         });
         Some(windows)
     }
@@ -110,8 +118,14 @@ impl ProviderQuota {
 
     /// [`Self::observe`] as the run's event for the usage ledger, none when
     /// the response reported no window.
-    pub fn observed(&self, observation: Observation<'_>) -> Option<crate::ProviderEvent> {
-        let windows = self.observe(observation).filter(|windows| !windows.is_empty())?;
+    pub fn observed(
+        &self,
+        observation: Observation<'_>,
+        requested_at: Timestamp,
+    ) -> Option<crate::ProviderEvent> {
+        let windows = self
+            .observe(observation, requested_at)
+            .filter(|windows| !windows.is_empty())?;
         Some(crate::ProviderEvent::Call(crate::CallEvent::Observed(windows)))
     }
 }
@@ -254,12 +268,15 @@ enum Update {
 
 /// The one merge of `usage-and-quota.md` § Probe and observation: a probe
 /// sets the plan and the account label; an observation keeps them; either
-/// removes the windows it states do not exist, replaces the windows it
-/// names, keeps the others, and adds new ones after them in the order it
-/// read them.
+/// removes the windows it states do not exist, replaces each window it
+/// names whose value comes from a request that started no later than its
+/// own, `requested_at`, keeps the others, and adds new ones after them in
+/// the order it read them. A window keeps the time of the request its value
+/// came from.
 fn merge(
     previous: Option<&QuotaSnapshot>,
     update: Update,
+    requested_at: Timestamp,
     observed_at: Timestamp,
 ) -> QuotaSnapshot {
     let (source, plan, account_label, windows, absent) = match update {
@@ -283,7 +300,14 @@ fn merge(
         .unwrap_or_default();
     merged.retain(|kept| !absent.contains(&kept.id));
     for window in windows {
+        let window = QuotaWindow {
+            requested_at: Some(requested_at),
+            ..window
+        };
         match merged.iter_mut().find(|kept| kept.id == window.id) {
+            // A request that started later already said more recently what
+            // the window is: this response is older news that arrived last.
+            Some(kept) if kept.requested_at.is_some_and(|kept| kept > requested_at) => {}
             Some(kept) => *kept = window,
             None => merged.push(window),
         }

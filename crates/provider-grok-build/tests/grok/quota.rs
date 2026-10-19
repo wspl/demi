@@ -11,7 +11,7 @@ use demi_provider_common::{
 use demi_shared_types::{QuotaKind, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
 use serde_json::{Value, json};
 
-use crate::{ACCOUNT, CHAT, chat, json_answer, pool_with, provider, run, runtime_of, secret};
+use crate::{ACCOUNT, CHAT, NOW, chat, json_answer, pool_with, provider, run, runtime_of, secret};
 
 /// The snapshot of a probe whose user and billing endpoints answer `user`
 /// and `billing`, for an account whose sign-in names no email.
@@ -62,6 +62,8 @@ async fn the_probe_asks_the_subscription_and_the_credits_billing_together() {
             unit: Some(QuotaUnit::Credits),
             resets_at: Some("2026-08-01T00:00:00.000Z".parse().unwrap()),
             period_seconds: None,
+            // The probe was sent at NOW.
+            requested_at: Some(NOW.parse().unwrap()),
             severity: Some(QuotaSeverity::Normal),
             scope: None,
         }]

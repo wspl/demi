@@ -335,6 +335,7 @@ is one limit the vendor meters:
 | `used`, `limit`, `unit` | Amounts, when the vendor reports them, in the window's unit, such as `credits`, `requests` or `tokens` |
 | `resetsAt` | When the window resets, or null when unknown |
 | `periodSeconds` | How long one period of the window lasts, as the vendor states it (Codex's `limit_window_seconds`, Claude's five-hour and seven-day windows, Grok's weekly credits or billing period), or null when unknown |
+| `requestedAt` | When the request whose response gave the window's value started ([Probe and observation](#probe-and-observation)), or null when unknown, which any update replaces |
 | `severity` | `critical` from 95% used, `warning` from 80%, `normal` below that, and null when the share is unknown; a severity the vendor states is used instead |
 | `scope` | What the window applies to when that is narrower than the account, such as one model |
 
@@ -420,7 +421,13 @@ The two paths can report different windows. A probe sets the plan and the
 account label and replaces the windows it names; an observation replaces the
 windows it names and keeps the plan and the label. A window the update says
 the account does not have leaves the snapshot; a window the update does not
-name stays, and a new window is added after the others. Each window
+name stays, and a new window is added after the others. An update carries
+when its request started, the probe's or the inference request's whose
+response it reads, and a window keeps that time with its value: only an
+update whose request started at or after the window's time replaces it. A
+long request that started first and ends last thus brings back the older
+reading and leaves the newer one in place, for example a main agent's call
+that reports 98% after a subagent's later call reported 99%. Each window
 therefore shows what its own source said last: for example, Grok Build's
 monthly credits come from probes and its request window from observations, and
 neither replaces the other. Each update reads, merges and writes the account's
