@@ -203,6 +203,7 @@ impl QuotaScript {
                 plan: None,
                 account_label: Some("device@example.test".into()),
                 windows,
+                absent: Vec::new(),
             })),
             windows_of: Mutex::default(),
             probes: AtomicUsize::new(0),
@@ -627,7 +628,7 @@ impl QuotaSource for Probe {
         Box::pin(async move { reading })
     }
 
-    fn observe(&self, _: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+    fn observe(&self, _: Observation<'_>) -> Option<demi_provider_common::quota::ObservedWindows> {
         None
     }
 }

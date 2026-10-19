@@ -418,8 +418,9 @@ Two paths fill a snapshot:
 
 The two paths can report different windows. A probe sets the plan and the
 account label and replaces the windows it names; an observation replaces the
-windows it names and keeps the plan and the label. A window the update does
-not name stays, and a new window is added after the others. Each window
+windows it names and keeps the plan and the label. A window the update says
+the account does not have leaves the snapshot; a window the update does not
+name stays, and a new window is added after the others. Each window
 therefore shows what its own source said last: for example, Grok Build's
 monthly credits come from probes and its request window from observations, and
 neither replaces the other. Each update reads, merges and writes the account's
@@ -464,8 +465,8 @@ reset time.
 
 | Part | Behavior |
 |---|---|
-| Probe | `GET /wham/usage` on the ChatGPT backend, with the authorization and `ChatGPT-Account-Id` headers a request carries. It reads `plan_type` and the `rate_limit` object's `primary_window` and `secondary_window`: `used_percent`, `limit_window_seconds` and `reset_at`. This is the request the Codex CLI makes for its own status. |
-| Observation | The `x-codex-primary-*` and `x-codex-secondary-*` headers, `used-percent`, `window-minutes` and `reset-at`, on every response of Codex's service, the answer to a WebSocket handshake and a refusal included. |
+| Probe | `GET /wham/usage` on the ChatGPT backend, with the authorization and `ChatGPT-Account-Id` headers a request carries. It reads `plan_type` and the `rate_limit` object's `primary_window` and `secondary_window`: `used_percent`, `limit_window_seconds` and `reset_at`. A window given as `null` is one the account does not have; a missing key says nothing. This is the request the Codex CLI makes for its own status. |
+| Observation | The `x-codex-primary-*` and `x-codex-secondary-*` headers, `used-percent`, `window-minutes` and `reset-at`, on every response of Codex's service, the answer to a WebSocket handshake and a refusal included. Codex sends them for a window the account does not have too, as a placeholder: `used-percent` 0, `window-minutes` 0 or absent and no readable `reset-at`. That shape is a window the account does not have, as the Codex CLI reads it. |
 | Windows | `primary` and `secondary`, as percentages, each a `limit` with its length as its period, which may be unknown. |
 | Plan | `plan_type`, such as `plus`, `pro` or `team`, shown with underscores as spaces and a capital first letter. |
 | Account label | The account's label. |

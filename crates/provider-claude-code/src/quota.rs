@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use demi_host_interface::{Process, ProcessOutput};
 use demi_provider_common::quota::{
-    Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent, plan_label,
-    rfc3339, severity,
+    Observation, ObservedWindows, ProbeCost, ProbeReading, QuotaError, QuotaSource,
+    clamp_used_percent, plan_label, rfc3339, severity,
 };
 use demi_provider_common::wire::{NonEmpty, Reported, Tagged};
 use demi_shared_types::{QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaUnit, QuotaWindow, StreamKind, Timestamp};
@@ -104,12 +104,13 @@ impl QuotaSource for ClaudeQuota {
                     }),
                 account_label: None,
                 windows: usage.windows(),
+                absent: Vec::new(),
             })
         })
     }
 
     /// The windows a `rate_limit_event` line of the CLI's output reports.
-    fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+    fn observe(&self, observation: Observation<'_>) -> Option<ObservedWindows> {
         let Observation::CliLine(line) = observation else {
             return None;
         };
@@ -122,7 +123,7 @@ impl QuotaSource for ClaudeQuota {
             .filter(|info| info.is_object())?;
         let info = RateLimitInfo::deserialize(info).ok()?;
         let windows = info.windows();
-        (!windows.is_empty()).then_some(windows)
+        (!windows.is_empty()).then(|| windows.into())
     }
 }
 

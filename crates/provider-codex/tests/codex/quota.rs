@@ -149,3 +149,84 @@ async fn a_usage_status_the_backend_refuses_fails_the_probe() {
     );
     assert!(provider.quota().unwrap().latest().is_none());
 }
+
+/// The headers Codex sends for a Pro account with a weekly window only, as
+/// captured: a placeholder for the secondary window it does not have.
+fn weekly_only(response: MockResponse) -> MockResponse {
+    response
+        .header("x-codex-primary-used-percent", "82")
+        .header("x-codex-primary-window-minutes", "10080")
+        .header("x-codex-primary-reset-at", "1792874449")
+        .header("x-codex-secondary-used-percent", "0")
+        .header("x-codex-secondary-window-minutes", "0")
+        .header("x-codex-secondary-reset-at", "")
+}
+
+fn ids(provider: &demi_provider_codex::CodexProvider) -> Vec<(String, Option<u64>)> {
+    windows(provider)
+        .into_iter()
+        .map(|(id, _, period, _, _)| (id, period))
+        .collect()
+}
+
+#[tokio::test]
+async fn the_placeholder_codex_sends_for_a_window_the_account_lacks_is_no_window_and_removes_one_kept()
+{
+    let vendor = MockVendor::start().await;
+    vendor.respond_at(RESPONSES, weekly_only(completed()));
+    // A real window may be unused yet: its length makes it one.
+    vendor.respond_at(
+        RESPONSES,
+        completed()
+            .header("x-codex-secondary-used-percent", "0")
+            .header("x-codex-secondary-window-minutes", "300")
+            .header("x-codex-secondary-reset-at", ""),
+    );
+    vendor.respond_at(RESPONSES, weekly_only(completed()));
+    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
+    let provider = provider(&vendor, &pool, TransportMode::Sse);
+    let mut runtime = runtime_of(&provider);
+    let week = Some(7 * 86_400);
+
+    run(runtime.as_mut(), inference_request()).await;
+    assert_eq!(ids(&provider), [("primary".into(), week)]);
+
+    run(runtime.as_mut(), inference_request()).await;
+    assert_eq!(
+        ids(&provider),
+        [("primary".into(), week), ("secondary".into(), Some(5 * 3600))]
+    );
+
+    run(runtime.as_mut(), inference_request()).await;
+    assert_eq!(ids(&provider), [("primary".into(), week)]);
+}
+
+#[tokio::test]
+async fn a_probe_that_reports_a_window_as_null_removes_it_from_the_snapshot() {
+    let vendor = MockVendor::start().await;
+    vendor.respond_at(
+        RESPONSES,
+        completed()
+            .header("x-codex-secondary-used-percent", "12")
+            .header("x-codex-secondary-window-minutes", "300"),
+    );
+    let usage = json!({
+        "plan_type": "pro",
+        "rate_limit": {
+            "primary_window": { "used_percent": 82, "limit_window_seconds": 604_800, "reset_after_seconds": 60, "reset_at": 1_700_000_000 },
+            "secondary_window": null,
+        },
+    });
+    vendor.respond_at(
+        "/backend-api/wham/usage",
+        MockResponse::status(200).chunk(usage.to_string()),
+    );
+    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
+    let provider = provider(&vendor, &pool, TransportMode::Sse);
+    let mut runtime = runtime_of(&provider);
+    run(runtime.as_mut(), inference_request()).await;
+    assert_eq!(ids(&provider), [("secondary".into(), Some(5 * 3600))]);
+
+    provider.quota().unwrap().probe().await.unwrap();
+    assert_eq!(ids(&provider), [("primary".into(), Some(7 * 86_400))]);
+}

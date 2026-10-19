@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     quota::{
-        Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
-        header_number, rfc3339, severity, used_percent_from_ratio,
+        Observation, ObservedWindows, ProbeCost, ProbeReading, QuotaError, QuotaSource,
+        clamp_used_percent, header_number, rfc3339, severity, used_percent_from_ratio,
     },
     wire::{Reported, ReportedString},
 };
@@ -55,11 +55,11 @@ impl QuotaSource for GrokQuota {
         })
     }
 
-    fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+    fn observe(&self, observation: Observation<'_>) -> Option<ObservedWindows> {
         let Observation::Response { headers, .. } = observation else {
             return None;
         };
-        rate_limit_windows(headers)
+        rate_limit_windows(headers).map(ObservedWindows::from)
     }
 }
 
@@ -220,6 +220,7 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
         plan,
         account_label: email.or(user.email.into_inner()),
         windows,
+        absent: Vec::new(),
     }
 }
 
