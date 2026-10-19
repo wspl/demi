@@ -141,9 +141,10 @@ them, as an editor's bottom panel keeps one for each of its views. On a
 phone a window takes the whole screen and has no edge to drag. Its windows, and the windows they open, such as
 the media viewer over a screenshot in a subagent's transcript or the
 terminal of a running command, stand in the order they opened, the newest in
-front. A press outside every window, on the transcript, the sidebar, the composer,
-the dock's empty space or the cards above it, closes the newest window
-alone, as Escape does, and still does what it does there, so a click on a
+front. Only a press in the sidebar or in the conversation's column outside
+every window, on the transcript, the composer, the dock's empty space or
+the cards above it, closes the newest window alone, as Escape does, and
+still does what it does there, so a click on a
 link closes the window and follows the link, and a click in the message
 puts the caret there. A second press closes the next one. A press in a
 window closes nothing. Typing does not close a window: a user whose caret

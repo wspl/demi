@@ -13,6 +13,7 @@ import { useBackClose } from '../overlay/back-close'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ASIDE_SHARE, SIDEBAR_WIDTH, asideBounds, asideShareFor, asideWidthFor } from './sidebar-width'
 import { sidebarDrawerKey } from './sidebar-drawer'
+import { KEEPS_WINDOWS } from '../ui/window-stack'
 
 /**
  * The app frame: the sidebar, the main pane, and the work panel (aside) on
@@ -25,6 +26,11 @@ import { sidebarDrawerKey } from './sidebar-drawer'
  *
  * Each of the three panes is a region (`data-region`, `ui/region.ts`): a
  * menu opened from a trigger in it grows toward its inside.
+ *
+ * The work panel and its divider keep the session's windows open
+ * (`KEEPS_WINDOWS`, `ui/window-stack.ts`): only a press in the sidebar or
+ * the main pane closes one, so a subagent's changes can be read in the
+ * panel beside its Agents window.
  *
  * On a phone (`ui/phone.ts`) one pane shows at a time. The sidebar is a
  * drawer from the left, 85% of the screen and at most 320 px, over a scrim
@@ -343,6 +349,7 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
     <!-- The handle works in px; the model keeps the share those px are of the shared width. -->
     <ResizeHandle
       v-if="asideOpen && $slots.aside && !phone"
+      v-bind="{ [KEEPS_WINDOWS]: '' }"
       :model-value="shownAsideWidth"
       side="end"
       :min="asideDragBounds.min"
@@ -357,6 +364,7 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
       <div
         v-if="asideOpen && $slots.aside"
         data-region
+        v-bind="{ [KEEPS_WINDOWS]: '' }"
         :class="phone ? 'frame-aside fixed inset-0 z-40' : 'h-full max-w-full shrink-0'"
         :style="phone
           ? { '--aside-pull': panelPull === null ? undefined : `${panelPull}px` }
