@@ -89,12 +89,17 @@ impl Rect {
 }
 
 /// The device's screen as it shows now, turned upright: its size in points
-/// and in pixels.
+/// and in pixels, and the size its screenshots are drawn at, which every
+/// coordinate a command takes or prints is in.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Screen {
     pub orientation: Orientation,
     pub points: Points,
     pub pixels: (u32, u32),
+    /// The screenshot's size: the pixels fitted into
+    /// [`SCREENSHOT_LONG_SIDE`](demi_command_package_mobile_protocol::mobile::SCREENSHOT_LONG_SIDE)
+    /// by the rule of the platform that draws it.
+    pub screenshot: (u32, u32),
 }
 
 /// One element of the screen's tree as the platform's accessibility
@@ -253,8 +258,8 @@ pub trait Device: Send + Sync + 'static {
     /// emulator reports its display, or, for a simulator, which reports
     /// none, off from a Lock pressed while it was on until the next input.
     fn awake(&self) -> watch::Receiver<bool>;
-    /// The screen upright, its long side at most `long_side` pixels.
-    fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>>;
+    /// The screen upright, at its screen's screenshot size.
+    fn screenshot(&self) -> BoxFuture<'_, Result<Png>>;
     /// The screen's tree, every window, alerts and the keyboard included.
     fn tree(&self) -> BoxFuture<'_, Result<Vec<RawElement>>>;
     fn touch(&self, phase: TouchPhase, at: Points) -> BoxFuture<'_, Result<()>>;

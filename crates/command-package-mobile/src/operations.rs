@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use demi_command_package_mobile_protocol::mobile::{
     Appearance, AppearanceChoice, AppearanceResult, CloseResult, Direction, ElementRef,
     INLINE_BYTES, InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
-    MobilePlatform, RecordAction, RecordResult, Rotation, RotateResult, SCREENSHOT_LONG_SIDE,
+    MobilePlatform, RecordAction, RecordResult, Rotation, RotateResult,
     ScreenshotResult, SwipeResult, TapResult, TypeResult, WAIT_SECONDS, WaitResult,
 };
 use demi_live_view_protocol::LivePoint;
@@ -152,7 +152,7 @@ pub async fn run(
             }
             (MobileOperation::Screenshot(input), Some(open)) => {
                 let settled = settle(&open).await;
-                let png = open.device.screenshot(SCREENSHOT_LONG_SIDE).await?;
+                let png = open.device.screenshot().await?;
                 let about = format!("{} · {} · {}×{}", open.handle, open.name, png.width, png.height);
                 let mut notes = Vec::new();
                 if !settled {

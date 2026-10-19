@@ -42,7 +42,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
     live::LiveCorners,
-    mobile::{Appearance, MobilePlatform, Orientation, PowerState},
+    mobile::{Appearance, MobilePlatform, Orientation, PowerState, SCREENSHOT_LONG_SIDE},
 };
 
 use crate::{
@@ -326,12 +326,11 @@ impl Driver for Android {
                 .await
                 .map_err(|status| DriverError::Failed(format!("{native_id}'s status: {}", status.message())))?
                 .into_inner();
-            let config = |key: &str| status.platform_config.get(key).and_then(|value| value.parse::<f64>().ok());
-            let panel = (
-                config("hw.lcd.width").unwrap_or(1080.0),
-                config("hw.lcd.height").unwrap_or(2400.0),
-            );
-            let density = config("hw.lcd.density").unwrap_or(BASE_DENSITY) / BASE_DENSITY;
+            let config = |key: &str| hardware(&status, key).ok_or_else(|| {
+                DriverError::Failed(format!("{native_id}'s emulator does not say its screen's {key}"))
+            });
+            let panel = (config("hw.lcd.width")?, config("hw.lcd.height")?);
+            let density = config("hw.lcd.density")? / BASE_DENSITY;
             // The emulator does not say which device it emulates; its
             // AVD's files do.
             let art = self
@@ -374,6 +373,31 @@ impl Driver for Android {
     }
 }
 
+/// The number the emulator's hardware configuration gives `key`, from the
+/// map a later emulator sends or the list emulators up to at least 36.6
+/// send instead, leaving the map empty.
+fn hardware(status: &proto::EmulatorStatus, key: &str) -> Option<f64> {
+    let listed = || {
+        let entries = status.hardware_config.as_ref()?;
+        entries.entry.iter().find(|entry| entry.key == key).map(|entry| entry.value.as_str())
+    };
+    status.platform_config.get(key).map(String::as_str).or_else(listed)?.parse().ok()
+}
+
+/// The size the emulator draws a picture of `pixels` at when asked to fit
+/// it into a box whose long side is `long_side` and whose short side is the
+/// picture's own: each side scaled by the long side's factor and cut down
+/// to a whole pixel, as the emulator does. Never enlarged.
+fn emulator_fit((width, height): (u32, u32), long_side: u32) -> (u32, u32) {
+    let long = width.max(height).max(1);
+    if long <= long_side {
+        return (width, height);
+    }
+    // In whole numbers, so the long side is `long_side` exactly.
+    let side = |pixels: u32| ((u64::from(pixels) * u64::from(long_side) / u64::from(long)) as u32).max(1);
+    (side(width), side(height))
+}
+
 /// The screen's sizes, which turning moves between the three spaces.
 #[derive(Debug, Clone, Copy)]
 struct Geometry {
@@ -387,13 +411,15 @@ impl Geometry {
     /// The screen held `turns` quarter turns counterclockwise.
     fn screen(&self, turns: u8) -> Screen {
         let (width, height) = self.turned_size(turns);
+        let pixels = (width.round() as u32, height.round() as u32);
         Screen {
             orientation: orientation(turns),
             points: Points {
                 x: width / self.density,
                 y: height / self.density,
             },
-            pixels: (width.round() as u32, height.round() as u32),
+            pixels,
+            screenshot: emulator_fit(pixels, SCREENSHOT_LONG_SIDE),
         }
     }
 
@@ -531,6 +557,43 @@ impl AndroidDevice {
             })
             .await
             .clone()
+    }
+
+    /// The whole picture, scaled to the size the emulator's own rule gives
+    /// it, and encoded here.
+    async fn scaled_screenshot(&self) -> Result<Png> {
+        let image = self
+            .client
+            .clone()
+            .get_screenshot(ImageFormat {
+                format: ImgFormat::Rgb888.into(),
+                ..ImageFormat::default()
+            })
+            .await
+            .map_err(failed("the screenshot"))?
+            .into_inner();
+        let (width, height) = image.format.as_ref().map_or((0, 0), |format| (format.width, format.height));
+        let length = image.image.len();
+        let picture = image::RgbImage::from_raw(width, height, image.image.into()).ok_or_else(|| {
+            DriverError::Failed(format!("the screenshot's {length} bytes are no {width} × {height} picture"))
+        })?;
+        // Sized by the picture's own sides, which are the screen's unless
+        // it turned meanwhile.
+        let (width, height) = emulator_fit((width, height), SCREENSHOT_LONG_SIDE);
+        tokio::task::spawn_blocking(move || {
+            let scaled = image::imageops::resize(&picture, width, height, image::imageops::FilterType::CatmullRom);
+            let mut png = std::io::Cursor::new(Vec::new());
+            scaled
+                .write_to(&mut png, image::ImageFormat::Png)
+                .map_err(|error| DriverError::Failed(format!("the screenshot did not encode: {error}")))?;
+            Ok(Png {
+                bytes: png.into_inner().into(),
+                width,
+                height,
+            })
+        })
+        .await
+        .map_err(|error| DriverError::Failed(format!("the screenshot was not drawn: {error}")))?
     }
 
     /// Reads the screen's corners in the background, never holding up the
@@ -879,28 +942,44 @@ impl Device for AndroidDevice {
         self.awake.subscribe()
     }
 
-    fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>> {
+    fn screenshot(&self) -> BoxFuture<'_, Result<Png>> {
         Box::pin(async move {
-            let (width, height) = self.screen.borrow().pixels;
-            let factor = (f64::from(long_side) / f64::from(width.max(height).max(1))).min(1.0);
+            let screen = *self.screen.borrow();
+            let (width, height) = screen.screenshot;
+            // The box's long side is the screenshot's and its short side the
+            // screen's own, so the long side alone sets the emulator's
+            // factor and it draws the screenshot's size (`emulator_fit`).
+            let asked = match screen.pixels {
+                (wide, high) if wide >= high => (width, high),
+                (wide, _) => (wide, height),
+            };
             let image = self
                 .client
                 .clone()
                 .get_screenshot(ImageFormat {
                     format: ImgFormat::Png.into(),
-                    width: (f64::from(width) * factor).round() as u32,
-                    height: (f64::from(height) * factor).round() as u32,
+                    width: asked.0,
+                    height: asked.1,
                     ..ImageFormat::default()
                 })
                 .await
                 .map_err(failed("the screenshot"))?
                 .into_inner();
-            let (width, height) = image.format.as_ref().map_or((0, 0), |format| (format.width, format.height));
-            Ok(Png {
-                bytes: image.image,
-                width,
-                height,
-            })
+            let drawn = image.format.as_ref().map_or((0, 0), |format| (format.width, format.height));
+            if drawn == (width, height) {
+                return Ok(Png {
+                    bytes: image.image,
+                    width,
+                    height,
+                });
+            }
+            // An emulator that rounds otherwise, or a picture already
+            // turned the other way, is drawn whole and scaled here, a few
+            // times slower than the emulator's own (about 220 ms more for a
+            // 1080 × 2424 screen): the screenshot is never a size the
+            // coordinates are not in.
+            tracing::info!("the emulator drew {drawn:?} for {:?}; scaling its whole picture", (width, height));
+            self.scaled_screenshot().await
         })
     }
 

@@ -1,9 +1,10 @@
 //! Screenshot pixels and the screen's points (`mobile.md` § Commands): the
 //! screenshot is the screen's pixels scaled so its long side is at most
-//! [`SCREENSHOT_LONG_SIDE`], and every coordinate a command takes or prints
-//! is one of its pixels, so the agent taps what it sees.
+//! 1568, at the size its driver says ([`Screen::screenshot`]), and every
+//! coordinate a command takes or prints is one of its pixels, so the agent
+//! taps what it sees.
 
-use demi_command_package_mobile_protocol::mobile::{Frame, Point, SCREENSHOT_LONG_SIDE};
+use demi_command_package_mobile_protocol::mobile::{Frame, Point};
 
 use crate::driver::{Points, Rect, Screen};
 
@@ -18,13 +19,19 @@ pub struct Scale {
     down: f64,
 }
 
+/// The size of a picture of `pixels` scaled so its long side is at most
+/// `long_side`, never enlarged, each side rounded, as the iOS helper draws
+/// its screenshots.
+pub fn fitted((pixels_wide, pixels_high): (u32, u32), long_side: u32) -> (u32, u32) {
+    let long = pixels_wide.max(pixels_high).max(1);
+    let factor = (f64::from(long_side) / f64::from(long)).min(1.0);
+    let side = |pixels: u32| ((f64::from(pixels) * factor).round() as u32).max(1);
+    (side(pixels_wide), side(pixels_high))
+}
+
 impl Scale {
     pub fn of(screen: &Screen) -> Self {
-        let (pixels_wide, pixels_high) = screen.pixels;
-        let long = pixels_wide.max(pixels_high).max(1);
-        let factor = (f64::from(SCREENSHOT_LONG_SIDE) / f64::from(long)).min(1.0);
-        let side = |pixels: u32| ((f64::from(pixels) * factor).round() as u32).max(1);
-        let (width, height) = (side(pixels_wide), side(pixels_high));
+        let (width, height) = screen.screenshot;
         Self {
             width,
             height,

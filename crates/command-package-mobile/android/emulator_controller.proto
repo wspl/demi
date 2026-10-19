@@ -118,12 +118,25 @@ message TouchEvent {
     int32 display = 2;
 }
 
+message Entry {
+    string key = 1;
+    string value = 2;
+}
+
+message EntryList {
+    repeated Entry entry = 1;
+}
+
 message EmulatorStatus {
     string version = 1;
     uint64 uptime = 2;
     // Whether the guest finished booting.
     bool booted = 3;
-    // The hardware configuration, such as hw.lcd.density.
+    // The hardware configuration, such as hw.lcd.density, as emulators up
+    // to at least 36.6 send it; the interface calls it deprecated for
+    // platformConfig, which those leave empty.
+    EntryList hardwareConfig = 5;
+    // The same, where a later emulator sends it.
     map<string, string> platformConfig = 8;
 }
 

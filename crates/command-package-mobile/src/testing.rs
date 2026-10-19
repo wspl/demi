@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
     live::LiveCorners,
-    mobile::{Appearance, Orientation, MobilePlatform, PowerState},
+    mobile::{Appearance, Orientation, MobilePlatform, PowerState, SCREENSHOT_LONG_SIDE},
 };
 
 use crate::driver::{
@@ -181,6 +181,7 @@ impl Driver for FakeDriver {
                     orientation: Orientation::Portrait,
                     points,
                     pixels,
+                    screenshot: crate::scale::fitted(pixels, SCREENSHOT_LONG_SIDE),
                 }),
                 drawn: watch::Sender::new(0),
                 awake: watch::Sender::new(true),
@@ -291,15 +292,14 @@ impl Device for FakeDevice {
         self.awake.subscribe()
     }
 
-    fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>> {
+    fn screenshot(&self) -> BoxFuture<'_, Result<Png>> {
         Box::pin(async move {
-            let (width, height) = self.screen.borrow().pixels;
-            let factor = (f64::from(long_side) / f64::from(width.max(height))).min(1.0);
+            let (width, height) = self.screen.borrow().screenshot;
             self.log("screenshot".into());
             Ok(Png {
                 bytes: Bytes::from_static(b"\x89PNG fake"),
-                width: (f64::from(width) * factor).round() as u32,
-                height: (f64::from(height) * factor).round() as u32,
+                width,
+                height,
             })
         })
     }
@@ -395,6 +395,7 @@ impl Device for FakeDevice {
                         y: screen.points.x,
                     };
                     screen.pixels = (screen.pixels.1, screen.pixels.0);
+                    screen.screenshot = (screen.screenshot.1, screen.screenshot.0);
                 }
             });
             Ok(())
