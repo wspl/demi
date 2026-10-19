@@ -1277,6 +1277,55 @@ impl TestBackend {
         answer(request.send().await.unwrap()).await
     }
 
+    /// A request whose head declares a body of `length` bytes, sent without
+    /// the body, for a refusal of a body over a limit. The backend refuses a
+    /// declared length over the limit without reading the body and closes
+    /// the connection, so a client still writing the body when the refusal
+    /// comes can meet the connection's reset instead of the answer.
+    pub async fn declaring(
+        &self,
+        method: Method,
+        path: &str,
+        headers: &[(&str, &str)],
+        length: usize,
+    ) -> Answer {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let address = self.address();
+        let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+        let mut head = format!("{method} {path} HTTP/1.1\r\nHost: {address}\r\n");
+        for (name, value) in headers {
+            head.push_str(&format!("{name}: {value}\r\n"));
+        }
+        head.push_str(&format!("Content-Length: {length}\r\nConnection: close\r\n\r\n"));
+        socket.write_all(head.as_bytes()).await.unwrap();
+        let mut answer = Vec::new();
+        tokio::time::timeout(Duration::from_secs(10), socket.read_to_end(&mut answer))
+            .await
+            .expect("the backend answers and closes within the hang guard")
+            .unwrap();
+        let split = answer
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .expect("an answer has a head");
+        let head = std::str::from_utf8(&answer[..split]).unwrap();
+        let mut lines = head.split("\r\n");
+        let status = lines.next().unwrap().split_whitespace().nth(1).unwrap();
+        let mut headers = HeaderMap::new();
+        for line in lines {
+            let (name, value) = line.split_once(':').unwrap();
+            headers.append(
+                reqwest::header::HeaderName::from_bytes(name.trim().as_bytes()).unwrap(),
+                value.trim().parse().unwrap(),
+            );
+        }
+        Answer {
+            status: StatusCode::from_bytes(status.as_bytes()).unwrap(),
+            headers,
+            body: answer[split + 4..].to_vec(),
+        }
+    }
+
     /// A call of an automation's URL, `/hooks/<id>`, as another system
     /// makes it: no session, its own headers and body.
     pub async fn hook(&self, id: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Answer {

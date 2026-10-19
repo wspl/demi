@@ -19,7 +19,7 @@ use demi_web_api_protocol::automations::{AutomationAnswer, AutomationDto, Automa
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::permissions::PermissionRequest;
 use hmac::{Hmac, Mac};
-use reqwest::StatusCode;
+use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::Sha256;
 
@@ -483,7 +483,9 @@ async fn a_url_takes_only_its_secret_and_makes_one_run_of_a_burst() {
     }
     assert_eq!(backend.hook(other, &[], Vec::new()).await.refusal(), (StatusCode::TOO_MANY_REQUESTS, ErrorCode::RateLimited));
     // A body over 1 MiB is refused.
-    let large = backend.hook(&id, &[("authorization", &bearer)], vec![b'x'; 1024 * 1024 + 1]).await;
+    let large = backend
+        .declaring(Method::POST, &format!("/hooks/{id}"), &[("authorization", &bearer)], 1024 * 1024 + 1)
+        .await;
     assert_eq!(large.status, StatusCode::PAYLOAD_TOO_LARGE);
     backend.close().await;
 }
