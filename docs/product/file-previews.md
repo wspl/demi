@@ -73,6 +73,15 @@ GitHub a file's own bar over its contents:
   the first crumb and the file stay whole, as Finder's path bar keeps its
   ends; then the file's name is cut short, then shown as its glyph. No crumb
   is ever cut in half.
+- **The tree follows the file.** Whenever the File view shows a file, opened
+  by a link, a file change, an attachment, the tree itself, the path bar,
+  Back or Forward, the tree expands the folders above it, selects its row
+  and scrolls it into view, as VS Code's explorer and Xcode's navigator
+  follow the file being edited; the folders the user opened or closed
+  elsewhere stay as they are. A file outside the tree's directory selects
+  no row, and the selection the tree had is cleared. A hidden tree stays
+  hidden and follows when it is shown again; only *Show in Files* shows
+  it.
 - **The file's bar** stands over what the file shows, the width of the file's
   side, not over the tree, 36 pixels tall. On its left, what the file is: its
   kind's full name, the language for text as the editor knows it,

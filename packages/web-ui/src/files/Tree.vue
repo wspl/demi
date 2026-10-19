@@ -196,6 +196,9 @@ function scrollToRow(path: string): void {
   }
 }
 
+// The row to bring into view once the hidden tree it was asked of is shown.
+let revealWhenShown: string | null = null
+
 /**
  * Brings a row into view, leaving the tree still if it already is: a row
  * above the view, or under its pinned ancestors, comes to rest just below
@@ -205,7 +208,13 @@ function revealRow(path: string): void {
   const viewport = scrollArea.value?.el
   const el = rowEls.get(path)
   const row = props.rows.find((entry) => entry.path === path)
+  revealWhenShown = null
   if (!viewport || !el || !row) {
+    return
+  }
+  // A hidden tree has no height to bring the row into: it does once shown.
+  if (viewport.clientHeight === 0) {
+    revealWhenShown = path
     return
   }
   const top = revealTreeRow(viewport, { depth: row.depth, top: el.offsetTop }, stackTopPx.value, rowPx.value)
@@ -290,7 +299,11 @@ function scrollBy(px: number): void {
 onMounted(layout)
 // A tree laid out while hidden, as a frame's sidebar that slides in is, measured
 // every row at the top: it measures them again once it is shown or resized.
-useResizeObserver(() => scrollArea.value?.el, layout)
+useResizeObserver(() => scrollArea.value?.el, () => {
+  layout()
+  if (revealWhenShown !== null && (scrollArea.value?.el?.clientHeight ?? 0) > 0)
+    revealRow(revealWhenShown)
+})
 watch([() => props.rows, () => props.selected, () => props.dropTarget], () => {
   void nextTick(layout)
 })
