@@ -28,13 +28,25 @@ pub struct Toolset {
 }
 
 /// Where a tree that opens takes its toolset from: the product's current
-/// one, which may change while the server runs.
+/// one, which may change while the server runs. The server composes a
+/// revision once and every node holds that one set (`runtime.md` § What a
+/// session holds), so it asks for the revision first and for the commands
+/// only when it holds none of that revision.
 pub trait ToolsetSource {
+    /// The revision of the toolset [`current`](Self::current) would give
+    /// now, read without composing it.
+    fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>>;
+    /// The toolset the product gives now, composed afresh.
     fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>>;
 }
 
 /// A toolset that never changes.
 impl ToolsetSource for Toolset {
+    fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>> {
+        let revision = self.revision.clone();
+        Box::pin(async move { Ok(revision) })
+    }
+
     fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
         let toolset = self.clone();
         Box::pin(async move { Ok(toolset) })

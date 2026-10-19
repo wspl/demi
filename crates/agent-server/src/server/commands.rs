@@ -5,9 +5,12 @@
 //! reads reach any live agent of the tree; `cwd` reads or moves the
 //! caller's own working directory.
 
-use std::rc::{Rc, Weak};
+use std::{
+    cell::RefCell,
+    rc::{Rc, Weak},
+};
 
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::{HostResolver, Toolset};
 use demi_host_interface::{
     Call, CommandSet, DEMI_ROOT, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort,
     TypedRpc,
@@ -156,6 +159,80 @@ struct Aborted {
     aborted: bool,
 }
 
+
+/// The command sets every tree's nodes share (`runtime.md` § What a session
+/// holds): the product's toolset of each revision, and each set with
+/// the runtime's groups grafted, by the product's set it was grafted on and
+/// the spawning right. Each is kept only while a node holds it, so the last
+/// tree to close frees it. The grafted groups hold nothing of a tree: their
+/// handlers find the caller's tree from the invocation.
+#[derive(Default)]
+pub(crate) struct NodeCommandSets {
+    toolsets: RefCell<Vec<HeldToolset>>,
+    grafted: RefCell<Vec<Grafted>>,
+}
+
+/// A toolset some node holds, which the last node to drop it frees.
+struct HeldToolset {
+    revision: Rc<str>,
+    commands: Weak<CommandSet>,
+}
+
+/// A set some node holds, which the last node to drop it frees.
+struct Grafted {
+    /// Weak: a node holds its inherited set itself. The allocation stays
+    /// while this does, so no other set takes its address.
+    inherited: Weak<CommandSet>,
+    can_spawn: bool,
+    commands: Weak<CommandSet>,
+}
+
+impl NodeCommandSets {
+    /// The toolset a node holds, when it is of `revision`.
+    pub(crate) fn toolset(&self, revision: &str) -> Option<Toolset> {
+        let mut toolsets = self.toolsets.borrow_mut();
+        toolsets.retain(|held| held.commands.strong_count() > 0);
+        let held = toolsets.iter().find(|held| &*held.revision == revision)?;
+        Some(Toolset {
+            commands: held.commands.upgrade()?,
+            revision: held.revision.clone(),
+        })
+    }
+
+    /// Keeps `composed` beside the toolsets of other revisions, unless
+    /// another open composed the same revision first, whose toolset it
+    /// answers then.
+    pub(crate) fn hold_toolset(&self, composed: Toolset) -> Toolset {
+        if let Some(held) = self.toolset(&composed.revision) {
+            return held;
+        }
+        self.toolsets.borrow_mut().push(HeldToolset {
+            revision: composed.revision.clone(),
+            commands: Rc::downgrade(&composed.commands),
+        });
+        composed
+    }
+
+    /// The set a node grafted on `inherited` with `can_spawn` holds, if one
+    /// still does.
+    pub(crate) fn grafted(&self, inherited: &Rc<CommandSet>, can_spawn: bool) -> Option<Rc<CommandSet>> {
+        let inherited = Rc::downgrade(inherited);
+        let mut grafted = self.grafted.borrow_mut();
+        grafted.retain(|held| held.commands.strong_count() > 0);
+        grafted
+            .iter()
+            .find(|held| held.can_spawn == can_spawn && held.inherited.ptr_eq(&inherited))
+            .and_then(|held| held.commands.upgrade())
+    }
+
+    pub(crate) fn hold_grafted(&self, inherited: &Rc<CommandSet>, can_spawn: bool, commands: &Rc<CommandSet>) {
+        self.grafted.borrow_mut().push(Grafted {
+            inherited: Rc::downgrade(inherited),
+            can_spawn,
+            commands: Rc::downgrade(commands),
+        });
+    }
+}
 
 /// A node's commands: the product's, with the `demi agent` and `demi shell`
 /// groups grafted under a `demi` group, replacing any `agent` or `shell`

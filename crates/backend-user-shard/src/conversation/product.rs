@@ -59,6 +59,21 @@ pub(crate) struct ShardToolsets {
 }
 
 impl ToolsetSource for ShardToolsets {
+    fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>> {
+        Box::pin(async move {
+            let shard = self
+                .shard
+                .upgrade()
+                .ok_or_else(|| "the backend is shutting down".to_owned())?;
+            let revision = shard
+                .plugins()
+                .revision()
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(Rc::from(revision))
+        })
+    }
+
     fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
         Box::pin(async move {
             let shard = self

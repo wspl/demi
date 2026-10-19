@@ -539,6 +539,20 @@ index. Nothing outside the session keeps another copy of the transcript:
 a live tree's memory grows with its sessions' windows, not with the length
 of their conversations.
 
+What every tree has alike is held once, not per tree. A node's commands,
+the plugins' groups with the product's and the runtime's `demi agent` and
+`demi shell`, are the same for every node of the user that has the same
+plugins and the same right to spawn, so the user's shard composes them once
+for each revision of the user's plugins and each of the two spawning
+rights, and every node holds that one set; a plugin turned on or off makes
+a new revision, which the next node to open composes and the old trees
+keep until they close. The shard keeps a set only while a node holds it:
+once the last tree that uses it closes, it is freed, and the next open
+composes it again. A node holds what is its own: its window, its queue
+and its runtime. Before this, each open composed and copied the whole set,
+about 8 MiB a tree, so a hundred idle trees held 800 MiB of identical
+commands.
+
 A block's vendor records, such as the lines the Claude Code CLI wrote for it,
 are held as the JSON text they were stored as, and decoded only by the code
 that reads a field of them, for as long as it reads it: the session never
@@ -659,3 +673,4 @@ where a tool runs; no test calls a real model.
 | An image over 2,000 px enters from a tool result and from an upload | It enters fitted, every later request carries the same bytes, and the original stays on the Host |
 | A PNG illustration of 2 MB and a PNG screenshot of 150 KB enter from tool results | The illustration enters as a smaller JPEG and the screenshot unchanged; later requests carry the same bytes |
 | Images bring a request over a byte or an image limit the scripted provider sets, with the estimate under the token threshold | No compaction runs; the vendor's refusal fails the turn with `request_too_large`, and `resume` can continue it |
+| Two trees of one user open with the same plugins, then a plugin is turned on and a third opens | The first two trees' nodes of the same spawning right hold one command set; the third holds a new one, and the first two keep theirs |

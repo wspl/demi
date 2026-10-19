@@ -36,7 +36,7 @@ pub(crate) use self::profiles::{Deleted, ListedProfile, ProfileAnswer};
 pub use self::sides::{AskError, side_instruction};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry, list_text};
 use self::{live::LiveOutput, sides::Side, supervisor::{Child, Summary}};
-use super::{AgentServer, ResolveError, commands, connection::Outbox};
+use super::{AgentServer, ResolveError, connection::Outbox};
 use crate::{
     Node,
     node::{self, AssembleError, Instructions, NodeRole, NodeSpec, Origin},
@@ -308,9 +308,9 @@ impl<H: HostResolver> Tree<H> {
         root: &NodeId,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
-        let toolset = deps.toolsets.current().await.map_err(OpenError::Toolset)?;
+        let toolset = server.toolset().await.map_err(OpenError::Toolset)?;
         let inherited = toolset.commands.clone();
-        let commands = Rc::new(commands::with_runtime_groups(&inherited, server, true)?);
+        let commands = server.runtime_commands(&inherited, true)?;
         let store = (deps.stores)(root);
         let admission = ActivityGate::new();
         let model = deps.providers.selection(root).await?;

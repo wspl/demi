@@ -771,7 +771,7 @@ pub async fn until(done: impl Fn() -> bool) {
 }
 
 /// The wall-clock time the scenarios start at.
-fn start() -> Timestamp {
+pub fn start() -> Timestamp {
     "2026-09-24T12:00:00.000Z"
         .parse()
         .expect("the time is RFC 3339")
