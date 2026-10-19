@@ -21,6 +21,7 @@ use serde_json::{Value, json};
 use crate::conversations::{
     Socket, answer, anthropic_at, choose, create, kinds, tool_use, transcript,
 };
+use crate::holding_edge::HoldingEdge;
 use crate::support::{Harness, Paired, Session, TestBackend, eventually};
 
 /// The conversation ids the scenarios create.
@@ -1029,6 +1030,48 @@ EOF"#;
         "{}",
         refused.received[0]
     );
+    backend.close().await;
+}
+
+/// Behind an edge that holds each request's body until it ends, as
+/// Cloudflare's does (`runner.md` § Host operations), `demi host shell`
+/// passes the far job's output and its own input on as they come: the far
+/// job prints a line, then waits for an answer that the caller writes only
+/// once it read that line, and prints the answer back. Before, the far
+/// runner sent the job's output and the calling runner the call's input as
+/// a PUT body, which such an edge held until the job ended: nothing reached
+/// either side, and on Cloudflare the upload was reset after 15 quiet
+/// seconds, so `echo a; sleep 40; echo b` lost `a` and failed.
+// Several seconds: two real devices behind the edge each install the builtin
+// package, and the far job runs through `demi host shell`.
+#[tokio::test]
+async fn behind_an_edge_that_holds_request_bodies_demi_host_shell_passes_output_and_input_as_they_come() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = harness.start_set_up().await;
+    let edge = HoldingEdge::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &edge.url).await;
+    let beta = backend.pair_through(&master, "beta", &edge.url).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    moved_from_alpha_to_beta(&backend, &master, &alpha, &beta).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/work").await;
+
+    // The caller answers the far job's first line through a FIFO, which it
+    // holds open until the answer came back, so the input's end releases no
+    // held body. A child bash runs this part: the job's own shell keeps no
+    // FIFO apart from the processes it starts.
+    let script = r#"bash <<'EOF'
+set -o pipefail
+rm -f in && mkfifo in
+demi host shell --host alpha 'echo first; IFS= read -r line; echo "got $line"; cat > /dev/null' < in | { exec 3>in; IFS= read -r first; echo "saw $first"; echo hello >&3; IFS= read -r got; echo "$got"; exec 3>&-; }
+EOF"#;
+    let talked = work
+        .turn(vec![shell("t1", script, 9_000), say("talked")])
+        .await;
+    let result = &talked.received[0];
+    assert_eq!(field(result, "exitCode"), "0", "{result}");
+    assert_eq!(shown_output(result), "saw first\ngot hello\n", "{result}");
+    far_jobs_released(&alpha).await;
     backend.close().await;
 }
 

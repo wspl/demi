@@ -383,7 +383,9 @@ async fn send_input(
                 }
             }
         });
-        let result = pipes.put(&reference.url, body, stop).await;
+        // A stream pipe: the call's input must reach the backend as it is
+        // read, however long it takes (`runner.md` § Host operations).
+        let result = pipes.stream(&reference.url, body, stop).await;
         // A failed upload ends nothing here: the backend hears of it from
         // the report, which fails a pipe still open and with it the call,
         // whose exit carries the cause; a pipe already over, as the input of
