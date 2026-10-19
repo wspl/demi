@@ -70,7 +70,7 @@ final class DeviceSession: @unchecked Sendable {
   private var detached = false
   /// The UI automation mode before the guest bridge first turned it on,
   /// which detaching restores: nil while the bridge was never used.
-  private var automationBefore: String??
+  private var automationBefore: AutomationBefore?
   private var lastDrawn: CFTimeInterval = 0
   private var drawnPending = false
   let pictures = Pictures()
@@ -362,10 +362,9 @@ final class DeviceSession: @unchecked Sendable {
   func beforeBridge() async {
     let recorded = lock.withLock { automationBefore != nil }
     if recorded { return }
-    let mode = try? await simulator.preferences.currentPreference(
-      Tree.automationKey, domain: Tree.automationDomain)
+    let mode = await AutomationMode(simulator: simulator).read()
     lock.withLock {
-      if automationBefore == nil { automationBefore = .some(mode) }
+      if automationBefore == nil { automationBefore = mode }
     }
   }
 
@@ -419,7 +418,7 @@ final class DeviceSession: @unchecked Sendable {
   /// disconnect.
   func detach() async {
     let (encoders, recorder, automation) = lock.withLock {
-      () -> ([Encoder], Recorder?, String??) in
+      () -> ([Encoder], Recorder?, AutomationBefore?) in
       detached = true
       defer {
         captures.removeAll()
@@ -431,9 +430,7 @@ final class DeviceSession: @unchecked Sendable {
     if let recorder { await recorder.discard() }
     if let automation {
       do {
-        try await simulator.preferences.apply(
-          .preference(
-            name: Tree.automationKey, value: automation ?? "0", type: "bool", domain: Tree.automationDomain))
+        try await AutomationMode(simulator: simulator).restore(automation)
       } catch {
         log("\(simulator.name): the UI automation mode could not be restored: \(describe(error))")
       }
