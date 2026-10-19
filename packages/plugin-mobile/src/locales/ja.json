@@ -10,10 +10,15 @@
     "back": "戻る",
     "screenshot": "スクリーンショット",
     "record": "収録",
-    "stopRecording": "収録を停止"
+    "stopRecording": "収録を停止",
+    "more": "その他"
   },
   "activity": "エージェントがこのデバイスを操作しています",
   "keyboard": "シミュレータのキーボード",
+  "screenOff": {
+    "title": "画面オフ",
+    "wake": "スリープ解除"
+  },
   "region": {
     "connecting": "シミュレータに接続しています…",
     "waiting": "デバイスを待っています…",

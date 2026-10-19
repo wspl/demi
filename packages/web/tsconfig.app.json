@@ -25,6 +25,9 @@
       "@demicodes/plugin-browser/*": [
         "../plugin-browser/src/*"
       ],
+      "@demicodes/plugin-mobile/*": [
+        "../plugin-mobile/src/*"
+      ],
       "@demicodes/*": [
         "../*/src/index.ts"
       ]

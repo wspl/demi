@@ -1,7 +1,9 @@
 // `serve`: one conversation's helper. Each request names its method and
 // its device; replies carry the request's id, a file before its reply in a
-// blob frame. Requests on one device run in turn, requests on different
-// devices at once.
+// blob frame. Requests on one device run in turn in their lane, the input,
+// the captures' control and the rest each a lane of its own, so a tap never
+// waits for a slow read of the tree; requests on different devices run at
+// once.
 
 import FBControlCore
 import FBSimulatorControl
@@ -35,8 +37,7 @@ final class Server: @unchecked Sendable {
       }
       let params = request["params"] as? [String: Any] ?? [:]
       let udid = params["udid"] as? String ?? ""
-      // A capture's control does not wait for a slow read of the tree.
-      let lane = method.hasPrefix("capture") ? "\(udid)/capture" : udid
+      let lane = Server.lane(method, udid: udid)
       queue(lane).run { [self] in
         do {
           let (result, blob) = try await handle(method, udid: udid, params: params)
@@ -51,6 +52,20 @@ final class Server: @unchecked Sendable {
     for session in lock.withLock({ Array(devices.values) }) {
       await session.detach()
     }
+  }
+
+  /// What acts on the device, in the order it arrives (`mobile.md` § The
+  /// live view).
+  static let inputs: Set<String> = [
+    "touch", "tap", "swipe", "button", "key", "type", "setValue", "orient", "appearance", "setAppearance",
+  ]
+
+  /// The lane `method` on `udid` takes turns in: the input and a capture's
+  /// control wait for no read of the tree or screenshot.
+  static func lane(_ method: String, udid: String) -> String {
+    if inputs.contains(method) { return "\(udid)/input" }
+    if method.hasPrefix("capture") { return "\(udid)/capture" }
+    return udid
   }
 
   private func queue(_ udid: String) -> SerialQueue {

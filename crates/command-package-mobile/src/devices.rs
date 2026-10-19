@@ -69,8 +69,14 @@ pub struct OpenDevice {
     /// The recording under way: its file, in the conversation's scratch
     /// directory, and since when.
     pub recording: Mutex<Option<(std::path::PathBuf, Instant)>>,
-    /// The commands on the device take turns.
-    pub turn: tokio::sync::Mutex<()>,
+    /// The commands that act on the device, the user's panel controls and
+    /// the agent's taps, swipes, typing and keys, rotations and appearance,
+    /// take turns in the order they arrive (`mobile.md` § The live view).
+    pub inputs: tokio::sync::Mutex<()>,
+    /// The commands that read or wait, `inspect`, `wait`, `screenshot` and
+    /// `record`, take turns apart from the input, which never waits for
+    /// them.
+    pub reads: tokio::sync::Mutex<()>,
     /// The files the panel's Screenshot and Record wrote into the
     /// conversation's scratch directory, removed when the device closes
     /// (`mobile.md` § The live view).
@@ -478,7 +484,8 @@ impl Devices {
             agent: Mutex::default(),
             recording: Mutex::new(None),
             saved: Mutex::default(),
-            turn: tokio::sync::Mutex::new(()),
+            inputs: tokio::sync::Mutex::new(()),
+            reads: tokio::sync::Mutex::new(()),
             used: watch::Sender::new(Instant::now()),
             viewers: watch::Sender::new(0),
             closed: CancellationToken::new(),

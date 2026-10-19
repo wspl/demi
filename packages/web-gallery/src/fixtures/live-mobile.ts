@@ -52,13 +52,30 @@ interface OpenDevice {
   simulator: GallerySimulator
   orientation: Orientation
   dark: boolean
-  /** What the screen shows: the home screen, an app the viewer tapped, or nothing while locked. */
-  screen: 'home' | 'settings' | 'locked'
+  /** What the screen shows: the home screen or an app the viewer tapped. */
+  screen: 'home' | 'settings'
+  /** How far Settings is scrolled, in points, as the viewer's wheel scrolls it. */
+  scrolled: number
+  /** Whether the screen is off: the picture keeps what it last showed. */
+  off: boolean
   /** The viewer's or the agent's last touch, drawn as a ring until it fades. */
   touch: { x: number; y: number; at: number } | null
   activity: LiveActivity
   recording: boolean
 }
+
+/** Settings' rows, in groups, longer than a screen so the wheel scrolls them. */
+const SETTINGS_GROUPS: readonly (readonly string[])[] = [
+  ['General', 'Accessibility', 'Display & Brightness', 'Privacy & Security', 'Developer'],
+  ['Notifications', 'Sounds & Haptics', 'Focus', 'Screen Time'],
+  ['Wallpaper', 'Siri', 'Camera', 'Battery', 'Storage'],
+  ['Passwords', 'Wallet', 'Game Center', 'iCloud'],
+]
+const SETTINGS_ROW = 44
+const SETTINGS_GAP = 24
+/** Where Settings' first group starts, and its content's height, its last group's end with a margin below. */
+const SETTINGS_TOP = 130
+const SETTINGS_HEIGHT = SETTINGS_TOP + SETTINGS_GROUPS.reduce((height, group) => height + group.length * SETTINGS_ROW + SETTINGS_GAP, 0)
 
 /** The simulators the agent opens, in turn: an iPhone, an iPad, then an Android emulator, as `demi mobile open` would. */
 const SIMULATORS: readonly GallerySimulator[] = [
@@ -151,6 +168,8 @@ export interface GalleryMobile {
   agentTaps(): void
   /** The agent starts or stops recording the first open device, as `demi mobile record` does. */
   agentRecords(): void
+  /** Each open device's screen turns off by itself, as a device's sleep turns it. */
+  devicesSleep(): void
 }
 
 export function galleryMobile(panel: GalleryPanel): GalleryMobile {
@@ -197,7 +216,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
     let shown = [...open.values()].find((each) => each.simulator === simulator)
     if (!shown) {
       numbers += 1
-      shown = { id: `m${numbers}`, simulator, orientation: 'portrait', dark: false, screen: 'home', touch: null, activity: { active: false }, recording: false }
+      shown = { id: `m${numbers}`, simulator, orientation: 'portrait', dark: false, screen: 'home', scrolled: 0, off: false, touch: null, activity: { active: false }, recording: false }
       open.set(shown.id, shown)
     }
     if (!panel.all.some((tab) => tab.kind === 'mobile' && shows(tab) === shown.id)) {
@@ -244,13 +263,17 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       case 'press': {
         const { device: id, button } = pressButtonSchema.parse(params)
         const shown = device(id)
-        if (button === 'home') {
-          shown.screen = 'home'
-        } else if (button === 'back') {
+        if (button === 'lock') {
+          // The side button turns a screen that is on off, and one that is off on.
+          power(shown, shown.off)
+          return { device: id, key: button }
+        }
+        // Any other button wakes the screen too.
+        power(shown, true)
+        if (button === 'home' || button === 'back') {
           // Android's Back leaves Settings for the home screen.
           shown.screen = 'home'
-        } else if (button === 'lock') {
-          shown.screen = shown.screen === 'locked' ? 'home' : 'locked'
+          shown.scrolled = 0
         } else {
           // The gallery's screen draws no volume; the simulator would show its HUD.
           productWould(button === 'volume-up' ? 'The simulator’s volume goes up.' : 'The simulator’s volume goes down.')
@@ -286,6 +309,17 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       : { device: shown.id, recording: false, path: `${WORKSPACE_ROOT}/assets/demo.mp4`, durationMs: 4200 }
   }
 
+  /** Turns `shown`'s screen on or off; every view of it hears, as the Host tells each. */
+  function power(shown: OpenDevice, on: boolean): void {
+    if (shown.off === !on) {
+      return
+    }
+    shown.off = !on
+    for (const view of views) {
+      view.screen(shown)
+    }
+  }
+
   function restart(id: string): void {
     for (const view of views) {
       if (view.watching === id) {
@@ -295,7 +329,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
   }
 
   const stream: OpenUserStream = (handlers) => {
-    const view = new MobileView(handlers, () => [...open.values()])
+    const view = new MobileView(handlers, () => [...open.values()], (shown) => power(shown, true))
     views.add(view)
     return {
       send: (bytes) => view.receive(bytes),
@@ -344,6 +378,15 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       record(first, !first.recording)
       agentUsed(first)
     },
+    devicesSleep: () => {
+      if (open.size === 0) {
+        productWould('No simulator is open to sleep.')
+        return
+      }
+      for (const shown of open.values()) {
+        power(shown, false)
+      }
+    },
   }
 }
 
@@ -365,6 +408,7 @@ class MobileView {
   constructor(
     private readonly handlers: UserStreamHandlers,
     private readonly devices: () => OpenDevice[],
+    private readonly wake: (device: OpenDevice) => void,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
   }
@@ -401,6 +445,12 @@ class MobileView {
     }
   }
 
+  screen(device: OpenDevice): void {
+    if (device.id === this.watching) {
+      this.send({ type: 'screen', device: device.id, on: !device.off })
+    }
+  }
+
   receive(bytes: Uint8Array): void {
     if (bytes.length < 5 || bytes[4] !== LIVE_CONTROL_FRAME) {
       return
@@ -420,12 +470,21 @@ class MobileView {
       case 'input':
         this.input(value.input)
         break
+      case 'wake': {
+        const device = this.device()
+        if (device && device.id === value.device) {
+          this.wake(device)
+        }
+        break
+      }
       case 'frame':
         if (value.device === this.watching) {
           this.area = { width: value.width, height: value.height }
           this.frame()
         }
         break
+      // The gallery draws its pictures at one size, whatever the panel shows.
+      case 'shown':
       case 'keyframe':
       case 'release':
         break
@@ -443,12 +502,21 @@ class MobileView {
       cornerRadius: device.simulator.cornerRadius,
       buttons: device.simulator.buttons.map((mark) => turned(mark, device.orientation)),
     }
-    this.send({ type: 'frame', device: device.id, orientation: device.orientation, frame })
+    const points = upright(device)
+    this.send({ type: 'frame', device: device.id, orientation: device.orientation, pointsWidth: points.width, pointsHeight: points.height, frame })
   }
 
   /** A tap opens Settings from the home screen; a finger draws its ring where it touches. */
   private input(input: ViewerInput): void {
     const device = this.device()
+    // The wheel scrolls Settings, as a swipe of its turn would; the home screen does not scroll.
+    if (device && input.type === 'wheel') {
+      if (device.screen === 'settings') {
+        const end = Math.max(0, SETTINGS_HEIGHT - upright(device).height)
+        device.scrolled = Math.max(0, Math.min(end, device.scrolled + input.deltaY))
+      }
+      return
+    }
     if (!device || input.type !== 'touch') {
       return
     }
@@ -459,8 +527,6 @@ class MobileView {
     } else if (input.action === 'end') {
       if (device.screen === 'home' && this.finger && this.finger.y < upright(device).height * 0.5) {
         device.screen = 'settings'
-      } else if (device.screen === 'locked') {
-        device.screen = 'home'
       }
       this.finger = null
     }
@@ -492,6 +558,7 @@ class MobileView {
     this.canvas.height = size.height
     this.send({ type: 'inputs', device: device.id, inputs: { pointer: 'touch' } })
     this.send({ type: 'activity', device: device.id, activity: device.activity })
+    this.screen(device)
     this.send({
       type: 'stream',
       device: device.id,
@@ -550,19 +617,14 @@ class MobileView {
     }, 1000 / FPS)
   }
 
-  /** A phone's screen worth looking at: a home screen of app icons, Settings, or the dark lock screen. */
+  /** A phone's screen worth looking at: a home screen of app icons or Settings; a screen that is off keeps its last picture. */
   private paint(device: OpenDevice, points: { width: number; height: number }, ratio: number): void {
     const context = this.canvas.getContext('2d')
-    if (!context) {
+    if (!context || device.off) {
       return
     }
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     const { width, height } = points
-    if (device.screen === 'locked') {
-      context.fillStyle = '#000000'
-      context.fillRect(0, 0, width, height)
-      return
-    }
     const background = device.dark ? '#000000' : '#f2f2f7'
     const foreground = device.dark ? '#ffffff' : '#000000'
     context.fillStyle = background
@@ -588,17 +650,28 @@ class MobileView {
         context.fill()
       })
     } else {
+      // The list scrolls under the status bar.
+      context.save()
+      context.beginPath()
+      context.rect(0, 50, width, height - 50)
+      context.clip()
+      context.translate(0, -device.scrolled)
       context.font = '700 32px -apple-system, system-ui, sans-serif'
       context.fillText('Settings', 20, 104)
-      context.fillStyle = device.dark ? '#1c1c1e' : '#ffffff'
-      context.beginPath()
-      context.roundRect(16, 130, width - 32, 220, 12)
-      context.fill()
-      context.fillStyle = foreground
-      context.font = '17px -apple-system, system-ui, sans-serif'
-      ;['General', 'Accessibility', 'Display & Brightness', 'Privacy & Security', 'Developer'].forEach((label, index) => {
-        context.fillText(label, 32, 160 + index * 44)
-      })
+      let top = SETTINGS_TOP
+      for (const group of SETTINGS_GROUPS) {
+        context.fillStyle = device.dark ? '#1c1c1e' : '#ffffff'
+        context.beginPath()
+        context.roundRect(16, top, width - 32, group.length * SETTINGS_ROW, 12)
+        context.fill()
+        context.fillStyle = foreground
+        context.font = '17px -apple-system, system-ui, sans-serif'
+        group.forEach((label, index) => {
+          context.fillText(label, 32, top + 30 + index * SETTINGS_ROW)
+        })
+        top += group.length * SETTINGS_ROW + SETTINGS_GAP
+      }
+      context.restore()
     }
     const touch = device.touch
     if (touch && performance.now() - touch.at < 800) {

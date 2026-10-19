@@ -74,6 +74,23 @@ pub enum LiveViewerMessage {
         #[garde(range(min = 0.25, max = 8.0))]
         scale: f64,
     },
+    /// The viewer's Wake: `device`'s screen turns on, and stays on if it
+    /// is (`mobile.md` § The live view).
+    Wake {
+        #[garde(skip)]
+        device: DeviceId,
+    },
+    /// The view shows `device`'s screen at `width` × `height` device
+    /// pixels, which its pictures need no more than; sent again when that
+    /// changes.
+    Shown {
+        #[garde(skip)]
+        device: DeviceId,
+        #[garde(range(min = 1, max = 16384))]
+        width: u32,
+        #[garde(range(min = 1, max = 16384))]
+        height: u32,
+    },
 }
 
 /// A rectangle of a drawn frame, in its pixels.
@@ -218,14 +235,29 @@ pub enum LiveModuleMessage {
         activity: LiveActivity,
     },
     /// The watched device's frame for the size the view asked, sent again
-    /// when the device turns.
+    /// when the device turns, with the size of its screen in points as the
+    /// frame shows it, so the view lays the screen out, and says the size
+    /// it shows it at, before the first picture.
+    #[serde(rename_all = "camelCase")]
     Frame {
         #[garde(skip)]
         device: DeviceId,
         #[garde(skip)]
         orientation: Orientation,
+        #[garde(range(min = 1.0, max = 4096.0))]
+        points_width: f64,
+        #[garde(range(min = 1.0, max = 4096.0))]
+        points_height: f64,
         #[garde(dive)]
         frame: LiveFrame,
+    },
+    /// Whether the watched device's screen is on, as it watches it and
+    /// again each time that changes.
+    Screen {
+        #[garde(skip)]
+        device: DeviceId,
+        #[garde(skip)]
+        on: bool,
     },
     Heartbeat(#[garde(dive)] LiveHeartbeat),
     /// Something the viewer asked for failed; the stream goes on:

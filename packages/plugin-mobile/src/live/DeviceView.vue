@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
+  Button,
   CanvasPictures,
   LiveActivityOverlay,
   LiveDeviceOutline,
@@ -8,6 +9,7 @@ import {
   keyInput,
   observeSettledSize,
   touchInput,
+  wheelInput,
 } from '@demicodes/plugin-sdk'
 import type { DeviceStream, MobileSession } from './session'
 import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, type Placement, type Size } from './view'
@@ -19,9 +21,11 @@ import { t } from '../locales/text'
  * canvas, in the device's frame, fitted into the tab; a click or a finger
  * on it is a touch, a drag a swipe, the keyboard types; and over it the
  * agent's activity, the note that it is using the device and the ring
- * where it acted. The view stays mounted while its tab is hidden, so its
- * last picture shows at once when the tab is shown again; the session
- * watches the device only while its tab is shown.
+ * where it acted. A screen that is off keeps its last picture, dimmed under
+ * Screen Off with Wake; a tap or a key wakes it too. The view stays mounted
+ * while its tab is hidden, so its last picture shows at once when the tab
+ * is shown again; the session watches the device only while its tab is
+ * shown.
  */
 const props = defineProps<{
   session: MobileSession
@@ -33,38 +37,52 @@ const area = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const keys = ref<HTMLInputElement | null>(null)
 const size = ref<Size>({ width: 0, height: 0 })
+/** The area's size once a change of it has held, as after a drag of the panel's edge. */
+const settledSize = ref<Size>({ width: 0, height: 0 })
 /** The generation the canvas shows, which places it and maps input on it. */
 const picture = shallowRef<DeviceStream | null>(null)
 const painted = ref(false)
 const watching = computed(() => props.shown && props.session.state.watched === props.device)
-const screen = computed<Size | null>(() => picture.value
-  ? { width: picture.value.pointsWidth, height: picture.value.pointsHeight }
-  : null)
+/** The device's frame as the module drew it, while the view watches the device. */
+const framed = computed(() => {
+  const framed = props.session.state.frame
+  return watching.value && framed && framed.device === props.device ? framed : null
+})
+/** The screen in points: the picture's, or before the first picture the frame's, so the view says its size at once. */
+const screen = computed<Size | null>(() => {
+  if (picture.value) {
+    return { width: picture.value.pointsWidth, height: picture.value.pointsHeight }
+  }
+  return framed.value ? { width: framed.value.pointsWidth, height: framed.value.pointsHeight } : null
+})
 /** The frame drawn for the picture's orientation; a frame of the orientation before a turn is not this picture's. */
 const frame = computed(() => {
-  const framed = props.session.state.frame
-  return watching.value && framed && framed.device === props.device && framed.orientation === picture.value?.orientation
-    ? framed.frame
-    : null
+  const drawn = framed.value
+  return drawn && drawn.orientation === (picture.value?.orientation ?? drawn.orientation) ? drawn.frame : null
 })
-/** Where the picture sits, with its corners, and the drawn frame around it, if any. */
-const layout = computed<{ screen: Placement; cornerRadius: number; image: { src: string; box: Placement } | null } | null>(() => {
+type Layout = { screen: Placement; cornerRadius: number; image: { src: string; box: Placement } | null }
+
+/** Where the picture sits in an area of `area`, with its corners, and the drawn frame around it, if any. */
+function layoutIn(area: Size): Layout | null {
   if (!screen.value) {
     return null
   }
   const drawn = frame.value
   if (drawn?.kind === 'image') {
-    const placed = placeInFrame(drawn, screen.value, size.value)
+    const placed = placeInFrame(drawn, screen.value, area)
     return {
       screen: placed.screen,
       cornerRadius: placed.cornerRadius,
       image: { src: `data:image/png;base64,${drawn.png}`, box: placed.frame },
     }
   }
-  const placed = placeScreen(screen.value, size.value)
+  const placed = placeScreen(screen.value, area)
   const cornerRadius = drawn?.kind === 'outline' ? drawn.cornerRadius * placed.width / screen.value.width : 0
   return { screen: placed, cornerRadius, image: null }
-})
+}
+
+/** The picture follows the area at once. */
+const layout = computed(() => layoutIn(size.value))
 const placement = computed(() => layout.value?.screen ?? null)
 /** The outline the view draws when no frame is drawn for the device. */
 const outline = computed(() => {
@@ -80,6 +98,20 @@ const mark = computed(() => {
   return point && screen.value && placement.value ? areaPoint(point, screen.value, placement.value) : null
 })
 const stalled = computed(() => props.session.state.connection === 'stalled')
+const screenOff = computed(() => watching.value && painted.value && props.session.state.screenOff)
+
+// The Host captures the screen no larger than the view shows it, in device
+// pixels, once the area's size settled: a larger size restarts its capture,
+// which a drag of the panel's edge would otherwise do at every step.
+const settledScreen = computed(() => {
+  const area = settledSize.value
+  return watching.value && area.width > 0 && area.height > 0 ? layoutIn(area)?.screen ?? null : null
+})
+watch(() => settledScreen.value ? [settledScreen.value.width, settledScreen.value.height] as const : null, (shownAt) => {
+  if (shownAt) {
+    props.session.showsScreenAt(shownAt[0] * window.devicePixelRatio, shownAt[1] * window.devicePixelRatio)
+  }
+}, { immediate: true })
 
 let pictures: CanvasPictures<DeviceStream> | null = null
 let stopSizing: (() => void) | null = null
@@ -162,7 +194,8 @@ onMounted(() => {
     }
   })
   observer.observe(area.value)
-  stopSizing = observeSettledSize(area.value, () => {
+  stopSizing = observeSettledSize(area.value, (settled) => {
+    settledSize.value = settled
     if (watching.value) {
       askFrame()
     }
@@ -179,7 +212,7 @@ onBeforeUnmount(() => {
   detach()
 })
 
-function point(event: PointerEvent): { x: number; y: number } | null {
+function point(event: MouseEvent): { x: number; y: number } | null {
   const bounds = area.value?.getBoundingClientRect()
   if (!bounds || !screen.value || !placement.value) {
     return null
@@ -189,7 +222,19 @@ function point(event: PointerEvent): { x: number; y: number } | null {
 
 function down(event: PointerEvent): void {
   event.preventDefault()
+  // The field follows the tap, so an input method's candidate window opens
+  // where the viewer is typing. It takes no pointer events.
+  const bounds = area.value?.getBoundingClientRect()
+  if (keys.value && bounds) {
+    keys.value.style.left = `${Math.max(0, Math.min(bounds.width - 2, event.clientX - bounds.left))}px`
+    keys.value.style.top = `${Math.max(0, Math.min(bounds.height - 2, event.clientY - bounds.top))}px`
+  }
   keys.value?.focus({ preventScroll: true })
+  // A tap on a screen that is off wakes it, as on the device.
+  if (screenOff.value) {
+    props.session.wake()
+    return
+  }
   const at = point(event)
   if (!at || finger !== null) {
     return
@@ -222,11 +267,32 @@ function cancel(event: PointerEvent): void {
   }
 }
 
+/** A wheel turn scrolls the screen by as far as the picture moves under it, in the screen's points. */
+function wheel(event: WheelEvent): void {
+  event.preventDefault()
+  const at = point(event)
+  if (!at || !screen.value || !placement.value || screenOff.value || finger !== null) {
+    return
+  }
+  const turn = wheelInput(at, event, placement.value.height)
+  if (turn.type === 'wheel') {
+    const scale = screen.value.width / placement.value.width
+    props.session.input({ ...turn, deltaX: turn.deltaX * scale, deltaY: turn.deltaY * scale })
+  }
+}
+
 function key(event: KeyboardEvent, action: 'down' | 'up'): void {
   if (event.isComposing) {
     return
   }
   event.preventDefault()
+  // A key on a screen that is off wakes it, as on the device.
+  if (screenOff.value) {
+    if (action === 'down' && !event.repeat) {
+      props.session.wake()
+    }
+    return
+  }
   props.session.input(keyInput(action, event))
 }
 
@@ -276,6 +342,7 @@ function composed(event: CompositionEvent): void {
       @pointermove="move"
       @pointerup="up"
       @pointercancel="cancel"
+      @wheel="wheel"
       @contextmenu.prevent
     />
     <img
@@ -290,6 +357,21 @@ function composed(event: CompositionEvent): void {
         height: `${layout.image.box.height}px`,
       }"
     >
+    <div
+      v-if="screenOff && placement"
+      class="absolute flex flex-col items-center justify-center gap-3 bg-black/60"
+      :style="{
+        left: `${placement.left}px`,
+        top: `${placement.top}px`,
+        width: `${placement.width}px`,
+        height: `${placement.height}px`,
+        borderRadius: layout?.cornerRadius ? `${layout.cornerRadius}px` : undefined,
+      }"
+      @pointerdown="down"
+    >
+      <span class="text-[13px] font-medium text-white">{{ t('screenOff.title') }}</span>
+      <Button size="sm" @pointerdown.stop @click="session.wake()">{{ t('screenOff.wake') }}</Button>
+    </div>
     <RegionStatus
       v-if="session.state.pictureless"
       class="absolute inset-0 bg-surface"

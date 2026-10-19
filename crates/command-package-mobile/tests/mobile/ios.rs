@@ -22,7 +22,7 @@ use demi_mobile::{
     ios::{BLOB, CONTROL, Connection, Launch, VIDEO},
 };
 
-use crate::{CHAT, Mobile, live::Page};
+use crate::{CHAT, Mobile, live::{Page, screen}};
 
 /// The SPS VideoToolbox writes for an iPhone 17's 1206×2622 screen, H.264
 /// High at level 5.1 with frame reordering off: no VUI.
@@ -53,6 +53,9 @@ pub struct FakeHelper {
     /// Counts the connections that ended, which the driver ends by closing
     /// its side.
     pub ended: watch::Sender<usize>,
+    /// While true, the helper answers no side button press, nor anything
+    /// after it, as a busy simulator does.
+    pub held: watch::Sender<bool>,
     recording: usize,
 }
 
@@ -61,6 +64,7 @@ impl FakeHelper {
         Arc::new(Self {
             heard: Arc::default(),
             ended: watch::Sender::new(0),
+            held: watch::Sender::new(false),
             recording,
         })
     }
@@ -103,6 +107,7 @@ impl Launch for FakeHelper {
                 helper_output,
                 self.heard.clone(),
                 self.ended.clone(),
+                self.held.subscribe(),
                 self.recording,
             ));
             Ok(Connection {
@@ -150,6 +155,7 @@ async fn serve(
     mut output: DuplexStream,
     heard: Arc<Mutex<Heard>>,
     ended: watch::Sender<usize>,
+    mut held: watch::Receiver<bool>,
     recording: usize,
 ) {
     let mut buffer = BytesMut::new();
@@ -173,6 +179,10 @@ async fn serve(
                 let mut heard = heard.lock().unwrap();
                 heard.requests.push((method.clone(), params.clone()));
                 heard.count.send_modify(|count| *count += 1);
+            }
+            if method == "button" {
+                // The test's hold ends before the helper does.
+                held.wait_for(|held| !*held).await.unwrap();
             }
             let udid = params["udid"].as_str().unwrap_or_default().to_owned();
             let result = match method.as_str() {
@@ -277,6 +287,7 @@ async fn devices_sharing_a_helper_each_show_their_own_pictures() {
         let mut page = Page::open(&mobile, CHAT).await;
         page.send(json!({ "type": "hello", "platform": "mac" })).await;
         page.send(json!({ "type": "watch", "device": device })).await;
+        page.send(json!({ "type": "shown", "device": device, "width": 1206, "height": 2622 })).await;
         pages.push(page);
     }
     for (page, udid) in pages.iter_mut().zip(["UDID-A", "UDID-B"]) {
@@ -462,4 +473,58 @@ async fn text_without_us_keys_needs_a_focused_field_on_an_iphone() {
     let (_, message) = mobile.run(CHAT, "type", json!({ "device": device, "text": "東京" })).await.failure();
     assert!(message.contains("no focused text field to add it to"), "{message}");
     assert!(helper.requests("setValue").is_empty());
+}
+
+/// A simulator, which reports nothing of its screen, is off from the Lock
+/// the Host pressed until its next input, and the view says so as it
+/// changes: Lock turns it off, the next tap turns it on. Planted defects
+/// this catches: a Lock the view does not hear of, and a screen still off
+/// after the user's tap woke it. One fake helper, milliseconds.
+#[tokio::test]
+async fn a_simulator_is_off_from_its_lock_until_the_next_input() {
+    let helper = FakeHelper::new(0);
+    let mobile = Mobile::start_ios(helper.clone()).await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
+    assert!(on(screen(&mut page).await));
+    mobile.run(CHAT, "key", json!({ "device": device, "key": "lock" })).await.json();
+    assert!(!on(screen(&mut page).await), "Lock turned the screen off");
+    page.send(json!({ "type": "input", "device": device, "input": { "type": "touch", "action": "start", "contacts": [{ "id": 0, "x": 100.0, "y": 200.0 }] } })).await;
+    assert!(on(screen(&mut page).await), "the tap woke it");
+}
+
+/// Wake pressed twice in a row on a simulator that is off turns it on and
+/// leaves it on: the second Wake waits for the first's press and finds the
+/// screen on, so one side button is pressed, not two. Planted defect this
+/// catches: each Wake reading the screen's state while the other's press
+/// is on its way, which turns the screen on and off again. One fake
+/// helper, milliseconds.
+#[tokio::test]
+async fn a_double_wake_on_a_simulator_presses_the_side_button_once() {
+    let helper = FakeHelper::new(0);
+    let mobile = Mobile::start_ios(helper.clone()).await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
+    assert!(on(screen(&mut page).await));
+    mobile.run(CHAT, "key", json!({ "device": device, "key": "lock" })).await.json();
+    assert!(!on(screen(&mut page).await), "Lock turned the screen off");
+    // The first Wake's press is still on its way when the second comes.
+    helper.held.send_replace(true);
+    page.send(json!({ "type": "wake", "device": device })).await;
+    page.send(json!({ "type": "wake", "device": device })).await;
+    // The view takes this once it has taken the second Wake.
+    page.send(json!({ "type": "release" })).await;
+    helper.held.send_replace(false);
+    assert!(on(screen(&mut page).await), "the Wakes leave the screen on");
+    // The helper answers in order, so an input the agent sends after the
+    // Wakes is answered after any press they made.
+    mobile.run(CHAT, "key", json!({ "device": device, "key": "home" })).await.json();
+    let presses = helper.requests("button").iter().filter(|params| params["button"] == "lock").count();
+    assert_eq!(presses, 2, "the agent's Lock and one Wake press the side button");
 }

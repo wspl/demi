@@ -10,10 +10,15 @@
     "back": "뒤로",
     "screenshot": "스크린샷",
     "record": "녹화",
-    "stopRecording": "녹화 중단"
+    "stopRecording": "녹화 중단",
+    "more": "더 보기"
   },
   "activity": "에이전트가 이 기기를 사용 중입니다",
   "keyboard": "시뮬레이터 키보드",
+  "screenOff": {
+    "title": "화면 꺼짐",
+    "wake": "깨우기"
+  },
   "region": {
     "connecting": "시뮬레이터에 연결하는 중…",
     "waiting": "기기를 기다리는 중…",

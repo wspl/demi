@@ -180,8 +180,12 @@ impl Driver for FakeDriver {
                     pixels,
                 }),
                 drawn: watch::Sender::new(0),
+                awake: watch::Sender::new(true),
                 ended: CancellationToken::new(),
                 tree: Mutex::default(),
+                reads: watch::Sender::new(0),
+                captures: watch::Sender::new(Vec::new()),
+                swipes: watch::Sender::new(Vec::new()),
                 appearance: Mutex::new(Appearance::Light),
                 recording: Mutex::default(),
                 log: self.log.clone(),
@@ -207,8 +211,15 @@ pub struct FakeDevice {
     native_id: String,
     screen: watch::Sender<Screen>,
     drawn: watch::Sender<u64>,
+    awake: watch::Sender<bool>,
     ended: CancellationToken,
     tree: Mutex<Vec<RawElement>>,
+    /// How often the tree was read.
+    reads: watch::Sender<u64>,
+    /// The size of each capture asked for.
+    captures: watch::Sender<Vec<(u32, u32)>>,
+    /// Each swipe, where it started and ended.
+    swipes: watch::Sender<Vec<(Points, Points)>>,
     appearance: Mutex<Appearance>,
     /// The file the recording under way writes.
     recording: Mutex<Option<std::path::PathBuf>>,
@@ -224,6 +235,26 @@ impl FakeDevice {
     /// The device draws a new picture.
     pub fn draw(&self) {
         self.drawn.send_modify(|count| *count += 1);
+    }
+
+    /// The size of each capture asked for, which a test waits on.
+    pub fn captures(&self) -> watch::Receiver<Vec<(u32, u32)>> {
+        self.captures.subscribe()
+    }
+
+    /// Each swipe so far, which a test waits on.
+    pub fn swipes(&self) -> watch::Receiver<Vec<(Points, Points)>> {
+        self.swipes.subscribe()
+    }
+
+    /// Counts the reads of the tree, which a test waits on.
+    pub fn reads(&self) -> watch::Receiver<u64> {
+        self.reads.subscribe()
+    }
+
+    /// The device's screen turns on or off, as its own sleep turns it.
+    pub fn power(&self, on: bool) {
+        self.awake.send_replace(on);
     }
 
     /// The device goes away, as a simulator shut down by another tool.
@@ -253,6 +284,10 @@ impl Device for FakeDevice {
         self.ended.clone()
     }
 
+    fn awake(&self) -> watch::Receiver<bool> {
+        self.awake.subscribe()
+    }
+
     fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>> {
         Box::pin(async move {
             let (width, height) = self.screen.borrow().pixels;
@@ -267,7 +302,10 @@ impl Device for FakeDevice {
     }
 
     fn tree(&self) -> BoxFuture<'_, Result<Vec<RawElement>>> {
-        Box::pin(async { Ok(self.tree.lock().unwrap().clone()) })
+        Box::pin(async {
+            self.reads.send_modify(|count| *count += 1);
+            Ok(self.tree.lock().unwrap().clone())
+        })
     }
 
     fn touch(&self, phase: TouchPhase, point: Points) -> BoxFuture<'_, Result<()>> {
@@ -287,6 +325,7 @@ impl Device for FakeDevice {
     fn swipe(&self, from: Points, to: Points) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.log(format!("swipe {} to {}", at(from), at(to)));
+            self.swipes.send_modify(|swipes| swipes.push((from, to)));
             Ok(())
         })
     }
@@ -294,6 +333,14 @@ impl Device for FakeDevice {
     fn press(&self, button: Button) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.log(format!("press {button:?}"));
+            Ok(())
+        })
+    }
+
+    fn wake(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            self.log("wake".into());
+            self.awake.send_replace(true);
             Ok(())
         })
     }
@@ -393,13 +440,17 @@ impl Device for FakeDevice {
         })
     }
 
+    /// The capture fails; [`Self::captures`] says the size it was asked for.
     fn capture(
         &self,
-        _size: (u32, u32),
+        size: (u32, u32),
         _fps: u32,
         _bitrate: u32,
     ) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {
-        Box::pin(async { Err(DriverError::Failed("the fake device captures nothing".into())) })
+        Box::pin(async move {
+            self.captures.send_modify(|captures| captures.push(size));
+            Err(DriverError::Failed("the fake device captures nothing".into()))
+        })
     }
 
     fn detach(&self) -> BoxFuture<'_, Result<()>> {

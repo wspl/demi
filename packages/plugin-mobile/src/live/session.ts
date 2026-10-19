@@ -57,6 +57,9 @@ export type PicturelessReason = typeof LIVE_CAPTURE_UNAVAILABLE | typeof LIVE_CA
 export interface DeviceFrame {
   device: string
   orientation: Orientation
+  /** The screen's size in points, turned as the frame is. */
+  pointsWidth: number
+  pointsHeight: number
   frame: LiveFrame
 }
 
@@ -69,6 +72,8 @@ export interface LiveState {
   activity: LiveActivity
   /** The watched device's frame, once the module drew it for the view's size. */
   frame: DeviceFrame | null
+  /** Whether the watched device's screen is off, as the Host says. */
+  screenOff: boolean
   pictureless: PicturelessReason | null
   ended: string | null
 }
@@ -118,6 +123,7 @@ export class MobileSession {
     watched: null,
     activity: IDLE,
     frame: null,
+    screenOff: false,
     pictureless: null,
     ended: null,
   })
@@ -133,6 +139,8 @@ export class MobileSession {
   private settling = false
   /** The device pixels the view lays the frame into, as it last measured them. */
   private area: { width: number; height: number; scale: number } | null = null
+  /** The device pixels the view shows the screen at, as it last measured them. */
+  private screenSize: { width: number; height: number } | null = null
 
   constructor(private readonly options: MobileSessionOptions) {
     this.link = new LiveLink(this.state, {
@@ -143,6 +151,7 @@ export class MobileSession {
         if (this.state.watched) {
           this.send({ type: 'watch', device: this.state.watched })
           this.askFrame()
+          this.tellShown()
         }
       },
       received: (frame) => this.receive(frame),
@@ -150,6 +159,7 @@ export class MobileSession {
         this.state.pictureless = null
         this.state.activity = IDLE
         this.state.frame = null
+        this.state.screenOff = false
         this.state.devices = []
       },
       stalled: () => this.release(),
@@ -239,7 +249,18 @@ export class MobileSession {
         break
       case 'frame':
         if (message.device === this.state.watched) {
-          this.state.frame = { device: message.device, orientation: message.orientation, frame: message.frame }
+          this.state.frame = {
+            device: message.device,
+            orientation: message.orientation,
+            pointsWidth: message.pointsWidth,
+            pointsHeight: message.pointsHeight,
+            frame: message.frame,
+          }
+        }
+        break
+      case 'screen':
+        if (message.device === this.state.watched) {
+          this.state.screenOff = !message.on
         }
         break
       case 'inputs':
@@ -333,6 +354,9 @@ export class MobileSession {
     this.state.activity = IDLE
     this.state.pictureless = null
     this.state.frame = null
+    this.state.screenOff = false
+    // The view of the device now watched says the size it shows it at.
+    this.screenSize = null
     this.link.unwatched()
     if (!this.link.active) {
       if (device !== null && this.enabled) {
@@ -362,6 +386,33 @@ export class MobileSession {
   private askFrame(): void {
     if (this.area && this.state.watched !== null) {
       this.send({ type: 'frame', device: this.state.watched, width: this.area.width, height: this.area.height, scale: this.area.scale })
+    }
+  }
+
+  /**
+   * The view shows the watched device's screen at `width` × `height` device
+   * pixels: the Host captures it no larger (`mobile.md` § The live view).
+   */
+  showsScreenAt(width: number, height: number): void {
+    const size = { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) }
+    if (this.screenSize && this.screenSize.width === size.width && this.screenSize.height === size.height) {
+      return
+    }
+    this.screenSize = size
+    this.tellShown()
+  }
+
+  private tellShown(): void {
+    if (this.screenSize && this.state.watched !== null && this.link.active) {
+      this.send({ type: 'shown', device: this.state.watched, ...this.screenSize })
+    }
+  }
+
+  /** Wake: the watched device's screen turns on, and never off (`mobile.md` § The live view). */
+  wake(): void {
+    const device = this.state.watched
+    if (device !== null) {
+      this.send({ type: 'wake', device })
     }
   }
 
