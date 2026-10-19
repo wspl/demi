@@ -10,10 +10,15 @@
     "back": "返回",
     "screenshot": "截圖",
     "record": "錄製",
-    "stopRecording": "停止錄製"
+    "stopRecording": "停止錄製",
+    "more": "更多"
   },
   "activity": "智慧代理正在使用這部裝置",
   "keyboard": "模擬器鍵盤",
+  "screenOff": {
+    "title": "螢幕已關閉",
+    "wake": "喚醒"
+  },
   "region": {
     "connecting": "正在連接模擬器⋯",
     "waiting": "正在等待裝置⋯",

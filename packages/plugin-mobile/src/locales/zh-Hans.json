@@ -10,10 +10,15 @@
     "back": "返回",
     "screenshot": "截屏",
     "record": "录制",
-    "stopRecording": "停止录制"
+    "stopRecording": "停止录制",
+    "more": "更多"
   },
   "activity": "智能体正在使用这台设备",
   "keyboard": "模拟器键盘",
+  "screenOff": {
+    "title": "屏幕已关闭",
+    "wake": "唤醒"
+  },
   "region": {
     "connecting": "正在连接模拟器…",
     "waiting": "正在等待设备…",

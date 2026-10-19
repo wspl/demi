@@ -8,6 +8,7 @@ use demi_command_package_mobile_protocol::live::{LiveModuleMessage, LiveViewerMe
 use demi_command_package_mobile_protocol::mobile::DeviceId;
 use demi_command_protocol::{CommandCaller, Record};
 use demi_live_view_protocol::LiveActivity;
+use demi_mobile::driver::Points;
 use serde_json::json;
 
 use crate::{CHAT, Mobile};
@@ -250,4 +251,125 @@ async fn recording_is(page: &mut Page, wanted: bool) {
             return;
         }
     }
+}
+
+/// The user's input on a device reaches it while the agent's `wait` on the
+/// same device runs, which holds nothing the input waits for (`mobile.md`
+/// § The live view). Planted defect this catches: one turn for every
+/// command on a device, which kept the panel's Home waiting for the
+/// agent's five-minute wait. One fake device, a paused clock.
+#[tokio::test(start_paused = true)]
+async fn the_users_input_does_not_wait_for_the_agents_wait() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut reads = mobile.driver.device("UDID-1").reads();
+    reads.borrow_and_update();
+    let (_input, waiting) = mobile
+        .begin(CHAT, "wait", json!({ "device": device, "text": "Nowhere", "timeout": 300 }), CommandCaller::agent(1))
+        .await;
+    // The wait read the screen: it holds its turn.
+    reads.changed().await.unwrap();
+    let home = mobile.run_by(CHAT, "key", json!({ "device": device, "key": "home" }), CommandCaller::User {});
+    let pressed = tokio::time::timeout(Duration::from_secs(10), home)
+        .await
+        .expect("the user's Home waited for the agent's wait");
+    pressed.json();
+    assert_eq!(mobile.log().last().unwrap(), "UDID-1: press Home");
+    drop(waiting);
+}
+
+/// The view tells the page whether the watched device's screen is on as
+/// it watches it and as it turns off and on. Planted defect this catches:
+/// a screen that went dark with the view showing its last picture as
+/// though it were on. One fake device, milliseconds.
+#[tokio::test]
+async fn the_view_says_when_the_screen_turns_off_and_on() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
+    assert!(on(screen(&mut page).await), "the screen is on as the view starts watching");
+    let fake = mobile.driver.device("UDID-1");
+    fake.power(false);
+    assert!(!on(screen(&mut page).await), "the device slept");
+    fake.power(true);
+    assert!(on(screen(&mut page).await), "the device woke");
+}
+
+/// The pictures are captured at the size the panel shows the screen at,
+/// not the screen's own 1179 × 2556, and again larger only when the panel
+/// grows; a panel that shrinks keeps them. Planted defects this catches:
+/// pictures at the native size whatever the panel, and a capture started
+/// again at each shrink. One fake device, milliseconds.
+#[tokio::test]
+async fn pictures_are_captured_at_the_size_the_panel_shows() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    let mut captures = mobile.driver.device("UDID-1").captures();
+    page.send(json!({ "type": "shown", "device": device, "width": 590, "height": 1278 })).await;
+    let first = tokio::time::timeout(Duration::from_secs(10), captures.wait_for(|sizes| !sizes.is_empty()))
+        .await
+        .expect("a capture once the panel said its size")
+        .unwrap()[0];
+    assert_eq!(first, (590, 1278), "the capture is at the panel's size");
+    page.send(json!({ "type": "shown", "device": device, "width": 300, "height": 650 })).await;
+    page.send(json!({ "type": "shown", "device": device, "width": 2000, "height": 4300 })).await;
+    let sizes = tokio::time::timeout(Duration::from_secs(10), captures.wait_for(|sizes| sizes.contains(&(1178, 2556))))
+        .await
+        .expect("a capture at the native size once the panel grew past it")
+        .unwrap()
+        .clone();
+    // A failed capture is tried again at its size; no other size comes.
+    assert!(
+        sizes.iter().all(|size| [(590, 1278), (1178, 2556)].contains(size)),
+        "a smaller panel started another capture: {sizes:?}"
+    );
+}
+
+/// The view's next word on the screen's state, within ten seconds.
+pub(crate) async fn screen(page: &mut Page) -> LiveModuleMessage {
+    tokio::time::timeout(Duration::from_secs(10), page.until("screen"))
+        .await
+        .expect("the view said nothing of the screen")
+}
+
+/// The viewer's scroll wheel scrolls the device's screen: a turn is the
+/// swipe that moves the screen as far, the finger going against the turn
+/// from where the pointer is, and stopping at the screen's edge
+/// (`mobile.md` § The live view). Planted defect this catches: a wheel the
+/// view drops, as it did before. One fake device, milliseconds.
+#[tokio::test]
+async fn the_viewers_wheel_scrolls_the_screen() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    page.until("state").await;
+    let swipes = mobile.driver.device("UDID-1").swipes();
+    let wheel = |y: f64, delta_y: f64| json!({ "type": "input", "device": device, "input": { "type": "wheel", "x": 200.0, "y": y, "deltaX": 0.0, "deltaY": delta_y, "modifiers": 0 } });
+    let swiped = |swipes: &tokio::sync::watch::Receiver<Vec<(Points, Points)>>, count: usize| {
+        let mut swipes = swipes.clone();
+        async move {
+            tokio::time::timeout(Duration::from_secs(10), swipes.wait_for(|swipes| swipes.len() == count))
+                .await
+                .expect("the wheel reached the device")
+                .unwrap()
+                .last()
+                .copied()
+                .unwrap()
+        }
+    };
+    // Down the page: the finger goes up by the turn.
+    page.send(wheel(400.0, 120.0)).await;
+    assert_eq!(swiped(&swipes, 1).await, (Points { x: 200.0, y: 400.0 }, Points { x: 200.0, y: 280.0 }));
+    // Far up the page: the finger stops at the screen's bottom edge.
+    page.send(wheel(400.0, -10_000.0)).await;
+    // The fake's screen is 393 × 852 points.
+    assert_eq!(swiped(&swipes, 2).await, (Points { x: 200.0, y: 400.0 }, Points { x: 200.0, y: 852.0 }));
 }

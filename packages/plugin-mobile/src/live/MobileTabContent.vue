@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { IconButton, Tooltip, downloadUrl, usePage } from '@demicodes/plugin-sdk'
+import { Toolbar, downloadUrl, usePage, type ToolbarAction } from '@demicodes/plugin-sdk'
 import DeviceView from './DeviceView.vue'
 import type { MobileDevicesController } from './controller'
 import { deviceControls, type DeviceControl } from './controls'
@@ -22,7 +22,7 @@ const props = defineProps<{
   shown: boolean
 }>()
 
-const { files, errors } = usePage()
+const { files, errors, overlays } = usePage()
 /** Whether the device records, as the device says, whoever started it. */
 const recording = computed(() => props.session.session.recording(props.data.device))
 /** The controls of the device's platform: Back on Android alone. */
@@ -41,38 +41,49 @@ function save(path: string | null): void {
   downloadUrl(contents.url(path, { download: true }))
 }
 
-/** A toolbar control: its call, and the file it left saved on this computer. */
-async function act(control: DeviceControl): Promise<void> {
-  save(await props.session.run(control.call(props.data.device, { recording: recording.value })))
+/**
+ * A toolbar control's call. Screenshot and Record leave a file, which the
+ * press waits for and saves on this computer; the rest only send input,
+ * which waits for nothing, the picture showing the effect (`mobile.md`
+ * § The live view).
+ */
+function act(control: DeviceControl): Promise<void> | undefined {
+  const call = control.call(props.data.device, { recording: recording.value })
+  if (call.method === 'screenshot' || call.method === 'record') {
+    return props.session.run(call).then(save)
+  }
+  void props.session.run(call)
+  return undefined
 }
+
+/** The toolbar's actions, in the controls' order; those a narrow panel has no room for go into More. */
+const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => {
+  const state = { recording: recording.value }
+  const pressed = control.pressed?.(state) ?? false
+  return {
+    label: t(control.label(state)),
+    icon: control.icon(state),
+    group: control.group,
+    pressed,
+    indicator: pressed ? 'danger' : undefined,
+    run: () => act(control),
+  }
+}))
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <div class="flex h-10 flex-none items-center gap-0.5 border-b border-line px-2">
-      <!-- The name shows whole or not at all: beside the empty first item it
-           fits on the one line, or wraps to the next, which the row cuts off.
-           A phone's tab already names the device. -->
-      <div class="flex h-10 min-w-0 flex-1 flex-wrap items-center overflow-hidden phone:invisible">
-        <span class="h-10 w-0" />
-        <span class="whitespace-nowrap px-2 text-[13px] leading-10 text-fg-body">{{ data.name }}</span>
-      </div>
-      <template v-for="(control, index) in controls" :key="index">
-        <div v-if="control.group" class="mx-1 h-4 w-px flex-none bg-line" />
-        <Tooltip :content="t(control.label({ recording }))">
-          <IconButton
-            class="flex-none"
-            :icon="control.icon({ recording })"
-            variant="ghost"
-            size="sm"
-            :pressed="control.pressed?.({ recording })"
-            :indicator="control.pressed?.({ recording }) ? 'danger' : undefined"
-            :aria-label="t(control.label({ recording }))"
-            @click="act(control)"
-          />
-        </Tooltip>
+    <Toolbar :actions="actions" :overlay-store="overlays" :more-label="t('toolbar.more')">
+      <template #leading>
+        <!-- The name shows whole or not at all: beside the empty first item it
+             fits on the one line, or wraps to the next, which the row cuts off.
+             A phone's tab already names the device. -->
+        <div class="flex h-10 min-w-0 flex-1 flex-wrap items-center overflow-hidden phone:invisible">
+          <span class="h-10 w-0" />
+          <span class="whitespace-nowrap px-2 text-[13px] leading-10 text-fg-body">{{ data.name }}</span>
+        </div>
       </template>
-    </div>
+    </Toolbar>
     <div
       v-if="session.pictures.value === 'unsupported'"
       class="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-fg-faint"

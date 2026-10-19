@@ -187,5 +187,7 @@ export { default as SettingsPage } from '@demicodes/web-ui/settings/SettingsPage
 export { default as SettingsRow } from '@demicodes/web-ui/settings/SettingsRow.vue'
 export { default as Switch } from '@demicodes/web-ui/ui/Switch.vue'
 export { default as TextInput } from '@demicodes/web-ui/ui/TextInput.vue'
+export { default as Toolbar } from '@demicodes/web-ui/ui/Toolbar.vue'
+export type { ToolbarAction } from '@demicodes/web-ui/ui/Toolbar.vue'
 export { default as Tooltip } from '@demicodes/web-ui/ui/Tooltip.vue'
 export { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'

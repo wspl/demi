@@ -320,11 +320,16 @@ impl Driver for Android {
                 geometry,
                 screen: watch::Sender::new(geometry.screen(0)),
                 drawn: watch::Sender::new(0),
+                awake: watch::Sender::new(true),
                 ended: ended.clone(),
                 watching: CancellationToken::new(),
                 recording: Mutex::default(),
             });
-            device.watch().await?;
+            if let Err(error) = device.watch().await {
+                // What the watch started ends with the device it failed to open.
+                device.detach().await?;
+                return Err(error);
+            }
             Ok(device as Arc<dyn Device>)
         })
     }
@@ -446,6 +451,8 @@ struct AndroidDevice {
     geometry: Geometry,
     screen: watch::Sender<Screen>,
     drawn: watch::Sender<u64>,
+    /// Whether the display is on, as Android announces it.
+    awake: watch::Sender<bool>,
     ended: CancellationToken,
     /// Stops following the pictures as the device is let go.
     watching: CancellationToken,
@@ -489,6 +496,65 @@ impl AndroidDevice {
             };
             tokio::select! {
                 () = watching.cancelled() => {}
+                () = followed => ended.cancel(),
+            }
+        });
+        self.follow_power().await
+    }
+
+    /// Follows whether the display is on as long as the device is open,
+    /// as Android announces it. A log that ends while the device is open,
+    /// as when adb lets go, is followed again from the state read anew; one
+    /// that cannot be followed again ends the device, as lost, rather than
+    /// leave its last state standing as the display's.
+    async fn follow_power(&self) -> Result<()> {
+        use futures_util::StreamExt as _;
+        let mut turns = self.guest.display().await?;
+        if let Some(on) = turns.next().await {
+            self.awake.send_replace(on);
+        }
+        let guest = self.guest.clone();
+        let awake = self.awake.clone();
+        let watching = self.watching.clone();
+        let ended = self.ended.clone();
+        tokio::spawn(async move {
+            let followed = async {
+                let tell = |on: bool| awake.send_if_modified(|current| std::mem::replace(current, on) != on);
+                // The first log may end before it told a turn; a log
+                // followed again that does is not followed over and over.
+                let mut again = false;
+                loop {
+                    let mut turned = false;
+                    while let Some(on) = turns.next().await {
+                        turned = true;
+                        tell(on);
+                    }
+                    if again && !turned {
+                        tracing::warn!("the display's log ends as soon as it is followed");
+                        return;
+                    }
+                    turns = match guest.display().await {
+                        Ok(log) => log,
+                        Err(error) => {
+                            tracing::warn!("the display's log cannot be followed again: {error}");
+                            return;
+                        }
+                    };
+                    again = true;
+                    // The first of a log followed again is the state now.
+                    match turns.next().await {
+                        Some(on) => {
+                            tell(on);
+                        }
+                        None => return,
+                    }
+                }
+            };
+            // The pictures' end tells the emulator's; dropping the turns
+            // stops following them in the emulator.
+            tokio::select! {
+                () = watching.cancelled() => {}
+                () = ended.cancelled() => {}
                 () = followed => ended.cancel(),
             }
         });
@@ -714,6 +780,10 @@ impl Device for AndroidDevice {
         self.ended.clone()
     }
 
+    fn awake(&self) -> watch::Receiver<bool> {
+        self.awake.subscribe()
+    }
+
     fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>> {
         Box::pin(async move {
             let (width, height) = self.screen.borrow().pixels;
@@ -790,7 +860,7 @@ impl Device for AndroidDevice {
         let key = match button {
             Button::Home => "GoHome",
             Button::Back => "GoBack",
-            Button::Lock => "Power",
+            Button::Lock => return self.guest.power(),
             Button::VolumeUp => "AudioVolumeUp",
             Button::VolumeDown => "AudioVolumeDown",
         };
@@ -799,6 +869,10 @@ impl Device for AndroidDevice {
             key: key.into(),
             ..KeyboardEvent::default()
         }))
+    }
+
+    fn wake(&self) -> BoxFuture<'_, Result<()>> {
+        self.guest.wake()
     }
 
     fn key(&self, key: KeyPress) -> BoxFuture<'_, Result<()>> {

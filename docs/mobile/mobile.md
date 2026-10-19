@@ -168,6 +168,48 @@ the agent's reach the device in the order they arrive.
 | Home, Lock, Volume Up, Volume Down, and on Android Back | `key` |
 | Screenshot, Record | `screenshot`, `record` |
 
+The device in the panel answers as the device on the desk does:
+
+- **The toolbar acts at once.** Home, Lock, the volume keys, Back, the
+  rotations and Toggle Appearance send their call on the press and wait for
+  nothing: the picture is the answer, as on a remote, and the button never
+  shows a spinner. A call that fails says why in a toast. On a panel too
+  narrow for every control, the controls that do not fit move, from the
+  end, into a More menu at the toolbar's end, as a macOS window's toolbar
+  does; on a phone the menu opens as a sheet. Lock is the side button: on
+  Android the Host sends the system's power key, which the emulator's own
+  power button does not reach on recent Android versions. These calls are
+  methods bound to the package's operations, so on a paired device they go
+  over the direct channel ([Calling its command package](../architecture/plugins.md#calling-its-command-package)).
+- **The user's input never waits for the agent.** A tap, a swipe or a key
+  from the panel reaches the device as it arrives, between the steps of an
+  agent's command on the same device: a command that reads or waits,
+  `inspect`, `wait`, `screenshot` or `record`, holds nothing the user's input
+  waits for, and the helper takes input apart from its other work. Input
+  keeps its own order, and an agent's tap and the user's land in the order
+  they arrive.
+- **The input method's window stays where the user typed.** The candidate
+  window of an input method, Chinese pinyin for example, opens at the point
+  of the user's last tap on the picture, where the field is, not at the
+  panel's corner.
+- **A screen that is off says so.** When the device's screen turns off, by
+  Lock, by the agent's `key lock` or by the device's own sleep, the picture
+  dims under *Screen Off* with Wake, which turns the screen on and never
+  off; any tap or key does the same. An Android emulator goes on sending
+  its dark screen, which is what shows under the notice; a simulator sends
+  nothing, and its last frame does. The Host tells the page as the screen
+  changes: Android logs each change of the screen as an event, which the
+  Host reads from the emulator with its state when the view starts, and a
+  simulator, which reports none, is off from the Lock the Host pressed
+  until the next input. Wake on Android is the wake key, which only turns
+  the screen on; on a simulator, whose off state is the Host's own, it is
+  the side button.
+- **Pictures at the panel's size.** The Host scales the device's screen to
+  the size the panel shows it at, in device pixels, before it encodes, and
+  starts again at the native size only when the panel grows to it: a
+  1206 × 2622 iPhone in a panel 430 pixels wide is encoded at that width,
+  a fifth of the bytes.
+
 The picture sits in the device's frame, as Simulator.app shows it. On a
 Mac the frame is the one Xcode installs for the device's model: the
 device type names it (`chromeIdentifier` in its profile), a bundle in

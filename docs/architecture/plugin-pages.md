@@ -298,7 +298,10 @@ developer: the page writes it to the browser console, never into the toast.
   `Button`, `IconButton`, `MenuItem` and `Switch` take it; the SDK has no
   pending state of its own. A plugin's switch waits for its call and then
   shows the state the plugin sends, since that state is the plugin's to
-  tell, not the page's.
+  tell, not the page's. A control that only sends input to what the user
+  watches, such as a simulator's Home, is the exception: it waits for
+  nothing, since the picture shows the effect, and a failure is reported
+  in a toast ([The live view](../mobile/mobile.md#the-live-view)).
 
 ## The conversation files service
 

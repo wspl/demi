@@ -285,6 +285,7 @@ impl Driver for Ios {
             let state = Arc::new(DeviceState {
                 screen: watch::Sender::new(screen.screen(Orientation::Portrait)),
                 drawn: watch::Sender::new(0),
+                awake: watch::Sender::new(true),
                 ended: session.helper.ended().child_token(),
             });
             session
@@ -311,6 +312,9 @@ struct Session {
 struct DeviceState {
     screen: watch::Sender<Screen>,
     drawn: watch::Sender<u64>,
+    /// Whether the screen is on, as the input Demi sent says: a simulator
+    /// reports nothing of it.
+    awake: watch::Sender<bool>,
     ended: CancellationToken,
 }
 
@@ -448,6 +452,14 @@ impl IosDevice {
         params["udid"] = Value::String(self.udid.clone());
         self.session.helper.call(method, params).await
     }
+
+    /// Sends the input `method`, after which the screen is on: input wakes
+    /// it, as the side button, a tap or a key wakes an iPhone.
+    async fn input(&self, method: &str, params: Value) -> Result<()> {
+        self.done(method, params).await?;
+        self.state.awake.send_if_modified(|on| !std::mem::replace(on, true));
+        Ok(())
+    }
 }
 
 fn orientation_name(orientation: Orientation) -> &'static str {
@@ -470,6 +482,10 @@ impl Device for IosDevice {
 
     fn ended(&self) -> CancellationToken {
         self.state.ended.clone()
+    }
+
+    fn awake(&self) -> watch::Receiver<bool> {
+        self.state.awake.subscribe()
     }
 
     fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>> {
@@ -507,15 +523,15 @@ impl Device for IosDevice {
             TouchPhase::Move => "move",
             TouchPhase::Up => "up",
         };
-        Box::pin(self.done("touch", json!({ "phase": phase, "x": at.x, "y": at.y })))
+        Box::pin(self.input("touch", json!({ "phase": phase, "x": at.x, "y": at.y })))
     }
 
     fn tap(&self, at: Points, seconds: f64) -> BoxFuture<'_, Result<()>> {
-        Box::pin(self.done("tap", json!({ "x": at.x, "y": at.y, "seconds": seconds })))
+        Box::pin(self.input("tap", json!({ "x": at.x, "y": at.y, "seconds": seconds })))
     }
 
     fn swipe(&self, from: Points, to: Points) -> BoxFuture<'_, Result<()>> {
-        Box::pin(self.done("swipe", json!({ "x1": from.x, "y1": from.y, "x2": to.x, "y2": to.y })))
+        Box::pin(self.input("swipe", json!({ "x1": from.x, "y1": from.y, "x2": to.x, "y2": to.y })))
     }
 
     fn press(&self, button: Button) -> BoxFuture<'_, Result<()>> {
@@ -528,16 +544,34 @@ impl Device for IosDevice {
                 return Box::pin(async { Err(DriverError::Failed("an iPhone has no Back button".into())) });
             }
         };
-        Box::pin(self.done("button", json!({ "button": button })))
+        let lock = button == "lock";
+        Box::pin(async move {
+            self.done("button", json!({ "button": button })).await?;
+            // The side button turns a screen that is on off, and one that
+            // is off on; any other button wakes it.
+            self.state.awake.send_modify(|on| *on = !lock || !*on);
+            Ok(())
+        })
+    }
+
+    /// The side button, while the screen is off by the Host's own account;
+    /// nothing while it is on, which the side button would turn off.
+    fn wake(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            if *self.state.awake.borrow() {
+                return Ok(());
+            }
+            self.press(Button::Lock).await
+        })
     }
 
     fn key(&self, key: KeyPress) -> BoxFuture<'_, Result<()>> {
-        Box::pin(self.done("key", json!({ "usage": key.usage, "down": key.down })))
+        Box::pin(self.input("key", json!({ "usage": key.usage, "down": key.down })))
     }
 
     fn type_keys<'a>(&'a self, keys: &'a [keys::Typed]) -> BoxFuture<'a, Result<()>> {
         // The helper sends the keys as one event, each key released in it.
-        Box::pin(self.done("type", json!({ "keys": keys })))
+        Box::pin(self.input("type", json!({ "keys": keys })))
     }
 
     fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
@@ -558,7 +592,7 @@ impl Device for IosDevice {
     }
 
     fn set_value<'a>(&'a self, at: Points, text: &'a str) -> BoxFuture<'a, Result<()>> {
-        Box::pin(self.done("setValue", json!({ "x": at.x, "y": at.y, "text": text })))
+        Box::pin(self.input("setValue", json!({ "x": at.x, "y": at.y, "text": text })))
     }
 
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>> {

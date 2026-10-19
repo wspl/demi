@@ -11,7 +11,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures_util::future::BoxFuture;
+use futures_util::{StreamExt as _, future::BoxFuture, stream::BoxStream};
 use http_body_util::{BodyExt as _, Full};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -60,6 +60,16 @@ pub trait Guest: Send + Sync + 'static {
     fn keyboard(&self) -> BoxFuture<'_, Option<String>>;
     /// Sets the focused field's text.
     fn set_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// Whether the display is on now, then each time it turns on or off,
+    /// as Android announces it, until the stream is dropped or the
+    /// emulator ends.
+    fn display(&self) -> BoxFuture<'_, Result<BoxStream<'static, bool>>>;
+    /// Presses the wake key, which turns the screen on and leaves one
+    /// that is on as it is.
+    fn wake(&self) -> BoxFuture<'_, Result<()>>;
+    /// Presses the power key, as the side button: a display that is on
+    /// turns off, one that is off turns on.
+    fn power(&self) -> BoxFuture<'_, Result<()>>;
     /// The text on the clipboard, empty when it holds none.
     fn clipboard(&self) -> BoxFuture<'_, Result<String>>;
     fn set_clipboard<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
@@ -333,6 +343,52 @@ impl Guest for U2 {
         })
     }
 
+    fn display(&self) -> BoxFuture<'_, Result<BoxStream<'static, bool>>> {
+        Box::pin(async move {
+            // Android logs each turn of the display in its event log as
+            // `screen_toggled`, 1 or 0. The log is followed from now first,
+            // then the state is read, so no turn falls between them; a turn
+            // in both is told twice, which changes nothing.
+            let followed = self
+                .adb
+                .open(
+                    &self.serial,
+                    "shell:exec logcat -b events -v raw -s screen_toggled -T \"$(date '+%m-%d %H:%M:%S.000')\"",
+                )
+                .await?;
+            let power = self.adb.shell(&self.serial, "dumpsys power").await?;
+            let now = awake(&power)?;
+            let turns = futures_util::stream::unfold(BufReader::new(followed).lines(), |mut lines| async move {
+                loop {
+                    // The log ends with the emulator, or with the stream.
+                    let line = lines.next_line().await.ok()??;
+                    match line.trim() {
+                        "1" => return Some((true, lines)),
+                        "0" => return Some((false, lines)),
+                        // The log's own lines, such as its buffer's start.
+                        _ => {}
+                    }
+                }
+            });
+            Ok(futures_util::stream::once(std::future::ready(now)).chain(turns).boxed())
+        })
+    }
+
+    fn wake(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            // KEYCODE_WAKEUP, 224: the emulator's own keys have no wake key.
+            self.adb.shell(&self.serial, "input keyevent KEYCODE_WAKEUP").await.map(drop)
+        })
+    }
+
+    fn power(&self) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            // KEYCODE_POWER, 26: the emulator's own Power key, sent over its
+            // gRPC interface, reaches an Android 16 guest as nothing.
+            self.adb.shell(&self.serial, "input keyevent KEYCODE_POWER").await.map(drop)
+        })
+    }
+
     fn record_start(&self) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             let stream = self
@@ -502,4 +558,14 @@ fn bounds(text: &str) -> Rect {
         },
         _ => Rect::default(),
     }
+}
+
+/// Whether `dumpsys power` says the display is on: awake or dreaming,
+/// whose screen saver shows; asleep and dozing are off.
+fn awake(power: &str) -> Result<bool> {
+    let wakefulness = power
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("mWakefulness="))
+        .ok_or_else(|| DriverError::Failed("the display's power state does not read".into()))?;
+    Ok(matches!(wakefulness.trim(), "Awake" | "Dreaming"))
 }

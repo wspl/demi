@@ -259,10 +259,10 @@ test('the view asks for the frame of its laid-out size and pixel ratio once, aga
     { type: 'frame', device: 'm2', width: 1000, height: 1200, scale: 1 },
   ])
   const outline = { kind: 'outline' as const, cornerRadius: 55, buttons: [] }
-  streams[0]!.data(framed({ type: 'frame', device: 'm1', orientation: 'portrait', frame: outline }))
+  streams[0]!.data(framed({ type: 'frame', device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: outline }))
   expect(session.state.frame).toBeNull()
-  streams[0]!.data(framed({ type: 'frame', device: 'm2', orientation: 'landscape-left', frame: outline }))
-  expect(session.state.frame).toEqual({ device: 'm2', orientation: 'landscape-left', frame: outline })
+  streams[0]!.data(framed({ type: 'frame', device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: outline }))
+  expect(session.state.frame).toEqual({ device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: outline })
   session.close()
 })
 
@@ -289,4 +289,38 @@ test('text that found no focused field is told in the panel’s own words, quoti
   expect(reported[0]!.message).toContain('Grüße 東京')
   // The Host's own error text never reaches the page.
   expect(reported[1]!.message).not.toContain('the helper ended')
+})
+
+test('the view says the size it shows the screen at once for each size, and again for the next device it watches', () => {
+  const sent: LiveViewerMessage[] = []
+  const session = viewing(sent)
+  const shown = () => sent.filter((message) => message.type === 'shown')
+  session.showing('m1')
+  session.showsScreenAt(860.2, 1868)
+  session.showsScreenAt(860, 1868)
+  session.showsScreenAt(600, 1304)
+  session.showing('m2')
+  session.showsScreenAt(600, 1304)
+  expect(shown()).toEqual([
+    { type: 'shown', device: 'm1', width: 860, height: 1868 },
+    { type: 'shown', device: 'm1', width: 600, height: 1304 },
+    { type: 'shown', device: 'm2', width: 600, height: 1304 },
+  ])
+  session.close()
+})
+
+test('the view follows whether the watched device’s screen is off, and of no other device, and Wake asks the watched one to turn on', () => {
+  const streams: UserStreamHandlers[] = []
+  const sent: LiveViewerMessage[] = []
+  const session = viewing(sent, streams)
+  session.showing('m1')
+  streams[0]!.data(framed({ type: 'screen', device: 'm1', on: false }))
+  expect(session.state.screenOff).toBe(true)
+  streams[0]!.data(framed({ type: 'screen', device: 'm2', on: true }))
+  expect(session.state.screenOff).toBe(true)
+  streams[0]!.data(framed({ type: 'screen', device: 'm1', on: true }))
+  expect(session.state.screenOff).toBe(false)
+  session.wake()
+  expect(sent.filter((message) => message.type === 'wake')).toEqual([{ type: 'wake', device: 'm1' }])
+  session.close()
 })

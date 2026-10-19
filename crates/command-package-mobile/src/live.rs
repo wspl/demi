@@ -40,7 +40,7 @@ use demi_live_view_protocol::{
 
 use crate::{
     devices::{Devices, OpenDevice, Watching},
-    driver::{DeviceCapture, FrameArea, KeyPress, Points, TouchPhase},
+    driver::{DeviceCapture, FrameArea, KeyPress, Points, Screen, TouchPhase},
     keys,
 };
 
@@ -59,26 +59,57 @@ pub struct Layout {
 /// its viewers.
 #[derive(Default)]
 pub struct Hub {
-    streams: Mutex<HashMap<String, Arc<StreamHandle<Layout>>>>,
+    streams: Mutex<HashMap<String, (Arc<StreamHandle<Layout>>, Fit)>>,
     viewers: AtomicU64,
     tasks: TaskTracker,
 }
 
+/// The share of a device's screen pixels its pictures take: the largest
+/// any of its viewers has shown it at since its capture began, at most
+/// all of them; none until a viewer says (`mobile.md` § The live view).
+type Fit = Arc<watch::Sender<Option<f64>>>;
+
+/// The share of a screen of `pixels` that a view showing it at `shown`
+/// device pixels needs, by the long sides, so a turn changes nothing.
+fn fit(shown: (u32, u32), pixels: (u32, u32)) -> f64 {
+    let long = |(width, height): (u32, u32)| f64::from(width.max(height).max(1));
+    (long(shown) / long(pixels)).min(1.0)
+}
+
+/// Widens `fit` to `share` when it is larger: a panel that shrinks keeps
+/// the pictures it has, scaled down, rather than restarting them.
+fn widen(fit: &Fit, share: f64) {
+    fit.send_if_modified(|current| match current {
+        Some(current) if *current >= share => false,
+        _ => {
+            *current = Some(share);
+            true
+        }
+    });
+}
+
 impl Hub {
     /// Viewer `viewer`'s view of `open`'s pictures.
-    fn join(&self, open: &Arc<OpenDevice>, viewer: u64) -> (Arc<StreamHandle<Layout>>, StreamView<Layout>) {
+    fn join(&self, open: &Arc<OpenDevice>, viewer: u64) -> (Arc<StreamHandle<Layout>>, Fit, StreamView<Layout>) {
         let mut streams = self.streams.lock().expect("the streams are intact");
-        let handle = streams
+        let (handle, fit) = streams
             .entry(open.native_id.clone())
             .or_insert_with(|| {
-                let handle = StreamHandle::start(DeviceSource { open: open.clone() }, &self.tasks);
+                let fit = Arc::new(watch::Sender::new(None));
+                let handle = StreamHandle::start(
+                    DeviceSource {
+                        open: open.clone(),
+                        fit: fit.clone(),
+                    },
+                    &self.tasks,
+                );
                 // A simulator's screen needs no sizing for its viewers.
                 handle.ready();
-                Arc::new(handle)
+                (Arc::new(handle), fit)
             })
             .clone();
         let view = handle.join(viewer);
-        (handle, view)
+        (handle, fit, view)
     }
 
     /// Viewer `viewer` stops watching `open`: a device nobody watches is no
@@ -101,6 +132,7 @@ impl Hub {
 /// A device as a source of pictures.
 struct DeviceSource {
     open: Arc<OpenDevice>,
+    fit: Fit,
 }
 
 struct DeviceCaptureOf(Box<dyn DeviceCapture>);
@@ -144,6 +176,8 @@ impl Source for DeviceSource {
     fn layout(&mut self, scale: f64) -> (Layout, (u32, u32)) {
         let screen = *self.open.device.screen().borrow();
         let (width, height) = screen.pixels;
+        // Scaled to the panel's size before it is encoded.
+        let scale = scale * self.fit.borrow().unwrap_or(1.0);
         (
             Layout {
                 orientation: screen.orientation,
@@ -153,21 +187,27 @@ impl Source for DeviceSource {
         )
     }
 
+    /// Not before a viewer said the size it shows the screen at, so no
+    /// capture starts at a size it is about to replace.
     fn capturable(&mut self) -> bool {
-        true
+        self.fit.borrow().is_some()
     }
 
     fn changed(&mut self, _stopped: bool) -> impl std::future::Future<Output = Change> + Send {
         let mut screen = self.open.device.screen();
+        let mut fit = self.fit.subscribe();
         let closed = self.open.closed.clone();
         async move {
             screen.borrow_and_update();
+            fit.borrow_and_update();
             tokio::select! {
                 _ = closed.cancelled() => Change::Gone,
                 changed = screen.changed() => match changed {
                     Ok(()) => Change::Layout,
                     Err(_) => Change::Gone,
                 },
+                // The sender lives as long as the source.
+                _ = fit.changed() => Change::Layout,
             }
         }
     }
@@ -295,6 +335,12 @@ impl Deliver for DeviceInput {
                 held.keys.retain(|usage| *usage != press.usage);
             }
         }
+        let scroll = match &message {
+            ViewerInput::Wheel { x, y, delta_x, delta_y, .. } if held.finger.is_none() => {
+                scroll(*device.screen().borrow(), Points { x: *x, y: *y }, *delta_x, *delta_y)
+            }
+            _ => None,
+        };
         let text = match message {
             ViewerInput::Text { text } => Some(text),
             _ => character,
@@ -302,6 +348,8 @@ impl Deliver for DeviceInput {
         futures_util::future::Either::Right(async move {
             let delivered = if let Some((phase, at)) = step {
                 device.touch(phase, at).await
+            } else if let Some((from, to)) = scroll {
+                device.swipe(from, to).await
             } else if let Some(press) = key {
                 device.key(press).await
             } else if let Some(text) = &text {
@@ -337,6 +385,17 @@ impl Deliver for DeviceInput {
 /// The finger's step a touch or a mouse's press, drag and release makes,
 /// noting where it is in `held`: the first contact is the finger, as a
 /// simulator takes one.
+/// A wheel turn at `at` as the swipe that scrolls the screen as far: the
+/// finger moves against the turn, as a page follows a wheel, and stops at
+/// the screen's edge. A touch screen has no wheel of its own.
+fn scroll(screen: Screen, at: Points, delta_x: f64, delta_y: f64) -> Option<(Points, Points)> {
+    let to = Points {
+        x: (at.x - delta_x).clamp(0.0, screen.points.x),
+        y: (at.y - delta_y).clamp(0.0, screen.points.y),
+    };
+    (to != at).then_some((at, to))
+}
+
 fn finger(held: &mut Held, message: &ViewerInput) -> Option<(TouchPhase, Points)> {
     let (phase, at) = match message {
         ViewerInput::Touch { action, contacts } => {
@@ -372,10 +431,13 @@ struct Watched {
     open: Arc<OpenDevice>,
     source: SourceId,
     handle: Arc<StreamHandle<Layout>>,
+    fit: Fit,
     stream: StreamView<Layout>,
     activity: watch::Receiver<demi_live_view_protocol::LiveActivity>,
     /// The device's screen, whose turns turn its frame.
     screen: watch::Receiver<crate::driver::Screen>,
+    /// Whether the device's screen is on, which the view tells the page.
+    awake: watch::Receiver<bool>,
     /// The size the view lays the device out at, which its frame fits.
     area: Option<FrameArea>,
     /// The size and the orientation of the frame the view has.
@@ -507,6 +569,7 @@ async fn view(
                     event = watched.stream.events.recv() => FromDevice::Event(event),
                     changed = watched.activity.changed() => FromDevice::Activity(changed.is_ok()),
                     changed = watched.screen.changed() => FromDevice::Turned(changed.is_ok()),
+                    changed = watched.awake.changed() => FromDevice::Power(changed.is_ok()),
                 },
                 None => std::future::pending().await,
             }
@@ -543,6 +606,30 @@ async fn view(
                             frame(watched, writer).await;
                         }
                     }
+                    LiveViewerMessage::Wake { device } => {
+                        if let Some(watched) = watched.as_ref()
+                            && watched.open.handle == device
+                        {
+                            let open = watched.open.clone();
+                            let notices = writer.until(&ended);
+                            tasks.spawn(async move {
+                                // On the device's input lane, so a second Wake finds
+                                // the screen the first turned on and presses nothing.
+                                let _input = open.inputs.lock().await;
+                                if let Err(error) = open.device.wake().await {
+                                    notices.notice(INPUT_FAILED, &error.to_string()).await;
+                                }
+                            });
+                        }
+                    }
+                    LiveViewerMessage::Shown { device, width, height } => {
+                        if let Some(watched) = watched.as_ref()
+                            && watched.open.handle == device
+                        {
+                            let pixels = watched.open.device.screen().borrow().pixels;
+                            widen(&watched.fit, fit((width, height), pixels));
+                        }
+                    }
                 },
             },
             from_device = from_device => match from_device {
@@ -564,6 +651,13 @@ async fn view(
                     }
                 }
                 FromDevice::Turned(false) => {}
+                FromDevice::Power(true) => {
+                    if let Some(watched) = &watched {
+                        screen_state(watched, writer).await;
+                    }
+                }
+                // The device ended; its stream's end says so.
+                FromDevice::Power(false) => {}
             },
             changed = revisions.changed() => {
                 if changed.is_err() {
@@ -597,6 +691,19 @@ enum FromDevice<E> {
     Activity(bool),
     /// Whether the screen changed, false once the device is gone.
     Turned(bool),
+    /// Whether the screen turned on or off, false once the device is gone.
+    Power(bool),
+}
+
+/// Tells the page whether the watched device's screen is on.
+async fn screen_state(watched: &Watched, writer: &Writer<LiveModuleMessage>) {
+    let on = *watched.awake.borrow();
+    writer
+        .control(&LiveModuleMessage::Screen {
+            device: watched.open.handle.clone(),
+            on,
+        })
+        .await;
 }
 
 /// Tells the page the conversation's devices and the one it watches.
@@ -650,7 +757,7 @@ async fn rewatch(
     input.control(Item::Watch(open.clone())).await;
     delivery.rewatch();
     let Some(open) = open else { return };
-    let (handle, stream) = hub.join(&open, viewer);
+    let (handle, fit, stream) = hub.join(&open, viewer);
     if let Some((bitrate, fps, scale)) = delivery.applied() {
         stream.encoding(bitrate, fps, scale);
     }
@@ -672,24 +779,31 @@ async fn rewatch(
         })
         .await;
     let screen = open.device.screen();
-    *watched = Some(Watched {
+    let mut awake = open.device.awake();
+    awake.borrow_and_update();
+    let current = Watched {
         source: SourceId::try_from(open.handle.as_str()).expect("a handle fits a picture's source"),
         _watching: open.watched(),
         open,
         handle,
+        fit,
         stream,
         activity,
         screen,
+        awake,
         area: None,
         framed: None,
-    });
+    };
+    screen_state(&current, writer).await;
+    *watched = Some(current);
 }
 
 /// Sends the watched device's frame for the size the view asked, when the
 /// view does not have it at that size and orientation yet.
 async fn frame(watched: &mut Watched, writer: &Writer<LiveModuleMessage>) {
     let Some(area) = watched.area else { return };
-    let orientation = watched.open.device.screen().borrow().orientation;
+    let screen = *watched.open.device.screen().borrow();
+    let orientation = screen.orientation;
     if watched.framed == Some((area, orientation)) {
         return;
     }
@@ -706,6 +820,8 @@ async fn frame(watched: &mut Watched, writer: &Writer<LiveModuleMessage>) {
         .control(&LiveModuleMessage::Frame {
             device: watched.open.handle.clone(),
             orientation,
+            points_width: screen.points.x,
+            points_height: screen.points.y,
             frame,
         })
         .await;
@@ -729,6 +845,10 @@ async fn picture(
             sequence,
         } => {
             let generation = delivery.restart(epoch, width, height, scale, sequence, Some(&watched.stream));
+            // The share of the screen's pixels the pictures have, the
+            // panel's fit and the path's scale together.
+            let pixels = watched.open.device.screen().borrow().pixels;
+            let share = fit((width, height), pixels);
             writer
                 .control(&LiveModuleMessage::Stream {
                     device,
@@ -738,7 +858,7 @@ async fn picture(
                     points_width: layout.points.x,
                     points_height: layout.points.y,
                     orientation: layout.orientation,
-                    scale,
+                    scale: share,
                 })
                 .await;
         }

@@ -101,8 +101,8 @@ pub async fn run(
         Some(handle) => Some(devices.get(call.conversation, handle)?),
         None => None,
     };
-    // Commands on one device take turns, and each is its use. The agent's
-    // uses it from its start, the wait for its turn included.
+    // Commands on one device take turns in their lane, and each is its use.
+    // The agent's uses it from its start, the wait for its turn included.
     let turn_of = open.clone();
     let _agent = match &turn_of {
         Some(open) if call.agent => Some(open.agent_uses()),
@@ -111,7 +111,7 @@ pub async fn run(
     let _turn = match &turn_of {
         Some(open) => {
             open.used();
-            Some(open.turn.lock().await)
+            Some(turn(open, lane(&operation)).await)
         }
         None => None,
     };
@@ -447,6 +447,44 @@ pub async fn run(
         biased;
         _ = call.cancel.cancelled() => Err(MobileError::Cancelled),
         done = done => done,
+    }
+}
+
+/// Which of a device's commands an operation takes turns with
+/// (`mobile.md` § The live view).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lane {
+    /// It acts: the user's input waits for no read.
+    Input,
+    /// It reads or waits.
+    Read,
+    /// It ends the device: it waits for both.
+    Both,
+}
+
+fn lane(operation: &MobileOperation) -> Lane {
+    match operation {
+        MobileOperation::Tap(_)
+        | MobileOperation::Swipe(_)
+        | MobileOperation::Type(_)
+        | MobileOperation::Key(_)
+        | MobileOperation::Rotate(_)
+        | MobileOperation::Appearance(_) => Lane::Input,
+        MobileOperation::Screenshot(_)
+        | MobileOperation::Inspect(_)
+        | MobileOperation::Wait(_)
+        | MobileOperation::Record(_) => Lane::Read,
+        MobileOperation::Close(_) | MobileOperation::List(_) | MobileOperation::Open(_) => Lane::Both,
+    }
+}
+
+/// The operation's turn on `open`, held until dropped.
+async fn turn(open: &OpenDevice, lane: Lane) -> Vec<tokio::sync::MutexGuard<'_, ()>> {
+    match lane {
+        Lane::Input => vec![open.inputs.lock().await],
+        Lane::Read => vec![open.reads.lock().await],
+        // Always the input first, so two that take both never hold one each.
+        Lane::Both => vec![open.inputs.lock().await, open.reads.lock().await],
     }
 }
 

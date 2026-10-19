@@ -246,6 +246,10 @@ pub trait Device: Send + Sync + 'static {
     fn drawn(&self) -> watch::Receiver<u64>;
     /// Cancelled once the device is gone.
     fn ended(&self) -> CancellationToken;
+    /// Whether the screen is on (`mobile.md` § The live view): as an
+    /// emulator reports its display, or, for a simulator, which reports
+    /// none, off from a Lock pressed while it was on until the next input.
+    fn awake(&self) -> watch::Receiver<bool>;
     /// The screen upright, its long side at most `long_side` pixels.
     fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>>;
     /// The screen's tree, every window, alerts and the keyboard included.
@@ -255,6 +259,8 @@ pub trait Device: Send + Sync + 'static {
     fn swipe(&self, from: Points, to: Points) -> BoxFuture<'_, Result<()>>;
     fn press(&self, button: Button) -> BoxFuture<'_, Result<()>>;
     fn key(&self, key: KeyPress) -> BoxFuture<'_, Result<()>>;
+    /// Turns the screen on, and never off.
+    fn wake(&self) -> BoxFuture<'_, Result<()>>;
     /// Types `keys` as a US hardware keyboard would, each released again,
     /// Shift included, whatever becomes of the typing.
     fn type_keys<'a>(&'a self, keys: &'a [crate::keys::Typed]) -> BoxFuture<'a, Result<()>>;

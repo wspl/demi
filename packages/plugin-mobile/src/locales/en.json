@@ -10,10 +10,15 @@
     "back": "Back",
     "screenshot": "Screenshot",
     "record": "Record",
-    "stopRecording": "Stop Recording"
+    "stopRecording": "Stop Recording",
+    "more": "More"
   },
   "activity": "The agent is using this device",
   "keyboard": "Simulator Keyboard",
+  "screenOff": {
+    "title": "Screen Off",
+    "wake": "Wake"
+  },
   "region": {
     "connecting": "Connecting to the simulator…",
     "waiting": "Waiting for the device…",

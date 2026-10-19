@@ -32,7 +32,7 @@ use demi_mobile::{
     testing::FakeDriver,
 };
 
-use crate::{CHAT, Mobile, live::Page};
+use crate::{CHAT, Mobile, live::{Page, screen}};
 
 /// The AVD the stub emulator runs: a Pixel 8, 1080 × 2400 at 420 dpi.
 const AVD: &str = "Pixel_8_API_36";
@@ -90,6 +90,8 @@ struct StubEmulator {
     drawn: watch::Sender<u64>,
     /// Cancelled as the emulator shuts down.
     ended: CancellationToken,
+    /// The picture streams the emulator sends, until their reader drops them.
+    streams: watch::Sender<usize>,
 }
 
 type Streamed<T> = Pin<Box<dyn Stream<Item = std::result::Result<T, tonic::Status>> + Send>>;
@@ -198,6 +200,8 @@ impl EmulatorController for Served {
                 self.screen.email.lock().unwrap().push_str(&pasted);
             }
         } else {
+            // Power reaches an Android 16 guest as nothing, as on a real
+            // emulator; the guest's power key turns the display.
             self.hear(format!("key {}", key.key))?;
         }
         // The focused field draws what the key typed.
@@ -241,18 +245,22 @@ impl EmulatorController for Served {
         let rotation = self.rotation.subscribe();
         let ended = self.ended.clone();
         let lost = self.pictures_lost.clone();
+        let streams = self.streams.clone();
+        streams.send_modify(|count| *count += 1);
         tokio::spawn(async move {
             loop {
                 drawn.borrow_and_update();
                 if sender.send(Ok(StubEmulator::picture(*rotation.borrow(), asked.width, asked.height))).is_err() {
-                    return;
+                    break;
                 }
                 tokio::select! {
-                    () = ended.cancelled() => return,
-                    () = lost.cancelled() => return,
-                    changed = drawn.changed() => if changed.is_err() { return },
+                    () = ended.cancelled() => break,
+                    () = lost.cancelled() => break,
+                    () = sender.closed() => break,
+                    changed = drawn.changed() => if changed.is_err() { break },
                 }
             }
+            streams.send_modify(|count| *count -= 1);
         });
         Ok(tonic::Response::new(Box::pin(futures_util::stream::unfold(pictures, |mut pictures| async move {
             pictures.recv().await.map(|picture| (picture, pictures))
@@ -297,12 +305,19 @@ struct StubGuest {
     unreadable: Mutex<Option<String>>,
     night: Mutex<bool>,
     screen: Arc<Screen>,
+    /// Cancelled as the display's log ends, as when adb lets go; each
+    /// follow of the log takes the token that is current then.
+    log: Mutex<CancellationToken>,
+    /// Why the display's log cannot be followed, when the test says so.
+    log_refused: Mutex<Option<String>>,
 }
 
 /// What the stub's app shows and holds: the focused Email field's text,
 /// which a paste adds the clipboard to, and the clipboard.
 #[derive(Default)]
 struct Screen {
+    /// Whether the display is off, which the guest's power key turns.
+    dark: watch::Sender<bool>,
     email: Mutex<String>,
     clipboard: Mutex<String>,
     /// Whether Control is held, as Control-V pastes.
@@ -351,6 +366,37 @@ impl Guest for StubGuest {
 
     fn clipboard(&self) -> BoxFuture<'_, Result<String>> {
         Box::pin(async { Ok(self.screen.clipboard.lock().unwrap().clone()) })
+    }
+
+    /// The wake key turns the display on, and leaves it on.
+    fn wake(&self) -> BoxFuture<'_, Result<()>> {
+        self.heard.push("wake".into());
+        self.screen.dark.send_replace(false);
+        Box::pin(async { Ok(()) })
+    }
+
+    /// The power key turns the display off, and on again.
+    fn power(&self) -> BoxFuture<'_, Result<()>> {
+        self.heard.push("power".into());
+        self.screen.dark.send_modify(|dark| *dark = !*dark);
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Whether the display is on now, then each turn, until the log ends.
+    fn display(&self) -> BoxFuture<'_, Result<futures_util::stream::BoxStream<'static, bool>>> {
+        if let Some(why) = self.log_refused.lock().unwrap().clone() {
+            return Box::pin(async { Err(demi_mobile::driver::DriverError::Failed(why)) });
+        }
+        let log = self.log.lock().unwrap().clone();
+        let mut dark = self.screen.dark.subscribe();
+        let now = !*dark.borrow_and_update();
+        let turns = futures_util::stream::unfold(dark, |mut dark| async move {
+            dark.changed().await.ok()?;
+            let on = !*dark.borrow_and_update();
+            Some((on, dark))
+        });
+        let turns = futures_util::stream::once(std::future::ready(now)).chain(turns).take_until(log.cancelled_owned());
+        Box::pin(async move { Ok(turns.boxed()) })
     }
 
     fn set_clipboard<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
@@ -424,6 +470,7 @@ impl StubSdk {
             rotation: watch::Sender::new(0),
             drawn: watch::Sender::new(0),
             ended: CancellationToken::new(),
+            streams: watch::Sender::new(0),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -443,6 +490,8 @@ impl StubSdk {
                 unreadable: Mutex::new(None),
                 night: Mutex::new(false),
                 screen: screen.clone(),
+                log: Mutex::new(CancellationToken::new()),
+                log_refused: Mutex::new(None),
             }),
             discovery: Discovery {
                 pid: 4242,
@@ -709,7 +758,7 @@ async fn an_avd_boots_and_is_driven_over_its_signed_grpc_interface() {
             "touch 540,850 up",
             "set text Grüße",
             "key GoBack",
-            "key Power",
+            "power",
             "night true",
             "rotate 90",
         ]
@@ -769,6 +818,7 @@ async fn the_live_view_shows_an_emulator_as_h264_in_its_outline() {
     page.send(json!({ "type": "hello", "platform": "mac" })).await;
     page.send(json!({ "type": "watch", "device": "m1" })).await;
     page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    page.send(json!({ "type": "shown", "device": "m1", "width": 360, "height": 800 })).await;
     let LiveModuleMessage::Frame { frame, .. } = page.until("frame").await else { unreachable!() };
     let frame = serde_json::to_value(&frame).unwrap();
     assert_eq!(frame["kind"], "outline");
@@ -1188,4 +1238,69 @@ async fn an_encoder_that_is_not_ciscos_build_is_refused() {
     assert_eq!(asked.len(), 2);
     assert!(asked.iter().all(|line| line.starts_with("GET /libopenh264-2.6.0-") && line.contains(".bz2 ")), "{asked:?}");
     assert_eq!(asked[0], asked[1], "the second use asks for the same file again");
+}
+
+/// An emulator's display that turns off, by the panel's Lock here, is told
+/// to the view as Android announces it, and the viewer's Wake turns it on
+/// with the wake key, never the power key, which would turn a lit one off.
+/// Planted defects this catches: Lock sent as the emulator's own Power key,
+/// which an Android 16 guest ignores; a display that went dark with the
+/// view showing its picture as though it were on; and Wake sent as the
+/// power key. A stub emulator, milliseconds.
+#[tokio::test]
+async fn the_view_says_when_an_emulators_display_turns_off_and_wake_turns_it_on() {
+    let (mobile, sdk) = start(true).await;
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
+    assert!(on(screen(&mut page).await));
+    mobile.run(CHAT, "key", json!({ "device": "m1", "key": "lock" })).await.json();
+    assert!(!on(screen(&mut page).await), "Lock turned the display off");
+    let before = sdk.heard().len();
+    page.send(json!({ "type": "wake", "device": "m1" })).await;
+    assert!(on(screen(&mut page).await), "Wake turned it on");
+    assert_eq!(since(&sdk, before), ["wake"], "Wake is the wake key, not Power");
+}
+
+/// The display's state stays true after the log that tells it ends while
+/// the device is open, as when adb lets go: the driver follows the log
+/// again from the state read anew, so a display turned off meanwhile is
+/// told to the view. Planted defect this catches: a follower that ends
+/// with its log and leaves the last state standing. A stub emulator,
+/// milliseconds.
+#[tokio::test]
+async fn the_view_hears_the_display_after_its_log_ends() {
+    let (mobile, sdk) = start(true).await;
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
+    assert!(on(screen(&mut page).await));
+    // The log ends, and the display turns off on the device afterwards.
+    let log = std::mem::replace(&mut *sdk.guest.log.lock().unwrap(), CancellationToken::new());
+    log.cancel();
+    sdk.guest.power().await.unwrap();
+    assert!(!on(screen(&mut page).await), "the display turned off after its log ended");
+}
+
+/// An emulator whose display cannot be followed does not open, and what
+/// the opening started ends with it: its picture stream and what Demi
+/// runs in the guest. Planted defect this catches: the picture watcher
+/// left running for a device that never opened. A stub emulator,
+/// milliseconds.
+#[tokio::test]
+async fn an_emulator_that_fails_to_open_leaves_nothing_running() {
+    let (mobile, sdk) = start(true).await;
+    *sdk.guest.log_refused.lock().unwrap() = Some("adb is gone".into());
+    let (_, message) = mobile.run(CHAT, "open", json!({ "device": AVD })).await.failure();
+    assert!(message.contains("adb is gone"), "{message}");
+    let mut streams = sdk.emulator.streams.subscribe();
+    tokio::time::timeout(std::time::Duration::from_secs(10), streams.wait_for(|count| *count == 0))
+        .await
+        .expect("the picture stream ends with the failed open")
+        .unwrap();
+    assert!(sdk.heard().iter().any(|line| line == "guest closed"), "{:?}", sdk.heard());
 }
