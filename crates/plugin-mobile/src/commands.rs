@@ -12,7 +12,7 @@ use demi_host_interface::{GroupBuilder, LeafBuilder};
 const SUMMARY: &str = "Operate the simulators of the Host running this shell, as a person would, while the user watches and operates them in the work panel. Every coordinate is a pixel of the device's screenshot. Use inspect to obtain element references; never guess them.";
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Drives the iOS simulators of a Mac Host: opens a device (booting it without a window), takes screenshots, reads the screen's UI tree with element references, taps, swipes, types, presses home or lock, rotates, switches light or dark, waits for text and records video; the user watches and uses the same device in their work panel. Build, install and launch apps, set locale, location or permissions with xcodebuild and xcrun simctl, which take the simctl id open prints.";
+const ENTRY: &str = "Drives the iOS simulators of a Mac Host and the Android emulators of a Mac, Linux or Windows Host: opens a device (booting it without a window), takes screenshots, reads the screen's UI tree with element references, taps, swipes, types, presses home or lock, rotates, switches light or dark, waits for text and records video; the user watches and uses the same device in their work panel. For iOS, build, install and launch apps, set locale, location or permissions with xcodebuild and xcrun simctl, which take the simctl id open prints.";
 
 const SUCCESS: &str = "a short readable result; one validated JSON value with --json";
 const FAILURE: &str = "a mobile error on stderr with nonzero exit status; an input is never replayed automatically";
