@@ -85,16 +85,15 @@ async fn conversation_browser_commands_share_state_and_retire() {
                 .unwrap();
         // What the service tells the plugin of the conversation's tabs
         // (`browser.md` § One tab registry).
-        let messages = client.messages().await.unwrap();
         let (told, mut tells) = tokio::sync::mpsc::unbounded_channel();
-        let _messages = AbortOnDropHandle::new(tokio::spawn(async move {
-            messages
-                .answer::<demi_command_sdk::MessagesAsk, _>(|message, _reporter| {
-                    let _kept = told.send((message.conversation, message.message));
-                    std::future::ready(Ok(()))
-                })
-                .await
-        }));
+        let _messages = AbortOnDropHandle::new(
+            demi_command_sdk::testing::answer_messages(&client, move |message| {
+                // The test reads them while it runs; afterwards nobody does.
+                let _kept = told.send((message.conversation, message.message));
+            })
+            .await
+            .unwrap(),
+        );
         let conversation = uuid::Uuid::new_v4().to_string();
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),

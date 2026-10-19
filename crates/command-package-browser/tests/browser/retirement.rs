@@ -260,8 +260,9 @@ async fn the_next_service_sweeps_a_killed_services_browser_and_downloads() {
 
 /// The service program as the runner starts it, with `home` as its home and
 /// `temporary` as its `TMPDIR`; its numbers stream is answered as a runner
-/// answers it, and its request for Chrome with the pinned Chrome that
-/// `DEMI_TEST_CHROME` names.
+/// answers it, its messages are taken as a runner takes them, and its request
+/// for Chrome is answered with the pinned Chrome that `DEMI_TEST_CHROME`
+/// names.
 async fn service_program(
     home: &std::path::Path,
     temporary: &str,
@@ -283,6 +284,11 @@ async fn service_program(
     )
     .await
     .unwrap();
+    // Without it, the tabs' first change would wait for the stream, and the
+    // service's shutdown for that change to be told.
+    let _messages = demi_command_sdk::testing::answer_messages(service.client(), |_message| {})
+        .await
+        .unwrap();
     service
 }
 

@@ -1,6 +1,7 @@
 //! Test support (`crates-and-packages.md` § command-sdk): a command
 //! service's binary started and driven with a client, a numbers source that
-//! counts, an artifacts source that answers as a test says, and the count of
+//! counts, an artifacts source that answers as a test says, the messages
+//! stream taken as a runner takes it, and the count of
 //! the process's pauses before trying an operation again.
 
 use std::{
@@ -10,13 +11,13 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use demi_command_protocol::{ArtifactAsk, ArtifactReply, ServiceSequence};
+use demi_command_protocol::{ArtifactAsk, ArtifactReply, PluginMessage, ServiceSequence};
 use tokio::{
     process::{Child, ChildStdin, ChildStdout, Command},
     task::JoinHandle,
 };
 
-use crate::{Artifacts, ArtifactsAsk, Client, Numbers, NumbersAsk, ServiceError};
+use crate::{Artifacts, ArtifactsAsk, Client, MessagesAsk, Numbers, NumbersAsk, ServiceError};
 
 /// Every pause a [`crate::descriptors::Backoff`] of this process has taken.
 static PAUSES: AtomicU64 = AtomicU64::new(0);
@@ -107,6 +108,25 @@ pub fn artifacts_from(
         }
     });
     artifacts
+}
+
+/// Opens the messages stream of the service `client` drives and takes every
+/// message with `take`, as a runner's connection takes it, until the service
+/// ends it. A runner opens it before any call, and a service's message waits
+/// until it is open (`native-runtime.md` § Messages to the plugin).
+pub async fn answer_messages(
+    client: &Client,
+    take: impl Fn(PluginMessage) + Send + Sync + 'static,
+) -> Result<JoinHandle<Result<(), ServiceError>>, ServiceError> {
+    let stream = client.messages().await?;
+    Ok(tokio::spawn(async move {
+        stream
+            .answer::<MessagesAsk, _>(|message, _reporter| {
+                take(message);
+                std::future::ready(Ok(()))
+            })
+            .await
+    }))
 }
 
 /// Opens the artifacts stream of the service `client` drives and answers it
