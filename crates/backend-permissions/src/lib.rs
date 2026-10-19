@@ -332,7 +332,7 @@ pub async fn check(
     changed(shard, &conversation);
     shard.asked(&conversation, request, ask);
     shard.raised().await;
-    port.hint(Some(&format!(
+    port.awaits_user(Some(&format!(
         "waiting for the user's permission to {action}; its end will report to you, so do not run it again"
     )))
     .await?;
@@ -376,7 +376,7 @@ async fn held(
         decided = decided => decided.map_err(|_| RpcError::Failed("the backend stopped while the call waited for the user's answer".into()))?,
     };
     if decided == Decided::Allowed {
-        port.hint(None).await?;
+        port.awaits_user(None).await?;
         passed.await?;
     }
     if port.is_cancelled() {

@@ -146,11 +146,14 @@ never sees a permission.
   leaves its request as it is: the user can still decide it, and an Allow
   grants the category for the commands that come later.
 
-  While the command waits, the `shell` call's result once its window passes,
-  and every report of its progress, say so beside its status, since a model
-  that saw it merely running might run it again: `waiting for the user's
-  permission to <action>; its end will report to you, so do not run it
-  again`.
+  While the command waits, the `shell` call's result once its window passes
+  says so beside its status, since a model that saw it merely running might
+  run it again: `waiting for the user's permission to <action>; its end will
+  report to you, so do not run it again`. A waiting command sends no report
+  of its progress, whatever its interval: nothing about it changes until the
+  user answers, and each report would wake the agent for nothing. Its
+  interval counts again from the moment the wait ends, and its end
+  reports as any command's does.
 
 ## Requests
 

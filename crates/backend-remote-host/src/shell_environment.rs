@@ -1072,9 +1072,8 @@ impl ShellEnvironment for RemoteShellEnvironment {
             .unwrap_or_default()
     }
 
-    fn hint(&self, command: &CommandId) -> Option<String> {
-        // A command the environment does not hold gives no line.
-        self.running_job(command).ok().flatten()?.running_hint()
+    fn awaits_user(&self, command: &CommandId) -> Option<watch::Receiver<bool>> {
+        Some(self.running_job(command).ok().flatten()?.awaits_user())
     }
 
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {

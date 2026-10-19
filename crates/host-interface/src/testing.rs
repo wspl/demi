@@ -892,8 +892,8 @@ impl PortTransport for MemoryPort {
                 PortRequest::ReadLiveStdin {} => PortResponse::Input {
                     bytes: self.live.borrow_mut().pop_front().map(B64Bytes::new),
                 },
-                // A call in memory has no job whose line a hint is.
-                PortRequest::Hint { .. } => PortResponse::Written {},
+                // A call in memory has no job that waits with it.
+                PortRequest::AwaitsUser { .. } => PortResponse::Written {},
             })
         })
     }

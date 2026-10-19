@@ -821,6 +821,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     /// holds is taken up when the conversation records it running, and has
     /// ended otherwise, with the node's shells or before the node was
     /// restored.
+    fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
+        self.environments.owning(command)?.awaits_user(command)
+    }
+
     fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
             // A command its Host cannot be reached for now has not ended:
@@ -886,8 +890,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
                 let title = environment.title(command).unwrap_or_default();
-                let hint = environment.hint(command);
-                return Some(progress_report(command, &title, running_ms, idle_ms, interval, hint));
+                return Some(progress_report(command, &title, running_ms, idle_ms, interval));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;

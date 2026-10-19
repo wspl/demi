@@ -982,6 +982,58 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
     assert!(!session.set_interval(&command, Some(60_000)));
 }
 
+// A command that waits for the user's answer reports nothing, however long
+// it waits, so nothing wakes the agent; once it goes on, its interval counts
+// from then, and its end reports as any command's does (`permissions.md`
+// § The check). Before, it reported every interval while it waited. One
+// session, four scripted requests and twenty minutes of paused time: a few
+// milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_command_waiting_for_the_user_reports_nothing_until_an_interval_after_it_goes_on() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(background_call("17", Some(300_000), "Install")),
+        answer("the user is asked"),
+        answer("it installs"),
+        answer("installed"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (session, commands) = reporting_session(&provider, &store).await;
+    session
+        .send(text("install it"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(provider.requests().len(), 2);
+
+    commands.await_user("17", true);
+    tokio::time::sleep(Duration::from_secs(900)).await;
+    assert_eq!(provider.requests().len(), 2, "a waiting command reported");
+
+    // The user answered: the first report comes a whole interval later.
+    commands.await_user("17", false);
+    tokio::time::sleep(Duration::from_secs(299)).await;
+    assert_eq!(provider.requests().len(), 2, "the interval counted the wait");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    until(|| provider.requests().len() == 3).await;
+    session.settled().await;
+    assert_eq!(
+        provider.requests()[2].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(&running_report("17", "Install", 1, 300_000)),
+        })
+    );
+
+    commands.end("17");
+    until(|| provider.requests().len() == 4).await;
+    session.settled().await;
+    assert_eq!(
+        provider.requests()[3].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(&ended_report("17", "Install")),
+        })
+    );
+}
+
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn reports_that_arrive_during_a_turn_join_it_as_one_steer() {
     let (answer_gated, release) = gated_turn(vec![event::text("still building"), event::response(1, 1)]);
