@@ -17,7 +17,8 @@ import type { SidebarDevice } from './types'
  * Pro · Online" or "Removed device". A project on the Cloud shows the Cloud's glyph in the same box.
  * The mark stays while the pointer is over the row, so the row's buttons stand to its left. It is
  * a mark, not a button: its box is as wide as its glyph, so it stands 6px from its neighbours as
- * the row's other marks do (32px on a phone, as they are).
+ * the row's other marks do (32px on a phone, as they are), and it rests in their grey, the ghost
+ * button's resting `text-fg-muted`, so it matches the row's buttons beside it.
  */
 const props = defineProps<{
   host: SidebarDevice | { kind: 'cloud' }
@@ -38,7 +39,7 @@ const label = computed(() => {
   <Tooltip
     :content="label"
     tag="span"
-    class="flex h-6 w-4 shrink-0 items-center justify-center text-fg-subtle phone:size-8"
+    class="flex h-6 w-4 shrink-0 items-center justify-center text-fg-muted phone:size-8"
   >
     <component
       :is="hostIcon({ kind: 'cloud' })"
@@ -52,7 +53,8 @@ const label = computed(() => {
       :state="host.state"
       :mark="host.mark"
       :label="label"
+      inherit-color
     />
-    <DeviceIcon v-else :state="null" :mark="null" :label="label" />
+    <DeviceIcon v-else :state="null" :mark="null" :label="label" inherit-color />
   </Tooltip>
 </template>

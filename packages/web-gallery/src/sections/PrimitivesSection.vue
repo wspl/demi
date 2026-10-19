@@ -962,7 +962,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
 
       <GallerySection
         title="DeviceIcon"
-        note="A device’s mark, the same wherever a device is drawn: its system’s logo in the subtle icon color, its state’s dot at the logo’s top right, green online, amber updating, faint offline, and under the dot the number that tells it from the user’s other devices of the same logo, shown only while another has it. The dot and the number are cut out of what is behind them. A two-digit number reaches further left; a device since removed is the plain computer, without a dot."
+        note="A device’s mark, the same wherever a device is drawn: its system’s logo in the subtle icon color, or at a sidebar row’s end in the grey of the row’s buttons, its state’s dot at the logo’s top right, green online, amber updating, faint offline, and under the dot the number that tells it from the user’s other devices of the same logo, shown only while another has it. The dot and the number are cut out of what is behind them. A two-digit number reaches further left; a device since removed is the plain computer, without a dot."
       >
         <!-- One grid, so a row that wraps and the next set sit the same distance apart. -->
         <div class="specimen-row text-fg-subtle">

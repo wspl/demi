@@ -27,7 +27,12 @@ const props = withDefaults(defineProps<{
    * page's header, scales the whole mark: the logo, the dot, the number and their outlines.
    */
   size?: number
-}>(), { label: undefined, size: ICON_PX.markIn28 })
+  /**
+   * Draws the logo in its container's color instead of the subtle icon color, for a mark that
+   * stands among controls and takes their grey, as a sidebar row's end does (`DeviceMark`).
+   */
+  inheritColor?: boolean
+}>(), { label: undefined, size: ICON_PX.markIn28, inheritColor: false })
 
 /** How much the mark, drawn at a row's 16 px, is scaled to `size`. */
 const scale = computed(() => props.size / ICON_PX.markIn28)
@@ -35,7 +40,8 @@ const scale = computed(() => props.size / ICON_PX.markIn28)
 
 <template>
   <span
-    class="flex shrink-0 text-fg-subtle"
+    class="flex shrink-0"
+    :class="inheritColor ? '' : 'text-fg-subtle'"
     :style="{ width: `${size}px`, height: `${size}px` }"
     :role="label ? 'img' : undefined"
     :aria-label="label"

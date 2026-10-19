@@ -44,7 +44,10 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 
 // The row's end holds, in the flow, the marks: the pin, the bolt and the device's mark, each in a
 // box as wide as its glyph (14, 14 and 16px), 6px apart and 6px from the row's end, so the
-// glyphs stand evenly; they are marks, not buttons. The actions are 24px buttons, side by side,
+// glyphs stand evenly; they are marks, not buttons. Marks and buttons rest in one grey, the ghost
+// button's resting `text-fg-muted`, whatever color the row's text takes; only the button under the
+// pointer darkens and shows its fill, as Finder's eject button does, and a mark never changes on
+// hover. The actions are 24px buttons, side by side,
 // whose 14px glyphs sit 5px inside them: Archive stands over the pin's glyph, or 6px left of the
 // first mark when the row is not pinned, and Unpin left of Archive. The title clears the
 // actions by a margin that leaves 12px before the first button's glyph. A phone row shows no
@@ -135,7 +138,7 @@ const rowClass = computed(() => [
     <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
       <span
         v-if="conversation.pinned"
-        class="pointer-events-none flex h-6 w-3.5 items-center justify-center text-fg-faint transition-opacity phone:size-8"
+        class="pointer-events-none flex h-6 w-3.5 items-center justify-center text-fg-muted transition-opacity phone:size-8"
         :class="pinClass"
       >
         <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in24" />
@@ -145,7 +148,7 @@ const rowClass = computed(() => [
         v-if="conversation.automations?.length"
         role="img"
         :aria-label="automationText('mark.bolt')"
-        class="flex h-6 w-3.5 shrink-0 items-center justify-center text-fg-subtle phone:size-8"
+        class="flex h-6 w-3.5 shrink-0 items-center justify-center text-fg-muted phone:size-8"
       >
         <Zap :size="phone ? ICON_PX.in32 : ICON_PX.in24" />
       </span>
