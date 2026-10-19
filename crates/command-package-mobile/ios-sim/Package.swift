@@ -50,5 +50,13 @@ let package = Package(
       path: "Sources/DemiIosSim",
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
+    // The tree's reading of what idb's read leaves out, against a screen
+    // the test plays.
+    .testTarget(
+      name: "DemiIosSimTests",
+      dependencies: ["DemiIosSim"],
+      path: "Tests/DemiIosSimTests",
+      swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
   ]
 )

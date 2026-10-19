@@ -223,6 +223,19 @@ async fn a_screen_still_changing_is_taken_after_the_settle_limit() {
     );
 }
 
+/// A wait ends at its timeout even while a read of the tree is under way:
+/// a screen whose read takes 10 s fails a 2 s wait at 2 s. Paused time.
+#[tokio::test(start_paused = true)]
+async fn a_wait_ends_at_its_timeout_during_a_slow_read() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    mobile.driver.device("UDID-1").reads_take(Duration::from_secs(10));
+    let started = tokio::time::Instant::now();
+    let waited = mobile.run(CHAT, "wait", json!({ "device": device, "text": "Never", "timeout": 2 })).await;
+    assert_eq!(waited.failure().0, "timeout");
+    assert!(started.elapsed() < Duration::from_secs(3), "the wait took {:?}", started.elapsed());
+}
+
 /// A conversation has at most four devices open on a Host.
 #[tokio::test(start_paused = true)]
 async fn a_fifth_device_is_refused() {

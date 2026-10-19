@@ -187,6 +187,7 @@ impl Driver for FakeDriver {
                 awake: watch::Sender::new(true),
                 ended: CancellationToken::new(),
                 tree: Mutex::default(),
+                read_time: Mutex::default(),
                 reads: watch::Sender::new(0),
                 captures: watch::Sender::new(Vec::new()),
                 swipes: watch::Sender::new(Vec::new()),
@@ -218,6 +219,8 @@ pub struct FakeDevice {
     awake: watch::Sender<bool>,
     ended: CancellationToken,
     tree: Mutex<Vec<RawElement>>,
+    /// How long a read of the tree takes.
+    read_time: Mutex<std::time::Duration>,
     /// How often the tree was read.
     reads: watch::Sender<u64>,
     /// The size of each capture asked for.
@@ -234,6 +237,12 @@ impl FakeDevice {
     /// The screen shows `tree` from now on.
     pub fn show(&self, tree: Vec<RawElement>) {
         *self.tree.lock().unwrap() = tree;
+    }
+
+    /// Each read of the tree takes `time` from now on, as a slow screen's
+    /// read does.
+    pub fn reads_take(&self, time: std::time::Duration) {
+        *self.read_time.lock().unwrap() = time;
     }
 
     /// The device draws a new picture.
@@ -307,6 +316,8 @@ impl Device for FakeDevice {
     fn tree(&self) -> BoxFuture<'_, Result<Vec<RawElement>>> {
         Box::pin(async {
             self.reads.send_modify(|count| *count += 1);
+            let time = *self.read_time.lock().unwrap();
+            tokio::time::sleep(time).await;
             Ok(self.tree.lock().unwrap().clone())
         })
     }
