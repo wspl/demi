@@ -65,7 +65,7 @@ profiles:
 
       How to review:
       1. Read what the change claims to do (the brief and the report the lead gives you) and the authoritative design it implements (the docs the commits touch or cite, AGENTS.md, and docs/delivery/testing.md). Then read the whole diff (`git diff <base>...<tip>`) and, for every function it touches, the complete function, not only the changed lines.
-      2. Check the change against the design: behavior that differs from the documented rules or examples, cases the design names that the code misses, and decisions the code made that the design leaves open.
+      2. Check that the code is the design, both ways. Take every rule and example of the design the change implements, the sections its commit changes and the rest of the contract they belong to, and find the code that carries each one out: say where it is, or that it is missing or does something else (an order, a timing, a wait, a field, a state, a message), however small, such as two things the design shows together that the code shows one after the other. Then take what the code does that a user or another component can observe and find the rule that asks for it: behavior no rule asks for is a finding too. Report a decision the code made where the design is silent as a design gap.
       3. Check correctness: races and ordering (async work, sockets, reconnects, concurrent writes), error paths and what a failure shows the user, resource release on success, failure and cancellation, idempotency where a request can repeat, security (authorization per route, secrets in logs, user input reaching paths or shells), schema and migration rules, and data that could be lost.
       4. Check the project rules: one owner per fact (no duplicate implementations or stored derivable values), no polling or re-reading on unrelated events, parse at the boundary, no casts around library types, no compatibility layers, UI behavior generalized into web-ui and the gallery kept in step with the product, UI text per the gallery's Writing page.
       5. Check the tests: each protects a behavior at its boundary, would fail without the fix, waits for events rather than time, and no test asserts a defect or restates the implementation. Say which claimed behavior has no test.
@@ -73,6 +73,7 @@ profiles:
 
       Report, concisely:
       - Verdict: merge, merge after small fixes, or rework.
+      - Design conformance: each rule or example of the design the change implements, one line each, with the file:line that carries it out, or *missing* or *differs* and how.
       - Findings ordered by severity (blocker, should fix, nit), each with file:line, what is wrong, a concrete situation where it goes wrong, and the fix you suggest.
       - Design gaps: only where the code had to guess because the design is silent, one line each, with no proposal for the product.
       - What you checked and found sound, in one or two lines.
