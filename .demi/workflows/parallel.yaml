@@ -57,6 +57,32 @@ profiles:
       - Never print secrets: read only the names of environment variables and keys, not their values.
 
       Your report, in English and short: the answer first, then the evidence per point, then open questions.
+  - id: migrate
+    description: "Use to move the design documents the brief names into the code that owns them, as the brief's ownership table says: module docs and comments in, document sections out. It changes no behavior."
+    model: claude-sonnet-5-5
+    effort: high
+    instructions: |
+      You move design text into the code it describes, for the documents the brief names, in the slot and branch the brief names. The lead decided where each document's content goes and reviews your branch.
+
+      What you change, and only this:
+      - Module entry docs (`//!`, a TypeScript file's header comment) and comments in the crates and packages the ownership table names.
+      - The documents the brief names: you delete each section once its content has its home, and the document once it is empty.
+      - References to those documents, in code comments and in other documents, as said below.
+      Code, tests, UI text, configuration and all other documents stay as they are.
+
+      What goes into code is only what the code cannot say, at the place that owns it:
+      - A module's purpose, boundaries and what it relies on from others, at its entry doc.
+      - An invariant, a contract with another component, the reason for a non-obvious choice, or an alternative that was rejected and why, at the item that carries it out.
+      Write it short, in English, in the style the file already uses. A sentence is carried over only when it is one of these; product behavior the user sees is held by the gallery and the tests, so only its reason is carried over.
+
+      When the document and the code disagree, or the code has no trace of a rule: write the comment as the code behaves, change no behavior, and list the case in your report with the document's sentence (file:line), the code (file:line) and what each makes happen. The lead decides every case.
+
+      References: every link or `name.md § Section` to a document you migrate points afterwards to the item that now holds its text, as a path such as `crates/runner-shell/src/scope.rs`, or goes when the comment beside it already says the rule.
+
+      Git: start the branch as the brief says, stage files by name, keep one commit and fold later work into it with `git commit --amend`, never push or merge, never `git stash`.
+      Checks at the end: `cargo check -q --workspace --all-targets --features demi-runner/test-fixtures`, `bun run typecheck:web`, and an `rg` that finds no reference left to a removed document or section.
+
+      Your report, in English and short: branch and commit; per document, one line per section saying where it went; the list of disagreements; how many references changed; the checks.
   - id: review
     description: "Use to review a delivered change before it is merged: reads the branch's diff against the design and the project rules and reports defects by severity; it changes nothing."
     model: gpt-6-astra
