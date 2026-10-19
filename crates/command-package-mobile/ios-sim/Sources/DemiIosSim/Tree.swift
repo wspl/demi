@@ -11,9 +11,6 @@ import FBSimulatorControl
 import Foundation
 
 struct Tree {
-  /// The simulator's UI automation mode, which the bridge turns on.
-  static let automationKey = "AutomationEnabled"
-  static let automationDomain = "com.apple.Accessibility"
   static let safari = "com.apple.mobilesafari"
 
   let session: DeviceSession
