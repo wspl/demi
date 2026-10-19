@@ -66,7 +66,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     // afterwards only the candidate's runtime has closed.
     let gate = store.hold_saves();
     store.fail_saves(1);
-    let failing = spawn_edit(&session, edit_of(&session, "B", "op1", "B2"));
+    let failing = spawn_edit(&session, edit_of(&session, "B", "op1", "B2").await);
     until(|| gate.waiting() == 1).await;
     assert_eq!(session.transcript(), before);
     assert!(patches.borrow().is_empty());
@@ -89,7 +89,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     // acceptance, and the session refuses every other change but a model
     // switch, which waits for the edit.
     let gate = store.hold_saves();
-    let submission = edit_of(&session, "B", "op2", "B3");
+    let submission = edit_of(&session, "B", "op2", "B3").await;
     let first = spawn_edit(&session, submission.clone());
     until(|| gate.waiting() == 1).await;
     assert_eq!(session.transcript(), before);
@@ -113,7 +113,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     );
     assert_eq!(
         session
-            .edit_and_send(edit_of(&session, "A", "op3", "A2"))
+            .edit_and_send(edit_of(&session, "A", "op3", "A2").await)
             .await,
         Err(EditError::Busy)
     );
@@ -189,7 +189,7 @@ async fn a_stop_while_an_edit_prepares_rejects_it_and_while_it_saves_the_save_de
     // Stopped while its preamble is prepared: rejected, and the accepted
     // history gains no stop marker.
     hang.set(true);
-    let preparing = spawn_edit(&session, edit_of(&session, "A", "op1", "A2"));
+    let preparing = spawn_edit(&session, edit_of(&session, "A", "op1", "A2").await);
     until(|| session.phase() == SessionPhase::Running).await;
     tokio::task::yield_now().await;
     let stopped = session.abort().await;
@@ -203,7 +203,7 @@ async fn a_stop_while_an_edit_prepares_rejects_it_and_while_it_saves_the_save_de
     // the edit is rejected with its failure.
     let gate = store.hold_saves();
     store.fail_saves(1);
-    let failing = spawn_edit(&session, edit_of(&session, "A", "op2", "A2"));
+    let failing = spawn_edit(&session, edit_of(&session, "A", "op2", "A2").await);
     until(|| gate.waiting() == 1).await;
     let stopping = spawn_abort(&session);
     tokio::task::yield_now().await;
@@ -225,7 +225,7 @@ async fn a_stop_while_an_edit_prepares_rejects_it_and_while_it_saves_the_save_de
     // Stopped while a save that commits runs: the edit is accepted, the stop
     // is recorded after the replacement, and no turn starts.
     let gate = store.hold_saves();
-    let committing = spawn_edit(&session, edit_of(&session, "A", "op3", "A3"));
+    let committing = spawn_edit(&session, edit_of(&session, "A", "op3", "A3").await);
     until(|| gate.waiting() == 1).await;
     let stopping = spawn_abort(&session);
     tokio::task::yield_now().await;
@@ -260,7 +260,7 @@ async fn dispose_during_an_edits_save_waits_for_it_and_keeps_the_accepted_replac
     .await;
     session.send(text("A"), turn("A")).unwrap().await.unwrap();
     let gate = store.hold_saves();
-    let editing = spawn_edit(&session, edit_of(&session, "A", "op1", "A2"));
+    let editing = spawn_edit(&session, edit_of(&session, "A", "op1", "A2").await);
     until(|| gate.waiting() == 1).await;
 
     let disposing = {
@@ -317,7 +317,7 @@ async fn a_save_under_way_when_an_edit_starts_commits_first_and_brings_back_no_r
         &later,
         test_runtime(Vec::new()),
         Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-    );
+    ).await;
     // The call completed as interrupted is due for a scheduled save, which
     // the store holds.
     let gate = crashed.hold_saves();
@@ -325,7 +325,7 @@ async fn a_save_under_way_when_an_edit_starts_commits_first_and_brings_back_no_r
     assert_eq!(gate.waiting(), 1);
     let before = restored.transcript();
 
-    let editing = spawn_edit(&restored, edit_of(&restored, "A", "op1", "write it twice"));
+    let editing = spawn_edit(&restored, edit_of(&restored, "A", "op1", "write it twice").await);
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // The edit waits behind that save, and shows nothing.
@@ -371,7 +371,7 @@ async fn an_accepted_edit_stays_accepted_when_its_turn_fails_and_neither_a_repea
             }
         }
     });
-    let submission = edit_of(&session, "A", "op1", "A2");
+    let submission = edit_of(&session, "A", "op1", "A2").await;
 
     let receipt = session.edit_and_send(submission.clone()).await.unwrap();
     session.settled().await;
@@ -510,12 +510,12 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
             &provider,
             test_runtime(vec![note.clone()]),
             Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-        );
+        ).await;
         let (_subscription, patches) = published(&session);
         let replacement = format!("{edited}2");
 
         let receipt = session
-            .edit_and_send(edit_of(&session, edited, "op1", &replacement))
+            .edit_and_send(edit_of(&session, edited, "op1", &replacement).await)
             .await
             .unwrap();
         session.settled().await;

@@ -64,7 +64,7 @@ fn only_when_asked() -> CompactionConfig {
 /// The node `root` restored from a copy of `store`, compacting at 80% of its
 /// model's window: a history written without compaction meets a threshold it
 /// is over.
-fn restore_compacting(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession {
+async fn restore_compacting(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession {
     let copy = store.copy();
     let checkpoint = copy.checkpoint(&root()).unwrap();
     let config = SessionConfig {
@@ -78,7 +78,7 @@ fn restore_compacting(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> Ag
         test_runtime(Vec::new()),
         Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
         config,
-    );
+    ).await;
     session
 }
 
@@ -215,7 +215,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     assert_eq!(summary.model_id, "small-model");
     // The boundary stands where that request's content ends; the answer to
     // it and the next message are kept, and the marker ends them.
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         [
@@ -302,7 +302,7 @@ async fn a_limit_on_the_models_window_lowers_the_token_threshold_from_the_next_c
 
     let copies: Vec<bool> = provider.requests().iter().map(is_copy).collect();
     assert_eq!(copies, [false, false, true, false]);
-    let kinds = kinds(&session.transcript().blocks);
+    let kinds = kinds(&session.history().await.unwrap().blocks);
     assert!(
         kinds.iter().any(|kind| kind == "compaction_boundary"),
         "{kinds:?}"
@@ -342,7 +342,7 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
         &provider,
         test_runtime(vec![note]),
         Arc::new(FixedClock("2026-09-26T12:00:00Z".parse().unwrap())),
-    );
+    ).await;
     restored.send(text("D"), turn("D")).unwrap().await.unwrap();
 
     let requests = provider.requests();
@@ -462,7 +462,7 @@ async fn a_summary_request_that_exceeds_the_context_is_retried_with_the_window_t
     // to its second message; the third the first half of that window, two
     // blocks, and the instruction after the answer.
     assert_eq!(summary_sizes(&provider), [5, 3, 3]);
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     let boundaries = blocks
         .iter()
         .filter(|block| matches!(block, Block::CompactionBoundary(_)))
@@ -507,7 +507,7 @@ async fn a_blank_summary_compacts_nothing_and_a_failed_one_fails_the_turn_with_i
         .await;
 
     assert_eq!(failed.unwrap_err().code.as_deref(), Some("auth_expired"));
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert!(
         !blocks.iter().any(|block| matches!(
             block,
@@ -554,7 +554,7 @@ async fn a_failed_compact_after_a_finished_answer_leaves_a_failure_record_that_e
     let failed = session.compact().unwrap().await;
 
     assert_eq!(failed.unwrap_err().code.as_deref(), Some("auth_expired"));
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(kinds(&blocks), ["user", "text", "response", "error"]);
     let Some(Block::Error(error)) = blocks.last() else {
         unreachable!("the kinds end with an error");
@@ -582,7 +582,7 @@ async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() 
     assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
     // The answer had finished: no `abort` block offers Continue on it.
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         ["user", "text", "response"]
     );
 }
@@ -633,7 +633,7 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
     assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
     // The stop wrote nothing: no marker.
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         ["user", "tool_call:completed", "response", "text", "response"]
     );
 
@@ -644,7 +644,7 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
         .unwrap();
     session.settled().await;
     assert_eq!(
-        kinds(&session.transcript().blocks[5..]),
+        kinds(&session.history().await.unwrap().blocks[5..]),
         ["agent_message", "text", "response"]
     );
     // So does the report of the command the turn left running, once it
@@ -653,7 +653,7 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
     until(|| provider.requests().len() == 5).await;
     session.settled().await;
     assert_eq!(
-        kinds(&session.transcript().blocks[8..]),
+        kinds(&session.history().await.unwrap().blocks[8..]),
         ["wakeup", "text", "response"]
     );
 }
@@ -681,7 +681,7 @@ async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_kee
         .unwrap_err();
     session.compact().unwrap().await.unwrap();
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         [
             "user",
             "compaction_boundary",
@@ -710,7 +710,7 @@ async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_kee
         .concat()
     );
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         [
             "user",
             "compaction_boundary",
@@ -792,7 +792,7 @@ fn image_message(image: &BlobRef) -> Vec<UserContentBlock> {
 
 /// The node `root` restored from a copy of `store`, which holds no media's
 /// bytes yet.
-fn restored(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession {
+async fn restored(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession {
     let copy = store.copy();
     let checkpoint = copy.checkpoint(&root()).unwrap();
     let (session, _) = restore_session(
@@ -801,7 +801,7 @@ fn restored(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession
         provider,
         test_runtime(Vec::new()),
         Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-    );
+    ).await;
     session
 }
 
@@ -831,7 +831,7 @@ async fn a_restored_session_tells_its_usage_without_a_blob_while_its_media_lie_b
     // The image went out in the request the latest response measured: the
     // estimate is that usage, and needs no byte of it.
     assert_eq!(
-        restored(&store, &provider)
+        restored(&store, &provider).await
             .held_context_usage()
             .await
             .map(|usage| usage.tokens),
@@ -842,7 +842,7 @@ async fn a_restored_session_tells_its_usage_without_a_blob_while_its_media_lie_b
     // its bytes can say how much.
     let failed = session.send(image_message(&image), turn("t2")).unwrap().await;
     assert!(failed.is_err());
-    let after_failure = restored(&store, &provider);
+    let after_failure = restored(&store, &provider).await;
     assert_eq!(after_failure.held_context_usage().await, None);
     let read = after_failure.context_usage().await.unwrap();
     assert!(read.tokens >= 5_010 + 1_600, "{read:?}");
@@ -867,7 +867,7 @@ async fn stop_during_a_summary_closes_the_copy_and_ends_the_action_as_stopped() 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         ["user", "text", "response", "user", "abort"]
     );
     // The turn's own request never went out.
@@ -900,7 +900,7 @@ async fn a_tool_the_model_calls_during_a_summary_never_runs() {
     session.send(long_message(), turn("t1")).unwrap().await.unwrap();
     session.send(text(&"y".repeat(400)), turn("t2")).unwrap().await.unwrap();
     assert_eq!(runs.get(), 0);
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert!(!blocks.iter().any(|block| matches!(block, Block::ToolCall(_))));
     let Block::CompactionBoundary(boundary) = &blocks[1] else {
         panic!("{:?}", kinds(&blocks));
@@ -932,7 +932,7 @@ async fn a_tool_the_model_calls_during_a_summary_never_runs() {
     assert_eq!(retries.get(), 1);
     let requests = provider.requests();
     assert_eq!(requests[2].items, requests[1].items);
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     let Block::CompactionBoundary(boundary) = &blocks[1] else {
         panic!("{:?}", kinds(&blocks));
     };
@@ -951,7 +951,7 @@ async fn a_tool_the_model_calls_during_a_summary_never_runs() {
     assert!(failed.is_err());
     assert_eq!(runs.get(), 0);
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         ["user", "text", "response", "user", "error"]
     );
 }
@@ -989,7 +989,7 @@ async fn a_turn_whose_usage_keeps_reaching_the_threshold_compacts_at_most_three_
         .await
         .unwrap();
 
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     let count = |kind: &str| kinds(&blocks).iter().filter(|each| *each == kind).count();
     assert_eq!(count("compaction_boundary"), 3);
     assert_eq!(count("resume"), 3);
@@ -1024,7 +1024,7 @@ async fn a_final_answer_over_the_threshold_ends_its_turn_and_the_next_send_compa
 
     assert_eq!(provider.requests().len(), 2);
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         ["user", "text", "response", "user", "text", "response"]
     );
 
@@ -1043,7 +1043,7 @@ async fn a_final_answer_over_the_threshold_ends_its_turn_and_the_next_send_compa
         "{:#?}",
         next.items
     );
-    assert!(!kinds(&session.transcript().blocks).iter().any(|kind| kind == "resume"));
+    assert!(!kinds(&session.history().await.unwrap().blocks).iter().any(|kind| kind == "resume"));
 }
 
 #[tokio::test(flavor = "local")]
@@ -1147,7 +1147,7 @@ async fn a_send_whose_switch_fails_to_compact_keeps_its_message_in_a_turn_that_r
     let failed = session.send(text("short"), turn("t3")).unwrap().await;
 
     assert_eq!(failed.unwrap_err().code.as_deref(), Some("auth_expired"));
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         ["user", "text", "response", "user", "text", "response", "user", "error"]
@@ -1191,7 +1191,7 @@ async fn a_send_stopped_while_its_switch_compacts_keeps_its_message_before_the_s
 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         ["user", "text", "response", "user", "text", "response", "user", "abort"]
@@ -1248,7 +1248,7 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
         ]
     );
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         [
             "user",
             "text",
@@ -1323,7 +1323,7 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
     compacting.await.unwrap();
 
     // The steer waits in the transcript; no turn ran for it.
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("steer"));
     assert!(
         blocks
@@ -1351,7 +1351,7 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
     assert_eq!(requests.len(), 6);
     assert!(!is_copy(&requests[5]));
     assert_eq!(
-        kinds(&session.transcript().blocks)
+        kinds(&session.history().await.unwrap().blocks)
             .last()
             .map(String::as_str),
         Some("response")
@@ -1398,7 +1398,7 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
         .unwrap()
         .await
         .unwrap();
-    let before = session.transcript();
+    let before = session.history().await.unwrap();
 
     let failed = session.compact().unwrap().await;
 
@@ -1410,7 +1410,7 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
     assert_eq!(failure.code.as_deref(), Some("context_length_exceeded"));
     assert_eq!(*errors.borrow(), [*failure]);
     assert_eq!(summary_sizes(&provider), [5, 3, 3, 1]);
-    assert_failure_recorded(&session, &before);
+    assert_failure_recorded(&session, &before).await;
     // The session goes on.
     session
         .send(text("recover"), turn("t3"))
@@ -1428,7 +1428,7 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
         .unwrap()
         .await
         .unwrap();
-    let before = session.transcript();
+    let before = session.history().await.unwrap();
 
     let failed = session.compact().unwrap().await;
 
@@ -1440,13 +1440,13 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
     // it kept, and the summary.
     // The pass between asked once, with the whole history, seven items.
     assert_eq!(summary_sizes(&provider), [5, 3, 3, 1, 7, 11, 9, 7, 5, 5]);
-    assert_failure_recorded(&session, &before);
+    assert_failure_recorded(&session, &before).await;
 }
 
 /// The history is `before` with one failure record after it, whose code says
 /// the summary request exceeded the context.
-fn assert_failure_recorded(session: &AgentSession, before: &TranscriptSnapshot) {
-    let blocks = session.transcript().blocks;
+async fn assert_failure_recorded(session: &AgentSession, before: &TranscriptSnapshot) {
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(blocks[..blocks.len() - 1], before.blocks[..]);
     let Some(Block::Error(error)) = blocks.last() else {
         panic!("no failure record: {:?}", kinds(&blocks));
@@ -1479,7 +1479,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         .unwrap()
         .await
         .unwrap();
-    let session = restore_compacting(&store, &provider);
+    let session = restore_compacting(&store, &provider).await;
 
     session.retry().unwrap().await.unwrap();
 
@@ -1513,7 +1513,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
     );
     assert_eq!(rerun.turn_id, "t2");
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         [
             "user",
             "compaction_boundary",
@@ -1526,7 +1526,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         ]
     );
 
-    let stopped_session = restore_compacting(&store, &provider);
+    let stopped_session = restore_compacting(&store, &provider).await;
     let retrying = stopped_session.retry().unwrap();
     until(|| provider.requests().len() == 5).await;
     let stopped = stopped_session.abort().await;
@@ -1536,7 +1536,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
     // The rewind stays, with the stop and no boundary; the rerun's request
     // never went out.
     assert_eq!(
-        kinds(&stopped_session.transcript().blocks),
+        kinds(&stopped_session.history().await.unwrap().blocks),
         ["user", "text", "response", "user", "abort"]
     );
     assert_eq!(provider.requests().len(), 5);
@@ -1567,10 +1567,14 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
         .unwrap();
     written.compact().unwrap().await.unwrap();
     let running = written.send(text(&question), turn("t2")).unwrap();
-    until(|| written.transcript().blocks.len() == 7).await;
+    until(|| {
+        let held = written.transcript();
+        held.start + held.blocks.len() == 7
+    })
+    .await;
     written.abort().await;
     running.await.unwrap();
-    let session = restore_compacting(&store, &provider);
+    let session = restore_compacting(&store, &provider).await;
 
     session.resume(None).unwrap().await.unwrap();
 
@@ -1611,7 +1615,7 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
         ]
         .concat()
     );
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         [
@@ -1632,14 +1636,14 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     );
     assert!(matches!(&blocks[8], Block::Abort(abort) if abort.is_resumed));
 
-    let stopped_session = restore_compacting(&store, &provider);
+    let stopped_session = restore_compacting(&store, &provider).await;
     let resuming = stopped_session.resume(None).unwrap();
     until(|| provider.requests().len() == 6).await;
     let stopped = stopped_session.abort().await;
 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
     assert_eq!(resuming.await, Ok(ActionEnd::Aborted));
-    let blocks = stopped_session.transcript().blocks;
+    let blocks = stopped_session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         [
@@ -1717,7 +1721,7 @@ async fn input_too_large_for_the_model_on_its_own_is_never_summarized_and_its_re
     );
     // The message stays where it was, before the failure.
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         [
             "user",
             "compaction_boundary",
@@ -1760,10 +1764,14 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
         .await
         .unwrap();
     let running = written.send(text("follow-up"), turn("t3")).unwrap();
-    until(|| written.transcript().blocks.len() == 8).await;
+    until(|| {
+        let held = written.transcript();
+        held.start + held.blocks.len() == 8
+    })
+    .await;
     written.abort().await;
     running.await.unwrap();
-    let session = restore_compacting(&store, &provider);
+    let session = restore_compacting(&store, &provider).await;
     session
         .update_model(ModelSwitch {
             model: Box::new(small_model()),
@@ -1797,7 +1805,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     // The unwind kept the stop, the switch's pass summarized what the
     // second request carried, and the one `resume` block follows the
     // marker.
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         [
@@ -1894,7 +1902,7 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
         InferenceItem::ToolResult { output, .. } if *output == sent_texts(&["counted"])
     ));
     assert_eq!(continuation.items[5], user_item(RESUME_TEXT));
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         [
@@ -1931,7 +1939,7 @@ async fn a_response_without_usage_compacts_nothing_and_leaves_the_estimate_on_th
 
     session.send(text("second"), turn("t2")).unwrap().await.unwrap();
 
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&blocks),
         ["user", "text", "response", "user", "text", "response"]
@@ -1974,7 +1982,7 @@ async fn a_response_that_reports_more_input_than_the_models_window_compacts_noth
     assert_eq!(runs.get(), 1);
     assert_eq!(provider.remaining(), 0);
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         ["user", "tool_call:completed", "response", "text", "response"]
     );
 }
@@ -1996,7 +2004,7 @@ async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request(
     session.compact().unwrap().await.unwrap();
 
     assert!(provider.requests().is_empty());
-    assert!(session.transcript().blocks.is_empty());
+    assert!(session.history().await.unwrap().blocks.is_empty());
     assert_eq!(session.phase(), SessionPhase::Idle);
 
     // A turn fails after a pass. With no request answered since, the next
@@ -2016,7 +2024,7 @@ async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request(
 
     assert_eq!(provider.requests().len(), 4);
     assert_eq!(
-        kinds(&session.transcript().blocks),
+        kinds(&session.history().await.unwrap().blocks),
         [
             "user",
             "compaction_boundary",
@@ -2065,7 +2073,7 @@ async fn a_context_source_sees_only_its_blocks_after_the_last_boundary_and_tells
     // so after the pass the source is shown nothing and tells it again.
     let told = vec!["execution: Runs on the Cloud.".to_owned()];
     assert_eq!(*seen.borrow(), [vec![], told.clone(), vec![]]);
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     let contexts: Vec<_> = blocks
         .iter()
         .filter_map(|block| match block {
@@ -2163,7 +2171,7 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
         &provider,
         test_runtime(Vec::new()),
         Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-    );
+    ).await;
     restored
         .send(text("after the restore"), turn("t5"))
         .unwrap()
@@ -2339,7 +2347,7 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
     // Each boundary stands where the content of the request before it
     // ended, so a message comes before the boundary of the pass that
     // followed its answer.
-    let before = written.transcript().blocks;
+    let before = written.history().await.unwrap().blocks;
     assert_eq!(
         kinds(&before),
         [
@@ -2381,18 +2389,18 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
             .concat(),
         ),
     ] {
-        let session = restore_compacting(&store, &provider);
+        let session = restore_compacting(&store, &provider).await;
         let replacement = format!("{name}2");
 
         session
-            .edit_and_send(edit_of(&session, name, "op1", &replacement))
+            .edit_and_send(edit_of(&session, name, "op1", &replacement).await)
             .await
             .unwrap();
         session.settled().await;
 
         // The summaries after the message went with it; one before it stands
         // for what it summarized.
-        let blocks = session.transcript().blocks;
+        let blocks = session.history().await.unwrap().blocks;
         assert_eq!(blocks[..index], before[..index], "editing {name}");
         assert_eq!(kinds(&blocks[index..]), ["user", "text", "response"]);
         let expected = [kept, vec![user_item(&replacement)]].concat();
@@ -2433,7 +2441,7 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
     // A's answer, B and C after the boundary.
     written.compact().unwrap().await.unwrap();
     assert_eq!(
-        kinds(&written.transcript().blocks),
+        kinds(&written.history().await.unwrap().blocks),
         [
             "user",
             "compaction_boundary",
@@ -2447,10 +2455,10 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
             "compaction_marker"
         ]
     );
-    let session = restore_compacting(&store, &provider);
+    let session = restore_compacting(&store, &provider).await;
 
     session
-        .edit_and_send(edit_of(&session, "C", "op1", "C2"))
+        .edit_and_send(edit_of(&session, "C", "op1", "C2").await)
         .await
         .unwrap();
     session.settled().await;
@@ -2494,10 +2502,10 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
     for name in ["B", "C"] {
         written.send(text(name), turn(name)).unwrap().await.unwrap();
     }
-    let session = restore_compacting(&store, &provider);
+    let session = restore_compacting(&store, &provider).await;
 
     session
-        .edit_and_send(edit_of(&session, "B", "op1", "B2"))
+        .edit_and_send(edit_of(&session, "B", "op1", "B2").await)
         .await
         .unwrap();
     session.settled().await;
@@ -2627,7 +2635,7 @@ async fn screenshots_near_a_vendors_image_or_byte_limit_never_compact_a_history_
             .filter(|item| matches!(item, InferenceItem::ToolResult { .. }))
             .count();
         assert_eq!(results, 4, "{limit}");
-        assert!(!compacted(&session.transcript().blocks), "{limit}");
+        assert!(!compacted(&session.history().await.unwrap().blocks), "{limit}");
 
         // A switch to that vendor from one without limits does not compact
         // either, with the model before it or after.
@@ -2647,7 +2655,7 @@ async fn screenshots_near_a_vendors_image_or_byte_limit_never_compact_a_history_
 
         assert_eq!(provider.requests().len(), 5, "{limit}");
         assert_eq!(after.requests().len(), 1, "{limit}");
-        assert!(!compacted(&session.transcript().blocks), "{limit}");
+        assert!(!compacted(&session.history().await.unwrap().blocks), "{limit}");
     }
 }
 
@@ -2684,7 +2692,7 @@ async fn a_request_refused_for_its_size_is_not_compacted() {
     );
     assert_eq!(provider.requests().len(), 2);
     assert_eq!(provider.remaining(), 2);
-    assert!(!compacted(&session.transcript().blocks));
+    assert!(!compacted(&session.history().await.unwrap().blocks));
 }
 
 // One session of five scripted requests: a few milliseconds.
@@ -2718,7 +2726,7 @@ async fn a_summary_request_refused_for_its_size_fails_the_pass_without_a_smaller
     );
     assert_eq!(summary_sizes(&provider).len(), 1);
     assert_eq!(provider.remaining(), 1);
-    assert!(!compacted(&session.transcript().blocks));
+    assert!(!compacted(&session.history().await.unwrap().blocks));
 }
 
 // One session and four scripted requests: a few milliseconds.
@@ -2749,7 +2757,7 @@ async fn a_summary_request_gives_the_claude_code_cli_its_instruction_inside_the_
         Turn::Events(vec![
             ProviderEvent::Entries {
                 of: EntriesOf::Item(2),
-                entries: vec![date.clone(), meta.clone(), recorded],
+                entries: vec![date.clone().into(), meta.clone().into(), recorded.into()],
             },
             ProviderEvent::Error(ProviderFailure {
                 message: "prompt is too long".into(),
@@ -2868,7 +2876,7 @@ async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_sec
         .concat()
     );
     assert_eq!(retries.get(), 0);
-    assert!(!kinds(&session.transcript().blocks).contains(&"error".to_owned()));
+    assert!(!kinds(&session.history().await.unwrap().blocks).contains(&"error".to_owned()));
 
     // Refused again after its pass, the request fails the turn.
     let failed = session.send(text("three"), turn("t3")).unwrap().await;
@@ -2879,7 +2887,7 @@ async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_sec
     );
     assert_eq!(provider.remaining(), 0);
     assert_eq!(
-        kinds(&session.transcript().blocks)
+        kinds(&session.history().await.unwrap().blocks)
             .last()
             .map(String::as_str),
         Some("error")
@@ -2954,7 +2962,7 @@ async fn five_calls(output_text: String) -> Vec<demi_provider_common::InferenceR
     let session = small_session(&provider, vec![work], &store).await;
     session.send(text("go"), turn("t1")).unwrap().await.unwrap();
     assert_eq!(
-        kinds(&session.transcript().blocks)
+        kinds(&session.history().await.unwrap().blocks)
             .iter()
             .filter(|kind| *kind == "compaction_boundary")
             .count(),
@@ -3100,7 +3108,7 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     // keeps, 10% of it, and keeps its text up to them, without its
     // screenshot; the first is left to the summary, and so is the agent's
     // message.
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     let boundary = blocks
         .iter()
         .find(|block| matches!(block, Block::CompactionBoundary(_)))
@@ -3141,7 +3149,7 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     // The next pass starts from what this boundary kept, and the new
     // message pushes the edge further.
     session.compact().unwrap().await.unwrap();
-    let blocks = session.transcript().blocks;
+    let blocks = session.history().await.unwrap().blocks;
     let boundary = blocks
         .iter()
         .rfind(|block| matches!(block, Block::CompactionBoundary(_)))
@@ -3156,5 +3164,139 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
             vec!["Now report.".to_owned()],
             vec!["Go on.".to_owned()],
         ]
+    );
+}
+
+/// The position of the last `compaction_boundary` of `blocks`.
+fn last_boundary(blocks: &[Block]) -> usize {
+    blocks
+        .iter()
+        .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
+        .expect("the history was compacted")
+}
+
+// `runtime.md` § What a session holds. Three sessions over one store,
+// eight scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_session_of_many_compactions_holds_only_its_last_window_and_reads_the_earlier_history_from_the_store() {
+    let provider = ScriptedRuntime::new([
+        answer("answer A"),
+        answer("answer B"),
+        answer("summary one"),
+        answer("answer C"),
+        answer("summary two"),
+        answer("answer D"),
+        answer("summary three"),
+        answer("replaced A"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    for name in ["A", "B"] {
+        written.send(text(&question(name)), turn(name)).unwrap().await.unwrap();
+    }
+    written.compact().unwrap().await.unwrap();
+    written.send(text(&question("C")), turn("C")).unwrap().await.unwrap();
+    written.compact().unwrap().await.unwrap();
+    written.settled().await;
+    written.dispose().await.unwrap();
+    let path = store.path(&root());
+    let window = last_boundary(&path);
+    assert!(path[..window].iter().any(|block| matches!(block, Block::CompactionBoundary(_))));
+
+    // Restored, it holds the blocks from the last boundary on, never the
+    // ones before it.
+    let (session, _) = restore_configured(
+        store.checkpoint(&root()).unwrap(),
+        &store,
+        &provider,
+        test_runtime(Vec::new()),
+        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
+        SessionConfig {
+            compaction: only_when_asked(),
+            ..SessionConfig::default()
+        },
+    )
+    .await;
+    let held = session.transcript();
+    assert_eq!((held.start, held.blocks), (window, path[window..].to_vec()));
+
+    // A new compaction lets go of what came before it once its save
+    // committed.
+    session.send(text(&question("D")), turn("D")).unwrap().await.unwrap();
+    session.compact().unwrap().await.unwrap();
+    session.settled().await;
+    let path = store.path(&root());
+    let next = last_boundary(&path);
+    assert!(next > window);
+    let held = session.transcript();
+    assert_eq!((held.start, held.blocks), (next, path[next..].to_vec()));
+
+    // The earlier history is read from the store: whole, and as a page
+    // that holds it from its second block.
+    assert_eq!(session.history().await.unwrap().blocks, path);
+    let reset = session.reset(Some(1), Some(path[1].id())).await.unwrap();
+    assert_eq!((reset.start, reset.length, reset.blocks), (1, path.len(), path[1..].to_vec()));
+
+    // An edit of the first message, before every boundary, replaces the
+    // history from it.
+    session
+        .edit_and_send(edit_of(&session, "A", "op1", "A2").await)
+        .await
+        .unwrap();
+    session.settled().await;
+    let path = store.path(&root());
+    assert_eq!(kinds(&path), ["user", "text", "response"]);
+    let held = session.transcript();
+    assert_eq!((held.start, held.blocks), (0, path));
+}
+
+// A compaction inside a turn lets go of the request's first call, and the
+// next call's list of the request still holds what it changed: the lists
+// start at the request's own message, whose calls before the window are
+// read from the store. One session, four scripted requests: a few
+// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_request_that_a_compaction_cut_lists_its_calls_from_its_own_message() {
+    use demi_shared_types::EditKind;
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call(
+                "call-1",
+                "shell",
+                json!({ "command": "1", "writes": [["/w/a.txt", "added", "", "one\n"]] }),
+            ),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![
+            event::tool_call("call-0", "shell", json!({ "command": "0" })),
+            event::response(900, 0),
+        ]),
+        answer("summary one"),
+        Turn::Events(vec![
+            event::tool_call(
+                "call-2",
+                "shell",
+                json!({ "command": "2", "writes": [["/w/b.txt", "modified", "x\n", "y\n"]] }),
+            ),
+            event::response(1, 1),
+        ]),
+        answer("Done."),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (_release, released) = oneshot::channel();
+    let session = small_session(&provider, vec![super::lists::shell_tool(released)], &store).await;
+    session.send(text("Tidy up"), turn("t1")).unwrap().await.unwrap();
+
+    let held = session.transcript();
+    let first = held.blocks.iter().position(|block| matches!(block, Block::ToolCall(call) if call.tool_use_id == "call-1"));
+    assert_eq!(first, None, "the window let go of the first call");
+    let second = held
+        .blocks
+        .iter()
+        .find(|block| matches!(block, Block::ToolCall(call) if call.tool_use_id == "call-2"))
+        .unwrap();
+    assert_eq!(
+        super::lists::listed(second, false),
+        [("/w/a.txt".to_owned(), EditKind::Added), ("/w/b.txt".to_owned(), EditKind::Modified)]
     );
 }

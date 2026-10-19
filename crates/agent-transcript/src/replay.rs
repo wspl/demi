@@ -64,7 +64,7 @@ pub struct Replay {
 pub struct ReplayedBlock {
     pub id: BlockId,
     pub items: Range<usize>,
-    pub entries: Vec<Value>,
+    pub entries: Vec<demi_shared_types::Entry>,
 }
 
 /// What `request` carries of its model's view.

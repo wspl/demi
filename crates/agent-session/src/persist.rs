@@ -10,27 +10,42 @@ use std::{
 
 use demi_agent_store::StoreError;
 use demi_agent_transcript::DirtyRows;
-use demi_shared_types::Block;
+use demi_shared_types::{Block, SessionPhase};
 use tokio::sync::Notify;
 
 use super::{SessionEvent, SessionShared};
 
 /// Whether a save is due and which rows it writes.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct PersistMarks {
     pub(crate) dirty: bool,
     pub(crate) rows: DirtyRows,
+    /// The phase the last save the session prepared records.
+    pub(crate) recorded: SessionPhase,
+}
+
+impl Default for PersistMarks {
+    fn default() -> Self {
+        Self {
+            dirty: false,
+            rows: DirtyRows::default(),
+            recorded: SessionPhase::Idle,
+        }
+    }
 }
 
 /// Writes the checkpoint when a save is due. The caller holds the session's
-/// save order.
+/// save order. Once every row is saved, the blocks before the last
+/// compaction boundary are let go (`runtime.md` § What a session holds).
 pub(crate) async fn write_if_dirty(s: &SessionShared) -> Result<(), StoreError> {
     let Some((update, rows)) = s.update(|core| core.prepare_checkpoint()) else {
+        s.update(|core| core.release_settled());
         return Ok(());
     };
     let saved = s.store.save(update).await;
-    if saved.is_err() {
-        s.update(|core| core.restore_marks(rows));
+    match &saved {
+        Ok(()) => s.update(|core| core.release_settled()),
+        Err(_) => s.update(|core| core.restore_marks(rows)),
     }
     saved
 }
@@ -52,6 +67,15 @@ pub(crate) async fn commit_rewrite(
     blocks: Vec<Block>,
 ) -> Result<(), StoreError> {
     let _turn = s.persist_gate.acquire().await;
+    commit_rewrite_held(s, blocks).await
+}
+
+/// [`commit_rewrite`] of `blocks`, the path from the window's start on,
+/// for a caller that holds the session's save order.
+pub(crate) async fn commit_rewrite_held(
+    s: &SessionShared,
+    blocks: Vec<Block>,
+) -> Result<(), StoreError> {
     let update = s.read(|core| core.rewrite_update(&blocks, false));
     s.store.save(update).await?;
     s.update(|core| core.adopt_rewrite(blocks, false));

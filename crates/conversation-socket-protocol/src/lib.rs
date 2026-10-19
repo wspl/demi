@@ -22,8 +22,8 @@ pub use server::{
     ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,
 };
 pub use transcript::{
-    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, Versions, index_u32,
-    latest_page_start, light,
+    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, Versions,
+    index_u32, latest_page_start, latest_page_start_within, light,
     light_bytes, page, requests, reset_start,
 };
 

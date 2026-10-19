@@ -13,15 +13,14 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentMessageError, AgentSession, Execution, ForkError, ModelSwitch, SessionEvent, Settle,
+    AgentMessageError, AgentSession, Execution, ForkError, ForkSeed, ModelSwitch, SessionEvent, Settle,
     Subscription,
 };
-use demi_agent_store::{Checkpoint, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement};
+use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement};
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
     JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob, SubagentSummary, TranscriptPatch, index_u32,
-    latest_page_start,
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
@@ -490,7 +489,7 @@ impl<H: HostResolver> Tree<H> {
         let slot = self.reserve_live(&server, setup.limits)?;
         // The child starts on the source's model, which compacts what the
         // profile's model cannot hold, and switches at its first request.
-        let from = seed.state.model.clone();
+        let from = seed.checkpoint.state.model.clone();
         let runtime = self
             .child_runtime(&server, owner, &from)
             .await
@@ -537,11 +536,8 @@ impl<H: HostResolver> Tree<H> {
             cwd: Some(cwd),
             side: None,
         };
-        seed.state.queue.push(self.text_message(message));
-        let origin = Origin::Forked {
-            record,
-            checkpoint: seed,
-        };
+        seed.checkpoint.state.queue.push(self.text_message(message));
+        let origin = Origin::Forked { record, seed };
         self.start_child(&server, owner, origin, runtime, switch, Some(slot))
             .await?;
         Ok(number)
@@ -550,9 +546,9 @@ impl<H: HostResolver> Tree<H> {
     /// The history a fork of the child `source` starts from: captured from
     /// its live session in one step, or read from its archived checkpoint
     /// (`subagents.md` § Fork).
-    async fn fork_seed(&self, source: &NodeRecord) -> Result<Checkpoint, String> {
+    async fn fork_seed(&self, source: &NodeRecord) -> Result<ForkSeed, String> {
         let seed = match self.child(&source.id) {
-            Some(child) => child.node.session().prepare_fork(ForkEnd::Newest),
+            Some(child) => child.node.session().prepare_fork(ForkEnd::Newest).await,
             None => stored_fork_seed(self.store.as_ref(), &source.id, ForkEnd::Newest).await,
         };
         seed.map_err(|error| match error {
@@ -770,7 +766,7 @@ impl<H: HostResolver> Tree<H> {
             };
             if let Some(call) = &child.started_by {
                 let started = match self.node(parent) {
-                    Some(live) => live.session().holds_block(call),
+                    Some(live) => live.session().holds_call(call),
                     None => summaries
                         .get(&child.number)
                         .is_none_or(|summary| summary.started_on_path),
@@ -830,7 +826,7 @@ impl<H: HostResolver> Tree<H> {
             if summary.record.parent.as_ref() == Some(id)
                 && let Some(call) = &summary.record.started_by
             {
-                summary.started_on_path = session.holds_block(call);
+                summary.started_on_path = session.holds_call(call);
             }
         }
     }
@@ -1942,17 +1938,7 @@ fn child_frames<H: HostResolver>(
 /// child's blocks until it shows it (`rendering.md` § Where a reset starts).
 /// Only that page is copied, never the whole transcript.
 fn child_reset<H: HostResolver>(child: &Child<H>) -> ServerFrame {
-    child.node.session().read_transcript(|blocks, version| {
-        let start = latest_page_start(blocks);
-        ServerFrame::SubagentTranscriptReset {
-            subagent_id: child.id().clone(),
-            start: index_u32(start),
-            length: index_u32(blocks.len()),
-            blocks: blocks[start..].to_vec(),
-            revision: version.revision,
-            failures: None,
-        }
-    })
+    child.node.session().with_window(|transcript| subagent_reset(child.id().clone(), transcript))
 }
 
 /// A closed round's completion message (`subagents.md` § Message
@@ -2473,5 +2459,21 @@ impl ToolStatus {
             Self::Completed => "completed",
             Self::Error => "error",
         }
+    }
+}
+
+/// A child's or a side question's transcript from the start of its latest
+/// page, which the page holds none of until it shows it (`rendering.md`
+/// § Where a reset starts): the window its session holds holds that page,
+/// as the root's does ([`demi_agent_session::latest_page`]).
+pub(super) fn subagent_reset(subagent_id: NodeId, transcript: &demi_agent_transcript::TranscriptLog) -> ServerFrame {
+    let start = demi_agent_session::latest_page(transcript);
+    ServerFrame::SubagentTranscriptReset {
+        subagent_id,
+        start: index_u32(start),
+        length: index_u32(transcript.len()),
+        blocks: transcript.from(start).to_vec(),
+        revision: transcript.version().revision,
+        failures: None,
     }
 }

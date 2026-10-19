@@ -5,8 +5,10 @@
 //! window compaction summarizes is [`crate::compaction`]'s.
 
 use demi_shared_types::{
-    Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, WakeupPlacement, is_blank,
+    Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank,
 };
+
+use demi_agent_store::Kind;
 
 use super::{is_compaction, opens_input_turn};
 
@@ -26,24 +28,31 @@ pub struct ResumePoint {
 /// compaction's boundary and marker. The first other block stops the scan;
 /// reaching the block that opened the turn makes it a rerun.
 pub fn resume_point(blocks: &[Block]) -> ResumePoint {
-    for (index, block) in blocks.iter().enumerate().rev() {
-        if opens_input_turn(block) {
-            return ResumePoint {
-                cut: index + 1,
-                rerun: turn_of(block).cloned(),
-            };
-        }
-        if !is_leftover(block) && !is_compaction(block) {
-            return ResumePoint {
-                cut: index + 1,
-                rerun: None,
-            };
-        }
-    }
-    ResumePoint {
+    resume_point_within(blocks).unwrap_or(ResumePoint {
         cut: blocks.len(),
         rerun: None,
+    })
+}
+
+/// The resume point as [`resume_point`] finds it, when a block of `blocks`
+/// stops the scan; none when the scan passes all of them, as it passes a
+/// window that holds only a compaction and leftovers.
+pub fn resume_point_within(blocks: &[Block]) -> Option<ResumePoint> {
+    for (index, block) in blocks.iter().enumerate().rev() {
+        if opens_input_turn(block) {
+            return Some(ResumePoint {
+                cut: index + 1,
+                rerun: turn_of(block).cloned(),
+            });
+        }
+        if !is_leftover(block) && !is_compaction(block) {
+            return Some(ResumePoint {
+                cut: index + 1,
+                rerun: None,
+            });
+        }
     }
+    None
 }
 
 /// What `resume` keeps of `blocks` unwound to `cut`: the blocks before it,
@@ -111,7 +120,7 @@ pub fn rewind(blocks: &[Block]) -> Option<Rewind> {
 }
 
 /// The turn a block of a turn's input belongs to.
-fn turn_of(block: &Block) -> Option<&TurnId> {
+pub fn turn_of(block: &Block) -> Option<&TurnId> {
     match block {
         Block::User(block) => Some(&block.turn_id),
         Block::Context(block) => Some(&block.turn_id),
@@ -172,18 +181,9 @@ pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Blo
             .filter(|index| is_completed(&blocks[*index]))
             .ok_or(CutError::NotCompletedText)
     };
-    let newest = |from: usize| {
-        let executing = blocks.iter().position(is_executing).unwrap_or(blocks.len());
-        blocks
-            .get(from..executing)
-            .unwrap_or_default()
-            .iter()
-            .rposition(is_completed)
-            .map(|index| from + index)
-    };
     let index = match end {
         ForkEnd::At(target) => at(target)?,
-        ForkEnd::Newest => newest(0).ok_or(CutError::NothingCompleted)?,
+        ForkEnd::Newest => newest(blocks, 0).ok_or(CutError::NothingCompleted)?,
         // A side question's history is what the conversation's next request
         // would have sent after the reply, its response included, so it
         // reads the conversation's prompt cache. Once a compaction
@@ -191,26 +191,45 @@ pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Blo
         // history is the conversation's context as it stands: the summary
         // and what follows it, through the newest completed text, or
         // through the compaction when no text followed it yet.
-        ForkEnd::Side(target) => {
-            let asked = at(target)?;
-            let end = match blocks[asked..].iter().rposition(is_compaction) {
-                None => asked,
-                Some(after) => {
-                    let compaction = asked + after;
-                    newest(compaction).unwrap_or(compaction)
-                }
-            };
-            match blocks.get(end + 1) {
-                Some(Block::Response(_)) if is_completed(&blocks[end]) => end + 1,
-                _ => end,
-            }
-        }
+        ForkEnd::Side(target) => side_end(blocks, at(target)?),
     };
     let prefix = &blocks[..=index];
     if prefix.iter().any(is_executing) {
         return Err(CutError::UnfinishedToolCalls);
     }
     Ok(prefix)
+}
+
+/// Where a side question's history ends among `blocks` when it asks
+/// about the text at `asked` ([`ForkEnd::Side`]): there, with its
+/// response, or, once a compaction after it summarized it, at the newest
+/// completed text after the last compaction, or at that compaction.
+/// `blocks` may be a window that starts after the text, with `asked` 0:
+/// the window starts with the compaction that summarized it.
+pub fn side_end(blocks: &[Block], asked: usize) -> usize {
+    let end = match blocks[asked..].iter().rposition(is_compaction) {
+        None => asked,
+        Some(after) => {
+            let compaction = asked + after;
+            newest(blocks, compaction).unwrap_or(compaction)
+        }
+    };
+    match blocks.get(end + 1) {
+        Some(Block::Response(_)) if is_completed(&blocks[end]) => end + 1,
+        _ => end,
+    }
+}
+
+/// The newest completed text of `blocks` from `from` on with no call
+/// before it still executing.
+fn newest(blocks: &[Block], from: usize) -> Option<usize> {
+    let executing = blocks.iter().position(is_executing).unwrap_or(blocks.len());
+    blocks
+        .get(from..executing)
+        .unwrap_or_default()
+        .iter()
+        .rposition(is_completed)
+        .map(|index| from + index)
 }
 
 fn is_completed(block: &Block) -> bool {
@@ -241,21 +260,7 @@ pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
 /// after it ended, which leave the turn before them as it was. An `error`
 /// block there is the failure that left the turn unfinished.
 pub fn turn_record(blocks: &[Block]) -> Option<&Block> {
-    blocks.iter().rev().find(|block| {
-        !is_compaction(block)
-            && !matches!(block, Block::Error(error) if error.outside_turn)
-            && !is_late_input(block)
-    })
-}
-
-/// Whether a block is input a turn takes without opening one: an agent
-/// message, or command reports placed as a steer.
-fn is_late_input(block: &Block) -> bool {
-    match block {
-        Block::AgentMessage(_) => true,
-        Block::Wakeup(wakeup) => wakeup.placement == WakeupPlacement::Steer,
-        _ => false,
-    }
+    blocks.iter().rev().find(|block| Kind::Record.holds(block))
 }
 
 /// The block that ended the latest ended turn, as a conversation's summary

@@ -7,10 +7,7 @@
 use std::collections::HashSet;
 
 use demi_agent_store::media::{ModelView, references};
-use demi_agent_transcript::{
-    estimate::{block_tokens, prompt_tokens, text_tokens},
-    replay_start,
-};
+use demi_agent_transcript::estimate::{block_tokens, prompt_tokens, text_tokens};
 use demi_shared_types::{Block, ContextRow, ContextRowKind, INSTRUCTIONS_SOURCE, SKILLS_SOURCE};
 
 use super::{
@@ -54,9 +51,8 @@ pub(super) fn rows(
 /// The view of the replayed blocks the session can weigh: all of them, or
 /// without those that reference a medium it holds nothing for.
 fn weighable_view(core: &SessionCore) -> ModelView {
-    let blocks = core.transcript.blocks();
-    let start = replay_start(blocks);
-    let replayed = &blocks[start..];
+    let start = core.transcript.replay_start();
+    let replayed = core.replayed();
     match ModelView::of(start, replayed, &core.media) {
         Ok(view) => view,
         Err(unheld) => {

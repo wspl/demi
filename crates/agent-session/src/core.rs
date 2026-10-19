@@ -19,9 +19,9 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
-    TranscriptLog, kept, labelled_output, last_turn,
+    TranscriptLog, kept, labelled_output,
     estimate::{anchor_tokens, blocks_tokens, context_anchor},
-    replay, replay_start, turn_record,
+    replay,
 };
 use demi_conversation_socket_protocol::AbortTarget;
 use demi_provider_common::{
@@ -544,21 +544,37 @@ impl SessionCore {
         to: u32,
         version: &demi_conversation_socket_protocol::TranscriptVersion,
     ) -> Result<ActionHandle, EditError> {
+        // A target before the window is found by the switch, in the store.
         self.check_settled(version)?;
-        if self.transcript.position(&target).is_none() {
-            return Err(EditError::Target(demi_agent_transcript::CutError::NotFound));
-        }
         let turn = self.new_turn();
         Ok(self.push_action(ActionKind::Switch { target, to }, turn))
     }
 
     /// Adopts the path a switch made current from where it changed on, on
     /// fresh runtimes; returns the runtimes it discarded, for closing.
-    pub(super) fn adopt_switch(&mut self, switched: demi_agent_store::Switched) -> Vec<Box<dyn ProviderRuntime>> {
+    /// `before` holds the path's blocks before `switched.from` from where
+    /// the new window starts, with what is kept of those before them, when
+    /// the switch changed the path from a place before the window.
+    pub(super) fn adopt_switch(
+        &mut self,
+        switched: demi_agent_store::Switched,
+        before: Option<(usize, demi_agent_store::Rows, demi_agent_transcript::Earlier)>,
+    ) -> Vec<Box<dyn ProviderRuntime>> {
         let from = switched.from;
-        let mut blocks = self.transcript.blocks()[..from].to_vec();
-        blocks.extend(switched.blocks);
-        let batch = self.transcript.switch(from, blocks, switched.versions);
+        let batch = match before {
+            None => {
+                let mut blocks = self.transcript.blocks()[..from - self.transcript.start()].to_vec();
+                blocks.extend(switched.blocks);
+                self.transcript.switch(from, blocks, switched.versions)
+            }
+            Some((start, rows, earlier)) => {
+                let mut blocks = rows.blocks;
+                blocks.extend(switched.blocks);
+                let mut versions = rows.versions;
+                versions.extend(switched.versions);
+                self.transcript.switch_window(from, start, blocks, versions, earlier)
+            }
+        };
         self.persist.rows = Default::default();
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,
@@ -751,8 +767,7 @@ impl SessionCore {
     /// (`failures-and-recovery.md` § The unfinished turn). The user's action
     /// writes after the record, which ends the hold.
     fn failed_turn_holds(&self) -> bool {
-        self.runtime.user_recovers_turns()
-            && matches!(turn_record(self.transcript.blocks()), Some(Block::Error(_)))
+        self.runtime.user_recovers_turns() && self.transcript.turn_failure().is_some()
     }
 
     /// Writes the agent messages and command reports that wait into the
@@ -763,7 +778,7 @@ impl SessionCore {
         if self.held || !self.failed_turn_holds() {
             return;
         }
-        let Some(turn) = last_turn(self.transcript.blocks()).cloned() else {
+        let Some(turn) = self.transcript.last_turn().cloned() else {
             return;
         };
         self.write_inputs_into(turn, Take::Everything);
@@ -847,6 +862,12 @@ impl SessionCore {
     /// still pending are dropped.
     pub(super) fn end_action(&mut self) {
         self.activity = Activity::Finishing;
+        // The closing save records the session idle, also after an action
+        // whose last save recorded it running and that changed nothing
+        // since, as a compaction pass.
+        if self.persist.recorded != SessionPhase::Idle {
+            self.mark_state_changed();
+        }
         self.stop_waiting();
         self.editing = None;
         self.inputs.discard_steers();
@@ -1260,9 +1281,12 @@ impl SessionCore {
     /// Admits an agent message for the next boundary. A message the session
     /// already has, pending or written, is admitted once: the same content
     /// counts as admitted, other content under its id is refused.
+    /// `stored` is the block of the message's id before the window, as the
+    /// store holds it, when there is one.
     pub(super) fn admit_agent_message(
         &mut self,
         message: AgentMessage,
+        stored: Option<&Block>,
     ) -> Result<(), AgentMessageError> {
         if message.recipient_id != self.id {
             return Err(AgentMessageError::Recipient);
@@ -1273,13 +1297,12 @@ impl SessionCore {
         if self.preparing_edit() {
             return Err(AgentMessageError::Editing);
         }
+        let written = self.transcript.find(&message.id).or(stored);
         let existing = self.inputs.agent_message(&message.id).or_else(|| {
-            self.transcript
-                .find(&message.id)
-                .and_then(|block| match block {
-                    Block::AgentMessage(block) => Some(&block.message),
-                    _ => None,
-                })
+            written.and_then(|block| match block {
+                Block::AgentMessage(block) => Some(&block.message),
+                _ => None,
+            })
         });
         if let Some(existing) = existing {
             if existing != &message {
@@ -1288,8 +1311,7 @@ impl SessionCore {
             self.wake();
             return Ok(());
         }
-        if self.inputs.contains(message.id.as_str()) || self.transcript.find(&message.id).is_some()
-        {
+        if self.inputs.contains(message.id.as_str()) || written.is_some() {
             return Err(AgentMessageError::Conflict);
         }
         let turn_id = match &self.activity {
@@ -1558,14 +1580,14 @@ impl SessionCore {
                 event,
                 ProviderEvent::ToolCallStart { .. } | ProviderEvent::ToolCallInput { .. }
             );
-        let before = self.transcript.blocks().len();
+        let before = self.transcript.len();
         self.apply_event_to_transcript(event);
         if shows || self.writing.iter().any(|writing| writing.call.description.is_some()) {
             self.stop_waiting();
         }
         // The blocks a run's events write, which its entries name by
         // position (`EntriesOf::Output`).
-        let written = self.transcript.blocks()[before..]
+        let written = self.transcript.from(before)
             .iter()
             .filter(|block| {
                 matches!(
@@ -1581,7 +1603,7 @@ impl SessionCore {
     /// Keeps a run's entries on the block they belong to: one that gives an
     /// item of the request, or one the run wrote. Entries that name no such
     /// block belong to nothing the session keeps.
-    pub(super) fn keep_entries(&mut self, of: EntriesOf, entries: Vec<serde_json::Value>) {
+    pub(super) fn keep_entries(&mut self, of: EntriesOf, entries: Vec<demi_shared_types::Entry>) {
         let blocks = &self.request_blocks;
         let block = match of {
             EntriesOf::Item(index) => blocks.items.get(index),
@@ -1982,9 +2004,8 @@ impl SessionCore {
     // Media.
 
     /// The blocks replay sends: from the last compaction boundary on.
-    fn replayed(&self) -> &[Block] {
-        let blocks = self.transcript.blocks();
-        &blocks[replay_start(blocks)..]
+    pub(super) fn replayed(&self) -> &[Block] {
+        self.transcript.from(self.transcript.replay_start())
     }
 
     /// The blobs the replayed blocks and the waiting input reference: the
@@ -2024,9 +2045,7 @@ impl SessionCore {
     /// holds for their media; or, while it holds nothing for some of them,
     /// their blobs.
     pub(super) fn model_view(&self) -> Result<ModelView, Vec<BlobRef>> {
-        let blocks = self.transcript.blocks();
-        let start = replay_start(blocks);
-        ModelView::of(start, &blocks[start..], &self.media)
+        ModelView::of(self.transcript.replay_start(), self.replayed(), &self.media)
     }
 
     /// The estimate of the next request of the current model
@@ -2035,9 +2054,8 @@ impl SessionCore {
     /// held: a session restored with media, which holds none, tells it
     /// without a read while those blocks reference none.
     pub(super) fn context_estimate(&self, system_prompt: &str) -> Result<u64, Vec<BlobRef>> {
-        let blocks = self.transcript.blocks();
-        let start = replay_start(blocks);
-        let replayed = &blocks[start..];
+        let start = self.transcript.replay_start();
+        let replayed = self.replayed();
         let anchor = context_anchor(replayed, &self.model.model);
         let weighed = ModelView::of(start + anchor.from, &replayed[anchor.from..], &self.media)?;
         Ok(anchor_tokens(&anchor, system_prompt, &self.tools)
@@ -2066,21 +2084,24 @@ impl SessionCore {
     /// before it and not saved yet, is new rows, which `version` makes a
     /// version the user sees; the rows changed in place before it, and the
     /// state row.
+    /// `blocks` is the path from the window's start on.
     pub(super) fn rewrite_update(&self, blocks: &[Block], version: bool) -> CheckpointUpdate {
-        let kept = kept(self.transcript.blocks(), blocks);
+        let start = self.transcript.start();
+        let kept = start + kept(self.transcript.blocks(), blocks);
         let from = self.persist.rows.floor().map_or(kept, |floor| floor.min(kept));
+        let length = start + blocks.len();
         let changed_blocks = self
             .persist
             .rows
             .indices(from)
             .into_iter()
-            .chain(from..blocks.len())
-            .map(|index| (index, blocks[index].clone()))
+            .chain(from..length)
+            .map(|index| (index, blocks[index - start].clone()))
             .collect();
         CheckpointUpdate {
             state: self.checkpoint_state(),
             changed_blocks,
-            block_count: blocks.len(),
+            block_count: length,
             moved_from: Some(from),
             version,
         }
@@ -2109,20 +2130,38 @@ impl SessionCore {
         }
         self.persist.dirty = false;
         let rows = mem::take(&mut self.persist.rows);
-        let blocks = self.transcript.blocks();
+        let transcript = &self.transcript;
         let changed_blocks = rows
-            .indices(blocks.len())
+            .indices(transcript.len())
             .into_iter()
-            .map(|index| (index, blocks[index].clone()))
+            .map(|index| {
+                let block = transcript.get(index).expect("the window holds every row a save writes");
+                (index, block.clone())
+            })
             .collect();
+        let state = self.checkpoint_state();
+        self.persist.recorded = state.phase;
         let update = CheckpointUpdate {
-            state: self.checkpoint_state(),
+            state,
             changed_blocks,
-            block_count: blocks.len(),
+            block_count: transcript.len(),
             moved_from: rows.floor(),
             version: false,
         };
         Some((update, rows))
+    }
+
+    /// Lets go of the blocks before the last `compaction_boundary` once
+    /// every row up to it is saved (`runtime.md` § What a session holds):
+    /// after a save commits, and when nothing was left to save. Blocks a
+    /// rewrite or an edit read from before the window go the same way.
+    pub(super) fn release_settled(&mut self) {
+        self.commit();
+        let boundary = self.transcript.replay_start();
+        if self.persist.rows.lowest().is_some_and(|lowest| lowest < boundary) {
+            return;
+        }
+        self.transcript.release_before(boundary);
     }
 
     /// Puts back the rows a failed save took.
@@ -2258,6 +2297,7 @@ impl SessionCore {
             self.published.edits = self.edits.len();
             self.mark_state_changed();
         }
+
         let pending_steers = self.pending_steers();
         if pending_steers != self.published.pending_steers {
             self.published.pending_steers = pending_steers.clone();

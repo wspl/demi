@@ -5,6 +5,7 @@
 
 mod compaction;
 mod cut;
+mod earlier;
 pub mod estimate;
 mod ids;
 mod journal;
@@ -19,9 +20,10 @@ pub use compaction::{
     summary_text,
 };
 pub use cut::{
-    CutError, ForkEnd, ResumePoint, Rewind, before_user, ended_turn, ended_turn_answer, fork_prefix, last_answer, last_failure,
-    last_assistant_text, last_turn, resume_point, rewind, turn_record, unwind,
+    CutError, ForkEnd, ResumePoint, Rewind, before_user, ended_turn, ended_turn_answer, fork_prefix, last_answer, last_failure, side_end,
+    last_assistant_text, last_turn, resume_point, resume_point_within, rewind, turn_of, turn_record, unwind,
 };
+pub use earlier::{Earlier, UserInput, user_input};
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
 pub use log::{PendingCall, TranscriptLog, kept};

@@ -301,10 +301,18 @@ impl<H: HostResolver> Connection<H> {
             }
         };
         let open_ms = opening.elapsed().as_millis();
-        // Read before the attach, which takes its frames in one step.
+        // Read before the attach, which takes its frames in one step; the
+        // root's transcript is read last, with nothing awaited after it.
         let placement = tree.placement().await;
         let building = Instant::now();
-        let frames = tree.attach(self.id, self.outbox.clone(), self.shown.clone(), from, edge, placement.as_ref());
+        let reset = match tree.root().session().reset(from, edge).await {
+            Ok(reset) => reset,
+            Err(error) => {
+                self.error(AgentCode::OpenFailed, error);
+                return;
+            }
+        };
+        let frames = tree.attach(self.id, self.outbox.clone(), self.shown.clone(), reset, placement.as_ref());
         tracing::info!(
             root = %self.root,
             was_live,
@@ -460,9 +468,14 @@ impl<H: HostResolver> Connection<H> {
             }
             ClientFrame::SyncTranscript { from, edge } => {
                 let placement = tree.placement().await;
-                let frames = tree.fresh_transcripts(from, edge.as_ref(), placement.as_ref(), &self.shown.borrow());
-                for frame in frames {
-                    self.send(frame);
+                match tree.root().session().reset(from, edge.as_ref()).await {
+                    Ok(reset) => {
+                        let frames = tree.fresh_transcripts(reset, placement.as_ref(), &self.shown.borrow());
+                        for frame in frames {
+                            self.send(frame);
+                        }
+                    }
+                    Err(error) => self.error(AgentCode::FrameFailed, error),
                 }
             }
             // The `closed` frames report what these stopped.

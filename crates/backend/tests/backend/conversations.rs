@@ -1586,12 +1586,18 @@ impl ProviderRuntime for KeyedRuntime {
         runs.entries
             .lock()
             .unwrap()
-            .push(request.blocks.iter().map(|block| block.entries.clone()).collect());
+            .push(
+                request
+                    .blocks
+                    .iter()
+                    .map(|block| block.entries.iter().map(|entry| entry.decode().unwrap()).collect())
+                    .collect(),
+            );
         let newest = request.items.len() - 1;
         stream::once(async move {
             let mirrored = runs.mirrors.load(Ordering::SeqCst).then(|| ProviderEvent::Entries {
                 of: EntriesOf::Item(newest),
-                entries: vec![json!({ "type": "user", "uuid": format!("item-{newest}") })],
+                entries: vec![json!({ "type": "user", "uuid": format!("item-{newest}") }).into()],
             });
             let first = {
                 let mut calls = runs.calls.lock().unwrap();
@@ -1617,7 +1623,7 @@ impl ProviderRuntime for KeyedRuntime {
                     events.push(mirrored);
                     events.push(ProviderEvent::Entries {
                         of: EntriesOf::Item(newest),
-                        entries: vec![json!({ "type": "assistant", "uuid": "failure", "isApiErrorMessage": true })],
+                        entries: vec![json!({ "type": "assistant", "uuid": "failure", "isApiErrorMessage": true }).into()],
                     });
                 }
                 if runs.fails_late.load(Ordering::SeqCst) {

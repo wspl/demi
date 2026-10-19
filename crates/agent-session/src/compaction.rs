@@ -5,13 +5,13 @@
 use std::{future::Future, mem, rc::Rc, sync::Arc};
 
 use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, SessionStore, StoreError, Switched,
+    Checkpoint, CheckpointUpdate, EarlierRows, Kind, Rows, SessionStore, StoreError, Switched,
     media::{BlobStore, HeldMedia},
 };
 use demi_agent_transcript::{
     Replay, RequestView, TranscriptLog, compaction_window,
     estimate::{block_tokens, context_tokens, text_tokens},
-    kept_messages, last_assistant_text, turn_record,
+    kept_messages, last_assistant_text,
 };
 use demi_conversation_socket_protocol::{AgentCode, Refusal};
 use demi_provider_common::{ErrorCode, InferenceItem, RequestLimits, ToolDefinition, UserPart};
@@ -422,9 +422,10 @@ pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<Re
 
 /// Whether the turn the history leaves unfinished failed because its
 /// request was too large for the vendor (`request_too_large`).
-pub(super) fn size_refused(blocks: &[Block]) -> bool {
-    matches!(turn_record(blocks), Some(Block::Error(error))
-        if error.code.as_deref() == Some(ErrorCode::RequestTooLarge.as_str()))
+pub(super) fn size_refused(transcript: &TranscriptLog) -> bool {
+    transcript
+        .turn_failure()
+        .is_some_and(|error| error.code.as_deref() == Some(ErrorCode::RequestTooLarge.as_str()))
 }
 
 /// Before a turn: one pass when the history is over the current model's
@@ -545,7 +546,7 @@ pub(super) async fn run_pass(
         // The copy holds what it sends by reference, with the bytes the
         // session holds for it.
         let (history, held) = s.read(|core| {
-            let blocks = &core.transcript.blocks()[view.start + start..];
+            let blocks = core.transcript.from(view.start + start);
             let history = if whole {
                 blocks.to_vec()
             } else {
@@ -940,7 +941,45 @@ impl SessionStore for NoStore {
         Box::pin(async { Ok(None) })
     }
 
-    fn switch(&self, _position: usize, _version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
+    // The copy holds the whole history it sends, from its first block, so
+    // it reads nothing before it.
+    fn blocks(&self, _range: std::ops::Range<usize>) -> LocalBoxFuture<'_, Result<Rows, StoreError>> {
+        Box::pin(async { Err(StoreError::Failed("a summary's session stores no blocks".to_owned())) })
+    }
+
+    fn position<'a>(&'a self, _id: &'a demi_shared_types::BlockId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn last_of(&self, _kind: Kind, _end: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn next_of(&self, _kind: Kind, _from: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn blocks_of(
+        &self,
+        _kinds: Vec<Kind>,
+        _range: std::ops::Range<usize>,
+    ) -> LocalBoxFuture<'_, Result<Vec<(usize, demi_shared_types::Block)>, StoreError>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn turn_position<'a>(&'a self, _turn: &'a demi_shared_types::TurnId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn earlier(&self, _end: usize) -> LocalBoxFuture<'_, Result<EarlierRows, StoreError>> {
+        Box::pin(async { Ok(EarlierRows::default()) })
+    }
+
+    fn prefix(&self, _length: usize) -> LocalBoxFuture<'_, Result<Option<demi_agent_store::StoredPrefix>, StoreError>> {
+        Box::pin(async { Err(StoreError::Failed("a summary's session stores no rows".to_owned())) })
+    }
+
+    fn switch(&self, _position: usize, _version: u32, _held_from: usize) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
         // The copy runs one summary request and admits no switch.
         Box::pin(async { Err(StoreError::Failed("a summary's session keeps no versions".to_owned())) })
     }

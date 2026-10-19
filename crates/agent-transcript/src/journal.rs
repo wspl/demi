@@ -60,6 +60,11 @@ impl DirtyRows {
         self.floor
     }
 
+    /// The lowest row the next save writes; none when it writes none.
+    pub fn lowest(&self) -> Option<usize> {
+        self.points.first().copied().into_iter().chain(self.floor).min()
+    }
+
     /// Adds `other`'s rows: a later commit's, or those a failed save did not
     /// write.
     pub fn merge(&mut self, other: DirtyRows) {

@@ -21,6 +21,7 @@ mod reports;
 mod retry;
 mod runtime;
 mod turn;
+mod window;
 mod worker;
 
 /// What a session's tests compare its requests with (feature `testing`).
@@ -42,10 +43,10 @@ use std::{
 };
 
 use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, RunningCommand, SessionStore, StoreError, media::HeldMedia,
+    Checkpoint, CheckpointUpdate, Kind, RunningCommand, SessionStore, StoreError, media::HeldMedia,
 };
 use demi_agent_transcript::{
-    ForkEnd, IdSource, TranscriptLog, last_answer, last_failure, turn_record,
+    Earlier, ForkEnd, IdSource, TranscriptLog, last_answer, last_failure,
 };
 use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
@@ -64,9 +65,10 @@ use tokio_util::task::AbortOnDropHandle;
 pub use compaction::{CompactionConfig, compaction_refusal, token_threshold};
 pub use editing::ForkError;
 pub use editing::{
-    EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed, regenerate_digest,
+    EditCheck, EditContent, EditError, EditSubmission, ForkSeed, accepted, edit_digest, fork_seed, regenerate_digest,
 };
 pub use retry::RetryPolicy;
+pub use window::{Reset, latest_page};
 pub use runtime::{
     CallCommand, CommandLook, InputArrival, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
@@ -155,9 +157,11 @@ impl ModelSwitch {
     }
 }
 
-/// The transcript at one moment, with its version.
+/// The transcript at one moment, with its version: its blocks from the
+/// position `start` on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscriptSnapshot {
+    pub start: usize,
     pub blocks: Vec<Block>,
     pub version: TranscriptVersion,
     /// The versions at each place that holds more than one
@@ -286,6 +290,8 @@ pub enum RestoreError {
     Input(String),
     #[error("The checkpoint's edit receipts repeat operation {0}")]
     Edits(String),
+    #[error(transparent)]
+    Store(#[from] StoreError),
 }
 
 /// A failure as clients see it: the frame an `error` event becomes.
@@ -586,7 +592,12 @@ impl AgentSession {
     /// held until its supervisor looks at it or its next action starts
     /// (`failures-and-recovery.md` § The unfinished turn, `subagents.md`
     /// § Persistence).
-    pub fn restore(
+    ///
+    /// The session holds the checkpoint's window, and of a checkpoint that
+    /// holds its whole path, such as a Fork's seed, the blocks from its last
+    /// `compaction_boundary` on (`runtime.md` § What a session holds); it
+    /// reads what it keeps of the blocks before from the store.
+    pub async fn restore(
         checkpoint: Checkpoint,
         id: NodeId,
         runtime: Box<dyn ProviderRuntime>,
@@ -595,10 +606,20 @@ impl AgentSession {
     ) -> Result<(Self, Continuation), RestoreError> {
         let Checkpoint {
             state,
+            start,
             transcript,
             versions,
         } = checkpoint;
         check_restored_input(&id, &transcript, &state.agent_inputs)?;
+        for input in &state.agent_inputs {
+            if start > 0 && deps.store.position(&input.message.id).await?.is_some() {
+                return Err(RestoreError::Input(format!("agent message {} is not unique", input.message.id)));
+            }
+        }
+        let earlier = match start {
+            0 => Earlier::default(),
+            start => Earlier::read(&*deps.store, start).await?,
+        };
         let mut operations = HashSet::new();
         if let Some(receipt) = state
             .edits
@@ -607,8 +628,11 @@ impl AgentSession {
         {
             return Err(RestoreError::Edits(receipt.operation_id.to_string()));
         }
-        let mut transcript =
-            TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone()).with_versions(versions);
+        let mut transcript = TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone())
+            .with_versions(versions)
+            .starting_at(start, earlier);
+        // Every row it holds is stored.
+        transcript.release_before(transcript.replay_start());
         let mut watched = Watched::default();
         for interval in &state.intervals {
             watched.add(interval.command_id.clone(), interval.interval_ms);
@@ -766,19 +790,58 @@ impl AgentSession {
         self.shared.read(|core| core.transcript.version())
     }
 
-    /// Reads the transcript's blocks and version where the session holds
-    /// them, for a reader that takes a part of them and would otherwise
-    /// copy the whole transcript.
-    pub fn read_transcript<R>(&self, read: impl FnOnce(&[Block], TranscriptVersion) -> R) -> R {
-        self.shared.read(|core| read(core.transcript.blocks(), core.transcript.version()))
-    }
-
+    /// The blocks the session holds at one moment, its window, with its
+    /// version: the whole transcript while no compaction let go of the
+    /// blocks before it.
     pub fn transcript(&self) -> TranscriptSnapshot {
         self.shared.read(|core| TranscriptSnapshot {
+            start: core.transcript.start(),
             blocks: core.transcript.blocks().to_vec(),
             version: core.transcript.version(),
             versions: core.transcript.versions().clone(),
         })
+    }
+
+    /// The whole transcript at one moment, the blocks before the window
+    /// read from the store: for a reading of the whole history, which holds
+    /// it no longer than it needs it.
+    pub async fn history(&self) -> Result<TranscriptSnapshot, StoreError> {
+        let snapshot = |core: &SessionCore, earlier: demi_agent_store::Rows| {
+            let mut blocks = earlier.blocks;
+            blocks.extend_from_slice(core.transcript.blocks());
+            let mut versions = earlier.versions;
+            versions.extend(core.transcript.versions().iter().map(|(at, held)| (*at, *held)));
+            TranscriptSnapshot {
+                start: 0,
+                blocks,
+                version: core.transcript.version(),
+                versions,
+            }
+        };
+        if self.shared.read(|core| core.transcript.start()) == 0 {
+            return Ok(self.shared.read(|core| snapshot(core, Default::default())));
+        }
+        let _turn = self.shared.persist_gate.acquire().await;
+        let start = self.shared.read(|core| core.transcript.start());
+        let earlier = self.shared.store.blocks(0..start).await?;
+        Ok(self.shared.read(|core| snapshot(core, earlier)))
+    }
+
+    /// Reads the session's window (`runtime.md` § What a session holds):
+    /// the blocks it holds, by their positions on the path, and what it
+    /// keeps of those before.
+    pub fn with_window<R>(&self, look: impl FnOnce(&TranscriptLog) -> R) -> R {
+        self.shared.read(|core| look(&core.transcript))
+    }
+
+    /// The transcript a reset sends to a page that holds its blocks up to
+    /// `from`, whose block there is `edge` (`rendering.md` § Where a reset
+    /// starts): the blocks it starts with before the window are read from
+    /// the store. Nothing awaits between the reading of the window and the
+    /// return, so a caller that sends it at once sends the transcript as it
+    /// is then.
+    pub async fn reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> Result<Reset, StoreError> {
+        window::reset(&self.shared, from, edge).await
     }
 
     /// The automation's run whose message is the latest the user or an
@@ -787,18 +850,7 @@ impl AgentSession {
     /// again, in a message or a steer (`automations.md` § What a run
     /// sends). None when the user's own is the latest, or neither came.
     pub fn automation_input(&self) -> Option<(AutomationMark, Timestamp)> {
-        self.shared.read(|core| {
-            core.transcript
-                .blocks()
-                .iter()
-                .rev()
-                .find_map(|block| match block {
-                    Block::User(user) => Some(user.automation.clone().map(|mark| (mark, user.created_at))),
-                    Block::Steer(_) => Some(None),
-                    _ => None,
-                })
-                .flatten()
-        })
+        self.shared.read(|core| core.transcript.user_input().flatten())
     }
 
     pub fn queued_messages(&self) -> Vec<QueuedMessage> {
@@ -858,10 +910,7 @@ impl AgentSession {
     /// The record of the last turn when it failed: the `error` block that
     /// left it unfinished (`failures-and-recovery.md` § The unfinished turn).
     pub fn failed_turn(&self) -> Option<ErrorBlock> {
-        self.shared.read(|core| match turn_record(core.transcript.blocks()) {
-            Some(Block::Error(error)) => Some(error.clone()),
-            _ => None,
-        })
+        self.shared.read(|core| core.transcript.turn_failure().cloned())
     }
 
     /// The block of the call `tool_use_id`, which a message its command
@@ -954,7 +1003,7 @@ impl AgentSession {
     pub async fn compaction_refusal(&self) -> Option<Refusal> {
         let size_refused = self
             .shared
-            .read(|core| compaction::size_refused(core.transcript.blocks()));
+            .read(|core| compaction::size_refused(&core.transcript));
         match self.context_usage().await {
             Ok(usage) => compaction_refusal(&usage, size_refused),
             Err(report) => Some(Refusal::new(AgentCode::FrameFailed, report.message)),
@@ -1020,8 +1069,28 @@ impl AgentSession {
         if let Err(report) = garde::Validate::validate(&message) {
             return Err(AgentMessageError::Invalid(report.to_string()));
         }
-        self.shared
-            .update(|core| core.admit_agent_message(message))?;
+        // A message whose block is before the window is admitted once too:
+        // its block is read from the store, while the save order keeps the
+        // window where it is.
+        if self.shared.read(|core| core.transcript.start()) == 0 {
+            self.shared.update(|core| core.admit_agent_message(message, None))?;
+        } else {
+            let _turn = self.shared.persist_gate.acquire().await;
+            let unheld = self.shared.read(|core| {
+                core.transcript.start() > 0
+                    && core.transcript.position(&message.id).is_none()
+                    && !core.inputs.contains(message.id.as_str())
+            });
+            let stored = match unheld {
+                true => match self.shared.store.position(&message.id).await? {
+                    Some(at) => self.shared.store.blocks(at..at + 1).await?.blocks.pop(),
+                    None => None,
+                },
+                false => None,
+            };
+            self.shared
+                .update(|core| core.admit_agent_message(message, stored.as_ref()))?;
+        }
         // A message admitted before is saved already, or its save is under
         // way ahead of this one; either way it is durable when this returns.
         persist::flush(&self.shared).await?;
@@ -1080,9 +1149,72 @@ impl AgentSession {
         }
     }
 
-    /// Whether the block `id` is on the transcript's current path.
-    pub fn holds_block(&self, id: &BlockId) -> bool {
-        self.shared.read(|core| core.transcript.position(id).is_some())
+    /// Whether the tool call `id` is on the transcript's current path.
+    pub fn holds_call(&self, id: &BlockId) -> bool {
+        self.shared.read(|core| core.transcript.holds_call(id))
+    }
+
+    /// The `text`, `error`, `response` and `user` blocks after the message
+    /// that opened `turn`, through the next message, which tells the turn
+    /// ended, or to the transcript's end: what tells how the turn ended. A
+    /// turn whose message is before the window, as when a compaction ran
+    /// inside it or later turns went on and compacted, is read from the
+    /// store up to the window, through the index of block types. None when
+    /// the path holds no message of `turn`.
+    pub async fn turn_blocks(&self, turn: &TurnId) -> Result<Option<Vec<Block>>, StoreError> {
+        let kinds = [Kind::Text, Kind::Error, Kind::Response, Kind::User];
+        let of_kinds = |block: &Block| kinds.iter().any(|kind| kind.holds(block));
+        let opens = |block: &Block| matches!(block, Block::User(user) if &user.turn_id == turn);
+        let (start, held, known) = self.shared.read(|core| {
+            let transcript = &core.transcript;
+            (transcript.start(), transcript.blocks().iter().position(opens), transcript.has_user_turn(turn))
+        });
+        let window_from = |from: usize| {
+            self.shared.read(|core| {
+                let blocks = core.transcript.blocks();
+                let end = blocks[from..]
+                    .iter()
+                    .position(|block| matches!(block, Block::User(_)))
+                    .map_or(blocks.len(), |next| from + next + 1);
+                blocks[from..end].iter().filter(|block| of_kinds(block)).cloned().collect::<Vec<_>>()
+            })
+        };
+        if let Some(at) = held {
+            return Ok(Some(window_from(at + 1)));
+        }
+        if !known {
+            return Ok(None);
+        }
+        let store = &self.shared.store;
+        let Some(at) = store.turn_position(turn).await? else {
+            return Ok(None);
+        };
+        let next = store.next_of(Kind::User, at + 1).await?;
+        let end = next.map_or(start, |next| (next + 1).min(start));
+        let read = store.blocks_of(kinds.to_vec(), at + 1..end).await?;
+        let mut blocks: Vec<Block> = read.into_iter().map(|(_, block)| block).collect();
+        // The turn goes on into the window when no message of the store
+        // follows it there; the window may have let go of more meanwhile,
+        // and starts where it does now.
+        if next.is_none_or(|next| next >= start) {
+            let now = self.shared.read(|core| core.transcript.start());
+            if now == start {
+                blocks.extend(window_from(0));
+            }
+        }
+        Ok(Some(blocks))
+    }
+
+    /// The node's checkpoint store, where the blocks before the window
+    /// are read.
+    pub fn store(&self) -> Rc<dyn SessionStore> {
+        self.shared.store.clone()
+    }
+
+    /// Whether the block `id` is on the transcript's current path: held,
+    /// or before the window as the store finds it.
+    pub async fn holds(&self, id: &BlockId) -> Result<bool, StoreError> {
+        Ok(window::position(&self.shared, id).await?.is_some())
     }
 
     /// The latest call still executing: the one a command it runs, such as
@@ -1118,15 +1250,24 @@ impl AgentSession {
 
     /// A Fork's seed from this live session, through the completed text
     /// `end` names (`conversation-fork.md` § The fork seed): captured in one
-    /// step, with the model a switch the session accepted would use.
-    pub fn prepare_fork(&self, end: ForkEnd<'_>) -> Result<Checkpoint, ForkError> {
-        self.shared.read(|core| {
+    /// step, with the model a switch the session accepted would use. The
+    /// blocks before the window are named as the store's rows, which the
+    /// destination's store copies, under the session's save order, so no
+    /// rewrite before the window comes between the capture and the naming.
+    pub async fn prepare_fork(&self, end: ForkEnd<'_>) -> Result<ForkSeed, ForkError> {
+        let capture = |core: &SessionCore| {
             let state = demi_agent_store::CheckpointState {
                 model: core.latest_selection().clone(),
                 ..core.checkpoint_state()
             };
-            fork_seed(core.transcript.blocks(), state, end)
-        })
+            (core.transcript.start(), core.transcript.blocks().to_vec(), state)
+        };
+        let _turn = match self.shared.read(|core| core.transcript.start()) {
+            0 => None,
+            _ => Some(self.shared.persist_gate.acquire().await),
+        };
+        let (start, window, state) = self.shared.read(capture);
+        fork_seed(&*self.shared.store, start, &window, state, end).await
     }
 
     /// Opens a continuation for input that waits, when nothing runs: the
@@ -1334,7 +1475,7 @@ impl AgentSession {
     /// Whether the block at `index` is assistant text.
     pub fn is_text_at(&self, index: usize) -> bool {
         self.shared
-            .read(|core| matches!(core.transcript.blocks().get(index), Some(Block::Text(_))))
+            .read(|core| matches!(core.transcript.get(index), Some(Block::Text(_))))
     }
 }
 

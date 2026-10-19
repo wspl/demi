@@ -10,6 +10,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use demi_provider_common::{EntriesOf, InferenceItem, InferenceRequest, ProviderEvent};
+use demi_shared_types::Entry;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -131,7 +132,7 @@ impl Mirror {
             .into_iter()
             .map(|index| ProviderEvent::Entries {
                 of: EntriesOf::Output(index),
-                entries: vec![session::left_out()],
+                entries: vec![session::left_out().into()],
             })
             .collect()
     }
@@ -304,10 +305,13 @@ impl Mirror {
                 // A block of a run whose request is gone.
                 Spot::Output { .. } => continue,
             };
-            let entries = match of {
+            let entries: Vec<Entry> = match of {
                 EntriesOf::Item(index) => kept(entries, request, index),
                 EntriesOf::Output(_) => entries,
-            };
+            }
+            .into_iter()
+            .map(Entry::from)
+            .collect();
             match events.last_mut() {
                 Some(ProviderEvent::Entries { of: last, entries: held }) if *last == of => {
                     held.extend(entries);

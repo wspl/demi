@@ -8,21 +8,24 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::{Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt};
-use demi_agent_transcript::{CutError, ForkEnd, TranscriptLog, before_user, fork_prefix};
+use demi_agent_store::{
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt, Kind, NodeRecord, SessionStore, StoreError,
+    StoredPrefix,
+};
+use demi_agent_transcript::{CutError, Earlier, ForkEnd, TranscriptLog, before_user, fork_prefix, side_end};
 use demi_command_protocol::canonical_digest;
 use demi_conversation_socket_protocol::{
     AgentCode, EditRequest, MediaRef, RegenerateRequest, Refusal, TranscriptVersion,
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
-    BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserBlock, UserContentBlock,
+    BlobRef, Block, BlockId, DocumentSource, MediaSource, NodeId, OperationId, UserBlock, UserContentBlock,
 };
 use tokio::sync::watch;
 
 use super::{
     ErrorReport,
-    SessionShared, TurnError, cancel::TurnCancel, compaction, core::SessionCore, persist, turn,
+    SessionShared, TurnError, cancel::TurnCancel, compaction, core::SessionCore, persist, turn, window,
 };
 
 /// One part of an edit's content as the session receives it.
@@ -194,6 +197,13 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
         Some(_) => cancel.guard(s.runtime.preamble()).await?,
         None => None,
     };
+    // The save order is held from here to the adoption: a message before
+    // the window is edited with the blocks from it on, which are read from
+    // the store and stay as they are meanwhile.
+    let order = s.persist_gate.acquire().await;
+    if let Some(position) = window::position(s, &submission.target).await? {
+        window::reach(s, position).await?;
+    }
     let Candidate {
         blocks,
         mut runtime,
@@ -210,15 +220,13 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
                 diagnostics: None,
             }))
         })?;
-    let saved = {
-        let _turn = s.persist_gate.acquire().await;
-        match cancel.check() {
-            // A save that started always finishes: its outcome decides.
-            Ok(()) => s.store.save(update).await.map_err(TurnError::from),
-            Err(stopped) => Err(stopped),
-        }
+    let saved = match cancel.check() {
+        // A save that started always finishes: its outcome decides.
+        Ok(()) => s.store.save(update).await.map_err(TurnError::from),
+        Err(stopped) => Err(stopped),
     };
     if let Err(error) = saved {
+        drop(order);
         // The history is as it was, and the candidate's runtime served
         // nothing.
         runtime.close().await;
@@ -226,6 +234,7 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     }
     // Nothing awaits between the commit and the adoption.
     let discarded = s.update(|core| core.adopt_edit(blocks, runtime, model, receipt));
+    drop(order);
     // The callers waiting for the acceptance answer before the replacement's
     // turn writes anything, so an `edit_result` precedes its turn's frames.
     tokio::task::yield_now().await;
@@ -254,6 +263,7 @@ impl Candidate {
         submission: &EditSubmission,
         preamble: Option<String>,
     ) -> Result<Self, EditError> {
+        // The window holds the message and every block after it.
         let blocks = core.transcript.blocks();
         let prefix = before_user(blocks, &submission.target)?.to_vec();
         let Some(Block::User(target)) = blocks.get(prefix.len()) else {
@@ -353,14 +363,22 @@ pub(super) async fn switch(
         .map_err(|message| TurnError::refused(AgentCode::FrameFailed, message))?;
     cancel.check()?;
     persist::flush(s).await?;
-    let position = s
-        .read(|core| core.transcript.position(target))
+    let order = s.persist_gate.acquire().await;
+    let position = window::position(s, target)
+        .await?
         .ok_or_else(|| TurnError::refused(AgentCode::EditTarget, "The conversation holds no such block"))?;
-    let switched = {
-        let _turn = s.persist_gate.acquire().await;
-        s.store.switch(position, to).await?
-    };
-    let discarded = s.update(|core| core.adopt_switch(switched));
+    window::reach(s, position).await?;
+    // The place whose version changed may be before the window, where a
+    // compaction carried the block from: the switch's own transaction reads
+    // the path before it, as it was, so nothing after its commit can fail.
+    let start = s.read(|core| core.transcript.start());
+    let mut switched = s.store.switch(position, to, start).await?;
+    let before = switched
+        .before
+        .take()
+        .map(|before| (before.start, before.rows, Earlier::of(before.earlier)));
+    let discarded = s.update(|core| core.adopt_switch(switched, before));
+    drop(order);
     for mut runtime in discarded {
         runtime.close().await;
     }
@@ -414,28 +432,123 @@ pub enum ForkError {
     Store(String),
 }
 
-/// A Fork's seed (`conversation-fork.md` § The fork seed): a checkpoint of
-/// the history through the completed text `end` names
+/// A Fork's seed (`conversation-fork.md` § The fork seed): the history
+/// through the completed text a [`ForkEnd`] names
 /// (`conversation-fork.md` § Eligibility), idle, with nothing waiting: a
-/// new root's, or a forked child's (`subagents.md` § Fork).
-pub fn fork_seed(
-    blocks: &[Block],
+/// new root's, or a forked child's or side question's (`subagents.md`
+/// § Fork). The blocks the source's store holds before its window are no
+/// part of it: `prefix` names them as rows, which the destination's store
+/// copies in the database ([`demi_agent_store::AgentTreeStore::create_node_after`]),
+/// and the checkpoint holds the blocks after them, from its `start`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForkSeed {
+    pub prefix: Option<StoredPrefix>,
+    pub checkpoint: Checkpoint,
+}
+
+impl ForkSeed {
+    /// Creates the node `record` in `store` with the seed as its first
+    /// checkpoint, in one commit: the prefix's rows copied from the tree
+    /// of the conversation root `source`, or from `store`'s own with none,
+    /// then the seed's blocks.
+    pub async fn create(
+        &self,
+        store: &dyn AgentTreeStore,
+        record: NodeRecord,
+        source: Option<&NodeId>,
+    ) -> Result<(), StoreError> {
+        let checkpoint = &self.checkpoint;
+        let initial = CheckpointUpdate {
+            state: checkpoint.state.clone(),
+            changed_blocks: (checkpoint.start..).zip(checkpoint.transcript.iter().cloned()).collect(),
+            block_count: checkpoint.block_count(),
+            moved_from: None,
+            version: false,
+        };
+        match &self.prefix {
+            Some(prefix) => store.create_node_after(record, source, prefix, initial).await,
+            None => store.create_node(record, initial).await,
+        }
+    }
+}
+
+/// The seed of a source whose path holds `window` from `start` on, the
+/// blocks before it in `store`, with the checkpoint state `state`: what a
+/// Fork through `end` keeps is checked against the window, and against the
+/// store for the blocks before it, which it names without reading them.
+pub async fn fork_seed(
+    store: &dyn SessionStore,
+    start: usize,
+    window: &[Block],
     state: CheckpointState,
     end: ForkEnd<'_>,
-) -> Result<Checkpoint, ForkError> {
-    let prefix = fork_prefix(blocks, end)?.to_vec();
-    Ok(Checkpoint {
-        versions: Default::default(),
-        state: CheckpointState {
-            phase: demi_shared_types::SessionPhase::Idle,
-            queue: Vec::new(),
-            agent_inputs: Vec::new(),
-            reports: Vec::new(),
-            next_turn_reports: Vec::new(),
-            intervals: Vec::new(),
-            edits: Vec::new(),
-            ..state
+) -> Result<ForkSeed, ForkError> {
+    let state = CheckpointState {
+        phase: demi_shared_types::SessionPhase::Idle,
+        queue: Vec::new(),
+        agent_inputs: Vec::new(),
+        reports: Vec::new(),
+        next_turn_reports: Vec::new(),
+        intervals: Vec::new(),
+        edits: Vec::new(),
+        ..state
+    };
+    let seed = |length: usize, transcript: Vec<Block>, prefix: Option<StoredPrefix>| ForkSeed {
+        prefix,
+        checkpoint: Checkpoint {
+            start: length,
+            versions: Default::default(),
+            state: state.clone(),
+            transcript,
         },
-        transcript: prefix,
-    })
+    };
+    if start == 0 {
+        return Ok(seed(0, fork_prefix(window, end)?.to_vec(), None));
+    }
+    let store_error = |error: StoreError| ForkError::Store(error.to_string());
+    // No call before the window may still execute, whatever the Fork keeps
+    // of the window.
+    let unfinished_before = |before: usize| async move {
+        Ok::<_, ForkError>(store.last_of(Kind::ExecutingCall, before).await.map_err(store_error)?.is_some())
+    };
+    let named = match end {
+        ForkEnd::At(target) | ForkEnd::Side(target) => Some(target),
+        ForkEnd::Newest => None,
+    };
+    let in_window = named.is_none_or(|target| window.iter().any(|block| block.id() == target));
+    let (length, tail) = if in_window {
+        match fork_prefix(window, end) {
+            Ok(kept) => (start, kept.to_vec()),
+            // No text of the window ends a Fork with no call before it
+            // executing: the newest such text is before the window.
+            Err(CutError::NothingCompleted) => {
+                let at = store
+                    .last_of(Kind::CompletedText, start)
+                    .await
+                    .map_err(store_error)?
+                    .ok_or(CutError::NothingCompleted)?;
+                (at + 1, Vec::new())
+            }
+            Err(error) => return Err(error.into()),
+        }
+    } else {
+        let target = named.expect("a Fork end the window lacks names a block");
+        let at = store.position(target).await.map_err(store_error)?.ok_or(CutError::NotCompletedText)?;
+        let read = store.blocks(at..at + 1).await.map_err(store_error)?;
+        if !read.blocks.first().is_some_and(|block| Kind::CompletedText.holds(block)) {
+            return Err(CutError::NotCompletedText.into());
+        }
+        match end {
+            // The side question's history goes on through the window, which
+            // starts with the compaction that summarized its text.
+            ForkEnd::Side(_) => (start, window[..=side_end(window, 0)].to_vec()),
+            _ => (at + 1, Vec::new()),
+        }
+    };
+    // The rows named end at the window or before it, at the text.
+    if unfinished_before(length).await? || tail.iter().any(|block| Kind::ExecutingCall.holds(block)) {
+        return Err(CutError::UnfinishedToolCalls.into());
+    }
+    let prefix = store.prefix(length).await.map_err(store_error)?;
+    Ok(seed(length, tail, prefix))
 }

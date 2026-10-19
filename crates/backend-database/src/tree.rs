@@ -22,18 +22,18 @@ use std::sync::Arc;
 
 use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput, StoredSubagent, Switched};
 use demi_agent_store::{
-    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, SideOf,
-    StoreError, media::BlobStore,
+    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord,
+    Placement, Rows, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
 use demi_conversation_socket_protocol::{BlockVersions, PageAt, light_bytes, page, requests};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
-    ModelSelection, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, is_blank,
+    ModelSelection, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, TurnId, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
-use demi_web_api_protocol::ids::ShareToken;
+use demi_web_api_protocol::ids::{ConversationId, ShareToken};
 use demi_agent_store::media::block_blobs;
 use crate::path::{self, PATH_LENGTH, PATH_ROWS, POSITION, Path};
 use crate::shares;
@@ -66,7 +66,202 @@ impl SqliteTreeStore {
     pub fn new(db: ConversationDb, blobs: Arc<dyn BlobStore>, saved: Saved) -> Self {
         Self { db, blobs, saved }
     }
+
+    /// Creates the node of `record` with its first checkpoint `initial`,
+    /// after the rows of `prefix` when there is one, copied from the
+    /// database file it names or, with none, this one.
+    async fn create(
+        &self,
+        record: NodeRecord,
+        prefix: Option<(Option<std::path::PathBuf>, StoredPrefix)>,
+        initial: CheckpointUpdate,
+    ) -> Result<(), StoreError> {
+        let completions = initial.carried_completions()?;
+        let node = record.id.clone();
+        let copied = prefix.is_some();
+        let change = self
+            .db
+            .call(move |connection| {
+                let attached = match &prefix {
+                    Some((Some(file), _)) => {
+                        connection.execute("ATTACH DATABASE ?1 AS source", [file.to_string_lossy()])?;
+                        true
+                    }
+                    _ => false,
+                };
+                let created = create_in(connection, &record, prefix.as_ref().map(|(file, prefix)| {
+                    (if file.is_some() { "source" } else { "main" }, prefix)
+                }), &initial, &completions);
+                if attached {
+                    connection.execute("DETACH DATABASE source", [])?;
+                }
+                // A node that starts with copied rows is indexed for search
+                // whole, as its publication marks it.
+                created.map(|created| created.map(|change| change.filter(|_| !copied)))
+            })
+            .await
+            .map_err(store_error)??;
+        (self.saved)(&node, change);
+        Ok(())
+    }
 }
+
+/// The node `record` with its first checkpoint `initial` in one
+/// transaction, after the rows of `prefix` in the schema it names.
+fn create_in(
+    connection: &mut Connection,
+    record: &NodeRecord,
+    prefix: Option<(&str, &StoredPrefix)>,
+    initial: &CheckpointUpdate,
+    completions: &[CompletionId],
+) -> Result<Result<Option<TranscriptChange>, StoreError>, StorageError> {
+    let transaction = connection.transaction()?;
+    if node_by_id(&transaction, &record.id)?.is_some() {
+        return Ok(Err(StoreError::Failed(format!("node {} already exists", record.id))));
+    }
+    insert_node(&transaction, record, initial)?;
+    if let Some((schema, prefix)) = prefix
+        && let Err(refused) = copy_prefix(&transaction, &record.id, schema, prefix)?
+    {
+        return Ok(Err(refused));
+    }
+    if let Err(refused) = write_checkpoint(&transaction, &record.id, initial, completions)? {
+        return Ok(Err(refused));
+    }
+    // A new node follows the empty transcript.
+    let change = node_version_of(&transaction, &record.id)?.map(|(agent, version)| {
+        TranscriptChange::new(agent, SavedVersion::default(), version, &initial.changed_blocks)
+    });
+    transaction.commit()?;
+    Ok(Ok(change))
+}
+
+/// Copies the rows of `prefix`, of `schema`'s `blocks`, as the first rows
+/// of `node`'s path, each following the one before, with the blobs and
+/// attachments they name: the chain of rows from its leaf back to its
+/// path's first, so a later switch of the source leaves it as captured.
+fn copy_prefix(
+    transaction: &Transaction<'_>,
+    node: &NodeId,
+    schema: &str,
+    prefix: &StoredPrefix,
+) -> Result<Result<(), StoreError>, StorageError> {
+    let length = count(prefix.length);
+    transaction.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS fork_rows (source INTEGER PRIMARY KEY, idx INTEGER NOT NULL);
+         DELETE FROM temp.fork_rows;",
+    )?;
+    transaction.execute(
+        &format!(
+            "WITH RECURSIVE chain (idx, follows, depth) AS (
+               SELECT idx, follows, 0 FROM {schema}.blocks WHERE node_id = ?1 AND idx = ?2
+               UNION ALL
+               SELECT row.idx, row.follows, chain.depth + 1 FROM {schema}.blocks AS row
+                 JOIN chain ON row.node_id = ?1 AND row.idx = chain.follows
+             )
+             INSERT INTO temp.fork_rows (source, idx) SELECT idx, ?3 - 1 - depth FROM chain"
+        ),
+        params![prefix.node.as_str(), integer(prefix.leaf), length],
+    )?;
+    let copied: i64 = transaction.query_row("SELECT count(*) FROM temp.fork_rows WHERE idx >= 0", [], |row| row.get(0))?;
+    let total: i64 = transaction.query_row("SELECT count(*) FROM temp.fork_rows", [], |row| row.get(0))?;
+    if copied != length || total != length {
+        return Ok(Err(StoreError::Failed(format!(
+            "the prefix of node {} is not {} rows",
+            prefix.node, prefix.length
+        ))));
+    }
+    transaction.execute(
+        &format!(
+            "INSERT INTO blocks (node_id, idx, block, follows, replaces)
+             SELECT ?1, copy.idx, row.block, CASE copy.idx WHEN 0 THEN NULL ELSE copy.idx - 1 END, NULL
+             FROM temp.fork_rows AS copy JOIN {schema}.blocks AS row ON row.node_id = ?2 AND row.idx = copy.source
+             ORDER BY copy.idx"
+        ),
+        params![node.as_str(), prefix.node.as_str()],
+    )?;
+    transaction.execute(
+        &format!(
+            "INSERT INTO block_blobs (node_id, idx, blob)
+             SELECT ?1, copy.idx, named.blob
+             FROM temp.fork_rows AS copy JOIN {schema}.block_blobs AS named ON named.node_id = ?2 AND named.idx = copy.source"
+        ),
+        params![node.as_str(), prefix.node.as_str()],
+    )?;
+    transaction.execute(
+        &format!(
+            "INSERT INTO block_attachments (node_id, idx, attachment)
+             SELECT ?1, copy.idx, named.attachment
+             FROM temp.fork_rows AS copy JOIN {schema}.block_attachments AS named ON named.node_id = ?2 AND named.idx = copy.source"
+        ),
+        params![node.as_str(), prefix.node.as_str()],
+    )?;
+    transaction.execute(
+        "INSERT INTO path_runs (node_id, start, first, length) VALUES (?1, 0, 0, ?2)",
+        params![node.as_str(), length],
+    )?;
+    transaction.execute(
+        "UPDATE nodes SET leaf = ?2 WHERE id = ?1",
+        params![node.as_str(), length - 1],
+    )?;
+    transaction.execute("DELETE FROM temp.fork_rows", [])?;
+    Ok(Ok(()))
+}
+
+/// The `nodes` row of `record`, with `initial`'s state, and its
+/// `side_questions` row for a side question.
+fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &CheckpointUpdate) -> Result<(), StorageError> {
+    let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
+    // A side question is no agent: its number is none.
+    let number = record.side.is_none().then_some(integer(record.number));
+    transaction.execute(
+        "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
+           can_spawn, closed_phase, closed_at, result, failure, delivered, state,
+           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21)",
+        params![
+            record.id.as_str(),
+            number,
+            record.parent.as_ref().map(NodeId::as_str),
+            record.description,
+            record.profile,
+            record.instructions,
+            integer(record.round),
+            record.started_at.as_millisecond(),
+            record.can_spawn_subagents,
+            phase,
+            closed_at,
+            result,
+            failure,
+            record.delivered,
+            to_json(&initial.state),
+            record.forked_from.map(integer),
+            record.cwd.as_ref().map(|own| &own.cwd),
+            record.cwd.as_ref().and_then(|own| own.under.device.as_ref()),
+            record.cwd.as_ref().map(|own| &own.under.directory),
+            record.context_limit,
+            record.started_by.as_ref().map(BlockId::as_str),
+        ],
+    )?;
+    if let Some(side) = &record.side {
+        transaction.execute(
+            "INSERT INTO side_questions (node_id, block_id, start_offset, end_offset, quote, picture, question, asked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                record.id.as_str(),
+                side.block.as_str(),
+                integer(side.start),
+                integer(side.end),
+                side.quote,
+                side.picture.as_ref().map(|picture| serde_json::to_string(picture).expect("a media source serializes")),
+                side.question,
+                side.asked_at.as_millisecond(),
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 
 /// One node's checkpoint in its conversation's database.
 struct SqliteSessionStore {
@@ -139,78 +334,27 @@ impl AgentTreeStore for SqliteTreeStore {
         record: NodeRecord,
         initial: CheckpointUpdate,
     ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
+        Box::pin(self.create(record, None, initial))
+    }
+
+    fn create_node_after<'a>(
+        &'a self,
+        record: NodeRecord,
+        root: Option<&'a NodeId>,
+        prefix: &'a StoredPrefix,
+        initial: CheckpointUpdate,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
-            let completions = initial.carried_completions()?;
-            let node = record.id.clone();
-            let change = self
-                .db
-                .call(move |connection| {
-                    let transaction = connection.transaction()?;
-                    if node_by_id(&transaction, &record.id)?.is_some() {
-                        return Ok(Err(StoreError::Failed(format!("node {} already exists", record.id))));
-                    }
-                    let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
-                    // A side question is no agent: its number is none.
-                    let number = record.side.is_none().then_some(integer(record.number));
-                    transaction.execute(
-                        "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
-                           can_spawn, closed_phase, closed_at, result, failure, delivered, state,
-                           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21)",
-                        params![
-                            record.id.as_str(),
-                            number,
-                            record.parent.as_ref().map(NodeId::as_str),
-                            record.description,
-                            record.profile,
-                            record.instructions,
-                            integer(record.round),
-                            record.started_at.as_millisecond(),
-                            record.can_spawn_subagents,
-                            phase,
-                            closed_at,
-                            result,
-                            failure,
-                            record.delivered,
-                            to_json(&initial.state),
-                            record.forked_from.map(integer),
-                            record.cwd.as_ref().map(|own| &own.cwd),
-                            record.cwd.as_ref().and_then(|own| own.under.device.as_ref()),
-                            record.cwd.as_ref().map(|own| &own.under.directory),
-                            record.context_limit,
-                            record.started_by.as_ref().map(BlockId::as_str),
-                        ],
-                    )?;
-                    if let Some(side) = &record.side {
-                        transaction.execute(
-                            "INSERT INTO side_questions (node_id, block_id, start_offset, end_offset, quote, picture, question, asked_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                            params![
-                                record.id.as_str(),
-                                side.block.as_str(),
-                                integer(side.start),
-                                integer(side.end),
-                                side.quote,
-                                side.picture.as_ref().map(|picture| serde_json::to_string(picture).expect("a media source serializes")),
-                                side.question,
-                                side.asked_at.as_millisecond(),
-                            ],
-                        )?;
-                    }
-                    if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
-                        return Ok(Err(refused));
-                    }
-                    // A new node follows the empty transcript.
-                    let change = node_version_of(&transaction, &record.id)?.map(|(agent, version)| {
-                        TranscriptChange::new(agent, SavedVersion::default(), version, &initial.changed_blocks)
-                    });
-                    transaction.commit()?;
-                    Ok(Ok(change))
-                })
-                .await
-                .map_err(store_error)??;
-            (self.saved)(&node, change);
-            Ok(())
+            // Another conversation's rows are read from its file, attached
+            // to this one's writer for the copy.
+            let file = match root {
+                Some(root) => {
+                    let source = ConversationId::try_from(root.as_str()).map_err(|error| StoreError::Failed(error.to_string()))?;
+                    self.db.file_of(&source)
+                }
+                None => None,
+            };
+            self.create(record, Some((file, prefix.clone())), initial).await
         })
     }
 
@@ -530,7 +674,130 @@ impl SessionStore for SqliteSessionStore {
         })
     }
 
-    fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
+    fn blocks(&self, range: Range<usize>) -> LocalBoxFuture<'_, Result<Rows, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let path = Path::read(connection, node.as_str())?;
+                    let range = count(range.start)..count(range.end);
+                    if range.end > path.len() {
+                        return Err(gap(&node, decode("path_runs", "length", usize::try_from(path.len()))?));
+                    }
+                    Ok(Rows {
+                        blocks: path_blocks(connection, &node, &path, range.clone())?,
+                        versions: path_versions(connection, &path, range)?,
+                    })
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn position<'a>(&'a self, id: &'a BlockId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        let node = self.node.clone();
+        let id = id.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let path = Path::read(connection, node.as_str())?;
+                    let length = decode("path_runs", "length", usize::try_from(path.len()))?;
+                    Transcript::Agent(node).block_index(connection, &id, length)
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn last_of(&self, kind: Kind, end: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let path = Path::read(connection, node.as_str())?;
+                    last_of(connection, &node, &path, kind, count(end))
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn next_of(&self, kind: Kind, from: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let path = Path::read(connection, node.as_str())?;
+                    next_of(connection, &node, &path, kind, count(from))
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn blocks_of(&self, kinds: Vec<Kind>, range: Range<usize>) -> LocalBoxFuture<'_, Result<Vec<(usize, Block)>, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let path = Path::read(connection, node.as_str())?;
+                    blocks_of(connection, &node, &path, &kinds, count(range.start)..count(range.end))
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn turn_position<'a>(&'a self, turn: &'a TurnId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>> {
+        let node = self.node.clone();
+        let turn = turn.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| turn_position(connection, &node, &turn))
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn earlier(&self, end: usize) -> LocalBoxFuture<'_, Result<EarlierRows, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let transaction = connection.transaction()?;
+                    let path = Path::read(&transaction, node.as_str())?;
+                    earlier_rows(&transaction, &node, &path, count(end))
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn prefix(&self, length: usize) -> LocalBoxFuture<'_, Result<Option<StoredPrefix>, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            self.db
+                .call(move |connection| {
+                    let path = Path::read(connection, node.as_str())?;
+                    if count(length) > path.len() {
+                        return Err(gap(&node, length));
+                    }
+                    let Some(last) = count(length).checked_sub(1).filter(|last| *last >= 0) else {
+                        return Ok(None);
+                    };
+                    let leaf = path.row_at(last).ok_or_else(|| gap(&node, length))?;
+                    Ok(Some(StoredPrefix {
+                        node: node.clone(),
+                        leaf: decode("path_runs", "first", u64::try_from(leaf))?,
+                        length,
+                    }))
+                })
+                .await
+                .map_err(store_error)
+        })
+    }
+
+    fn switch(&self, position: usize, version: u32, held_from: usize) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
         let node = self.node.clone();
         Box::pin(async move {
             let commit = self.db.commit_point();
@@ -569,8 +836,25 @@ impl SessionStore for SqliteSessionStore {
                         }
                         _ => None,
                     };
+                    // What the caller's window lacks before the place is
+                    // read in the same transaction, so nothing after the
+                    // commit can fail.
+                    let before = if from < held_from {
+                        let start = last_of(&transaction, &node, &path, Kind::CompactionBoundary, at + 1)?.unwrap_or(0);
+                        let range = count(start)..at;
+                        Some(SwitchedBefore {
+                            start,
+                            rows: Rows {
+                                blocks: path_blocks(&transaction, &node, &path, range.clone())?,
+                                versions: path_versions(&transaction, &path, range)?,
+                            },
+                            earlier: earlier_rows(&transaction, &node, &path, count(start))?,
+                        })
+                    } else {
+                        None
+                    };
                     commit.commit(transaction)?;
-                    Ok(Ok((Switched { from, blocks, versions }, change)))
+                    Ok(Ok((Switched { from, blocks, versions, before }, change)))
                 })
                 .await
                 .map_err(store_error)??;
@@ -746,8 +1030,10 @@ fn is_output(block: &Block) -> bool {
 }
 
 
-/// A node's checkpoint: its state row, the blocks of its current path and
-/// the versions on it; none when the node does not exist.
+/// A node's checkpoint: its state row and its window, the blocks of its
+/// current path from the last `compaction_boundary` on with the versions
+/// there (`runtime.md` § Restoring); none when the node does not exist. No
+/// row before the window is read.
 fn checkpoint(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoint>, StorageError> {
     let row: Option<String> = connection
         .query_row("SELECT state FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
@@ -756,16 +1042,173 @@ fn checkpoint(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoin
         return Ok(None);
     };
     let path = Path::read(connection, node.as_str())?;
-    let versions = path
-        .versions(connection, 0..path.len())?
-        .into_iter()
-        .map(|(position, versions)| Ok((decode("path_runs", "start", usize::try_from(position))?, versions)))
-        .collect::<Result<_, StorageError>>()?;
+    let start = last_of(connection, node, &path, Kind::CompactionBoundary, path.len())?.unwrap_or(0);
+    let window = count(start)..path.len();
     Ok(Some(Checkpoint {
         state: json("nodes", "state", &state)?,
-        transcript: path_blocks(connection, node, &path, 0..path.len())?,
-        versions,
+        start,
+        transcript: path_blocks(connection, node, &path, window.clone())?,
+        versions: path_versions(connection, &path, window)?,
     }))
+}
+
+/// The versions at the positions `range` of `path`, by position.
+fn path_versions(
+    connection: &Connection,
+    path: &Path,
+    range: Range<i64>,
+) -> Result<BTreeMap<usize, demi_conversation_socket_protocol::Versions>, StorageError> {
+    path.versions(connection, range)?
+        .into_iter()
+        .map(|(position, versions)| Ok((decode("path_runs", "start", usize::try_from(position))?, versions)))
+        .collect()
+}
+
+/// The position of the last block of `kind` on `node`'s `path` before
+/// `end`, found through the index of block types from the path's last run
+/// back, so no block is decoded.
+fn last_of(
+    connection: &Connection,
+    node: &NodeId,
+    path: &Path,
+    kind: Kind,
+    end: i64,
+) -> Result<Option<usize>, StorageError> {
+    let types = serde_json::to_string(kind.types()).expect("type names serialize");
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT max(idx) FROM blocks INDEXED BY blocks_by_type
+         WHERE node_id = ?1 AND json_extract(block, '$.type') IN (SELECT value FROM json_each(?2))
+           AND idx >= ?3 AND idx < ?4 AND ({})",
+        kind.condition("block").unwrap_or_else(|| "1".to_owned())
+    ))?;
+    for (start, rows) in path.segments(0..end.min(path.len())).into_iter().rev() {
+        let found: Option<i64> =
+            statement.query_row(params![node.as_str(), types, rows.start, rows.end], |row| row.get(0))?;
+        if let Some(row) = found {
+            return Ok(Some(decode("path_runs", "start", usize::try_from(start + row - rows.start))?));
+        }
+    }
+    Ok(None)
+}
+
+/// The position of the first block of `kind` on `node`'s `path` at or
+/// after `from`, found through the index of block types from that run on.
+fn next_of(
+    connection: &Connection,
+    node: &NodeId,
+    path: &Path,
+    kind: Kind,
+    from: i64,
+) -> Result<Option<usize>, StorageError> {
+    let types = serde_json::to_string(kind.types()).expect("type names serialize");
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT min(idx) FROM blocks INDEXED BY blocks_by_type
+         WHERE node_id = ?1 AND json_extract(block, '$.type') IN (SELECT value FROM json_each(?2))
+           AND idx >= ?3 AND idx < ?4 AND ({})",
+        kind.condition("block").unwrap_or_else(|| "1".to_owned())
+    ))?;
+    for (start, rows) in path.segments(from..path.len()) {
+        let found: Option<i64> =
+            statement.query_row(params![node.as_str(), types, rows.start, rows.end], |row| row.get(0))?;
+        if let Some(row) = found {
+            return Ok(Some(decode("path_runs", "start", usize::try_from(start + row - rows.start))?));
+        }
+    }
+    Ok(None)
+}
+
+/// The blocks of `kinds` at the positions `range` of `node`'s `path`, each
+/// with its position, found through the index of block types: only they
+/// are read and decoded.
+fn blocks_of(
+    connection: &Connection,
+    node: &NodeId,
+    path: &Path,
+    kinds: &[Kind],
+    range: Range<i64>,
+) -> Result<Vec<(usize, Block)>, StorageError> {
+    let types: Vec<&str> = kinds.iter().flat_map(|kind| kind.types().iter().copied()).collect();
+    let types = serde_json::to_string(&types).expect("type names serialize");
+    let mut statement = connection.prepare_cached(
+        "SELECT idx, block FROM blocks INDEXED BY blocks_by_type
+         WHERE node_id = ?1 AND json_extract(block, '$.type') IN (SELECT value FROM json_each(?2))
+           AND idx >= ?3 AND idx < ?4
+         ORDER BY idx",
+    )?;
+    let mut found = Vec::new();
+    for (start, rows) in path.segments(range.start..range.end.min(path.len())) {
+        let mut read = statement.query(params![node.as_str(), types, rows.start, rows.end])?;
+        while let Some(row) = read.next()? {
+            let idx: i64 = row.get(0)?;
+            let text: String = row.get(1)?;
+            let block: Block = json("blocks", "block", &text)?;
+            if kinds.iter().any(|kind| kind.holds(&block)) {
+                found.push((decode("path_runs", "start", usize::try_from(start + idx - rows.start))?, block));
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// The position of the `user` block that opened `turn` on `node`'s
+/// current path, found through the index of block types.
+fn turn_position(connection: &Connection, node: &NodeId, turn: &TurnId) -> Result<Option<usize>, StorageError> {
+    let position: Option<i64> = connection
+        .prepare_cached(&format!(
+            "SELECT min({POSITION}) FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE run.node_id = ?1 AND json_extract(blocks.block, '$.turnId') = ?2"
+        ))?
+        .query_row(params![node.as_str(), turn.as_str()], |row| row.get(0))?;
+    position.map(|position| decode("path_runs", "start", usize::try_from(position))).transpose()
+}
+
+/// What a session keeps of the blocks of `node`'s `path` before `end`
+/// ([`SessionStore::earlier`]).
+fn earlier_rows(connection: &Connection, node: &NodeId, path: &Path, end: i64) -> Result<EarlierRows, StorageError> {
+    let ids = earlier_ids(connection, node, end)?;
+    let last = |kind: Kind| -> Result<Option<Block>, StorageError> {
+        match last_of(connection, node, path, kind, end)? {
+            Some(at) => Ok(path_blocks(connection, node, path, count(at)..count(at) + 1)?.pop()),
+            None => Ok(None),
+        }
+    };
+    Ok(EarlierRows {
+        user_turns: ids.0,
+        calls: ids.1,
+        last_input: last(Kind::Input)?,
+        last_user_input: last(Kind::UserInput)?,
+        last_record: last(Kind::Record)?,
+    })
+}
+
+/// The turns of the `user` blocks and the ids of the tool calls on
+/// `node`'s current path before `end`, read from the index of block types
+/// without decoding a block.
+fn earlier_ids(connection: &Connection, node: &NodeId, end: i64) -> Result<(Vec<TurnId>, Vec<BlockId>), StorageError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT json_extract(blocks.block, '$.type'),
+                CASE json_extract(blocks.block, '$.type') WHEN 'user' THEN json_extract(blocks.block, '$.turnId')
+                  ELSE json_extract(blocks.block, '$.id') END
+         FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+           ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') IN ('user', 'tool_call')
+             AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+         WHERE run.node_id = ?1 AND {POSITION} < ?2
+         ORDER BY run.start, blocks.idx"
+    ))?;
+    let mut rows = statement.query(params![node.as_str(), end])?;
+    let mut ids = (Vec::new(), Vec::new());
+    while let Some(row) = rows.next()? {
+        let kind: String = row.get(0)?;
+        let id: String = row.get(1)?;
+        if kind == "user" {
+            ids.0.push(decode("blocks", "block", TurnId::try_from(id))?);
+        } else {
+            ids.1.push(decode("blocks", "block", BlockId::try_from(id))?);
+        }
+    }
+    Ok(ids)
 }
 
 /// The blocks at the positions `range` of `node`'s path, which it holds.
@@ -2155,6 +2598,57 @@ pub(crate) mod tests {
         .unwrap()
     }
 
+    // A conversation Fork names the source's rows before its window, and
+    // the destination's store copies them from the source's database file
+    // with the blobs they name, never reading them into the process; the
+    // commands its shell calls name are found in the source's database the
+    // same way (`conversation-fork.md` § Backend creation and retries).
+    #[tokio::test(flavor = "local")]
+    async fn a_fork_copies_the_rows_it_names_from_the_source_conversations_database() {
+        let (source, stores, _data) = store().await;
+        let root = id(conversation().as_str());
+        let path = vec![user("u1"), shell_call("c1", "cmd-1"), response("r1"), reply("a1")];
+        source
+            .create_node(record(root.as_str(), None, 0), update(path.iter().cloned().enumerate().collect(), path.len()))
+            .await
+            .unwrap();
+        let prefix = source.session_store(&root).prefix(3).await.unwrap().unwrap();
+        let commands = stores
+            .read(&conversation(), {
+                let prefix = prefix.clone();
+                move |connection| command_outputs::commands_of_prefix(connection, &prefix)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(commands, [CommandId::try_from("cmd-1").unwrap()]);
+
+        let other = ConversationId::try_from("7d1e2f3a-4b5c-4d6e-8f70-819a2b3c4d5e").unwrap();
+        let destination = SqliteTreeStore::new(
+            stores.db(&other),
+            Arc::new(Blobs::default()),
+            Rc::new(|_: &NodeId, _: Option<TranscriptChange>| {}),
+        );
+        let forked = id(other.as_str());
+        destination
+            .create_node_after(
+                record(forked.as_str(), None, 0),
+                Some(&root),
+                &prefix,
+                update(vec![(3, reply("forked"))], 4),
+            )
+            .await
+            .unwrap();
+        let loaded = destination.session_store(&forked).load().await.unwrap().unwrap();
+        assert_eq!(loaded.transcript, [path[..3].to_vec(), vec![reply("forked")]].concat());
+        // The source's database is detached again: a second Fork attaches it anew.
+        destination
+            .create_node_after(record("child", Some(forked.as_str()), 1), Some(&root), &prefix, update(Vec::new(), 3))
+            .await
+            .unwrap();
+        assert_eq!(destination.session_store(&id("child")).load().await.unwrap().unwrap().transcript, path[..3]);
+    }
+
     async fn facts(stores: &ConversationStores) -> SummaryFacts {
         stores
             .read(&conversation(), summary)
@@ -2284,6 +2778,8 @@ pub(crate) mod tests {
         store_contract::a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::a_compaction_keeps_the_versions_of_what_it_carries(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_load_reads_the_window_and_the_rest_on_demand(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::a_subagent_tells_whether_its_start_is_on_its_parents_path(&tree).await;
         let (tree, _stores, _data) = store().await;

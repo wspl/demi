@@ -518,6 +518,32 @@ Human pending steers are not part of it. Creating,
 closing, reopening and deleting nodes, and delivering subagent completions, are
 atomic commits of the same store ([Persistence](subagents.md#persistence)).
 
+### What a session holds
+
+A live session holds in memory only the blocks its next request replays:
+those of its current path from the last `compaction_boundary` onward, or the
+whole path when it has none ([Replay](transcript.md#replay)), with the
+path's block count and current leaf. A conversation of 23,000 blocks whose
+last compaction left 600 holds those 600, a few megabytes, however long the
+conversation grows; its earlier blocks stay in the database. When a new
+`compaction_boundary` is written, the session lets go of the blocks before
+it once the save that holds it has committed.
+
+Whatever concerns a block before the window reads it from the store when it
+is needed, and holds it no longer than that work: a page reading history
+reads its pages from the database
+([Conversation state and transactions](../backend/storage.md#conversation-state-and-transactions)),
+an edit, Regenerate or an unwind of an earlier message reads the rows it
+replaces, and a Fork or a share copies rows in the database. Search reads its
+index. Nothing outside the session keeps another copy of the transcript:
+a live tree's memory grows with its sessions' windows, not with the length
+of their conversations.
+
+A block's vendor records, such as the lines the Claude Code CLI wrote for it,
+are held as the JSON text they were stored as, and decoded only by the code
+that reads a field of them, for as long as it reads it: the session never
+looks inside them, and decoded they take several times their text's size.
+
 ### Saving
 
 - A save carries only what changed: the changed block rows in ascending index,
@@ -551,8 +577,10 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
 
 ### Restoring
 
-- The store decodes and validates every row it reads, and corrupt data stops
-  the restore ([Storage](../backend/storage.md)).
+- The store reads the session's window, the current path's rows from its
+  last `compaction_boundary` onward ([What a session holds](#what-a-session-holds)),
+  never the whole path, and decodes and validates every row it reads;
+  corrupt data stops the restore ([Storage](../backend/storage.md)).
 - The session adds its own checks: the waiting agent messages have unique
   ids that are not already in the transcript, each is addressed to this node,
   and edit operation ids are unique.
@@ -577,6 +605,7 @@ where a tool runs; no test calls a real model.
 | A turn's closing save is held at its commit | The client sees no `idle` until the save commits; an edit it sends the moment it sees `idle` is admitted |
 | A message is queued while a tool runs | The queue is saved without any transcript change |
 | Two opens of one conversation at once | One live tree |
+| A conversation of many compactions is restored, then compacts again | The session holds the rows from the last boundary onward only, before and after; a page reads the earlier history, and an edit of a message before the boundary succeeds |
 | Two connections of one conversation | Both receive the same events of a turn; a reply reaches only the connection that asked; a `close` sends `closed` to both |
 | One of two connections stops reading | It alone closes as lagging; the other receives the whole turn |
 | Two connections act at once | Two sends run in the order they arrived; a send while the other's edit is prepared is refused, and so is an edit while the other's send waits or runs |

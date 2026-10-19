@@ -79,3 +79,8 @@ async fn a_rewrite_keeps_its_rows_and_a_switch_brings_them_back() {
 async fn a_side_question_is_no_subagent_and_keeps_what_it_asks() {
     store_contract::a_side_question_is_no_subagent_and_keeps_what_it_asks(&*MemoryTreeStore::new()).await;
 }
+
+#[tokio::test(flavor = "local")]
+async fn a_load_reads_the_window_and_the_rest_on_demand() {
+    store_contract::a_load_reads_the_window_and_the_rest_on_demand(&*MemoryTreeStore::new()).await;
+}

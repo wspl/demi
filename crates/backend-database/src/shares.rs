@@ -975,7 +975,7 @@ mod tests {
             .unwrap();
 
         assert!(make_answer_list(&stores, "t1-edited").await);
-        session.switch(0, 1).await.unwrap();
+        session.switch(0, 1, 0).await.unwrap();
 
         assert_eq!(ids(&shared(&stores).await), ["u1-edited", "steps 1", "t1-edited"]);
         assert!(!reaches(&stores, "t1").await);

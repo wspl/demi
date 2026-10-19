@@ -80,7 +80,7 @@ fn a_block_reaches_the_page_without_the_entries_its_provider_kept_on_it() {
         let mut frame = decode(&fixture);
         for block in blocks(&mut frame) {
             if let Some(entries) = block.entries_mut() {
-                entries.push(json!({ "type": "assistant", "uuid": "kept" }));
+                entries.push(json!({ "type": "assistant", "uuid": "kept" }).into());
                 holding += 1;
             }
         }

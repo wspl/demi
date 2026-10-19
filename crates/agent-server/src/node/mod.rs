@@ -12,12 +12,12 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentSession, CommandLook, Continuation, NewContext, RestoreError, RunningWork, SeenContext,
+    AgentSession, CommandLook, Continuation, ForkSeed, NewContext, RestoreError, RunningWork, SeenContext,
     SessionConfig, SessionDeps, SessionInit, SessionRuntime, StepOutcomes, SystemPrompt,
     ToolInvocation,
 };
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, CheckpointUpdate, ChildDirectory, NodeRecord, Placement, RunningCommand, StoreError,
+    AgentTreeStore, Checkpoint, ChildDirectory, NodeRecord, Placement, RunningCommand, StoreError,
     StoredCommand, StoredOutput,
     media::store_result,
 };
@@ -239,7 +239,7 @@ impl<H: HostResolver> Node<H> {
     /// § Live output): each one its shells run, and each one the transcript
     /// last saw running that they still hold, oldest first.
     pub(crate) fn live_views(&self) -> Vec<PageView> {
-        let stored = stored_running_commands(&self.session.transcript().blocks);
+        let stored = self.session.with_window(|transcript| stored_running_commands(transcript.blocks()));
         let mut views: Vec<PageView> = self
             .runtime
             .environments
@@ -969,7 +969,7 @@ pub(crate) enum Origin {
     /// in one commit and then restored as a stored node is.
     Forked {
         record: NodeRecord,
-        checkpoint: Checkpoint,
+        seed: ForkSeed,
     },
     Stored {
         record: NodeRecord,
@@ -1008,7 +1008,8 @@ impl Origin {
     pub(crate) fn model(&self) -> &ModelSelection {
         match self {
             Self::New { model, .. } => model,
-            Self::Forked { checkpoint, .. } | Self::Stored { checkpoint, .. } => &checkpoint.state.model,
+            Self::Forked { seed, .. } => &seed.checkpoint.state.model,
+            Self::Stored { checkpoint, .. } => &checkpoint.state.model,
         }
     }
 }
@@ -1163,21 +1164,25 @@ pub(crate) async fn assemble<H: HostResolver>(
                 }
             }
             let (session, continuation) =
-                AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &running)?;
+                AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &running).await?;
             (session, Some(continuation))
         }
-        Origin::Forked { checkpoint: seed, .. } => {
-            let initial = CheckpointUpdate {
-                state: seed.state.clone(),
-                changed_blocks: seed.transcript.iter().cloned().enumerate().collect(),
-                block_count: seed.transcript.len(),
-                moved_from: None,
-                version: false,
+        Origin::Forked { seed, .. } => {
+            // Its rows before the seed's blocks are its tree's own.
+            seed.create(&*store, record.clone(), None).await?;
+            // It restores as a stored node does: the copied rows are the
+            // store's, and its window starts at its last boundary.
+            let checkpoint = match seed.prefix {
+                None => seed.checkpoint,
+                Some(_) => store
+                    .session_store(&record.id)
+                    .load()
+                    .await?
+                    .ok_or_else(|| StoreError::Failed(format!("node {} has no checkpoint", record.id)))?,
             };
-            store.create_node(record.clone(), initial).await?;
             // A new node has no commands of its own yet.
             let (session, continuation) =
-                AgentSession::restore(seed, record.id.clone(), runtime, deps, &[])?;
+                AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &[]).await?;
             (session, Some(continuation))
         }
         Origin::New {

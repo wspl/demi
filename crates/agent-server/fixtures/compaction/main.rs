@@ -585,10 +585,14 @@ impl Conversation {
         self.copies += 1;
         let copy = NodeId::try_from(format!("{}-check-{}", self.root, self.copies))
             .expect("the id is not empty");
-        let seed = Checkpoint {
-            state: idle_state(self.model.clone()),
-            transcript: self.blocks(),
-            versions: Default::default(),
+        let seed = demi_agent_session::ForkSeed {
+            prefix: None,
+            checkpoint: Checkpoint {
+                start: 0,
+                state: idle_state(self.model.clone()),
+                transcript: self.blocks(),
+                versions: Default::default(),
+            },
         };
         self.server
             .initialize_fork(&copy, seed)

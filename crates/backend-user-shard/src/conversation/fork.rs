@@ -158,10 +158,20 @@ impl Shard {
         // media and edit copies alike, so no bytes are copied. The outputs of
         // the commands its history names are its too, which `demi shell
         // output` reads there as in the source; a retry copies them again.
-        let commands = command_outputs::commands_of(&seed.transcript);
+        // The commands of the rows the seed names are read where they
+        // are, in the source's database, as the rows are copied there.
+        let mut commands = command_outputs::commands_of(&seed.checkpoint.transcript);
+        let prefix = seed.prefix.clone();
         let rows = services
             .conversations
             .read(&source.id, move |connection| {
+                if let Some(prefix) = &prefix {
+                    for command in command_outputs::commands_of_prefix(connection, prefix)? {
+                        if !commands.contains(&command) {
+                            commands.push(command);
+                        }
+                    }
+                }
                 command_outputs::rows(connection, &commands)
             })
             .await?
@@ -210,7 +220,7 @@ impl Shard {
         // hold, the one the attempt recorded, which a retry repeats; a source
         // without one leaves the seed its own.
         if let Some(model) = &operation.metadata.model {
-            seed.state.model = model.clone();
+            seed.checkpoint.state.model = model.clone();
         }
         self.agent()
             .initialize_fork(&root_of(&destination), seed)

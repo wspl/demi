@@ -22,7 +22,7 @@ pub mod pixels;
 pub mod testing;
 pub mod versions;
 
-use std::{collections::BTreeMap, rc::Rc};
+use std::{collections::BTreeMap, ops::Range, rc::Rc};
 
 use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob, Versions};
 use demi_host_interface::{Seen, UnsentStart, WholeOutput};
@@ -41,16 +41,60 @@ pub trait SessionStore {
     fn save(&self, update: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>>;
 
     /// The node's checkpoint, decoded and checked, its media by reference as
-    /// saved; none when the node has none. Corrupt data stops the load.
+    /// saved; none when the node has none. Its transcript is the window a
+    /// live session holds (`runtime.md` § What a session holds): the current
+    /// path's blocks from its last `compaction_boundary` on, or the whole
+    /// path when it has none; no row before it is read. Corrupt data stops
+    /// the load.
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>>;
+
+    /// The blocks at the positions `range` of the current path, all of
+    /// which it holds, with the versions at those positions: what a
+    /// session reads of the blocks before its window when its work needs
+    /// them.
+    fn blocks(&self, range: Range<usize>) -> LocalBoxFuture<'_, Result<Rows, StoreError>>;
+
+    /// The position of the block `id` on the current path; none when the
+    /// path does not hold it.
+    fn position<'a>(&'a self, id: &'a BlockId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>>;
+
+    /// The position of the current path's last block of `kind` before
+    /// `end`; none when there is none.
+    fn last_of(&self, kind: Kind, end: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>>;
+
+    /// The position of the current path's first block of `kind` at or
+    /// after `from`; none when there is none.
+    fn next_of(&self, kind: Kind, from: usize) -> LocalBoxFuture<'_, Result<Option<usize>, StoreError>>;
+
+    /// The blocks of the current path in `range` that are of one of
+    /// `kinds`, each with its position, in order, found through the index
+    /// of block types: no other block of the range is read.
+    fn blocks_of(&self, kinds: Vec<Kind>, range: Range<usize>) -> LocalBoxFuture<'_, Result<Vec<(usize, Block)>, StoreError>>;
+
+    /// The position of the `user` block that opened the turn `turn` on
+    /// the current path; none when the path holds none.
+    fn turn_position<'a>(&'a self, turn: &'a TurnId) -> LocalBoxFuture<'a, Result<Option<usize>, StoreError>>;
+
+    /// What the session keeps of the blocks of the current path before
+    /// `end` without holding them, read in one transaction.
+    fn earlier(&self, end: usize) -> LocalBoxFuture<'_, Result<EarlierRows, StoreError>>;
+
+    /// The current path's first `length` blocks as rows a new node can
+    /// start with ([`AgentTreeStore::create_node_after`]): named by the
+    /// row at their end, so a later switch or edit of this node leaves
+    /// them as they are now. None for no blocks.
+    fn prefix(&self, length: usize) -> LocalBoxFuture<'_, Result<Option<StoredPrefix>, StoreError>>;
 
     /// Makes the latest leaf of the `version`th version (from 1) at the
     /// path's position `position` the current leaf, in one commit, and
     /// answers the path from that position on (`message-editing.md`
-    /// § Versions). Nothing else of the checkpoint changes. A position the
-    /// path does not reach, or a version its place does not hold, is
-    /// refused without a change.
-    fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>>;
+    /// § Versions), and, when that position is before `held_from`, where
+    /// the caller's window starts, what the caller needs to hold the path
+    /// from the last `compaction_boundary` at or before it: all read in the
+    /// switch's transaction, so nothing after its commit can fail. Nothing
+    /// else of the checkpoint changes. A position the path does not reach,
+    /// or a version its place does not hold, is refused without a change.
+    fn switch(&self, position: usize, version: u32, held_from: usize) -> LocalBoxFuture<'_, Result<Switched, StoreError>>;
 
     /// The conversation owner's blob namespace (`transcript.md` § Media), where
     /// the session stores the media that enter its transcript and reads back
@@ -90,6 +134,20 @@ pub trait AgentTreeStore {
         record: NodeRecord,
         initial: CheckpointUpdate,
     ) -> LocalBoxFuture<'_, Result<(), StoreError>>;
+
+    /// As [`create_node`](Self::create_node), for a node whose path starts
+    /// with `prefix`, rows of this tree, or with `root` of the tree of that
+    /// conversation root: the store copies them as the node's first rows,
+    /// in the database, without reading them into the process
+    /// (`runtime.md` § What a session holds); `initial` holds the blocks
+    /// after them.
+    fn create_node_after<'a>(
+        &'a self,
+        record: NodeRecord,
+        root: Option<&'a NodeId>,
+        prefix: &'a StoredPrefix,
+        initial: CheckpointUpdate,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// The node's checkpoint store. A save also marks delivered, in the same
     /// commit, every child completion the saved checkpoint carries
@@ -532,14 +590,161 @@ pub struct EditReceipt {
     pub turn_id: TurnId,
 }
 
-/// A node's checkpoint as the store gives it back: its state and its
-/// current path, with the versions at each place of the path that has
-/// more than one.
+/// A node's checkpoint as the store gives it back: its state and the
+/// blocks of its current path from `start` to its end, with the versions
+/// at each of their places that has more than one. A load starts at the
+/// path's last `compaction_boundary`; a Fork's seed holds its whole path,
+/// from 0.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Checkpoint {
     pub state: CheckpointState,
+    /// The position of `transcript`'s first block on the path.
+    pub start: usize,
     pub transcript: Vec<Block>,
+    /// By position on the path.
     pub versions: BTreeMap<usize, Versions>,
+}
+
+impl Checkpoint {
+    /// How many blocks the path holds.
+    pub fn block_count(&self) -> usize {
+        self.start + self.transcript.len()
+    }
+}
+
+/// Blocks of a node's current path as [`SessionStore::blocks`] reads them,
+/// with the versions at their positions.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Rows {
+    pub blocks: Vec<Block>,
+    pub versions: BTreeMap<usize, Versions>,
+}
+
+/// What [`SessionStore::earlier`] reads of the blocks before a position:
+/// the ids the session keeps of them, and the last block of each kind its
+/// decisions read.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EarlierRows {
+    /// The turn of each `user` block, in order.
+    pub user_turns: Vec<TurnId>,
+    /// The id of each `tool_call` block, in order.
+    pub calls: Vec<BlockId>,
+    /// The last of [`Kind::Input`].
+    pub last_input: Option<Block>,
+    /// The last of [`Kind::UserInput`].
+    pub last_user_input: Option<Block>,
+    /// The last of [`Kind::Record`].
+    pub last_record: Option<Block>,
+}
+
+/// A node's first blocks as rows a new node starts with
+/// ([`SessionStore::prefix`]): the node, the row at their end, and how
+/// many they are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredPrefix {
+    pub node: NodeId,
+    pub leaf: u64,
+    pub length: usize,
+}
+
+/// A kind of block [`SessionStore::last_of`] looks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// A `compaction_boundary`, where a window starts.
+    CompactionBoundary,
+    /// A block of a turn's input, which names its turn: `user`, `context`,
+    /// `wakeup`, `steer`, `agent_message` or `resume`.
+    Input,
+    /// What the user wrote: a `user` block or a `steer`.
+    UserInput,
+    /// A `user` block, where a request begins.
+    User,
+    /// A `tool_call` block.
+    ToolCall,
+    /// A tool call still executing.
+    ExecutingCall,
+    /// A `text` block.
+    Text,
+    /// A completed `text`, one a Fork may end at (`conversation-fork.md`
+    /// § Eligibility).
+    CompletedText,
+    /// An `error` block.
+    Error,
+    /// A `response` block.
+    Response,
+    /// A block that can be the record that ended a turn
+    /// (`failures-and-recovery.md` § The unfinished turn): any but a
+    /// compaction's boundary and marker, an error that ended no turn, and
+    /// the agent messages and command reports a turn takes after it ended.
+    Record,
+}
+
+impl Kind {
+    /// The `type` tags of its blocks as a row stores them.
+    pub fn types(self) -> &'static [&'static str] {
+        match self {
+            Self::CompactionBoundary => &["compaction_boundary"],
+            Self::Input => &["user", "context", "wakeup", "steer", "agent_message", "resume"],
+            Self::UserInput => &["user", "steer"],
+            Self::User => &["user"],
+            Self::ToolCall | Self::ExecutingCall => &["tool_call"],
+            Self::Text | Self::CompletedText => &["text"],
+            Self::Error => &["error"],
+            Self::Response => &["response"],
+            Self::Record => &[
+                "user", "context", "wakeup", "steer", "resume", "abort", "thinking", "redacted_thinking", "text",
+                "tool_call", "response", "error", "account_switch",
+            ],
+        }
+    }
+
+    /// What a block of one of its [`types`](Self::types) must also hold,
+    /// as an SQL condition on the block's JSON text `column`; none for a
+    /// kind its types make.
+    pub fn condition(self, column: &str) -> Option<String> {
+        match self {
+            Self::ExecutingCall => Some(format!("json_extract({column}, '$.status') = 'executing'")),
+            Self::CompletedText => Some(format!("json_extract({column}, '$.forkable') IS 1")),
+            Self::Record => Some(format!(
+                "json_extract({column}, '$.outsideTurn') IS NOT 1
+                 AND (json_extract({column}, '$.type') != 'wakeup' OR json_extract({column}, '$.placement') != 'steer')"
+            )),
+            _ => None,
+        }
+    }
+
+    /// Whether `block` is of the kind: the block whose tag is one of
+    /// [`types`](Self::types).
+    pub fn holds(self, block: &Block) -> bool {
+        match self {
+            Self::CompactionBoundary => matches!(block, Block::CompactionBoundary(_)),
+            Self::Input => matches!(
+                block,
+                Block::User(_)
+                    | Block::Context(_)
+                    | Block::Wakeup(_)
+                    | Block::Steer(_)
+                    | Block::AgentMessage(_)
+                    | Block::Resume(_)
+            ),
+            Self::UserInput => matches!(block, Block::User(_) | Block::Steer(_)),
+            Self::User => matches!(block, Block::User(_)),
+            Self::ToolCall => matches!(block, Block::ToolCall(_)),
+            Self::ExecutingCall => {
+                matches!(block, Block::ToolCall(call) if call.status == demi_shared_types::ToolCallStatus::Executing)
+            }
+            Self::Text => matches!(block, Block::Text(_)),
+            Self::CompletedText => matches!(block, Block::Text(text) if text.forkable),
+            Self::Error => matches!(block, Block::Error(_)),
+            Self::Response => matches!(block, Block::Response(_)),
+            Self::Record => match block {
+                Block::CompactionBoundary(_) | Block::CompactionMarker(_) | Block::AgentMessage(_) => false,
+                Block::Error(error) => !error.outside_turn,
+                Block::Wakeup(wakeup) => wakeup.placement != demi_shared_types::WakeupPlacement::Steer,
+                _ => true,
+            },
+        }
+    }
 }
 
 /// One save: only what changed since the last one. Positions are places on
@@ -585,6 +790,21 @@ pub struct Switched {
     pub from: usize,
     pub blocks: Vec<Block>,
     pub versions: BTreeMap<usize, Versions>,
+    /// When `from` is before the caller's window: the path from the last
+    /// `compaction_boundary` at or before `from` up to it.
+    pub before: Option<SwitchedBefore>,
+}
+
+/// The path before a switch's place that the caller's window did not hold
+/// ([`SessionStore::switch`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchedBefore {
+    /// Where the rows start: the last `compaction_boundary` at or before
+    /// the place, or 0.
+    pub start: usize,
+    pub rows: Rows,
+    /// What the session keeps of the blocks before `start`.
+    pub earlier: EarlierRows,
 }
 
 impl CheckpointUpdate {
