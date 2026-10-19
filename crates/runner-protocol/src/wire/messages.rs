@@ -1196,8 +1196,10 @@ pub enum Outbound {
     RpcCancel {
         call_id: String,
     },
-    /// This runner's end of a pipe closed: its HTTP exchange completed, or why
-    /// it did not.
+    /// This runner's end of a pipe closed: `ok` when its HTTP exchange
+    /// completed or, from a sink, when it stopped reading on purpose before
+    /// the end, as a job that ended or closed its standard input does, which
+    /// ends the pipe for its writer as a whole one; otherwise why it failed.
     PipeDone {
         pipe_id: String,
         ok: bool,

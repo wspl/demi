@@ -358,6 +358,20 @@ impl Pipes {
         (slot.source == party || slot.sink == party) && slot.core.fail(reason)
     }
 
+    /// A device's report that its sink stopped reading before the source's
+    /// end, as a job that ended or closed its standard input does: the pipe
+    /// drains, as a reader in this process that lets go drains it, and its
+    /// source and the device's response end without a failure. It counts
+    /// only from the pipe's sink; a pipe already over stays as it ended.
+    pub fn drain_from_device(&self, id: &str, device: &str) {
+        let slots = self.0.slots.borrow();
+        if let Some(slot) = slots.get(id)
+            && slot.sink == End::Device(device.into())
+        {
+            slot.core.drain();
+        }
+    }
+
     /// Fails every pipe `device` is an end of: its runner went away.
     pub fn device_gone(&self, device: &str) {
         let party = End::Device(device.into());
@@ -800,13 +814,14 @@ impl DeviceSource {
     {
         let core = self.writer.core.clone();
         let mut writer = self.writer;
-        let failed = core.failed();
-        tokio::pin!(body, failed);
+        let over = core.done();
+        tokio::pin!(body, over);
         loop {
-            // A failure answers at once, even while the body is quiet.
+            // The pipe's end answers at once, even while the body is quiet:
+            // its failure, or a sink that stopped reading.
             let chunk = tokio::select! {
                 biased;
-                failure = &mut failed => return Err(failure),
+                outcome = &mut over => return outcome,
                 chunk = body.next() => chunk,
             };
             match chunk {
@@ -845,14 +860,21 @@ impl DeviceSink {
     /// bytes in data frames, an idle frame after [`wire::PIPE_IDLE`] without
     /// a frame, so an edge that ends a silent response keeps it, and its end
     /// in an end frame, with the cause when it failed. Reading the source to
-    /// its end drains the pipe; a response cut short fails it.
+    /// its end drains the pipe; a response cut short fails it. A pipe the
+    /// device drained by reporting that it stopped reading
+    /// ([`Pipes::drain_from_device`]) ends the response with a whole end.
     pub fn into_frames(mut self) -> BoxStream<'static, Bytes> {
         self.reader.abandoned = Abandoned::Fail("sink HTTP response disconnected before EOF");
         futures_util::stream::unfold(Some(self.reader), |reader| async move {
             let mut reader = reader?;
+            let over = reader.core.done();
             let next = tokio::select! {
                 biased;
                 chunk = reader.next() => chunk,
+                outcome = over => {
+                    reader.ended = true;
+                    return Some((wire::end_frame(&outcome.map_err(|failure| failure.reason().to_owned())), None));
+                }
                 () = tokio::time::sleep(wire::PIPE_IDLE) => {
                     return Some((wire::idle_frame(), Some(reader)));
                 }

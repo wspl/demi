@@ -595,27 +595,79 @@ impl JobConfig {
             let pipes = self.pipes.clone();
             let input = child.input.clone();
             let output = self.output.clone();
-            let cancel = input_cancel.clone();
+            // The job stops reading when it ends.
+            let stopped = input_cancel.clone();
+            // The read itself lasts until the backend ends it, within the
+            // pipes' grace after the job's end.
+            let reading = io_cancel.clone();
             let shutdown = closed.clone();
             pipe_tasks.spawn(async move {
-                let result = async {
-                    let mut body = pipes.get(&reference.url, cancel.clone()).await?;
-                    while let Some(bytes) = body.next().await {
+                // The read, which the job may stop before the backend
+                // answers it, and its body once answered.
+                let mut getting = std::pin::pin!(pipes.get(&reference.url, reading));
+                let mut body = None;
+                // Whether the job stopped reading before the input's end.
+                let fed = async {
+                    let answered = tokio::select! {
+                        biased;
+                        _ = stopped.cancelled() => return Ok(true),
+                        answered = &mut getting => answered?,
+                    };
+                    let body = body.insert(answered);
+                    loop {
+                        let bytes = tokio::select! {
+                            biased;
+                            _ = stopped.cancelled() => return Ok(true),
+                            bytes = body.next() => bytes,
+                        };
+                        let Some(bytes) = bytes else {
+                            return Ok(false);
+                        };
                         let bytes = bytes?;
                         tokio::select! {
-                            _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "stdin pipe cancelled")),
-                            sent = input.send(ProcessInput::Bytes(bytes)) => sent.map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "task stdin closed"))?,
+                            biased;
+                            _ = stopped.cancelled() => return Ok(true),
+                            // A program that closed its standard input
+                            // stopped reading it, as `head -1` does.
+                            sent = input.send(ProcessInput::Bytes(bytes)) => if sent.is_err() {
+                                return Ok(true);
+                            },
                         }
                     }
-                    Ok(())
-                }.await;
-                // EOF also releases a reader when the HTTP source was refused.
-                let ended = tokio::select! {
-                    _ = cancel.cancelled() => Ok(()),
-                    sent = input.send(ProcessInput::End) => sent.map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "task stdin closed")),
-                };
-                let result = result.and(ended);
-                report_pipe(&output, reference.id, result, &shutdown).await;
+                }
+                .await;
+                match fed {
+                    // The job stopped reading before the input's end: its
+                    // end of the pipe stopped early, which is no failure,
+                    // as a local writer whose reader has gone stops writing
+                    // without a message. The report drains the pipe while
+                    // this end still holds its read, also one the backend
+                    // has not answered yet, so the backend never takes the
+                    // read's end for a cut response; the backend then ends
+                    // the read, and what still arrives goes nowhere.
+                    Ok(true) => {
+                        report_pipe(&output, reference.id, Ok(()), &shutdown).await;
+                        // The pipe is over by the report; how its read ends
+                        // tells nothing more.
+                        let body = match body {
+                            Some(body) => Ok(body),
+                            None => getting.await,
+                        };
+                        if let Ok(mut body) = body {
+                            while let Some(Ok(_)) = body.next().await {}
+                        }
+                    }
+                    result => {
+                        // EOF, also when the pipe failed or the source was
+                        // refused, releases a reader; a program that closed
+                        // its standard input or a job that ended reads none.
+                        tokio::select! {
+                            _ = stopped.cancelled() => {}
+                            _sent = input.send(ProcessInput::End) => {}
+                        }
+                        report_pipe(&output, reference.id, result.map(|_| ()), &shutdown).await;
+                    }
+                }
             });
         }
         let stdout_pipe = stdout.map(|reference| {

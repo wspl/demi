@@ -682,6 +682,14 @@ metadata.
   stops the read and closes the file.
 - Every pipe end named to the runner is reported with `pipe_done`, including
   one a refused request never used.
+- A runner that stops reading a pipe before its end because nothing reads
+  it any more, as when a job ends or closes its input before the caller's
+  input ends, reports `pipe_done` as a success. The backend then ends the
+  pipe for its writer as a whole one, and the writer stops sending without a
+  message, as a local writer does whose reader left: `… | demi host shell
+  --host x 'read l; echo $l'` prints the far command's line and status
+  alone. A read that fails reports the failure, which fails the pipe and the
+  call with it.
 
 For example, the page seeks a video to the middle of a 300 MB file. The
 backend asks for `fs_readFile` from byte 150,000,000 into a new pipe; the runner
