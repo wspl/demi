@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
     live::LiveCorners,
-    mobile::{Appearance, Orientation, MobilePlatform, PowerState},
+    mobile::{Appearance, Orientation, MobilePlatform, PowerState, SCREENSHOT_LONG_SIDE},
 };
 use demi_live_view::stream::CaptureEvent;
 
@@ -373,6 +373,8 @@ impl Turned {
                 y: self.points.height,
             },
             pixels: (self.pixels.width, self.pixels.height),
+            // The helper draws the screenshot by the same rule.
+            screenshot: crate::scale::fitted((self.pixels.width, self.pixels.height), SCREENSHOT_LONG_SIDE),
         }
     }
 }
@@ -491,9 +493,9 @@ impl Device for IosDevice {
         self.state.awake.subscribe()
     }
 
-    fn screenshot(&self, long_side: u32) -> BoxFuture<'_, Result<Png>> {
+    fn screenshot(&self) -> BoxFuture<'_, Result<Png>> {
         Box::pin(async move {
-            let answer = self.call("screenshot", json!({ "longSide": long_side })).await?;
+            let answer = self.call("screenshot", json!({ "longSide": SCREENSHOT_LONG_SIDE })).await?;
             let size: PixelSize = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the screenshot's size does not read: {error}")))?;
             let bytes = answer

@@ -27,9 +27,9 @@ use demi_mobile::{
         Avd, Discovery, Guest, Process, Running, Sdk,
         guest::Resolved,
         proto::{
-            EmulatorStatus, Image, ImageFormat, KeyboardEvent, Notification, PhysicalModelValue, Rotation,
-            TouchEvent, VmRunState, emulator_controller_server::{EmulatorController, EmulatorControllerServer},
-            keyboard_event::KeyEventType, notification, rotation::SkinRotation,
+            EmulatorStatus, Entry, EntryList, Image, ImageFormat, KeyboardEvent, Notification, PhysicalModelValue,
+            Rotation, TouchEvent, VmRunState, emulator_controller_server::{EmulatorController, EmulatorControllerServer},
+            image_format::ImgFormat, keyboard_event::KeyEventType, notification, rotation::SkinRotation,
         },
     },
     driver::{DriverError, Result},
@@ -96,6 +96,14 @@ struct StubEmulator {
     ended: CancellationToken,
     /// The picture streams the emulator sends, until their reader drops them.
     streams: watch::Sender<usize>,
+    /// The panel in pixels, portrait.
+    panel: Mutex<(u32, u32)>,
+    /// Whether the status lists the hardware configuration, as emulators
+    /// up to at least 36.6 do, rather than map it.
+    listed: Mutex<bool>,
+    /// Whether a PNG the emulator fits comes out a pixel narrower than its
+    /// rule says, as an emulator that rounds otherwise would draw it.
+    rounds_otherwise: Mutex<bool>,
 }
 
 type Streamed<T> = Pin<Box<dyn Stream<Item = std::result::Result<T, tonic::Status>> + Send>>;
@@ -140,11 +148,22 @@ impl StubEmulator {
         Ok(())
     }
 
-    fn picture(rotation: u8, width: u32, height: u32) -> Image {
-        // The picture's size within the most asked for, turned as held.
-        let (panel_width, panel_height) = if rotation % 2 == 1 { (2400, 1080) } else { (1080, 2400) };
-        let factor = (f64::from(width.max(1)) / f64::from(panel_width)).min(f64::from(height.max(1)) / f64::from(panel_height)).min(1.0);
-        let (width, height) = ((f64::from(panel_width) * factor) as u32, (f64::from(panel_height) * factor) as u32);
+    /// The picture of `panel` turned `rotation`, within the most asked
+    /// for, each side scaled by the smaller factor and cut down to a whole
+    /// pixel, as the emulator's are (asked 706 × 1568 of a 1080 × 2424
+    /// screen it draws 698 × 1568, asked 698 × 1568 it draws 698 × 1566);
+    /// the whole panel when no size is asked.
+    fn picture(panel: (u32, u32), rotation: u8, width: u32, height: u32) -> Image {
+        let (panel_width, panel_height) = if rotation % 2 == 1 { (panel.1, panel.0) } else { panel };
+        // The side whose factor is smaller is the box's; the other is cut
+        // down in whole numbers.
+        let (width, height) = match (width.min(panel_width).max(1), height.min(panel_height).max(1)) {
+            _ if (width, height) == (0, 0) => (panel_width, panel_height),
+            (wide, high) if u64::from(wide) * u64::from(panel_height) <= u64::from(high) * u64::from(panel_width) => {
+                (wide, (u64::from(panel_height) * u64::from(wide) / u64::from(panel_width)) as u32)
+            }
+            (_, high) => ((u64::from(panel_width) * u64::from(high) / u64::from(panel_height)) as u32, high),
+        };
         Image {
             format: Some(ImageFormat {
                 rotation: Some(Rotation {
@@ -223,19 +242,37 @@ impl EmulatorController for Served {
 
     async fn get_status(&self, request: tonic::Request<()>) -> std::result::Result<tonic::Response<EmulatorStatus>, tonic::Status> {
         self.signed(&request)?;
-        let config = [("hw.lcd.width", "1080"), ("hw.lcd.height", "2400"), ("hw.lcd.density", "420")];
-        Ok(tonic::Response::new(EmulatorStatus {
-            booted: true,
-            platform_config: config.into_iter().map(|(key, value)| (key.into(), value.into())).collect(),
-            ..EmulatorStatus::default()
-        }))
+        let (width, height) = *self.panel.lock().unwrap();
+        let config = [("hw.lcd.width", width.to_string()), ("hw.lcd.height", height.to_string()), ("hw.lcd.density", "420".to_owned())];
+        let status = match *self.listed.lock().unwrap() {
+            true => EmulatorStatus {
+                hardware_config: Some(EntryList {
+                    entry: config.into_iter().map(|(key, value)| Entry { key: key.into(), value }).collect(),
+                }),
+                ..EmulatorStatus::default()
+            },
+            false => EmulatorStatus {
+                platform_config: config.into_iter().map(|(key, value)| (key.into(), value)).collect(),
+                ..EmulatorStatus::default()
+            },
+        };
+        Ok(tonic::Response::new(EmulatorStatus { booted: true, ..status }))
     }
 
     async fn get_screenshot(&self, request: tonic::Request<ImageFormat>) -> std::result::Result<tonic::Response<Image>, tonic::Status> {
         self.signed(&request)?;
         let asked = request.into_inner();
-        let mut image = StubEmulator::picture(*self.rotation.borrow(), asked.width, asked.height);
-        image.image = Bytes::from_static(b"\x89PNG\r\n\x1a\n");
+        self.hear(format!("screenshot {} {}x{}", asked.format().as_str_name(), asked.width, asked.height))?;
+        let mut image = StubEmulator::picture(*self.panel.lock().unwrap(), *self.rotation.borrow(), asked.width, asked.height);
+        if asked.format() == ImgFormat::Png {
+            let format = image.format.as_mut().unwrap();
+            if *self.rounds_otherwise.lock().unwrap() {
+                format.width -= 1;
+            }
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::GrayImage::new(format.width, format.height).write_to(&mut png, image::ImageFormat::Png).unwrap();
+            image.image = png.into_inner().into();
+        }
         Ok(tonic::Response::new(image))
     }
 
@@ -244,6 +281,7 @@ impl EmulatorController for Served {
     async fn stream_screenshot(&self, request: tonic::Request<ImageFormat>) -> std::result::Result<tonic::Response<Streamed<Image>>, tonic::Status> {
         self.signed(&request)?;
         let asked = request.into_inner();
+        let panel = *self.panel.lock().unwrap();
         let (sender, pictures) = mpsc::unbounded_channel();
         let mut drawn = self.drawn.subscribe();
         let rotation = self.rotation.subscribe();
@@ -254,7 +292,7 @@ impl EmulatorController for Served {
         tokio::spawn(async move {
             loop {
                 drawn.borrow_and_update();
-                if sender.send(Ok(StubEmulator::picture(*rotation.borrow(), asked.width, asked.height))).is_err() {
+                if sender.send(Ok(StubEmulator::picture(panel, *rotation.borrow(), asked.width, asked.height))).is_err() {
                     break;
                 }
                 tokio::select! {
@@ -556,6 +594,9 @@ impl StubSdk {
             drawn: watch::Sender::new(0),
             ended: CancellationToken::new(),
             streams: watch::Sender::new(0),
+            panel: Mutex::new((1080, 2400)),
+            listed: Mutex::new(false),
+            rounds_otherwise: Mutex::new(false),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -795,12 +836,12 @@ async fn an_avd_boots_and_is_driven_over_its_signed_grpc_interface() {
     let text = mobile.run_text(CHAT, "open", json!({ "device": "Pixel 8 API 36" })).await;
     assert_eq!(
         String::from_utf8(text.stdout).unwrap(),
-        "m1  Pixel 8 API 36 · Android 16 · 706×1568 · AVD Pixel_8_API_36 · adb serial emulator-5554\n"
+        "m1  Pixel 8 API 36 · Android 16 · 705×1568 · AVD Pixel_8_API_36 · adb serial emulator-5554\n"
     );
     let opened = mobile.run(CHAT, "open", json!({ "device": "Pixel 8 API 36" })).await.json();
     assert_eq!(
         (opened["device"].as_str(), opened["nativeId"].as_str(), opened["serial"].as_str(), opened["width"].as_u64(), opened["height"].as_u64(), opened["booted"].as_bool()),
-        (Some("m1"), Some(AVD), Some("emulator-5554"), Some(706), Some(1568), Some(true))
+        (Some("m1"), Some(AVD), Some("emulator-5554"), Some(705), Some(1568), Some(true))
     );
     assert_eq!(sdk.heard(), ["launch Pixel_8_API_36"]);
 
@@ -809,10 +850,10 @@ async fn an_avd_boots_and_is_driven_over_its_signed_grpc_interface() {
     let text = mobile.run_text(CHAT, "inspect", json!({ "device": "m1" })).await;
     assert_eq!(
         String::from_utf8(text.stdout).unwrap(),
-        "Device: m1 · Pixel 8 API 36 · portrait · 706×1568\n\n\
-         - text field \"Email\" [ref=e1] id=\"email\" [focused] [65,523 576×65]\n\
-         - text field \"Password\" [ref=e2] id=\"password\" [protected] [65,601 576×65]\n\
-         - button \"Sign Up\" [ref=e3] id=\"sign_up\" [65,653 262×66]\n\
+        "Device: m1 · Pixel 8 API 36 · portrait · 705×1568\n\n\
+         - text field \"Email\" [ref=e1] id=\"email\" [focused] [65,523 575×65]\n\
+         - text field \"Password\" [ref=e2] id=\"password\" [protected] [65,601 575×65]\n\
+         - button \"Sign Up\" [ref=e3] id=\"sign_up\" [65,653 261×66]\n\
          - keyboard \"Keyboard\" [ref=e4] [0,1111 141×65]\n"
     );
 
@@ -833,8 +874,8 @@ async fn an_avd_boots_and_is_driven_over_its_signed_grpc_interface() {
             // Sign Up's centre, and screenshot pixel 353,784, in panel pixels.
             "touch 300,1050 down",
             "touch 300,1050 up",
-            "touch 540,1200 down",
-            "touch 540,1200 up",
+            "touch 541,1200 down",
+            "touch 541,1200 up",
             // A, l, ! as a US keyboard types them.
             "usb 0xe1 keydown",
             "usb 0x4 keydown",
@@ -879,7 +920,7 @@ async fn a_sideways_device_is_tapped_where_its_picture_shows() {
 
     // The launcher stays portrait: the form shows sideways.
     let tree = mobile.run(CHAT, "inspect", json!({ "device": "m1" })).await.json();
-    assert_eq!((tree["width"].as_u64(), tree["height"].as_u64()), (Some(1568), Some(706)));
+    assert_eq!((tree["width"].as_u64(), tree["height"].as_u64()), (Some(1568), Some(705)));
     let sign_up = reference(&tree["elements"], "Sign Up").unwrap();
     let frame = |label: &str| {
         fn find(elements: &Value, label: &str) -> Option<Value> {
@@ -887,15 +928,63 @@ async fn a_sideways_device_is_tapped_where_its_picture_shows() {
         }
         find(&tree["elements"], label).unwrap()
     };
-    assert_eq!(frame("Sign Up"), json!({ "x": 653, "y": 379, "width": 66, "height": 262 }));
+    assert_eq!(frame("Sign Up"), json!({ "x": 653, "y": 379, "width": 66, "height": 261 }));
     mobile.run(CHAT, "tap", json!({ "device": "m1", "at": [sign_up] })).await.json();
 
     // The app turns with the device: the same point is the same place.
     *sdk.guest.display.lock().unwrap() = 1;
-    mobile.run(CHAT, "tap", json!({ "device": "m1", "at": ["686", "510"] })).await.json();
+    mobile.run(CHAT, "tap", json!({ "device": "m1", "at": ["686", "509"] })).await.json();
 
     let touches: Vec<String> = sdk.heard().into_iter().filter(|line| line.ends_with("down")).collect();
     assert_eq!(touches, ["touch 300,1050 down", "touch 300,1050 down"]);
+}
+
+/// The screenshot is the size `open`, `inspect` and `rotate` print, upright
+/// and sideways, for a Pixel 10's 1080 × 2424 screen that the emulator
+/// states only in the list emulators up to at least 36.6 send: the size the
+/// emulator's own rule gives, 698 × 1568, drawn by the emulator in one call;
+/// and the screenshot's far corner is tapped at the panel's. An emulator
+/// that draws another size is scaled here to the same size. Planted
+/// defects this catches: the screen's size guessed when the emulator's map
+/// is empty (1080 × 2400, printed 706 wide beside a 698-pixel picture), a
+/// size rounded rather than cut down (699 beside 698), a box the emulator
+/// fits otherwise (698 × 1566), or the emulator's picture passed on at a
+/// size the coordinates are not in. A stub emulator, under a second.
+#[tokio::test]
+async fn the_screenshot_is_the_size_every_coordinate_is_in() {
+    let (mobile, sdk) = start(true).await;
+    *sdk.emulator.panel.lock().unwrap() = (1080, 2424);
+    *sdk.emulator.listed.lock().unwrap() = true;
+    let opened = mobile.run(CHAT, "open", json!({ "device": AVD })).await.json();
+    let size = |answer: &Value| (answer["width"].as_u64().unwrap(), answer["height"].as_u64().unwrap());
+    let screenshot = async || {
+        let png = mobile.run(CHAT, "screenshot", json!({ "device": "m1" })).await.stdout;
+        let reader = image::ImageReader::new(std::io::Cursor::new(png)).with_guessed_format().unwrap();
+        let (width, height) = reader.into_dimensions().unwrap();
+        (u64::from(width), u64::from(height))
+    };
+    assert_eq!(size(&opened), (698, 1568));
+    for (orientation, printed, asked, corner, glass) in [
+        ("portrait", (698, 1568), "screenshot PNG 1080x1568", ["697", "1567"], "touch 1078,2422 down"),
+        ("left", (1568, 698), "screenshot PNG 1568x1080", ["1567", "697"], "touch 2,2422 down"),
+    ] {
+        let turned = mobile.run(CHAT, "rotate", json!({ "device": "m1", "orientation": orientation })).await.json();
+        assert_eq!(size(&turned), printed, "held {orientation}");
+        let from = sdk.heard().len();
+        assert_eq!(screenshot().await, printed, "held {orientation}");
+        assert_eq!(since(&sdk, from), [asked], "held {orientation}");
+        let tree = mobile.run(CHAT, "inspect", json!({ "device": "m1" })).await.json();
+        assert_eq!(size(&tree), printed, "held {orientation}");
+        let from = sdk.heard().len();
+        mobile.run(CHAT, "tap", json!({ "device": "m1", "at": corner })).await.json();
+        assert_eq!(since(&sdk, from).first().map(String::as_str), Some(glass), "held {orientation}");
+    }
+
+    // An emulator that rounds otherwise: its whole picture, scaled here.
+    *sdk.emulator.rounds_otherwise.lock().unwrap() = true;
+    let from = sdk.heard().len();
+    assert_eq!(screenshot().await, (1568, 698));
+    assert_eq!(since(&sdk, from), ["screenshot PNG 1568x1080", "screenshot RGB888 0x0"]);
 }
 
 /// Watching an emulator streams its screen as H.264, starting from a key
@@ -1234,20 +1323,20 @@ async fn a_held_finger_or_key_is_released_when_its_command_fails_or_is_cancelled
     mobile.run(CHAT, "type", json!({ "device": "m1", "text": "A" })).await.failure();
     sdk.emulator.heard.until("usb 0xe1 keyup").await;
 
-    // Screenshot 353,0 to 353,784: display x 540, y from 0 to 1200.
-    sdk.refuse("touch 540,300 down");
+    // Screenshot 353,0 to 353,784: display x 541, y from 0 to 1200.
+    sdk.refuse("touch 541,300 down");
     let from = sdk.heard().len();
     mobile.run(CHAT, "swipe", json!({ "device": "m1", "at": ["353", "0", "353", "784"] })).await.failure();
-    sdk.emulator.heard.until("touch 540,300 up").await;
-    assert_eq!(since(&sdk, from).last().map(String::as_str), Some("touch 540,300 up"));
+    sdk.emulator.heard.until("touch 541,300 up").await;
+    assert_eq!(since(&sdk, from).last().map(String::as_str), Some("touch 541,300 up"));
 
     let (mut input, output) = mobile
         .begin(CHAT, "tap", json!({ "device": "m1", "at": ["353", "784"], "long": true }), demi_command_protocol::CommandCaller::agent(1))
         .await;
-    sdk.emulator.heard.until("touch 540,1200 down").await;
+    sdk.emulator.heard.until("touch 541,1200 down").await;
     input.cancel();
     drop(output);
-    sdk.emulator.heard.until("touch 540,1200 up").await;
+    sdk.emulator.heard.until("touch 541,1200 up").await;
 }
 
 /// While another UI automation client, such as Appium, holds the
