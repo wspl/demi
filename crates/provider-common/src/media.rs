@@ -39,7 +39,7 @@ pub const ANSWER_LIMIT: usize = 256 * 1024 * 1024;
 const JSON_ROOM: usize = 1024 * 1024;
 
 /// How many redirects a request follows, as reqwest's own policy does.
-const REDIRECTS: usize = 10;
+pub(crate) const REDIRECTS: usize = 10;
 
 /// How an answer's body holds its file, which says how much of it is read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

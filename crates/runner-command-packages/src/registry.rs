@@ -19,7 +19,8 @@ use std::{
 };
 
 use demi_command_protocol::{
-    ArtifactForm, ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo,
+    ArtifactForm, ArtifactProgress, ConversationRequest, ConversationStatus, PackageDescriptor,
+    Record, ServiceInfo, megabytes,
 };
 use demi_command_sdk::{Client, ServiceError};
 use demi_runner_process::backend::Backend;
@@ -181,13 +182,26 @@ enum Request {
 /// A service's life as its callers see it.
 #[derive(Clone)]
 enum State {
-    Starting,
+    /// Its executable is being installed, with how far the install got,
+    /// or, without one, the program is starting.
+    Starting(Option<Installing>),
     Ready {
         client: Client,
         info: Arc<ServiceInfo>,
     },
     Ended(Arc<RuntimeError>),
 }
+
+/// How far the install of a service's executable got: none before its
+/// download reported anything.
+#[derive(Clone, Copy, Default)]
+struct Installing {
+    progress: Option<ArtifactProgress>,
+}
+
+/// How long a service's install goes unsaid before its caller's command
+/// tells of it (`native-runtime.md` § Install artifacts).
+const QUIET_INSTALL: Duration = Duration::from_secs(2);
 
 struct Acquired {
     /// Held while the caller waits for the start.
@@ -236,6 +250,22 @@ impl ServiceHandle {
         backend: Arc<dyn ServiceBackend>,
         cancel: &CancellationToken,
     ) -> Result<Resident, Arc<RuntimeError>> {
+        self.acquire_telling(descriptor, resolver, backend, cancel, |_| {})
+            .await
+    }
+
+    /// [`Self::acquire`] for a command, which `tell`s its caller of an
+    /// install of the service's executable that takes longer than two
+    /// seconds: a first line that names it, then a line at each tenth of
+    /// its download (`native-runtime.md` § Install artifacts).
+    pub async fn acquire_telling(
+        &self,
+        descriptor: &PackageDescriptor,
+        resolver: Arc<dyn ArtifactResolver>,
+        backend: Arc<dyn ServiceBackend>,
+        cancel: &CancellationToken,
+        mut tell: impl FnMut(String) + Send,
+    ) -> Result<Resident, Arc<RuntimeError>> {
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(Request::Acquire {
@@ -251,10 +281,24 @@ impl ServiceHandle {
             answer = answer => answer.map_err(|_| Arc::new(RuntimeError::Cancelled))?.map_err(Arc::new)?,
         };
         let mut state = acquired.state;
+        let quiet = tokio::time::sleep(QUIET_INSTALL);
+        tokio::pin!(quiet);
+        // What the caller was told last, once it was told of the install.
+        let mut told: Option<Option<ArtifactProgress>> = None;
         loop {
             let current = state.borrow_and_update().clone();
             match current {
-                State::Starting => {}
+                State::Starting(None) => {}
+                State::Starting(Some(installing)) => {
+                    if let Some(said) = &mut told
+                        && *said != installing.progress
+                    {
+                        *said = installing.progress;
+                        if let Some(progress) = installing.progress {
+                            tell(progress.line(&descriptor.id));
+                        }
+                    }
+                }
                 State::Ready { client, info } => {
                     if !descriptor.serves(&info) {
                         return Err(Arc::new(RuntimeError::CatalogMismatch));
@@ -265,6 +309,30 @@ impl ServiceHandle {
             }
             tokio::select! {
                 _ = cancel.cancelled() => return Err(Arc::new(RuntimeError::Cancelled)),
+                () = &mut quiet, if told.is_none() => {
+                    let State::Starting(Some(installing)) = *state.borrow() else {
+                        // Nothing installs: nothing is ever told.
+                        told = Some(None);
+                        continue;
+                    };
+                    let size = match installing.progress {
+                        Some(ArtifactProgress::Download { total, .. }) => total,
+                        _ => descriptor
+                            .targets
+                            .get(host_target())
+                            .map_or(0, |artifact| artifact.size),
+                    };
+                    tell(format!(
+                        "Installing {} {} ({} MB)…\n",
+                        descriptor.id,
+                        descriptor.version,
+                        megabytes(size)
+                    ));
+                    if let Some(progress) = installing.progress {
+                        tell(progress.line(&descriptor.id));
+                    }
+                    told = Some(installing.progress);
+                }
                 changed = state.changed() => {
                     if changed.is_err() {
                         return Err(Arc::new(RuntimeError::Cancelled));
@@ -531,7 +599,7 @@ impl Owner {
         }
         self.generation += 1;
         let generation = self.generation;
-        let (state, receiver) = watch::channel(State::Starting);
+        let (state, receiver) = watch::channel(State::Starting(None));
         let stop = self.stop.child_token();
         entry.current = Some(Current {
             generation,
@@ -580,7 +648,7 @@ impl Owner {
             return;
         };
         let client = match &*current.state.borrow() {
-            State::Starting => None,
+            State::Starting(_) => None,
             State::Ready { client, .. } => Some(client.clone()),
             State::Ended(_) => return,
         };
@@ -836,9 +904,17 @@ async fn live(
             artifact: start.artifact.clone(),
             form: &ArtifactForm::File,
         };
-        let executable = cache
-            .install(&wanted, start.resolver, crate::cache::SILENT, &stop)
-            .await?;
+        state.send_replace(State::Starting(Some(Installing::default())));
+        let progress = |progress| {
+            state.send_modify(|state| {
+                if let State::Starting(Some(installing)) = state {
+                    installing.progress = Some(progress);
+                }
+            });
+        };
+        let executable = cache.install(&wanted, start.resolver, &progress, &stop).await;
+        state.send_replace(State::Starting(None));
+        let executable = executable?;
         let artifacts = Arc::new(ServiceArtifacts {
             cache: cache.clone(),
             package: descriptor.id.clone(),

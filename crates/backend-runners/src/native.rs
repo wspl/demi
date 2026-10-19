@@ -29,7 +29,7 @@ use demi_runner_protocol::release::{RUNNER, RunnerRelease, SERVER_RELEASE, Serve
 use demi_runner_protocol::wire::RunnerPlatform;
 use futures_util::future::LocalBoxFuture;
 use object_store::signer::Signer;
-use object_store::{GetOptions, GetRange, GetResult, ObjectStore as _, ObjectStoreExt as _};
+use object_store::{GetOptions, GetRange, GetResult, ObjectStore, ObjectStoreExt as _};
 use tokio_util::sync::CancellationToken;
 
 use crate::install::read_runner_release;
@@ -38,12 +38,31 @@ use crate::public_url::PublicUrl;
 use crate::publication::blob;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
 
-/// A runner executable's compressed copy from the byte a download asked
-/// for: the stored bytes, or none when the download asked for a byte past
-/// the copy's `size`.
-pub enum RunnerBytes {
+/// A stored artifact from the byte a download asked for, as one that broke
+/// off resumes: the stored bytes, or none when the download asked for a byte
+/// past the object's `size`.
+pub enum StoredBytes {
     Stored(GetResult),
     Beyond { size: u64 },
+}
+
+/// The object at `key` in `store` from its byte `from` on.
+async fn stored_from(
+    store: &dyn ObjectStore,
+    key: &object_store::path::Path,
+    from: u64,
+) -> object_store::Result<StoredBytes> {
+    if from > 0 {
+        let size = store.head(key).await?.size;
+        if from >= size {
+            return Ok(StoredBytes::Beyond { size });
+        }
+    }
+    let options = GetOptions {
+        range: (from > 0).then_some(GetRange::Offset(from)),
+        ..GetOptions::default()
+    };
+    store.get_opts(key, options).await.map(StoredBytes::Stored)
 }
 
 /// Where a local store's artifacts download from, at the root of the
@@ -196,25 +215,24 @@ impl NativeCatalog {
     }
 
     /// The stored object of the package executable whose SHA-256 is
-    /// `sha256`, when this backend serves it: with a local store, once a
-    /// runner's need put it there.
-    pub async fn local_artifact(&self, sha256: &str) -> Option<object_store::Result<GetResult>> {
+    /// `sha256`, from its byte `from` on, when this backend serves it: with
+    /// a local store, once a runner's need put it there.
+    pub async fn local_artifact(
+        &self,
+        sha256: &str,
+        from: u64,
+    ) -> Option<Result<StoredBytes, String>> {
         let artifacts = self.artifacts.as_ref()?;
         if artifacts.signer.is_some() || !artifacts.executables.contains_key(sha256) {
             return None;
         }
         let key = match blob(sha256) {
             Ok(key) => key,
-            Err(error) => {
-                return Some(Err(object_store::Error::Generic {
-                    store: "the object store",
-                    source: error.into(),
-                }));
-            }
+            Err(error) => return Some(Err(error.to_string())),
         };
-        match artifacts.sourcing.store().get(&key).await {
+        match stored_from(artifacts.sourcing.store().as_ref(), &key, from).await {
             Err(object_store::Error::NotFound { .. }) => None,
-            got => Some(got),
+            got => Some(got.map_err(|error| error.to_string())),
         }
     }
 
@@ -253,7 +271,7 @@ impl NativeCatalog {
         next: Option<&NextRelease>,
         from: u64,
         cancel: &CancellationToken,
-    ) -> Result<RunnerBytes, String> {
+    ) -> Result<StoredBytes, String> {
         let artifacts = self
             .artifacts
             .as_ref()
@@ -266,21 +284,8 @@ impl NativeCatalog {
         };
         sourcing.ensure(&wanted, cancel).await?;
         let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
-        let store = sourcing.store();
-        if from > 0 {
-            let size = store.head(&key).await.map_err(|error| error.to_string())?.size;
-            if from >= size {
-                return Ok(RunnerBytes::Beyond { size });
-            }
-        }
-        let options = GetOptions {
-            range: (from > 0).then_some(GetRange::Offset(from)),
-            ..GetOptions::default()
-        };
-        store
-            .get_opts(&key, options)
+        stored_from(sourcing.store().as_ref(), &key, from)
             .await
-            .map(RunnerBytes::Stored)
             .map_err(|error| error.to_string())
     }
 

@@ -16,7 +16,7 @@ use demi_runner_protocol::wire::HostArtifact;
 use demi_web_api_protocol::devices::DeviceState;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
-use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING};
+use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING, RANGE};
 
 use crate::streams::{self, CONVERSATION};
 use crate::support::{FIXTURE, Harness, eventually};
@@ -74,7 +74,22 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
         .await
         .unwrap();
     assert_eq!(encoded.headers()[CONTENT_ENCODING], "zstd");
-    assert!(encoded.bytes().await.unwrap().len() < artifact.size as usize);
+    let stored = encoded.bytes().await.unwrap();
+    assert!(stored.len() < artifact.size as usize);
+    // A download that broke off continues from a byte on, in the stored
+    // bytes (`native-runtime.md` § Downloads); a byte past them is none.
+    let from = |byte: usize| {
+        undecoded
+            .get(format!("{}{path}", backend.url))
+            .header(RANGE, format!("bytes={byte}-"))
+            .send()
+    };
+    let rest = from(10).await.unwrap();
+    assert_eq!(rest.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(rest.headers()[CONTENT_ENCODING], "zstd");
+    assert_eq!(rest.bytes().await.unwrap(), stored.slice(10..));
+    let past = from(stored.len()).await.unwrap();
+    assert_eq!(past.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     // A digest no loaded release carries, or no digest at all, is not there.
     for unknown in ["0".repeat(64), "demi-native-fixture".to_owned()] {
         let refused = backend

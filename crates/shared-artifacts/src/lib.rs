@@ -20,13 +20,14 @@ pub use archive::{
     Archive, ArchiveInstall, Unpacking, holds, install_archive, installed, recorded,
 };
 pub use coding::{
-    CONTENT_CODING, Effort, check_encoded_blocking, decode_blocking, decode_file, decode_stream,
+    CONTENT_CODING, Effort, check_encoded_blocking, encoded_bound, decode_blocking, decode_file, decode_stream,
     encode_blocking,
 };
 pub use digest::{Digest, Verifier, digest};
 pub use download::{
-    client, client_allowing_http, client_following_redirects, client_resuming, client_through, copy,
-    download, download_measured, download_resumed,
+    Download, Fetch, Headers, NO_HEADERS, Patience, Received, Unsent, client, copy, discard, download,
+    download_bytes,
+    download_client, download_client_allowing_http, download_client_through,
 };
 pub use lock::InstallLock;
 pub use publish::{

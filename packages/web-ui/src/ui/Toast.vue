@@ -2,7 +2,7 @@
 import type { Component } from 'vue'
 import { CircleCheck, CircleX, Info, X } from '@lucide/vue'
 import type { ToastTone } from '../infra/toast'
-import { ICON_PX } from './icon-metrics'
+import { useIconPx } from './icon-metrics'
 import Button from './Button.vue'
 import IconButton from './IconButton.vue'
 import { t as shared } from '../locales/text'
@@ -30,6 +30,8 @@ const emit = defineEmits<{
   dismiss: []
   act: []
 }>()
+
+const icons = useIconPx()
 </script>
 
 <template>
@@ -37,15 +39,17 @@ const emit = defineEmits<{
     role="status"
     class="overlay-shell flex w-full items-start gap-2 rounded-lg py-2 pr-2 pl-3"
   >
+    <!-- The first line is as tall as the close button, which a phone draws
+         larger: the mark, the title's first line and the cross share its centre. -->
     <span
-      class="flex size-5 shrink-0 items-center justify-center"
+      class="flex h-hit-xs w-5 shrink-0 items-center justify-center"
       :class="MARKS[tone].color"
     >
-      <component :is="MARKS[tone].icon" :size="ICON_PX.in28" />
+      <component :is="MARKS[tone].icon" :size="icons.row" />
     </span>
     <div class="min-w-0 flex-1">
-      <!-- The title wraps; 20px lines keep a one-line title centred on the icon. -->
-      <div class="min-h-5 text-chrome leading-5 text-fg-emphasis">{{ title }}</div>
+      <!-- The title wraps in 20px lines, its first centred on the close button. -->
+      <div class="pt-[calc((var(--spacing-hit-xs)-20px)/2)] text-chrome leading-5 text-fg-emphasis">{{ title }}</div>
       <!-- A message of several lines, such as one per refused conversation, keeps its lines. -->
       <div
         v-if="message"

@@ -19,7 +19,7 @@ pub mod testing;
 
 pub use artifacts::{
     ArtifactAnswer, ArtifactAnswered, ArtifactAsk, ArtifactForm, ArtifactInstall, ArtifactProgress,
-    ArtifactReply, ArtifactRequest, ArtifactsInstalled, InstalledArtifact,
+    ArtifactReply, ArtifactRequest, ArtifactsInstalled, InstalledArtifact, megabytes,
 };
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{

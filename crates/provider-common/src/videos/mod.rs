@@ -16,7 +16,7 @@ use reqwest::Url;
 use serde::Serialize;
 
 use crate::images::{Aspect, InputImage};
-use crate::media::{Ask, Holding, MediaAnswer, MediaCall, MediaCredential, MediaMaker, follow, read_within};
+use crate::media::{ANSWER_LIMIT, Ask, MediaAnswer, MediaCall, MediaCredential, MediaMaker, follow};
 use crate::media_catalog::Catalog;
 use crate::read_http_failure;
 
@@ -181,13 +181,15 @@ pub struct Done {
     pub usage: Option<TokenUsage>,
 }
 
-/// Downloads `url`, within the request deadline. The entry's `key`
-/// headers go only to an address of the origin of the entry's `endpoint`,
-/// never to another host's, a storage bucket's or a redirect's to another
-/// origin, which each get the request without them ([`follow`]). A video
-/// over [`ANSWER_LIMIT`] fails as it arrives. A refusal is told in the
+/// Downloads `url` as Demi's one download (`native-runtime.md` §
+/// Downloads): resumed after a break or a stall, without an overall
+/// deadline. The entry's `key` headers go only to an address of the origin
+/// of the entry's `endpoint`, never to another host's, a storage bucket's or
+/// a redirect's to another origin, which each get the request without them
+/// ([`follow`]). The first answer is read here, so a refusal is told in the
 /// vendor's words under `label`; an address is no account's, so nothing is
-/// renewed and no limit is read from it.
+/// renewed and no limit is read from it. A video over [`ANSWER_LIMIT`]
+/// fails as it arrives.
 pub async fn download(
     label: &'static str,
     clock: &dyn Clock,
@@ -204,13 +206,40 @@ pub async fn download(
         clock,
         quota: None,
     };
-    let result = crate::media::within_deadline(async {
-        let response = follow(http, &Ask::get(url), &key, endpoint).await?;
-        if !response.status().is_success() {
-            return Err(call.refusal(response).await);
+    let result = async {
+        let first = crate::media::within_deadline(async {
+            let response = follow(http, &Ask::get(url), &key, endpoint).await?;
+            if !response.status().is_success() {
+                return Err(call.refusal(response).await);
+            }
+            Ok(response)
+        })
+        .await?;
+        let http = http.without_redirects().map_err(crate::media::transport)?;
+        let origin = endpoint.origin();
+        let headers = move |hop: &Url| if hop.origin() == origin { key.clone() } else { HeaderMap::new() };
+        let request = demi_shared_artifacts::Download {
+            limit: ANSWER_LIMIT as u64,
+            redirects: crate::media::REDIRECTS,
+            headers: &headers,
+            first: Some(first),
+            // The client decodes the codings the build's reqwest knows, so
+            // the first answer's bytes may count none the vendor sent.
+            first_decoded: true,
+            ..demi_shared_artifacts::Download::new(url.as_str())
+        };
+        // A video call ends with its job, which drops this future: nothing
+        // else cancels its download.
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let downloaded = demi_shared_artifacts::download_bytes(&http, request, &cancel)
+            .await
+            .and_then(|(received, video)| received.plain().map(|()| video));
+        match downloaded {
+            Ok(video) => Ok(Bytes::from(video)),
+            Err(demi_shared_artifacts::Error::TooLarge { .. }) => Err(crate::media::too_large("video")),
+            Err(error) => Err(crate::media::unreadable(format!("its video did not download: {error}"))),
         }
-        read_within(response, Holding::File, "video").await
-    })
+    }
     .await;
     MediaAnswer { result, observed: Vec::new() }
 }

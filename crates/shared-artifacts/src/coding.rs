@@ -14,6 +14,14 @@ use crate::{Digest, Error, Verifier};
 /// The `Content-Encoding` an encoded executable is served with.
 pub const CONTENT_CODING: &str = "zstd";
 
+/// The most bytes `size` bytes can be served as, in [`CONTENT_CODING`] or
+/// as they are: a download of a file of known size holds no more
+/// (`native-runtime.md` § Downloads).
+pub fn encoded_bound(size: u64) -> u64 {
+    let size = usize::try_from(size).unwrap_or(usize::MAX);
+    zstd::zstd_safe::compress_bound(size).max(size) as u64
+}
+
 /// The first bytes of a zstd frame.
 pub(crate) const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 

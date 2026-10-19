@@ -200,16 +200,36 @@ impl Dispatcher {
                     &descriptor.id,
                     resolver.clone(),
                 );
-                let mut resident = self
-                    .services
-                    .acquire(
-                        descriptor,
-                        resolver,
-                        Arc::new(context.connection.clone()),
-                        &invocation.cancellation,
-                    )
-                    .await
-                    .map_err(ServiceError::failed)?;
+                // An install of the program that takes a while says so on
+                // the command's standard error, unless the command runs with
+                // `--json`, whose caller reads its standard error as one
+                // JSON document (`native-runtime.md` § Install artifacts).
+                let (lines, mut told) = tokio::sync::mpsc::unbounded_channel::<String>();
+                let quiet = parsed.json;
+                let acquiring = self.services.acquire_telling(
+                    descriptor,
+                    resolver,
+                    Arc::new(context.connection.clone()),
+                    &invocation.cancellation,
+                    move |line| {
+                        if !quiet {
+                            // The receiver outlives the acquisition, which alone sends.
+                            drop(lines.send(line));
+                        }
+                    },
+                );
+                tokio::pin!(acquiring);
+                let acquired = loop {
+                    tokio::select! {
+                        biased;
+                        Some(line) = told.recv() => output.stderr(line.into()).await?,
+                        acquired = &mut acquiring => break acquired,
+                    }
+                };
+                while let Ok(line) = told.try_recv() {
+                    output.stderr(line.into()).await?;
+                }
+                let mut resident = acquired.map_err(ServiceError::failed)?;
                 let request = Invocation {
                     context: context.command.clone(),
                     json: Some(parsed.json),

@@ -7,9 +7,10 @@ use std::{
 };
 
 use demi_shared_artifacts::{
-    Archive, ArchiveInstall, CONTENT_CODING, Client, Digest, Effort, Error, InstallLock, Mode,
-    Permissions, Publication, ReleaseFile, ReleaseRecord, Staged, Verifier, client_allowing_http,
-    check_encoded_blocking, copy, digest, download, download_measured, encode_blocking,
+    Archive, ArchiveInstall, CONTENT_CODING, Client, Digest, Download, Effort, Error, InstallLock,
+    Mode, Patience, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged, Verifier,
+    check_encoded_blocking, copy, digest, download, download_client, download_client_allowing_http,
+    encode_blocking,
     install_archive, installed,
     publish, publish_bytes, publish_directory, publish_release, receipt, recorded,
     holds,
@@ -39,62 +40,67 @@ async fn serve(status: u16, body: &[u8], length: bool) -> Server {
     Server::start([("/artifact".to_owned(), answer)]).await
 }
 
+/// Downloads `request` through a staging file in a temporary directory and
+/// answers its bytes, decoded and checked against `expected`.
+async fn fetch(
+    client: &Client,
+    request: Download<'_>,
+    expected: &Digest,
+    cancel: &CancellationToken,
+) -> Result<Vec<u8>, Error> {
+    let directory = tempfile::tempdir().unwrap();
+    let staging = directory.path().join("download");
+    let received = download(client, request, &staging, cancel, |_, _| {}).await?;
+    let mut output = Vec::new();
+    received.verify(&staging, expected, &mut output, cancel).await?;
+    assert!(!staging.exists(), "the staging file goes once checked");
+    Ok(output)
+}
+
+/// `url`, as a fixture server serves it.
+fn plain(url: &str) -> Download<'_> {
+    Download::new(url)
+}
+
 #[tokio::test]
-async fn a_download_is_verified_as_it_arrives() {
-    let client = client_allowing_http().unwrap();
+async fn a_download_is_checked_once_complete() {
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let server = serve(200, BODY, true).await;
     let url = server.url("/artifact");
-    let mut output = Vec::new();
-    download(&client, &url, &declared(BODY), &mut output, &cancel)
-        .await
-        .unwrap();
+    let output = fetch(&client, plain(&url), &declared(BODY), &cancel).await.unwrap();
     assert_eq!(output, BODY);
     let wrong = Digest {
         sha256: "0".repeat(64),
         ..declared(BODY)
     };
-    let result = download(&client, &url, &wrong, &mut Vec::new(), &cancel).await;
+    let result = fetch(&client, plain(&url), &wrong, &cancel).await;
     assert!(matches!(result, Err(Error::Digest)), "{result:?}");
-    // A declared size the server's length contradicts fails before the body.
     let short = Digest {
         size: 3,
         ..declared(BODY)
     };
-    let result = download(&client, &url, &short, &mut Vec::new(), &cancel).await;
+    let result = fetch(&client, plain(&url), &short, &cancel).await;
     assert!(
-        matches!(result, Err(Error::Size { declared: 3, .. })),
-        "{result:?}"
-    );
-    // Without a length, bytes past the declared size stop the download.
-    let unsized_server = serve(200, BODY, false).await;
-    let unsized_url = unsized_server.url("/artifact");
-    let result = download(&client, &unsized_url, &short, &mut Vec::new(), &cancel).await;
-    assert!(
-        matches!(result, Err(Error::TooLarge { declared: 3 })),
+        matches!(result, Err(Error::TooLarge { declared: 3 } | Error::Size { declared: 3, .. })),
         "{result:?}"
     );
     let missing = server.url("/elsewhere");
-    let result = download(&client, &missing, &declared(BODY), &mut Vec::new(), &cancel).await;
+    let result = fetch(&client, plain(&missing), &declared(BODY), &cancel).await;
     assert!(
         matches!(result, Err(Error::Rejected { status: 404 })),
         "{result:?}"
     );
+    // A redirect that names no location is no answer.
     let moved = serve(302, b"", true).await;
-    let result = download(
-        &client,
-        &moved.url("/artifact"),
-        &declared(BODY),
-        &mut Vec::new(),
-        &cancel,
-    )
-    .await;
+    let moved = moved.url("/artifact");
+    let result = fetch(&client, plain(&moved), &declared(BODY), &cancel).await;
     assert!(
         matches!(result, Err(Error::Rejected { status: 302 })),
         "{result:?}"
     );
     cancel.cancel();
-    let result = download(&client, &url, &declared(BODY), &mut Vec::new(), &cancel).await;
+    let result = fetch(&client, plain(&url), &declared(BODY), &cancel).await;
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
 }
 
@@ -103,7 +109,7 @@ async fn a_download_is_verified_as_it_arrives() {
 /// the download does not decode fails instead of producing other bytes.
 #[tokio::test]
 async fn a_download_decodes_zstd_before_it_verifies_and_refuses_another_coding() {
-    let client = client_allowing_http().unwrap();
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let encoded = encode_blocking(BODY, Effort::Published).unwrap();
     assert_ne!(encoded, BODY);
@@ -124,101 +130,45 @@ async fn a_download_decodes_zstd_before_it_verifies_and_refuses_another_coding()
         ),
     ])
     .await;
-    let mut output = Vec::new();
-    download(
-        &client,
-        &server.url("/zstd"),
-        &declared(BODY),
-        &mut output,
-        &cancel,
-    )
-    .await
-    .unwrap();
+    let zstd = server.url("/zstd");
+    let output = fetch(&client, plain(&zstd), &declared(BODY), &cancel).await.unwrap();
     assert_eq!(output, BODY);
-    let result = download(
-        &client,
-        &server.url("/gzip"),
-        &declared(BODY),
-        &mut Vec::new(),
-        &cancel,
-    )
-    .await;
+    let gzip = server.url("/gzip");
+    let result = fetch(&client, plain(&gzip), &declared(BODY), &cancel).await;
     assert!(
         matches!(&result, Err(Error::Coding(coding)) if coding == "gzip"),
         "{result:?}"
     );
 }
 
+/// A download holds no more than its caller's limit: a declared length past
+/// it fails before the body, and without one, bytes past it stop the
+/// download.
 #[tokio::test]
-async fn a_measured_download_reports_what_arrived_within_its_limit() {
-    let client = client_allowing_http().unwrap();
+async fn a_download_holds_no_more_than_its_limit() {
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
-    let server = serve(200, BODY, true).await;
-    let mut output = Vec::new();
-    let measured = download_measured(
-        &client,
-        &server.url("/artifact"),
-        1024,
-        &mut output,
-        &cancel,
-    )
-    .await
-    .unwrap();
-    assert_eq!((output.as_slice(), measured), (BODY, declared(BODY)));
-    // A declared length past the limit fails before the body, and without
-    // one, bytes past the limit stop the download.
-    let result = download_measured(
-        &client,
-        &server.url("/artifact"),
-        3,
-        &mut Vec::new(),
-        &cancel,
-    )
-    .await;
-    assert!(
-        matches!(result, Err(Error::TooLarge { declared: 3 })),
-        "{result:?}"
-    );
-    let unsized_server = serve(200, BODY, false).await;
-    let result = download_measured(
-        &client,
-        &unsized_server.url("/artifact"),
-        3,
-        &mut Vec::new(),
-        &cancel,
-    )
-    .await;
-    assert!(
-        matches!(result, Err(Error::TooLarge { declared: 3 })),
-        "{result:?}"
-    );
-    let result = download_measured(
-        &client,
-        &server.url("/elsewhere"),
-        1024,
-        &mut Vec::new(),
-        &cancel,
-    )
-    .await;
-    assert!(
-        matches!(result, Err(Error::Rejected { status: 404 })),
-        "{result:?}"
-    );
+    for length in [true, false] {
+        let server = serve(200, BODY, length).await;
+        let url = server.url("/artifact");
+        let request = Download {
+            limit: 3,
+            ..plain(&url)
+        };
+        let result = fetch(&client, request, &declared(BODY), &cancel).await;
+        assert!(
+            matches!(result, Err(Error::TooLarge { declared: 3 })),
+            "{result:?}"
+        );
+    }
 }
 
 #[tokio::test]
 async fn the_download_client_refuses_plain_http() {
-    let client = demi_shared_artifacts::client().unwrap();
+    let client = download_client().unwrap();
     let server = serve(200, BODY, true).await;
     let url = server.url("/artifact");
-    let result = download(
-        &client,
-        &url,
-        &declared(BODY),
-        &mut Vec::new(),
-        &CancellationToken::new(),
-    )
-    .await;
+    let result = fetch(&client, Download::new(&url), &declared(BODY), &CancellationToken::new()).await;
     assert!(matches!(result, Err(Error::Download(_))), "{result:?}");
 }
 
@@ -569,15 +519,17 @@ async fn install(
         ArchiveInstall::Installed(entry) => return Ok(entry),
         ArchiveInstall::Unpack(unpacking) => unpacking,
     };
+    let staging = root.join(format!(".download-{}", archive.digest.sha256));
+    let received = download(client, plain(url), &staging, cancel, |_, _| {}).await?;
     let mut output = tokio::fs::File::create(unpacking.archive()).await?;
-    download(client, url, &archive.digest, &mut output, cancel).await?;
+    received.verify(&staging, &archive.digest, &mut output, cancel).await?;
     drop(output);
     unpacking.finish(cancel).await
 }
 
 #[tokio::test]
 async fn an_archive_is_installed_once_and_checked_before_each_use() {
-    let client = client_allowing_http().unwrap();
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let bytes = zip(&[("app/bin/tool", b"tool"), ("app/data", b"data")]);
     let server = Server::start([("/app.zip".to_owned(), Answer::ok(bytes.clone()))]).await;
@@ -666,7 +618,7 @@ async fn an_archive_is_installed_once_and_checked_before_each_use() {
 
 #[tokio::test]
 async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() {
-    let client = client_allowing_http().unwrap();
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let escaping = zip(&[("app/bin/tool", b"tool"), ("../escaped", b"no")]);
     let server = Server::start([("/escaping.zip".to_owned(), Answer::ok(escaping.clone()))]).await;
@@ -697,7 +649,7 @@ async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() 
 /// same way. Bytes of neither kind install nothing.
 #[tokio::test]
 async fn a_tar_archive_compressed_with_zstd_installs_as_a_zip_archive_does() {
-    let client = client_allowing_http().unwrap();
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let bytes = tar_zst(&[
         ("lib/", b""),
@@ -741,7 +693,7 @@ async fn a_tar_archive_compressed_with_zstd_installs_as_a_zip_archive_does() {
 /// (`native-runtime.md` § Install artifacts), and is verified all the same.
 #[tokio::test]
 async fn a_trusted_download_follows_a_redirect() {
-    let client = client_allowing_http().unwrap();
+    let client = download_client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let storage = serve(200, BODY, true).await;
     let release = Server::start([(
@@ -750,10 +702,11 @@ async fn a_trusted_download_follows_a_redirect() {
     )])
     .await;
     let url = release.url("/releases/download/1/libs.tar.zst");
-    let mut output = Vec::new();
-    download(&client, &url, &declared(BODY), &mut output, &cancel)
-        .await
-        .unwrap();
+    let request = Download {
+        redirects: 10,
+        ..plain(&url)
+    };
+    let output = fetch(&client, request, &declared(BODY), &cancel).await.unwrap();
     assert_eq!(output, BODY);
     assert_eq!(storage.requests(), 1);
 }
@@ -766,4 +719,240 @@ fn an_encoded_copy_checks_against_the_bytes_it_stands_for_only() {
     let other = encode_blocking(b"other bytes", Effort::Fast).unwrap();
     assert!(check_encoded_blocking(&other, &declared(&bytes)).is_err());
     assert!(check_encoded_blocking(b"not zstd", &declared(&bytes)).is_err());
+}
+
+/// A fixture server on `127.0.0.1` that answers every connection with
+/// `head` and `body` and then closes it, or, with no `head`, reads the
+/// request and holds the connection without a byte.
+async fn raw_server(head: Option<String>, body: &'static [u8]) -> (String, tokio::task::JoinHandle<()>) {
+    use tokio::io::AsyncReadExt as _;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/artifact", listener.local_addr().unwrap());
+    let serving = tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut request = vec![0; 4096];
+            let _read = socket.read(&mut request).await;
+            match &head {
+                Some(head) => {
+                    let _written = socket.write_all(head.as_bytes()).await;
+                    let _written = socket.write_all(body).await;
+                }
+                None => held.push(socket),
+            }
+        }
+    });
+    (url, serving)
+}
+
+/// A connection whose body breaks off before a byte, until the download's
+/// silence has passed, fails it with the cause beneath the layer that saw
+/// it, not only reqwest's *error decoding response body*
+/// (`native-runtime.md` § Downloads). Cost: one local connection.
+#[tokio::test]
+async fn a_body_that_breaks_off_names_its_cause() {
+    let head = "HTTP/1.1 200 OK\r\ncontent-length: 100\r\nconnection: close\r\n\r\n".to_owned();
+    let (url, serving) = raw_server(Some(head), b"").await;
+    let client = download_client_allowing_http().unwrap();
+    let request = Download {
+        patience: Patience {
+            stall: Duration::from_millis(200),
+            silence: Duration::from_millis(300),
+        },
+        ..plain(&url)
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let staging = directory.path().join("download");
+    let result = download(&client, request, &staging, &CancellationToken::new(), |_, _| {}).await;
+    let Err(Error::Download(message)) = result else {
+        panic!("the download fails: {result:?}");
+    };
+    let mut layers = message.split(": ");
+    let seen = layers.next().unwrap();
+    assert!(layers.next().is_some(), "{seen} names no cause: {message}");
+    serving.abort();
+}
+
+/// Connections that deliver nothing are given up once the download's
+/// silence has passed, and the download fails saying so; one that stalls
+/// after bytes would resume instead (`native-runtime.md` § Downloads).
+/// Cost: a third of a second of a test's patience.
+#[tokio::test]
+async fn connections_that_deliver_nothing_fail_the_download() {
+    let (url, serving) = raw_server(None, b"").await;
+    let client = download_client_allowing_http().unwrap();
+    let request = Download {
+        patience: Patience {
+            stall: Duration::from_millis(200),
+            silence: Duration::from_millis(300),
+        },
+        ..plain(&url)
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let staging = directory.path().join("download");
+    let result = download(&client, request, &staging, &CancellationToken::new(), |_, _| {}).await;
+    let Err(Error::Download(message)) = result else {
+        panic!("the download fails: {result:?}");
+    };
+    assert!(message.starts_with("timed out"), "{message}");
+    serving.abort();
+}
+
+/// A server that answers a resumed request with the whole file starts the
+/// staging file again, and the download completes from it
+/// (`native-runtime.md` § Downloads). Cost: two local connections.
+#[tokio::test]
+async fn a_whole_answer_to_a_resumed_request_starts_the_file_again() {
+    use tokio::io::AsyncReadExt as _;
+    let body: Vec<u8> = (0u8..=255).cycle().take(64 * 1024).collect();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/file", listener.local_addr().unwrap());
+    let serving = tokio::spawn({
+        let body = body.clone();
+        async move {
+            let mut requests = Vec::new();
+            for answer in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).to_lowercase());
+                let head = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n", body.len());
+                socket.write_all(head.as_bytes()).await.unwrap();
+                // The first answer breaks off halfway; the second ignores the range.
+                let sent = if answer == 0 { &body[..body.len() / 2] } else { &body[..] };
+                socket.write_all(sent).await.unwrap();
+            }
+            requests
+        }
+    });
+    let client = download_client_allowing_http().unwrap();
+    let output = fetch(&client, plain(&url), &declared(&body), &CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(output, body);
+    let requests = serving.await.unwrap();
+    assert!(requests[1].contains("range: bytes="), "{}", requests[1]);
+}
+
+/// A local server that answers its connections in turn with `answers`,
+/// each a head and a body, and then stops; it returns each request it read,
+/// in lower case.
+async fn scripted(answers: Vec<(String, Vec<u8>)>) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+    use tokio::io::AsyncReadExt as _;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/file", listener.local_addr().unwrap());
+    let serving = tokio::spawn(async move {
+        let mut requests = Vec::new();
+        for (head, body) in answers {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            requests.push(String::from_utf8_lossy(&request[..read]).to_lowercase());
+            // The client may hang up first; nothing waits for the rest.
+            let _written = socket.write_all(head.as_bytes()).await;
+            let _written = socket.write_all(&body).await;
+        }
+        requests
+    });
+    (url, serving)
+}
+
+/// Bytes that do not compress, so a half of them is half the file.
+fn noise(size: usize) -> Vec<u8> {
+    (0u32..)
+        .flat_map(|block| Sha256::digest(block.to_le_bytes()))
+        .take(size)
+        .collect()
+}
+
+/// A server that answers each resumed request with the whole file and
+/// breaks before its end fails the download after the third time in a
+/// row, and its staging file goes (`native-runtime.md` § Downloads).
+/// Cost: four local connections.
+#[tokio::test]
+async fn a_server_that_ignores_ranges_and_breaks_fails_after_three_times() {
+    let body = noise(64 * 1024);
+    let half = body[..body.len() / 2].to_vec();
+    let head = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n", body.len());
+    let (url, serving) = scripted(vec![(head, half); 4]).await;
+    let client = download_client_allowing_http().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let staging = directory.path().join("download");
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        download(&client, plain(&url), &staging, &CancellationToken::new(), |_, _| {}),
+    )
+    .await
+    .expect("the download gives up");
+    assert!(
+        matches!(&result, Err(Error::Download(message)) if message.contains("3 times")),
+        "{result:?}"
+    );
+    assert_eq!(serving.await.unwrap().len(), 4);
+    assert!(!staging.exists());
+}
+
+/// A download complete in its staging file but not yet checked, as when it
+/// was cancelled before its check, is asked again, answered 416 without a
+/// body or a coding, and checked in the coding its bytes arrived in
+/// (`native-runtime.md` § Downloads). Cost: two local connections.
+#[tokio::test]
+async fn a_complete_staging_file_keeps_its_coding_through_a_416() {
+    let body = noise(16 * 1024);
+    let encoded = encode_blocking(&body, Effort::Fast).unwrap();
+    let whole = format!(
+        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\ncontent-encoding: zstd\r\n\r\n",
+        encoded.len()
+    );
+    let complete = format!(
+        "HTTP/1.1 416 Range Not Satisfiable\r\ncontent-range: bytes */{}\r\ncontent-length: 0\r\n\r\n",
+        encoded.len()
+    );
+    let (url, serving) = scripted(vec![(whole, encoded), (complete, Vec::new())]).await;
+    let client = download_client_allowing_http().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let staging = directory.path().join("download");
+    let cancel = CancellationToken::new();
+    // The first download ends without its check.
+    download(&client, plain(&url), &staging, &cancel, |_, _| {}).await.unwrap();
+    let received = download(&client, plain(&url), &staging, &cancel, |_, _| {}).await.unwrap();
+    let mut output = Vec::new();
+    received.verify(&staging, &declared(&body), &mut output, &cancel).await.unwrap();
+    assert!(output == body, "the checked bytes differ");
+    let requests = serving.await.unwrap();
+    assert!(requests[1].contains("range: bytes="), "{}", requests[1]);
+}
+
+/// A resumed answer whose range does not start where the staging file ends
+/// starts the file again (`native-runtime.md` § Downloads). Cost: three
+/// local connections.
+#[tokio::test]
+async fn a_range_that_does_not_continue_the_file_starts_it_again() {
+    let body = noise(64 * 1024);
+    let half = body.len() / 2;
+    let size = body.len();
+    let broken = (
+        format!("HTTP/1.1 200 OK\r\ncontent-length: {size}\r\n\r\n"),
+        body[..half].to_vec(),
+    );
+    let elsewhere = (
+        format!(
+            "HTTP/1.1 206 Partial Content\r\ncontent-range: bytes 10-{}/{size}\r\ncontent-length: {}\r\n\r\n",
+            size - 1,
+            size - 10
+        ),
+        body[10..].to_vec(),
+    );
+    let whole = (
+        format!("HTTP/1.1 200 OK\r\ncontent-length: {size}\r\nconnection: close\r\n\r\n"),
+        body.clone(),
+    );
+    let (url, serving) = scripted(vec![broken, elsewhere, whole]).await;
+    let client = download_client_allowing_http().unwrap();
+    let output = fetch(&client, plain(&url), &declared(&body), &CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(output == body, "the downloaded bytes differ");
+    let requests = serving.await.unwrap();
+    assert!(!requests[2].contains("range:"), "{}", requests[2]);
 }

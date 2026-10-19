@@ -10,7 +10,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_shared_artifacts::Digest;
 use semver::Version;
 use tokio_util::sync::CancellationToken;
 
@@ -24,6 +23,9 @@ const SUMS: &str = "SHA256SUMS";
 
 /// The largest asset a release has, its image archive, is far below this.
 const LARGEST: u64 = 4 << 30;
+
+/// How many redirects a download of a release's asset follows.
+const REDIRECTS: usize = 10;
 
 /// Where releases come from.
 pub enum Source {
@@ -115,7 +117,7 @@ pub fn highest<'a>(tags: impl IntoIterator<Item = &'a str>) -> Option<Version> {
 
 /// Reads `path` of the repository's GitHub API.
 async fn github<T: serde::de::DeserializeOwned>(path: &str) -> io::Result<T> {
-    let client = demi_shared_artifacts::client_following_redirects().map_err(io::Error::other)?;
+    let client = demi_shared_artifacts::client().map_err(io::Error::other)?;
     let response = client
         .get(format!("https://api.github.com/repos/{REPOSITORY}/{path}"))
         .header("user-agent", "demi-server")
@@ -198,10 +200,17 @@ async fn obtain(
         Source::GitHub => {
             let url = format!("https://github.com/{REPOSITORY}/releases/download/v{version}/{name}");
             let path = stage.join(name);
-            let client = demi_shared_artifacts::client_following_redirects().map_err(io::Error::other)?;
-            let mut file = tokio::fs::File::create(&path).await?;
-            let _: Digest = demi_shared_artifacts::download_measured(&client, &url, LARGEST, &mut file, cancel)
+            let client = demi_shared_artifacts::download_client().map_err(io::Error::other)?;
+            // GitHub serves a release's assets through a redirect to
+            // short-lived storage; the sums check what arrives.
+            let request = demi_shared_artifacts::Download {
+                limit: LARGEST,
+                redirects: REDIRECTS,
+                ..demi_shared_artifacts::Download::new(&url)
+            };
+            demi_shared_artifacts::download(&client, request, &path, cancel, |_, _| {})
                 .await
+                .and_then(|received| received.plain())
                 .map_err(|error| io::Error::other(format!("{name}: {error}")))?;
             Ok(path)
         }

@@ -76,6 +76,12 @@ impl Fixture {
             },
         ));
         let address = serve(routes).await;
+        Self::at(address, requests).await
+    }
+
+    /// A service that fetches from the server at `address`, which counts
+    /// its requests in `requests`.
+    async fn at(address: SocketAddr, requests: Arc<AtomicUsize>) -> Self {
         let temporary = tempfile::tempdir().unwrap();
         let service = ServiceProcess::start(
             env!("CARGO_BIN_EXE_demi-fetch"),
@@ -394,6 +400,64 @@ async fn a_page_that_does_not_answer_in_time_fails() {
             message(&completion),
             format!("{url} did not answer within 0.2 s; --timeout gives it up to 300000 ms")
         );
+    })
+    .await;
+}
+
+/// A file whose first answer arrives compressed and breaks off is asked for
+/// again from its start, uncoded, since its decoded bytes count none the
+/// server sent: never with a range on them (`native-runtime.md` §
+/// Downloads). Cost: a service and two local connections.
+#[tokio::test]
+async fn a_compressed_file_that_breaks_off_is_asked_for_again_uncoded() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    within(async {
+        let pdf: Vec<u8> = (0u32..20_000)
+            .flat_map(|line| format!("%PDF line {line}\n").into_bytes())
+            .collect();
+        let encoded =
+            demi_shared_artifacts::encode_blocking(&pdf, demi_shared_artifacts::Effort::Fast).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = pdf.clone();
+        let serving = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for answer in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).to_lowercase());
+                if answer == 0 {
+                    // Compressed, and broken off halfway.
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/pdf\r\ncontent-encoding: zstd\r\ncontent-length: {}\r\n\r\n",
+                        encoded.len()
+                    );
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                    socket.write_all(&encoded[..encoded.len() / 2]).await.unwrap();
+                } else {
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/pdf\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        served.len()
+                    );
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                    socket.write_all(&served).await.unwrap();
+                }
+            }
+            requests
+        });
+        let fixture = Fixture::at(address, Arc::default()).await;
+        let url = fixture.url("/report.pdf");
+        let (completion, output) = fixture.fetch(json!({"url": url}), false).await;
+        assert_eq!(completion.exit_code, 0, "{completion:?}");
+        let saved = output
+            .lines()
+            .find_map(|line| line.strip_prefix("Saved as "))
+            .unwrap_or_else(|| panic!("no path in:\n{output}"));
+        assert!(std::fs::read(saved).unwrap() == pdf, "the saved file differs");
+        let requests = serving.await.unwrap();
+        assert!(!requests[1].contains("\r\nrange:"), "{}", requests[1]);
+        assert!(requests[1].contains("accept-encoding: identity"), "{}", requests[1]);
     })
     .await;
 }

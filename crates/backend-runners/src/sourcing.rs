@@ -36,6 +36,9 @@ pub struct ReleaseArtifact {
 /// adds a little to bytes it cannot compress.
 const ENCODED_MARGIN: u64 = 1 << 20;
 
+/// How many redirects a download of a release's file follows.
+const REDIRECTS: usize = 10;
+
 /// The store and the release's files it takes artifacts from.
 pub struct Sourcing {
     store: Arc<dyn ObjectStore>,
@@ -48,7 +51,7 @@ pub struct Sourcing {
 
 impl Sourcing {
     pub fn new(store: Arc<dyn ObjectStore>, files: FilesLocation) -> Result<Self, PublicationError> {
-        let client = demi_shared_artifacts::client_following_redirects().map_err(|error| {
+        let client = demi_shared_artifacts::download_client().map_err(|error| {
             PublicationError::Files(format!("no client for the release's files: {error}"))
         })?;
         Ok(Self {
@@ -136,16 +139,19 @@ impl Sourcing {
                     wanted.artifact.size
                 };
                 tracing::info!(file = %wanted.file, "downloading a file of the server release");
-                let mut bytes = Vec::new();
-                demi_shared_artifacts::download_measured(
-                    &self.client,
-                    url.as_str(),
+                // GitHub serves a release's files through a redirect to
+                // short-lived storage; the caller checks what arrives
+                // against the release's record.
+                let request = demi_shared_artifacts::Download {
                     limit,
-                    &mut bytes,
-                    cancel,
-                )
-                .await
-                .map_err(|error| error.to_string())?;
+                    redirects: REDIRECTS,
+                    ..demi_shared_artifacts::Download::new(url.as_str())
+                };
+                let (received, bytes) =
+                    demi_shared_artifacts::download_bytes(&self.client, request, cancel)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                received.plain().map_err(|error| error.to_string())?;
                 Ok(Bytes::from(bytes))
             }
         }

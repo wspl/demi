@@ -536,3 +536,287 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
         .unwrap();
     assert!(!paths[1].exists(), "version 2 goes once nothing holds it");
 }
+
+/// Locates the artifact at one URL.
+struct At(String);
+
+impl ArtifactResolver for At {
+    fn resolve<'a>(
+        &'a self,
+        _: &'a PackageArtifact,
+        _: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            Ok(ArtifactSource::Url {
+                url: self.0.clone(),
+                expires_at: None,
+            })
+        })
+    }
+}
+
+/// A download whose connection breaks off halfway resumes on a new one with
+/// a Range request from the bytes it holds, in the content coding the store
+/// serves, and installs the executable those bytes decode to; its staging
+/// file goes once it is checked (`native-runtime.md` § Install artifacts).
+/// Cost: two local connections and a small file.
+#[tokio::test]
+async fn a_download_that_breaks_off_resumes_from_its_bytes() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let executable: Vec<u8> = (0u32..4096)
+        .flat_map(|block| Sha256::digest(block.to_le_bytes()))
+        .collect();
+    let encoded = demi_shared_artifacts::encode_blocking(
+        &executable,
+        demi_shared_artifacts::Effort::Fast,
+    )
+    .unwrap();
+    let half = encoded.len() / 2;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/native-artifacts/x", listener.local_addr().unwrap());
+    let serving = tokio::spawn({
+        let encoded = encoded.clone();
+        async move {
+            let mut requests = Vec::new();
+            for answer in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).to_lowercase());
+                let size = encoded.len();
+                if answer == 0 {
+                    // The connection breaks off halfway.
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-length: {size}\r\ncontent-encoding: zstd\r\n\r\n"
+                    );
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                    socket.write_all(&encoded[..half]).await.unwrap();
+                } else {
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\ncontent-length: {}\r\ncontent-range: bytes {half}-{}/{size}\r\ncontent-encoding: zstd\r\nconnection: close\r\n\r\n",
+                        size - half,
+                        size - 1
+                    );
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                    socket.write_all(&encoded[half..]).await.unwrap();
+                }
+            }
+            requests
+        }
+    });
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(root.path()).await;
+    let wanted = file("program", "1.0.0", &executable);
+    let path = cache
+        .install(
+            &wanted,
+            Arc::new(At(url)),
+            SILENT,
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), executable);
+    let requests = serving.await.unwrap();
+    assert!(requests[0].contains("accept-encoding: zstd"), "{}", requests[0]);
+    assert!(
+        requests[1].contains(&format!("range: bytes={half}-")),
+        "{}",
+        requests[1]
+    );
+    let staging = root
+        .path()
+        .join("cache")
+        .join(format!(".download-{}", wanted.artifact.sha256));
+    assert!(!staging.exists());
+}
+
+/// A download that sends more bytes than any form of the artifact can have
+/// fails as they arrive, without a declared length to refuse first, rather
+/// than when the body ends: this one never does (`native-runtime.md` §
+/// Downloads). Cost: one local connection.
+#[tokio::test]
+async fn more_bytes_than_the_artifact_can_have_fail_as_they_arrive() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let executable = b"a small native executable".to_vec();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/native-artifacts/x", listener.local_addr().unwrap());
+    let serving = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = vec![0; 4096];
+        let _read = socket.read(&mut request).await.unwrap();
+        // No length, and bytes until the client hangs up.
+        let _written = socket.write_all(b"HTTP/1.1 200 OK\r\nconnection: close\r\n\r\n").await;
+        while socket.write_all(&[0; 64 * 1024]).await.is_ok() {}
+    });
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(root.path()).await;
+    let wanted = file("program", "1.0.0", &executable);
+    let cancel = CancellationToken::new();
+    let installing = cache.install(&wanted, Arc::new(At(url)), SILENT, &cancel);
+    let result = tokio::time::timeout(std::time::Duration::from_secs(10), installing)
+        .await
+        .expect("the download stops as the bytes pass the bound");
+    assert!(
+        matches!(
+            result,
+            Err(RuntimeError::Artifact(demi_shared_artifacts::Error::TooLarge { .. }))
+        ),
+        "{result:?}"
+    );
+    serving.abort();
+}
+
+/// A download cancelled midway keeps its staging file for a resume, and an
+/// install of another version of its line removes it (`native-runtime.md`
+/// § Downloads). Cost: one local connection and two small files.
+#[tokio::test]
+async fn a_newer_version_prunes_the_staging_file_of_an_older_one() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let older: Vec<u8> = (0u32..4096)
+        .flat_map(|block| Sha256::digest(block.to_le_bytes()))
+        .collect();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/native-artifacts/x", listener.local_addr().unwrap());
+    let served = older.clone();
+    let serving = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = vec![0; 4096];
+        let _read = socket.read(&mut request).await.unwrap();
+        let head = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n", served.len());
+        socket.write_all(head.as_bytes()).await.unwrap();
+        socket.write_all(&served[..served.len() / 2]).await.unwrap();
+        // The rest never comes; the connection stays open.
+        std::future::pending::<()>().await;
+    });
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(root.path()).await;
+    let wanted = file("program", "1.0.0", &older);
+    let staging = root
+        .path()
+        .join("cache")
+        .join(format!(".download-{}", wanted.artifact.sha256));
+    let cancel = CancellationToken::new();
+    let arrived = watch::Sender::new(false);
+    let report = |_| {
+        arrived.send_replace(true);
+    };
+    let installing = cache.install(&wanted, Arc::new(At(url)), &report, &cancel);
+    let mut heard = arrived.subscribe();
+    let cancelled = tokio::join!(installing, async {
+        heard.wait_for(|arrived| *arrived).await.unwrap();
+        cancel.cancel();
+    })
+    .0;
+    assert!(matches!(cancelled, Err(RuntimeError::Cancelled)), "{cancelled:?}");
+    assert!(staging.exists(), "a cancelled download keeps its bytes");
+    let newer = b"the newer executable";
+    let source = root.path().join("newer");
+    tokio::fs::write(&source, newer).await.unwrap();
+    cache
+        .install(
+            &file("program", "1.1.0", newer),
+            Resolver::at(source),
+            SILENT,
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert!(!staging.exists(), "the older version's staging file stays");
+    serving.abort();
+}
+
+/// Hands out a signed URL that expires `after` its first location, then
+/// a renewed one that does not.
+struct Signed {
+    first: String,
+    renewed: String,
+    calls: AtomicUsize,
+    after: std::time::Duration,
+}
+
+impl ArtifactResolver for Signed {
+    fn resolve<'a>(
+        &'a self,
+        _: &'a PackageArtifact,
+        _: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            let first = self.calls.fetch_add(1, Ordering::SeqCst) == 0;
+            Ok(ArtifactSource::Url {
+                url: if first { self.first.clone() } else { self.renewed.clone() },
+                expires_at: Some(SystemTime::now() + if first { self.after } else { std::time::Duration::from_secs(300) }),
+            })
+        })
+    }
+}
+
+/// A signed URL that expires during a long download is refused when the
+/// download resumes; the address is asked for again and the download
+/// continues from the renewed one with a range, keeping the bytes it had
+/// (`native-runtime.md` § Downloads). Cost: three local connections and
+/// the first URL's lifetime, a fifth of a second.
+#[tokio::test]
+async fn a_signed_url_that_expires_midway_continues_from_the_renewed_one() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let executable: Vec<u8> = (0u32..4096)
+        .flat_map(|block| Sha256::digest(block.to_le_bytes()))
+        .collect();
+    let half = executable.len() / 2;
+    let size = executable.len();
+    let lifetime = std::time::Duration::from_millis(200);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let served = executable.clone();
+    let serving = tokio::spawn(async move {
+        let mut requests = Vec::new();
+        for answer in 0..3 {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            requests.push(String::from_utf8_lossy(&request[..read]).to_lowercase());
+            match answer {
+                0 => {
+                    // Half the bytes, then the connection breaks once the
+                    // URL has expired.
+                    let head = format!("HTTP/1.1 200 OK\r\ncontent-length: {size}\r\n\r\n");
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                    socket.write_all(&served[..half]).await.unwrap();
+                    tokio::time::sleep(lifetime * 2).await;
+                }
+                1 => {
+                    let head = "HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\n\r\n";
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                }
+                _ => {
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\ncontent-range: bytes {half}-{}/{size}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        size - 1,
+                        size - half
+                    );
+                    socket.write_all(head.as_bytes()).await.unwrap();
+                    socket.write_all(&served[half..]).await.unwrap();
+                }
+            }
+        }
+        requests
+    });
+    let resolver = Arc::new(Signed {
+        first: format!("{base}/expiring"),
+        renewed: format!("{base}/renewed"),
+        calls: AtomicUsize::new(0),
+        after: lifetime,
+    });
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(root.path()).await;
+    let wanted = file("program", "1.0.0", &executable);
+    let path = cache
+        .install(&wanted, resolver.clone(), SILENT, &CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(tokio::fs::read(&path).await.unwrap() == executable, "the installed bytes differ");
+    let requests = serving.await.unwrap();
+    assert!(requests[2].starts_with("get /renewed"), "{}", requests[2]);
+    assert!(requests[2].contains(&format!("range: bytes={half}-")), "{}", requests[2]);
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 2);
+}

@@ -167,17 +167,51 @@ pub async fn download(
     if response.content_length().is_some_and(|length| length > limit) {
         return Err(too_large());
     }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| request_error(url, &error))?
-    {
-        if (bytes.len() + chunk.len()) as u64 > limit {
-            return Err(too_large());
+    let bytes = match kind {
+        // A file that arrived is Demi's one download (`native-runtime.md` §
+        // Downloads), resumed after a break or a stall: the answer started
+        // it, and the download continues it.
+        Kind::File | Kind::Unknown if status.is_success() => {
+            // The client decodes every coding it knows, so the bytes kept
+            // may count none the server sent: a break asks for the file
+            // again, uncoded, from its start.
+            let request = demi_shared_artifacts::Download {
+                limit,
+                first: Some(response),
+                first_decoded: true,
+                ..demi_shared_artifacts::Download::new(url.as_str())
+            };
+            // The command ends the fetch by dropping it; nothing else
+            // cancels it.
+            let cancel = tokio_util::sync::CancellationToken::new();
+            match demi_shared_artifacts::download_bytes(&client, request, &cancel).await {
+                // The client decoded what it was sent in a coding, and a
+                // later request asks for the bytes as they are.
+                Ok((_, bytes)) => bytes,
+                Err(demi_shared_artifacts::Error::TooLarge { .. }) => return Err(too_large()),
+                Err(error) => {
+                    return Err(DownloadError::Request {
+                        url: url.to_string(),
+                        cause: error.to_string(),
+                    });
+                }
+            }
         }
-        bytes.extend_from_slice(&chunk);
-    }
+        _ => {
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|error| request_error(url, &error))?
+            {
+                if (bytes.len() + chunk.len()) as u64 > limit {
+                    return Err(too_large());
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            bytes
+        }
+    };
     let body = match kind {
         Kind::Html | Kind::Text => text(&bytes, media.as_ref(), kind == Kind::Html),
         Kind::File => Body::File(bytes),

@@ -531,7 +531,7 @@ async fn install_reports_its_downloads_in_its_output() {
     .await;
     assert_eq!(completion.exit_code, 0, "{}", String::from_utf8_lossy(&stderr));
     let title = release.title();
-    let megabytes = |bytes: u64| (bytes as f64 / (1024.0 * 1024.0)).round();
+    let megabytes = demi_command_protocol::megabytes;
     let runtime = format!("the Chrome runtime {}", release.runtime.release);
     let total = libraries + fonts;
     // With release 1's sizes each report of the runtime's downloads passes
@@ -621,7 +621,7 @@ async fn a_host_without_chrome_or_its_runtime_names_the_next_step() {
         root.path(),
         None,
     );
-    let megabytes = (size as f64 / (1024.0 * 1024.0)).round();
+    let megabytes = demi_command_protocol::megabytes(size);
     let not_installed = format!(
         "{} is not installed on this Host yet. Install it with `demi browser install` ({megabytes} MB), then run this command again (browser_unavailable, action not started)",
         release.title()
