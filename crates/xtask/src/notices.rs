@@ -75,9 +75,11 @@ struct Library {
 /// (`mobile.md` § iOS); openatx's UI automation server, demi-mobile's
 /// Android helper, and Cisco's OpenH264 binary, which demi-mobile downloads
 /// for the Android view and whose binary license asks the product to credit
-/// it (`mobile.md` § Android); and the vendors' marks the web app shows,
-/// models.dev's and Simple Icons' (`providers.md` § Vendors from models.dev).
-const LIBRARIES: [Library; 5] = [
+/// it (`mobile.md` § Android); the vendors' marks the web app shows,
+/// models.dev's and Simple Icons' (`providers.md` § Vendors from models.dev);
+/// and the Android robot, an Android emulator's logo (`mobile.md` § The live
+/// view), whose license asks for its attribution.
+const LIBRARIES: [Library; 6] = [
     Library {
         name: "idb",
         version: "1.7.6",
@@ -107,6 +109,12 @@ const LIBRARIES: [Library; 5] = [
         version: "",
         license: "CC0-1.0",
         notice: "packages/web-ui/src/settings/logos/LICENSE-simple-icons",
+    },
+    Library {
+        name: "Android robot",
+        version: "",
+        license: "CC-BY-3.0",
+        notice: "packages/web-ui/src/devices/LICENSE-android-robot",
     },
 ];
 

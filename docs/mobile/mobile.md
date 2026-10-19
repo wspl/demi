@@ -161,7 +161,7 @@ the agent's reach the device in the order they arrive.
 
 | The panel | Its command |
 | --- | --- |
-| A device's tab, which appears when the agent opens the device; the user switches among the open devices by their tabs, and a device's toolbar starts with its name where the whole name fits; on a phone, whose tab already names the device, the toolbar holds only its controls. The panel opens no device of its own: a device is opened by the agent, which knows what the task needs | `open` |
+| A device's tab, which appears when the agent opens the device; the user switches among the open devices by their tabs, and a device's toolbar starts with its name where the whole name fits; on a phone, whose tab already names the device, the toolbar holds only its controls. The tab's icon, and the toolbar's before the name, is the device's system's logo, the Apple logo for an iOS simulator and the Android robot's head for an Android emulator, drawn as [a device's mark](../product/hosts.md#a-devices-mark) draws a logo, so the user tells an iPhone from a Pixel at a glance as a computer's logo tells a Mac from a PC. The panel opens no device of its own: a device is opened by the agent, which knows what the task needs | `open` |
 | A device's close button; a device that closes otherwise, its Host's runner restarting or a Cloud stopping, or that is lost, loses its tab the same way, and the agent opens it again when the task needs it | `close` |
 | Rotate Left, Rotate Right | `rotate` |
 | Toggle Appearance | `appearance` |

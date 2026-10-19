@@ -132,6 +132,7 @@ impl Work {
                 ("device", Value::from(*device)),
                 ("nativeId", Value::from(simulator.native_id.clone())),
                 ("name", Value::from(simulator.name.clone())),
+                ("platform", Value::from(simulator.platform.to_string())),
             ]);
             let create = CreatePanelTab {
                 id: added_id(device),

@@ -191,3 +191,5 @@ export { default as Toolbar } from '@demicodes/web-ui/ui/Toolbar.vue'
 export type { ToolbarAction } from '@demicodes/web-ui/ui/Toolbar.vue'
 export { default as Tooltip } from '@demicodes/web-ui/ui/Tooltip.vue'
 export { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+// A system's logo, as a device's mark draws it (`hosts.md` § A device's mark).
+export { default as SystemLogo } from '@demicodes/web-ui/devices/DeviceLogo.vue'
