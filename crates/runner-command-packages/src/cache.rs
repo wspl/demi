@@ -23,7 +23,8 @@ use std::{
 
 use demi_command_protocol::{ArtifactForm, ArtifactProgress, InstalledArtifact, PackageArtifact};
 use demi_shared_artifacts::{
-    Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, Staged,
+    Archive, ArchiveInstall, CONTENT_CODING, Digest, Download, Mode, Permissions, Publication,
+    Staged,
 };
 use serde::{Deserialize, Serialize};
 use demi_runner_process::backend::Backend;
@@ -42,8 +43,28 @@ use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
 /// the file or the archive's entry, or none when the copy failed its check.
 type Checked = HashMap<String, Option<PathBuf>>;
 
+/// How many redirects an artifact's download follows, as GitHub's release
+/// downloads need (`native-runtime.md` § Install artifacts).
+const REDIRECTS: usize = 10;
+
 /// The suffix of an entry's line record, beside the entry.
 const LINE: &str = ".line.json";
+
+/// The prefix of a download's staging file, `.download-<sha256>`, which
+/// keeps its bytes for a resume, beside its coding record, the line it is
+/// of and its lock (`native-runtime.md` § Downloads).
+const STAGING: &str = ".download-";
+
+/// The suffix of the record of a staging file's line, beside it.
+const STAGING_LINE: &str = ".of.json";
+
+/// A line: its package and name.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Line {
+    package: String,
+    name: String,
+}
 
 /// Where an install reports how its download goes.
 pub type Progress<'a> = &'a (dyn Fn(ArtifactProgress) + Send + Sync);
@@ -229,6 +250,15 @@ pub struct Wanted<'a> {
     pub form: &'a ArtifactForm,
 }
 
+impl Wanted<'_> {
+    fn line(&self) -> Line {
+        Line {
+            package: self.package.to_owned(),
+            name: self.name.to_owned(),
+        }
+    }
+}
+
 /// What the cache records of an entry, beside it: its line, its version,
 /// the path of its file or entry, and when this cache installed it.
 #[derive(Serialize, Deserialize)]
@@ -293,7 +323,8 @@ impl ArtifactCache {
     ) -> Result<Self, RuntimeError> {
         let backend = match backend {
             Some(backend) => {
-                let http = demi_shared_artifacts::client_through(|builder| backend.http(builder))?;
+                let http =
+                    demi_shared_artifacts::download_client_through(|builder| backend.http(builder))?;
                 Some((backend, http))
             }
             None => None,
@@ -304,10 +335,7 @@ impl ArtifactCache {
             root,
             image,
             checked: Mutex::default(),
-            // The runner was given each artifact's digest over its
-            // authenticated connection, so a backend on plain HTTP may serve
-            // its artifacts itself.
-            http: demi_shared_artifacts::client_allowing_http()?,
+            http: demi_shared_artifacts::download_client_allowing_http()?,
             backend,
             holds: Holds::default(),
             installs: Mutex::default(),
@@ -424,6 +452,7 @@ impl ArtifactCache {
     ) -> Result<PathBuf, RuntimeError> {
         let cache = self.clone();
         let artifact = wanted.artifact.clone();
+        let line = wanted.line();
         let sha256 = &wanted.artifact.sha256;
         self.shared(sha256, resolver, progress, cancel, move |report, resolver, cancel| {
             Box::pin(async move {
@@ -440,7 +469,7 @@ impl ArtifactCache {
                         return Ok(file);
                     }
                     cache
-                        .download(&artifact, &destination, resolver.as_ref(), &*report, &cancel)
+                        .download(&line, &artifact, &destination, resolver.as_ref(), &*report, &cancel)
                         .await?;
                     Ok(destination.clone())
                 })
@@ -460,6 +489,7 @@ impl ArtifactCache {
     ) -> Result<PathBuf, RuntimeError> {
         let cache = self.clone();
         let artifact = wanted.artifact.clone();
+        let line = wanted.line();
         let archive = Archive {
             digest: digest_of(&wanted.artifact),
             entry: entry.to_owned(),
@@ -488,7 +518,7 @@ impl ArtifactCache {
                         };
                     let mut output = tokio::fs::File::create(unpacking.archive()).await?;
                     cache
-                        .fetch(&artifact, &mut output, resolver.as_ref(), &*report, &cancel)
+                        .fetch(&line, &artifact, &mut output, resolver.as_ref(), &*report, &cancel)
                         .await?;
                     drop(output);
                     (*report)(ArtifactProgress::Unpack);
@@ -630,9 +660,12 @@ impl ArtifactCache {
     }
 
     /// Removes the other artifacts of `wanted`'s line that no running
-    /// service holds. A removal that fails, as of a file in use on Windows,
-    /// is left for a later install; an image's copy is only forgotten.
+    /// service holds, and the staging files of its other versions that no
+    /// install of this cache is downloading (`native-runtime.md` §
+    /// Downloads). A removal that fails, as of a file in use on Windows, is
+    /// left for a later install; an image's copy is only forgotten.
     async fn remove_older(&self, wanted: &Wanted<'_>) {
+        self.remove_older_staging(wanted).await;
         let records = match self.records().await {
             Ok(records) => records,
             Err(error) => {
@@ -665,6 +698,41 @@ impl ArtifactCache {
                     record.version
                 );
             }
+        }
+    }
+
+    /// Removes the staging files of `wanted`'s line but its own that no
+    /// install in progress downloads.
+    async fn remove_older_staging(&self, wanted: &Wanted<'_>) {
+        let line = wanted.line();
+        let mut entries = match tokio::fs::read_dir(&self.root).await {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!("the artifact cache could not be listed: {error}");
+                return;
+            }
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name();
+            let Some(sha256) = name
+                .to_str()
+                .and_then(|name| name.strip_prefix(STAGING)?.strip_suffix(STAGING_LINE))
+            else {
+                continue;
+            };
+            if sha256 == wanted.artifact.sha256 || self.installs().contains_key(sha256) {
+                continue;
+            }
+            // A record that cannot be read names no line; its staging file
+            // stays for its own install.
+            let of = tokio::fs::read(entry.path()).await.ok();
+            if of.and_then(|bytes| serde_json::from_slice::<Line>(&bytes).ok()) != Some(line.clone()) {
+                continue;
+            }
+            demi_shared_artifacts::discard(&self.root.join(format!("{STAGING}{sha256}"))).await;
+            // Each goes when it can; one left is pruned at a later install.
+            let _removed = tokio::fs::remove_file(self.root.join(format!("{STAGING}{sha256}.lock"))).await;
+            let _removed = tokio::fs::remove_file(entry.path()).await;
         }
     }
 
@@ -748,6 +816,7 @@ impl ArtifactCache {
     /// the one installed.
     async fn download(
         &self,
+        line: &Line,
         artifact: &PackageArtifact,
         destination: &Path,
         resolver: &dyn ArtifactResolver,
@@ -763,7 +832,7 @@ impl ArtifactCache {
             },
         )
         .await?;
-        self.fetch(artifact, staged.file(), resolver, progress, cancel)
+        self.fetch(line, artifact, staged.file(), resolver, progress, cancel)
             .await?;
         match staged.publish().await {
             Err(demi_shared_artifacts::Error::Io(error))
@@ -778,9 +847,14 @@ impl ArtifactCache {
 
     /// Writes the verified bytes of `artifact`, from where the backend says
     /// it is, into `output`, reporting to `progress` each time they pass
-    /// another tenth of its size.
+    /// another tenth of its size. A URL's bytes arrive as they are served,
+    /// in their content coding, into a staging file beside the cache that
+    /// keeps them across broken connections and attempts, and are decoded
+    /// and checked once complete (`native-runtime.md` § Install
+    /// artifacts); bytes that fail the check are removed.
     async fn fetch(
         &self,
+        line: &Line,
         artifact: &PackageArtifact,
         output: &mut (impl AsyncWrite + Unpin),
         resolver: &dyn ArtifactResolver,
@@ -788,66 +862,138 @@ impl ArtifactCache {
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
         let expected = digest_of(artifact);
-        let tenth = |bytes: u64| bytes.saturating_mul(10) / artifact.size;
-        // A URL that expired on the way is asked for once more.
-        let mut refreshed = false;
-        loop {
-            let mut written = 0u64;
-            let mut output = tokio_util::io::InspectWriter::new(&mut *output, |bytes: &[u8]| {
-                let before = tenth(written);
-                written += bytes.len() as u64;
-                if tenth(written) > before {
-                    progress(ArtifactProgress::Download {
-                        done: written.min(artifact.size),
-                        total: artifact.size,
-                    });
-                }
-            });
-            match resolver.resolve(artifact, cancel).await? {
-                ArtifactSource::Local(path) => {
-                    let mut input = tokio::fs::File::open(path).await?;
-                    demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel).await?;
-                }
-                ArtifactSource::Url { url, expires_at } => {
-                    let expired = || expires_at.is_some_and(|expires| expires <= SystemTime::now());
-                    if expired() {
-                        if refreshed {
-                            return Err(RuntimeError::Location(
-                                "the backend returned an expired URL".into(),
-                            ));
-                        }
-                        refreshed = true;
-                        continue;
-                    }
-                    // The backend's own store is fetched the way the runner
-                    // reaches the backend.
-                    let local = self.backend.as_ref().and_then(|(backend, http)| {
-                        let local = backend.local(&reqwest::Url::parse(&url).ok()?)?;
-                        Some((http, local.to_string()))
-                    });
-                    let (http, url) = local.unwrap_or((&self.http, url));
-                    let downloaded = demi_shared_artifacts::download(
-                        http,
-                        &url,
-                        &expected,
-                        &mut output,
-                        cancel,
-                    )
-                    .await;
-                    match downloaded {
-                        Err(demi_shared_artifacts::Error::Rejected { status: 403 })
-                            if !refreshed && expired() =>
-                        {
-                            refreshed = true;
-                            continue;
-                        }
-                        downloaded => downloaded?,
-                    }
-                }
+        // Each tenth of `total` that `done` passes is reported once.
+        let mut reported = 0;
+        let mut report = |done: u64, total: u64| {
+            let tenth = done.saturating_mul(10) / total.max(1);
+            if tenth > reported {
+                reported = tenth;
+                progress(ArtifactProgress::Download {
+                    done: done.min(total),
+                    total,
+                });
             }
-            return Ok(());
-        }
+        };
+        let (mut url, mut expires_at) = match located(resolver, artifact, cancel).await? {
+            ArtifactSource::Local(path) => {
+                let mut written = 0u64;
+                let mut output = tokio_util::io::InspectWriter::new(&mut *output, |bytes: &[u8]| {
+                    written += bytes.len() as u64;
+                    report(written, artifact.size);
+                });
+                let mut input = tokio::fs::File::open(path).await?;
+                demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel).await?;
+                return Ok(());
+            }
+            ArtifactSource::Url { url, expires_at } => (url, expires_at),
+        };
+        let sha256 = &artifact.sha256;
+        // Runners sharing the cache keep one staging file for each artifact.
+        let _lock = demi_shared_artifacts::InstallLock::acquire(
+            &self.root.join(format!("{STAGING}{sha256}.lock")),
+            cancel,
+        )
+        .await?;
+        let staging = self.root.join(format!("{STAGING}{sha256}"));
+        // The line the staging file is of, so a newer version of the line
+        // prunes it.
+        let bytes = serde_json::to_vec(line).map_err(io::Error::other)?;
+        tokio::fs::write(self.root.join(format!("{STAGING}{sha256}{STAGING_LINE}")), bytes).await?;
+        // Stored bytes are asked for as they are, in the coding the check
+        // decodes, so a range counts them.
+        let headers = |_: &reqwest::Url| {
+            reqwest::header::HeaderMap::from_iter([(
+                reqwest::header::ACCEPT_ENCODING,
+                reqwest::header::HeaderValue::from_static(CONTENT_CODING),
+            )])
+        };
+        let received = loop {
+            // The backend's own store is fetched the way the runner
+            // reaches the backend, which no redirect may leave.
+            let local = self.backend.as_ref().and_then(|(backend, http)| {
+                let local = backend.local(&reqwest::Url::parse(&url).ok()?)?;
+                Some((http, local.to_string()))
+            });
+            let redirects = if local.is_some() { 0 } else { REDIRECTS };
+            let (http, location) = local.unwrap_or((&self.http, url.clone()));
+            // The runner was given each artifact's digest over its
+            // authenticated connection, so plain HTTP cannot change what it
+            // keeps, nor can the host a redirect names.
+            // No form of the artifact's bytes is larger than this, so more
+            // fail as they arrive.
+            let request = Download {
+                limit: demi_shared_artifacts::encoded_bound(artifact.size),
+                redirects,
+                headers: &headers,
+                // A signed URL that expires is asked for again below, and
+                // the download continues from the renewed one.
+                renewable: expires_at.is_some(),
+                ..Download::new(&location)
+            };
+            let downloaded = demi_shared_artifacts::download(
+                http,
+                request,
+                &staging,
+                cancel,
+                |held, total| report(held, total.unwrap_or(artifact.size)),
+            )
+            .await;
+            match downloaded {
+                // A URL that expired while the bytes arrived is asked for
+                // again, and the download resumes from the new one.
+                Err(demi_shared_artifacts::Error::Rejected { status: 403 })
+                    if expires_at.is_some_and(|expires| expires <= SystemTime::now()) =>
+                {
+                    let ArtifactSource::Url {
+                        url: renewed,
+                        expires_at: renewed_expiry,
+                    } = located(resolver, artifact, cancel).await?
+                    else {
+                        return Err(RuntimeError::Location(
+                            "the backend moved the artifact from a URL to a local path".into(),
+                        ));
+                    };
+                    url = renewed;
+                    expires_at = renewed_expiry;
+                }
+                // A refusal of an address not renewed ends the staging file
+                // the download kept for a renewal.
+                Err(refused @ demi_shared_artifacts::Error::Rejected { .. }) => {
+                    demi_shared_artifacts::discard(&staging).await;
+                    return Err(refused.into());
+                }
+                downloaded => break downloaded?,
+            }
+        };
+        received.verify(&staging, &expected, output, cancel).await?;
+        // The staging file has gone with its check.
+        let _removed =
+            tokio::fs::remove_file(self.root.join(format!("{STAGING}{sha256}{STAGING_LINE}"))).await;
+        Ok(())
     }
+}
+
+/// Where `resolver` says `artifact` is: a URL that has expired by the time
+/// it arrives is asked for once more, and a second expired one fails.
+async fn located(
+    resolver: &dyn ArtifactResolver,
+    artifact: &PackageArtifact,
+    cancel: &CancellationToken,
+) -> Result<ArtifactSource, RuntimeError> {
+    let expired = |source: &ArtifactSource| {
+        matches!(source, ArtifactSource::Url { expires_at: Some(expires), .. } if *expires <= SystemTime::now())
+    };
+    let source = resolver.resolve(artifact, cancel).await?;
+    if !expired(&source) {
+        return Ok(source);
+    }
+    let source = resolver.resolve(artifact, cancel).await?;
+    if expired(&source) {
+        return Err(RuntimeError::Location(
+            "the backend returned an expired URL".into(),
+        ));
+    }
+    Ok(source)
 }
 
 /// An artifact the image may hold: a file of a size and SHA-256, or an

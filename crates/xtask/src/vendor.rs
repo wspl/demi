@@ -97,7 +97,7 @@ pub fn run(command: Command) -> Result<(), Error> {
         }
     }
     crate::interruptible(|cancel| async move {
-        let client = demi_shared_artifacts::client()?;
+        let client = demi_shared_artifacts::download_client()?;
         let scratch = tempfile::tempdir()?;
         for crate_ in &vendored {
             let upstream = upstream(&client, crate_, scratch.path(), &cancel).await?;
@@ -156,10 +156,17 @@ async fn upstream(
     scratch: &Path,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, Error> {
-    let mut index = Vec::new();
     let url = format!("{INDEX}/{}", index_path(&crate_.name));
-    demi_shared_artifacts::download_measured(client, &url, DOWNLOAD_BYTES, &mut index, cancel)
-        .await?;
+    let (received, index) = demi_shared_artifacts::download_bytes(
+        client,
+        demi_shared_artifacts::Download {
+            limit: DOWNLOAD_BYTES,
+            ..demi_shared_artifacts::Download::new(&url)
+        },
+        cancel,
+    )
+    .await?;
+    received.plain()?;
     let mut recorded = None;
     for line in index
         .split(|byte| *byte == b'\n')
@@ -177,16 +184,17 @@ async fn upstream(
         name: crate_.name.clone(),
         reason: format!("it lists no version {}", crate_.version),
     })?;
-    let mut archive = Vec::new();
     let url = format!("{ARCHIVES}/{0}/{0}-{1}.crate", crate_.name, crate_.version);
-    let digest = demi_shared_artifacts::download_measured(
-        client,
-        &url,
-        DOWNLOAD_BYTES,
-        &mut archive,
-        cancel,
-    )
-    .await?;
+    let path = scratch.join(format!("{}-{}.crate", crate_.name, crate_.version));
+    let request = demi_shared_artifacts::Download {
+        limit: DOWNLOAD_BYTES,
+        ..demi_shared_artifacts::Download::new(&url)
+    };
+    demi_shared_artifacts::download(client, request, &path, cancel, |_, _| {})
+        .await?
+        .plain()?;
+    let digest = demi_shared_artifacts::digest(&path, DOWNLOAD_BYTES, cancel).await?;
+    let archive = tokio::fs::read(&path).await?;
     if digest.sha256 != recorded {
         return Err(Error::Checksum {
             name: crate_.name.clone(),

@@ -217,13 +217,9 @@ backend serves the next release's executables from the directory the
 upgrade names, and keeps no state of a prefetch past its connection.
 
 **One download, resumed.** Every download of a runner executable, ahead or
-in an update, keeps its compressed bytes in a staging file named by the
-release, `releases/.download-<release>/`, and continues a broken one with an
-HTTP Range request from the bytes it has, instead of starting again; it
-decompresses and checks the whole once it is complete, and a staging file
-that fails the check is removed. A download that receives nothing for 30
-seconds gives that connection up and opens a new one at once, resumed, since
-a new connection often takes a better path than one that stalled. The
+in an update, is Demi's one download
+([Downloads](native-runtime.md#downloads)), staged in a file named by the
+release, `releases/.download-<release>/`. The
 artifact route answers Range requests on the compressed file
 ([Runner releases](native-runtime.md#runner-releases)). An executable is
 about 10 MB compressed.

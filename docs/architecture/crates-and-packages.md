@@ -510,7 +510,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 #### `shared-artifacts`
 
-- **Owns:** verified download over HTTPS with a declared size and SHA-256
+- **Owns:** Demi's one download of a file over HTTP, resumed after a break or
+  a stall, which every file download goes through
+  ([Downloads](../execution/native-runtime.md#downloads)); verified download over HTTPS with a declared size and SHA-256
   (plain HTTP too for the runner's artifact cache, whose digests come from the
   pinned descriptor, and redirects followed for a server release's files,
   which the backend checks against its own records), and the measured
@@ -1898,7 +1900,7 @@ web-api-protocol -> conversation-socket-protocol, command-protocol, shared-types
 shared-gates -> none
 shared-artifacts -> none
 shared-cli -> none
-provider-common -> shared-types, shared-gates
+provider-common -> shared-types, shared-gates, shared-artifacts
 provider-anthropic-api -> shared-types, provider-common
 provider-openai-api -> shared-types, provider-common
 provider-google -> shared-types, provider-common
@@ -1953,7 +1955,7 @@ machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runne
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
-command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types
+command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types, shared-artifacts
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
 command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-types

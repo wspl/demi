@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 /// How long a download of a runner executable waits for its next byte
 /// before it gives that connection up and resumes on a new one
 /// (`runner.md` § Runner updates).
-pub const DOWNLOAD_STALL: Duration = Duration::from_secs(30);
+pub const DOWNLOAD_STALL: Duration = demi_shared_artifacts::Patience::DEFAULT.stall;
 
 /// An installation that an installer made, whose runner this process is:
 /// its executable is `<root>/releases/<release>/demi-runner`.
@@ -170,14 +170,31 @@ impl Installed {
         let compressed = download.join(format!("{name}{COMPRESSED_SUFFIX}"));
         // The digest came from the backend this runner trusts, as an
         // installer's does, so the transport cannot change what is kept; the
-        // token lets the backend count the device's progress.
-        let client =
-            demi_shared_artifacts::client_resuming(self.stall).map_err(io::Error::other)?;
-        let headers: Vec<(&str, &str)> = token
-            .map(|token| (TOKEN_HEADER, token.expose()))
-            .into_iter()
-            .collect();
-        demi_shared_artifacts::download_resumed(&client, url.as_str(), &headers, &compressed, cancel)
+        // token lets the backend count the device's progress. Connections
+        // that deliver nothing for twice the stall fail it, as the default
+        // patience does.
+        let client = demi_shared_artifacts::download_client_allowing_http().map_err(io::Error::other)?;
+        let headers = |_: &reqwest::Url| {
+            let mut headers = reqwest::header::HeaderMap::new();
+            if let Some(value) = token.and_then(|token| {
+                reqwest::header::HeaderValue::from_str(token.expose()).ok()
+            }) {
+                headers.insert(TOKEN_HEADER, value);
+            }
+            headers
+        };
+        let request = demi_shared_artifacts::Download {
+            patience: demi_shared_artifacts::Patience {
+                stall: self.stall,
+                silence: self.stall * 2,
+            },
+            headers: &headers,
+            ..demi_shared_artifacts::Download::new(url.as_str())
+        };
+        // The backend counts the bytes it serves to the device itself, and
+        // serves the compressed file without a content coding, which the
+        // check below decodes.
+        demi_shared_artifacts::download(&client, request, &compressed, cancel, |_, _| {})
             .await
             .map_err(io::Error::other)?;
         let stage = download.join("release");

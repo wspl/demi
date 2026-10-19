@@ -22,6 +22,7 @@ use demi_backend_providers::llm::vendors::VendorCatalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::SystemClock;
 use reqwest::Url;
+use tokio_util::sync::CancellationToken;
 use resvg::{tiny_skia, usvg};
 
 /// The marks' directory, from the repository's root.
@@ -103,7 +104,7 @@ impl std::fmt::Display for Unusable {
 }
 
 pub fn run(_options: Options) -> Result<(), Error> {
-    let client = demi_shared_artifacts::client().map_err(|error| Error::ModelsDev(error.to_string()))?;
+    let client = demi_shared_artifacts::download_client().map_err(|error| Error::ModelsDev(error.to_string()))?;
     let base = Url::parse(MODELS_DEV).expect("models.dev's address is a URL");
     let directory = crate::repository().join(LOGOS);
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -347,20 +348,20 @@ fn mark_url(base: &Url, vendor_id: &str) -> Url {
         .expect("a vendor ID joins as a path")
 }
 
-/// The body models.dev answers at `url`; any status but success stops the
+/// The file models.dev answers at `url`; any status but success stops the
 /// refresh, so a failed request never removes a mark.
 async fn fetch(client: &reqwest::Client, url: &Url) -> Result<Vec<u8>, Error> {
-    let failed = |error: reqwest::Error| Error::Fetch {
+    let failed = |error: demi_shared_artifacts::Error| Error::Fetch {
         url: url.clone(),
-        message: error.without_url().to_string(),
+        message: error.to_string(),
     };
-    let response = client
-        .get(url.clone())
-        .send()
-        .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(failed)?;
-    Ok(response.bytes().await.map_err(failed)?.to_vec())
+    let request = demi_shared_artifacts::Download::new(url.as_str());
+    let (received, bytes) =
+        demi_shared_artifacts::download_bytes(client, request, &CancellationToken::new())
+            .await
+            .map_err(failed)?;
+    received.plain().map_err(failed)?;
+    Ok(bytes)
 }
 
 /// The file names [`HAND_KEPT`] lists in `directory`.
@@ -470,7 +471,7 @@ mod tests {
             std::fs::write(file(name), body).unwrap();
         }
 
-        let client = demi_shared_artifacts::client_allowing_http().unwrap();
+        let client = demi_shared_artifacts::download_client_allowing_http().unwrap();
         let base = Url::parse(&server.url("/")).unwrap();
         let refresh = refresh(&client, &base, directory.path()).await.unwrap();
 

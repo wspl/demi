@@ -157,6 +157,61 @@ definitions take effect when the backend restarts. The catalog does not support
 live updates. Existing contexts retain their pinned binding. Connection loss and
 context disposal follow the [runner command lifetime](runner.md#command-lifetime).
 
+## Downloads
+
+Every file Demi downloads over HTTP goes through one downloader, the one
+`shared-artifacts` owns: a command program's artifact, a runner executable,
+the software a Cloud image's build installs, a file `demi web fetch` saves,
+a video a vendor generated. Each gets the same handling of a slow or broken
+link, so a fix to it helps them all. A stream, such as a model's answer, a
+command's pipe or a live view, is not a download.
+
+- **Resumed.** The bytes received are kept in a staging file the caller
+  names. A connection that breaks, or receives nothing for 30 seconds, is
+  replaced at once by a new one that asks with a Range request for the rest,
+  since a new connection often takes a better path than one that stalled. A
+  server that answers the Range request with the whole file starts it again,
+  and fails the download when it breaks before the end three times in a row
+  that way, since it would never finish.
+- **Staging kept for a resume.** A download stopped by the network or by
+  its caller keeps its staging file, so the next attempt continues it, and
+  so does a refusal of an address its caller renews, such as a signed URL
+  that expired during a long download, which continues from the renewed
+  address; one that fails its check, is refused otherwise or fails
+  otherwise removes it, and the
+  cache's pruning removes a staging file whose artifact is no longer named.
+  The staging file holds the bytes as the server sent them, with their
+  content coding recorded when the download starts; an answer that carries
+  no body, such as a 416 for a file already complete, never changes it. A
+  resumed answer whose range does not start where the staging file ends
+  starts the file again. A file whose first answer was decoded on the way,
+  as `demi web fetch` reads it, cannot be resumed and is asked for again,
+  uncoded, from its start.
+- **Bounded by what the caller knows.** A caller that knows the size, such as
+  an artifact's descriptor, has the download fail as soon as more bytes
+  arrive.
+- **No overall deadline.** A file of hundreds of megabytes takes minutes on a
+  slow link. A download fails when a new connection receives nothing for 60
+  seconds, when the server refuses it, or when its caller cancels it.
+- **Checked whole.** Once complete, the staged bytes are decoded when they
+  are compressed and checked against the size and the SHA-256 the caller
+  knows; a staging file that fails the check is removed.
+- **Progress to its caller.** The downloader reports the bytes received and
+  the size when it is known; the caller decides what to show, such as a
+  command's line at each tenth of the size.
+- **Errors name the cause.** A failure says what failed beneath the layer that
+  saw it, such as *connection reset* or *timed out*, not only *error
+  decoding response body*.
+- **Started by its caller, when the caller must see the answer first.**
+  `demi web fetch` reads a page whatever its status and only learns from the
+  answer's headers that it is a file to save; it hands that answer, when it
+  succeeded, to the downloader, which continues it as any download. Bytes
+  sent with a content coding are resumed only where the server answers a
+  Range request on the coded bytes; elsewhere a break starts the file again.
+- **Redirects followed by the downloader.** A caller that sends credentials,
+  such as a vendor's key for a generated video, decides at each redirect
+  which headers go on, so a key never reaches another origin.
+
 ## Install artifacts
 
 An **artifact** is a file the runner installs on its Host for a command
@@ -262,14 +317,18 @@ To download, the runner completes these steps:
    is not kept. This is the artifact library's archive installation, the one
    the Cloud image build uses.
 
-A download has no overall deadline, since an artifact of hundreds of megabytes
-takes minutes on a slow link; it fails when the
-connection makes no progress for 60 seconds, or when its work is cancelled. A
-command that installs on purpose, such as `demi browser install`, reports its
-download in its own output, a line at each tenth of the size and one as it
-unpacks, which the agent reads as it reads any command's output; an artifact
-a command needs on its first use installs silently, before the command
-starts.
+An artifact's download is Demi's one download ([Downloads](#downloads)),
+its compressed bytes staged beside the cache. A command that
+installs on purpose, such as `demi browser install`, reports its download in
+its own output, a line at each tenth of the size and one as it unpacks,
+which the agent reads as it reads any command's output. An artifact a
+command needs on its first use installs before the command starts and
+reports the same lines on the command's standard error once the install has
+taken two seconds, after a first line naming what it installs, *Installing
+demi.file 0.1.31 (1.5 MB)…*: an agent that waits minutes on an empty output
+takes the command for hung. A command run with `--json` reports none, since
+its caller reads its standard error as one JSON document. An install that fails is the command's failure,
+with its exit status.
 
 Concurrent callers share one download per digest. For example, five
 conversations that start Claude Code at once on a runner without it make one
@@ -1141,7 +1200,9 @@ sourced it
   `demi.file` with `https://demi.example.com/native-artifacts/<sha256>`. The
   backend serves the object from its data directory with the content coding
   it was stored with, without credentials and without expiry, like the runner
-  installers' downloads; any digest the store does not hold answers 404
+  installers' downloads, and answers a Range request with 206 and the stored
+  bytes asked for, so a broken download continues (S3 answers Range
+  requests itself); any digest the store does not hold answers 404
   `not_found`.
 
 Downloads from a local store need no credentials because they reveal nothing

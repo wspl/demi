@@ -659,7 +659,7 @@ mod tests {
         let catalog = fixture.publish(&objects).await.unwrap();
         let wanted = artifact(TARGETS[0]);
         // Nothing serves it before a runner needs it.
-        assert!(catalog.local_artifact(&wanted.sha256).await.is_none());
+        assert!(catalog.local_artifact(&wanted.sha256, 0).await.is_none());
         let resolver = catalog.resolver(&backend());
         let cancel = CancellationToken::new();
         let location = resolver
@@ -675,7 +675,11 @@ mod tests {
         );
         // The store holds the compressed copy, served in its content coding.
         let file = fixture.files.path().join(compressed_file("commands", TARGETS[0]));
-        let stored = catalog.local_artifact(&wanted.sha256).await.unwrap().unwrap();
+        let Ok(crate::native::StoredBytes::Stored(stored)) =
+            catalog.local_artifact(&wanted.sha256, 0).await.unwrap()
+        else {
+            panic!("the whole copy is stored");
+        };
         assert_eq!(
             stored.attributes.get(&Attribute::ContentEncoding).map(|value| value.as_ref()),
             Some("zstd")
@@ -692,7 +696,7 @@ mod tests {
         std::fs::write(&file, "not zstd").unwrap();
         let refused = resolver.resolve(&other, TARGETS[1], cancel.clone()).await.err().unwrap();
         assert!(refused.contains("commands-"), "{refused}");
-        assert!(catalog.local_artifact(&other.sha256).await.is_none());
+        assert!(catalog.local_artifact(&other.sha256, 0).await.is_none());
         // Nor is an artifact the catalog does not name.
         let unnamed = PackageArtifact {
             size: wanted.size + 1,
@@ -792,7 +796,7 @@ mod tests {
         let valid_for = location.expires_at.unwrap() - asked.as_millisecond();
         assert!((300_000..301_000).contains(&valid_for), "{valid_for}");
         // The backend serves none of an S3 store's objects itself.
-        assert!(catalog.local_artifact(&wanted.sha256).await.is_none());
+        assert!(catalog.local_artifact(&wanted.sha256, 0).await.is_none());
     }
 
     /// A runner executable's download: the runner release names it, and the
@@ -828,7 +832,7 @@ mod tests {
         assert!(refused.contains("demi-runner-"), "{refused}");
         let encoded = encode(&bytes);
         std::fs::write(&file, &encoded).unwrap();
-        let crate::native::RunnerBytes::Stored(stored) = catalog
+        let crate::native::StoredBytes::Stored(stored) = catalog
             .runner_executable(target, &runner, None, 0, &cancel)
             .await
             .unwrap()

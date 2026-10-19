@@ -40,13 +40,16 @@ pub async fn fetch(layout: &Layout, cancel: &CancellationToken) -> io::Result<Pa
         .tempdir_in(&gvisor)?;
     let archive = stage.path().join("gvisor.tar.bz2");
     let url = pinned.archive_url();
-    let client = demi_shared_artifacts::client_following_redirects().map_err(io::Error::other)?;
-    let mut file = tokio::fs::File::create(&archive).await?;
-    demi_shared_artifacts::download_measured(&client, &url, LARGEST, &mut file, cancel)
+    let client = demi_shared_artifacts::download_client().map_err(io::Error::other)?;
+    let request = demi_shared_artifacts::Download {
+        limit: LARGEST,
+        redirects: 10,
+        ..demi_shared_artifacts::Download::new(&url)
+    };
+    demi_shared_artifacts::download(&client, request, &archive, cancel, |_, _| {})
         .await
+        .and_then(|received| received.plain())
         .map_err(|error| io::Error::other(format!("{url}: {error}")))?;
-    tokio::io::AsyncWriteExt::flush(&mut file).await?;
-    drop(file);
     let root = stage.path().join("root");
     let unpacked = root.clone();
     let expected = pinned.archive_sha512().to_owned();

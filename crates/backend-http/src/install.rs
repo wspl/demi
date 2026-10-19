@@ -24,7 +24,7 @@ use axum_extra::headers::Range;
 use bytes::Bytes;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_runners::devices::Download;
-use demi_backend_runners::native::RunnerBytes;
+use demi_backend_runners::native::StoredBytes;
 use futures_util::stream::{BoxStream, StreamExt as _, TryStreamExt as _};
 use demi_backend_runners::install::{
     backend_url, powershell_script, read_runner_release, shell_script,
@@ -189,15 +189,7 @@ pub(super) async fn artifact(
         return Err(not_found());
     }
     let artifact = manifest.targets.get(&target).ok_or_else(not_found)?;
-    // A download from a byte on, as one that broke off resumes; a range
-    // with an end, or several, is answered with the whole, as HTTP allows.
-    let from = match range.filter(|_| compressed) {
-        Some(TypedHeader(range)) => match range.satisfiable_ranges(u64::MAX).collect::<Vec<_>>()[..] {
-            [(Bound::Included(from), Bound::Unbounded)] => from,
-            _ => 0,
-        },
-        None => 0,
-    };
+    let from = range.filter(|_| compressed).map_or(0, |TypedHeader(range)| range_start(&range));
     // The download ends the need when its requester goes away.
     let cancel = CancellationToken::new();
     let _abandoned = cancel.clone().drop_guard();
@@ -208,14 +200,8 @@ pub(super) async fn artifact(
         .await
         .map_err(ApiError::internal_message)?;
     let stored = match stored {
-        RunnerBytes::Stored(stored) => stored,
-        RunnerBytes::Beyond { size } => {
-            let answer = (
-                StatusCode::RANGE_NOT_SATISFIABLE,
-                [(CONTENT_RANGE, format!("bytes */{size}"))],
-            );
-            return Ok(answer.into_response());
-        }
+        StoredBytes::Stored(stored) => stored,
+        StoredBytes::Beyond { size } => return Ok(beyond(size)),
     };
     if compressed {
         // A runner's download names its device, whose page shows its bytes
@@ -268,21 +254,46 @@ async fn counted(state: &AppState, device: Option<DeviceRecord>, stored: Stored)
 }
 
 /// A local store's command executable, by its SHA-256, as S3 would serve
-/// it: its compressed copy, in zstd. Only one of the catalog's that a
-/// runner's need put in the store; any other digest answers 404.
+/// it: its compressed copy, in zstd, from a byte on for a Range request, as
+/// a download that broke off resumes (`native-runtime.md` § Install
+/// artifacts). Only one of the catalog's that a runner's need put in the
+/// store; any other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
     Path(sha256): Path<String>,
+    range: Option<TypedHeader<Range>>,
 ) -> Result<Response, ApiError> {
-    let Some(artifact) = state.services.native.local_artifact(&sha256).await else {
+    let from = range.map_or(0, |TypedHeader(range)| range_start(&range));
+    let Some(stored) = state.services.native.local_artifact(&sha256, from).await else {
         return Err(ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::NotFound,
             "No such native artifact",
         ));
     };
-    let artifact = artifact.map_err(|error| ApiError::internal_message(error.to_string()))?;
-    stored_download(artifact, Form::Coded, Delivery::Shared)
+    match stored.map_err(ApiError::internal_message)? {
+        StoredBytes::Stored(stored) => stored_download(stored, Form::Coded, Delivery::Shared),
+        StoredBytes::Beyond { size } => Ok(beyond(size)),
+    }
+}
+
+/// Where a download from a byte on starts, as one that broke off resumes; a
+/// range with an end, or several, is answered with the whole, as HTTP
+/// allows.
+fn range_start(range: &Range) -> u64 {
+    match range.satisfiable_ranges(u64::MAX).collect::<Vec<_>>()[..] {
+        [(Bound::Included(from), Bound::Unbounded)] => from,
+        _ => 0,
+    }
+}
+
+/// The answer to a range that starts past the stored `size` bytes.
+fn beyond(size: u64) -> Response {
+    (
+        StatusCode::RANGE_NOT_SATISFIABLE,
+        [(CONTENT_RANGE, format!("bytes */{size}"))],
+    )
+        .into_response()
 }
 
 /// What a stored artifact's download stands for.

@@ -107,12 +107,22 @@ impl Cisco {
         let failed = |error: &dyn std::fmt::Display| {
             DriverError::Failed(format!("Cisco's OpenH264 did not download from {url}: {error}"))
         };
-        let response = reqwest::get(&url).await.map_err(|error| failed(&error))?;
-        let response = response.error_for_status().map_err(|error| failed(&error))?;
-        let compressed = response.bytes().await.map_err(|error| failed(&error))?;
+        // The library is checked against its pinned hash once unpacked, so
+        // neither plain HTTP nor a redirect can change what is kept.
+        let client = demi_shared_artifacts::download_client_allowing_http().map_err(|error| failed(&error))?;
+        let request = demi_shared_artifacts::Download {
+            redirects: 10,
+            ..demi_shared_artifacts::Download::new(&url)
+        };
+        // Nothing cancels the fetch but the call that awaits it going away.
+        let (received, compressed) =
+            demi_shared_artifacts::download_bytes(&client, request, &tokio_util::sync::CancellationToken::new())
+                .await
+                .map_err(|error| failed(&error))?;
+        received.plain().map_err(|error| failed(&error))?;
         let library = tokio::task::spawn_blocking(move || {
             let mut library = Vec::new();
-            std::io::Read::read_to_end(&mut bzip2::read::BzDecoder::new(compressed.as_ref()), &mut library)
+            std::io::Read::read_to_end(&mut bzip2::read::BzDecoder::new(compressed.as_slice()), &mut library)
                 .map(|_| library)
         })
         .await

@@ -291,3 +291,24 @@ impl RequestBuilder {
         }
     }
 }
+
+/// A file's download goes the provider's way, to the network or to one of
+/// its owner's devices (`native-runtime.md` § Downloads); its client follows
+/// no redirect, as [`ProviderHttp::without_redirects`] makes it.
+impl demi_shared_artifacts::Fetch for ProviderHttp {
+    fn fetch(
+        &self,
+        url: reqwest::Url,
+        headers: HeaderMap,
+    ) -> futures_util::future::BoxFuture<'_, Result<reqwest::Response, demi_shared_artifacts::Unsent>> {
+        Box::pin(async move {
+            self.get(url).headers(headers).send().await.map_err(|error| match error {
+                SendError::Transport(error) => demi_shared_artifacts::Unsent::of(error),
+                // A device that refused may answer a later connection.
+                SendError::Device(refusal) => demi_shared_artifacts::Unsent::Connection(
+                    demi_shared_artifacts::Error::Download(refusal.to_string()),
+                ),
+            })
+        })
+    }
+}

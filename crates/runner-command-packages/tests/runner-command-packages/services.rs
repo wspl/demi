@@ -789,3 +789,65 @@ async fn invoke(
         String::from_utf8(stdout).unwrap(),
     )
 }
+
+/// A first use whose install takes longer than two seconds tells its
+/// command so, naming the package, its version and its size, before the
+/// install ends; the install's failure is the acquisition's
+/// (`native-runtime.md` § Install artifacts). The test's clock runs only
+/// while the install waits. Cost: a copy of the fixture.
+#[tokio::test(start_paused = true)]
+async fn a_slow_install_tells_its_command_what_it_installs() {
+    let root = tempfile::tempdir().unwrap();
+    let registry = registry(root.path()).await;
+    let services = registry.handle();
+    let (mut descriptor, path) = fixture(root.path(), 0).await;
+    // Bytes that fail their check once they have arrived.
+    let artifact = descriptor.targets.get_mut(host_target()).unwrap();
+    artifact.sha256 = "0".repeat(64);
+    let size = artifact.size;
+    let resolver = Arc::new(Local {
+        path,
+        calls: AtomicUsize::new(0),
+        gate: Some((Notify::new(), Notify::new())),
+    });
+    let (lines, mut told) = tokio::sync::mpsc::unbounded_channel();
+    let acquiring = tokio::spawn({
+        let services = services.clone();
+        let descriptor = descriptor.clone();
+        let resolver = resolver.clone();
+        async move {
+            services
+                .acquire_telling(
+                    &descriptor,
+                    resolver,
+                    Arc::new(NoBackend),
+                    &CancellationToken::new(),
+                    move |line| drop(lines.send(line)),
+                )
+                .await
+                .err()
+        }
+    });
+    let (started, proceed) = resolver.gate.as_ref().unwrap();
+    started.notified().await;
+    // The test's clock moves on while nothing else does: a command never
+    // told fails here rather than waiting.
+    let first = tokio::time::timeout(Duration::from_secs(60), told.recv()).await;
+    assert_eq!(
+        first.expect("the command is told within two seconds").unwrap(),
+        format!(
+            "Installing fixture-0 1.0.0 ({} MB)…\n",
+            demi_command_protocol::megabytes(size)
+        )
+    );
+    proceed.notify_one();
+    let failed = acquiring.await.unwrap().expect("the install fails");
+    assert!(
+        matches!(
+            &*failed,
+            RuntimeError::Artifact(demi_shared_artifacts::Error::Digest)
+        ),
+        "{failed:?}"
+    );
+    registry.close().await;
+}

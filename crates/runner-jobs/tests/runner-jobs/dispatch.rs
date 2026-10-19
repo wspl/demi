@@ -476,3 +476,103 @@ fn command_context() -> CommandContext {
         },
     }
 }
+
+/// What a native command's run says on its standard error while its
+/// program's install waits on a backend that never says where the program
+/// is: with `--json`, nothing, since its caller reads its standard error as
+/// one JSON document; without, that it installs, once the install has taken
+/// two seconds (`native-runtime.md` § Install artifacts). The run with
+/// `--json` starts first, so its two seconds have passed when the other
+/// tells. Cost: in process, about two seconds.
+#[tokio::test]
+async fn a_command_run_with_json_reports_no_install() {
+    use demi_command_protocol::{PackageArtifact, PackageDescriptor, host_target, testing::FIXTURE_OPERATIONS};
+    use tokio::io::AsyncBufReadExt as _;
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let descriptor = PackageDescriptor {
+            id: "demi.fixture".into(),
+            version: "1.0.0".into(),
+            protocol_version: 1,
+            operations: FIXTURE_OPERATIONS.map(String::from).to_vec(),
+            targets: BTreeMap::from([(
+                host_target().into(),
+                PackageArtifact {
+                    sha256: "a".repeat(64),
+                    size: 1 << 20,
+                },
+            )]),
+        };
+        let tree = json!({
+            "name": "fixture", "summary": "Fixture.", "kind": "native",
+            "binding": {"package": "demi.fixture", "operation": "echo"},
+            "output": {"json": {"type": "object"}}
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let manifest = demi_runner_protocol::manifest::Manifest::build(
+            [serde_json::from_value(tree).unwrap()],
+            [descriptor],
+        )
+        .unwrap();
+        let pipes = PipeClient::new(
+            &"http://127.0.0.1:1".parse().unwrap(),
+            watch::Sender::new(None).subscribe(),
+        )
+        .unwrap();
+        let mut dispatch =
+            Dispatch::new(directory.path(), serde_json::to_value(manifest).unwrap(), pipes).await;
+        let (context, _guard) = dispatch.context("job", command_context()).await;
+        let cancel = CancellationToken::new();
+        // Runs the command with `argv`, its standard error going to `stderr`.
+        let run = |argv: Vec<String>, stderr: tokio::io::DuplexStream| {
+            let request = LocalInvocation {
+                operation: "raw".into(),
+                invocation_id: "invocation".into(),
+                args: serde_json::to_value(RawCommand {
+                    context: context.id.clone(),
+                    root: "fixture".into(),
+                    argv,
+                    live: false,
+                })
+                .unwrap(),
+                cwd: directory.path().to_string_lossy().into_owned(),
+                env: BTreeMap::new(),
+            };
+            let endpoint = dispatch.server.endpoint().to_owned();
+            let cancel = cancel.clone();
+            tokio::spawn(async move {
+                let stdio = Stdio {
+                    stdin: tokio::io::empty(),
+                    stdout: tokio::io::sink(),
+                    stderr,
+                };
+                // Cancelled: how it ended says nothing here.
+                let _ended = forward(&endpoint, &request, stdio, cancel).await;
+            })
+        };
+        let (json_stderr, mut json_read) = tokio::io::duplex(1 << 16);
+        let quiet = run(vec!["--json".into()], json_stderr);
+        // Its install asks the backend where the program is, which never
+        // answers; the second run joins that install.
+        loop {
+            let message = dispatch.outgoing.recv().await.unwrap();
+            let value: Value = rmp_serde::from_slice(&message.into_bytes()).unwrap();
+            if value["type"] == "artifact_resolve" {
+                break;
+            }
+        }
+        let (stderr, told) = tokio::io::duplex(1 << 16);
+        let telling = run(Vec::new(), stderr);
+        let mut told = tokio::io::BufReader::new(told).lines();
+        let line = told.next_line().await.unwrap().unwrap();
+        assert_eq!(line, "Installing demi.fixture 1.0.0 (1.0 MB)…");
+        cancel.cancel();
+        quiet.await.unwrap();
+        telling.await.unwrap();
+        let mut said = String::new();
+        tokio::io::AsyncReadExt::read_to_string(&mut json_read, &mut said).await.unwrap();
+        assert!(!said.contains("Installing"), "{said}");
+        dispatch.close().await;
+    })
+    .await
+    .unwrap();
+}

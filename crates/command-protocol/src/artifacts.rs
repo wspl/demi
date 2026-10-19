@@ -153,6 +153,34 @@ pub enum ArtifactProgress {
     Unpack,
 }
 
+impl ArtifactProgress {
+    /// The line a command's output says of this point in the install of
+    /// `what`, such as `Downloading Chrome for Testing: 12 of 150 MB`
+    /// (`native-runtime.md` § Install artifacts).
+    pub fn line(self, what: &str) -> String {
+        match self {
+            Self::Download { done, total } => format!(
+                "Downloading {what}: {} of {} MB\n",
+                megabytes(done),
+                megabytes(total)
+            ),
+            Self::Unpack => format!("Unpacking {what}\n"),
+        }
+    }
+}
+
+/// `bytes` in megabytes as a person reads them: to a tenth below 10 MB, so a
+/// small download still moves, and whole ones above.
+pub fn megabytes(bytes: u64) -> String {
+    const MEGABYTE: u64 = 1 << 20;
+    let tenths = (bytes.saturating_mul(10) + MEGABYTE / 2) / MEGABYTE;
+    if tenths < 100 {
+        format!("{}.{}", tenths / 10, tenths % 10)
+    } else {
+        ((bytes + MEGABYTE / 2) / MEGABYTE).to_string()
+    }
+}
+
 /// Checks that `done` bytes are not more than the `total`.
 fn not_past(total: &u64) -> impl FnOnce(&u64, &()) -> garde::Result + '_ {
     move |done, _| {

@@ -20,6 +20,8 @@ test = false
 [dependencies]
 bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+tokio-util.workspace = true
 demi-command-sdk = { path = "../command-sdk" }
 demi-command-package-fetch-protocol = { path = "../command-package-fetch-protocol" }
 demi-shared-cli = { path = "../shared-cli", features = ["host-allocator"] }

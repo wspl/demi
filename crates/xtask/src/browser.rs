@@ -147,7 +147,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     crate::interruptible(|cancel| async move {
         // GitHub serves the runtime's assets through a redirect to
         // short-lived storage; what arrives is measured either way.
-        let client = demi_shared_artifacts::client_following_redirects()?;
+        let client = demi_shared_artifacts::download_client()?;
         let bytes = prepare(
             &client,
             &sources,
@@ -215,9 +215,13 @@ async fn prepare(
         reason,
     };
     let url = format!("{}/{version}.json", sources.metadata);
-    let mut bytes = Vec::new();
-    demi_shared_artifacts::download_measured(client, &url, METADATA_BYTES, &mut bytes, cancel)
-        .await?;
+    let (received, bytes) = demi_shared_artifacts::download_bytes(
+        client,
+        followed(&url, METADATA_BYTES),
+        cancel,
+    )
+    .await?;
+    received.plain()?;
     let metadata: Metadata =
         serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
     if metadata.version != version {
@@ -243,16 +247,7 @@ async fn prepare(
             });
         }
         let path = downloads.path().join(format!("{}.zip", platform.name));
-        let mut file = tokio::fs::File::create(&path).await?;
-        let digest = demi_shared_artifacts::download_measured(
-            client,
-            &download.url,
-            ARCHIVE_BYTES,
-            &mut file,
-            cancel,
-        )
-        .await?;
-        drop(file);
+        let digest = measured(client, &download.url, &path, cancel).await?;
         if !demi_shared_artifacts::holds(&path, platform.executable).await? {
             return Err(Error::NoExecutable {
                 platform: platform.name,
@@ -317,6 +312,30 @@ async fn prepare(
 
 /// The runtime release `runtime`'s `archive`, downloaded into `downloads`
 /// and measured, once it holds `entry`; the download is not kept.
+/// A download of `url` that follows redirects, as GitHub serves the
+/// runtime's assets through one to short-lived storage, and holds at most
+/// `limit` bytes.
+fn followed(url: &str, limit: u64) -> demi_shared_artifacts::Download<'_> {
+    demi_shared_artifacts::Download {
+        limit,
+        redirects: 10,
+        ..demi_shared_artifacts::Download::new(url)
+    }
+}
+
+/// Downloads the archive at `url` into `path` and measures what arrived.
+async fn measured(
+    client: &demi_shared_artifacts::Client,
+    url: &str,
+    path: &std::path::Path,
+    cancel: &CancellationToken,
+) -> Result<demi_shared_artifacts::Digest, Error> {
+    demi_shared_artifacts::download(client, followed(url, ARCHIVE_BYTES), path, cancel, |_, _| {})
+        .await?
+        .plain()?;
+    Ok(demi_shared_artifacts::digest(path, ARCHIVE_BYTES, cancel).await?)
+}
+
 async fn runtime_archive(
     client: &demi_shared_artifacts::Client,
     sources: &Sources<'_>,
@@ -328,11 +347,7 @@ async fn runtime_archive(
 ) -> Result<RuntimeArchive, Error> {
     let url = format!("{}/{runtime}/{archive}", sources.runtime);
     let path = downloads.join(archive);
-    let mut file = tokio::fs::File::create(&path).await?;
-    let digest =
-        demi_shared_artifacts::download_measured(client, &url, ARCHIVE_BYTES, &mut file, cancel)
-            .await?;
-    drop(file);
+    let digest = measured(client, &url, &path, cancel).await?;
     if !demi_shared_artifacts::holds(&path, entry).await? {
         return Err(Error::NoRuntimeEntry { archive, entry });
     }
@@ -459,7 +474,7 @@ mod tests {
     /// About 0.1 s: two fixture servers on this machine.
     #[tokio::test]
     async fn a_pinned_version_records_each_official_archive_with_its_executable() {
-        let client = demi_shared_artifacts::client_allowing_http().unwrap();
+        let client = demi_shared_artifacts::download_client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         let version = "153.0.8010.36";
         // The argument is Chrome's four-part version, or nothing is fetched.

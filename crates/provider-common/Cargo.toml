@@ -21,6 +21,7 @@ testing = ["dep:axum", "dep:tokio-rustls"]
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
 async-stream = "0.3"
 base64.workspace = true
 axum = { version = "0.8", optional = true }
