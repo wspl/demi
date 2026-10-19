@@ -135,17 +135,29 @@ impl Adb {
 
     /// Copies the device's `remote` file to `local`.
     pub async fn pull(&self, serial: &str, remote: &str, local: &Path) -> Result<()> {
+        self.pull_at_most(serial, remote, local, u64::MAX).await
+    }
+
+    /// Copies the device's `remote` file to `local`, failing once it runs
+    /// past `limit` bytes.
+    pub async fn pull_at_most(&self, serial: &str, remote: &str, local: &Path, limit: u64) -> Result<()> {
         let mut stream = self.open(serial, "sync:").await?;
         let failure = |error: std::io::Error| failed("pull", error);
         stream.write_all(&sync_header(b"RECV", remote.len())).await.map_err(failure)?;
         stream.write_all(remote.as_bytes()).await.map_err(failure)?;
         let mut file = tokio::fs::File::create(local).await.map_err(failure)?;
         let mut buffer = vec![0u8; SYNC_CHUNK];
+        let mut pulled: u64 = 0;
         loop {
             let (id, length) = sync_read_header(&mut stream).await.map_err(failure)?;
             match &id {
                 b"DATA" => {
                     let piece = buffer.get_mut(..length).ok_or_else(|| failed("pull", "a piece larger than 64 KiB"))?;
+                    pulled += length as u64;
+                    if pulled > limit {
+                        // The rest of the transfer goes with the connection.
+                        return Err(failed("pull", format!("{remote} is larger than {limit} bytes")));
+                    }
                     stream.read_exact(piece).await.map_err(failure)?;
                     file.write_all(piece).await.map_err(failure)?;
                 }

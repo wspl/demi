@@ -21,7 +21,7 @@ use tokio_util::{
 };
 
 use demi_command_package_mobile_protocol::{
-    live::{INPUT_FAILED, LiveDevice, NO_FOCUSED_FIELD, LiveModuleMessage, LiveViewerMessage},
+    live::{INPUT_FAILED, LiveCorners, LiveDevice, NO_FOCUSED_FIELD, LiveModuleMessage, LiveViewerMessage},
     mobile::{DeviceId, Orientation},
 };
 use demi_command_protocol::{CommandError, Completion};
@@ -442,6 +442,9 @@ struct Watched {
     area: Option<FrameArea>,
     /// The size and the orientation of the frame the view has.
     framed: Option<(FrameArea, Orientation)>,
+    /// Announces a frame the device came to know, until the device says
+    /// it announces none.
+    reframes: Option<watch::Receiver<()>>,
     _watching: Watching,
 }
 
@@ -570,6 +573,12 @@ async fn view(
                     changed = watched.activity.changed() => FromDevice::Activity(changed.is_ok()),
                     changed = watched.screen.changed() => FromDevice::Turned(changed.is_ok()),
                     changed = watched.awake.changed() => FromDevice::Power(changed.is_ok()),
+                    changed = async {
+                        match watched.reframes.as_mut() {
+                            Some(reframes) => reframes.changed().await.is_ok(),
+                            None => std::future::pending().await,
+                        }
+                    } => FromDevice::Reframed(changed),
                 },
                 None => std::future::pending().await,
             }
@@ -658,6 +667,19 @@ async fn view(
                 }
                 // The device ended; its stream's end says so.
                 FromDevice::Power(false) => {}
+                // The device came to know its frame, such as an Android
+                // screen's corners read in the background.
+                FromDevice::Reframed(true) => {
+                    if let Some(watched) = watched.as_mut() {
+                        watched.framed = None;
+                        frame(watched, writer).await;
+                    }
+                }
+                FromDevice::Reframed(false) => {
+                    if let Some(watched) = watched.as_mut() {
+                        watched.reframes = None;
+                    }
+                }
             },
             changed = revisions.changed() => {
                 if changed.is_err() {
@@ -693,6 +715,9 @@ enum FromDevice<E> {
     Turned(bool),
     /// Whether the screen turned on or off, false once the device is gone.
     Power(bool),
+    /// Whether the device came to know its frame, false once it announces
+    /// no more.
+    Reframed(bool),
 }
 
 /// Tells the page whether the watched device's screen is on.
@@ -779,6 +804,7 @@ async fn rewatch(
         })
         .await;
     let screen = open.device.screen();
+    let reframes = open.device.frame_changes();
     let mut awake = open.device.awake();
     awake.borrow_and_update();
     let current = Watched {
@@ -793,6 +819,7 @@ async fn rewatch(
         awake,
         area: None,
         framed: None,
+        reframes: Some(reframes),
     };
     screen_state(&current, writer).await;
     *watched = Some(current);
@@ -808,11 +835,14 @@ async fn frame(watched: &mut Watched, writer: &Writer<LiveModuleMessage>) {
         return;
     }
     let frame = match watched.open.device.frame(area).await {
-        Ok(frame) => crate::frame::live(frame, watched.open.platform, &watched.open.model, orientation),
+        Ok(Some(frame)) => Some(crate::frame::live(frame, watched.open.platform, &watched.open.model, orientation)),
+        // The screen's size goes to the view at once, which shows the
+        // picture without a frame until the device announces it.
+        Ok(None) => None,
         Err(error) => {
-            // The outline stands in for a frame the driver could not draw.
+            // The drawn frame stands in for a frame the driver could not draw.
             tracing::warn!("{}'s frame was not drawn: {error}", watched.open.name);
-            crate::frame::outline(0.0, watched.open.platform, &watched.open.model, orientation)
+            Some(crate::frame::drawn(LiveCorners::round(0.0), watched.open.platform, &watched.open.model, orientation))
         }
     };
     watched.framed = Some((area, orientation));

@@ -1630,7 +1630,7 @@ demi-backend (executable: configuration, composition)
   driver (`ios`), whose launch starts the `demi-ios-sim` helper it embeds on
   macOS, one per conversation, and which the tests drive through a scripted
   helper; the device's frame for the view (`frame`): the one the driver
-  draws, or the outline's corner radius and button marks; and the live view
+  draws, or the drawn frame's corner shapes and buttons; and the live view
   of a device as a source of `live-view`
   ([Mobile simulators](../mobile/mobile.md)). Its `testing` feature is a
   driver the tests script.
@@ -1753,7 +1753,7 @@ under `packages/`.
   coordinates, the overlay of the agent's activity (`LiveActivityOverlay`):
   the note that the agent is using the source and the mark where it acted,
   and the wireframe frame a view draws around a device whose own frame is
-  not installed (`LiveDeviceOutline`).
+  not installed (`LiveDrawnFrame`).
   It consumes an injected `ConversationClient` and injected plugin
   services, and ships no control-plane transport of its own.
 - **Public boundary:** source-path exports (`./*`) consumed by `web`,

@@ -12,7 +12,10 @@ use futures_util::future::BoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use demi_command_package_mobile_protocol::mobile::{Appearance, Orientation, MobilePlatform, PowerState};
+use demi_command_package_mobile_protocol::{
+    live::LiveCorners,
+    mobile::{Appearance, Orientation, MobilePlatform, PowerState},
+};
 use demi_live_view::stream::CaptureEvent;
 
 /// Why a driver could not do what it was asked.
@@ -180,17 +183,17 @@ pub struct FrameArea {
 pub enum Frame {
     /// The frame the platform installs for the model, drawn as a PNG that is
     /// transparent where `screen` shows the picture.
-    Drawn {
+    Image {
         png: Bytes,
         width: u32,
         height: u32,
         screen: PixelRect,
-        /// The radius of the screen's corners, in the frame's pixels.
-        corner_radius: f64,
+        /// The screen's corners, in the frame's pixels.
+        corners: LiveCorners,
     },
-    /// The platform installs none: the view draws an outline whose screen
-    /// corners have this radius, in the screen's points.
-    Undrawn { corner_radius: f64 },
+    /// The platform installs none: the view draws the frame itself,
+    /// around a screen with these corners, in the screen's points.
+    Drawn { corners: LiveCorners },
 }
 
 /// A running capture of the device's screen for the live view; dropping it
@@ -276,8 +279,16 @@ pub trait Device: Send + Sync + 'static {
     /// Records the screen into `file`, an MP4 that `record_stop` finishes.
     fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>>;
     fn record_stop(&self) -> BoxFuture<'_, Result<Recording>>;
-    /// The device's frame, fitted into `area`.
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Frame>>;
+    /// The device's frame, fitted into `area`; none while what it needs is
+    /// still being read from the device, which [`Self::frame_changes`]
+    /// announces once known.
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>>;
+    /// Changes once each time the frame [`Self::frame`] gives changes other
+    /// than by a turn of the screen; a device whose frame is known at once
+    /// never announces one, its channel closed.
+    fn frame_changes(&self) -> watch::Receiver<()> {
+        watch::channel(()).1
+    }
     /// Starts encoding the screen at `size` pixels.
     fn capture(
         &self,

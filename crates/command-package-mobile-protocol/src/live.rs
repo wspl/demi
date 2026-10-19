@@ -117,7 +117,7 @@ pub enum LiveSide {
     Bottom,
 }
 
-/// A button the outline marks: where it starts along its edge and how
+/// A button the drawn frame shows: where it starts along its edge and how
 /// long it is, as fractions of the edge's length, from its top or its left.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
@@ -130,13 +130,71 @@ pub struct LiveButtonMark {
     pub length: f64,
 }
 
+/// A point of a corner's shape, from the corner of the screen's box: `x`
+/// across from its upright edge, `y` down from its level one.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LiveCornerPoint {
+    #[garde(range(min = -4096.0, max = 4096.0))]
+    pub x: f64,
+    #[garde(range(min = -4096.0, max = 4096.0))]
+    pub y: f64,
+}
+
+/// One rounded corner of the screen (`mobile.md` § The live view), drawn
+/// as if it were the top left one: the view mirrors it into its place.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+pub enum LiveCorner {
+    /// A quarter circle of `radius`; none at 0, a square corner.
+    Round {
+        #[garde(range(min = 0.0, max = 4096.0))]
+        radius: f64,
+    },
+    /// The screen's edge across the corner, as the device's system UI
+    /// shapes it: a line through `points`, from where it leaves the
+    /// upright edge to where it meets the level one.
+    Curve {
+        #[garde(length(min = 2, max = 512), dive)]
+        points: Vec<LiveCornerPoint>,
+    },
+}
+
+/// The screen's four corners, as the picture shows them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveCorners {
+    #[garde(dive)]
+    pub top_left: LiveCorner,
+    #[garde(dive)]
+    pub top_right: LiveCorner,
+    #[garde(dive)]
+    pub bottom_right: LiveCorner,
+    #[garde(dive)]
+    pub bottom_left: LiveCorner,
+}
+
+impl LiveCorners {
+    /// Four quarter circles of `radius`.
+    pub fn round(radius: f64) -> Self {
+        let corner = LiveCorner::Round { radius };
+        Self {
+            top_left: corner.clone(),
+            top_right: corner.clone(),
+            bottom_right: corner.clone(),
+            bottom_left: corner,
+        }
+    }
+}
+
 /// A device's frame (`mobile.md` § The live view), turned as the picture
 /// is.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveFrame {
-    /// The frame Xcode installs for the model, drawn: a PNG of `width` ×
-    /// `height` pixels, transparent where `screen` shows the picture.
+    /// The frame Xcode or Android Studio installs for the model, drawn: a
+    /// PNG of `width` × `height` pixels, transparent where `screen` shows
+    /// the picture.
     #[serde(rename_all = "camelCase")]
     Image {
         /// The PNG, base64.
@@ -148,18 +206,18 @@ pub enum LiveFrame {
         height: u32,
         #[garde(dive)]
         screen: LiveRect,
-        /// The radius of the screen's corners, in the frame's pixels, which
-        /// the picture is rounded to.
-        #[garde(range(min = 0.0, max = 4096.0))]
-        corner_radius: f64,
+        /// The screen's corners, in the frame's pixels, which the picture
+        /// is clipped to.
+        #[garde(dive)]
+        corners: LiveCorners,
     },
-    /// No frame is installed: the view draws an outline around the screen,
-    /// whose corners have this radius in the screen's points, with its
-    /// buttons as marks.
+    /// No frame is installed: the view draws the device itself around the
+    /// screen, concentric with its corners, in the screen's points, with
+    /// its buttons.
     #[serde(rename_all = "camelCase")]
-    Outline {
-        #[garde(range(min = 0.0, max = 4096.0))]
-        corner_radius: f64,
+    Drawn {
+        #[garde(dive)]
+        corners: LiveCorners,
         #[garde(dive)]
         buttons: Vec<LiveButtonMark>,
     },
@@ -248,8 +306,12 @@ pub enum LiveModuleMessage {
         points_width: f64,
         #[garde(range(min = 1.0, max = 4096.0))]
         points_height: f64,
+        /// None while the device still reads what its frame needs, such as
+        /// an Android screen's corners: the screen's size comes at once, so
+        /// the picture never waits for the frame, and the frame follows in
+        /// another `Frame`.
         #[garde(dive)]
-        frame: LiveFrame,
+        frame: Option<LiveFrame>,
     },
     /// Whether the watched device's screen is on, as it watches it and
     /// again each time that changes.

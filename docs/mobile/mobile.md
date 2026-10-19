@@ -231,12 +231,49 @@ artwork fills only the framebuffer's rectangle; and each button is placed
 outside the frame from its anchor and alignment by its artwork's size less
 its travel, unrotated, then turned with the frame. The view lays the
 picture into its screen.
-A device with no frame installed, an Android emulator or a model Xcode
-draws none for, gets a frame the view draws itself: a thin outline of the
-device around the screen, with the screen's corner radius and the
-buttons as short marks on its sides, as a wireframe sketch. The frame
-turns with the picture. Its buttons are drawn, not pressed: the toolbar
-presses them.
+An Android emulator's frame is, the same way, the one Android Studio
+installs for its device, when the Host has Android Studio: the AVD's
+device (`hw.device.name`, such as `pixel_10`) names a folder of its
+device art (`device-art-resources`, in Android Studio's plugins), holding
+the frame's image, the screen's mask and a layout that places the screen
+in the frame for each orientation, which Android Studio's own emulator
+window draws. When the Host has several installations, a stable release
+comes before a preview wherever each is installed, and of two of the same
+channel the newer version. Demi reads the art from the Host's installation and ships
+none: the art is Android Studio's, under its licence, as the iOS frames are
+Xcode's, and a device Demi cannot read art for is drawn as below.
+
+A device with no frame installed, an Android emulator without device art
+or a model Xcode draws none for, gets a frame the view draws itself, in the look of the frames Xcode
+installs: a black body around the screen, a bezel of even width all
+round, about 4% of the screen's shorter side, whose outer corners follow the
+screen's at that distance, so screen and body are concentric; a thin rim a
+shade lighter than the body on its outer edge, which keeps the body's
+outline visible on the dark appearance's background as the metal edge of
+Xcode's frames does; its colors are those of Xcode's frames, the body's
+black and the rim's edge sampled from them, and whatever Xcode's frames
+change between the light and dark appearance, if anything, the drawn one
+changes alike, so the two families sit together in either; and the buttons as short black bars standing out of
+its sides, a shade lighter at their ends. It draws no camera, speaker or
+logo: what the screen shows of the device, a camera's cutout included, the
+device draws itself. An Android device draws its corners into
+the picture: its system UI paints the screen's rounded-corner shape, which
+on recent phones is a smooth curve and not a quarter circle (a Pixel 10's
+spans 196 pixels, its reported radius 132), black over the picture's
+corners. The Host reads that shape from the device, the rounded-corner
+drawable its system UI uses, from the package the device resolves it to,
+as a path; when it cannot read that package's drawable, it takes the circle
+of the radius the display reports (`rounded_corner_radius`), never another
+package's drawable of the same name, and when that too is unknown, square
+corners. The device art needs none of this: its mask is its own. Reading
+the shape never holds up the view: the picture and the user's input go on
+while it is read, the frame follows once it is known, and a read that takes
+too long or fails falls back as above. What the device sends is bounded:
+the package pulled from the device, the drawable's file in it and the
+parsed resource each have a size limit, past which the read fails and falls back; a simulator's
+corners are its device type's framebuffer mask. The view clips the
+picture to the shape and draws the body around it. The frame turns with
+the picture. Its buttons are drawn, not pressed: the toolbar presses them.
 
 Rotation and appearance are actions in the panel, as in Simulator.app's
 own menus (*Rotate Left*, *Toggle Appearance*), never a switch that shows

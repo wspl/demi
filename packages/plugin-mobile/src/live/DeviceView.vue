@@ -4,10 +4,14 @@ import {
   Button,
   CanvasPictures,
   LiveActivityOverlay,
-  LiveDeviceOutline,
+  LiveDrawnFrame,
   RegionStatus,
+  SQUARE_CORNERS,
   keyInput,
   observeSettledSize,
+  scaledCorners,
+  screenClip,
+  type ScreenCorners,
   touchInput,
   wheelInput,
 } from '@demicodes/plugin-sdk'
@@ -60,7 +64,7 @@ const frame = computed(() => {
   const drawn = framed.value
   return drawn && drawn.orientation === (picture.value?.orientation ?? drawn.orientation) ? drawn.frame : null
 })
-type Layout = { screen: Placement; cornerRadius: number; image: { src: string; box: Placement } | null }
+type Layout = { screen: Placement; corners: ScreenCorners; image: { src: string; box: Placement } | null }
 
 /** Where the picture sits in an area of `area`, with its corners, and the drawn frame around it, if any. */
 function layoutIn(area: Size): Layout | null {
@@ -72,25 +76,30 @@ function layoutIn(area: Size): Layout | null {
     const placed = placeInFrame(drawn, screen.value, area)
     return {
       screen: placed.screen,
-      cornerRadius: placed.cornerRadius,
+      corners: placed.corners,
       image: { src: `data:image/png;base64,${drawn.png}`, box: placed.frame },
     }
   }
   const placed = placeScreen(screen.value, area)
-  const cornerRadius = drawn?.kind === 'outline' ? drawn.cornerRadius * placed.width / screen.value.width : 0
-  return { screen: placed, cornerRadius, image: null }
+  const corners = drawn?.kind === 'drawn' ? scaledCorners(drawn.corners, placed.width / screen.value.width) : SQUARE_CORNERS
+  return { screen: placed, corners, image: null }
 }
 
 /** The picture follows the area at once. */
 const layout = computed(() => layoutIn(size.value))
 const placement = computed(() => layout.value?.screen ?? null)
-/** The outline the view draws when no frame is drawn for the device. */
-const outline = computed(() => {
+/** The frame the view draws itself when none is drawn for the device. */
+const drawnFrame = computed(() => {
   const drawn = frame.value
-  if (drawn?.kind !== 'outline' || !placement.value || !screen.value) {
+  if (drawn?.kind !== 'drawn' || !placement.value || !screen.value) {
     return null
   }
-  return { cornerRadius: layout.value?.cornerRadius ?? 0, buttons: drawn.buttons }
+  return { corners: layout.value?.corners ?? SQUARE_CORNERS, buttons: drawn.buttons }
+})
+/** The picture cut to the screen's corners, which the device draws black. */
+const clip = computed(() => {
+  const placed = placement.value
+  return placed && layout.value ? screenClip(placed.width, placed.height, layout.value.corners) : undefined
 })
 const activity = computed(() => watching.value ? props.session.state.activity : { active: false })
 const mark = computed(() => {
@@ -321,11 +330,11 @@ function composed(event: CompositionEvent): void {
 
 <template>
   <div ref="area" class="relative min-h-0 flex-1 overflow-hidden bg-sunken">
-    <LiveDeviceOutline
-      v-if="outline && placement && painted"
+    <LiveDrawnFrame
+      v-if="drawnFrame && placement && painted"
       :screen="placement"
-      :corner-radius="outline.cornerRadius"
-      :buttons="outline.buttons"
+      :corners="drawnFrame.corners"
+      :buttons="drawnFrame.buttons"
     />
     <canvas
       ref="canvas"
@@ -336,7 +345,7 @@ function composed(event: CompositionEvent): void {
         top: `${placement.top}px`,
         width: `${placement.width}px`,
         height: `${placement.height}px`,
-        borderRadius: layout?.cornerRadius ? `${layout.cornerRadius}px` : undefined,
+        clipPath: clip,
       } : undefined"
       @pointerdown="down"
       @pointermove="move"
@@ -365,7 +374,7 @@ function composed(event: CompositionEvent): void {
         top: `${placement.top}px`,
         width: `${placement.width}px`,
         height: `${placement.height}px`,
-        borderRadius: layout?.cornerRadius ? `${layout.cornerRadius}px` : undefined,
+        clipPath: clip,
       }"
       @pointerdown="down"
     >

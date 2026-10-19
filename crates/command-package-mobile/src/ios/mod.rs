@@ -19,7 +19,10 @@ use serde_json::{Value, json};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-use demi_command_package_mobile_protocol::mobile::{Appearance, Orientation, MobilePlatform, PowerState};
+use demi_command_package_mobile_protocol::{
+    live::LiveCorners,
+    mobile::{Appearance, Orientation, MobilePlatform, PowerState},
+};
 use demi_live_view::stream::CaptureEvent;
 
 use crate::{
@@ -642,7 +645,7 @@ impl Device for IosDevice {
         })
     }
 
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Frame>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>> {
         Box::pin(async move {
             #[derive(Deserialize)]
             #[serde(rename_all_fields = "camelCase", untagged)]
@@ -660,8 +663,10 @@ impl Device for IosDevice {
             let answer = self.call("frame", json!({ "width": area.width, "height": area.height, "scale": area.scale })).await?;
             let answered: Answered = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the device's frame does not read: {error}")))?;
-            Ok(match answered {
-                Answered::Drawn { width, height, screen, corner_radius } => Frame::Drawn {
+            Ok(Some(match answered {
+                // The helper reads the framebuffer mask's radius; its four
+                // corners are alike.
+                Answered::Drawn { width, height, screen, corner_radius } => Frame::Image {
                     png: answer
                         .blob
                         .ok_or_else(|| DriverError::Failed("the iOS helper sent no frame".into()))?,
@@ -673,10 +678,12 @@ impl Device for IosDevice {
                         width: screen.width,
                         height: screen.height,
                     },
-                    corner_radius,
+                    corners: LiveCorners::round(corner_radius),
                 },
-                Answered::Undrawn { corner_radius } => Frame::Undrawn { corner_radius },
-            })
+                Answered::Undrawn { corner_radius } => Frame::Drawn {
+                    corners: LiveCorners::round(corner_radius),
+                },
+            }))
         })
     }
 

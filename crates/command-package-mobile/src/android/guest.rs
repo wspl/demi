@@ -21,6 +21,24 @@ use tokio_util::sync::CancellationToken;
 use super::adb::Adb;
 use crate::driver::{DriverError, RawElement, Rect, Result};
 
+/// The largest APK copied from the device to read its files: SystemUI's
+/// is about 40 MB.
+const APK_LIMIT: u64 = 256 * 1024 * 1024;
+/// The largest file read from an APK, uncompressed: a corner's drawable is
+/// under a kilobyte.
+const APK_FILE_LIMIT: u64 = 1024 * 1024;
+
+/// A resource as the device resolves it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resolved {
+    /// A value as Android prints it, such as `132.0px`, or a file's path in
+    /// the APK that supplies it, such as `res/drawable/rounded_corner_top.xml`.
+    pub value: String,
+    /// The device's path of the APK the value comes from, the overlay that
+    /// replaces it or the package's own; none where Android does not say.
+    pub apk: Option<String>,
+}
+
 /// The port the helper listens on inside the emulator; another than the
 /// 9008 uiautomator2's own clients use, so the two do not collide.
 const PORT: u16 = 9018;
@@ -80,6 +98,13 @@ pub trait Guest: Send + Sync + 'static {
     fn record_start(&self) -> BoxFuture<'_, Result<()>>;
     /// Ends the recording and writes its MP4 to `file`.
     fn record_stop<'a>(&'a self, file: &'a Path) -> BoxFuture<'a, Result<()>>;
+    /// A resource of `package` as Android resolves it, its overlays
+    /// included (`cmd overlay lookup`), with the APK it resolves to.
+    fn resource<'a>(&'a self, package: &'a str, name: &'a str) -> BoxFuture<'a, Result<Resolved>>;
+    /// The files `paths` of the device's APK `apk`, none for one it does
+    /// not hold; the APK is copied from the device once for all of them.
+    /// An APK, or a file in it, larger than its limit does not read.
+    fn apk_files<'a>(&'a self, apk: &'a str, paths: &'a [String]) -> BoxFuture<'a, Result<Vec<Option<Vec<u8>>>>>;
     /// Stops what Demi runs inside the emulator.
     fn close(&self) -> BoxFuture<'_, ()>;
 }
@@ -322,6 +347,28 @@ impl Guest for U2 {
     }
 
 
+
+    fn resource<'a>(&'a self, package: &'a str, name: &'a str) -> BoxFuture<'a, Result<Resolved>> {
+        Box::pin(async move {
+            let said = self
+                .adb
+                .shell(&self.serial, &format!("cmd overlay lookup --verbose {package} {name}"))
+                .await?;
+            resolved(&said).ok_or_else(|| DriverError::Failed(format!("{name} does not resolve: {}", said.trim())))
+        })
+    }
+
+    fn apk_files<'a>(&'a self, apk: &'a str, paths: &'a [String]) -> BoxFuture<'a, Result<Vec<Option<Vec<u8>>>>> {
+        Box::pin(async move {
+            let copy = tempfile::NamedTempFile::new()
+                .map_err(|error| DriverError::Failed(format!("no temporary file for an APK: {error}")))?;
+            self.adb.pull_at_most(&self.serial, apk, copy.path(), APK_LIMIT).await?;
+            let paths = paths.to_vec();
+            tokio::task::spawn_blocking(move || read_apk(copy, &paths))
+                .await
+                .map_err(|error| DriverError::Failed(format!("reading an APK stopped: {error}")))?
+        })
+    }
 
     fn night(&self) -> BoxFuture<'_, Result<bool>> {
         Box::pin(async move {
@@ -568,4 +615,51 @@ fn awake(power: &str) -> Result<bool> {
         .find_map(|line| line.trim().strip_prefix("mWakefulness="))
         .ok_or_else(|| DriverError::Failed("the display's power state does not read".into()))?;
     Ok(matches!(wakefulness.trim(), "Awake" | "Dreaming"))
+}
+
+/// What `cmd overlay lookup --verbose` prints of a resource: the APKs it
+/// was looked up in, `Found initial:` the package's and `Overlaid:` each
+/// overlay's that replaces it, each a path and an entry number, and its
+/// value on the last line; an unknown resource prints an error, or nothing.
+pub fn resolved(said: &str) -> Option<Resolved> {
+    let value = said.lines().map(str::trim).rfind(|line| !line.is_empty())?;
+    if value.starts_with("Error") || value.contains("Exception") {
+        return None;
+    }
+    let apk = said
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            line.strip_prefix("Overlaid:").or_else(|| line.strip_prefix("Found initial:"))
+        })
+        .last()
+        .map(|apk| apk.trim().rsplit_once(" #").map_or(apk.trim(), |(path, _)| path).to_owned());
+    Some(Resolved { value: value.to_owned(), apk })
+}
+
+/// The files `paths` of the APK `copy`, none for one it does not hold,
+/// each read where the archive's central directory places it and no more
+/// than [`APK_FILE_LIMIT`] of it; the copy is removed as it drops.
+pub fn read_apk(copy: tempfile::NamedTempFile, paths: &[String]) -> Result<Vec<Option<Vec<u8>>>> {
+    use std::io::Read as _;
+    let unreadable = |error: &dyn std::fmt::Display| DriverError::Failed(format!("an APK does not read: {error}"));
+    let mut archive = zip::ZipArchive::new(copy.as_file()).map_err(|error| unreadable(&error))?;
+    paths
+        .iter()
+        .map(|path| {
+            let file = match archive.by_name(path) {
+                Ok(file) => file,
+                Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+                Err(error) => return Err(unreadable(&error)),
+            };
+            // The size the directory states is the device's word; the read
+            // stops past the limit whatever it says.
+            let mut bytes = Vec::new();
+            file.take(APK_FILE_LIMIT + 1).read_to_end(&mut bytes).map_err(|error| unreadable(&error))?;
+            if bytes.len() as u64 > APK_FILE_LIMIT {
+                return Err(unreadable(&format!("{path} is larger than {APK_FILE_LIMIT} bytes")));
+            }
+            Ok(Some(bytes))
+        })
+        .collect()
 }
