@@ -316,6 +316,7 @@
     "untitled": "New conversation"
   },
   "markdown": {
-    "mathUnavailable": "Math Formatting Is Unavailable"
+    "mathUnavailable": "Math Formatting Is Unavailable",
+    "attachmentMissing": "No attachment {id} in this conversation"
   }
 }

@@ -8,6 +8,7 @@ import type { AttachmentLookup, MessageFiles } from '../types'
 import type { HostImage } from '../../files/host-image'
 import type { FileContents } from '../../files/types'
 import type { MessageAgents } from '../../agent/agent-links'
+import { createPageI18n } from '../../i18n/text'
 
 // The files a message names (`file-previews.md` § Files named in messages).
 
@@ -291,6 +292,15 @@ test('a block says so of a number the conversation does not have, keeps its card
   const text = '<p>&lt;attachment id=&quot;a5&quot; /&gt;</p>\n'
   expect(renderMarkdown(block('a5'), { files: withAttachments })).toBe(text)
   expect(renderMarkdown(block('a5'))).toBe(text)
+})
+
+test('a block of a number the conversation does not have says so in the page\'s language', () => {
+  createPageI18n('zh-Hans')
+  try {
+    expect(renderMarkdown(block('a9'), { files: withAttachments })).toBe('<p class="attachment-missing">此对话中没有附件 a9</p>\n')
+  } finally {
+    createPageI18n('en')
+  }
 })
 
 // Images that follow each other stand side by side (`file-previews.md`

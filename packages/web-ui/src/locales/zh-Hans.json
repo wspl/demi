@@ -316,6 +316,7 @@
     "untitled": "新对话"
   },
   "markdown": {
-    "mathUnavailable": "数学公式显示不可用"
+    "mathUnavailable": "数学公式显示不可用",
+    "attachmentMissing": "此对话中没有附件 {id}"
   }
 }

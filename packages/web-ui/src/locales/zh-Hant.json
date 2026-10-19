@@ -316,6 +316,7 @@
     "untitled": "新對話"
   },
   "markdown": {
-    "mathUnavailable": "數學公式顯示無法使用"
+    "mathUnavailable": "數學公式顯示無法使用",
+    "attachmentMissing": "此對話中沒有附件 {id}"
   }
 }
