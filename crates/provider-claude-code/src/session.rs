@@ -161,10 +161,19 @@ pub(crate) fn left_out() -> Value {
     json!({ "type": LEFT_OUT })
 }
 
-/// The session's entries, unchained: each block's, with the calls of a run
-/// of tool-call blocks before their results, as the CLI writes a batch;
-/// then each entry of another session, as a fork's blocks hold, under an
-/// id of this one's.
+/// The session's entries, unchained: each block's, with the calls of one
+/// response before their results, as the CLI writes a batch; then each
+/// entry of another session, as a fork's blocks hold, under an id of this
+/// one's.
+///
+/// Adjacent tool-call blocks are one batch only while their calls belong to
+/// one assistant message: a call whose entry names another message than the
+/// batch's starts a batch of its own. Two responses that each called a tool
+/// with nothing between are then written call, result, call, result, as the
+/// CLI wrote them; written as one batch, the CLI pairs each call only with
+/// the user message right after its own message, finds the first call's
+/// result missing, and replaces it with an error of its own. A call no entry
+/// stands for is written in the message before it, so it joins the batch.
 fn entries(items: &[InferenceItem], blocks: &[RequestBlock], session: &Uuid) -> Vec<Value> {
     let alone: Vec<RequestBlock>;
     let blocks = if blocks.is_empty() {
@@ -181,9 +190,21 @@ fn entries(items: &[InferenceItem], blocks: &[RequestBlock], session: &Uuid) -> 
     let mut written = Vec::new();
     let mut index = 0;
     while index < blocks.len() {
+        let mut message = None;
         let calls = blocks[index..]
             .iter()
-            .take_while(|block| is_call(items, block))
+            .take_while(|block| {
+                if !is_call(items, block) {
+                    return false;
+                }
+                match (message, call_message(block)) {
+                    (Some(batch), Some(own)) if batch != own => false,
+                    (batch, own) => {
+                        message = batch.or(own);
+                        true
+                    }
+                }
+            })
             .count();
         if calls == 0 {
             let (entries, results) = block_entries(items, &blocks[index], &written);
@@ -210,6 +231,16 @@ fn is_call(items: &[InferenceItem], block: &RequestBlock) -> bool {
         items.get(block.items.start),
         Some(InferenceItem::ToolUse { .. })
     )
+}
+
+/// The id of the assistant message the CLI wrote a tool-call block's call
+/// in, when an entry of the block records it.
+fn call_message(block: &RequestBlock) -> Option<&str> {
+    block
+        .entries
+        .iter()
+        .find(|entry| entry["type"] == "assistant")
+        .and_then(|entry| entry["message"]["id"].as_str())
 }
 
 /// The id of the assistant message an assistant entry belongs to that

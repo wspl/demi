@@ -733,8 +733,15 @@ async fn output_waiting_before_a_run_writes_closes_the_process() {
         cli.initialized().await;
         cli.text("one");
         cli.result(1, 1);
-        // A turn nobody asked for, printed with the first.
-        cli.text("stray");
+        // A turn nobody asked for, printed with the first: an assistant
+        // message that answers no message the run wrote.
+        cli.say(json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg_stray", "type": "message", "role": "assistant", "model": "claude-test",
+                "content": [{ "type": "text", "text": "stray" }], "stop_reason": "end_turn",
+            },
+        }));
         cli.result(9, 9);
         cli
     });
@@ -753,6 +760,41 @@ async fn output_waiting_before_a_run_writes_closes_the_process() {
     assert_eq!(cli.signals(), [Signal::Terminate]);
     assert_eq!(placement.starts(), 2);
     assert!(resumed.unread().is_empty());
+}
+
+/// A kept process prints status lines between requests, such as the
+/// `command_lifecycle` line when a command ends; they answer no message, so
+/// the next run reads past them and writes to the same process. (Every one
+/// closed the process and rebuilt the session.)
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_status_line_between_requests_keeps_the_process() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(vec![user("first")]))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.text("one");
+        cli.result(1, 1);
+        cli.say(json!({
+            "type": "system", "subtype": "command_lifecycle", "status": "completed",
+            "session_id": "43a99fd4-6db6-4418-9922-b8f39b7a7f5c",
+        }));
+        cli
+    });
+    assert_eq!(events, [text("one"), usage(1, 1)]);
+
+    let mut second = answered_first();
+    second.push(user("second"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(second))), async {
+        cli.take().await;
+        cli.text("two");
+        cli.result(2, 2);
+    });
+    assert_eq!(events, [text("two"), usage(2, 2)]);
+    assert_eq!(placement.starts(), 1);
+    assert!(cli.signals().is_empty());
 }
 
 #[tokio::test(flavor = "local")]

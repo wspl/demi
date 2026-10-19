@@ -327,6 +327,71 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
 
 // 0.01 s.
 #[tokio::test(flavor = "local")]
+async fn calls_of_different_responses_are_written_each_with_its_result_and_parallel_calls_as_one_batch()
+ {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    // The model called `pwd` in one response and, once it had the result,
+    // `ls` and `id` together in the next, with nothing between.
+    let items = vec![
+        user("look around"),
+        tool_use("toolu_1", "pwd"),
+        tool_result("toolu_1", "/tmp"),
+        tool_use("toolu_2", "ls"),
+        tool_result("toolu_2", "a.txt"),
+        tool_use("toolu_3", "id"),
+        tool_result("toolu_3", "uid=1"),
+        user("continue"),
+    ];
+    let call = |uuid: &str, message: &str, id: &str, script: &str| {
+        assistant_entry(
+            uuid,
+            message,
+            json!({ "type": "tool_use", "id": id, "name": "mcp__main__shell_exec", "input": { "script": script } }),
+        )
+    };
+    let result = |uuid: &str, id: &str, text: &str| {
+        result_entry(
+            uuid,
+            json!({ "type": "tool_result", "tool_use_id": id, "content": [{ "type": "text", "text": text }] }),
+        )
+    };
+    let pwd = call("e-call-1", "msg_1", "toolu_1", "pwd");
+    let pwd_result = result("e-result-1", "toolu_1", "/tmp");
+    let ls = call("e-call-2", "msg_2", "toolu_2", "ls");
+    let ls_result = result("e-result-2", "toolu_2", "a.txt");
+    let id = call("e-call-3", "msg_2", "toolu_3", "id");
+    let id_result = result("e-result-3", "toolu_3", "uid=1");
+    let blocks = vec![
+        (1, vec![]),
+        (2, vec![pwd, pwd_result]),
+        (2, vec![ls, ls_result]),
+        (2, vec![id, id_result]),
+        (1, vec![]),
+    ];
+    let request = session_request(items, blocks);
+    let (_, cli) = tokio::join!(all_events(runtime.run(request)), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.result(3, 1);
+        cli
+    });
+
+    let session = cli.session();
+    let uuids: Vec<&str> = session
+        .iter()
+        .filter_map(|entry| entry["uuid"].as_str())
+        .filter(|uuid| uuid.starts_with("e-"))
+        .collect();
+    assert_eq!(
+        uuids,
+        ["e-call-1", "e-result-1", "e-call-2", "e-call-3", "e-result-2", "e-result-3"]
+    );
+}
+
+// 0.01 s.
+#[tokio::test(flavor = "local")]
 async fn a_forks_session_renames_its_parents_entries_and_entries_stand_for_their_blocks_while_their_media_are_sent()
  {
     let provider = provider().await;

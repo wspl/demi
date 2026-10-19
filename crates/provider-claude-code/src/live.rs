@@ -515,19 +515,22 @@ impl LiveCli {
         }
     }
 
-    /// Whether the process printed nothing since the `result` that ended
-    /// the last run, as a process in step with its requests never does: it
-    /// prints only what answers the input it is given. Its control requests
-    /// are answered, since they are no turn's output; any other output
-    /// waiting, or an end, means the process went on without a request, and
-    /// the run starts a new one from the transcript instead.
+    /// Whether the process printed nothing that answers a request since the
+    /// `result` that ended the last run, as a process in step with its
+    /// requests never does (`claude-code.md` § Which `result` ends a run).
+    /// Its control requests are answered, since they are no turn's output,
+    /// and the lines the decoder does not read, the CLI's status lines such
+    /// as `command_lifecycle`, are read past, since they answer no message;
+    /// any other output waiting, or an end, means the process went on
+    /// without a request, and the run starts a new one from the transcript
+    /// instead.
     pub(crate) async fn quiet(&mut self) -> bool {
         loop {
             let Some(line) = self.lines.next().now_or_never() else {
                 return true;
             };
             match self.read(line) {
-                Read::Blank => {}
+                Read::Blank | Read::Line(_, None) => {}
                 Read::Line(_, Some(Line::ControlRequest(line))) => {
                     if self.control_request(line).await.is_err() {
                         return false;

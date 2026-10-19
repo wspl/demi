@@ -522,10 +522,13 @@ oldest message not yet printed back, as a printed-back message would, and
 the run ends when no message is left, so a message that starts with `/`
 never leaves a run waiting. A turn that fails while a message the run wrote is not
 yet printed back fails the run and closes the process, which would otherwise
-go on answering that message after the run ended. Nothing a kept process
-prints is skipped: a run that finds
-output waiting before it writes, which a process in step with its requests
-never has, closes the process and starts a new one from the transcript.
+go on answering that message after the run ended. Between requests a
+kept process prints status lines that answer no message, such as the
+`command_lifecycle` line it prints when a command ends, and a run reads past
+them. Any other output waiting before a run writes, such as an assistant
+message or a `result`, answers a request the run did not make, which a
+process in step with its requests never prints: the run closes the process
+and starts a new one from the transcript.
 
 **Reading.** Each output line is decoded by its `type` tag
 ([Reading vendor input](providers.md#reading-vendor-input)). Partial messages
