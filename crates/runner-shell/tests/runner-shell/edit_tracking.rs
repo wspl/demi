@@ -160,13 +160,15 @@ async fn a_file_replaced_by_a_rename_is_modified_with_both_sides() {
     }
     // A formatter's output, written before the job.
     fs::write(outside.path().join("style.css"), "new style\n").unwrap();
+    // Quoted in the script: a Windows path's backslashes would be escapes
+    // (`runner.md` § Windows paths).
     let outside = outside.path().display();
     run(
         root.path(),
         tracking.clone(),
         &format!(
-            "printf 'new page\\n' > {outside}/page.ts; mv {outside}/page.ts page.ts; \
-             mv -b {outside}/style.css style.css; sed -i 's/1/2/' config"
+            "printf 'new page\\n' > '{outside}'/page.ts; mv '{outside}'/page.ts page.ts; \
+             mv -b '{outside}'/style.css style.css; sed -i 's/1/2/' config"
         ),
     )
     .await;
@@ -209,12 +211,14 @@ async fn a_move_carries_the_jobs_edits_to_the_new_name() {
     fs::write(root.path().join("unchanged.ts"), "same\n").unwrap();
     fs::create_dir(root.path().join("old")).unwrap();
     fs::write(root.path().join("old/x.ts"), "x\n").unwrap();
+    // Quoted in the script: a Windows path's backslashes would be escapes
+    // (`runner.md` § Windows paths).
     let outside = outside.path().display();
     run(
         root.path(),
         tracking.clone(),
         &format!(
-            "printf 'created\\n' > {outside}/new.ts; mv {outside}/new.ts new.ts; \
+            "printf 'created\\n' > '{outside}'/new.ts; mv '{outside}'/new.ts new.ts; \
              printf 'more\\n' >> a.ts; mv a.ts b.ts; \
              mv unchanged.ts still.ts; \
              printf 'y\\n' >> old/x.ts; mv old moved"
@@ -264,13 +268,15 @@ async fn a_job_lists_its_renames_and_removals_in_order() {
     fs::create_dir_all(root.path().join("scratch/deep")).unwrap();
     fs::write(root.path().join("scratch/a.txt"), "a\n").unwrap();
     fs::write(root.path().join("scratch/deep/b.txt"), "b\n").unwrap();
+    // Quoted in the script: a Windows path's backslashes would be escapes
+    // (`runner.md` § Windows paths).
     let outside_path = outside.path().display();
     run(
         root.path(),
         tracking.clone(),
         &format!(
             "mv untouched.ts renamed.ts; \
-             printf 'new page\\n' > {outside_path}/page.ts.new; mv {outside_path}/page.ts.new page.ts; \
+             printf 'new page\\n' > '{outside_path}'/page.ts.new; mv '{outside_path}'/page.ts.new page.ts; \
              rm -r scratch/; rm -f missing.txt; \
              printf 'first\\n' > again.txt; rm again.txt; printf 'second\\n' > again.txt"
         ),

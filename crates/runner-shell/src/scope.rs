@@ -355,19 +355,17 @@ impl Scope {
         #[cfg(feature = "testing")]
         let _waiting = self.activity.wait();
         self.ready(file, true)?;
-        // Bound pipe writes so cancellation remains observable under backpressure.
         #[cfg(windows)]
         let _operation = self.interruptible_io()?;
         if tracking && let (Some(edits), Some(path)) = (&self.edits, self.file_path(file)) {
             return edits.record(&path, || (&*file).write(buffer));
         }
         // A pipe that polls writable takes this much without blocking, so
-        // cancellation stays observable under backpressure.
+        // cancellation stays observable under backpressure; on Windows the
+        // cancellation ends a blocked write itself.
         #[cfg(unix)]
-        let bound = libc::PIPE_BUF;
-        #[cfg(windows)]
-        let bound = 512;
-        (&*file).write(&buffer[..buffer.len().min(bound)])
+        let buffer = &buffer[..buffer.len().min(libc::PIPE_BUF)];
+        (&*file).write(buffer)
     }
 
     fn open_file(
@@ -434,39 +432,12 @@ impl Scope {
         }
     }
 
+    /// A Windows read or write waits in the system call itself, which the
+    /// scope's cancellation ends (`interruptible_io`), so nothing waits
+    /// beforehand.
     #[cfg(windows)]
-    fn ready(&self, file: &File, writing: bool) -> io::Result<()> {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::{
-            Storage::FileSystem::{FILE_TYPE_PIPE, GetFileType},
-            System::Pipes::PeekNamedPipe,
-        };
-        self.check()?;
-        if writing || unsafe { GetFileType(file.as_raw_handle()) } != FILE_TYPE_PIPE {
-            return Ok(());
-        }
-        loop {
-            self.check()?;
-            let mut available = 0;
-            if unsafe {
-                PeekNamedPipe(
-                    file.as_raw_handle(),
-                    std::ptr::null_mut(),
-                    0,
-                    std::ptr::null_mut(),
-                    &mut available,
-                    std::ptr::null_mut(),
-                )
-            } == 0
-            {
-                // Read reports EOF or the concrete pipe error.
-                return Ok(());
-            }
-            if available > 0 {
-                return Ok(());
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
+    fn ready(&self, _file: &File, _writing: bool) -> io::Result<()> {
+        self.check()
     }
 
     #[cfg(windows)]

@@ -82,6 +82,12 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
             "dirname: missing operand\nTry 'dirname --help' for more information.\n",
         ),
         (
+            "stat",
+            1,
+            "",
+            "stat: missing operand\nTry 'stat --help' for more information.\n",
+        ),
+        (
             "dirname; ls nope; rm nope; dirname a/b",
             0,
             "a\n",
@@ -152,7 +158,18 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
             "",
             "./nosuch: No such file or directory\n",
         ),
-        ("./afile", 126, "", "./afile: Permission denied\n"),
+        // Windows runs any file, and one that is not a program fails as
+        // bash's does on Linux.
+        (
+            "./afile",
+            126,
+            "",
+            if cfg!(windows) {
+                "./afile: cannot execute binary file: Exec format error\n"
+            } else {
+                "./afile: Permission denied\n"
+            },
+        ),
         (
             "source nope.sh",
             1,
@@ -161,7 +178,12 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
         ),
         ("popd", 1, "", "popd: directory stack empty\n"),
         ("kill 999999", 1, "", "kill: (999999) - No such process\n"),
+        #[cfg(unix)]
         ("kill -- -999999", 1, "", "kill: (-999999) - No such process\n"),
+        // Windows has no process groups (`runner.md` § Builtins that act on
+        // a process).
+        #[cfg(windows)]
+        ("kill -- -999999", 1, "", "kill: (-999999) - Windows has no process groups\n"),
         ("kill %9", 1, "", "kill: %9: no such job\n"),
         (
             "kill",
@@ -184,7 +206,7 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
     for &(script, code, stdout, stderr) in cases {
         let root = fixture();
         let actual = job(root.path(), script).await;
-        if (actual.0, actual.1.as_str(), actual.2.as_str()) != (code, stdout, stderr) {
+        if (actual.0, actual.1.as_str()) != (code, stdout) || !super::same_errors(stderr, &actual.2) {
             failures.push(format!(
                 "{script}\n  expected {code} {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
                 actual.0, actual.1, actual.2
@@ -206,10 +228,9 @@ async fn ls_words_an_error_without_a_message_of_its_own_as_the_system_does() {
     let root = fixture();
     let name = "a".repeat(300);
     let (code, output, errors) = job(root.path(), &format!("ls {name}")).await;
-    assert_eq!(
-        (code, output.as_str(), errors),
-        (2, "", format!("ls: cannot access '{name}': File name too long\n"))
-    );
+    assert_eq!((code, output.as_str()), (2, ""));
+    let expected = format!("ls: cannot access '{name}': File name too long\n");
+    assert!(super::same_errors(&expected, &errors), "{errors}");
 }
 
 /// `find -exec`, `xargs` and `env` run a bare utility name as the job's own
@@ -337,6 +358,62 @@ async fn permission_and_file_system_utilities_take_paths_in_the_jobs_directory()
             (1, "chown: changing ownership of 'a': Operation not permitted\n")
         );
     }
+}
+
+/// On Windows, which has no Unix mode or owner, `chmod` and `chown` check
+/// what GNU's check and fail as GNU's do, a missing operand, an invalid
+/// mode, an unknown user or group or a missing file, while a valid change
+/// succeeds and changes nothing; `stat` takes GNU's directives with their
+/// flags and widths, `-f` included, and shows the mode `ls -l` shows.
+/// Before, `chmod` and `chown` succeeded silently whatever they were given,
+/// and `stat` failed on `%04a`, `%A` and `-f`. Runs in about 0.05 s.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn permission_utilities_and_stat_answer_as_gnus_do_on_windows() {
+    let user = std::env::var("USERNAME").unwrap();
+    let try_help = |name: &str| format!("Try '{name} --help' for more information.\n");
+    let cases: Vec<(String, u8, String, String)> = vec![
+        ("chmod".into(), 1, "".into(), format!("chmod: missing operand\n{}", try_help("chmod"))),
+        ("chmod 644".into(), 1, "".into(), format!("chmod: missing operand after '644'\n{}", try_help("chmod"))),
+        ("chmod abc a".into(), 1, "".into(), format!("chmod: invalid mode: 'abc'\n{}", try_help("chmod"))),
+        ("chmod 644 nope".into(), 1, "".into(), "chmod: cannot access 'nope': No such file or directory\n".into()),
+        (
+            "chmod 644 a && chmod +x a && chmod -w a && chmod u=rwx,go= a && chmod -R u+w dir && echo changed".into(),
+            0,
+            "changed\n".into(),
+            "".into(),
+        ),
+        ("chmod -v 644 a".into(), 0, "mode of 'a' retained as 0777 (rwxrwxrwx)\n".into(), "".into()),
+        ("chown".into(), 1, "".into(), format!("chown: missing operand\n{}", try_help("chown"))),
+        ("chown nosuchaccount a".into(), 1, "".into(), "chown: invalid user: 'nosuchaccount'\n".into()),
+        ("chown 0:nosuchaccount a".into(), 1, "".into(), "chown: invalid group: '0:nosuchaccount'\n".into()),
+        ("chown 0 nope".into(), 1, "".into(), "chown: cannot access 'nope': No such file or directory\n".into()),
+        (format!("chown {user}: a && chown -R 1000:1000 dir && echo owned"), 0, "owned\n".into(), "".into()),
+        ("stat -c '%04a %A %F %s %h' a".into(), 0, "0777 -rwxrwxrwx regular file 4 1\n".into(), "".into()),
+        (
+            "stat -c '%a|%-5s|%5s|%05s|%F' a dir".into(),
+            0,
+            "777|4    |    4|00004|regular file\n777|0    |    0|00000|directory\n".into(),
+            "".into(),
+        ),
+        ("stat -f -c '%T %l' a".into(), 0, "ntfs 255\n".into(), "".into()),
+        ("stat -c %U a".into(), 0, format!("{user}\n"), "".into()),
+        ("stat --printf '%n\\n' a".into(), 0, "a\n".into(), "".into()),
+        // GNU's `stat` words it so wherever it reads files with statx(2).
+        ("stat nope".into(), 1, "".into(), "stat: cannot statx 'nope': No such file or directory\n".into()),
+    ];
+    let mut failures = Vec::new();
+    for (script, code, stdout, stderr) in &cases {
+        let root = fixture();
+        let actual = job(root.path(), script).await;
+        if (actual.0, actual.1.as_str()) != (*code, stdout.as_str()) || !super::same_errors(stderr, &actual.2) {
+            failures.push(format!(
+                "{script}\n  expected {code} {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
+                actual.0, actual.1, actual.2
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
 /// A utility that writes from a worker thread of its own, as `du` prints
@@ -477,7 +554,7 @@ async fn diff_compares_directories_as_gnu_diff_does() {
     for &(script, code, stdout, stderr) in cases {
         let root = trees();
         let actual = job(root.path(), script).await;
-        if (actual.0, actual.1.as_str(), actual.2.as_str()) != (code, stdout, stderr) {
+        if (actual.0, actual.1.as_str()) != (code, stdout) || !super::same_errors(stderr, &actual.2) {
             failures.push(format!(
                 "{script}\n  expected {code} {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
                 actual.0, actual.1, actual.2
@@ -507,7 +584,7 @@ async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
         let (status, _, error) = job(root.path(), setup).await;
         assert_eq!((status, error.as_str()), (0, ""), "{setup}");
         let actual = job(root.path(), script).await;
-        if (actual.0, actual.1.as_str(), actual.2.as_str()) != (code, stdout, stderr) {
+        if (actual.0, actual.1.as_str()) != (code, stdout) || !super::same_errors(stderr, &actual.2) {
             failures.push(format!(
                 "{script}\n  expected {code} {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
                 actual.0, actual.1, actual.2
@@ -515,6 +592,154 @@ async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
         }
     }
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+/// A utility that walks a folder prints each path it builds as GNU's does,
+/// on every system: the folder as the user gave it, then the names below it
+/// joined with `/`, so on Windows `d\sub` prints its file as `d\sub/g`.
+/// Before, `ls -R` headed a subfolder and `cp -rv` named each source by its
+/// absolute path on every system; on Windows every walk joined names with
+/// `\`, and `du` and `rm -rv` printed absolute paths too. Runs in about
+/// 0.1 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn walking_utilities_print_the_paths_they_build_as_gnus_do() {
+    let setup = "mkdir -p d/sub && echo x > d/f && echo x > d/sub/g";
+    #[allow(unused_mut, reason = "only Windows adds its own cases")]
+    let mut cases = vec![
+        ("find d | sort", 0, "d\nd/f\nd/sub\nd/sub/g\n", ""),
+        ("ls -R d", 0, "d:\nf\nsub\n\nd/sub:\ng\n", ""),
+        ("du d | cut -f 2", 0, "d/sub\nd\n", ""),
+        ("grep -r x d | sort", 0, "d/f:x\nd/sub/g:x\n", ""),
+        ("rg x d | sort", 0, "d/f:x\nd/sub/g:x\n", ""),
+        ("rg --files d | sort", 0, "d/f\nd/sub/g\n", ""),
+        (
+            "cp -rv d e | sort",
+            0,
+            "'d' -> 'e'\n'd/f' -> 'e/f'\n'd/sub' -> 'e/sub'\n'd/sub/g' -> 'e/sub/g'\n",
+            "",
+        ),
+        (
+            "cp -r d e && rm -rv e | sort",
+            0,
+            "removed 'e/f'\nremoved 'e/sub/g'\nremoved directory 'e'\nremoved directory 'e/sub'\n",
+            "",
+        ),
+        (
+            "chmod -Rv u+w d | sed 's/ retained.*//' | sort",
+            0,
+            "mode of 'd'\nmode of 'd/f'\nmode of 'd/sub'\nmode of 'd/sub/g'\n",
+            "",
+        ),
+    ];
+    #[cfg(windows)]
+    cases.extend([
+        (r"find 'd\sub'", 0, "d\\sub\nd\\sub/g\n", ""),
+        (r"grep -r x 'd\sub'", 0, "d\\sub/g:x\n", ""),
+        (r"ls -R 'd\.'", 0, "d\\.:\nf\nsub\n\nd\\./sub:\ng\n", ""),
+    ]);
+    expect_cases(setup, &cases).await;
+}
+
+/// A recursive `chmod` or `chown` on Windows that cannot read a child
+/// reports it, unless `-f`, goes on with the rest and ends with 1, as GNU's
+/// walk does; before, it skipped the child silently and ended with 0. The
+/// child is a name ending in a dot, which Windows lists but cannot open by
+/// its plain path, so the test makes it through a `\\?\` path. Runs in
+/// about 0.05 s.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_permission_walk_on_windows_reports_a_child_it_cannot_read() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("d")).unwrap();
+    fs::write(root.path().join("d/f"), "x\n").unwrap();
+    let unreadable = format!(r"\\?\{}\d\dot.", root.path().display());
+    fs::write(&unreadable, "x\n").unwrap();
+    let mut failures = Vec::new();
+    for (script, stdout, stderr) in [
+        (
+            "chmod -Rv 644 d",
+            "mode of 'd' retained as 0777 (rwxrwxrwx)\nmode of 'd/f' retained as 0777 (rwxrwxrwx)\n",
+            "chmod: cannot access 'd/dot.': No such file or directory\n",
+        ),
+        ("chmod -Rf 644 d", "", ""),
+        ("chown -R 0 d", "", "chown: cannot access 'd/dot.': No such file or directory\n"),
+    ] {
+        let actual = job(root.path(), script).await;
+        if (actual.0, actual.1.as_str()) != (1, stdout) || !super::same_errors(stderr, &actual.2) {
+            failures.push(format!(
+                "{script}\n  expected 1 {stdout:?} {stderr:?}\n  actual   {} {:?} {:?}",
+                actual.0, actual.1, actual.2
+            ));
+        }
+    }
+    fs::remove_file(&unreadable).unwrap();
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+/// `cp -s` makes each link as GNU's does: to the source as named, which
+/// must be absolute unless the link is in the current directory, where a
+/// relative one still reaches it; otherwise each file is reported and the
+/// copy goes on, ending with 1. Before, `cp -rs d e` linked `e/f` to `d/f`,
+/// which from `e` names `e/d/f`, and ended with 0. Runs in about 0.05 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cp_links_to_its_sources_as_gnus_cp_does() {
+    // Windows makes no link without a privilege, so only the refusal,
+    // which makes none, runs everywhere.
+    #[allow(unused_mut, reason = "only Unix makes links")]
+    let mut cases = vec![(
+        "cp -rs d e 2> err; s=$?; sort err; find e | sort; echo $s",
+        0,
+        "cp: e/f: can make relative symbolic links only in current directory\n\
+         cp: e/sub/g: can make relative symbolic links only in current directory\n\
+         e\ne/sub\n1\n",
+        "",
+    )];
+    #[cfg(unix)]
+    cases.extend([
+        (
+            r#"cp -rs "$PWD/d" e && readlink e/sub/g | sed "s|^$PWD/||" && cat e/sub/g"#,
+            0,
+            "d/sub/g\nx\n",
+            "",
+        ),
+        ("cp -s d/f link && readlink link && cat link", 0, "d/f\nx\n", ""),
+    ]);
+    expect_cases("mkdir -p d/sub && echo x > d/f && echo x > d/sub/g", &cases).await;
+}
+
+/// A utility's file operand `/dev/null` and `/dev/zero` are the devices on
+/// every system, Windows included, as in Git Bash: `/dev/null` reads
+/// nothing and takes what is written, `/dev/zero` reads zeros. Before, on
+/// Windows each named a missing file. A utility that reads the operand's
+/// metadata first (cat, head, tail, diff, rg, ls, du, cp's source) still
+/// fails on Windows, which gives the null device none, and is left out.
+/// Runs in about 0.1 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dev_null_and_dev_zero_are_devices_for_utilities() {
+    expect_cases(
+        "echo hi > x",
+        &[
+            ("wc -l /dev/null", 0, "0 /dev/null\n", ""),
+            ("sort /dev/null x", 0, "hi\n", ""),
+            ("uniq /dev/null", 0, "", ""),
+            ("cut -c 1 /dev/null", 0, "", ""),
+            ("paste /dev/null x", 0, "\thi\n", ""),
+            ("nl /dev/null", 0, "", ""),
+            ("tac /dev/null", 0, "", ""),
+            ("od -An /dev/null", 0, "", ""),
+            ("cmp /dev/null /dev/null", 0, "", ""),
+            ("grep -c hi /dev/null", 1, "0\n", ""),
+            ("sed p /dev/null", 0, "", ""),
+            ("jq . /dev/null", 0, "", ""),
+            ("cp x /dev/null && cat x", 0, "hi\n", ""),
+            ("tee /dev/null < x", 0, "hi\n", ""),
+            ("sort -o /dev/null x", 0, "", ""),
+            ("uniq x /dev/null", 0, "", ""),
+            ("od -An -tx1 -N 2 /dev/zero", 0, " 00 00\n", ""),
+            ("cmp -n 8 /dev/zero /dev/zero", 0, "", ""),
+        ],
+    )
+    .await;
 }
 
 /// A utility whose reader has closed the pipe ends with 141 and nothing on
@@ -556,8 +781,8 @@ async fn a_closed_pipe_ends_utilities_quietly_as_sigpipe_does() {
 async fn diff_reports_binary_files_as_gnu_diff_does() {
     let setup = "printf 'a\\0b\\n' > z1; printf 'a\\0c\\n' > z2; cp z1 z3; printf 'x\\n' > tx; \
                  mkdir d1 d2; cp z1 d1/z; cp z2 d2/z; \
-                 head -c 4000 /dev/zero | tr '\\0' a > b4; printf '\\0' >> b4; \
-                 head -c 5000 /dev/zero | tr '\\0' a > b5; printf '\\0\\n' >> b5; printf 'x\\n' > c";
+                 printf '%4000s' '' | tr ' ' a > b4; printf '\\0' >> b4; \
+                 printf '%5000s' '' | tr ' ' a > b5; printf '\\0\\n' >> b5; printf 'x\\n' > c";
     expect_cases(
         setup,
         &[
@@ -583,29 +808,30 @@ async fn diff_reports_binary_files_as_gnu_diff_does() {
 /// one without a match and drops the lines that are not UTF-8 silently.
 /// Before, a matching line before the NUL printed, and under `-I` a line
 /// that was not UTF-8 printed raw, which made a job's whole stdout binary.
+/// The file with a NUL is `zeroed`, as `nul` names a device on Windows.
 /// `five` takes the literal fast path, `f.ve` the line-at-a-time one. The
 /// expected outputs are GNU grep 3.12's. Runs in about 0.05 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grep_treats_binary_files_as_gnu_grep_does() {
-    let setup = "printf 'five\\n\\377 five\\nfive again\\n' > enc; printf 'five\\nsix\\n\\0\\n' > nul; \
-                 head -c 40000 /dev/zero | tr '\\0' a > latenul; printf '\\nfive\\n\\0\\n' >> latenul; \
+    let setup = "printf 'five\\n\\377 five\\nfive again\\n' > enc; printf 'five\\nsix\\n\\0\\n' > zeroed; \
+                 printf '%40000s' '' | tr ' ' a > latenul; printf '\\nfive\\n\\0\\n' >> latenul; \
                  printf 'five\\n' > plain";
     let lines = "enc:1:five\nenc:3:five again\nplain:1:five\n";
-    let notices = "grep: enc: binary file matches\ngrep: nul: binary file matches\n\
+    let notices = "grep: enc: binary file matches\ngrep: zeroed: binary file matches\n\
                    grep: latenul: binary file matches\n";
     expect_cases(
         setup,
         &[
-            ("grep -n five enc nul latenul plain", 0, lines, notices),
-            ("grep -n f.ve enc nul latenul plain", 0, lines, notices),
-            ("grep -n -I five enc nul latenul plain", 0, lines, ""),
-            ("grep -n --binary-files=without-match f.ve enc nul latenul plain", 0, lines, ""),
-            ("grep -I -c five enc nul latenul", 0, "enc:3\nnul:0\nlatenul:0\n", ""),
-            ("grep -I -L five nul plain", 0, "nul\n", ""),
-            ("grep -I -l five nul", 1, "", ""),
+            ("grep -n five enc zeroed latenul plain", 0, lines, notices),
+            ("grep -n f.ve enc zeroed latenul plain", 0, lines, notices),
+            ("grep -n -I five enc zeroed latenul plain", 0, lines, ""),
+            ("grep -n --binary-files=without-match f.ve enc zeroed latenul plain", 0, lines, ""),
+            ("grep -I -c five enc zeroed latenul", 0, "enc:3\nzeroed:0\nlatenul:0\n", ""),
+            ("grep -I -L five zeroed plain", 0, "zeroed\n", ""),
+            ("grep -I -l five zeroed", 1, "", ""),
             ("grep -o five enc", 0, "five\nfive\nfive\n", ""),
-            ("grep -c five enc nul", 0, "enc:3\nnul:1\n", ""),
-            ("grep -a -c five nul latenul", 0, "nul:1\nlatenul:1\n", ""),
+            ("grep -c five enc zeroed", 0, "enc:3\nzeroed:1\n", ""),
+            ("grep -a -c five zeroed latenul", 0, "zeroed:1\nlatenul:1\n", ""),
         ],
     )
     .await;

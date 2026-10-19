@@ -76,14 +76,8 @@ pub const UTILITIES: &[(&str, Entry)] = &[
     ("rg", ripgrep::uumain),
 ];
 
-#[cfg(unix)]
 fn stat(args: Vec<std::ffi::OsString>) -> i32 {
     uu_stat::uumain(args.into_iter())
-}
-
-#[cfg(windows)]
-fn stat(args: Vec<std::ffi::OsString>) -> i32 {
-    windows::stat(args)
 }
 
 #[cfg(unix)]
@@ -96,26 +90,14 @@ fn chown(args: Vec<std::ffi::OsString>) -> i32 {
     uu_chown::uumain(args.into_iter())
 }
 
-/// Windows has no Unix mode or owner to change: the utilities succeed
-/// without changing either.
 #[cfg(windows)]
 fn chmod(args: Vec<std::ffi::OsString>) -> i32 {
-    windows_permissions("chmod", &args)
+    windows::chmod(args)
 }
 
 #[cfg(windows)]
 fn chown(args: Vec<std::ffi::OsString>) -> i32 {
-    windows_permissions("chown", &args)
-}
-
-#[cfg(windows)]
-fn windows_permissions(name: &str, args: &[std::ffi::OsString]) -> i32 {
-    if args.iter().any(|arg| arg == "--help") {
-        uucore::context_println!(
-            "Usage: {name} [OPTION]... FILE...\nWindows permission compatibility: succeeds without changing ownership or mode."
-        );
-    }
-    0
+    windows::chown(args)
 }
 
 /// The usage `diff` and `cmp` print for `--help`, which their library lacks.

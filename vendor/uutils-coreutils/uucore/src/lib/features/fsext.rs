@@ -672,7 +672,7 @@ impl FsUsage {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub trait FsMeta {
     fn fs_type(&self) -> i64;
     fn io_size(&self) -> u64;
@@ -920,6 +920,132 @@ impl FsMeta for StatFs {
     }
 }
 
+/// A Windows volume's file system, as `stat -f` shows it: the counts are in
+/// clusters, its ID is the volume's serial number, and it has no file nodes.
+#[cfg(windows)]
+#[derive(Debug, Clone)]
+pub struct StatFs {
+    cluster: u64,
+    total: u64,
+    free: u64,
+    available: u64,
+    serial: u32,
+    namelen: u32,
+    fs_type: i64,
+}
+
+#[cfg(windows)]
+impl FsMeta for StatFs {
+    fn fs_type(&self) -> i64 {
+        self.fs_type
+    }
+    fn io_size(&self) -> u64 {
+        self.cluster
+    }
+    fn block_size(&self) -> i64 {
+        self.cluster as i64
+    }
+    fn total_blocks(&self) -> u64 {
+        self.total
+    }
+    fn free_blocks(&self) -> u64 {
+        self.free
+    }
+    fn avail_blocks(&self) -> u64 {
+        self.available
+    }
+    fn total_file_nodes(&self) -> u64 {
+        0
+    }
+    fn free_file_nodes(&self) -> u64 {
+        0
+    }
+    fn fsid(&self) -> u64 {
+        u64::from(self.serial)
+    }
+    fn namelen(&self) -> u64 {
+        u64::from(self.namelen)
+    }
+}
+
+/// The file system of the volume `path` is on, as statfs(2) reports it on
+/// Linux: the Linux magic number of the Windows file system's kind, so
+/// that `%T` names it as GNU's `stat` does (`ntfs`, `msdos`, `exfat`), or
+/// 0 for a kind Linux does not know. An error is its message.
+#[cfg(windows)]
+pub fn statfs(path: &OsStr) -> Result<StatFs, String> {
+    use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetVolumePathNameW};
+    let path = crate::context::resolve(path);
+    // The volume of a path that does not exist is a guess from its letters.
+    std::fs::metadata(&path).map_err(|error| crate::error::io_message(&error))?;
+    let failed = || crate::error::io_message(&IOError::last_os_error());
+    let mut root = [0u16; MAX_PATH];
+    let wide = to_nul_terminated_wide_string(&path);
+    // SAFETY: both buffers live through the call, and `root` holds its length.
+    if unsafe { GetVolumePathNameW(wide.as_ptr(), root.as_mut_ptr(), root.len() as u32) } == 0 {
+        return Err(failed());
+    }
+    let (mut sectors_per_cluster, mut bytes_per_sector, mut free_clusters, mut clusters) =
+        (0, 0, 0, 0);
+    // SAFETY: `root` is a nul-terminated path, and each count outlives the call.
+    if unsafe {
+        GetDiskFreeSpaceW(
+            root.as_ptr(),
+            &raw mut sectors_per_cluster,
+            &raw mut bytes_per_sector,
+            &raw mut free_clusters,
+            &raw mut clusters,
+        )
+    } == 0
+    {
+        return Err(failed());
+    }
+    let (mut available, mut total, mut free) = (0u64, 0u64, 0u64);
+    // SAFETY: as above; the byte counts are what the caller may use, which
+    // a quota limits, so they give the blocks available to it.
+    if unsafe {
+        GetDiskFreeSpaceExW(root.as_ptr(), &raw mut available, &raw mut total, &raw mut free)
+    } == 0
+    {
+        return Err(failed());
+    }
+    let (mut serial, mut namelen, mut name) = (0u32, 0u32, [0u16; MAX_PATH]);
+    // SAFETY: `root` is a nul-terminated path, and `name` holds its length.
+    if unsafe {
+        GetVolumeInformationW(
+            root.as_ptr(),
+            ptr::null_mut(),
+            0,
+            &raw mut serial,
+            &raw mut namelen,
+            ptr::null_mut(),
+            name.as_mut_ptr(),
+            name.len() as u32,
+        )
+    } == 0
+    {
+        return Err(failed());
+    }
+    let fs_type = match LPWSTR2String(&name).as_str() {
+        "NTFS" => 0x5346_544E,
+        "FAT" | "FAT12" | "FAT16" | "FAT32" => 0x4D44,
+        "exFAT" => 0x2011_BAB0,
+        "UDF" => 0x1501_3346,
+        "CDFS" => 0x9660,
+        _ => 0,
+    };
+    let cluster = u64::from(sectors_per_cluster) * u64::from(bytes_per_sector);
+    Ok(StatFs {
+        cluster,
+        total: u64::from(clusters),
+        free: u64::from(free_clusters),
+        available: available / cluster.max(1),
+        serial,
+        namelen,
+        fs_type,
+    })
+}
+
 #[cfg(unix)]
 pub fn statfs(path: &OsStr) -> Result<StatFs, String> {
     let path = crate::context::resolve(path).into_os_string();
@@ -964,6 +1090,21 @@ pub fn pretty_filetype(mode: mode_t, size: u64) -> String {
         S_IFIFO => "fifo",
         S_IFSOCK => "socket",
         // TODO: Other file types
+        _ => return format!("weird file ({:07o})", mode & S_IFMT),
+    }
+    .to_owned()
+}
+
+/// A file's kind as `stat`'s `%F` names it, from the mode a file without
+/// one stands for (`fs::portable_mode`).
+#[cfg(all(not(unix), feature = "fs"))]
+pub fn pretty_filetype(mode: u32, size: u64) -> String {
+    use crate::features::fs::mode::{S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
+    match mode & S_IFMT {
+        S_IFREG if size == 0 => "regular empty file",
+        S_IFREG => "regular file",
+        S_IFDIR => "directory",
+        S_IFLNK => "symbolic link",
         _ => return format!("weird file ({:07o})", mode & S_IFMT),
     }
     .to_owned()

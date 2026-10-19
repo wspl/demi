@@ -92,7 +92,7 @@ impl HaystackBuilder {
                     if suffix.as_os_str().is_empty() {
                         lexical.clone()
                     } else {
-                        lexical.join(suffix)
+                        uucore::context::join(lexical, suffix)
                     }
                 })
             })

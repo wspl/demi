@@ -39,7 +39,8 @@ uuid = { version = "1", features = ["v4"] }
 
 ripgrep = "15.2.0"
 jaq = { version = "3.1.1", default-features = false }
-uucore = { version = "0.11", features = ["mode"] }
+uucore = { version = "0.11", features = ["fs", "mode"] }
+uu_stat = "0.11"
 uu_cat = "0.11"
 uu_head = "0.11"
 uu_tail = "0.11"
@@ -81,15 +82,9 @@ rlimit = "0.11"
 rustix = { version = "1", features = ["event", "process"] }
 uu_chmod = "0.11"
 uu_chown = "0.11"
-uu_stat = "0.11"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO"] }
-
-[target.'cfg(windows)'.dependencies.chrono]
-version = "0.4"
-default-features = false
-features = ["std"]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_IO"] }
 
 [dev-dependencies]
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }

@@ -8,7 +8,7 @@ use uucore::context::FileKindExt as _;
 use uucore::context::PathExt as _;
 use std::ops::Range;
 use uucore::diagnostics::OptionValue;
-use uucore::error::{UError, UResult, USimpleError};
+use uucore::error::{UError, UResult, USimpleError, UUsageError};
 use uucore::i18n::UEncoding;
 use uucore::quoting_style::{QuotingStyle as UucoreQuotingStyle, escape_name};
 use uucore::translate;
@@ -16,20 +16,26 @@ use uucore::translate;
 use clap::builder::ValueParser;
 use uucore::display::Quotable;
 use uucore::error::strip_errno;
-use uucore::fs::{display_permissions, major, minor};
+use uucore::fs::display_permissions;
+#[cfg(unix)]
+use uucore::fs::{major, minor};
 use uucore::fsext::{
     FsMeta, MetadataTimeField, StatFs, metadata_get_time, pretty_filetype, pretty_fstype,
     read_fs_list, statfs,
 };
-use uucore::libc::mode_t;
-use uucore::{entries, format_usage, show_error, show_warning};
+#[cfg(unix)]
+use uucore::entries;
+use uucore::{format_usage, show_error, show_warning};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::borrow::Cow;
 use std::cell::OnceCell;
 use std::ffi::{OsStr, OsString};
-use uucore::context::fs::{FileType, Metadata};
+use uucore::context::fs::FileType;
+#[cfg(unix)]
+use uucore::context::fs::Metadata;
 use uucore::context::io::{self, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +43,49 @@ use {uucore::context::env, uucore::context::fs};
 
 use thiserror::Error;
 use uucore::time::{FormatSystemTimeFallback, format_system_time, system_time_to_sec};
+#[cfg(windows)]
+use windows::{Stat, is_device, major, minor};
+
+#[cfg(windows)]
+mod windows;
+
+/// A file's metadata, which on Windows carries what the system keeps
+/// beside it (`windows::Stat`).
+#[cfg(unix)]
+type Stat = Metadata;
+
+/// Whether the file is a character or block device.
+#[cfg(unix)]
+fn is_device(file_type: FileType) -> bool {
+    file_type.is_char_device() || file_type.is_block_device()
+}
+
+/// When `field` last changed for the file `meta` describes.
+fn file_time(meta: &Stat, field: MetadataTimeField) -> Option<SystemTime> {
+    #[cfg(windows)]
+    if matches!(field, MetadataTimeField::Change) {
+        return meta.change_time();
+    }
+    metadata_get_time(meta, field)
+}
+
+/// The name of the user `meta`'s file belongs to, or GNU's `UNKNOWN`.
+fn user_name(meta: &Stat) -> String {
+    #[cfg(unix)]
+    let name = entries::uid2usr(meta.uid()).ok();
+    #[cfg(windows)]
+    let name = meta.user_name();
+    name.unwrap_or_else(|| "UNKNOWN".to_owned())
+}
+
+/// The name of the group `meta`'s file belongs to, or GNU's `UNKNOWN`.
+fn group_name(meta: &Stat) -> String {
+    #[cfg(unix)]
+    let name = entries::gid2grp(meta.gid()).ok();
+    #[cfg(windows)]
+    let name = meta.group_name();
+    name.unwrap_or_else(|| "UNKNOWN".to_owned())
+}
 
 #[derive(Debug, Error)]
 enum StatError {
@@ -1045,11 +1094,11 @@ impl Stater {
     }
 
     fn new(matches: &ArgMatches, diag_args: Option<&[OsString]>) -> UResult<Self> {
-        #[expect(clippy::unwrap_used, reason = "set as required by clap")]
+        // GNU's usage error, which clap's for a required argument is not.
         let files: Vec<OsString> = matches
             .get_many::<OsString>(options::FILES)
             .map(|v| v.map(OsString::from).collect())
-            .unwrap();
+            .ok_or_else(|| UUsageError::new(1, translate!("stat-error-missing-operand")))?;
         let format_str = if matches.contains_id(options::PRINTF) {
             matches
                 .get_one::<String>(options::PRINTF)
@@ -1141,6 +1190,13 @@ impl Stater {
         });
 
         let path = p.as_ref().context_canonicalize().ok()?;
+        // Windows canonicalizes `C:\…` as `\\?\C:\…`, which the volume's
+        // mount point, `C:\`, does not start.
+        #[cfg(windows)]
+        let path = match path.to_str().and_then(|path| path.strip_prefix(r"\\?\")) {
+            Some(plain) => std::path::PathBuf::from(plain),
+            None => path,
+        };
         mount_list
             .as_ref()?
             .iter()
@@ -1148,8 +1204,11 @@ impl Stater {
     }
 
     fn exec(&self) -> UResult<i32> {
+        #[cfg(unix)]
         let stdin_is_fifo = rustix::fs::fstat(io::stdin())
             .is_ok_and(|s| rustix::fs::FileType::from_raw_mode(s.st_mode).is_fifo());
+        #[cfg(windows)]
+        let stdin_is_fifo = false;
 
         let mut ret = 0;
         for f in &self.files {
@@ -1162,7 +1221,7 @@ impl Stater {
     fn process_token_files(
         &self,
         t: &Token,
-        meta: &Metadata,
+        meta: &Stat,
         display_name: &str,
         file: &OsString,
         file_type: FileType,
@@ -1234,15 +1293,11 @@ impl Stater {
                     // raw mode in hex
                     'f' => OutputType::UnsignedHex(meta.mode() as u64),
                     // file type
-                    'F' => OutputType::Str(pretty_filetype(meta.mode() as mode_t, meta.len())),
+                    'F' => OutputType::Str(pretty_filetype(meta.mode() as _, meta.len())),
                     // group ID of owner
                     'g' => OutputType::Unsigned(meta.gid() as u64),
                     // group name of owner
-                    'G' => {
-                        let group_name =
-                            entries::gid2grp(meta.gid()).unwrap_or_else(|_| "UNKNOWN".to_owned());
-                        OutputType::Str(group_name)
-                    }
+                    'G' => OutputType::Str(group_name(meta)),
                     // number of hard links
                     'h' => OutputType::Unsigned(meta.nlink()),
                     // inode number
@@ -1273,18 +1328,14 @@ impl Stater {
                     // user ID of owner
                     'u' => OutputType::Unsigned(meta.uid() as u64),
                     // user name of owner
-                    'U' => {
-                        let user_name =
-                            entries::uid2usr(meta.uid()).unwrap_or_else(|_| "UNKNOWN".to_owned());
-                        OutputType::Str(user_name)
-                    }
+                    'U' => OutputType::Str(user_name(meta)),
 
                     // time of file birth, human-readable; - if unknown
                     'w' => OutputType::Str(pretty_time(meta, MetadataTimeField::Birth)),
 
                     // time of file birth, seconds since Epoch; 0 if unknown
                     'W' => OutputType::Integer(
-                        metadata_get_time(meta, MetadataTimeField::Birth)
+                        file_time(meta, MetadataTimeField::Birth)
                             .map_or(0, |x| system_time_to_timestamp(x).0),
                     ),
 
@@ -1292,7 +1343,7 @@ impl Stater {
                     'x' => OutputType::Str(pretty_time(meta, MetadataTimeField::Access)),
                     // time of last access, seconds since Epoch
                     'X' => {
-                        let (sec, nsec) = metadata_get_time(meta, MetadataTimeField::Access)
+                        let (sec, nsec) = file_time(meta, MetadataTimeField::Access)
                             .map_or((0, 0), system_time_to_timestamp);
                         OutputType::Timestamp(sec, nsec)
                     }
@@ -1300,7 +1351,7 @@ impl Stater {
                     'y' => OutputType::Str(pretty_time(meta, MetadataTimeField::Modification)),
                     // time of last data modification, seconds since Epoch
                     'Y' => {
-                        let (sec, nsec) = metadata_get_time(meta, MetadataTimeField::Modification)
+                        let (sec, nsec) = file_time(meta, MetadataTimeField::Modification)
                             .map_or((0, 0), system_time_to_timestamp);
                         OutputType::Timestamp(sec, nsec)
                     }
@@ -1308,7 +1359,7 @@ impl Stater {
                     'z' => OutputType::Str(pretty_time(meta, MetadataTimeField::Change)),
                     // time of last status change, seconds since Epoch
                     'Z' => {
-                        let (sec, nsec) = metadata_get_time(meta, MetadataTimeField::Change)
+                        let (sec, nsec) = file_time(meta, MetadataTimeField::Change)
                             .map_or((0, 0), system_time_to_timestamp);
                         OutputType::Timestamp(sec, nsec)
                     }
@@ -1381,12 +1432,14 @@ impl Stater {
             } else {
                 fs::symlink_metadata(&file)
             };
+            #[cfg(windows)]
+            let result = result.and_then(|meta| {
+                Stat::new(Path::new(&file), follow_symbolic_links, meta)
+            });
             match result {
                 Ok(meta) => {
                     let file_type = meta.file_type();
-                    let tokens = if self.from_user
-                        || !(file_type.is_char_device() || file_type.is_block_device())
-                    {
+                    let tokens = if self.from_user || !is_device(file_type) {
                         &self.default_tokens
                     } else {
                         &self.default_dev_tokens
@@ -1554,15 +1607,14 @@ pub fn uu_app() -> Command {
             Arg::new(options::FILES)
                 .action(ArgAction::Append)
                 .value_parser(ValueParser::os_string())
-                .required(true)
                 .value_hint(clap::ValueHint::FilePath),
         )
 }
 
 const PRETTY_DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S.%N %z";
 
-fn pretty_time(meta: &Metadata, md_time_field: MetadataTimeField) -> String {
-    if let Some(time) = metadata_get_time(meta, md_time_field) {
+fn pretty_time(meta: &Stat, md_time_field: MetadataTimeField) -> String {
+    if let Some(time) = file_time(meta, md_time_field) {
         let mut tmp = Vec::new();
         if format_system_time(
             &mut tmp,

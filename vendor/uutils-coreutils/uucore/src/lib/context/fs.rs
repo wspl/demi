@@ -1,14 +1,17 @@
 //! Filesystem calls resolve relative paths against the utility's cwd.
 
-pub use std::fs::{DirEntry, FileTimes, FileType, Metadata, Permissions};
+pub use std::fs::{FileTimes, FileType, Metadata, Permissions};
 use std::{
     io::{self, Read, Seek, SeekFrom, Write},
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
 };
 
+/// A file, and whether it reads zeros: Windows has no `/dev/zero`, so the
+/// file opened for it is the null device, whose reads this one answers
+/// with zeros, as Git Bash's does.
 #[derive(Debug)]
-pub struct File(std::fs::File);
+pub struct File(std::fs::File, bool);
 impl File {
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         OpenOptions::new().read(true).open(path)
@@ -23,7 +26,7 @@ impl File {
         OpenOptions::new()
     }
     pub fn try_clone(&self) -> io::Result<Self> {
-        super::duplicate(&self.0).map(Self)
+        super::duplicate(&self.0).map(|file| Self(file, self.1))
     }
     pub fn set_len(&self, size: u64) -> io::Result<()> {
         super::check_cancelled();
@@ -44,7 +47,7 @@ impl DerefMut for File {
 }
 impl From<std::fs::File> for File {
     fn from(file: std::fs::File) -> Self {
-        Self(file)
+        Self(file, false)
     }
 }
 impl From<File> for std::fs::File {
@@ -59,11 +62,16 @@ impl From<File> for std::process::Stdio {
 }
 impl Read for File {
     fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
-        super::read(&self.0, bytes)
+        (&*self).read(bytes)
     }
 }
 impl Read for &File {
     fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        if self.1 {
+            super::check_cancelled();
+            bytes.fill(0);
+            return Ok(bytes.len());
+        }
         super::read(&self.0, bytes)
     }
 }
@@ -143,8 +151,9 @@ impl OpenOptions {
     pub fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
         super::check_cancelled();
         if let Some(file) = super::descriptor(path.as_ref()) {
-            return super::duplicate(&file).map(File);
+            return super::duplicate(&file).map(File::from);
         }
+        let zeros = matches!(super::device(path.as_ref()), Some(super::Device::Zero));
         let path = super::resolve(path);
         #[allow(unused_mut, reason = "only Unix has a umask")]
         let mut options = self.0.clone();
@@ -155,9 +164,10 @@ impl OpenOptions {
             std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
         }
         match super::control() {
-            Some(control) => control.open(&path, &options, self.1 != 0).map(File),
-            None => options.open(path).map(File),
+            Some(control) => control.open(&path, &options, self.1 != 0),
+            None => options.open(path),
         }
+        .map(|file| File(file, zeros))
     }
 }
 
@@ -218,18 +228,49 @@ pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
 /// A directory's entries. Each one read checks the invocation's
 /// cancellation, so a walk that prints nothing, such as a quiet `du -s` or
 /// `rm -r`, still stops at its next entry.
+///
+/// Each entry's path is the directory as the utility named it with the
+/// entry's name, as GNU's utilities print it ([`super::join`]), not the
+/// directory resolved against the working directory.
 #[derive(Debug)]
-pub struct ReadDir(std::fs::ReadDir);
+pub struct ReadDir(std::fs::ReadDir, PathBuf);
 impl Iterator for ReadDir {
     type Item = io::Result<DirEntry>;
     fn next(&mut self) -> Option<Self::Item> {
         super::check_cancelled();
-        self.0.next()
+        let entry = self.0.next()?;
+        Some(entry.map(|entry| DirEntry {
+            path: super::join(&self.1, entry.file_name()),
+            entry,
+        }))
     }
 }
 pub fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
     super::check_cancelled();
-    std::fs::read_dir(super::resolve(path)).map(ReadDir)
+    let path = path.as_ref();
+    std::fs::read_dir(super::resolve(path)).map(|entries| ReadDir(entries, path.to_owned()))
+}
+
+/// A directory's entry, whose path is the directory as the utility named it
+/// with the entry's name ([`ReadDir`]); the rest is the system's entry.
+#[derive(Debug)]
+pub struct DirEntry {
+    entry: std::fs::DirEntry,
+    path: PathBuf,
+}
+impl DirEntry {
+    pub fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+    pub fn file_name(&self) -> std::ffi::OsString {
+        self.entry.file_name()
+    }
+}
+impl Deref for DirEntry {
+    type Target = std::fs::DirEntry;
+    fn deref(&self) -> &Self::Target {
+        &self.entry
+    }
 }
 pub fn read_link(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     std::fs::read_link(super::resolve(path))
@@ -301,12 +342,12 @@ mod unix {
     }
     impl FromRawFd for File {
         unsafe fn from_raw_fd(fd: RawFd) -> Self {
-            Self(unsafe { std::fs::File::from_raw_fd(fd) })
+            Self::from(unsafe { std::fs::File::from_raw_fd(fd) })
         }
     }
     impl From<OwnedFd> for File {
         fn from(fd: OwnedFd) -> Self {
-            Self(fd.into())
+            Self::from(std::fs::File::from(fd))
         }
     }
     impl From<File> for OwnedFd {
@@ -366,12 +407,12 @@ mod windows {
     }
     impl FromRawHandle for File {
         unsafe fn from_raw_handle(handle: RawHandle) -> Self {
-            Self(unsafe { std::fs::File::from_raw_handle(handle) })
+            Self::from(unsafe { std::fs::File::from_raw_handle(handle) })
         }
     }
     impl From<OwnedHandle> for File {
         fn from(handle: OwnedHandle) -> Self {
-            Self(handle.into())
+            Self::from(std::fs::File::from(handle))
         }
     }
     impl From<File> for OwnedHandle {

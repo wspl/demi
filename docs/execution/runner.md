@@ -1294,6 +1294,14 @@ joins them with the separator of the system the Host's runner reports, in
 one helper every caller uses, so a Windows Host shows
 `C:\Users\alex\.demi\attachments\…`, never `C:\Users\alex/.demi/…`.
 
+A standard utility that names the paths it walks, such as `find`, `ls -R`,
+`du`, `grep -r` or `diff -r`, joins each name it adds with `/`, as GNU's
+does, after the operand as the job wrote it: on Windows `find 'd\sub'` prints
+`d\sub/g`. On Windows `/dev/null` and `/dev/zero` are devices for a
+utility's file operands too, as in Git Bash, except where a utility reads the
+operand's kind first: `cat`, `head`, `tail`, `diff`, `ls`, `du`, `cp` and `rg`
+refuse them, as Windows tells nothing of its null device's kind.
+
 ### Standard utilities
 
 A job's standard utilities behave as GNU's do on every Host, macOS included.

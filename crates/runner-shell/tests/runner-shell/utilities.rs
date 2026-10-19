@@ -202,15 +202,16 @@ fn search_edit_and_compare_utilities_keep_their_cli_and_local_paths() {
     std::fs::write(root.path().join("tree/input"), "apple\npear\n").unwrap();
     let (code, output, error) = invoke(root.path(), "grep", &["-rn", "apple", "tree"]);
     assert_eq!(code, 0, "{error}");
-    let input = Path::new("tree").join("input");
-    assert_eq!(output, format!("{}:1:apple\n", input.display()));
+    // GNU joins the names it adds with `/` on every system.
+    let input = "tree/input";
+    assert_eq!(output, format!("{}:1:apple\n", input));
     let (code, output, error) = invoke(
         root.path(),
         "find",
         &["tree", "-type", "f", "-name", "input"],
     );
     assert_eq!(code, 0, "{error}");
-    assert_eq!(output, format!("{}\n", input.display()));
+    assert_eq!(output, format!("{}\n", input));
     let (code, output, error) =
         invoke(root.path(), "sed", &["-i", "s/apple/orange/", "tree/input"]);
     assert_eq!(code, 0, "{output}; {error}");
@@ -300,10 +301,11 @@ fn ripgrep_searches_and_filters_local_files_with_upstream_options() {
         &["-j2", "--no-require-git", "-ni", "apple", "tree"],
     );
     assert_eq!(code, 0, "{error}");
-    let input = Path::new("tree").join("input");
+    // GNU joins the names it adds with `/` on every system.
+    let input = "tree/input";
     assert_eq!(
         output,
-        format!("{0}:1:apple\n{0}:3:APPLE\n", input.display())
+        format!("{0}:1:apple\n{0}:3:APPLE\n", input)
     );
     let (code, output, error) = invoke(root.path(), "rg", &["--json", "pear", "tree/input"]);
     assert_eq!(code, 0, "{error}");
