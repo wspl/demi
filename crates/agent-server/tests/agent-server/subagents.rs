@@ -426,10 +426,8 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let child = named_node(&fixture.store, &spawned);
     let frames = client.next_until(is_idle).await;
 
-    assert_eq!(
-        refused(&empty),
-        "demi agent spawn: prompt must not be empty\n"
-    );
+    assert_eq!(empty.code, 2, "{empty:?}");
+    assert!(empty.stderr.starts_with("error: prompt must not be empty\nUsage: demi agent spawn "), "{empty:?}");
     // Creation, not the child's work, is what the call reports: the
     // conversation's first subagent is agent 1.
     assert_eq!(spawned.stdout, "subagentId: 1\n");
@@ -1097,14 +1095,23 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     assert!(frames.iter().any(is_closed(&child)), "{frames:?}");
     let status = shell_command(&server, &root(), "status", json!({ "id": ["1"] })).await;
     assert!(status.stdout.contains("status: running"), "{status:?}");
-    // Options that do not go together are a usage error, exit 2.
-    let both = json!({ "id": ["1"], "interval": "2s", "resident": true });
-    let refused = shell_command(&server, &root(), "status", both).await;
-    assert_eq!(refused.code, 2, "{refused:?}");
-    assert!(
-        refused.stderr.starts_with("error: --interval and --resident do not go together\nUsage: demi shell status "),
-        "{refused:?}"
-    );
+    // Arguments that do not go together or do not read are a usage error,
+    // exit 2: the error, then the leaf's usage, as clap tells one.
+    let refusals = [
+        ("status", json!({ "id": ["1"], "interval": "2s", "resident": true }), "--interval and --resident do not go together"),
+        ("status", json!({ "id": ["1"], "wait": "nonsense" }), "--wait nonsense: "),
+        ("status", json!({ "id": ["1"], "interval": "nonsense" }), "--interval nonsense: "),
+        ("output", json!({ "id": "1", "stdout": true, "stderr": true }), "--stdout and --stderr do not go together"),
+        ("output", json!({ "id": "1", "lines": "2-1" }), "--lines 2-1: "),
+        ("output", json!({ "id": "1", "lines": "1-1", "tail": 1 }), "--lines and --tail do not go together"),
+    ];
+    for (verb, args, error) in refusals {
+        let refused = shell_command(&server, &root(), verb, args).await;
+        assert_eq!(refused.code, 2, "{refused:?}");
+        let (told, usage) = refused.stderr.split_once('\n').expect("two lines");
+        assert!(told.starts_with(&format!("error: {error}")), "{refused:?}");
+        assert!(usage.starts_with(&format!("Usage: demi shell {verb} ")), "{refused:?}");
+    }
 
     // The page's terminal input and End Command reach it where it stays.
     let command = CommandId::try_from("1").unwrap();

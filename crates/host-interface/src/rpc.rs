@@ -106,10 +106,14 @@ pub trait RpcHandler {
 /// Why a handler gave up.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RpcError {
-    /// The call does not fit the command, such as arguments its input
-    /// refuses: the usage error's whole text, in clap's shape
-    /// (`commands.md` § Parse input and render help), which the caller
-    /// receives as it is, with exit status 2.
+    /// The call does not fit the command, such as arguments its input or
+    /// its handler refuses: the message alone, such as `--lines and --tail
+    /// do not go together`, which the dispatcher that knows the leaf puts
+    /// in clap's shape with the leaf's usage ([`CommandSet::tell`],
+    /// `commands.md` § Parse input and render help); the caller receives
+    /// that text as it is, with exit status 2.
+    ///
+    /// [`CommandSet::tell`]: crate::CommandSet::tell
     #[error("{0}")]
     Usage(String),
     /// The handler failed: what it concerns and why, `<object>: <reason>`

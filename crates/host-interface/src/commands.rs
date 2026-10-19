@@ -231,22 +231,31 @@ impl CommandSet {
     /// for a number is a usage error. The leaf's permission is not checked
     /// here: the backend's dispatch checks it between [`CommandSet::check`]
     /// and the handler (`permissions.md` § The check).
+    /// A usage error is told in clap's shape ([`CommandSet::tell`]).
     pub async fn dispatch(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
+        let path = invocation.path.clone();
+        self.run(invocation, port).await.map_err(|error| self.tell(&path, error))
+    }
+
+    /// Runs the `rpc` leaf `invocation.path` names, as
+    /// [`CommandSet::dispatch`] does, with a usage error's message alone,
+    /// for a set whose caller's dispatcher tells it, as a plugin's own set
+    /// is behind the backend's.
+    pub async fn run(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
         let handler = self.check(&invocation)?.handler.clone();
         handler.call(invocation, port).await
     }
 
     /// The `rpc` leaf `invocation.path` names, with its handler, once the
     /// arguments are valid against its input, as [`CommandSet::dispatch`]
-    /// checks them.
+    /// checks them; a usage error holds the message alone, for
+    /// [`CommandSet::tell`].
     pub fn check(&self, invocation: &RpcInvocation) -> Result<Checked<'_>, RpcError> {
-        let named = invocation.path.join(" ");
         let (leaf, handler) = self
             .leaf(&invocation.path)
             .zip(self.handlers.get(&invocation.path))
             .ok_or_else(|| RpcError::Failed("not an rpc command of this conversation".into()))?;
-        leaf.check_arguments(&named, &invocation.args)
-            .map_err(|error| RpcError::Usage(error.to_string()))?;
+        leaf.check_input(&invocation.args).map_err(RpcError::Usage)?;
         let category = leaf.permission.as_deref().map(|id| {
             self.category(id)
                 .expect("registration checked that a group declares the leaf's category")
@@ -260,6 +269,19 @@ impl CommandSet {
             brings_host,
             handler,
         })
+    }
+
+    /// The failure of a call to the `rpc` leaf `path` names as its caller
+    /// reads it: a usage error's message, the check's or the handler's, in
+    /// clap's shape with the leaf's usage line (`commands.md` § Parse input
+    /// and render help); any other failure as it is.
+    pub fn tell(&self, path: &[String], error: RpcError) -> RpcError {
+        match (error, self.leaf(path)) {
+            (RpcError::Usage(message), Some(leaf)) => {
+                RpcError::Usage(leaf.refuse(&path.join(" "), message).to_string())
+            }
+            (error, _) => error,
+        }
     }
 
     /// The permission category `id` that a group of the set declares.

@@ -28,7 +28,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    commands::{Invoked, fail, fail_one, verb},
+    commands::{Invoked, fail, fail_one, one_for_json, refuse, verb},
     tree::{CommandPlace, Tree},
 };
 use crate::AgentServer;
@@ -162,24 +162,14 @@ async fn status<H: HostResolver>(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = &call.args;
-    // Arguments that do not go together are a usage error, exit 2, as
-    // clap tells one.
-    let usage = |what: &str| {
-        Err(RpcError::Usage(format!(
-            "error: {what}\nUsage: {} <id>... [--wait <duration>] [--interval <interval> | --resident] [--json]; more with --help",
-            call.command
-        )))
-    };
-    if call.json && args.id.len() > 1 {
-        return usage("--json takes one id; give the others a call each");
-    }
+    one_for_json(&call, args.id.len())?;
     let mut notes = Vec::new();
     let change = match (&args.interval, args.resident == Some(true)) {
-        (Some(_), true) => return usage("--interval and --resident do not go together"),
+        (Some(_), true) => return refuse("--interval and --resident do not go together"),
         (Some(text), false) => {
             let asked = match milliseconds(text) {
                 Ok(asked) => asked,
-                Err(reason) => return fail(&format!("--interval {text}: {reason}")),
+                Err(reason) => return refuse(&format!("--interval {text}: {reason}")),
             };
             let floor = call.tree.interval_floor_ms();
             let (taken, outside) = taken_interval(asked, floor, "--interval");
@@ -201,7 +191,7 @@ async fn status<H: HostResolver>(
     if let Some(text) = &args.wait {
         let wait = match milliseconds(text) {
             Ok(wait) => Duration::from_millis(wait),
-            Err(reason) => return fail(&format!("--wait {text}: {reason}")),
+            Err(reason) => return refuse(&format!("--wait {text}: {reason}")),
         };
         // A stopped call stops waiting, and lets go of its look with it:
         // nobody reads what it would show, and a handler left waiting would
@@ -662,23 +652,23 @@ async fn output<H: HostResolver>(
     call: Invoked<H, OutputArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let args = call.args;
+    let args = &call.args;
     let id = args.id.as_str();
     let streams = match (args.stdout == Some(true), args.stderr == Some(true)) {
-        (true, true) => return fail("--stdout and --stderr do not go together"),
+        (true, true) => return refuse("--stdout and --stderr do not go together"),
         (true, false) => Streams::Only(StreamKind::Stdout),
         (false, true) => Streams::Only(StreamKind::Stderr),
         (false, false) => Streams::Both,
     };
     let reading = match (&args.lines, args.tail) {
-        (Some(_), Some(_)) => return fail("--lines and --tail do not go together"),
+        (Some(_), Some(_)) => return refuse("--lines and --tail do not go together"),
         (Some(lines), None) => match range(lines) {
             Some((from, to)) => Reading::Lines { from, to },
             None => {
                 let reason = format!(
                     "--lines {lines}: lines count from 1, and a range ends at or after its start"
                 );
-                return fail(&reason);
+                return refuse(&reason);
             }
         },
         (None, Some(lines)) => Reading::Tail { lines },
@@ -686,7 +676,7 @@ async fn output<H: HostResolver>(
     };
     let raw = args.raw == Some(true);
     if raw && !matches!(reading, Reading::Page) {
-        return fail("--raw prints all of the output; take part of it with sed or tail");
+        return refuse("--raw prints all of the output; take part of it with sed or tail");
     }
     let found = match find(&call.tree, id).await {
         Ok(found) => found,

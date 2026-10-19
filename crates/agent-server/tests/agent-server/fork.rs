@@ -244,7 +244,8 @@ async fn a_fork_is_refused_without_a_completed_text_and_by_the_checks_of_a_spawn
         "demi agent fork: no subagent 7 of yours to fork (see `demi agent list`)\n"
     );
     let empty = fork(&fixture, json!({ "id": 1, "message": "  " })).await;
-    assert_eq!(refused(&empty), "demi agent fork: message must not be empty\n");
+    assert_eq!(empty.code, 2, "{empty:?}");
+    assert!(empty.stderr.starts_with("error: message must not be empty\nUsage: demi agent fork "), "{empty:?}");
 
     gate.open();
     client.next_until(is_closed(&source)).await;

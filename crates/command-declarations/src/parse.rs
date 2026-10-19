@@ -282,18 +282,26 @@ impl<B> Leaf<B> {
     /// first failure is reported, in clap's shape with the usage of the
     /// command `path` names.
     pub fn check_arguments(&self, path: &str, arguments: &Map<String, Value>) -> Result<(), Error> {
+        self.check_input(arguments).map_err(|failure| self.refuse(path, failure))
+    }
+
+    /// The first failure of a command's arguments against its input, the
+    /// message alone, such as `"count" is not of type "integer"`: what
+    /// [`Leaf::check_arguments`] and the backend's dispatch put in clap's
+    /// shape with [`Leaf::refuse`].
+    pub fn check_input(&self, arguments: &Map<String, Value>) -> Result<(), String> {
         match &self.input {
             Some(schema) => schema.check(&Value::Object(arguments.clone())),
             None if arguments.is_empty() => Ok(()),
             None => Err("the command takes no arguments".to_owned()),
         }
-        .map_err(|failure| self.refuse(path, failure))
     }
 
     /// A refusal of the command `path` names that clap could not raise, in
     /// clap's shape: `error: "path" is longer than 4096 characters`, its
-    /// usage and the pointer to `--help`.
-    fn refuse(&self, path: &str, message: impl std::fmt::Display) -> Error {
+    /// usage and the pointer to `--help`. The dispatcher of an `rpc` call
+    /// tells with it the arguments its handler refuses.
+    pub fn refuse(&self, path: &str, message: impl std::fmt::Display) -> Error {
         self.command(path, None)
             .error(ErrorKind::ValueValidation, message)
             .into()

@@ -32,7 +32,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use super::organize::{failed, verb};
+use super::organize::{failed, refused, verb};
 use crate::shard::Shard;
 
 /// About how many characters a read prints, and a page of what `open`
@@ -185,7 +185,7 @@ impl Reader {
         if let Some(at) = index(text) {
             return Ok((When::Index(at), HistoryBound::Index(at)));
         }
-        let invalid = || failed(format!("{text}: a block's index, such as 4213, or a day, such as 2026-10-14"));
+        let invalid = || refused(format!("{text}: a block's index, such as 4213, or a day, such as 2026-10-14"));
         let day: Date = text.parse().map_err(|_| invalid())?;
         let start = if after { day.tomorrow().map_err(|_| invalid())? } else { day };
         let moment = start.to_zoned(self.zone.clone()).map_err(|_| invalid())?.timestamp();
@@ -257,7 +257,7 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         }
     }
     if words.is_empty() {
-        return Err(failed("no words to find"));
+        return Err(refused("no words to find"));
     }
     let any = call.args.any == Some(true);
     let oldest = call.args.oldest == Some(true);
@@ -504,7 +504,7 @@ fn range(text: &str) -> Option<(usize, Option<usize>)> {
 async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let reader = Reader::of(&call)?;
     let Some((from, to)) = range(&call.args.range) else {
-        return Err(failed(format!(
+        return Err(refused(format!(
             "{}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260",
             call.args.range
         )));
@@ -778,7 +778,7 @@ fn open_item(text: &str) -> Option<Item> {
 async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let reader = Reader::of(&call)?;
     let Some(named) = open_item(&call.args.item) else {
-        return Err(failed(format!(
+        return Err(refused(format!(
             "{}: an item is a block index, such as 4214, or a file of a message, such as 4213/a1",
             call.args.item
         )));

@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use super::{
     AgentServer,
-    commands::{Invoked, fail, json, out, verb},
+    commands::{Invoked, fail, json, out, refuse, verb},
     tree::{Deleted, ListedProfile, ProfileAnswer},
 };
 
@@ -213,7 +213,7 @@ async fn create<H: HostResolver>(
     };
     let model = match choice.model.as_deref() {
         None | Some(PARENT) if names_own(&choice) => {
-            return fail(
+            return refuse(
                 "--provider, --effort and --tier name the profile's own model; give --model too, or omit them to inherit the parent's model",
             );
         }
@@ -251,13 +251,13 @@ async fn edit<H: HostResolver>(call: Invoked<H, EditArgs>, port: RpcPort) -> Res
     };
     let model = match choice.model.as_deref() {
         Some(PARENT) if names_own(&choice) => {
-            return fail(
+            return refuse(
                 "--provider, --effort and --tier name the profile's own model; --model parent takes the parent's",
             );
         }
         Some(PARENT) => Some(ModelEdit::Parent),
         None if choice.provider.is_some() => {
-            return fail("--provider names the entry of --model; give --model too");
+            return refuse("--provider names the entry of --model; give --model too");
         }
         None if !names_own(&choice) => None,
         _ => Some(ModelEdit::Choose(choice)),
@@ -274,15 +274,15 @@ async fn edit<H: HostResolver>(call: Invoked<H, EditArgs>, port: RpcPort) -> Res
         },
         can_spawn: match pair(args.spawning, args.no_spawning, "--spawning", "--no-spawning") {
             Ok(value) => value,
-            Err(reason) => return fail(&reason),
+            Err(reason) => return refuse(&reason),
         },
         enabled: match pair(args.enabled, args.disabled, "--enabled", "--disabled") {
             Ok(value) => value,
-            Err(reason) => return fail(&reason),
+            Err(reason) => return refuse(&reason),
         },
     };
     if edit == ProfileEdit::default() {
-        return fail("nothing to change: give an option, or the instructions on stdin");
+        return refuse("nothing to change: give an option, or the instructions on stdin");
     }
     let changed = call.tree.edit_profile(&args.profile, edit).await;
     answered(&port, call.json, changed).await

@@ -413,7 +413,7 @@ async fn spawn<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let prompt = trim(&call.args.prompt);
     if prompt.is_empty() {
-        return fail("prompt must not be empty");
+        return refuse("prompt must not be empty");
     }
     let input = StartInput::Spawn {
         prompt: prompt.to_owned(),
@@ -446,7 +446,7 @@ async fn resume<H: HostResolver>(
 ) -> Result<u8, RpcError> {
     let message = trim(&call.args.message);
     if message.is_empty() {
-        return fail("message must not be empty");
+        return refuse("message must not be empty");
     }
     let number = call.args.id;
     let id = match call.tree.child_of(&call.caller, number).await {
@@ -470,7 +470,7 @@ async fn resume<H: HostResolver>(
 async fn fork<H: HostResolver>(call: Invoked<H, ForkArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let message = trim(&call.args.message);
     if message.is_empty() {
-        return fail("message must not be empty");
+        return refuse("message must not be empty");
     }
     let input = StartInput::Fork {
         source: call.args.id,
@@ -486,7 +486,7 @@ async fn fork<H: HostResolver>(call: Invoked<H, ForkArgs>, port: RpcPort) -> Res
 
 async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
     if is_blank(&call.args.message) {
-        return fail("message must not be empty");
+        return refuse("message must not be empty");
     }
     let message = trim(&call.args.message).to_owned();
     match call
@@ -591,6 +591,13 @@ pub(super) async fn out(port: &RpcPort, text: String) -> Result<u8, RpcError> {
     Ok(0)
 }
 
+/// Arguments a verb refuses, such as options that do not go together or an
+/// empty message: a usage error, which the dispatcher tells with the leaf's
+/// usage, exit 2 (`commands.md` § Parse input and render help).
+pub(super) fn refuse(reason: &str) -> Result<u8, RpcError> {
+    Err(RpcError::Usage(reason.to_owned()))
+}
+
 /// A verb's failure, which the dispatcher tells after the command's path:
 /// `demi agent <verb>: <reason>` on stderr, exit 1.
 pub(super) fn fail(reason: &str) -> Result<u8, RpcError> {
@@ -611,12 +618,11 @@ pub(super) async fn fail_one(
     Ok(())
 }
 
-/// Refuses `--json` with several ids: its output is one JSON value.
-fn one_for_json<H: HostResolver, A>(call: &Invoked<H, A>, ids: usize) -> Result<(), RpcError> {
+/// Refuses `--json` with several ids, whose output is one JSON value, as a
+/// usage error.
+pub(super) fn one_for_json<H: HostResolver, A>(call: &Invoked<H, A>, ids: usize) -> Result<(), RpcError> {
     if call.json && ids > 1 {
-        return Err(RpcError::Failed(
-            "--json takes one id; give the others a call each".into(),
-        ));
+        return Err(RpcError::Usage("--json takes one id; give the others a call each".into()));
     }
     Ok(())
 }
