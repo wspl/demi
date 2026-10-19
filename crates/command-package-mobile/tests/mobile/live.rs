@@ -27,6 +27,10 @@ pub(crate) struct Page {
     input: demi_command_sdk::CommandInput,
     output: demi_command_sdk::CommandOutput,
     buffered: Vec<u8>,
+    /// The pictures that came while the test waited for a control message:
+    /// a key frame may come before the frame message, and a still screen
+    /// sends no other (`mobile.md` § The live view).
+    pictures: std::collections::VecDeque<Vec<u8>>,
     demanded: bool,
 }
 
@@ -34,25 +38,35 @@ impl Page {
     /// Opens `conversation`'s view as a page does.
     pub(crate) async fn open(mobile: &Mobile, conversation: &str) -> Self {
         let (input, output) = mobile.live(conversation).await;
-        Self { input, output, buffered: Vec::new(), demanded: false }
+        Self { input, output, buffered: Vec::new(), pictures: Default::default(), demanded: false }
     }
 
-    /// The data of the view's next picture.
+    /// The data of the view's next picture, skipping control messages.
     pub(crate) async fn video(&mut self) -> Vec<u8> {
+        if let Some(picture) = self.pictures.pop_front() {
+            return picture;
+        }
         loop {
-            while self.buffered.len() >= 5 {
-                let length = u32::from_be_bytes(self.buffered[..4].try_into().unwrap()) as usize;
-                if self.buffered.len() < 4 + length {
-                    break;
-                }
-                let frame: Vec<u8> = self.buffered.drain(..4 + length).collect();
+            while let Some(frame) = self.next_frame() {
                 if frame[4] == demi_live_view_protocol::VIDEO_FRAME {
-                    let (_, data) = demi_live_view_protocol::VideoHeader::split(&frame[5..]).unwrap();
-                    return data.to_vec();
+                    return picture_of(&frame);
                 }
             }
             self.record().await;
         }
+    }
+
+    /// The next whole frame the view sent, its length included, if one is
+    /// buffered.
+    fn next_frame(&mut self) -> Option<Vec<u8>> {
+        if self.buffered.len() < 5 {
+            return None;
+        }
+        let length = u32::from_be_bytes(self.buffered[..4].try_into().unwrap()) as usize;
+        if self.buffered.len() < 4 + length {
+            return None;
+        }
+        Some(self.buffered.drain(..4 + length).collect())
     }
 
     /// Writes `message` once the view asks for input, as the runner does.
@@ -89,16 +103,14 @@ impl Page {
         }
     }
 
-    /// The view's next control message of `kind`, skipping the others.
+    /// The view's next control message of `kind`, skipping the others and
+    /// keeping the pictures for [`Page::video`].
     pub(crate) async fn until(&mut self, kind: &str) -> LiveModuleMessage {
         loop {
-            while self.buffered.len() >= 5 {
-                let length = u32::from_be_bytes(self.buffered[..4].try_into().unwrap()) as usize;
-                if self.buffered.len() < 4 + length {
-                    break;
-                }
-                let frame: Vec<u8> = self.buffered.drain(..4 + length).collect();
-                if frame[4] == demi_live_view_protocol::CONTROL_FRAME {
+            while let Some(frame) = self.next_frame() {
+                if frame[4] == demi_live_view_protocol::VIDEO_FRAME {
+                    self.pictures.push_back(picture_of(&frame));
+                } else if frame[4] == demi_live_view_protocol::CONTROL_FRAME {
                     let message: LiveModuleMessage = serde_json::from_slice(&frame[5..]).unwrap();
                     if serde_json::to_value(&message).unwrap()["type"] == kind {
                         return message;
@@ -108,6 +120,12 @@ impl Page {
             self.record().await;
         }
     }
+}
+
+/// The H.264 data of a video `frame`, its length and kind included.
+fn picture_of(frame: &[u8]) -> Vec<u8> {
+    let (_, data) = demi_live_view_protocol::VideoHeader::split(&frame[5..]).unwrap();
+    data.to_vec()
 }
 
 /// The agent's tap shows on the view while the view waits for the page,
@@ -120,7 +138,7 @@ async fn the_view_reports_the_agents_activity_and_keeps_reading_the_page() {
     let mobile = Mobile::start().await;
     let device = mobile.open(CHAT, "iPhone 17").await;
     let (input, output) = mobile.live(CHAT).await;
-    let mut page = Page { input, output, buffered: Vec::new(), demanded: false };
+    let mut page = Page { input, output, buffered: Vec::new(), pictures: Default::default(), demanded: false };
     page.send(json!({ "type": "hello", "platform": "mac" })).await;
     page.send(json!({ "type": "watch", "device": device })).await;
     page.until("state").await;
