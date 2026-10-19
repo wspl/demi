@@ -215,6 +215,15 @@ export function serializeUserMarkdown<Attachment>(
   return { markdown: blocks.join('\n'), attachments }
 }
 
+/**
+ * The Markdown that shows plain `text` as typed, each character as itself:
+ * text written in a plain field, such as a side question's follow-up, shown
+ * where a message's Markdown is.
+ */
+export function plainUserMarkdown(text: string): string {
+  return serializeUserMarkdown({ type: 'doc', content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }] }).markdown
+}
+
 function codeBlockMarkdown(block: JSONContent): string {
   const text = (block.content ?? []).map((node) => node.text ?? '').join('').replaceAll(ATTACHMENT_MARK, '')
   const info = String(block.attrs?.['language'] ?? '')

@@ -124,7 +124,10 @@ test('the full window shows the side questions own turns, the first as the quest
   const turns = shownTurns(question([...history, user('q1', after(1), FIRST, 'side'), text('a1', after(2), 'Its TTL is an hour.')], false))
   expect(turns.map((block) => block.id)).toEqual(['q1', 'a1'])
   const first = turns[0]!
-  expect(first.type === 'user' && first.content).toEqual([{ type: 'text', text: '> stale\n\nWhy stale?' }])
+  expect(first.type === 'user' && [first.content, first.comments]).toEqual([
+    [],
+    [{ id: 'q1-quote', blockId: 'reply', start: 0, end: 5, at: 0, quote: 'stale', text: 'Why stale?' }],
+  ])
 })
 
 // A side question about a picture (`comments-and-ask.md` § Images): its
@@ -136,6 +139,6 @@ test('the full window shows a picture side question\'s first message as the pict
   const [first] = shownTurns(asked)
   expect(first?.type === 'user' && [first.content, first.comments]).toEqual([
     [],
-    [{ id: 'q1-picture', blockId: 'reply', start: 1, end: 2, at: 0, quote: 'The chart', picture, text: 'Which connection?' }],
+    [{ id: 'q1-quote', blockId: 'reply', start: 1, end: 2, at: 0, quote: 'The chart', picture, text: 'Which connection?' }],
   ])
 })

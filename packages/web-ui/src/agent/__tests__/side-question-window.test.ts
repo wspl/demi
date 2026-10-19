@@ -16,6 +16,7 @@ const { provideBlobUrl } = await import('../media-source')
 const { EMPTY_TRANSCRIPT, heldTranscript } = await import('@demicodes/conversation-client')
 const { model } = await import('./agent-harness')
 type ShownSideQuestion = import('../comments/asks').ShownSideQuestion
+type HeldBlock = import('../history').HeldBlock
 
 let unmount: (() => void) | null = null
 afterEach(() => {
@@ -109,4 +110,47 @@ test('a picture side question\'s first message in its window shows the picture q
   expect([quoted?.getAttribute('src'), quoted?.getAttribute('alt')]).toEqual([`blob:${ref64}`, 'The chart'])
   expect(host.textContent).toContain('Which bar is red?')
   expect(host.textContent).not.toContain('aside')
+})
+
+// The questions of a side question are typed in a plain field, and its
+// window shows them as typed, as the transcript shows a comment's words:
+// a `*` or `_` in the first question or a follow-up is never read as
+// Markdown, which would drop the stars and set the words between them in
+// italics.
+test('a side question\'s questions show as typed in its window, stars and underscores kept', async () => {
+  const { default: AgentMessageVirtualBlock } = await import('../blocks/AgentMessageVirtualBlock.vue')
+  const { provideTranscript } = await import('../edit-selection')
+  const { storedRequests } = await import('../../files/request-changes')
+  const { shownTurns } = await import('../comments/asks')
+  const { provideMediaViewer } = await import('../../files/media-viewer')
+  const host = document.createElement('div')
+  document.body.append(host)
+  const first = 'Why a*3) for j in range(5) and b*2 in my_var_name?'
+  const more = 'And **x** or [y] and `z`?'
+  const user = (id: string, at: string, text: string): HeldBlock => ({
+    type: 'user', id, turnId: id === 'q1' ? 'side' : id, createdAt: at, model,
+    content: [{ type: 'text', text }], preamble: null,
+  })
+  const asked: ShownSideQuestion = {
+    ...question, quote: 'a *star* line', question: first,
+    history: heldTranscript(2, [{ start: 0, blocks: [
+      user('q1', '2026-10-18T07:00:01.000Z', `The user asks this aside…\n\n${first}`),
+      user('q2', '2026-10-18T07:00:02.000Z', more),
+    ] }]),
+  }
+  const blocks = shownTurns(asked)
+  const app = createApp(defineComponent({
+    setup: () => {
+      provideBlobUrl((source) => `blob:${source}`)
+      provideMediaViewer()
+      provideTranscript({ node: 'side', requests: () => storedRequests([]), directory: () => null, pictures: () => [] })
+      return () => blocks.map((block) => h(AgentMessageVirtualBlock, { key: block.id, block, isThinkingStreaming: false }))
+    },
+  }))
+  app.mount(host)
+  unmount = () => app.unmount()
+  await nextTick()
+  const text = host.textContent ?? ''
+  expect([text.includes('a *star* line'), text.includes(first), text.includes(more)]).toEqual([true, true, true])
+  expect(host.querySelector('em, strong, code')).toBeNull()
 })
