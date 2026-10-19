@@ -4,7 +4,7 @@
 //! the messages they keep saved for later, and the plugins' values and Host
 //! directories; in each of the user's
 //! conversation databases, its blocks with their media and edit copies, the
-//! messages its checkpoints keep queued, the attachments the agent uploaded,
+//! messages its checkpoints keep queued, the conversation's attachments,
 //! the records of its commands' outputs and the shares' snapshots. An upload
 //! record names its blob too, but only a recent one keeps it: an upload
 //! goes with its blob.

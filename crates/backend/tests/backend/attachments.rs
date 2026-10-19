@@ -26,6 +26,40 @@ const CONVERSATION: &str = "6a1b2c3d-8f3a-4c1e-9d2b-7a1c2e3f4a06";
 /// A file over the 25 MiB an attachment may have.
 const HUGE: u64 = 26 * 1024 * 1024;
 
+// About a second: a real device runs two shell jobs.
+//
+// `demi attachment download` puts an attachment, the agent's own here, where
+// a command needs it (`commands.md` § Attachment commands): the runner
+// fetches it from the backend and writes it under its name; run again, the
+// same file already there is that file, and a number the conversation does
+// not have fails with its own line while the others are written.
+#[tokio::test]
+async fn download_writes_each_attachment_under_its_name_and_the_same_file_again_is_that_file() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    std::fs::write(format!("{root}/login.png"), &*PNG).unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    work.turn(vec![shell("t1", "demi attachment upload login.png", 30_000), say("uploaded")])
+        .await;
+
+    let script = "mkdir in && demi attachment download a1 a9 --dir in; demi attachment download --json a1 --dir in";
+    let fetched = work.turn(vec![shell("t2", script, 30_000), say("fetched")]).await;
+    let output = shown_output(&fetched.received[0]);
+    assert!(output.contains("ID  PATH\na1  in/login.png\n"), "{output}");
+    assert!(
+        output.contains("demi attachment download: a9: the conversation has no attachment a9"),
+        "{output}"
+    );
+    assert!(output.contains(r#"[{"id":"a1","path":"in/login.png"}]"#), "{output}");
+    assert_eq!(std::fs::read(format!("{root}/in/login.png")).unwrap(), *PNG);
+    assert_eq!(std::fs::read_dir(format!("{root}/in")).unwrap().count(), 1);
+    backend.close().await;
+}
+
 // Several seconds: a real device runs two shell jobs, and one file is 26 MiB,
 // which the upload refuses unread.
 //

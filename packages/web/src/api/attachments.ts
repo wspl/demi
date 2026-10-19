@@ -15,7 +15,7 @@ export interface AttachmentSource {
 }
 
 /**
- * The answers about the attachments the agent uploaded (`commands.md`
+ * The answers about the conversation's attachments (`commands.md`
  * § Attachment commands), by source and number, for the page's
  * lifetime: an attachment never changes, and a number up to the
  * conversation's latest that has none never will have one, so the page asks

@@ -30,6 +30,8 @@ export interface PendingSubmissionState {
   comments?: readonly MessageComment[]
   /** Why the delivery failed; null while the message is on its way. */
   error: string | null
+  /** The request ID of the refusal, shown beside `error`; null or absent with none. */
+  requestId?: string | null
 }
 
 /** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */

@@ -162,7 +162,8 @@ context disposal follow the [runner command lifetime](runner.md#command-lifetime
 Every file Demi downloads over HTTP goes through one downloader, the one
 `shared-artifacts` owns: a command program's artifact, a runner executable,
 the software a Cloud image's build installs, a file `demi web fetch` saves,
-a video a vendor generated. Each gets the same handling of a slow or broken
+a video a vendor generated, an attachment `demi attachment download`
+fetches. Each gets the same handling of a slow or broken
 link, so a fix to it helps them all. A stream, such as a model's answer, a
 command's pipe or a live view, is not a download.
 

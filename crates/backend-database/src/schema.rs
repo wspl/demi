@@ -1366,6 +1366,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.27.sql"),
             migration: Migration::Code(conversation_from_0_1_27),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.28.sql"),
+            migration: Migration::Code(conversation_from_0_1_28),
+        },
     ],
 };
 
@@ -1384,7 +1388,142 @@ ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
 ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 ";
 
-/// From 0.1.27's conversation schema to the current one: the sequences
+/// From 0.1.28's conversation schema, shipped through 0.1.32, of
+/// transcript block format 11 and checkpoint state format 5, to the current
+/// one, of block format 12 and state format 6, in which an attachment record
+/// names the file by its number in the conversation's `attachment`
+/// sequence, `a7`, instead of its path on the Host, since a send no longer
+/// writes the file there (`backend.md` § Media by reference): see
+/// [`number_attachments`].
+fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    number_attachments(transaction)
+}
+
+/// Numbers each file an attachment record names by its path on the Host,
+/// as every release from 0.1.20 through 0.1.32 stored one: the file takes
+/// the conversation's next attachment number, in the order the records were
+/// stored, and a row of `attachments` with its name, media type, size and
+/// blob, without its size in pixels, which its header gave only to a row
+/// stored since. The records of one file, its path and its bytes, take one
+/// number, in the transcripts, their branches, the shares' copies and the
+/// queues of the checkpoints alike; two files at one path, as on two Hosts
+/// with one home, take two. A record numbered already stays, so this runs
+/// first in every step that reads blocks or states with the current types,
+/// which take a numbered record alone, and once more at the end.
+fn number_attachments(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    let mut numbers = AttachmentNumbers {
+        by_file: HashMap::new(),
+        next: transaction
+            .query_row("SELECT next FROM sequences WHERE name = 'attachment'", [], |row| row.get(0))
+            .optional()?
+            .unwrap_or(1),
+    };
+    let mut insert = transaction.prepare(
+        "INSERT INTO attachments (number, name, media_type, size, blob) VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+    for (table, column) in [("blocks", "block"), ("share_blocks", "block"), ("nodes", "state")] {
+        // A step of a release before the table's has none to number.
+        let present: bool = transaction.query_row(
+            "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+            [table, column],
+            |row| row.get(0),
+        )?;
+        if !present {
+            continue;
+        }
+        let rows = transaction
+            .prepare(&format!(
+                "SELECT rowid, {column} FROM {table}
+                 WHERE instr({column}, '\"type\":\"attachment\"') > 0 ORDER BY rowid"
+            ))?
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut update = transaction.prepare(&format!("UPDATE {table} SET {column} = ?2 WHERE rowid = ?1"))?;
+        for (row, text) in rows {
+            let mut value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+            if numbers.renumber(&mut value, &mut insert)? {
+                update.execute(rusqlite::params![row, value.to_string()])?;
+            }
+        }
+    }
+    // A conversation that numbered no file keeps its sequences as they were.
+    if !numbers.by_file.is_empty() {
+        transaction.execute(
+            "INSERT INTO sequences (name, next) VALUES ('attachment', ?1)
+             ON CONFLICT (name) DO UPDATE SET next = excluded.next",
+            [numbers.next],
+        )?;
+    }
+    Ok(())
+}
+
+/// The numbers [`number_attachments`] gives the files of the attachment
+/// records it rewrites, by their path and their bytes' SHA-256, and the next
+/// one.
+struct AttachmentNumbers {
+    by_file: HashMap<(String, String), i64>,
+    next: i64,
+}
+
+impl AttachmentNumbers {
+    /// Rewrites every attachment record within `value` that names its file
+    /// by path to name it by number, storing a row through `insert` for a
+    /// file not numbered yet; answers whether it rewrote any. Such a record
+    /// holds `name`, `path`, `mediaType`, `sizeBytes` and `sha256`; one that
+    /// lacks any fails the migration.
+    fn renumber(
+        &mut self,
+        value: &mut serde_json::Value,
+        insert: &mut rusqlite::Statement<'_>,
+    ) -> rusqlite::Result<bool> {
+        match value {
+            serde_json::Value::Array(items) => {
+                let mut changed = false;
+                for item in items {
+                    changed |= self.renumber(item, insert)?;
+                }
+                Ok(changed)
+            }
+            serde_json::Value::Object(object) if object.get("type").and_then(|kind| kind.as_str()) == Some("attachment") && object.contains_key("path") => {
+                let text = |name: &str| {
+                    object
+                        .get(name)
+                        .and_then(|value| value.as_str())
+                        .map(str::to_owned)
+                        .ok_or_else(|| corrupt_text(&format!("an attachment record lacks its {name}")))
+                };
+                let file = (text("path")?, text("sha256")?);
+                let number = match self.by_file.get(&file) {
+                    Some(number) => *number,
+                    None => {
+                        let number = self.next;
+                        let size = object
+                            .get("sizeBytes")
+                            .and_then(|size| size.as_i64())
+                            .ok_or_else(|| corrupt_text("an attachment record lacks its sizeBytes"))?;
+                        insert.execute(rusqlite::params![number, text("name")?, text("mediaType")?, size, file.1])?;
+                        self.by_file.insert(file, number);
+                        self.next += 1;
+                        number
+                    }
+                };
+                object.remove("path");
+                object.insert("id".into(), serde_json::Value::String(format!("a{number}")));
+                Ok(true)
+            }
+            serde_json::Value::Object(object) => {
+                let mut changed = false;
+                for item in object.values_mut() {
+                    changed |= self.renumber(item, insert)?;
+                }
+                Ok(changed)
+            }
+            _ => Ok(false),
+        }
+    }
+}
+
+/// From 0.1.27's conversation schema to 0.1.28's: the sequences
 /// gain `device`, which numbers the conversation's simulators
 /// (`mobile.md` § Commands); every sequence keeps its next number. A node
 /// may have no number, a side question's (`comments-and-ask.md` § Side
@@ -1768,6 +1907,8 @@ fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rus
 /// attachment a text names in `block_attachments`, each block decoded once.
 fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(SHARES_AS_LISTS)?;
+    // It reads blocks with the current types (`number_attachments`).
+    number_attachments(transaction)?;
     let mut blocks = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
     let mut rows = blocks.query([])?;
     while let Some(row) = rows.next()? {
@@ -1984,6 +2125,8 @@ const CONVERSATION_FROM_CHILD_DIRECTORIES: &str =
 /// blocks are as they were. Each state is decoded and checked as format 3
 /// before it is written back.
 fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    // It reads blocks with the current types (`number_attachments`).
+    number_attachments(transaction)?;
     transaction.execute_batch(
         "ALTER TABLE nodes ADD COLUMN cwd TEXT CHECK (cwd <> '');
          ALTER TABLE nodes ADD COLUMN cwd_device TEXT;
@@ -2032,6 +2175,8 @@ const CONVERSATION_FROM_BLOCK_FORMAT_5: &str = "";
 /// (`compaction.md` § One pass): no pass before kept any, so each stored
 /// boundary keeps none. The tables are as they were.
 fn boundaries_with_kept_messages(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    // It reads blocks with the current types (`number_attachments`).
+    number_attachments(transaction)?;
     let rows = transaction
         .prepare("SELECT node_id, idx, block FROM blocks WHERE json_extract(block, '$.type') = 'compaction_boundary'")?
         .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
@@ -2552,6 +2697,8 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// copy that cannot be read stops the migration, which the next open tries
 /// again; one the namespace no longer holds leaves its file named alone.
 fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
+    // It reads blocks with the current types (`number_attachments`).
+    number_attachments(transaction)?;
     let nodes = transaction
         .prepare("SELECT DISTINCT node_id FROM blocks")?
         .query_map([], |row| row.get::<_, String>(0))?
@@ -3892,7 +4039,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 5
+  -- nodes.state: checkpoint state format 6
   state            TEXT NOT NULL,
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
@@ -3962,14 +4109,14 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 11.
+-- blocks.block: transcript block format 12.
 -- A node's transcript is a tree of rows (message-editing.md § Versions):
 -- `idx` is a row's number, its place in the order the node's rows were
 -- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
   node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx      INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 11
+  -- blocks.block: transcript block format 12
   block    TEXT NOT NULL,
   -- The row before it on its path; null for a path's first row.
   follows  INTEGER CHECK (follows < idx),
@@ -4051,7 +4198,7 @@ CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 11
+  -- share_blocks.block: transcript block format 12
   block TEXT NOT NULL,
   PRIMARY KEY (token, idx)
 ) STRICT;
@@ -4127,10 +4274,11 @@ CREATE TABLE running_commands (
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
--- Each attachment the agent uploaded, by its number in the conversation's
--- attachment sequence: the file's name, the media type read from its bytes,
--- its size, an image's or a video's width and height in pixels when its
--- header gives them, and its blob in the owner's namespace. A row never
+-- Each attachment of the conversation, one the user sent or one the agent
+-- uploaded, by its number in the conversation's attachment sequence: the
+-- file's name, the media type read from its bytes, its size, an image's or a
+-- video's width and height in pixels when its header gives them, and its
+-- blob in the owner's namespace. A row never
 -- changes; a Fork's seed copies the rows, and the blobs stay shared.
 CREATE TABLE attachments (
   number     INTEGER PRIMARY KEY CHECK (number >= 1),
@@ -4443,6 +4591,97 @@ mod tests {
             .query_row("SELECT removed_at FROM command_outputs WHERE command_id = 'c3'", [], |row| row.get(0))
             .unwrap();
         assert_eq!(removed_at, 2000);
+    }
+
+    /// A conversation of 0.1.21 whose messages named their files by their
+    /// paths opens through every step since: the steps that read blocks and
+    /// states with the current types see each record numbered, one number
+    /// per file, its path and its bytes, in the transcript and the queue.
+    /// Before, the first such step stopped at the record's path, so the
+    /// conversation never opened. One small database, milliseconds.
+    #[test]
+    fn a_conversation_of_0_1_21_with_files_opens_through_every_step_with_them_numbered() {
+        use demi_shared_types::{Block, BlobRef, UserContentBlock};
+
+        use crate::conversation_attachments;
+
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.21.sql"));
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let notes = BlobRef::of(b"notes");
+        let other = BlobRef::of(b"other notes");
+        // A record as 0.1.21 stored it.
+        let record = |blob: &BlobRef| {
+            serde_json::json!({
+                "type": "attachment", "name": "notes.txt", "path": "/root/notes.txt",
+                "mediaType": "text/plain", "sizeBytes": 5, "sha256": blob.to_string()
+            })
+        };
+        let message = |id: &str, blob: &BlobRef| {
+            serde_json::json!({
+                "type": "user", "id": id, "turnId": format!("t-{id}"),
+                "createdAt": "2026-09-21T14:13:20.000Z", "model": model,
+                "content": [{"type": "text", "text": "Read it"}, record(blob)], "preamble": null
+            })
+        };
+        let mut state: serde_json::Value = serde_json::from_str(&state_of_0_1_21(serde_json::json!([]))).unwrap();
+        state["queue"] = serde_json::json!([{ "id": "t9", "content": [record(&other)] }]);
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 3, 0)",
+                [state.to_string()],
+            )
+            .unwrap();
+        for (index, block) in [message("u1", &notes), message("u2", &other), message("u3", &notes)].iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let numbers: Vec<String> = connection
+            .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .flat_map(|text| match demi_shared_types::decode::<Block>(&text.unwrap()).unwrap() {
+                Block::User(user) => user.content,
+                block => panic!("{block:?}"),
+            })
+            .filter_map(|part| match part {
+                UserContentBlock::Attachment(record) => Some(record.id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(numbers, ["a1", "a2", "a1"]);
+        let state: String = connection.query_row("SELECT state FROM nodes", [], |row| row.get(0)).unwrap();
+        let state: demi_agent_store::CheckpointState = serde_json::from_str(&state).unwrap();
+        assert!(
+            matches!(&state.queue[0].content[0], UserContentBlock::Attachment(record) if record.id == "a2"),
+            "{state:?}"
+        );
+        let rows: Vec<(u64, String)> = conversation_attachments::all(&connection)
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.number.0, row.blob.to_string()))
+            .collect();
+        assert_eq!(rows, [(1, notes.to_string()), (2, other.to_string())]);
     }
 
     /// A node's checkpoint state as 0.1.21 saved it, with the yield
@@ -5772,6 +6011,141 @@ mod tests {
             intervals,
             [("1".to_owned(), Some(30_000)), ("2".to_owned(), None), ("3".to_owned(), Some(15_000))]
         );
+    }
+
+    /// A conversation of 0.1.28 to 0.1.32 whose messages named their files by their
+    /// paths on the Host names each by a number of its attachments, after
+    /// the agent's own: one file, its path and its bytes, one number, in the
+    /// transcript, a branch of it, a share's copy and the queue alike, and
+    /// another file at the same path, as on another Host with the same home,
+    /// a number of its own; each file has its row, which the page and
+    /// `demi attachment download` read. Planted defects this catches: a
+    /// number per record, so one file sent twice becomes two attachments,
+    /// and a number per path, so the second file's download is the first's
+    /// bytes. One small database, milliseconds.
+    #[test]
+    fn a_conversation_of_0_1_28_numbers_the_files_its_messages_named_by_path() {
+        use demi_shared_types::{Attachment, Block, BlobRef, QueuedMessage, Sequence, TurnId, UserContentBlock};
+
+        use crate::tree::tests::{state, user};
+        use crate::{conversation_attachments, sequences};
+
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.28.sql"));
+        let shot = BlobRef::of(b"shot");
+        let notes = BlobRef::of(b"notes");
+        // A record as 0.1.28 to 0.1.32 stored it: a path, no number.
+        let record = |name: &str, path: &str, blob: &BlobRef| {
+            let mut record = serde_json::to_value(UserContentBlock::Attachment(Attachment {
+                id: "a1".into(),
+                name: name.into(),
+                media_type: "image/png".into(),
+                size_bytes: 4,
+                sha256: blob.clone(),
+                snippet: None,
+            }))
+            .unwrap();
+            let fields = record.as_object_mut().unwrap();
+            fields.remove("id");
+            fields.insert("path".into(), path.into());
+            record
+        };
+        let message = |id: &str, records: Vec<serde_json::Value>| {
+            let mut block = serde_json::to_value(user(id)).unwrap();
+            block["content"].as_array_mut().unwrap().extend(records);
+            block.to_string()
+        };
+        let mut checkpoint = serde_json::to_value(state()).unwrap();
+        let mut queued = serde_json::to_value(QueuedMessage {
+            id: TurnId::try_from("t9").unwrap(),
+            content: Vec::new(),
+            comments: Vec::new(),
+            automation: None,
+        })
+        .unwrap();
+        queued["content"] = serde_json::json!([record("shot.png", "/home/ana/.demi/attachments/c/shot.png", &shot)]);
+        checkpoint["queue"] = serde_json::json!([queued]);
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, parent_id, description, round, started_at, can_spawn, delivered, state,
+                    output_revision, cwd, cwd_under, leaf)
+                 VALUES ('root', 0, NULL, '', 1, 0, 1, 0, ?1, 0, NULL, NULL, 1)",
+                [checkpoint.to_string()],
+            )
+            .unwrap();
+        let other = BlobRef::of(b"other notes");
+        let blocks = [
+            message("u1", vec![
+                record("shot.png", "/home/ana/.demi/attachments/c/shot.png", &shot),
+                record("notes.png", "/root/notes.png", &notes),
+            ]),
+            message("u2", vec![record("shot.png", "/home/ana/.demi/attachments/c/shot.png", &shot)]),
+            // A branch beside u2: another file at the path of u1's notes.
+            message("u3", vec![record("notes.png", "/root/notes.png", &other)]),
+        ];
+        for (index, (block, follows)) in blocks.iter().zip([None, Some(0), Some(0)]).enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', ?1, ?2, ?3)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block, follows],
+                )
+                .unwrap();
+        }
+        // A share's copy of u3.
+        connection
+            .execute("INSERT INTO share_blocks (token, idx, block) VALUES ('s1', 0, ?1)", [&blocks[2]])
+            .unwrap();
+        // The agent uploaded two files before.
+        connection
+            .execute_batch(
+                "INSERT INTO sequences (name, next) VALUES ('attachment', 3);
+                 INSERT INTO attachments (number, name, media_type, size, blob)
+                 VALUES (1, 'a.txt', 'text/plain', 1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), (2, 'b.txt', 'text/plain', 1, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');",
+            )
+            .unwrap();
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let numbers = |block: &Block| match block {
+            Block::User(user) => user
+                .content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContentBlock::Attachment(record) => Some(record.id.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            _ => panic!("{block:?}"),
+        };
+        let stored: Vec<Block> = connection
+            .prepare("SELECT block FROM blocks ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|text| serde_json::from_str(&text.unwrap()).unwrap())
+            .collect();
+        assert_eq!(stored.iter().map(numbers).collect::<Vec<_>>(), [vec!["a3", "a4"], vec!["a3"], vec!["a5"]]);
+        let shared: String = connection.query_row("SELECT block FROM share_blocks", [], |row| row.get(0)).unwrap();
+        assert_eq!(numbers(&serde_json::from_str(&shared).unwrap()), ["a5"]);
+        let checkpoint: String = connection.query_row("SELECT state FROM nodes", [], |row| row.get(0)).unwrap();
+        let checkpoint: demi_agent_store::CheckpointState = serde_json::from_str(&checkpoint).unwrap();
+        assert!(
+            matches!(&checkpoint.queue[0].content[0], UserContentBlock::Attachment(record) if record.id == "a3"),
+            "{checkpoint:?}"
+        );
+        let rows: Vec<(u64, String, String)> = conversation_attachments::all(&connection)
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.number.0, row.name, row.blob.to_string()))
+            .collect();
+        assert_eq!(
+            rows[2..],
+            [
+                (3, "shot.png".to_owned(), shot.to_string()),
+                (4, "notes.png".to_owned(), notes.to_string()),
+                (5, "notes.png".to_owned(), other.to_string()),
+            ]
+        );
+        assert_eq!(sequences::next(&connection, Sequence::Attachment).unwrap(), 6);
     }
 
     /// A conversation of 0.1.27 keeps the next number of each sequence,

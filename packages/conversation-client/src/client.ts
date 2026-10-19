@@ -32,17 +32,21 @@ export interface HeldEdge {
 /**
  * A frame the backend or the session refused: the code the page words it
  * by and the values that text needs (`localization.md` § Text from the
- * backend), with the refusal in English as the message.
+ * backend), with the refusal in English as the message, and the request ID
+ * of the socket that refused it, which a `rejected` frame carries.
  */
 export class RefusedError extends Error {
   override name = 'RefusedError'
   readonly code: string
   readonly params: Readonly<Record<string, unknown>>
+  /** The request ID of the socket that sent the refusal, which the page shows with it; null when the frame names none. */
+  readonly requestId: string | null
 
-  constructor(refusal: { code: string; params?: Record<string, unknown>; reason: string }) {
+  constructor(refusal: { code: string; params?: Record<string, unknown>; reason: string; requestId?: string }) {
     super(refusal.reason)
     this.code = refusal.code
     this.params = refusal.params ?? {}
+    this.requestId = refusal.requestId ?? null
   }
 }
 
@@ -203,7 +207,12 @@ export class ConversationClient {
     return this.action('send', messageId, { type: 'send', messageId, content })
   }
 
-  /** Sends a message, with the comments it carries; resolves once it is in the transcript or the queue. */
+  /**
+   * Sends a message, with the comments it carries; resolves once it is in
+   * the transcript or the queue. The wait has no deadline of its own: the
+   * backend decides that a delivery failed, and says why
+   * (`turns.md` § Requesting).
+   */
   submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     return this.request(
       { type: 'send', messageId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) },
@@ -216,7 +225,6 @@ export class ConversationClient {
         }
         return this.failure(event, 'send')
       },
-      'Message confirmation timed out',
     )
   }
 
@@ -226,8 +234,10 @@ export class ConversationClient {
    * page's id for this send; resolves once the session holds it: in the
    * transcript or the queue, or accepted as a steer, at once when it does
    * already. A steer the session refuses rejects with `SteerRejectedError`,
-   * and a message the list no longer holds, which no send took as
-   * `turnId`, with `SavedGoneError`.
+   * a message the list no longer holds, which no send took as `turnId`,
+   * with `SavedGoneError`, and any other refusal of the backend's with
+   * `RefusedError`; the wait has no deadline of its own
+   * (`turns.md` § Requesting).
    */
   sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<void> {
     if (this.writtenTurns.has(turnId) || this.queue.some((message) => message.id === turnId)) {
@@ -247,12 +257,11 @@ export class ConversationClient {
         if (delivery !== 'steer' && (written || queued)) {
           return { resolve: undefined }
         }
-        if (event.type === 'rejected' && event.command === 'send_saved') {
+        if (event.type === 'rejected' && event.command === 'send_saved' && event.code === 'saved_not_found') {
           return { reject: new SavedGoneError() }
         }
         return this.failure(event, 'send_saved')
       },
-      'Message confirmation timed out',
     )
   }
 

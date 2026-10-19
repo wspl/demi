@@ -604,6 +604,7 @@ fn runners_and_downloads() -> Router<AppState> {
 fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> Router {
     let pipes = Router::new()
         .route("/api/pipes/{id}", put(runners::put).get(runners::get))
+        .route("/api/offers/{id}", get(runners::offer))
         .method_not_allowed_fallback(no_route);
     app.layer(DefaultBodyLimit::max(body::JSON_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(

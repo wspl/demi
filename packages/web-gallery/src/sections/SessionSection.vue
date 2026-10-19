@@ -363,7 +363,7 @@ const undeliveredText = `Review the notes ${ATTACHMENT_MARK} before the next run
 const undeliveredContent = joinMessageContent(undeliveredText, [[{
   type: 'attachment',
   name: 'notes.txt',
-  path: '/home/demi/.demi/attachments/gallery/notes.txt',
+  id: 'a1',
   mediaType: 'text/plain',
   sizeBytes: 2048,
   sha256: '0'.repeat(64),
@@ -373,7 +373,8 @@ function failDelivery(): void {
   deliveryFlow.undelivered(
     undeliveredContent,
     { text: undeliveredText, attachments: [composerAttachment({ name: 'notes.txt', phase: 'ready' })] },
-    'Connection closed before confirmation',
+    // A cause of its own, worded as the backend's refusal names it.
+    'The device is offline.',
   )
 }
 failDelivery()
@@ -1121,7 +1122,7 @@ const attachmentBubble: UserContentBlock[] = [
   {
     type: 'attachment',
     name: 'login-failure.pdf',
-    path: '/home/demi/.demi/attachments/demo/login-failure.pdf',
+    id: 'a2',
     mediaType: 'application/pdf',
     sizeBytes: 120334,
     sha256: 'demo-pdf',
@@ -1131,7 +1132,7 @@ const attachmentBubble: UserContentBlock[] = [
   {
     type: 'attachment',
     name: 'login-fail.png',
-    path: '/home/demi/.demi/attachments/demo/login-fail.png',
+    id: 'a3',
     mediaType: 'image/png',
     sizeBytes: 48211,
     sha256: 'demo-png',
@@ -1141,7 +1142,7 @@ const attachmentBubble: UserContentBlock[] = [
   {
     type: 'attachment',
     name: 'login-fail.webm',
-    path: '/home/demi/.demi/attachments/demo/login-fail.webm',
+    id: 'a4',
     mediaType: 'video/webm',
     sizeBytes: 23336,
     sha256: 'demo-webm',
@@ -1150,7 +1151,7 @@ const attachmentBubble: UserContentBlock[] = [
   {
     type: 'attachment',
     name: 'ci.log',
-    path: '/home/demi/.demi/attachments/demo/ci.log',
+    id: 'a5',
     mediaType: 'text/plain',
     sizeBytes: 2048,
     sha256: 'demo-log',
@@ -1200,12 +1201,12 @@ const composerDrafts = {
 const lineCapsulesBubble: UserContentBlock[] = [
   { type: 'text', text: 'Before: ' },
   { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png', width: 480, height: 300 } },
-  { type: 'attachment', name: 'before.png', path: '/home/demi/.demi/attachments/demo/before.png', mediaType: 'image/png', sizeBytes: 48211, sha256: 'demo-before' },
+  { type: 'attachment', name: 'before.png', id: 'a6', mediaType: 'image/png', sizeBytes: 48211, sha256: 'demo-before' },
   { type: 'text', text: '\nAfter: ' },
   { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png', width: 480, height: 300 } },
-  { type: 'attachment', name: 'after.png', path: '/home/demi/.demi/attachments/demo/after.png', mediaType: 'image/png', sizeBytes: 48011, sha256: 'demo-after' },
+  { type: 'attachment', name: 'after.png', id: 'a7', mediaType: 'image/png', sizeBytes: 48011, sha256: 'demo-after' },
   { type: 'text', text: '\nThe log ' },
-  { type: 'attachment', name: 'ci.log', path: '/home/demi/.demi/attachments/demo/ci.log', mediaType: 'text/plain', sizeBytes: 2048, sha256: 'demo-log', snippet: pastedSnippet },
+  { type: 'attachment', name: 'ci.log', id: 'a8', mediaType: 'text/plain', sizeBytes: 2048, sha256: 'demo-log', snippet: pastedSnippet },
   { type: 'text', text: ' shows the padding change landing after the layout pass, which is why the modal jumps by one column on the first frame.' },
 ]
 const userBubble = [

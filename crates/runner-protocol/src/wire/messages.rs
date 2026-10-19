@@ -407,6 +407,25 @@ pub enum Inbound {
         exists: WriteExists,
         input: PipeRef,
     },
+    /// Fill the file with the bytes the backend offers at `source`, which
+    /// the runner downloads as every file Demi downloads
+    /// (`native-runtime.md` § Downloads): resumed after a break or a stall,
+    /// with no overall deadline, and checked against the offer's size and
+    /// SHA-256 before the file is put in place as `fs_writeFile` puts it.
+    /// The answer names the file it wrote, or the cause of the failure.
+    #[serde(rename = "fs_downloadFile")]
+    FsDownloadFile {
+        id: String,
+        path: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        cwd: Option<String>,
+        exists: WriteExists,
+        source: FileOffer,
+    },
     /// Writes the directory `path` whole (`runner.md` § Host operations):
     /// `files` lists its files, each by its path inside it, with `/`
     /// between the parts, and its mode, and `input` carries their contents
@@ -842,6 +861,7 @@ impl Inbound {
             Self::FsReadFile { id, .. }
             | Self::FsHashFile { id, .. }
             | Self::FsWriteFile { id, .. }
+            | Self::FsDownloadFile { id, .. }
             | Self::FsLook { id, .. }
             | Self::FsReadFiles { id, .. }
             | Self::FsWriteDirectory { id, .. }
@@ -1404,6 +1424,17 @@ pub enum ServiceErrorCode {
     UnknownOperation,
     ServiceFailed,
     Refused,
+}
+
+/// A file the backend offers a runner for download: the origin-relative URL
+/// the runner `GET`s it from, with its device token and Range requests, and
+/// the size and SHA-256 of its bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileOffer {
+    pub url: String,
+    pub size: u64,
+    pub sha256: String,
 }
 
 /// One end of a pipe: the id the runner reports `pipe_done` under, and the

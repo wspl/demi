@@ -79,9 +79,21 @@ async fn carry(
     let (client_read, mut client_write) = client.into_split();
     let (upstream_read, mut upstream_write) = upstream.into_split();
     let mut upstream_read = upstream_read;
+    // How many of the backend's bytes the edge passed on, which tells a
+    // pipe that opened, its answer passed, from one still opening.
+    let (answered, passed) = tokio::sync::watch::channel(0_usize);
     let answers = async move {
         // A connection either side closes ends here.
-        let _ended = tokio::io::copy(&mut upstream_read, &mut client_write).await;
+        let mut buffer = vec![0_u8; 16 * 1024];
+        loop {
+            let Ok(read) = upstream_read.read(&mut buffer).await else {
+                return;
+            };
+            if read == 0 || client_write.write_all(&buffer[..read]).await.is_err() {
+                return;
+            }
+            answered.send_modify(|bytes| *bytes += read);
+        }
     };
     let requests = async move {
         let mut client = BufReader::new(client_read);
@@ -103,13 +115,25 @@ async fn carry(
                     .split_whitespace()
                     .nth(1)
                     .is_some_and(|path| path.starts_with("/api/pipes/"));
+                let before = *passed.borrow();
                 upstream_write.write_all(head.as_bytes()).await.unwrap();
                 let passing = async {
                     let _ended = tokio::io::copy(&mut client, &mut upstream_write).await;
                 };
                 if pipe {
+                    // A cut drops a pipe once it is open, the backend's
+                    // answer passed, as a connection lost partway does; one
+                    // dropped before its answer would be a pipe that never
+                    // opened, which the runner opens again.
+                    let mut passed = passed.clone();
+                    let open_then_cut = async {
+                        // An edge whose backend went away cuts nothing more.
+                        if passed.wait_for(|bytes| *bytes > before).await.is_ok() {
+                            cut.cancelled().await;
+                        }
+                    };
                     tokio::select! {
-                        () = cut.cancelled() => {}
+                        () = open_then_cut => {}
                         () = passing => {}
                     }
                 } else {

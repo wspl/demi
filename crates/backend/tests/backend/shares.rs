@@ -219,9 +219,9 @@ async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stop
 
 /// The root's answer once its child reports.
 const SAID: &str =
-    "the helper said hi:\n\n<attachment id=\"a1\" />\n<attachment id=\"a3\" />\n<attachment id=\"a4-preview\" />\n\n\
-     The child's, named only as text: see <attachment id=\"a2\" /> mid-sentence, `<attachment id=\"a2\" />` in code,\n\n\
-     <!--\n<attachment id=\"a2\" />\n-->";
+    "the helper said hi:\n\n<attachment id=\"a2\" />\n<attachment id=\"a4\" />\n<attachment id=\"a5-preview\" />\n\n\
+     The child's, named only as text: see <attachment id=\"a3\" /> mid-sentence, `<attachment id=\"a3\" />` in code,\n\n\
+     <!--\n<attachment id=\"a3\" />\n-->";
 
 /// The root's answer once its later child reports.
 const AFTER_LATER: &str = "after the later child";
@@ -260,7 +260,8 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
             shell("t2", "demi agent spawn --description helper <<< 'Say hi'"),
             say("asked the helper"),
             // The child's completion wakes the idle parent.
-            // a2 is the child's; a3 and a4 do not exist yet; `a4-preview`
+            // a1 is the message's image, a3 the child's; a4 and a5 do not exist
+            // yet; `a5-preview`
             // is no attachment's name.
             say(SAID),
         ],
@@ -285,7 +286,7 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let own = transcript(&backend, &master, FIRST).await;
     let child = own.subagents[0].child.number;
     // The child's attachment, which no text of the root names.
-    let viewed = backend.get(&format!("/api/conversations/{FIRST}/attachments/a2"), Some(&master)).await;
+    let viewed = backend.get(&format!("/api/conversations/{FIRST}/attachments/a3"), Some(&master)).await;
     assert_eq!(viewed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&viewed.body));
     let viewed = viewed.json::<demi_web_api_protocol::attachments::ConversationAttachment>().blob;
 
@@ -326,7 +327,7 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         &public(&backend, &token, &format!("/transcript/blocks/{}?node={child}", said.id()), None).await,
         "a block asked of a subagent",
     );
-    missed(&public(&backend, &token, "/attachments/a2", None).await, "a subagent's attachment");
+    missed(&public(&backend, &token, "/attachments/a3", None).await, "a subagent's attachment");
     missed(&public(&backend, &token, &format!("/blobs/{viewed}"), None).await, "a subagent's blob");
 
     // The media its blocks show, and no other blob of the owner's.
@@ -351,16 +352,16 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         panic!("an answer's share")
     };
     let answer = answer.as_str().to_owned();
-    let named = public(&backend, &answer, "/attachments/a1", None).await;
+    let named = public(&backend, &answer, "/attachments/a2", None).await;
     assert_eq!(named.status, StatusCode::OK, "{}", String::from_utf8_lossy(&named.body));
     let named: demi_web_api_protocol::attachments::ConversationAttachment = named.json();
     assert_eq!(named.name, "shown.png");
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
-    missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment that did not exist");
+    missed(&public(&backend, &answer, "/attachments/a4", None).await, "an attachment that did not exist");
     // The child's attachment, which the answer names only as text, in a
     // sentence, in code and in a comment, is not served, nor its bytes.
-    missed(&public(&backend, &answer, "/attachments/a2", None).await, "an attachment named only as text");
+    missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment named only as text");
     missed(&public(&backend, &answer, &format!("/blobs/{viewed}"), None).await, "the bytes of one named only as text");
     // A number past the column's range is no attachment, here and in the
     // conversation's own route.
@@ -412,7 +413,7 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let edge = blocks(&root.blocks)[0].id().clone();
     assert!(!texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
     for (path, what) in [
-        ("/attachments/a3".to_owned(), "an attachment uploaded since"),
+        ("/attachments/a4".to_owned(), "an attachment uploaded since"),
         (format!("/transcript/blocks/{}", later_answer.id()), "a block written since"),
         (format!("/transcript?around={}", later_answer.id()), "a page around a block written since"),
         (format!("/transcript?before={length}&edge={edge}"), "an index past the list"),
@@ -428,11 +429,11 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     assert!(matches!(shared(&retaken), ShareAnswer::Conversation { token: same, .. } if same.as_str() == token));
     assert!(texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
     missed(&public(&backend, &token, &format!("/transcript?node={later_child}"), None).await, "a subagent");
-    let notes = public(&backend, &token, "/attachments/a3", None).await;
+    let notes = public(&backend, &token, "/attachments/a4", None).await;
     assert_eq!(notes.status, StatusCode::OK, "{}", String::from_utf8_lossy(&notes.body));
     assert_eq!(notes.json::<demi_web_api_protocol::attachments::ConversationAttachment>().name, "notes.md");
     // A target with more after the number names no attachment.
-    missed(&public(&backend, &token, "/attachments/a4", None).await, "a4-preview");
+    missed(&public(&backend, &token, "/attachments/a5", None).await, "a5-preview");
 
     // Archiving keeps it; deleting the conversation removes it.
     let archived = backend

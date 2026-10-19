@@ -246,10 +246,9 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     let blobs = MemoryBlobs::new();
     let png = png(4, 3, 1);
     let uploaded = blobs.put(png.clone()).await.unwrap();
-    let path = "/home/demi/.demi/attachments/conversation/tiny.png";
     let upload = attachments::Upload {
         name: "tiny.png",
-        path,
+        id: "a1",
         media_type: "image/png",
         sha256: &uploaded,
         bytes: &png,
@@ -385,7 +384,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     let uploaded = blobs.put(png.clone()).await.unwrap();
     let upload = attachments::Upload {
         name: "tiny.png",
-        path: "/home/demi/.demi/attachments/conversation/tiny.png",
+        id: "a1",
         media_type: "image/png",
         sha256: &uploaded,
         bytes: &png,
@@ -461,7 +460,7 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
     let uploaded = blobs.put(png.clone()).await.unwrap();
     let upload = attachments::Upload {
         name: "tiny.png",
-        path: "/home/demi/.demi/attachments/conversation/tiny.png",
+        id: "a1",
         media_type: "image/png",
         sha256: &uploaded,
         bytes: &png,

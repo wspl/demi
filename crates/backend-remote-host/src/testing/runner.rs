@@ -49,6 +49,9 @@ pub struct FixtureOptions {
     pub tap: Option<mpsc::Sender<Outbound>>,
     /// How long a pipe waits for its ends, rather than [`crate::ARRIVAL`].
     pub arrival: Option<Duration>,
+    /// The first answer to a download of an offered file breaks off after
+    /// this many bytes, as on a flaky link.
+    pub offer_breaks_after: Option<usize>,
 }
 
 /// A real runner connected to a backend end of its own.
@@ -75,12 +78,19 @@ enum Request {
         id: String,
         claimed: oneshot::Sender<Result<DeviceSink, PipeRefusal>>,
     },
+    Offer {
+        id: String,
+        offered: oneshot::Sender<Option<bytes::Bytes>>,
+    },
 }
 
 #[derive(Clone)]
 struct Edge {
     requests: mpsc::Sender<Request>,
     token: Arc<str>,
+    /// Where the next answer to an offer's download from its start breaks
+    /// off, until one has.
+    offer_breaks_after: Arc<std::sync::Mutex<Option<usize>>>,
 }
 
 impl RunnerFixture {
@@ -101,10 +111,12 @@ impl RunnerFixture {
         let edge = Edge {
             requests,
             token: TOKEN.into(),
+            offer_breaks_after: Arc::new(std::sync::Mutex::new(options.offer_breaks_after)),
         };
         let router = Router::new()
             .route("/api/runner", get(runner_socket))
             .route("/api/pipes/{id}", get(pipe_sink).put(pipe_source))
+            .route("/api/offers/{id}", get(offer))
             .with_state(edge);
         // As the backend's edge does, every accepted socket sends small
         // frames at once (`backend.md` § Runtime model). One that keeps
@@ -299,6 +311,9 @@ async fn serve_device(
             Request::Sink { id, claimed } => {
                 let _ = claimed.send(pipes.claim_sink(&id, TEST_DEVICE));
             }
+            Request::Offer { id, offered } => {
+                let _ = offered.send(pipes.offers().bytes(&id, TEST_DEVICE));
+            }
         }
     }
 }
@@ -458,6 +473,50 @@ async fn pipe_source(
             Err(failure) => (StatusCode::CONFLICT, failure.reason().to_owned()).into_response(),
         },
         Err(refusal) => refusal,
+    }
+}
+
+/// An offered file's bytes from the byte a Range request names on, as the
+/// backend's route answers; the first answer from the start breaks off
+/// where the fixture's options say.
+async fn offer(
+    State(edge): State<Edge>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&headers, &edge.token) {
+        return (StatusCode::UNAUTHORIZED, "device token required").into_response();
+    }
+    let (offered, answer) = oneshot::channel();
+    if edge.requests.send(Request::Offer { id, offered }).await.is_err() {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    let Ok(Some(bytes)) = answer.await else {
+        return (StatusCode::NOT_FOUND, "no such offer").into_response();
+    };
+    // Only `bytes=N-` resumes; anything else is answered whole, as HTTP allows.
+    let from = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("bytes="))
+        .and_then(|value| value.strip_suffix('-'))
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let breaks = if from == 0 {
+        edge.offer_breaks_after.lock().expect("the break is intact").take()
+    } else {
+        None
+    };
+    match breaks {
+        Some(after) => {
+            let sent = bytes.slice(..after.min(bytes.len()));
+            let body = futures_util::stream::iter([
+                Ok(sent),
+                Err(std::io::Error::other("the link broke off")),
+            ]);
+            Body::from_stream(body).into_response()
+        }
+        None => crate::offer_response(bytes, from),
     }
 }
 

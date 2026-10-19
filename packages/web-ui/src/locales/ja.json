@@ -214,6 +214,8 @@
     "invalid_revision": "チャットはまだその位置に達していません。",
     "invalid_frame": "リクエストが無効です。",
     "frame_delivery_failed": "更新を送信できませんでした。",
+    "send_failed": "メッセージを送信できませんでした。",
+    "path_unquotable": "ファイルのパスに、改行などコマンドで扱えない文字が含まれています。",
     "turn_in_flight": "チャットの作業が終わるまでお待ちください。",
     "workspace_not_found": "このプロジェクトは存在しません。",
     "workspace_exists": "このフォルダはすでにプロジェクトです。",

@@ -16,7 +16,7 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { coded, errorCode, errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { coded, errorCode, errorMessage, reportError, requestIdOf, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
@@ -2463,6 +2463,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     pending.way = agentWorks(conversation.phase, conversation.pendingSends) ? 'queue' : 'send'
     pending.error = null
+    delete pending.requestId
     await deliverInOrder(conversation, pending)
   }
 
@@ -2487,6 +2488,7 @@ export const useConversations = defineStore('conversations', () => {
   ): Promise<void> {
     const signal = lifetime.signal
     pending.error = null
+    delete pending.requestId
     // The files in the order of their marks in the text.
     const files = pending.fileIds.flatMap((id) =>
       conversation.files.filter((file) => file.id === id),
@@ -2545,9 +2547,14 @@ export const useConversations = defineStore('conversations', () => {
           setComments(conversation, [...conversation.comments, ...pending.comments])
           report(t('failures.sendComment'), error)
         } else {
-          // Its row comes back, undelivered with the reason: a draft the
-          // composer holds is not to be replaced, and the message is not lost.
+          // Its row comes back, undelivered with the reason and the request
+          // it was refused on: a draft the composer holds is not to be
+          // replaced, and the message is not lost.
           pending.error = errorMessage(error)
+          const requestId = requestIdOf(error)
+          if (requestId !== null) {
+            pending.requestId = requestId
+          }
         }
       }
     }

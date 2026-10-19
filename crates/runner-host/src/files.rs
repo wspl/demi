@@ -307,6 +307,47 @@ impl FileTransfers {
         Ok(())
     }
 
+    /// `fs_downloadFile`: the file the backend offers, downloaded into a
+    /// staging file beside the destination and put in place as
+    /// `fs_writeFile` puts it once its bytes are checked
+    /// (`native-runtime.md` § Downloads).
+    pub fn download(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsDownloadFile {
+            id,
+            path,
+            cwd,
+            exists,
+            source,
+        } = message
+        else {
+            return Err(io::Error::other("not a file download"));
+        };
+        self.admit()?;
+        // Before anything is read (`runner.md` § Watching files).
+        let read_at = crate::numbers::read_at();
+        let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        let shutdown = self.cancel.clone();
+        self.transfers.spawn(async move {
+            let result = match target {
+                Ok(target) => download_file(&pipes, &source, &target, exists, &transfer).await,
+                Err(error) => Err(error),
+            };
+            let message = match result {
+                Ok(name) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                    id,
+                    read_at,
+                    result: wire::FsResult::WriteFile(name),
+                })),
+                Err(error) => fs_error(id, read_at, &error),
+            };
+            send(&reply, message, &shutdown).await;
+        });
+        Ok(())
+    }
+
     /// `git_show`: the file as the last commit, or the commit it names, has
     /// it, decoded whole under the working-tree admission `permit`, then
     /// streamed into the output pipe after the reply.
@@ -696,16 +737,45 @@ pub async fn write_file<B>(
 where
     B: futures_util::Stream<Item = io::Result<Bytes>> + Unpin,
 {
-    let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+    let mut staged = staged_write(target, exists, cancel).await?;
+    let mut body = body.await?;
+    while let Some(chunk) = body.next().await {
+        staged.file().write_all(&chunk?).await?;
+    }
+    publish_write(staged, target, exists).await
+}
+
+/// Downloads the file `offer` names to `target` as [`write_file`] writes
+/// one: its bytes are staged beside it, checked, and put in place as
+/// `exists` says.
+async fn download_file(
+    pipes: &PipeClient,
+    offer: &wire::FileOffer,
+    target: &Path,
+    exists: wire::WriteExists,
+    cancel: &CancellationToken,
+) -> io::Result<String> {
+    let mut staged = staged_write(target, exists, cancel).await?;
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let staging = target.with_file_name(format!(".{name}.{}.download", uuid::Uuid::new_v4().simple()));
+    pipes.download(offer, &staging, staged.file(), cancel, |_| {}).await?;
+    publish_write(staged, target, exists).await
+}
+
+/// The staged file of a write of `target`, refused before its bytes move
+/// when what is there now refuses it; the publication checks again.
+async fn staged_write(
+    target: &Path,
+    exists: wire::WriteExists,
+    cancel: &CancellationToken,
+) -> io::Result<Staged> {
+    let Some(parent) = target.parent().filter(|_| target.file_name().is_some()) else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "a file needs a parent directory and a name",
         ));
     };
-    let name = name.to_string_lossy().into_owned();
     fs::create_dir_all(parent).await?;
-    // What is there now refuses the write before its bytes move; the
-    // publication checks again.
     match fs::symlink_metadata(target).await {
         Ok(taken) if taken.is_dir() && exists != wire::WriteExists::Rename => {
             return Err(is_directory(target));
@@ -722,14 +792,25 @@ where
         durable: false,
     };
     // Out of open files, the write waits for one (`runner.md` § Load).
-    let mut staged =
-        demi_command_sdk::descriptors::retry(cancel, || Staged::new(target, publication))
-            .await
-            .map_err(io_error)?;
-    let mut body = body.await?;
-    while let Some(chunk) = body.next().await {
-        staged.file().write_all(&chunk?).await?;
-    }
+    demi_command_sdk::descriptors::retry(cancel, || Staged::new(target, publication))
+        .await
+        .map_err(io_error)
+}
+
+/// Puts the staged write of `target` in place as `exists` says, and answers
+/// the name it has.
+async fn publish_write(
+    staged: Staged,
+    target: &Path,
+    exists: wire::WriteExists,
+) -> io::Result<String> {
+    let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a file needs a parent directory and a name",
+        ));
+    };
+    let name = name.to_string_lossy().into_owned();
     match exists {
         wire::WriteExists::Replace => {
             staged.publish().await.map_err(io_error)?;

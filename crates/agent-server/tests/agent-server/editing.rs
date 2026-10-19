@@ -398,7 +398,7 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     );
 }
 
-/// An edit keeps a file by naming it: an attachment record by its path, and
+/// An edit keeps a file by naming it: an attachment record by its number, and
 /// an image, a video or a document by its kind and blob. The session puts
 /// the edited message's own block in its place, so the model reads the
 /// bytes and the block keeps its media type and file name; a file the
@@ -433,7 +433,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     };
     let attachment = Attachment {
         name: "chart.png".into(),
-        path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
+        id: "a1".into(),
         media_type: "image/png".into(),
         size_bytes: 4,
         sha256: BlobRef::try_from("a".repeat(64)).unwrap(),
@@ -515,7 +515,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
         (
             "op1",
             ClientContent::Attachment {
-                path: "/elsewhere/chart.png".into(),
+                id: "a9".into(),
             },
         ),
         ("op2", image_ref(&elsewhere)),
@@ -537,7 +537,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     assert_eq!(
         refusals,
         [
-            rejected(AgentCode::EditFileMissing, "The edited message holds no attachment at /elsewhere/chart.png"),
+            rejected(AgentCode::EditFileMissing, "The edited message holds no attachment a9"),
             rejected(AgentCode::EditFileMissing, &format!("The edited message holds no image {elsewhere}")),
             rejected(AgentCode::EditFileMissing, &format!("The edited message holds no video {png_blob}")),
         ]
@@ -563,7 +563,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
             },
         },
         ClientContent::Attachment {
-            path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
+            id: "a1".into(),
         },
     ];
     client.send(edit("op4", &target, &version, kept)).await;

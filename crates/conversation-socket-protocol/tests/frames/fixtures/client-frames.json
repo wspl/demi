@@ -42,7 +42,7 @@
         },
         {
           "type": "attachment",
-          "path": "/home/demi/.demi/attachments/c1/notes.txt"
+          "id": "a1"
         },
         {
           "type": "media",

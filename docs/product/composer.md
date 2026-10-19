@@ -219,30 +219,32 @@ What follows from that split:
   stands and, beside it, each file as its upload or its device and path, so
   opening the draft on any page builds the same document again.
 
-Sending a file proceeds through three owners:
+Sending a file stores it with the backend and nothing more:
 
 ```text
-Composer file -> backend upload/blob -> selected Host attachment directory
-                         |                          |
-                         +-- attachment ID          +-- absolute file path
-                                                       in the agent message
+Composer file -> backend upload/blob -> attachment record in the message
+                                          (a7, name, type, size)
+                                               |
+                         demi attachment download a7, when a command needs it
+                                               v
+                                     a file in the command's directory
 ```
 
 Files remain staged in the draft until send, each as its upload, so another
-device shows the file and can send it. The backend writes the file under the Host
-user's `~/.demi/attachments/<conversation>/`, adding a numeric suffix to avoid
-an existing name of other contents; a file of the same name and the same
-contents already there is the same file, and is not written again. The suffix
-belongs to the Host path alone: the attachment keeps the name the user gave
-it, so a file sent again, pasted or put back by Recall keeps its name,
-`login-before.png`, and never grows `-2-2`. It does not put attachment files in the project directory.
-A Cloud target may need to wake before this write.
+device shows the file and can send it. The send gives each file the
+conversation's next attachment number, the sequence the agent's own
+attachments take theirs from
+([Attachment commands](../execution/commands.md#attachment-commands)), and
+writes nothing to the Host: most files are only for the model to read, which
+it does from the blob, and a Host that is slow to reach, offline or a stopped
+Cloud never holds a message. When a command needs the file, the agent fetches
+it into the command's directory with `demi attachment download a7`.
 
-The agent message contains one `attachment` record with name, path, media type,
-size, and blob hash; a text file's record also carries its opening lines, which
+The agent message contains one `attachment` record with number, name, media
+type, size, and blob hash; a text file's record also carries its opening lines, which
 the capsule shows when pointed at. The model receives the record as a tag
-that names the file ([Replay](../agent/transcript.md#replay)), so it can read the
-file with tools. The complete text
+that names the file by its number ([Replay](../agent/transcript.md#replay)),
+so it can fetch the file for its commands. The complete text
 file is not duplicated into the message.
 
 Native media adds the corresponding image, video, audio, or document input beside
@@ -253,8 +255,8 @@ attachment remains one capsule. The accepted extensions of each request's model
 govern what the request carries: a medium the model does not accept, or one
 too large for its requests, travels as a text that names it and says why
 ([Replay](../agent/transcript.md#replay)), and an adapter must not replace
-supported media with a placeholder. Other files remain
-accessible by path. Attachment presence and model capability are separate facts.
+supported media with a placeholder. Other files reach the
+model through `demi attachment download`. Attachment presence and model capability are separate facts.
 
 The upload cap is 25 MiB. Upload IDs and transcript media references travel in
 conversation frames; bulk bytes use HTTP. Exact wire forms, ownership checks,

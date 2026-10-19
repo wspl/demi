@@ -879,6 +879,34 @@ The sign-in page works again:
   ([File contents](runner.md#file-contents)), and the backend stores the blob
   and then the record.
 
+
+`demi attachment download <id>...` writes attachments of the conversation,
+the user's or the agent's, into the invocation's cwd under their names, or
+into the directory `--dir` names, and prints each `ID  PATH`; `--json` prints
+an array of `{ id, path }`. For example, the user sent a screenshot, `a7`,
+and the agent needs it as a file to crop it:
+
+```text
+$ demi attachment download a7
+a7  screenshot.png
+```
+
+- **Fetched when needed.** A send writes nothing to a Host
+  ([Attachments](../product/composer.md#attachments)); the model reads an
+  image, a video or a PDF from the message itself, and fetches a file only
+  for a command that works on it.
+- **Never replaces.** The file takes the first free name, `screenshot-2.png`
+  when a different `screenshot.png` is there, and the same bytes already
+  under the name are that file, not written again
+  ([Host operations](runner.md#host-operations)).
+- **How it travels.** The backend offers the blob to the runner for the
+  length of the call, at an address the runner's own token opens, and the
+  runner fetches it through the one downloader
+  ([Downloads](native-runtime.md#downloads)), which checks its hash, so a
+  slow or broken link resumes where it stopped. A number the conversation does not have
+  fails with a line that names it, and the command goes on with the next
+  and exits with status 1.
+
 ## Acceptance
 
 Verify with a real runner and without calling a model:

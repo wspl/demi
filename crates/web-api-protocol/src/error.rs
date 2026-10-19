@@ -310,6 +310,13 @@ pub enum ErrorCode {
     /// session, such as a storage failure; the frames behind it still
     /// arrive.
     FrameDeliveryFailed,
+    /// A message could not be sent for a failure inside the backend that
+    /// has no cause of its own, such as a storage failure; the page shows
+    /// it with the socket's request ID (`turns.md` § Requesting).
+    SendFailed,
+    /// A message names a file on a device whose path a shell command
+    /// cannot hold, such as one with a line break.
+    PathUnquotable,
     /// Work of the conversation's tree is running, or another transition
     /// holds the conversation: an archive or a target change waits for
     /// nothing and is refused.

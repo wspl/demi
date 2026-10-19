@@ -291,6 +291,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         <ErrorNotice
           :label="t('transcript.user.notDelivered')"
           :detail="block.submission.error"
+          :request-id="block.submission.requestId ?? undefined"
           :action="shared('common.retry')"
           @action="emit('retrySubmission', block.submission.id)"
         />

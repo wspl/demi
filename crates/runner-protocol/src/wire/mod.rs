@@ -16,7 +16,7 @@ pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LogLine,
-    LookPath, Looked, MAX_INSTALLED, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef,
+    LookPath, Looked, MAX_INSTALLED, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,
 };

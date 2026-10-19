@@ -11,7 +11,12 @@
 //! blob in that namespace. The backend reads the media type from the bytes
 //! as it does for the user's uploads, and stores the record under the next
 //! number of the conversation's `attachment` sequence. The command returns
-//! no medium: the attachment is for the user.
+//! no medium: the attachment is for the user. `download` writes attachments
+//! of the conversation, the user's or the agent's, into the invocation's
+//! directory: the runner downloads each from this backend as every file
+//! Demi downloads, resumed after a break (`native-runtime.md` § Downloads),
+//! and takes the first free name, the same bytes under the name being that
+//! file.
 
 use std::rc::{Rc, Weak};
 
@@ -23,7 +28,9 @@ use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::{StorageError, sequences};
 use demi_backend_remote_host::collect_pipe;
 use demi_runner_protocol::wire::FileHash;
-use demi_host_interface::{ByteRange, Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_host_interface::{
+    ByteRange, Call, GroupBuilder, Host as _, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
+};
 use demi_shared_types::{
     BlobRef, PixelSize, Sequence, preview_media_type,
     output::{Cell, Table},
@@ -38,13 +45,15 @@ use tokio_util::task::TaskTracker;
 use crate::HostShard;
 use crate::host_commands::{conversation_of, verb};
 
-const SUMMARY: &str = "Give the user files of this host as attachments of the conversation, which your messages show.";
+const SUMMARY: &str = "Give the user files of this host as attachments of the conversation, which your messages show, and fetch the conversation's attachments as files.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
 const ENTRY: &str = "Gives the user files from the Host as attachments of the conversation, which stay viewable whatever later becomes of the file. Use it to deliver a screenshot, a recording, a download or a file you made, and place it in your reply as `<attachment id=\"a3\" />` on a line of its own, and not also a link to its path.";
 
 const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Deliver one in your reply as <attachment id=\"a3\" /> on a line of its own, not also a link to its path: an image shows, a video and audio play, and any other file is a card the user opens. A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
+
+const DOWNLOAD_SUMMARY: &str = "Write attachments of the conversation, such as a file the user sent as <attachment id=\"a7\" ... />, into the current directory, or the one --dir names, under their names, and print each one's path. A file never replaces another: it takes the first free name, and the same file already there is that file.";
 
 /// What the media type falls back to when neither the bytes nor the file's
 /// name tell it.
@@ -73,6 +82,29 @@ struct UploadedAttachment {
     size: u64,
 }
 
+/// The input of `demi attachment download`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct DownloadArgs {
+    /// Attachments to download, such as a7
+    #[schemars(length(min = 1))]
+    id: Vec<String>,
+    /// Directory to write them into, relative to the current directory or
+    /// absolute; the current directory when omitted
+    dir: Option<String>,
+}
+
+/// An attachment of `demi attachment download --json`, which lists them in
+/// the order of their numbers as given.
+#[derive(Serialize, JsonSchema)]
+struct DownloadedAttachment {
+    /// Its number, such as `a7`.
+    id: String,
+    /// Where it was written, as the directory was given joined with its
+    /// name.
+    path: String,
+}
+
 /// The `attachment` group, whose handlers act in `shard`.
 pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
     GroupBuilder::new("attachment", SUMMARY)
@@ -84,8 +116,104 @@ pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .json_output::<Vec<UploadedAttachment>>()
                 .success_output("a table of the files uploaded: each one's attachment id, such as a3, its media type, size and path")
                 .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
-                .bind(TypedRpc::new(verb(shard, upload))),
+                .bind(TypedRpc::new(verb(shard.clone(), upload))),
         )
+        .leaf(
+            LeafBuilder::rpc("download", DOWNLOAD_SUMMARY)
+                .input::<DownloadArgs>()
+                .positionals(["id"])
+                .json_output::<Vec<DownloadedAttachment>>()
+                .success_output("a table of the attachments written: each one's id and path")
+                .failure_output("an attachment that cannot be written writes its id and why to stderr; the others are still written, and the command exits 1")
+                .bind(TypedRpc::new(verb(shard, download))),
+        )
+}
+
+async fn download(
+    shard: Rc<dyn HostShard>,
+    call: Call<DownloadArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
+    let Call { args, invocation } = call;
+    let conversation = conversation_of(&invocation)?;
+    let device = DeviceId::try_from(invocation.host.as_str())
+        .map_err(|_| RpcError::Failed(format!("{}: names no device", invocation.host)))?;
+    let directory = args.dir.as_deref().unwrap_or(".");
+    let mut written = Vec::new();
+    let mut failed = false;
+    for id in args.id {
+        let fetched = tokio::select! {
+            fetched = fetch(&*shard, &conversation, &device, &invocation.cwd, directory, &id) => fetched,
+            () = port.cancelled() => return Ok(130),
+        };
+        match fetched {
+            Ok(name) => written.push(DownloadedAttachment {
+                path: if directory == "." { name } else { format!("{}/{name}", directory.trim_end_matches(['/', '\\'])) },
+                id,
+            }),
+            Err(reason) => {
+                failed = true;
+                port.stderr(format!("{}: {id}: {reason}\n", invocation.path.join(" ")))
+                    .await?;
+            }
+        }
+    }
+    let printed = if invocation.json {
+        let json = serde_json::to_string(&written)
+            .map_err(|error| RpcError::Failed(error.to_string()))?;
+        format!("{json}\n")
+    } else {
+        let mut table = Table::new(["id", "path"]);
+        for attachment in &written {
+            table.row::<Cell>([attachment.id.as_str().into(), attachment.path.as_str().into()]);
+        }
+        table.render()
+    };
+    port.stdout(printed).await?;
+    Ok(u8::from(failed))
+}
+
+/// Writes the conversation's attachment `id` into `directory`, beside `cwd`,
+/// on the conversation's Host on `device`, and answers the name it took.
+/// Answers why when it cannot.
+async fn fetch(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    cwd: &str,
+    directory: &str,
+    id: &str,
+) -> Result<String, String> {
+    let unknown = || format!("the conversation has no attachment {id}");
+    let number: AttachmentNumber = id.parse().map_err(|_| unknown())?;
+    let row = shard
+        .conversation_db(conversation)
+        .read(move |connection| conversation_attachments::read(connection, number))
+        .await
+        .map_err(|error| error.to_string())?
+        .flatten()
+        .ok_or_else(unknown)?;
+    let bytes = shard
+        .blobs()
+        .get(&row.blob)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("the bytes of {id} are no longer stored"))?;
+    let options = WriteOptions {
+        exists: WhenExists::Rename,
+    };
+    // The admission waits only as long as the call: a stopped call drops it.
+    shard
+        .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
+            let paths = host.host.identity().paths;
+            let path = paths.join(&paths.resolve(cwd, directory), &row.name);
+            host.host
+                .download_file(&path, bytes, row.blob.as_str().to_owned(), options)
+                .await
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.message)
 }
 
 async fn upload(
@@ -220,12 +348,12 @@ async fn store(
 }
 
 /// An attachment's record before the conversation gives it its number.
-struct Unnumbered {
-    name: String,
-    media_type: String,
-    size: u64,
-    pixels: Option<PixelSize>,
-    blob: BlobRef,
+pub(crate) struct Unnumbered {
+    pub(crate) name: String,
+    pub(crate) media_type: String,
+    pub(crate) size: u64,
+    pub(crate) pixels: Option<PixelSize>,
+    pub(crate) blob: BlobRef,
 }
 
 /// Stores `attachment` as the conversation's next one in `db`, its number
@@ -237,7 +365,7 @@ struct Unnumbered {
 /// future is dropped, cuts neither, since the database's thread commits a
 /// write it was handed whoever still waits for it. So a stored attachment
 /// is always announced.
-fn commit(
+pub(crate) fn commit(
     tasks: &TaskTracker,
     db: ConversationDb,
     attachment: Unnumbered,

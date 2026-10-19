@@ -56,14 +56,14 @@ pub struct ResolvedFiles {
 #[error("{message}")]
 pub struct ContentError {
     pub message: String,
-    /// The code the backend's `error` frame carries, such as
-    /// `frame_delivery_failed`.
+    /// The code the refusal carries, such as `frame_delivery_failed`.
     pub code: Option<String>,
 }
 
 impl ContentError {
-    /// The refusal of the steer or the edit whose files these are, as the
-    /// page words it: the code the error has, else `frame_failed`.
+    /// The refusal of the send, the steer or the edit whose files these
+    /// are, as the page words it: the code the error has, else
+    /// `frame_failed`.
     pub(crate) fn refusal(&self) -> Refusal {
         let code = self.code.clone().unwrap_or_else(|| AgentCode::FrameFailed.to_string());
         Refusal::new(code, &self.message)
@@ -153,7 +153,7 @@ async fn resolve(
                 parts.extend(blocks.into_iter().map(EditContent::Content));
             }
             ClientContent::Media { media } => parts.push(EditContent::KeptMedia(media)),
-            ClientContent::Attachment { path } => parts.push(EditContent::KeptAttachment(path)),
+            ClientContent::Attachment { id } => parts.push(EditContent::KeptAttachment(id)),
         }
     }
     Ok((parts, media))

@@ -16,7 +16,7 @@ const image: UserContentBlock = { type: 'image', source: { type: 'url', url: '/b
 const record: UserContentBlock = {
   type: 'attachment',
   name: 'before.png',
-  path: '/home/demi/.demi/attachments/c/before.png',
+  id: 'a1',
   mediaType: 'image/png',
   sizeBytes: 10,
   sha256: 'a',
@@ -24,7 +24,7 @@ const record: UserContentBlock = {
 const log: UserContentBlock = {
   type: 'attachment',
   name: 'build.log',
-  path: '/home/demi/.demi/attachments/c/build.log',
+  id: 'a2',
   mediaType: 'text/plain',
   sizeBytes: 20,
   sha256: 'b',
@@ -71,13 +71,12 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
     id: '0',
     name: 'before.png',
     image: image.source,
-    path: record.path,
     snippet: undefined,
     reference: { type: 'stored', sha256: record.sha256, mediaType: record.mediaType, size: record.sizeBytes },
   })
   // An image the model could not read natively shows its own bytes.
   expect(contentCapsule('3', [{
-    type: 'attachment', name: 'shot.png', path: '/home/demi/.demi/attachments/c/shot.png',
+    type: 'attachment', name: 'shot.png', id: 'a3',
     mediaType: 'image/png', sizeBytes: 3, sha256: 'b'.repeat(64),
   }]).image).toEqual({ type: 'ref', ref: 'b'.repeat(64), mediaType: 'image/png' })
   expect(contentCapsule('1', [log])).toMatchObject({ name: 'build.log', snippet: 'error: the test failed' })

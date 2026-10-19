@@ -56,7 +56,12 @@ afterEach(() => {
 
 /** Writes `records` into a draft database of version 1, as release 0.1.21 left it. */
 async function storeAsRelease0121(records: [key: [string, string], value: unknown][]): Promise<void> {
-  const request = indexedDB.open('demi-drafts', 1)
+  await storeAtVersion(1, records)
+}
+
+/** Writes `records` into a draft database of `version`. */
+async function storeAtVersion(version: number, records: [key: [string, string], value: unknown][]): Promise<void> {
+  const request = indexedDB.open('demi-drafts', version)
   request.onupgradeneeded = () => request.result.createObjectStore('drafts')
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     request.onsuccess = () => resolve(request.result)
@@ -89,6 +94,26 @@ test('a draft of release 0.1.21 reads with its message on its way as a list of o
   ])
   expect((await readDraft('user', 'sending'))?.pendingSends).toEqual([{ ...sent, comments: [] }])
   expect(await readDraft('user', 'idle')).toMatchObject({ pendingSends: [], text: 'typed' })
+})
+
+// An edit in progress stored before attachments had numbers names a file by
+// its path on the Host, which the backend has since numbered: the edit goes,
+// and the draft, its comments included, stays. Before, the whole record was
+// set aside, its text with it.
+test('a draft of version 3 drops an edit that names a file by its path and keeps the rest', async () => {
+  const comment = { id: 'c1', blockId: 'b1', start: 0, end: 4, at: 0, quote: 'Look', text: 'Why?' }
+  const record = {
+    pendingSends: [], notSaved: [], base: 3, local: null, text: 'typed', comments: [comment], model: null, files: [], scroll: null,
+  }
+  const edit = {
+    phase: 'editing',
+    request: {
+      operationId: 'op', targetBlockId: 'u1', version: { epoch: 'e', revision: 1 },
+      content: [{ type: 'attachment', name: 'shot.png', path: '/home/ana/.demi/attachments/c/shot.png', mediaType: 'image/png', sizeBytes: 4, sha256: 'a'.repeat(64) }],
+    },
+  }
+  await storeAtVersion(3, [[['user', 'edited'], { ...record, messageEdit: edit }]])
+  expect(await readDraft('user', 'edited')).toMatchObject({ messageEdit: null, text: 'typed', comments: [comment] })
 })
 
 test('a record that does not read is set aside, and every other draft is restored', async () => {

@@ -23,7 +23,7 @@ use tokio::sync::mpsc::{self, error::TrySendError};
 
 use super::{
     AgentServer,
-    content::{ContentError, ContentResolver, resolve_edit, resolve_message},
+    content::{ContentResolver, resolve_edit, resolve_message},
     tree::Tree,
 };
 
@@ -159,13 +159,22 @@ impl<H: HostResolver> Connection<H> {
     }
 
     /// Handles one decoded frame to its end; a frame whose handling waits,
-    /// such as a send whose uploads are being written to the Host or an
+    /// such as a send whose uploads are being numbered and read or an
     /// `abort` waiting for the stop to be recorded, delays the frames behind
     /// it. A failure is answered as a frame, never returned. Answers whether
     /// the session took the message the frame carries: a `send` it admitted
     /// or a `steer` it accepted, which the backend needs to know of a
     /// message saved for later (`web-api-conversations.md` § Messages saved for later).
     pub async fn handle(&self, frame: ClientFrame) -> bool {
+        let command = frame.kind();
+        self.handle_as(frame, command).await
+    }
+
+    /// Handles `frame` as [`handle`](Self::handle) does, refusing it as the
+    /// page's `command`: the backend hands the session a message saved for
+    /// later as the `send` it becomes, and the page waits for the answer of
+    /// the `send_saved` it sent.
+    pub async fn handle_as(&self, frame: ClientFrame, command: ClientFrameKind) -> bool {
         match frame {
             ClientFrame::Open { from, edge } => {
                 self.open(from, edge.as_ref()).await;
@@ -176,9 +185,9 @@ impl<H: HostResolver> Connection<H> {
                 false
             }
             frame => match self.attached() {
-                Some(tree) => self.dispatch(&tree, frame).await,
+                Some(tree) => self.dispatch(&tree, frame, command).await,
                 None => {
-                    self.refuse(frame);
+                    self.refuse(frame, command);
                     false
                 }
             },
@@ -206,7 +215,11 @@ impl<H: HostResolver> Connection<H> {
     }
 
     fn reject(&self, command: ClientFrameKind, refusal: Refusal) {
-        self.send(ServerFrame::Rejected { command, refusal });
+        self.send(ServerFrame::Rejected {
+            command,
+            refusal,
+            request_id: None,
+        });
     }
 
     /// An `error` frame of the agent's own failure `code`.
@@ -214,15 +227,6 @@ impl<H: HostResolver> Connection<H> {
         self.send(ServerFrame::Error {
             message: error.to_string(),
             code: Some(code.to_string()),
-            diagnostics: None,
-            request_id: None,
-        });
-    }
-
-    fn content_error(&self, error: ContentError) {
-        self.send(ServerFrame::Error {
-            message: error.message,
-            code: error.code,
             diagnostics: None,
             request_id: None,
         });
@@ -308,7 +312,7 @@ impl<H: HostResolver> Connection<H> {
     /// The answer to a frame that needs a session when none is open. A
     /// removal is answered `gone_on`, since nothing held what it names
     /// (`runtime.md` § Pending steers).
-    fn refuse(&self, frame: ClientFrame) {
+    fn refuse(&self, frame: ClientFrame, command: ClientFrameKind) {
         match frame {
             ClientFrame::Steer { steer_id, .. } => {
                 self.send(ServerFrame::SteerResult {
@@ -327,15 +331,14 @@ impl<H: HostResolver> Connection<H> {
             ClientFrame::SteerNow { .. }
             | ClientFrame::AbortSubagents {}
             | ClientFrame::AbortSubagent { .. } => {}
-            frame => self.reject(frame.kind(), no_session()),
+            _ => self.reject(command, no_session()),
         }
     }
 
     /// Handles a frame of an attached connection; answers whether the
     /// session took the message a `send` or `steer` carries.
-    async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame) -> bool {
+    async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame, kind: ClientFrameKind) -> bool {
         let session = tree.root().session();
-        let kind = frame.kind();
         match frame {
             ClientFrame::Send {
                 message_id,
@@ -345,7 +348,7 @@ impl<H: HostResolver> Connection<H> {
                 let (content, media) = match resolve_message(&*self.resolver, content).await {
                     Ok(resolved) => resolved,
                     Err(error) => {
-                        self.content_error(error);
+                        self.reject(kind, error.refusal());
                         return false;
                     }
                 };

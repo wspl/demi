@@ -20,6 +20,7 @@ use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
+    ClientFrameKind,
     ClientFrame, EditOutcome, EditRequest, Failures, Refusal, RemoveOutcome, ServerFrame, SubagentJob,
     TranscriptPatch, TranscriptVersion,
 };
@@ -52,7 +53,11 @@ use tokio_tungstenite::tungstenite::{self, Message};
 
 use demi_backend_database::{DatabaseKind, schema_testing};
 
-use crate::support::{Harness, MASTER_EMAIL, PATIENCE, Paired, Session, TestBackend, eventually};
+use crate::diagnostics::lines_of;
+use crate::support::{
+    Harness, MASTER_EMAIL, PATIENCE, Paired, ServerLogCapture, Session, TestBackend, eventually,
+};
+use demi_web_api_protocol::diagnostics::LogLevel;
 
 /// The conversation ids the tests create.
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
@@ -1295,6 +1300,7 @@ async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the
 async fn the_frames_the_backend_refuses_never_reach_the_session() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
+    let log = ServerLogCapture::open(&harness);
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -1338,11 +1344,35 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
             [FIRST],
         )
         .unwrap();
+    // A send is refused as itself, so the page marks its message not
+    // delivered with the cause and the socket's request ID, and the backend
+    // logs the refusal under that ID (`turns.md` § Requesting): before, it
+    // was an `error` frame, and nothing was logged.
     socket.send(&send("m1", "hi")).await;
-    let ServerFrame::Error { code, .. } = socket.frame().await else {
+    let ServerFrame::Rejected { command, refusal, request_id } = socket.frame().await else {
         panic!("an archived conversation refuses a message");
     };
-    assert_eq!(code.as_deref(), Some("conversation_archived"));
+    assert_eq!(
+        (command, refusal.code.as_str()),
+        (ClientFrameKind::Send, "conversation_archived")
+    );
+    assert_eq!(
+        request_id.as_ref().map(|id| id.as_str()),
+        Some(socket.request_id.as_str())
+    );
+    let refused_line = || async {
+        lines_of(&backend, &master, &socket.request_id)
+            .await
+            .lines
+            .into_iter()
+            .find(|line| line.message == "a send was refused")
+    };
+    eventually("the refusal is in the log", || async { refused_line().await.is_some() }).await;
+    let line = refused_line().await.unwrap();
+    assert_eq!(line.level, LogLevel::Warn);
+    assert_eq!(line.fields["code"], json!("conversation_archived"));
+    assert_eq!(line.fields["cause"], json!(refusal.reason));
+    assert_eq!(line.fields["conversation_id"], json!(FIRST), "{line:?}");
     let edit = ClientFrame::EditAndSend {
         request: EditRequest {
             operation_id: "edit-1".try_into().unwrap(),
@@ -1413,6 +1443,7 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         (StatusCode::UPGRADE_REQUIRED, ErrorCode::UpgradeRequired)
     );
     backend.close().await;
+    log.close().await;
 }
 
 /// What the keyed family's runtimes saw: how many were built, and each
@@ -2773,10 +2804,10 @@ async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_res
         .await;
     assert_eq!(archived.status, StatusCode::OK);
     socket.send(&send("m2", "still there?")).await;
-    let ServerFrame::Error { code, .. } = socket.frame().await else {
+    let ServerFrame::Rejected { refusal, .. } = socket.frame().await else {
         panic!("an archived conversation refuses a message");
     };
-    assert_eq!(code.as_deref(), Some("conversation_archived"));
+    assert_eq!(refusal.code.as_str(), "conversation_archived");
     assert_eq!(
         Socket::try_connect(&backend, &master, FIRST).await.err(),
         Some(409)

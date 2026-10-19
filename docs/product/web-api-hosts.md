@@ -116,7 +116,8 @@ checks against what it received. The check reads only the caller's own
 namespace, so it says nothing of another user's files.
 
 `GET /api/conversations/:id/attachments/:attachment` answers an attachment
-the agent uploaded ([Attachment commands](../execution/commands.md#attachment-commands))
+of the conversation, one the user sent or one the agent uploaded
+([Attachment commands](../execution/commands.md#attachment-commands)),
 as `{ id, name, mediaType, size, blob }`, with an image's `width` and `height`
 in pixels, which the backend reads from its header when it stores it, where
 `attachment` is its number,

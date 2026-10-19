@@ -400,7 +400,7 @@ Content in `send`, `steer` and `edit_and_send` is typed. It is text, a
 edited message already holds: its native media by blob reference
 (`{ type: "media", media: { type: "image", ref, mediaType } }`, a `video`
 alike, and a `document` with its `fileName`) and its attachment records by
-path (`{ type: "attachment", path }`)
+number (`{ type: "attachment", id }`)
 ([Files the edit keeps](message-editing.md#files-the-edit-keeps)). A `send`
 or `steer` that holds `media` or `attachment` is an invalid frame. No frame
 carries file bytes. The backend
@@ -435,7 +435,7 @@ Host, with the handle checks of [Running shell tools](shell-tool.md#running-shel
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
 | `waiting` | `waitedMs`, how long a node had waited for the model's answer when the frame left, or null when it waits for none, and `subagentId` when the node is a subagent: when a wait starts or ends, and on open for each node ([Waiting for the model](#waiting-for-the-model)) |
 | `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save; `requestId`, the socket's ([Request IDs and the server log](../backend/backend.md#request-ids-and-the-server-log)) |
-| `rejected` | The refused command and the reason |
+| `rejected` | The refused command, the reason's code and its values, and `requestId`, the socket's, as an `error` carries it |
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
 | `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
 | `heartbeat` | Nothing: the connection sent no other frame for 30 seconds ([Order and delivery](#order-and-delivery)) |

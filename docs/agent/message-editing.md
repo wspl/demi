@@ -115,15 +115,15 @@ keeps and never carries their bytes. For example, a message sent with
 `notes.txt` and `chart.png` holds an attachment record for each file and, for
 the image the model reads natively, a media block. An edit that keeps both
 files and changes only the text sends the new text, an
-`{ type: "attachment", path }` reference for each record, naming the path the
-record holds, and the image's `media` by blob reference. New files arrive as
+`{ type: "attachment", id }` reference for each record, naming its number,
+`a7`, and the image's `media` by blob reference. New files arrive as
 uploads or remote files, as in a send
 ([Client frames](rendering.md#client-frames)).
 
 The session puts the target message's own block in the place of each
 reference, and takes nothing from elsewhere:
 
-- An `attachment` reference names the record that holds its path.
+- An `attachment` reference names the record of its number.
 - A `media` reference names a block of its kind (`image`, `video` or
   `document`) by its blob: the block matches when it references that blob.
   The block keeps the media type and, for a document, the file name as the
@@ -133,7 +133,7 @@ reference, and takes nothing from elsewhere:
   ([Media](transcript.md#media)).
 
 A reference that no block of the target message matches rejects the edit
-without mutation: `The edited message holds no attachment at <path>`, or
+without mutation: `The edited message holds no attachment a7`, or
 `The edited message holds no <kind> <ref>`. So an edit cannot take over a
 file that another message received, nor any other blob of the caller. The
 backend resolves neither kind of reference.

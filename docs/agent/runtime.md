@@ -476,7 +476,7 @@ that replays it, and a short number is copied without a slip.
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
 | A simulator `demi mobile` opened | `m2` | The conversation, across its Hosts | The backend, when the device is opened ([Commands](../mobile/mobile.md#commands)) |
-| An attachment the agent uploaded | `a3` | The conversation | The backend, when `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
+| An attachment, the user's or the agent's | `a3` | The conversation | The backend, when a send or `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
 | An element reference | `e37` | Its tab, or its device | The conversation browser, as it observes the tab, or `demi mobile inspect` |
 | A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
 
@@ -490,9 +490,7 @@ that replays it, and a short number is copied without a slip.
   message id, and a missing medium is named by its kind, not by its blob's
   hash.
 - **Paths stay whole.** A path keeps the identifiers it is made of, since
-  several backends and users can share one machine: an attachment's path on a
-  Host names its conversation's full id
-  ([Attachments](../product/composer.md#attachments)).
+  several backends and users can share one machine.
 - **Inside Demi**, an identity keeps the form its storage and its wire need;
   this rule is about the text the model reads and writes.
 

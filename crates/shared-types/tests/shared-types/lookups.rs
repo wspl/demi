@@ -115,8 +115,8 @@ fn extension_support_tells_unknown_unsupported_and_supported_apart() {
 #[test]
 fn an_attachment_is_one_self_closing_tag_with_escaped_attributes() {
     let attachment = Attachment {
+        id: "a7".into(),
         name: r#"notes "v2" <&>.md"#.into(),
-        path: r#"/home/demi/.demi/attachments/c1/notes "v2" <&>.md"#.into(),
         media_type: "text/markdown".into(),
         size_bytes: 82,
         sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
@@ -126,7 +126,7 @@ fn an_attachment_is_one_self_closing_tag_with_escaped_attributes() {
     };
     assert_eq!(
         attachment_tag(&attachment),
-        r#"<attachment name="notes &quot;v2&quot; &lt;&amp;&gt;.md" type="text/markdown" size="82" path="/home/demi/.demi/attachments/c1/notes &quot;v2&quot; &lt;&amp;&gt;.md"/>"#,
+        r#"<attachment id="a7" name="notes &quot;v2&quot; &lt;&amp;&gt;.md" type="text/markdown" size="82" />"#,
     );
 }
 

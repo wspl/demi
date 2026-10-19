@@ -106,7 +106,8 @@ were sent. Each medium is replayed with the bytes the session holds for it,
 and a tool's medium that is gone as its text ([Media](#media)). A message's
 reference is replayed as its text, and an attachment record
 ([Attachments](../product/composer.md#attachments)) as a tag that names the
-file, its media type, its size and its path, never its content. A tool
+file's number, name, media type and size, never its content or a path:
+`<attachment id="a7" name="screenshot.png" type="image/png" size="160725" />`. A tool
 call's input is replayed as the JSON value the provider supplied, or as text
 when it is not valid JSON. A call of a tool the request no longer declares,
 such as `yield` or `shell_status` in a transcript from before they were
@@ -313,7 +314,7 @@ sends the same bytes.
 | Larger than 2,000 px on a side | The image turned upright by its EXIF orientation and scaled down to fit 2,000 × 2,000 px, keeping its aspect ratio: a JPEG as JPEG at quality 90, a PNG or WebP as PNG |
 | A GIF | Its first frame as PNG, fitted the same way |
 | Over 500,000 bytes after that | The fitted image as JPEG at quality 85, its transparency flattened onto white, when that is smaller |
-| Still over 3,750,000 bytes, not decodable, or needing more than 256 MiB to decode | No image: a tool result says why, and an upload stays an attachment the model reads by path |
+| Still over 3,750,000 bytes, not decodable, or needing more than 256 MiB to decode | No image: a tool result says why, and an upload stays an attachment the model fetches with `demi attachment download` |
 
 For example, a screenshot of 3,000 × 1,500 px enters as 2,000 × 1,000 px, and
 an illustration of 1,672 × 941 px saved as a PNG of 2.2 MB enters as a JPEG of
@@ -328,8 +329,7 @@ vendors read only its first frame. A fitted image carries no EXIF data, so its
 orientation is applied before it is scaled.
 
 The original stays where it came from: an image the model viewed in the
-file it viewed, and an upload in its attachment file
-on the Host and in its upload blob, whose attachment record keeps the
+file it viewed, and an upload in its upload blob, whose attachment record keeps the
 original's size and hash. Fitting decodes and encodes on the
 blocking pool ([Blocking work](../architecture/concurrency.md#blocking-work)).
 Videos and documents are not fitted; they count toward the request's size

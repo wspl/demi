@@ -194,7 +194,13 @@ waiting, and a row that changed its word when Demi confirmed the message
 would show two names for one wait. The word says what the wait is for, an
 answer: a slow model must never read as something broken in Demi. Only a
 delivery that fails replaces the row, with the message marked as not
-delivered and a Retry, which resends it and shows Requesting again. Recovery shows the
+delivered, the cause in the user's words, and a Retry, which resends it and
+shows Requesting again. The backend decides that a delivery failed and says
+why, such as *This conversation is archived. Restore it to send.*, and logs the refusal with the socket's request ID. Each cause a send can be refused for is a code of its own with the values its text needs, worded as any refusal is ([Localization](localization.md)); a failure inside the backend that has no such cause shows *The message couldn't be sent* with the request ID beside it, so the user can quote it. The page sets no
+deadline of its own and never marks a message not delivered without the
+backend's word: a send cut off by a lost connection is sent again with its
+id when the connection is back
+([Liveness and reconnection](web-application.md#liveness-and-reconnection)). Recovery shows the
 same row from the moment the control is used; there is no separate resuming
 state. The row says Requesting, and nothing else, for as long as the provider
 is being asked, a CLI installing on the Cloud for it included: while the agent retries a failed request on its own (a rate

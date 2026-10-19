@@ -26,7 +26,6 @@ afterEach(() => {
 const notes = {
   id: 'notes',
   name: 'notes.md',
-  path: '/home/demi/.demi/attachments/c/notes.md',
   reference: { type: 'stored' as const, sha256: 'a'.repeat(64), mediaType: 'text/markdown', size: 18 },
 }
 

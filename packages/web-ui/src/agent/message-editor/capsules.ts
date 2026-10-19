@@ -156,7 +156,6 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
       capsule = {
         ...capsule,
         name: block.name,
-        path: block.path,
         snippet: block.snippet,
         image: capsule.image ?? blobImage(block.mediaType, block.sha256),
         video: capsule.video ?? blobVideo(block.mediaType, block.sha256),

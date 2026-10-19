@@ -398,9 +398,19 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
         delivery,
     };
     socket.send(&send_saved(&lost.id, &fresh(), SavedDelivery::Message)).await;
-    socket
-        .until(|frame| matches!(frame, ServerFrame::Error { .. }))
+    let refused = socket
+        .until(|frame| matches!(frame, ServerFrame::Rejected { .. }))
         .await;
+    // The cause is the device's, which the page words as its own, answered
+    // as the `send_saved` the page waits on.
+    assert!(
+        matches!(
+            refused.last(),
+            Some(ServerFrame::Rejected { command: ClientFrameKind::SendSaved, refusal, .. })
+                if refusal.code == "device_not_found"
+        ),
+        "{refused:?}"
+    );
     let read = list(&backend, &master).await;
     assert_eq!((read.revision, read.messages.len()), (3, 3));
     delete(&backend, &master, &lost.id).await;
@@ -453,12 +463,13 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
     let rejected = socket
         .until(|frame| matches!(frame, ServerFrame::Rejected { .. }))
         .await;
-    assert_eq!(
-        rejected.last(),
-        Some(&ServerFrame::Rejected {
-            command: ClientFrameKind::SendSaved,
-            refusal: Refusal::new(ErrorCode::SavedNotFound, "No such message saved for later"),
-        })
+    assert!(
+        matches!(
+            rejected.last(),
+            Some(ServerFrame::Rejected { command: ClientFrameKind::SendSaved, refusal, .. })
+                if *refusal == Refusal::new(ErrorCode::SavedNotFound, "No such message saved for later")
+        ),
+        "{rejected:?}"
     );
     assert!(
         !rejected.iter().any(|frame| matches!(frame, ServerFrame::SteerResult { .. })),
@@ -471,6 +482,54 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
 }
 
 // About a second: two turns against a scripted endpoint.
+// A saved message the backend or the session refuses is answered as the
+// `send_saved` the page sent, whichever frame the message became: the page
+// waits on that command alone, without a deadline, so a refusal named
+// `send` left the message Requesting for good. Here the session refuses a
+// file on a device gone offline, and the backend an archived conversation.
+// A paired runner; a few seconds.
+#[tokio::test]
+async fn a_saved_message_refused_by_the_session_or_the_backend_is_answered_as_its_send_saved() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let remote = json!([{ "type": "remote_file", "deviceId": laptop.id(), "path": format!("{home}/notes.txt") }]);
+    let offline = save(&backend, &master, &format!("Read {MARK}"), &remote).await;
+    let archived = save(&backend, &master, "Still there?", &json!([])).await;
+    laptop.runner.kill().await;
+    backend.until_online(&master, laptop.id(), false).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let send_saved = |id: &str| ClientFrame::SendSaved {
+        id: id.to_owned(),
+        turn_id: TurnId::try_from(fresh()).unwrap(),
+        delivery: SavedDelivery::Message,
+    };
+    let refusal_of = |frames: Vec<ServerFrame>| match frames.last() {
+        Some(ServerFrame::Rejected { command, refusal, .. }) => (*command, refusal.code.clone()),
+        other => panic!("not a refusal: {other:?}"),
+    };
+
+    socket.send(&send_saved(&offline.id)).await;
+    let refused = socket.until(|frame| matches!(frame, ServerFrame::Rejected { .. })).await;
+    assert_eq!(refusal_of(refused), (ClientFrameKind::SendSaved, "device_offline".to_owned()));
+
+    let path = format!("/api/conversations/{FIRST}");
+    let patched = backend.patch(&path, &master, json!({ "archived": true })).await;
+    assert_eq!(patched.status, StatusCode::OK);
+    socket.send(&send_saved(&archived.id)).await;
+    let refused = socket.until(|frame| matches!(frame, ServerFrame::Rejected { .. })).await;
+    assert_eq!(refusal_of(refused), (ClientFrameKind::SendSaved, "conversation_archived".to_owned()));
+    // Both stay on the list.
+    assert_eq!(list(&backend, &master).await.messages.len(), 2);
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn undo_after_a_stale_delete_saves_a_new_message_whose_send_is_a_new_turn() {
     let vendor = MockVendor::start().await;

@@ -153,7 +153,8 @@ order:
   project's `AGENTS.md` or `CLAUDE.md` files, which every agent reads, and
   `.demi/instructions.md`, which Demi alone reads; the model writes to one
   only when the user asks ([Instructions](instructions.md)). A file the user attaches arrives as an
-  `<attachment>` tag naming its path on the Host.
+  `<attachment>` tag with its number; `demi attachment download <id>` puts it
+  where a command needs it.
 
 A rule belongs here only when its moment arises during ordinary work rather
 than while the model reads one command's help; otherwise it belongs in that

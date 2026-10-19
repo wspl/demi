@@ -103,6 +103,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
             )
             .with_param("thresholdPercent", 50)
             .with_param("usedPercent", 30),
+            request_id: None,
         })
     );
 
@@ -386,6 +387,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
         Some(ServerFrame::Rejected {
             command: ClientFrameKind::Compact,
             refusal: Refusal::new(AgentCode::AgentEnded, "The agent has ended"),
+            request_id: None,
         })
     );
 }

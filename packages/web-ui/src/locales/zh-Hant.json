@@ -214,6 +214,8 @@
     "invalid_revision": "對話尚未到達該位置。",
     "invalid_frame": "請求無效。",
     "frame_delivery_failed": "無法傳送更新。",
+    "send_failed": "無法傳送訊息。",
+    "path_unquotable": "檔案路徑中含有指令無法使用的字元，例如換行字元。",
     "turn_in_flight": "請等待對話中的工作完成。",
     "workspace_not_found": "該專案已不存在。",
     "workspace_exists": "此檔案夾已是一個專案。",

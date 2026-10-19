@@ -214,6 +214,8 @@
     "invalid_revision": "对话尚未到达该位置。",
     "invalid_frame": "请求无效。",
     "frame_delivery_failed": "无法发送更新。",
+    "send_failed": "无法发送消息。",
+    "path_unquotable": "文件路径中含有命令无法使用的字符，例如换行符。",
     "turn_in_flight": "请等待对话中的工作完成。",
     "workspace_not_found": "该项目已不存在。",
     "workspace_exists": "此文件夹已是一个项目。",

@@ -1,7 +1,7 @@
 //! Uploads (`web-api-hosts.md` § Uploads and media, `backend.md` § Media by
 //! reference): a file's bytes go to the caller's blobs with its record, the
 //! answer says what the backend read from them, and a message or a steer
-//! that names the upload writes the file to the conversation's Host, gives
+//! that names the upload numbers it as the conversation's attachment, gives
 //! the model the file's native medium and record, and shows the page the
 //! medium by reference. An edit that keeps the medium names it by that
 //! reference, and the model reads its bytes again. A frame whose media
@@ -346,31 +346,39 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         .await;
     let turn = socket.until_idle().await;
 
-    // The files are on the conversation's Host, outside its working
-    // directory; another user's upload is not.
-    let directory = format!("{}/.demi/attachments/{FIRST}", paired.runner.home());
-    assert_eq!(
-        std::fs::read(format!("{directory}/shot.png")).unwrap(),
-        *PNG
-    );
-    assert_eq!(
-        std::fs::read_to_string(format!("{directory}/notes.log")).unwrap(),
-        "\r\n  first\r\nsecond"
-    );
-    assert!(!std::path::Path::new(&format!("{directory}/hers.txt")).exists());
-    // The model reads the image and each file's record, and learns the other
-    // user's upload is not available.
+    // Nothing is written to the Host: the model reads the image from the
+    // message, and each file's record as a tag that names its number, for
+    // `demi attachment download`; another user's upload is not available.
+    assert!(!std::path::Path::new(&format!("{}/.demi/attachments", paired.runner.home())).exists());
     let sent = vendor.requests()[0].json()["messages"].to_string();
     let base64 = data_encoding::BASE64.encode(&PNG);
     assert!(sent.contains(&base64), "{sent}");
+    let tag = |id: &str, name: &str, media_type: &str, size: usize| {
+        serde_json::to_string(&format!(
+            "<attachment id=\"{id}\" name=\"{name}\" type=\"{media_type}\" size=\"{size}\" />"
+        ))
+        .unwrap()
+        .trim_matches('"')
+        .to_owned()
+    };
     assert!(
-        sent.contains(&format!("{directory}/shot.png"))
-            && sent.contains(&format!("{directory}/notes.log")),
+        sent.contains(&tag("a1", "shot.png", "image/png", PNG.len()))
+            && sent.contains(&tag("a2", "notes.log", "application/octet-stream", 17)),
         "{sent}"
     );
     assert!(
         sent.contains(&format!("[attachment {} is not available]", hers.id)),
         "{sent}"
+    );
+    // The user's attachment answers by its number, as the agent's do.
+    let numbered = backend
+        .get(&format!("/api/conversations/{FIRST}/attachments/a1"), Some(&master))
+        .await;
+    assert_eq!(numbered.status, StatusCode::OK);
+    let numbered = numbered.json::<serde_json::Value>();
+    assert_eq!(
+        (&numbered["name"], &numbered["blob"]),
+        (&json!("shot.png"), &json!(sha256))
     );
     // The page receives the image by reference, never its bytes, and reads
     // them from its blobs.
@@ -406,12 +414,8 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         (StatusCode::OK, &PNG[..])
     );
 
-    // The same file sent again, pasted or put back by Undo Send, is the one
-    // already there, not written again; another file of the same name takes
-    // the next free path and overwrites nothing. Each keeps its name.
-    let shot = format!("{directory}/shot.png");
-    let modified = || std::fs::metadata(&shot).unwrap().modified().unwrap();
-    let first_written = modified();
+    // Each file sent takes the next number, the same file sent again too,
+    // and keeps its name.
     let other_png = demi_agent_store::testing::png(4, 3, 1).as_bytes().to_vec();
     let other = upload(&backend, &master, "shot.png", "image/png", &other_png).await;
     vendor.respond(answer(&["Again."], 1, 1));
@@ -423,11 +427,6 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         ))
         .await;
     socket.until_idle().await;
-    assert_eq!(modified(), first_written);
-    assert_eq!(
-        std::fs::read(format!("{directory}/shot-2.png")).unwrap(),
-        other_png
-    );
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let records: Vec<(String, String)> = blocks
         .iter()
@@ -440,7 +439,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         .iter()
         .filter_map(|part| match part {
             UserContentBlock::Attachment(record) => {
-                Some((record.name.clone(), record.path.clone()))
+                Some((record.id.clone(), record.name.clone()))
             }
             _ => None,
         })
@@ -448,13 +447,13 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     assert_eq!(
         records,
         [
-            ("shot.png".to_owned(), shot.clone()),
-            ("shot.png".to_owned(), format!("{directory}/shot-2.png"))
+            ("a3".to_owned(), "shot.png".to_owned()),
+            ("a4".to_owned(), "shot.png".to_owned())
         ]
     );
 
-    // A steer names an upload as a message does: the file goes to the Host,
-    // and the running turn's next request reads its image and its record.
+    // A steer names an upload as a message does: the running turn's next
+    // request reads its image and its record.
     vendor.respond(wait_for_go());
     vendor.respond(answer(&["Steered."], 1, 1));
     socket.send(&send("m3", "Wait for the file")).await;
@@ -491,8 +490,6 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
             )
         })
         .await;
-    assert_eq!(modified(), first_written);
-    assert!(!std::path::Path::new(&format!("{directory}/shot-3.png")).exists());
     let continued = vendor.requests()[3].json()["messages"].to_string();
     assert!(
         continued.contains("And this one") && continued.contains(&base64),
@@ -558,6 +555,35 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         kept.contains("Look again") && kept.contains(&base64),
         "{kept}"
     );
+    backend.close().await;
+}
+
+/// A message with an image enters while the conversation's Host is out of
+/// reach: nothing is written to the Host at a send, so a slow or broken link
+/// never holds it (`backend.md` § Media by reference). Before, the send
+/// waited to write the file there, and failed when the device could not
+/// fetch it. A paired device whose runner stopped; under a second.
+#[tokio::test]
+async fn a_message_with_an_image_enters_while_the_host_is_out_of_reach() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (mut paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    paired.runner.stop().await;
+    let image = upload(&backend, &master, "shot.png", "image/png", &PNG).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["Seen."], 1, 1));
+    socket
+        .send(&with_upload("m1", "Look", &[(&image, "shot.png")]))
+        .await;
+    socket.until_idle().await;
+    let sent = vendor.requests()[0].json()["messages"].to_string();
+    assert!(sent.contains(&data_encoding::BASE64.encode(&PNG)), "{sent}");
+    assert!(sent.contains("<attachment id=\\\"a1\\\" name=\\\"shot.png\\\""), "{sent}");
     backend.close().await;
 }
 
@@ -733,14 +759,14 @@ async fn an_image_over_500_kb_enters_as_a_smaller_jpeg_from_an_upload_and_a_tool
 
 // About a second: an upload and a shell's output reach a real device.
 #[tokio::test]
-async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays_whole_on_the_host()
+async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_its_attachment_keeps_the_original()
 {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
+    let (_paired, root) = on_device(&harness, &backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let wide = demi_agent_store::testing::png(2_400, 10, 1)
         .as_bytes()
@@ -761,14 +787,14 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
         .await;
     socket.until_idle().await;
 
-    // The upload's file on the Host is the original, and so is the file the
+    // The upload's attachment keeps the original, and so does the file the
     // shell viewed; the model reads the image fitted to 2,000 px, the same
     // bytes in every request and from either source.
-    let directory = format!("{}/.demi/attachments/{FIRST}", paired.runner.home());
-    assert_eq!(
-        std::fs::read(format!("{directory}/wide.png")).unwrap(),
-        wide
-    );
+    let original = backend
+        .get(&format!("/api/conversations/{FIRST}/attachments/a1"), Some(&master))
+        .await
+        .json::<serde_json::Value>();
+    assert_eq!(original["blob"], json!(format!("{:x}", Sha256::digest(&wide))));
     let requests: Vec<serde_json::Value> = vendor
         .requests()
         .iter()
@@ -858,7 +884,7 @@ async fn opening_a_stored_conversation_with_images_on_two_pages_and_syncing_it_p
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    // The uploads are written to the conversation's Host.
+    // The conversation works on a paired device.
     let _device = on_device(&harness, &backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let shots = [

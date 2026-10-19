@@ -46,6 +46,8 @@ export const draftSchema = z.object({
       /** The comments it carries (`comments-and-ask.md` § Sending them). */
       comments: z.array(messageCommentSchema),
       error: z.string().nullable(),
+      /** The request ID of the refusal that left it undelivered, shown beside `error`; absent with none. */
+      requestId: z.string().optional(),
       /** The message saved for later it was sent from, which a retry sends again from the list as the same turn. */
       saved: z.string().optional(),
     }),
@@ -108,7 +110,7 @@ export type SavedFile = z.infer<typeof fileSchema>
  * record's shape, whose upgrade turns the previous release's records into
  * the new one (`web-application.md` § Persistence and adapters).
  */
-const DRAFTS_VERSION = 3
+const DRAFTS_VERSION = 4
 
 /** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
 const pendingSendV1Schema = z.looseObject({
@@ -121,11 +123,23 @@ const draftV2Schema = z.looseObject({
 })
 
 /**
+ * A record as version 3 stored it, whose edit in progress may hold an
+ * attachment record that named its file by its path on the Host, before an
+ * attachment had a number.
+ */
+const draftV3Schema = z.looseObject({
+  messageEdit: z.looseObject({ request: z.looseObject({ content: z.array(z.looseObject({})) }) }).nullable().optional(),
+})
+
+/**
  * Upgrades the draft database from `oldVersion`: a new one gets its store;
  * one of 0.1.21 (version 1) turns each record's `pendingSend` into the list
  * `pendingSends`; one of version 2 gives each record and each message on
- * its way no comments, which a draft held none of then. A record of another
- * shape stays as it was, and its read reports it.
+ * its way no comments, which a draft held none of then; one of version 3
+ * drops an edit in progress whose message names a file by its path on the
+ * Host, which the backend has since numbered, so the rest of the draft
+ * stays and the user opens the edit again. A record of another shape stays
+ * as it was, and its read reports it.
  */
 function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
   if (oldVersion < 1) {
@@ -146,12 +160,21 @@ function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
         value = { ...rest, pendingSends: pendingSend ? [pendingSend] : [] }
       }
     }
-    const before = draftV2Schema.safeParse(value)
-    if (before.success) {
+    const before = oldVersion < 3 ? draftV2Schema.safeParse(value) : null
+    if (before?.success) {
       value = {
         ...before.data,
         comments: [],
         pendingSends: before.data.pendingSends.map((pending) => ({ ...pending, comments: [] })),
+      }
+    }
+    if (oldVersion < 4) {
+      const edited = draftV3Schema.safeParse(value)
+      const byPath = edited.success && edited.data.messageEdit?.request.content.some(
+        (part) => part.type === 'attachment' && 'path' in part,
+      )
+      if (edited.success && byPath) {
+        value = { ...edited.data, messageEdit: null }
       }
     }
     if (value !== cursor.value) {
