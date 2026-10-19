@@ -587,6 +587,13 @@ An ID whose lines are no longer kept answers an empty list.
 
 ## Startup and shutdown
 
+Before anything else, the backend raises its own soft limit on open files
+as far as the system allows, to the hard limit, as the runner does
+([Load](../execution/runner.md#load)): every socket of a page or a runner,
+every database and every pipe of a stream shares one table, and systemd
+starts a service with a soft limit of 1024 under a hard one of 524288. A
+system that refuses the raise leaves the limit as it was, and the log warns.
+
 At startup the backend:
 
 1. Reads its configuration and validates all of it; an error names the

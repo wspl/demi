@@ -381,17 +381,15 @@ async fn pump<T: AsyncRead + Unpin>(
 #[cfg(unix)]
 static STARTED_WITH: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
 
-/// Raises the runner's own soft limit on open files as far as the system
-/// allows (`runner.md` § Load): to its hard limit, and on macOS to at most
-/// the kernel's per-process maximum. Returns the soft limit before and after.
+/// Keeps the soft and hard open-file limits the runner was started with,
+/// once it raised its soft limit from `soft` to `raised` (`runner.md`
+/// § Load), so that every process it starts gets them back. Without a raise
+/// the processes inherit the runner's own, which are the same.
 #[cfg(unix)]
-pub fn raise_open_file_limit() -> io::Result<(u64, u64)> {
-    let (soft, hard) = rlimit::getrlimit(rlimit::Resource::NOFILE)?;
-    let raised = rlimit::increase_nofile_limit(u64::MAX)?;
+pub fn keep_started_open_file_limit(soft: u64, hard: u64, raised: u64) {
     if raised > soft {
         STARTED_WITH.get_or_init(|| (soft, hard));
     }
-    Ok((soft, raised))
 }
 
 /// The limits a process the runner starts gets for `resource` unless its

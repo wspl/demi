@@ -18,6 +18,11 @@ fn main() -> ExitCode {
     // A panic leaves its report on standard error (`builds-and-releases.md`
     // § Build profiles).
     demi_shared_cli::install_panic_hook();
+    // Every socket, database and stream shares one table of open files, and
+    // systemd starts the backend with a soft limit of 1024 (`backend.md`
+    // § Startup and shutdown); the outcome is logged once the log is up.
+    #[cfg(unix)]
+    let open_files = demi_shared_cli::raise_open_file_limit();
     // An unusable value stops here, naming its variable, and so does a
     // variable no setting reads, such as a misspelt one. The machine
     // manager's own settings, which share the configuration file, are its
@@ -45,10 +50,17 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    runtime.block_on(run(config))
+    runtime.block_on(run(
+        config,
+        #[cfg(unix)]
+        open_files,
+    ))
 }
 
-async fn run(config: Config) -> ExitCode {
+async fn run(
+    config: Config,
+    #[cfg(unix)] open_files: std::io::Result<demi_shared_cli::OpenFileLimit>,
+) -> ExitCode {
     // Installed before anything starts, so a stop signal that comes while the
     // backend starts is kept and ends it once it is up.
     let mut stop = match StopSignals::install() {
@@ -92,6 +104,17 @@ async fn run(config: Config) -> ExitCode {
         .with(log_layer)
         .with(config.log.clone())
         .init();
+    // A refused raise leaves the limit as it was; the backend still works,
+    // running out of files sooner.
+    #[cfg(unix)]
+    match open_files {
+        Ok(limit) => tracing::info!(
+            "open-file limit {} (started with {})",
+            limit.raised,
+            limit.started_soft
+        ),
+        Err(error) => tracing::warn!("the open-file limit could not be raised: {error}"),
+    }
     let served = serve(&config, settings, &release, &mut stop).await;
     log.close().await;
     served

@@ -22,5 +22,9 @@ host-allocator = ["dep:mimalloc"]
 [dependencies]
 clap = { version = "4", features = ["env"] }
 
+[target.'cfg(unix)'.dependencies]
+# Raising a program's open-file limit (`raise_open_file_limit`).
+rlimit = "0.11"
+
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = { version = "0.1", optional = true }

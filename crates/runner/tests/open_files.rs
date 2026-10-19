@@ -634,7 +634,13 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // Last, since it raises this process's limit: the runner raises its own
     // open-file limit, and a raw process, a job's command and a utility's
     // child program get the one the runner was started with.
-    let (started, raised) = demi_runner_process::process::raise_open_file_limit().unwrap();
+    let limit = demi_shared_cli::raise_open_file_limit().unwrap();
+    demi_runner_process::process::keep_started_open_file_limit(
+        limit.started_soft,
+        limit.started_hard,
+        limit.raised,
+    );
+    let (started, raised) = (limit.started_soft, limit.raised);
     assert_eq!(started, 1024);
     assert!(raised > started, "the test needs a hard limit above 1024");
     let mut child = ChildProcess::spawn(SpawnOptions {

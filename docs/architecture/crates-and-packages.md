@@ -504,8 +504,12 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   And the memory allocator of the programs that run on a Host when built for
   a musl target, mimalloc, declared once here as the global allocator behind
   the `host-allocator` feature, which those programs turn on ([Memory allocator](../delivery/builds-and-releases.md#memory-allocator)).
+  And raising a program's soft limit on open files as far as the system
+  allows, which the runner and the backend do as they start
+  ([Load](../execution/runner.md#load),
+  [Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
 - **Public boundary:** `unknown_variable`, over the program's clap command,
-  and `install_panic_hook`.
+  `install_panic_hook` and `raise_open_file_limit`.
 - **Must not:** parse a program's settings, which its clap command does.
 
 #### `shared-artifacts`

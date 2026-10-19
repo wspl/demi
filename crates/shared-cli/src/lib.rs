@@ -6,7 +6,10 @@
 //! own prefix, and the backend every other `DEMI_*` name. And the panic
 //! hook every program installs at start (`builds-and-releases.md` § Build
 //! profiles). And, on a musl target, the memory allocator of the programs
-//! that run on a Host (`builds-and-releases.md` § Memory allocator).
+//! that run on a Host (`builds-and-releases.md` § Memory allocator). And
+//! raising a program's soft limit on open files, which the runner and the
+//! backend do as they start (`runner.md` § Load, `backend.md` § Startup and
+//! shutdown).
 
 use std::{ffi::OsString, io::Write as _};
 
@@ -40,6 +43,33 @@ pub fn unknown_variable(
         let unknown =
             name.starts_with(prefix) && !known.iter().any(|known| *known == name.as_str());
         unknown.then_some(name)
+    })
+}
+
+/// A program's open-file limits as it started, and the soft limit it raised
+/// them to.
+#[cfg(unix)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OpenFileLimit {
+    /// The soft limit the program was started with.
+    pub started_soft: u64,
+    /// The hard limit the program was started with, which the raise keeps.
+    pub started_hard: u64,
+    /// The soft limit after the raise.
+    pub raised: u64,
+}
+
+/// Raises this process's soft limit on open files as far as the system
+/// allows: to its hard limit, and on macOS to at most the kernel's
+/// per-process maximum. A system that refuses it leaves the limit as it was.
+#[cfg(unix)]
+pub fn raise_open_file_limit() -> std::io::Result<OpenFileLimit> {
+    let (started_soft, started_hard) = rlimit::getrlimit(rlimit::Resource::NOFILE)?;
+    let raised = rlimit::increase_nofile_limit(u64::MAX)?;
+    Ok(OpenFileLimit {
+        started_soft,
+        started_hard,
+        raised,
     })
 }
 
