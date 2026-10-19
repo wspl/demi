@@ -14,7 +14,10 @@
 //! density.
 
 mod adb;
+pub mod art;
+pub mod axml;
 pub mod capture;
+pub mod corners;
 pub mod emulator;
 pub mod guest;
 pub mod openh264;
@@ -37,7 +40,10 @@ use futures_util::future::BoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use demi_command_package_mobile_protocol::mobile::{Appearance, MobilePlatform, Orientation, PowerState};
+use demi_command_package_mobile_protocol::{
+    live::LiveCorners,
+    mobile::{Appearance, MobilePlatform, Orientation, PowerState},
+};
 
 use crate::{
     driver::{
@@ -64,9 +70,6 @@ const BOOTING: Duration = Duration::from_secs(300);
 const SHUTTING_DOWN: Duration = Duration::from_secs(60);
 /// The density at which a pixel is a point, Android's `mdpi`.
 const BASE_DENSITY: f64 = 160.0;
-/// The corner radius of an emulator's screen, in points; the emulator
-/// does not say it, and a phone's is about this.
-const CORNER_RADIUS: f64 = 24.0;
 /// The finger a touch moves.
 const FINGER: i32 = 1;
 /// How long an app may take to show a paste.
@@ -82,8 +85,27 @@ pub struct Avd {
     pub name: String,
     /// The name Android Studio shows.
     pub display: String,
-    pub model: String,
+    /// The device it emulates, `hw.device.name`, such as `pixel_10`.
+    pub device: String,
     pub os: String,
+}
+
+impl Avd {
+    /// The device's name in words, such as `Pixel 10`.
+    pub fn model(&self) -> String {
+        self.device
+            .split('_')
+            .filter(|word| !word.is_empty())
+            .map(|word| {
+                let mut characters = word.chars();
+                match characters.next() {
+                    Some(first) => first.to_uppercase().chain(characters).collect::<String>(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 /// A running emulator and when its process started, which marks its boot.
@@ -124,6 +146,9 @@ pub trait Sdk: Send + Sync + 'static {
     fn terminate(&self, process: Process) -> BoxFuture<'_, Result<()>>;
     /// What Demi does inside the emulator adb names `serial`.
     fn guest<'a>(&'a self, serial: &'a str) -> BoxFuture<'a, Result<Arc<dyn Guest>>>;
+    /// The folder of Android Studio's device art for the AVD's `device`,
+    /// such as `pixel_10`, when an installation on the Host has it.
+    fn device_art(&self, device: &str) -> Option<PathBuf>;
 }
 
 /// The Host's Android emulators.
@@ -234,9 +259,9 @@ impl Driver for Android {
                         (None, None) => (PowerState::ShutDown, None),
                     };
                     Simulator {
+                        model: avd.model(),
                         native_id: avd.name,
                         name: avd.display,
-                        model: avd.model,
                         os: avd.os,
                         state,
                         boot,
@@ -307,6 +332,15 @@ impl Driver for Android {
                 config("hw.lcd.height").unwrap_or(2400.0),
             );
             let density = config("hw.lcd.density").unwrap_or(BASE_DENSITY) / BASE_DENSITY;
+            // The emulator does not say which device it emulates; its
+            // AVD's files do.
+            let art = self
+                .sdk
+                .avds()
+                .await?
+                .into_iter()
+                .find(|avd| avd.name == native_id)
+                .and_then(|avd| self.sdk.device_art(&avd.device));
             let serial = running.discovery.serial();
             let guest = self.sdk.guest(&serial).await?;
             let geometry = Geometry { panel, density };
@@ -324,6 +358,11 @@ impl Driver for Android {
                 ended: ended.clone(),
                 watching: CancellationToken::new(),
                 recording: Mutex::default(),
+                art_folder: art,
+                art: tokio::sync::OnceCell::new(),
+                corners: Arc::default(),
+                corners_read: std::sync::Once::new(),
+                frame_known: watch::Sender::new(()),
             });
             if let Err(error) = device.watch().await {
                 // What the watch started ends with the device it failed to open.
@@ -458,9 +497,65 @@ struct AndroidDevice {
     watching: CancellationToken,
     /// The recording under way: the file its MP4 goes to, and since when.
     recording: Mutex<Option<(PathBuf, Instant)>>,
+    /// Android Studio's device art for the device, where the Host has it.
+    art_folder: Option<PathBuf>,
+    /// The art, read the first time it is drawn; none when it does not read.
+    art: tokio::sync::OnceCell<Option<Arc<art::Art>>>,
+    /// The screen's corners, once read in the background (`read_corners`).
+    corners: Arc<std::sync::OnceLock<corners::PanelCorners>>,
+    /// Starts that read the first time the drawn frame needs it; the
+    /// device art needs none.
+    corners_read: std::sync::Once,
+    /// Announces the corners once they are known.
+    frame_known: watch::Sender<()>,
 }
 
 impl AndroidDevice {
+    /// The device's art, read the first time it is asked for.
+    async fn art(&self) -> Option<Arc<art::Art>> {
+        let folder = self.art_folder.clone()?;
+        self.art
+            .get_or_init(|| async move {
+                let read = tokio::task::spawn_blocking(move || art::Art::load(&folder).map_err(|error| (folder, error))).await;
+                match read {
+                    Ok(Ok(art)) => Some(Arc::new(art)),
+                    Ok(Err((folder, error))) => {
+                        tracing::warn!("Android Studio's device art in {} does not read: {error}", folder.display());
+                        None
+                    }
+                    Err(error) => {
+                        tracing::warn!("reading Android Studio's device art stopped: {error}");
+                        None
+                    }
+                }
+            })
+            .await
+            .clone()
+    }
+
+    /// Reads the screen's corners in the background, never holding up the
+    /// view (`mobile.md` § The live view), and announces them once known;
+    /// the read ends with the device, or falls back after
+    /// [`corners::LIMIT`].
+    fn read_corners(&self) {
+        let guest = self.guest.clone();
+        let corners = self.corners.clone();
+        let known = self.frame_known.clone();
+        let (watching, ended) = (self.watching.clone(), self.ended.clone());
+        let density = self.geometry.density;
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = watching.cancelled() => {}
+                _ = ended.cancelled() => {}
+                read = corners::read(&*guest, density, corners::LIMIT) => {
+                    // Read once per device, so never set before.
+                    let _ = corners.set(read);
+                    known.send_replace(());
+                }
+            }
+        });
+    }
+
     /// Follows the emulator's pictures, small, as long as the device is
     /// open: each counts as drawn, and its rotation is the screen's. Their
     /// end is the emulator's.
@@ -980,13 +1075,37 @@ impl Device for AndroidDevice {
         })
     }
 
-    fn frame(&self, _area: FrameArea) -> BoxFuture<'_, Result<Frame>> {
-        // Android installs no frame: the view draws the outline.
-        Box::pin(async {
-            Ok(Frame::Undrawn {
-                corner_radius: CORNER_RADIUS,
-            })
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>> {
+        Box::pin(async move {
+            let screen = *self.screen.borrow();
+            let turns = turns(screen.orientation);
+            // Android Studio's frame where the Host has its art; the
+            // frame the view draws otherwise, once the corners it follows
+            // are known.
+            let Some(art) = self.art().await else {
+                self.corners_read.call_once(|| self.read_corners());
+                return Ok(self.corners.get().map(|corners| Frame::Drawn {
+                    corners: corners.turned(turns, 1.0 / self.geometry.density),
+                }));
+            };
+            let rendered = tokio::task::spawn_blocking(move || art.render(turns, screen.pixels, area))
+                .await
+                .map_err(|error| DriverError::Failed(format!("the frame was not drawn: {error}")))?
+                .map_err(DriverError::Failed)?;
+            Ok(Some(Frame::Image {
+                png: rendered.png.into(),
+                width: rendered.width,
+                height: rendered.height,
+                screen: rendered.screen,
+                // The art's mask is the screen's corners; the picture
+                // under it is not cut.
+                corners: LiveCorners::round(0.0),
+            }))
         })
+    }
+
+    fn frame_changes(&self) -> watch::Receiver<()> {
+        self.frame_known.subscribe()
     }
 
     fn capture(&self, size: (u32, u32), fps: u32, bitrate: u32) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {

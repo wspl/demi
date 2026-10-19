@@ -78,6 +78,17 @@ impl Page {
         }
     }
 
+    /// The view's next `Frame` that carries the frame, skipping those sent
+    /// while the device still read what it needs.
+    pub(crate) async fn framed(&mut self) -> LiveModuleMessage {
+        loop {
+            let message = self.until("frame").await;
+            if let LiveModuleMessage::Frame { frame: Some(_), .. } = &message {
+                return message;
+            }
+        }
+    }
+
     /// The view's next control message of `kind`, skipping the others.
     pub(crate) async fn until(&mut self, kind: &str) -> LiveModuleMessage {
         loop {
@@ -188,7 +199,7 @@ async fn the_agent_uses_a_device_until_three_seconds_after_its_last_command() {
 /// The view gets the device's frame for the size it lays the device out
 /// at, once for each size and orientation, and again when the device
 /// turns, its buttons on the edges they turned to; a device without a
-/// frame installed gets the outline. Planted defects this catches: a
+/// frame installed gets the frame the view draws. Planted defects this catches: a
 /// frame drawn again for a size the view has, and one that stays upright
 /// when the device turns. One fake device, milliseconds.
 #[tokio::test]
@@ -202,8 +213,8 @@ async fn the_view_gets_the_frame_for_its_size_and_again_when_the_device_turns() 
     let LiveModuleMessage::Frame { orientation, frame, .. } = page.until("frame").await else { unreachable!() };
     assert_eq!(orientation.to_string(), "portrait");
     let framed = serde_json::to_value(&frame).unwrap();
-    assert_eq!(framed["kind"], "outline");
-    assert_eq!(framed["cornerRadius"], 55.0);
+    assert_eq!(framed["kind"], "drawn");
+    assert_eq!(framed["corners"]["topLeft"], serde_json::json!({ "kind": "round", "radius": 55.0 }));
     let sides = |framed: &serde_json::Value| -> Vec<String> {
         framed["buttons"].as_array().unwrap().iter().map(|mark| mark["side"].as_str().unwrap().to_owned()).collect()
     };

@@ -258,11 +258,12 @@ test('the view asks for the frame of its laid-out size and pixel ratio once, aga
     { type: 'frame', device: 'm1', width: 1000, height: 1200, scale: 1 },
     { type: 'frame', device: 'm2', width: 1000, height: 1200, scale: 1 },
   ])
-  const outline = { kind: 'outline' as const, cornerRadius: 55, buttons: [] }
-  streams[0]!.data(framed({ type: 'frame', device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: outline }))
+  const round = { kind: 'round' as const, radius: 55 }
+  const drawnFrame = { kind: 'drawn' as const, corners: { topLeft: round, topRight: round, bottomRight: round, bottomLeft: round }, buttons: [] }
+  streams[0]!.data(framed({ type: 'frame', device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawnFrame }))
   expect(session.state.frame).toBeNull()
-  streams[0]!.data(framed({ type: 'frame', device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: outline }))
-  expect(session.state.frame).toEqual({ device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: outline })
+  streams[0]!.data(framed({ type: 'frame', device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame }))
+  expect(session.state.frame).toEqual({ device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame })
   session.close()
 })
 

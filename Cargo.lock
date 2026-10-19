@@ -2915,7 +2915,9 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "image",
  "kqueue",
+ "kurbo",
  "notify",
  "openh264",
  "prost",
@@ -2937,6 +2939,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows-sys 0.61.2",
+ "zip",
  "zstd 0.13.3",
 ]
 

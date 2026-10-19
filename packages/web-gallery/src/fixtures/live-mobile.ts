@@ -2,7 +2,7 @@
  * The conversation's simulators without a Host (`mobile.md` § The live
  * view): the gallery's plugin, which gives each device the agent opens its
  * `mobile` tab and closes a device whose tab is closed, as the backend's
- * does, and a live view that draws a device's screen in its outline frame,
+ * does, and a live view that draws a device's screen in the frame the view draws,
  * encodes it as the helper would and speaks the `mobile` protocol, so the
  * panel's tabs, controls, touches and the agent's activity show here.
  */
@@ -14,6 +14,8 @@ import {
   recordDeviceSchema,
   rotateDeviceSchema,
   type LiveButtonMark,
+  type LiveCorner,
+  type LiveCorners,
   type LiveFrame,
   type LiveModuleMessage,
   type LiveViewerMessage,
@@ -42,8 +44,27 @@ interface GallerySimulator {
   os: string
   nativeId: string
   points: { width: number; height: number }
-  cornerRadius: number
+  corners: LiveCorners
   buttons: readonly LiveButtonMark[]
+}
+
+/** Four corners alike, as a screen's are. */
+function alike(corner: LiveCorner): LiveCorners {
+  return { topLeft: corner, topRight: corner, bottomRight: corner, bottomLeft: corner }
+}
+
+/**
+ * A Pixel's corner as its system UI draws it, in points: a smooth curve
+ * that reaches further along each edge than the circle of its radius, the
+ * same across its diagonal, so it reads the same turned.
+ */
+const PIXEL_CORNER: LiveCorner = {
+  kind: 'curve',
+  points: [
+    [0, 74.29], [0, 67.64], [0.06, 60.97], [0.33, 54.31], [1, 47.7], [2.23, 41.18], [4.18, 34.8], [7.19, 28.09],
+    [11.14, 21.89], [15.92, 16.32], [21.44, 11.48], [27.59, 7.46], [34.27, 4.38], [40.72, 2.34], [47.32, 1.06],
+    [54.03, 0.35], [60.79, 0.06], [67.55, 0], [74.29, 0],
+  ].map(([x, y]) => ({ x: x!, y: y! })),
 }
 
 /** A device the gallery has open: its screen as the drawing shows it. */
@@ -85,7 +106,7 @@ const SIMULATORS: readonly GallerySimulator[] = [
     os: 'iOS 26.5',
     nativeId: '5F1C2B3A-7D44-4E2B-9C11-0A1B2C3D4E5F',
     points: { width: 402, height: 874 },
-    cornerRadius: 62,
+    corners: alike({ kind: 'round', radius: 62 }),
     buttons: [
       { side: 'left', start: 0.18, length: 0.04 },
       { side: 'left', start: 0.24, length: 0.07 },
@@ -99,7 +120,7 @@ const SIMULATORS: readonly GallerySimulator[] = [
     os: 'iOS 26.5',
     nativeId: '247C3132-2366-4D6C-A4B9-9051A0EE8EAC',
     points: { width: 1032, height: 1376 },
-    cornerRadius: 18,
+    corners: alike({ kind: 'round', radius: 18 }),
     buttons: [
       { side: 'top', start: 0.78, length: 0.08 },
       { side: 'right', start: 0.1, length: 0.05 },
@@ -112,7 +133,7 @@ const SIMULATORS: readonly GallerySimulator[] = [
     os: 'Android 16',
     nativeId: 'Pixel_8_API_36',
     points: { width: 411, height: 914 },
-    cornerRadius: 24,
+    corners: alike(PIXEL_CORNER),
     buttons: [
       { side: 'right', start: 0.2, length: 0.06 },
       { side: 'right', start: 0.3, length: 0.13 },
@@ -402,7 +423,7 @@ class MobileView {
   private readonly started = performance.now()
   /** The finger on the watched screen. */
   private finger: { x: number; y: number } | null = null
-  /** The size the view lays the frame into; the gallery's frame is the outline, whatever the size. */
+  /** The size the view lays the frame into; the gallery's frame is the one the view draws, whatever the size. */
   private area: { width: number; height: number } | null = null
 
   constructor(
@@ -491,15 +512,15 @@ class MobileView {
     }
   }
 
-  /** The watched device's frame: no frame is installed here, so the view draws the outline. */
+  /** The watched device's frame: no frame is installed here, so the view draws the frame itself. */
   private frame(): void {
     const device = this.device()
     if (!device || !this.area) {
       return
     }
     const frame: LiveFrame = {
-      kind: 'outline',
-      cornerRadius: device.simulator.cornerRadius,
+      kind: 'drawn',
+      corners: device.simulator.corners,
       buttons: device.simulator.buttons.map((mark) => turned(mark, device.orientation)),
     }
     const points = upright(device)

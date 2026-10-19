@@ -60,7 +60,8 @@ export interface DeviceFrame {
   /** The screen's size in points, turned as the frame is. */
   pointsWidth: number
   pointsHeight: number
-  frame: LiveFrame
+  /** None while the device still reads what its frame needs; the picture shows without one meanwhile. */
+  frame: LiveFrame | null
 }
 
 export interface LiveState {

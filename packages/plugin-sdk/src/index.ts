@@ -109,14 +109,21 @@ export {
   type LiveLinkState,
 } from '@demicodes/web-ui/live/link'
 export {
-  OUTLINE_ROOM,
-  deviceOutline,
+  DRAWN_FRAME_ROOM,
+  SQUARE_CORNERS,
+  drawnFrame,
   observeSettledSize,
-  type OutlineBox,
-  type OutlineButton,
-  type OutlineShape,
-} from '@demicodes/web-ui/live/outline'
-export { default as LiveDeviceOutline } from '@demicodes/web-ui/live/LiveDeviceOutline.vue'
+  scaledCorners,
+  screenClip,
+  screenPath,
+  type CornerPoint,
+  type FrameBox,
+  type FrameButton,
+  type DrawnFrameShape,
+  type ScreenCorner,
+  type ScreenCorners,
+} from '@demicodes/web-ui/live/drawn-frame'
+export { default as LiveDrawnFrame } from '@demicodes/web-ui/live/LiveDrawnFrame.vue'
 export { default as LiveActivityOverlay } from '@demicodes/web-ui/live/LiveActivityOverlay.vue'
 // Composables.
 // A field that takes the focus as its surface opens, as a phone allows (`web-application.md` § The phone layout).

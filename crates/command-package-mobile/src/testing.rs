@@ -12,7 +12,10 @@ use futures_util::future::BoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use demi_command_package_mobile_protocol::mobile::{Appearance, Orientation, MobilePlatform, PowerState};
+use demi_command_package_mobile_protocol::{
+    live::LiveCorners,
+    mobile::{Appearance, Orientation, MobilePlatform, PowerState},
+};
 
 use crate::driver::{
     Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, Png, Points, RawElement,
@@ -431,12 +434,14 @@ impl Device for FakeDevice {
         })
     }
 
-    /// Xcode installs no frame for a fake device: the view draws an outline
+    /// Xcode installs no frame for a fake device: the view draws the frame
     /// around a screen whose corners have a 55-point radius.
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Frame>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>> {
         Box::pin(async move {
             self.log(format!("frame {}x{}@{}", area.width, area.height, area.scale));
-            Ok(Frame::Undrawn { corner_radius: 55.0 })
+            Ok(Some(Frame::Drawn {
+                corners: LiveCorners::round(55.0),
+            }))
         })
     }
 

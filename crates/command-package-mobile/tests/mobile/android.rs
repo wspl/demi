@@ -18,17 +18,21 @@ use serde_json::{Value, json};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-use demi_command_package_mobile_protocol::{live::LiveModuleMessage, mobile::PowerState};
+use demi_command_package_mobile_protocol::{
+    live::{LiveFrame, LiveModuleMessage},
+    mobile::PowerState,
+};
 use demi_mobile::{
     android::{
         Avd, Discovery, Guest, Process, Running, Sdk,
+        guest::Resolved,
         proto::{
             EmulatorStatus, Image, ImageFormat, KeyboardEvent, Notification, PhysicalModelValue, Rotation,
             TouchEvent, VmRunState, emulator_controller_server::{EmulatorController, EmulatorControllerServer},
             keyboard_event::KeyEventType, notification, rotation::SkinRotation,
         },
     },
-    driver::Result,
+    driver::{DriverError, Result},
     testing::FakeDriver,
 };
 
@@ -310,6 +314,52 @@ struct StubGuest {
     log: Mutex<CancellationToken>,
     /// Why the display's log cannot be followed, when the test says so.
     log_refused: Mutex<Option<String>>,
+    /// What the device says of its screen's corners.
+    corners: Mutex<StubCorners>,
+    /// Holds each read of the corners while true, as a slow device does.
+    held: watch::Sender<bool>,
+}
+
+/// A device's screen corners as the stub's Android resolves them.
+struct StubCorners {
+    /// The radius the display reports, none where it reports none.
+    radius: Option<&'static str>,
+    /// The APK SystemUI's corner drawables resolve to.
+    drawables: &'static str,
+    /// The APKs the shell may read, with the drawable each holds.
+    apks: std::collections::HashMap<&'static str, Vec<u8>>,
+}
+
+/// SystemUI's own APK.
+const SYSTEM_UI_APK: &str = "/system_ext/priv-app/SystemUIGoogle/SystemUIGoogle.apk";
+
+impl Default for StubCorners {
+    /// A Pixel 10's: a radius of 132 pixels and its drawable in SystemUI's
+    /// own APK.
+    fn default() -> Self {
+        Self {
+            radius: Some("132.0px"),
+            drawables: SYSTEM_UI_APK,
+            apks: [(SYSTEM_UI_APK, include_bytes!("fixtures/rounded_corner.pixel_10.xml").to_vec())].into(),
+        }
+    }
+}
+
+/// Says `line` if it is dropped before it is done, as a cancelled read is.
+struct Dropped(Option<Heard>, &'static str);
+
+impl Dropped {
+    fn done(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for Dropped {
+    fn drop(&mut self) {
+        if let Some(heard) = &self.0 {
+            heard.push(self.1.into());
+        }
+    }
 }
 
 /// What the stub's app shows and holds: the focused Email field's text,
@@ -426,6 +476,39 @@ impl Guest for StubGuest {
         })
     }
 
+    /// The corners the test gives, once the test lets the read go on.
+    fn resource<'a>(&'a self, package: &'a str, name: &'a str) -> BoxFuture<'a, Result<Resolved>> {
+        Box::pin(async move {
+            let reading = Dropped(Some(self.heard.clone()), "corner read let go");
+            let mut held = self.held.subscribe();
+            // The sender lives with the guest.
+            let _ = held.wait_for(|held| !*held).await;
+            reading.done();
+            let corners = self.corners.lock().unwrap();
+            let resolved = |value: &str, apk: &str| Resolved { value: value.into(), apk: Some(apk.into()) };
+            match (package, name) {
+                ("android", radius) if radius.starts_with("android:dimen/rounded_corner_radius") => corners
+                    .radius
+                    .map(|radius| resolved(radius, "/data/app/com.android.internal.emulation.pixel_10/base.apk"))
+                    .ok_or_else(|| DriverError::Failed(format!("{name} does not resolve"))),
+                ("com.android.systemui", drawable) if drawable.starts_with("com.android.systemui:drawable/rounded_corner_") => {
+                    let file = drawable.trim_start_matches("com.android.systemui:drawable/");
+                    Ok(resolved(&format!("res/drawable/{file}.xml"), corners.drawables))
+                }
+                _ => Err(DriverError::Failed(format!("{name} does not resolve"))),
+            }
+        })
+    }
+
+    fn apk_files<'a>(&'a self, apk: &'a str, paths: &'a [String]) -> BoxFuture<'a, Result<Vec<Option<Vec<u8>>>>> {
+        self.heard.push(format!("apk files {apk} {}", paths.join(" ")));
+        let files = match self.corners.lock().unwrap().apks.get(apk) {
+            Some(file) => Ok(paths.iter().map(|_| Some(file.clone())).collect()),
+            None => Err(DriverError::Failed(format!("{apk}: Permission denied"))),
+        };
+        Box::pin(async move { files })
+    }
+
     fn close(&self) -> BoxFuture<'_, ()> {
         self.heard.push("guest closed".into());
         Box::pin(async {})
@@ -445,6 +528,8 @@ struct StubSdk {
     silent: Mutex<bool>,
     /// Whether ending an emulator's process fails.
     unkillable: Mutex<bool>,
+    /// Android Studio's art for the stub's Pixel 8, when the test gives it.
+    art: Mutex<Option<std::path::PathBuf>>,
     /// Takes in the driver's keys while the stub lives.
     _keys: notify::RecommendedWatcher,
     _directory: tempfile::TempDir,
@@ -492,6 +577,8 @@ impl StubSdk {
                 screen: screen.clone(),
                 log: Mutex::new(CancellationToken::new()),
                 log_refused: Mutex::new(None),
+                corners: Mutex::default(),
+                held: watch::Sender::new(false),
             }),
             discovery: Discovery {
                 pid: 4242,
@@ -507,6 +594,7 @@ impl StubSdk {
             up: Mutex::new(up),
             silent: Mutex::new(false),
             unkillable: Mutex::new(false),
+            art: Mutex::new(None),
             _keys: keys,
             _directory: directory,
             _server: server,
@@ -577,8 +665,8 @@ impl Sdk for StubSdk {
     fn avds(&self) -> BoxFuture<'_, Result<Vec<Avd>>> {
         Box::pin(async {
             Ok(vec![
-                Avd { name: "Medium_Phone_API_35".into(), display: "Medium Phone API 35".into(), model: "Medium Phone".into(), os: "Android 15".into() },
-                Avd { name: AVD.into(), display: "Pixel 8 API 36".into(), model: "Pixel 8".into(), os: "Android 16".into() },
+                Avd { name: "Medium_Phone_API_35".into(), display: "Medium Phone API 35".into(), device: "medium_phone".into(), os: "Android 15".into() },
+                Avd { name: AVD.into(), display: "Pixel 8 API 36".into(), device: "pixel_8".into(), os: "Android 16".into() },
             ])
         })
     }
@@ -629,6 +717,11 @@ impl Sdk for StubSdk {
     fn guest<'a>(&'a self, serial: &'a str) -> BoxFuture<'a, Result<Arc<dyn Guest>>> {
         assert_eq!(serial, "emulator-5554");
         Box::pin(async { Ok(self.guest.clone() as Arc<dyn Guest>) })
+    }
+
+    fn device_art(&self, device: &str) -> Option<std::path::PathBuf> {
+        assert_eq!(device, "pixel_8");
+        self.art.lock().unwrap().clone()
     }
 }
 
@@ -806,12 +899,12 @@ async fn a_sideways_device_is_tapped_where_its_picture_shows() {
 }
 
 /// Watching an emulator streams its screen as H.264, starting from a key
-/// frame with its parameter sets, in the outline frame of an Android
+/// frame with its parameter sets, in the frame the view draws for an Android
 /// phone, its buttons on the right. Planted defects this catches: no key
 /// frame first, or an iPhone's buttons on the left. A stub emulator and
 /// OpenH264 at a small size; under a second.
 #[tokio::test]
-async fn the_live_view_shows_an_emulator_as_h264_in_its_outline() {
+async fn the_live_view_shows_an_emulator_as_h264_in_its_drawn_frame() {
     let (mobile, _sdk) = start(true).await;
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
@@ -819,9 +912,9 @@ async fn the_live_view_shows_an_emulator_as_h264_in_its_outline() {
     page.send(json!({ "type": "watch", "device": "m1" })).await;
     page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
     page.send(json!({ "type": "shown", "device": "m1", "width": 360, "height": 800 })).await;
-    let LiveModuleMessage::Frame { frame, .. } = page.until("frame").await else { unreachable!() };
+    let LiveModuleMessage::Frame { frame, .. } = page.framed().await else { unreachable!() };
     let frame = serde_json::to_value(&frame).unwrap();
-    assert_eq!(frame["kind"], "outline");
+    assert_eq!(frame["kind"], "drawn");
     assert!(frame["buttons"].as_array().unwrap().iter().all(|button| button["side"] == "right"), "{frame}");
     let video = page.video().await;
     // Annex B: the parameter sets, then an IDR picture.
@@ -831,6 +924,228 @@ async fn the_live_view_shows_an_emulator_as_h264_in_its_outline() {
         .map(|window| window[4] & 0x1f)
         .collect();
     assert_eq!(&types[..3], [7, 8, 5], "{types:?}");
+}
+
+/// The frame the live view gets for the stub's Pixel 8 in a view of 400 ×
+/// 800 device pixels.
+async fn live_frame(mobile: &Mobile) -> (Page, Value) {
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    let LiveModuleMessage::Frame { frame, .. } = page.framed().await else { unreachable!() };
+    (page, serde_json::to_value(&frame).unwrap())
+}
+
+/// The drawn frame follows the corners the emulator's system UI paints into
+/// its picture: a Pixel 10's drawable reaches 196 pixels along each edge
+/// where its display reports a radius of 132, through the drawable's own
+/// curve; where the drawable does not read, the corner is the circle of the
+/// reported radius. The points are the screen's, 2.625 pixels each.
+/// Planted defects this catches: the circle drawn while the drawable reads,
+/// a fixed radius, corners in pixels, or the APK read once for each
+/// drawable. A stub emulator; milliseconds.
+#[tokio::test]
+async fn the_drawn_frame_follows_the_corners_the_emulators_system_ui_draws() {
+    let (mobile, sdk) = start(true).await;
+    let (_page, frame) = live_frame(&mobile).await;
+    // Both drawables come from the APK they resolve to, read once.
+    let read: Vec<String> = sdk.heard().into_iter().filter(|line| line.starts_with("apk files")).collect();
+    assert_eq!(read, [format!("apk files {SYSTEM_UI_APK} res/drawable/rounded_corner_top.xml res/drawable/rounded_corner_bottom.xml")]);
+    assert_eq!(frame["kind"], "drawn");
+    let corner = &frame["corners"]["topLeft"];
+    assert_eq!(corner["kind"], "curve", "{corner}");
+    let points: Vec<(f64, f64)> = corner["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|point| (point["x"].as_f64().unwrap(), point["y"].as_f64().unwrap()))
+        .collect();
+    let near = |(x, y): (f64, f64), (to_x, to_y): (f64, f64)| (x - to_x).hypot(y - to_y) < 0.5;
+    let reach = 196.0 / 2.625;
+    assert!(near(points[0], (0.0, reach)) && near(*points.last().unwrap(), (reach, 0.0)), "{points:?}");
+    // A point the drawable's curve passes through, (89.96, 11.51) in its
+    // pixels, where the circle of the radius runs 7 points further in.
+    let on_curve = (89.96 / 2.625, 11.51 / 2.625);
+    assert!(points.windows(2).any(|pair| {
+        let ((x1, y1), (x2, y2)) = (pair[0], pair[1]);
+        let along = (((on_curve.0 - x1) * (x2 - x1) + (on_curve.1 - y1) * (y2 - y1)) / ((x2 - x1).powi(2) + (y2 - y1).powi(2))).clamp(0.0, 1.0);
+        near((x1 + along * (x2 - x1), y1 + along * (y2 - y1)), on_curve)
+    }), "{points:?}");
+    // The other corners are the same corner mirrored into place.
+    for corner in ["topRight", "bottomRight", "bottomLeft"] {
+        assert_eq!(frame["corners"][corner], frame["corners"]["topLeft"]);
+    }
+
+    let (mobile, sdk) = start(true).await;
+    sdk.guest.corners.lock().unwrap().apks.clear();
+    let (_page, frame) = live_frame(&mobile).await;
+    assert_eq!(frame["corners"]["topLeft"], json!({ "kind": "round", "radius": 132.0 / 2.625 }));
+}
+
+/// The corners come from the APK the device resolves SystemUI's drawable
+/// to: where that is an overlay the shell may not read, they are the
+/// circles of the reported radius, never the curve of the same-named
+/// drawable a lower layer holds. Planted defect this catches: an
+/// unreadable overlay passed over for SystemUI's own drawable. A stub
+/// emulator; milliseconds.
+#[tokio::test]
+async fn corners_come_from_the_overlay_the_device_resolves_them_to_or_are_its_radius() {
+    let (mobile, sdk) = start(true).await;
+    {
+        let mut corners = sdk.guest.corners.lock().unwrap();
+        corners.drawables = "/vendor/overlay/SystemUIGoogle__auto_generated_rro_vendor.apk";
+        corners
+            .apks
+            .insert(SYSTEM_UI_APK, include_bytes!("fixtures/rounded_corner.pixel_10_pro.xml").to_vec());
+    }
+    let (_page, frame) = live_frame(&mobile).await;
+    assert_eq!(frame["corners"]["topLeft"], json!({ "kind": "round", "radius": 132.0 / 2.625 }));
+    let read: Vec<String> = sdk.heard().into_iter().filter(|line| line.starts_with("apk files")).collect();
+    assert_eq!(read, ["apk files /vendor/overlay/SystemUIGoogle__auto_generated_rro_vendor.apk res/drawable/rounded_corner_top.xml res/drawable/rounded_corner_bottom.xml"]);
+}
+
+/// Reading the screen's corners never holds up the view: while the device
+/// has not answered, the view gets the screen's size at once, without a
+/// frame, and as a page does, says the size it shows the screen at, upon
+/// which the first key frame comes; the viewer's typing reaches the device
+/// and closing the device lets the read go; the drawn frame follows once
+/// the corners are known. Planted defects this catches: the screen's size
+/// sent only with the frame, which holds the picture back until the
+/// corners are read; the corners read in the view's loop; or a read left
+/// running after its device closed. A stub emulator; milliseconds.
+#[tokio::test]
+async fn the_view_goes_on_while_the_screens_corners_are_read() {
+    let (mobile, sdk) = start(true).await;
+    sdk.guest.held.send_replace(true);
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    let sized = tokio::time::timeout(std::time::Duration::from_secs(10), page.until("frame")).await;
+    let Ok(LiveModuleMessage::Frame { points_width, points_height, frame: None, .. }) = sized else {
+        panic!("the screen's size waited for the corners: {sized:?}");
+    };
+    // The page shows the screen at the size the frame message said.
+    assert!(points_width > 0.0 && points_height > 0.0);
+    page.send(json!({ "type": "shown", "device": "m1", "width": 360, "height": 800 })).await;
+    let video = tokio::time::timeout(std::time::Duration::from_secs(10), page.video()).await;
+    let video = video.expect("the picture waited for the corners");
+    assert!(video.windows(5).any(|window| window[..4] == [0, 0, 0, 1] && window[4] & 0x1f == 5), "no key frame came");
+    page.send(json!({ "type": "input", "device": "m1", "input": { "type": "text", "text": "東京" } })).await;
+    sdk.emulator.heard.until("clipboard 東京").await;
+    sdk.guest.held.send_replace(false);
+    let framed = tokio::time::timeout(std::time::Duration::from_secs(10), page.framed()).await;
+    let Ok(LiveModuleMessage::Frame { frame, .. }) = framed else { panic!("no frame followed the corners") };
+    let frame = serde_json::to_value(&frame).unwrap();
+    assert_eq!(frame["corners"]["topLeft"]["kind"], "curve", "{frame}");
+
+    let (mobile, sdk) = start(true).await;
+    sdk.guest.held.send_replace(true);
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    // The view answers while the read is held.
+    page.send(json!({ "type": "input", "device": "m1", "input": { "type": "text", "text": "東京" } })).await;
+    sdk.emulator.heard.until("clipboard 東京").await;
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(10), mobile.run(CHAT, "close", json!({ "device": "m1" })));
+    closed.await.expect("closing waited for the corners").json();
+    sdk.emulator.heard.until("corner read let go").await;
+}
+
+/// Android Studio's frame needs nothing of the corners the device reports,
+/// and comes while they are still being read; a device that reports no
+/// corner radius, and has no art, has square corners. Planted defects this
+/// catches: the art held up by the corner reads, or a corner made up where
+/// the radius is unknown. A stub emulator and a small art; under a second.
+#[tokio::test]
+async fn the_art_needs_no_corners_and_unknown_corners_are_square() {
+    let (mobile, sdk) = start(true).await;
+    sdk.guest.held.send_replace(true);
+    let art = tempfile::tempdir().unwrap();
+    write_art(&art.path().join("pixel_8"));
+    *sdk.art.lock().unwrap() = Some(art.path().join("pixel_8"));
+    let framed = tokio::time::timeout(std::time::Duration::from_secs(10), live_frame(&mobile)).await;
+    let (_page, frame) = framed.expect("the art waited for the corners");
+    assert_eq!(frame["kind"], "image", "{frame}");
+    assert!(!sdk.heard().iter().any(|line| line.starts_with("apk files")), "{:?}", sdk.heard());
+
+    let (mobile, sdk) = start(true).await;
+    sdk.guest.corners.lock().unwrap().radius = None;
+    let (_page, frame) = live_frame(&mobile).await;
+    assert_eq!(frame["kind"], "drawn");
+    for corner in ["topLeft", "topRight", "bottomRight", "bottomLeft"] {
+        assert_eq!(frame["corners"][corner], json!({ "kind": "round", "radius": 0.0 }), "{frame}");
+    }
+}
+
+/// Writes Android Studio-like art for a 108 × 240 screen into `folder`: a
+/// grey frame 20 pixels wide at the sides and 25 at the top and bottom,
+/// opaque over the screen too, and a mask that is clear but for a black
+/// 10-pixel square at the screen's top left corner.
+fn write_art(folder: &Path) {
+    std::fs::create_dir_all(folder).unwrap();
+    std::fs::write(
+        folder.join("layout"),
+        "parts {\n  device {\n    display {\n      width 108\n      height 240\n      x 0\n      y 0\n    }\n  }\n  \
+         portrait {\n    background {\n      image back.png\n    }\n    foreground {\n      mask mask.png\n    }\n  }\n}\n\
+         layouts {\n  portrait {\n    width 148\n    height 290\n    part1 {\n      name portrait\n      x 0\n      y 0\n    }\n    \
+         part2 {\n      name device\n      x 20\n      y 25\n    }\n  }\n}\n",
+    )
+    .unwrap();
+    image::RgbaImage::from_pixel(148, 290, image::Rgba([128, 128, 128, 255])).save(folder.join("back.png")).unwrap();
+    let mut mask = image::RgbaImage::new(108, 240);
+    for (x, y, pixel) in mask.enumerate_pixels_mut() {
+        if x < 10 && y < 10 {
+            *pixel = image::Rgba([0, 0, 0, 255]);
+        }
+    }
+    mask.save(folder.join("mask.png")).unwrap();
+}
+
+/// Where the Host has Android Studio's art for the AVD's device, the
+/// emulator wears that frame as Android Studio draws it: the frame's image
+/// around the screen and never over it, the mask over the screen's corner,
+/// sized to the view's room with its screen the picture's 1080 × 2400
+/// pixels scaled alike, and turned with the picture. Planted defects this
+/// catches: the frame's image left over the picture, the mask left out, the
+/// screen placed by the art's own size, or the frame not turned. A stub
+/// emulator and a 148 × 290 art; under a second.
+#[tokio::test]
+async fn an_emulator_wears_android_studios_frame_where_the_host_has_its_art() {
+    let (mobile, sdk) = start(true).await;
+    let art = tempfile::tempdir().unwrap();
+    write_art(&art.path().join("pixel_8"));
+    *sdk.art.lock().unwrap() = Some(art.path().join("pixel_8"));
+    let (mut page, frame) = live_frame(&mobile).await;
+    let LiveFrame::Image { png, width, height, screen, .. } = serde_json::from_value(frame).unwrap() else {
+        panic!("the frame is not the art's");
+    };
+    // 148 × 290 art pixels, ten picture pixels each, fitted into 400 × 800.
+    let fit = 400.0 / 1480.0;
+    assert_eq!((width, height), (400, 784));
+    let close = |value: f64, expected: f64| (value - expected).abs() < 0.01;
+    assert!(close(screen.x, 200.0 * fit) && close(screen.y, 250.0 * fit), "{screen:?}");
+    assert!(close(screen.width, 1080.0 * fit) && close(screen.height, 2400.0 * fit), "{screen:?}");
+    let drawn = image::load_from_memory(&base64::engine::general_purpose::STANDARD.decode(png).unwrap()).unwrap().into_rgba8();
+    assert_eq!(drawn.get_pixel(200, 392)[3], 0, "the picture shows through the screen");
+    assert_eq!(drawn.get_pixel(4, 392).0, [128, 128, 128, 255], "the frame is drawn around it");
+    let corner = drawn.get_pixel((screen.x + 5.0) as u32, (screen.y + 5.0) as u32).0;
+    assert_eq!(corner, [0, 0, 0, 255], "the mask covers the screen's corner");
+
+    mobile.run(CHAT, "rotate", json!({ "device": "m1", "orientation": "left" })).await.json();
+    let turned = tokio::time::timeout(std::time::Duration::from_secs(10), page.framed()).await;
+    let Ok(LiveModuleMessage::Frame { frame: Some(LiveFrame::Image { width, height, screen, .. }), .. }) = turned else {
+        panic!("no turned frame came");
+    };
+    let fit = 400.0 / 2900.0;
+    assert_eq!((width, height), (400, 204));
+    // The screen's 25-pixel top margin is on its left now.
+    assert!(close(screen.x, 250.0 * fit) && close(screen.width, 2400.0 * fit), "{screen:?}");
 }
 
 /// What reached the emulator since `from` lines were heard.

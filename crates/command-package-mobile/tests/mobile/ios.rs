@@ -16,7 +16,7 @@ use tokio::{
     sync::watch,
 };
 
-use demi_command_package_mobile_protocol::live::{LiveFrame, LiveModuleMessage};
+use demi_command_package_mobile_protocol::live::{LiveCorners, LiveFrame, LiveModuleMessage};
 use demi_mobile::{
     driver::Result,
     ios::{BLOB, CONTROL, Connection, Launch, VIDEO},
@@ -345,13 +345,13 @@ async fn a_recording_larger_than_a_frame_is_saved_whole() {
 
 /// The view gets the frame the helper draws for a model whose frame Xcode
 /// installed, at the page's pixel ratio, with the screen's place and
-/// corners, and the outline with the screen's corners for one without.
+/// corners, and the drawn frame with the screen's corners for one without.
 /// Planted defects this catches: the helper's camelCase answer read with
-/// snake_case fields, which loses every frame and gives the outline square
+/// snake_case fields, which loses every frame and gives the drawn frame square
 /// corners; the pixel ratio not passed to the helper. One fake helper, one
 /// view, milliseconds.
 #[tokio::test]
-async fn the_view_gets_the_frame_the_helper_draws_or_the_outline() {
+async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
     let helper = FakeHelper::new(0);
     let mobile = Mobile::start_ios(helper.clone()).await;
     let framed = mobile.open(CHAT, "UDID-A").await;
@@ -367,24 +367,24 @@ async fn the_view_gets_the_frame_the_helper_draws_or_the_outline() {
         else {
             unreachable!()
         };
-        frames.push(frame);
+        frames.push(frame.expect("Xcode's frame is known at once"));
     }
     // The helper draws at the page's pixel ratio.
     assert_eq!(helper.requests("frame")[0], json!({ "udid": "UDID-A", "width": 800, "height": 1200, "scale": 2.0 }));
     match &frames[0] {
-        LiveFrame::Image { png, width, height, screen, corner_radius } => {
+        LiveFrame::Image { png, width, height, screen, corners } => {
             assert_eq!((png.as_str(), *width, *height), ("UE5H", 400, 800));
             assert_eq!((screen.x, screen.y, screen.width, screen.height), (20.0, 30.0, 360.0, 740.0));
-            assert_eq!(*corner_radius, 40.0);
+            assert_eq!(*corners, LiveCorners::round(40.0));
         }
         other => panic!("the installed frame came as {other:?}"),
     }
     match &frames[1] {
-        LiveFrame::Outline { corner_radius, buttons } => {
-            assert_eq!(*corner_radius, 55.0);
-            assert!(!buttons.is_empty(), "the outline marks the iPhone's buttons");
+        LiveFrame::Drawn { corners, buttons } => {
+            assert_eq!(*corners, LiveCorners::round(55.0));
+            assert!(!buttons.is_empty(), "the drawn frame shows the iPhone's buttons");
         }
-        other => panic!("the outline came as {other:?}"),
+        other => panic!("the drawn frame came as {other:?}"),
     }
 }
 

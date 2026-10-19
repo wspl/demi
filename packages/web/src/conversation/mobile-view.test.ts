@@ -44,7 +44,7 @@ window.ResizeObserver = class {
 
 await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, nextTick } = await import('vue')
-const { LIVE_CONTROL_FRAME } = await import('@demicodes/plugin-sdk')
+const { LIVE_CONTROL_FRAME, SQUARE_CORNERS } = await import('@demicodes/plugin-sdk')
 const { default: DeviceView } = await import('@demicodes/plugin-mobile/live/DeviceView.vue')
 const { MobileSession } = await import('@demicodes/plugin-mobile/live/session')
 type LiveModuleMessage = import('@demicodes/plugin-mobile/generated/plugin').LiveModuleMessage
@@ -115,7 +115,7 @@ async function viewing() {
     orientation: 'portrait',
     pointsWidth: 400,
     pointsHeight: 800,
-    frame: { kind: 'outline', cornerRadius: 40, buttons: [] },
+    frame: { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] },
   }))
   await nextTick()
   const canvas = root.querySelector('canvas')!
@@ -163,8 +163,15 @@ test('a drag of the panel’s edge moves the picture at once and tells the Host 
 
 test('the scroll wheel turns the device’s screen by as far in its points', async () => {
   const view = await viewing()
-  const { width, left, top } = { width: parseFloat(view.canvas.style.width), left: parseFloat(view.canvas.style.left), top: parseFloat(view.canvas.style.top) }
+  const { width, height, left, top } = {
+    width: parseFloat(view.canvas.style.width),
+    height: parseFloat(view.canvas.style.height),
+    left: parseFloat(view.canvas.style.left),
+    top: parseFloat(view.canvas.style.top),
+  }
+  // The picture's width and height are each whole pixels: each axis maps by its own.
   const scale = 400 / width
+  const scaleY = 800 / height
   const turn = new WheelEvent('wheel', { deltaY: 120, deltaMode: 0, bubbles: true, cancelable: true })
   // happy-dom's WheelEvent has none of a mouse event's fields: given as a browser's would have them.
   Object.defineProperties(turn, {
@@ -178,5 +185,5 @@ test('the scroll wheel turns the device’s screen by as far in its points', asy
   view.canvas.dispatchEvent(turn)
   expect(turn.defaultPrevented).toBe(true)
   const turns = view.sent.flatMap((message) => message.type === 'input' && message.input.type === 'wheel' ? [message.input] : [])
-  expect(turns).toEqual([{ type: 'wheel', x: 100 * scale, y: 200 * scale, deltaX: 0, deltaY: 120 * scale, modifiers: 0 }])
+  expect(turns).toEqual([{ type: 'wheel', x: 100 * scale, y: 200 * scaleY, deltaX: 0, deltaY: 120 * scale, modifiers: 0 }])
 })

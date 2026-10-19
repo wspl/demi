@@ -13,6 +13,7 @@ use futures_util::future::BoxFuture;
 use super::{
     Avd, Running, Sdk,
     adb::Adb,
+    art,
     emulator::Discovery,
     guest::{Guest, U2},
     process::Process,
@@ -172,19 +173,6 @@ fn value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
 
 /// The AVD `name` whose `<name>.ini` holds `ini`, from its `config.ini`.
 pub fn avd(name: &str, ini: &str, config: &str) -> Avd {
-    let words = |id: &str| {
-        id.split('_')
-            .filter(|word| !word.is_empty())
-            .map(|word| {
-                let mut characters = word.chars();
-                match characters.next() {
-                    Some(first) => first.to_uppercase().chain(characters).collect::<String>(),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    };
     let api = value(ini, "target")
         .or_else(|| value(config, "image.sysdir.1").and_then(|sysdir| sysdir.split('/').find(|part| part.starts_with("android-"))))
         .and_then(|target| target.strip_prefix("android-"))
@@ -195,7 +183,7 @@ pub fn avd(name: &str, ini: &str, config: &str) -> Avd {
         display: value(config, "avd.ini.displayname")
             .map(str::to_owned)
             .unwrap_or_else(|| name.replace('_', " ")),
-        model: value(config, "hw.device.name").map(words).unwrap_or_default(),
+        device: value(config, "hw.device.name").unwrap_or_default().to_owned(),
         os: api.map(android_version).unwrap_or_else(|| "Android".into()),
     }
 }
@@ -419,5 +407,10 @@ impl Sdk for Installed {
             adb.wait_for(serial).await?;
             Ok(U2::new(adb, serial.to_owned()) as Arc<dyn Guest>)
         })
+    }
+
+    fn device_art(&self, device: &str) -> Option<PathBuf> {
+        let installations = art::installations(art::System::current(), &art::Places::current());
+        art::find(&installations, device)
     }
 }

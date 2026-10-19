@@ -1,12 +1,12 @@
 //! A device's frame in the live view (`mobile.md` § The live view): the one
-//! its platform installs for the model, which the driver draws, or an
-//! outline the view draws itself, whose buttons this places on the edges
+//! its platform installs for the model, which the driver draws, or the
+//! frame the view draws itself, whose buttons this places on the edges
 //! of the device as its picture shows it.
 
 use base64::Engine as _;
 
 use demi_command_package_mobile_protocol::{
-    live::{LiveButtonMark, LiveFrame, LiveRect, LiveSide},
+    live::{LiveButtonMark, LiveCorners, LiveFrame, LiveRect, LiveSide},
     mobile::{MobilePlatform, Orientation},
 };
 
@@ -16,12 +16,12 @@ use crate::driver::Frame;
 /// turned to `orientation`.
 pub fn live(frame: Frame, platform: MobilePlatform, model: &str, orientation: Orientation) -> LiveFrame {
     match frame {
-        Frame::Drawn {
+        Frame::Image {
             png,
             width,
             height,
             screen,
-            corner_radius,
+            corners,
         } => LiveFrame::Image {
             png: base64::engine::general_purpose::STANDARD.encode(&png),
             width,
@@ -32,17 +32,17 @@ pub fn live(frame: Frame, platform: MobilePlatform, model: &str, orientation: Or
                 width: screen.width.max(1.0),
                 height: screen.height.max(1.0),
             },
-            corner_radius: corner_radius.clamp(0.0, 4096.0),
+            corners,
         },
-        Frame::Undrawn { corner_radius } => outline(corner_radius, platform, model, orientation),
+        Frame::Drawn { corners } => drawn(corners, platform, model, orientation),
     }
 }
 
-/// An outline around a screen whose corners have `corner_radius` points,
-/// with the buttons of the model's kind.
-pub fn outline(corner_radius: f64, platform: MobilePlatform, model: &str, orientation: Orientation) -> LiveFrame {
-    LiveFrame::Outline {
-        corner_radius: corner_radius.clamp(0.0, 4096.0),
+/// The frame the view draws around a screen with `corners`, in points, with the buttons
+/// of the model's kind.
+pub fn drawn(corners: LiveCorners, platform: MobilePlatform, model: &str, orientation: Orientation) -> LiveFrame {
+    LiveFrame::Drawn {
+        corners,
         buttons: portrait_buttons(platform, model)
             .into_iter()
             .map(|mark| turned(mark, orientation))

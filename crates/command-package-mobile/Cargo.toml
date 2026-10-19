@@ -56,6 +56,14 @@ hyper = { version = "1", features = ["http1", "client"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 notify = "8.2"
 roxmltree = "0.21"
+# The screen's corners as SystemUI draws them (`mobile.md` § The live
+# view): the rounded-corner drawable read from its APK, copied to a
+# temporary file and read by its central directory, its path's shape, and
+# Android Studio's device art, decoded and drawn.
+image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+kurbo = "0.13"
+tempfile = "3"
+zip = { version = "6", default-features = false, features = ["deflate"] }
 tonic = { version = "0.14", default-features = false, features = ["codegen", "channel"] }
 tonic-prost = "0.14"
 # The macOS version the iOS helper needs (`mobile.md` § iOS), and the
