@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { DEVICE_LOGO_PATH, type DeviceLogo } from './mark'
+import { DEVICE_LOGO_PATH, type SystemLogo } from './mark'
 
-/** A device's system's logo at `size`, in the text's color: the logo of its mark (`DeviceIcon`). */
+/**
+ * A system's logo at `size`, in the text's color: the logo of a device's mark (`DeviceIcon`), or
+ * of a simulator's system, which its tab in the work panel shows.
+ */
 defineProps<{
-  logo: DeviceLogo
+  logo: SystemLogo
   size: number
 }>()
 </script>

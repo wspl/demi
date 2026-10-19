@@ -1,4 +1,5 @@
 import {
+  mdiAndroid,
   mdiApple,
   mdiArch,
   mdiCentos,
@@ -38,11 +39,20 @@ export interface DeviceMark {
 }
 
 /**
- * Each logo's path, in a 24 by 24 box: Material Design Icons (Pictogrammers, Apache-2.0), from
- * `@mdi/js`.
+ * A system's logo, as a device's mark draws it: a device's, or a simulator's system's, Apple for
+ * iOS and the Android robot's head for Android (`mobile.md` § The live view).
  */
-export const DEVICE_LOGO_PATH: Record<DeviceLogo, string> = {
+export type SystemLogo = DeviceLogo | 'android'
+
+/**
+ * Each logo's path, in a 24 by 24 box: Material Design Icons (Pictogrammers, Apache-2.0), from
+ * `@mdi/js`. The Android robot is reproduced or modified from work created and shared by Google
+ * and used according to terms described in the Creative Commons 3.0 Attribution License
+ * (`LICENSE-android-robot`).
+ */
+export const DEVICE_LOGO_PATH: Record<SystemLogo, string> = {
   apple: mdiApple,
+  android: mdiAndroid,
   windows: mdiMicrosoftWindows,
   ubuntu: mdiUbuntu,
   debian: mdiDebian,

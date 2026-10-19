@@ -220,7 +220,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       open.set(shown.id, shown)
     }
     if (!panel.all.some((tab) => tab.kind === 'mobile' && shows(tab) === shown.id)) {
-      const data = { device: shown.id, nativeId: simulator.nativeId, name: simulator.name }
+      const data = { device: shown.id, nativeId: simulator.nativeId, name: simulator.name, platform: simulator.platform }
       panel.apply({ type: 'create', tab: { id: `mobile-${shown.id}`, kind: 'mobile', data } })
     }
     changed()

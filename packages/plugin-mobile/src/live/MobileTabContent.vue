@@ -4,12 +4,12 @@ import { Toolbar, downloadUrl, usePage, type ToolbarAction } from '@demicodes/pl
 import DeviceView from './DeviceView.vue'
 import type { MobileDevicesController } from './controller'
 import { deviceControls, type DeviceControl } from './controls'
-import type { MobileTabData } from './kind'
+import { MobilePlatformLogo, type MobileTabData } from './kind'
 import { t } from '../locales/text'
 
 /**
  * A device's tab (`mobile.md` § The live view): its toolbar, which starts
- * with the device's name where the whole name fits, never on a phone,
+ * with the device's system's logo and name where the whole name fits, never on a phone,
  * whose tab names the device, and holds the panel's controls, each the
  * operation of the command that does the same, and the device live. The
  * agent opens the device; the tab goes when the device closes.
@@ -80,7 +80,10 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
              A phone's tab already names the device. -->
         <div class="flex h-10 min-w-0 flex-1 flex-wrap items-center overflow-hidden phone:invisible">
           <span class="h-10 w-0" />
-          <span class="whitespace-nowrap px-2 text-[13px] leading-10 text-fg-body">{{ data.name }}</span>
+          <span class="flex h-10 items-center gap-1.5 whitespace-nowrap px-2 text-[13px] text-fg-body">
+            <MobilePlatformLogo :platform="data.platform" class="text-fg-subtle" />
+            {{ data.name }}
+          </span>
         </div>
       </template>
     </Toolbar>
