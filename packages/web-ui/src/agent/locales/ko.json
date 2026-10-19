@@ -354,8 +354,6 @@
       },
       "profiles": "프로필",
       "mainConversation": "메인 대화",
-      "requests": "요청",
-      "time": "시간",
       "request": "요청 #{number}",
       "firstRequest": "첫 요청",
       "afterCompaction": "압축 후",

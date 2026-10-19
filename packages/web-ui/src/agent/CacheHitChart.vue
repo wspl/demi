@@ -9,22 +9,24 @@ import { showAbove } from '../overlay/stacking'
 import { formatClockAgo } from '../ui/dates'
 import { formatDollars } from '../ui/numbers'
 import { formatTokens } from '../ui/token-count'
-import { type ChartAxis, callHitRate } from './context-cost'
+import { callHitRate } from './context-cost'
 import { t } from './locales/text'
 
 /**
- * The main conversation's turn calls, each at its call's cache hit rate,
- * by its number or by its start time (`usage-and-quota.md` § A
- * conversation's cost): faint lines at 0, 50 and 100%, the numbers or times
- * under the plot, a cache miss a red dot, a compaction a grey dashed line
- * between the calls it separates. Resting the pointer on the plot, or a tap
- * on a phone, shows the nearest call's tip beside its point where it fits,
- * otherwise above it, never past the card's edges.
+ * The main conversation's recent turn calls, each at its call's cache hit
+ * rate, by its number (`usage-and-quota.md` § A conversation's cost): faint
+ * lines at 0, 50 and 100%, the numbers under the plot, a cache miss a red
+ * dot, a compaction a grey dashed line between the calls it separates.
+ * Resting the pointer on the plot, or a tap on a phone, shows the nearest
+ * call's tip beside its point where it fits, otherwise above it, never past
+ * the card's edges.
  */
 const props = defineProps<{
+  /** The calls the chart draws, the conversation's most recent. */
   calls: readonly CostCall[]
-  axis: ChartAxis
-  /** The call whose tip shows without the pointer, as a gallery specimen pins it. */
+  /** How many of the conversation's turn calls came before them, which their numbers count on from. */
+  before: number
+  /** The call, by its place among all of the conversation's, whose tip shows without the pointer, as a gallery specimen pins it. */
   pinnedTip?: number | null
 }>()
 
@@ -39,24 +41,22 @@ const BASELINE = GAP + PLOT + GAP + CAP
 const HEIGHT = BASELINE + 3
 /** A label this near an end of the plot is anchored to that end. */
 const EDGE = 16
-/** The room a time label takes with the gap after it, "12:30 PM" at the caption's size. */
-const LABEL_ROOM = 72
-/** The round steps of the time axis, in minutes. */
-const TIME_STEPS = [5, 10, 15, 30, 60, 120, 240, 480, 1440]
+/**
+ * A character's widest advance at the labels' caption size, in pixels, and
+ * the room left between two labels: a label between the first and the last
+ * stands only where its whole width keeps that room from theirs.
+ */
+const LABEL_CHAR = 8
+const LABEL_GAP = 6
 
 const wrap = useTemplateRef<HTMLElement>('wrap')
 const { width } = useElementSize(wrap)
-
-const times = computed(() => props.calls.map((call) => new Date(call.startedAt).getTime()))
-const span = computed(() => Math.max(1, times.value.at(-1)! - times.value[0]!))
 
 function xOf(index: number): number {
   const count = props.calls.length
   if (count < 2)
     return width.value / 2
-  return props.axis === 'time'
-    ? ((times.value[index]! - times.value[0]!) / span.value) * width.value
-    : (index / (count - 1)) * width.value
+  return (index / (count - 1)) * width.value
 }
 
 function yOf(rate: number): number {
@@ -80,43 +80,49 @@ const compactions = computed(() =>
 )
 const misses = computed(() => props.calls.flatMap((call, index) => (call.miss === null ? [] : [points.value[index]!])))
 
-const clock = new Intl.DateTimeFormat(pageLanguage(), { hour: 'numeric', minute: '2-digit' })
-
-/** The labels under the plot: the first and last call's numbers and round ones between, or round times. */
+/**
+ * The labels under the plot: the first and last drawn call's numbers in
+ * the conversation, the first marked `#`, and the round ones between that
+ * fit beside them and each other.
+ */
 const labels = computed(() => {
   const count = props.calls.length
-  const at = (x: number, text: string) => ({
-    x: x < EDGE ? 0 : x > width.value - EDGE ? width.value : x,
-    anchor: x < EDGE ? 'start' : x > width.value - EDGE ? 'end' : 'middle',
-    text,
-  })
   if (count === 0)
     return []
-  if (props.axis === 'time') {
-    const start = times.value[0]!
-    // The shortest round step whose labels each have a label's room.
-    const room = Math.max(1, Math.floor(width.value / LABEL_ROOM))
-    const minutes = TIME_STEPS.find((step) => span.value / (step * 60_000) <= room) ?? TIME_STEPS.at(-1)!
-    const step = minutes * 60_000
-    const marks = []
-    for (let moment = Math.ceil(start / step) * step; moment <= times.value.at(-1)!; moment += step)
-      marks.push(at(((moment - start) / span.value) * width.value, clock.format(moment)))
-    return marks
+  const at = (x: number, text: string) => {
+    const anchor = x < EDGE ? 'start' : x > width.value - EDGE ? 'end' : 'middle'
+    const x0 = anchor === 'start' ? 0 : anchor === 'end' ? width.value : x
+    const extent = text.length * LABEL_CHAR
+    const left = anchor === 'start' ? x0 : anchor === 'end' ? x0 - extent : x0 - extent / 2
+    return { x: x0, anchor, text, left, right: left + extent }
   }
-  const step = count > 100 ? 50 : count > 30 ? 10 : 5
-  const numbers = [1]
-  for (let number = step; number < count - step / 3; number += step)
-    numbers.push(number)
-  if (count > 1)
-    numbers.push(count)
-  return numbers.map((number) => at(xOf(number - 1), number === 1 ? '#1' : String(number)))
+  const first = props.before + 1
+  const last = props.before + count
+  const start = at(xOf(0), `#${first}`)
+  if (count === 1)
+    return [start]
+  const end = at(xOf(count - 1), String(last))
+  const step = count > 30 ? 10 : 5
+  const shown = [start]
+  for (let number = Math.ceil((first + 1) / step) * step; number < last; number += step) {
+    const label = at(xOf(number - first), String(number))
+    if (label.left >= shown.at(-1)!.right + LABEL_GAP && label.right + LABEL_GAP <= end.left)
+      shown.push(label)
+  }
+  return [...shown, end]
 })
 
-/** The call under the pointer, or the tap; the pinned one while there is none. */
+/** The drawn call under the pointer, or the tap; the pinned one while there is none. */
 const pointed = ref<number | null>(null)
-const shown = computed(() => pointed.value ?? props.pinnedTip ?? null)
-watch(() => props.calls.length, () => {
-  if (pointed.value !== null && pointed.value >= props.calls.length)
+const pinned = computed(() => {
+  const index = props.pinnedTip == null ? -1 : props.pinnedTip - props.before
+  return index >= 0 && index < props.calls.length ? index : null
+})
+const shown = computed(() => pointed.value ?? pinned.value)
+// A call the drawn ones no longer hold, or one whose place moved as a new
+// call pushed the oldest out, has no tip.
+watch([() => props.calls.length, () => props.before], ([, before], [, earlier]) => {
+  if (pointed.value !== null && (pointed.value >= props.calls.length || before !== earlier))
     pointed.value = null
 })
 
@@ -226,7 +232,7 @@ watch(shown, () => {
         :y1="GAP"
         :y2="yOf(0)"
       />
-      <circle v-if="points.length" class="cost-chart-first" :cx="points[0]!.x" :cy="points[0]!.y" r="3" />
+      <circle v-if="points.length && before === 0" class="cost-chart-first" :cx="points[0]!.x" :cy="points[0]!.y" r="3" />
       <template v-for="miss in misses" :key="`miss@${miss.x}`">
         <line class="cost-chart-miss-tick" :x1="miss.x" :x2="miss.x" :y1="yOf(1)" :y2="miss.y" />
         <circle class="cost-chart-miss" :cx="miss.x" :cy="miss.y" r="3.5" />
@@ -252,7 +258,7 @@ watch(shown, () => {
         :style="{ ...floatingStyles, maxWidth: `${tipWidth}px`, '--elevation': elevation, zIndex: z() }"
         role="tooltip"
       >
-        <div class="mb-0.5 font-medium text-fg-emphasis tabular-nums">{{ t('context.cost.request', { number: shown + 1 }) }}</div>
+        <div class="mb-0.5 font-medium text-fg-emphasis tabular-nums">{{ t('context.cost.request', { number: before + shown + 1 }) }}</div>
         <div class="mb-1 text-fg-subtle tabular-nums">{{ formatClockAgo(tipCall.startedAt, now) }}</div>
         <div class="cost-tip-row">
           <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
@@ -265,7 +271,7 @@ watch(shown, () => {
             <span class="tabular-nums">{{ formatTokens(tipCall.inputTokens + tipCall.cacheWriteTokens) }}</span>
           </div>
         </template>
-        <div v-else-if="shown === 0" class="mt-1 text-fg-subtle">{{ t('context.cost.firstRequest') }}</div>
+        <div v-else-if="before + shown === 0" class="mt-1 text-fg-subtle">{{ t('context.cost.firstRequest') }}</div>
         <div v-else-if="tipCall.afterCompaction" class="mt-1 text-fg-subtle">{{ t('context.cost.afterCompaction') }}</div>
         <div v-if="tipCall.price !== null" class="cost-tip-row">
           <span class="text-fg-subtle">{{ t('context.cost.price') }}</span>

@@ -1,5 +1,3 @@
-import type { Ref } from 'vue'
-import { useLocalStorage } from '@vueuse/core'
 import type { AgentCost, CostCall, CostPrice, CostTotals } from '@demicodes/protocol'
 import type { ShownError } from '../infra/errors'
 import { t } from './locales/text'
@@ -7,8 +5,8 @@ import { t } from './locales/text'
 /**
  * A conversation's cost as the context card shows it (`usage-and-quota.md`
  * § A conversation's cost): the backend's `GET /conversations/:id/cost`,
- * which the page reads as the card opens and to which it adds each `cost`
- * frame while the card is open.
+ * which the page reads with the conversation as it opens and to which it
+ * adds each `cost` frame while the conversation is open.
  */
 export interface ConversationCostView {
   /** The number of the conversation's ledger rows the cost includes. */
@@ -18,8 +16,22 @@ export interface ConversationCostView {
   calls: CostCall[]
 }
 
+/** The cost of a conversation that has no ledger row yet, as one the page just created. */
+export const NO_COST: ConversationCostView = {
+  rows: 0,
+  totals: {
+    inputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    outputTokens: 0,
+    price: { total: null, input: null, cacheWrite: null, cacheRead: null, output: null },
+  },
+  agents: [],
+  calls: [],
+}
+
 /**
- * The cost as the page holds it while the context card is open: the read's
+ * The cost as the page holds it while the conversation is open: the read's
  * answer with each frame added, or the failure of the read, which the
  * section says with Retry.
  */
@@ -99,7 +111,7 @@ export function callHitRate(call: CostCall): number {
   return whole === 0 ? 0 : call.cacheReadTokens / whole
 }
 
-/** The main conversation's hit rate over its turn calls; null without a call that sent a prompt. */
+/** The hit rate over `calls`; null without a call that sent a prompt. */
 export function hitRate(calls: readonly CostCall[]): number | null {
   const whole = calls.reduce((sum, call) => sum + prompt(call), 0)
   return whole === 0 ? null : calls.reduce((sum, call) => sum + call.cacheReadTokens, 0) / whole
@@ -112,6 +124,22 @@ export function hitRate(calls: readonly CostCall[]): number | null {
  */
 export const CHART_CALLS = 4
 
+/**
+ * The most recent turn calls the chart draws, and the cache hit rate counts:
+ * a long conversation's whole run would crowd the plot past reading, and
+ * what a user checks is whether the cache serves the conversation now.
+ */
+export const RECENT_CALLS = 50
+
+/**
+ * The main conversation's last `RECENT_CALLS` turn calls, and how many came
+ * before them, so each keeps its number in the conversation.
+ */
+export function recentCalls(calls: readonly CostCall[]): { calls: readonly CostCall[], before: number } {
+  const before = Math.max(0, calls.length - RECENT_CALLS)
+  return { calls: calls.slice(before), before }
+}
+
 /** Whether the conversation made any call: a conversation with none has no Cost section. */
 export function hasCost(cost: ConversationCostView | null): cost is ConversationCostView {
   if (cost === null)
@@ -120,14 +148,6 @@ export function hasCost(cost: ConversationCostView | null): cost is Conversation
   return cost.calls.length > 0
     || totals.price.total !== null
     || totals.inputTokens + totals.cacheWriteTokens + totals.cacheReadTokens + totals.outputTokens > 0
-}
-
-/** How the chart lays its calls out. */
-export type ChartAxis = 'requests' | 'time'
-
-/** The chart's axis, kept in the browser for the next card. */
-export function useChartAxis(): Ref<ChartAxis> {
-  return useLocalStorage<ChartAxis>('demi-cost-chart-axis', 'requests')
 }
 
 /** One row of the Profiles part. */

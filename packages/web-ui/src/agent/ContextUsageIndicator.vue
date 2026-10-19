@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
@@ -21,6 +21,7 @@ import { usePhone } from '../ui/phone'
 import { formatTokens } from '../ui/token-count'
 import {
   type ContextCardRow,
+  type ContextCardSection,
   type UsageLimits,
   compactionRefusal,
   contextCardParts,
@@ -32,7 +33,7 @@ import {
   contextRatio,
   formatShare,
   untilCompaction,
-  useContextListOpen,
+  useContextCardSection,
 } from './context-usage'
 import { instructionRows } from './instructions'
 import ContextCost from './ContextCost.vue'
@@ -48,12 +49,13 @@ import { type CostState, hasCost } from './context-cost'
  * holds the estimate against the window, a header that opens and closes the list of rows, a
  * bar of what fills the context, the rows largest first while the list is
  * open, and the room before compaction with Compact; then what the
- * conversation cost, opened and closed with the list, while the host holds
- * it (`usage-and-quota.md` § A conversation's cost); then the usage limits
+ * conversation cost, whose caption opens and closes its details
+ * (`usage-and-quota.md` § A conversation's cost); then the usage limits
  * of the conversation's account, and last the instructions the model holds
  * (`instructions.md` § What the card lists), each of which opens where it
- * is written. While the usage or the window is unknown the card holds the
- * usage limits alone, and with no limits either there is no meter.
+ * is written. One part stands open at most: opening one closes the other.
+ * While the usage or the window is unknown the card holds the cost and the
+ * usage limits, and with no limits there is no meter, cost or none.
  */
 const props = defineProps<{
   usage?: ContextUsage | null
@@ -75,15 +77,14 @@ const props = defineProps<{
    */
   segment?: boolean
   /**
-   * The conversation's cost, which the host reads when the card opens
-   * (`costShown`) and keeps while it is open, or the failure of its read;
-   * none while it reads it, and for a card that shows no conversation's
-   * cost.
+   * The conversation's cost, which the host holds while the conversation
+   * is open, read with it and kept current by its frames, or the failure
+   * of its read; none for a card that shows no conversation's cost.
    */
   cost?: CostState | null
-  /** The list stands open or closed whatever the browser keeps, as a gallery specimen pins it. */
-  listOpen?: boolean
-  /** The cost chart's call whose tip shows without the pointer, as a gallery specimen pins it. */
+  /** The part that stands open, or none, whatever the browser keeps, as a gallery specimen pins it. */
+  expanded?: ContextCardSection | null
+  /** The cost chart's call, by its place among the conversation's, whose tip shows without the pointer, as a gallery specimen pins it. */
   costTip?: number | null
   /** The names of the profiles the conversation's workflow offers now, which the cost's Profiles part shows. */
   costProfiles?: readonly string[]
@@ -98,8 +99,6 @@ const emit = defineEmits<{
    * automatic when the limits showed, otherwise the Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
-  /** The card opened, and the host reads the conversation's cost, or closed, and the host lets it go. */
-  costShown: [shown: boolean]
   /** Read the cost again after a read that failed. */
   retryCost: []
 }>()
@@ -119,8 +118,11 @@ const phone = usePhone()
 const icons = useIconPx()
 const ringPx = computed(() => (props.segment ? icons.value.chip : icons.value.in28))
 
-/** Whether the rows show; the header opens and closes them, and the browser keeps the choice. */
-const listOpen = props.listOpen === undefined ? useContextListOpen() : ref(props.listOpen)
+/** The part that stands open: a header opens it and closes the other, and the browser keeps the choice. */
+const expanded = props.expanded === undefined ? useContextCardSection() : ref(props.expanded)
+function toggle(section: ContextCardSection): void {
+  expanded.value = expanded.value === section ? null : section
+}
 
 /** Whether the card shows: a click opens it; a pinned specimen stays open whatever closes it. */
 const clicked = ref(false)
@@ -132,20 +134,13 @@ const open = computed({
   },
 })
 const elevation = useLayerElevation()
-watch(open, (shown) => emit('costShown', shown), { immediate: true })
-// A card that goes, open, as its conversation's page closes or the page
-// signs out, lets the cost go with it.
-onBeforeUnmount(() => {
-  if (open.value)
-    emit('costShown', false)
-})
 /**
- * The Cost section shows under the context's part once the conversation
- * made a call, or once a read of it failed.
+ * The Cost section shows once the conversation made a call, or once a read
+ * of it failed, with the context's part or without it.
  */
 const costShown = computed(() => {
   const cost = props.cost
-  if (!parts.value.context || !cost)
+  if (!cost)
     return false
   return cost.status === 'failed' || hasCost(cost.cost)
 })
@@ -260,22 +255,26 @@ const ringColor = computed(() => {
         <!-- On a phone the card is a sheet's content, read at a sheet's size. -->
         <div data-context-card class="overlay-shell rounded-md text-detail leading-4 text-fg phone:text-[15px] phone:leading-5" :style="{ '--elevation': elevation }">
           <div v-if="parts.context" class="context-card-head">
-            <span v-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
-            <!-- The header is the list's disclosure, as a Finder disclosure row is. -->
+            <!-- The header is the list's disclosure, as a Finder disclosure row is;
+                 compacting, while there are rows to list. -->
             <button
-              v-else-if="usage"
+              v-if="!isCompacting || rows.length"
               type="button"
-              :aria-expanded="listOpen"
+              :aria-expanded="expanded === 'context'"
               class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left phone:min-h-row phone:items-center"
-              @click="listOpen = !listOpen"
+              @click="toggle('context')"
             >
-              <!-- The name gives way on a narrow card; the figure and the chevron stay whole. -->
-              <span class="min-w-0 truncate font-medium text-fg-emphasis">{{ t('context.window') }}</span>
-              <span class="ml-auto shrink-0 tabular-nums text-fg-muted">
-                {{ contextFigure(usage) }}
-              </span>
-              <FoldChevron :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
+              <span v-if="isCompacting" class="min-w-0 truncate text-fg-body">{{ t('context.compacting') }}</span>
+              <template v-else-if="usage">
+                <!-- The name gives way on a narrow card; the figure and the chevron stay whole. -->
+                <span class="min-w-0 truncate font-medium text-fg-emphasis">{{ t('context.window') }}</span>
+                <span class="ml-auto shrink-0 tabular-nums text-fg-muted">
+                  {{ contextFigure(usage) }}
+                </span>
+              </template>
+              <FoldChevron :open="expanded === 'context'" :size="ICON_PX.in20" class="self-center text-fg-subtle" :class="isCompacting ? 'ml-auto' : ''" />
             </button>
+            <span v-else-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
           </div>
           <div v-if="hasDetails">
             <!-- The details scroll when the card would be taller than the room the
@@ -293,7 +292,7 @@ const ringColor = computed(() => {
                     />
                   </div>
                   <!-- The list opens and closes by height, as every disclosure does (Fold). -->
-                  <Fold :open="listOpen">
+                  <Fold :open="expanded === 'context'">
                     <ul class="pt-2">
                       <li v-for="row in rows" :key="row.kind" class="context-row">
                         <span class="size-2 rounded-[2px]" :class="ROW_COLORS[row.kind]" />
@@ -317,8 +316,17 @@ const ringColor = computed(() => {
                     {{ t('context.compact') }}
                   </Button>
                 </div>
-                <ContextCost v-if="costShown && cost" :state="cost" :open="listOpen" :pinned-tip="costTip" :profiles="costProfiles" @retry="emit('retryCost')" />
-                <div v-if="limits" class="pb-3" :class="parts.context ? 'border-t border-line' : 'pt-1'">
+                <ContextCost
+                  v-if="costShown && cost"
+                  :state="cost"
+                  :open="expanded === 'cost'"
+                  :first="!parts.context"
+                  :pinned-tip="costTip"
+                  :profiles="costProfiles"
+                  @retry="emit('retryCost')"
+                  @toggle="toggle('cost')"
+                />
+                <div v-if="limits" class="pb-3" :class="parts.context || costShown ? 'border-t border-line' : 'pt-1'">
                   <SectionRow class="text-caption font-medium text-fg-subtle">
                     <span class="shrink-0">{{ t('context.usageLimits') }}</span>
                     <template v-if="limits.accountLabel">

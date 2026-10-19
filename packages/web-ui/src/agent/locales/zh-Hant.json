@@ -354,8 +354,6 @@
       },
       "profiles": "設定檔",
       "mainConversation": "主對話",
-      "requests": "請求",
-      "time": "時間",
       "request": "請求 #{number}",
       "firstRequest": "首個請求",
       "afterCompaction": "壓縮後",

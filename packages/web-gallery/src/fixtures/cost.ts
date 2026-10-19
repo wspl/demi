@@ -17,13 +17,25 @@ function sequence(seed: number): () => number {
 /** Claude Opus's prices, dollars per million tokens. */
 const RATE = { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 }
 
-/** The calls a compaction comes before, and the misses with their causes. */
+/**
+ * The calls a compaction comes before, and the misses with their causes;
+ * past the first 180, a giant conversation compacts every 105 calls and
+ * misses every 97th.
+ */
 const COMPACTED_BEFORE = new Set([68, 131])
 const MISSES = new Map<number, CacheMiss>([
   [7, 'not_cached'],
   [75, 'cache_expired'],
   [137, 'system_prompt_changed'],
 ])
+const LATER_COMPACTIONS = 105
+const LATER_MISSES = 97
+function compactedBefore(number: number): boolean {
+  return COMPACTED_BEFORE.has(number) || (number > 180 && number % LATER_COMPACTIONS === 0)
+}
+function missAt(number: number): CacheMiss | null {
+  return MISSES.get(number) ?? (number > 180 && number % LATER_MISSES === 0 ? 'not_cached' : null)
+}
 /** How long before the miss its pause was: past the vendor's five minutes. */
 const PAUSE_BEFORE = new Map([[75, 9 * MINUTE]])
 
@@ -59,17 +71,18 @@ const SUBAGENTS: Record<'profiles' | 'plain', AgentCost[]> = {
  * A long conversation's cost: 180 turn calls of the main conversation over
  * three hours and a half, two compactions, three misses of three causes, and
  * subagents started with profiles, without them, or none; or the first
- * `turns` of it, a conversation just started.
+ * `turns` of it, a conversation just started, or more, a giant one.
  */
 export function costFixture(subagents: 'profiles' | 'plain' | 'none', turns = 180): ConversationCostView {
   const random = sequence(7)
   const calls: CostCall[] = []
   let prompt = 0
-  let at = Date.now() - 212 * MINUTE
+  // A giant conversation started long enough ago for its calls to end by now.
+  let at = Date.now() - Math.max(212, turns * 1.25) * MINUTE
   for (let number = 1; number <= turns; number++) {
     at += PAUSE_BEFORE.get(number) ?? (40_000 + random() * 50_000)
-    const fresh = number === 1 || COMPACTED_BEFORE.has(number)
-    const miss = MISSES.get(number) ?? null
+    const fresh = number === 1 || compactedBefore(number)
+    const miss = missAt(number)
     prompt = fresh ? 24_000 + random() * 12_000 : prompt + 600 + random() * 1_400
     const input = Math.round(40 + random() * 400)
     const cacheWrite = Math.round(fresh || miss ? prompt * 0.97 : 400 + random() * 2_000)
@@ -82,7 +95,7 @@ export function costFixture(subagents: 'profiles' | 'plain' | 'none', turns = 18
       cacheWriteTokens: cacheWrite,
       cacheReadTokens: cacheRead,
       price,
-      afterCompaction: COMPACTED_BEFORE.has(number),
+      afterCompaction: compactedBefore(number),
       miss,
     })
   }
@@ -123,22 +136,16 @@ const FAILED_REQUEST = 'req_7f3a9c2e41d84b06'
 
 /**
  * What a card specimen holds of its conversation's cost, as the product's
- * store does: the cost while the card is open, read again as it opens. A
- * `failing` specimen's read fails each time the card opens, and Retry
- * reads it, as the product's would once the backend answers.
+ * store does: the cost read with the conversation, there before the card
+ * opens. A `failing` specimen's read failed, and Retry reads it, as the
+ * product's would once the backend answers.
  */
 export function useCardCost(subagents: 'profiles' | 'plain' | 'none', { failing = false, turns = 180 } = {}) {
-  const cost = ref<CostState | null>(null)
-  function shown(open: boolean): void {
-    if (!open)
-      cost.value = null
-    else if (failing)
-      cost.value = { status: 'failed', error: { message: 'The backend could not be reached.', requestId: FAILED_REQUEST } }
-    else
-      cost.value = { status: 'read', cost: costFixture(subagents, turns) }
-  }
+  const cost = ref<CostState>(failing
+    ? { status: 'failed', error: { message: 'The backend could not be reached.', requestId: FAILED_REQUEST } }
+    : { status: 'read', cost: costFixture(subagents, turns) })
   function retry(): void {
     cost.value = { status: 'read', cost: costFixture(subagents, turns) }
   }
-  return { cost, shown, retry }
+  return { cost, retry }
 }

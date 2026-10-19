@@ -144,9 +144,9 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   failures: Record<string, ProviderFailureFacts>
   contextUsage: ConversationState['contextUsage']
   /**
-   * What the conversation cost, read as its context card opens and kept,
-   * with each `cost` frame added, or the failure of its read, while the
-   * card is open; null otherwise and while it is read
+   * What the conversation cost, read with the conversation as it opens and
+   * kept, with each `cost` frame added, or the failure of its read; null
+   * while it opens, and for a conversation without a record
    * (`usage-and-quota.md` § Reading it).
    */
   cost: CostState | null

@@ -115,16 +115,29 @@ export function untilCompaction(usage: ContextUsage): number | null {
   return Math.max(0, usage.window - buffer - usage.tokens)
 }
 
-/**
- * Whether the context card lists its rows: closed at first, then as the user
- * last left it, kept in the browser for the next card.
- */
-export function useContextListOpen(): Ref<boolean> {
-  return useLocalStorage(CONTEXT_LIST_KEY, false)
+/** The parts of the context card that open and close: the context window's rows, and the cost's details. */
+export const CONTEXT_CARD_SECTIONS = ['context', 'cost'] as const
+export type ContextCardSection = (typeof CONTEXT_CARD_SECTIONS)[number]
+
+/** `raw` as one of the card's sections, or none for anything else the browser holds under the key. */
+function parseSection(raw: string): ContextCardSection | null {
+  return CONTEXT_CARD_SECTIONS.find((section) => section === raw) ?? null
 }
 
-/** Where the browser keeps whether the context card lists its rows. */
-export const CONTEXT_LIST_KEY = 'demi-context-list-open'
+/**
+ * The part of the context card that stands open, one at most, as an
+ * accordion's: none at first, then as the user last left it, kept in the
+ * browser for the next card. Opening one closes the other.
+ */
+export function useContextCardSection(): Ref<ContextCardSection | null> {
+  return useLocalStorage<ContextCardSection | null>(CONTEXT_CARD_SECTION_KEY, null, {
+    // A null value removes the key, so `write` only ever sees a section.
+    serializer: { read: parseSection, write: (section) => section ?? '' },
+  })
+}
+
+/** Where the browser keeps which part of the context card stands open. */
+const CONTEXT_CARD_SECTION_KEY = 'demi-context-card-open'
 
 /** `tokens` as a share of `window` to a tenth of a percent, "24.2%"; a share too small to show reads "<0.1%". */
 export function formatShare(tokens: number, window: number): string {

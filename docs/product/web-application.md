@@ -727,13 +727,13 @@ work allows, and never one per item:
 
 - **Requests that do not depend on each other go out together.** Opening a
   conversation reads the latest page of its transcript, its subagents, its
-  attached hosts, its draft, its permission requests and its panel at once,
+  attached hosts, its draft, its cost, its permission requests and its panel at once,
   and connects its socket beside them; the transcript does not wait for the
   hosts. The socket's `open` names the blocks the page read
   ([Where a reset starts](../agent/rendering.md#where-a-reset-starts)), so it
   goes once both the page and the connection are there; the socket connects
   meanwhile. Nothing else holds the conversation back: it shows as soon as
-  its transcript page and its draft are read, and the subagents, hosts,
+  its transcript page, its draft and its cost are read, and the subagents, hosts,
   permission requests and panel each join it when they arrive. A subagent's
   panel reads its transcript only when it opens, and shows that it loads
   while it does, and a failed read with Retry, never an empty transcript. The first load starts the
