@@ -1,6 +1,14 @@
 //! Browser captures use CDP clipping without changing the page's viewport.
 //! Every capture is in CSS pixels, whatever ratio the page renders at
 //! (`browser.md` § Screenshot and probe).
+//!
+//! Chrome captures at the page's own device pixels and the capture is scaled
+//! down here. Chrome's own scaling (`clip.scale`) is not used: while the live
+//! view's tab capture runs, Chrome 153 renders the scaled shot at full size
+//! and then crops it to the scaled size (`page_handler.cc`, the bitmap that
+//! does not match the requested size), so a watched tab at ratio 2 answered
+//! only its top-left quarter.
+use std::io::Cursor;
 use std::time::Duration;
 
 use base64::Engine;
@@ -19,7 +27,8 @@ pub async fn bytes(tab: &BrowserTab, full_page: bool, clip: Option<&str>) -> Res
         ));
     }
     let viewport = tab.viewport();
-    let scale = 1.0 / viewport.device_pixel_ratio;
+    // Chrome's `clip.scale`, which stays 1 (see the module's documentation).
+    let scale = 1.0;
     // An explicit rectangle or the whole page may lie beyond the viewport.
     let beyond_viewport = full_page || clip.is_some();
     let clip = if let Some(clip) = clip {
@@ -78,6 +87,7 @@ pub async fn bytes(tab: &BrowserTab, full_page: bool, clip: Option<&str>) -> Res
         .from_surface(true)
         .capture_beyond_viewport(beyond_viewport)
         .build();
+    let size = css_size(&clip);
     request.clip = Some(clip);
     let data = tab
         .page()
@@ -89,9 +99,56 @@ pub async fn bytes(tab: &BrowserTab, full_page: bool, clip: Option<&str>) -> Res
         })?
         .result
         .data;
-    base64::engine::general_purpose::STANDARD
+    let png = base64::engine::general_purpose::STANDARD
         .decode(AsRef::<[u8]>::as_ref(&data))
-        .map_err(|error| BrowserError::InvalidResult(error.to_string()))
+        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+    if viewport.device_pixel_ratio == 1.0 {
+        return Ok(png);
+    }
+    tokio::task::spawn_blocking(move || to_css_pixels(&png, size))
+        .await
+        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
+}
+
+/// The size of `clip` in whole CSS pixels, one at least each way.
+fn css_size(clip: &Viewport) -> (u32, u32) {
+    let whole = |length: f64| (length.round() as u32).max(1);
+    (whole(clip.width), whole(clip.height))
+}
+
+/// The PNG `png`, captured at device pixels, scaled to `size` CSS pixels.
+/// At a whole ratio, such as 2 or 3, each CSS pixel is the average of the
+/// device pixels it covers, as sharp as the page drawn at ratio 1 and four
+/// times as fast as a Catmull-Rom filter; at any other ratio, such as 1.25,
+/// that average would weigh a glyph's columns unevenly, so Catmull-Rom,
+/// which keeps text's edges sharp where a triangle filter blurs them,
+/// scales it.
+fn to_css_pixels(png: &[u8], (width, height): (u32, u32)) -> Result<Vec<u8>> {
+    let captured = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
+        .into_rgba8();
+    let (captured_width, captured_height) = captured.dimensions();
+    if (captured_width, captured_height) == (width, height) {
+        return Ok(png.to_vec());
+    }
+    let whole = captured_width % width == 0
+        && captured_height % height == 0
+        && captured_width / width == captured_height / height;
+    let scaled = if whole {
+        image::imageops::thumbnail(&captured, width, height)
+    } else {
+        image::imageops::resize(
+            &captured,
+            width,
+            height,
+            image::imageops::FilterType::CatmullRom,
+        )
+    };
+    let mut encoded = Vec::new();
+    scaled
+        .write_to(&mut Cursor::new(&mut encoded), image::ImageFormat::Png)
+        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+    Ok(encoded)
 }
 
 /// A PNG of what the tab shows, taken holding its operation lock.

@@ -55,6 +55,19 @@ let x = 0;
 setInterval(() => { spin.style.left = `${(x = (x + 5) % 500)}px`; }, 16);
 </script>"#;
 
+/// A page with a mark in each corner of the viewport: red top left, green
+/// top right, blue bottom left, black bottom right, on white.
+const CORNERS: &str = r#"<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+html, body { margin: 0; overflow: hidden; background: #fff }
+div { position: fixed; width: 40px; height: 40px }
+</style>
+<div style="left: 0; top: 0; background: #f00"></div>
+<div style="right: 0; top: 0; background: #0f0"></div>
+<div style="left: 0; bottom: 0; background: #00f"></div>
+<div style="right: 0; bottom: 0; background: #000"></div>"#;
+
 struct Site {
     base: String,
     /// The user agent of every request for the page, in order.
@@ -81,6 +94,7 @@ async fn site() -> Site {
                 async { Html(PAGE) }
             }),
         )
+        .route("/corners", get(|| async { Html(CORNERS) }))
         // A page that names its icon, one from its own site.
         .route(
             "/icon",
@@ -531,6 +545,60 @@ async fn a_viewer_watches_a_tab_and_types_into_it_beside_the_agent() {
         view.click(&tab, 100.0, 90.0);
         view.key(&tab, "c", "KeyC", 67, 0, Some("c"));
         eventually(&fixture, &tab, "document.querySelector('#text').value === 'agent' && document.querySelector('#area').value === 'a\\nbc'").await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// About 3 s here: Chrome starts, one tab is watched at ratio 2 and
+/// captured three times.
+///
+/// Defect this catches: Chrome's own scaling of a capture to CSS pixels,
+/// while the live view captures the tab, answered only the top-left quarter
+/// of the page.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_watched_tab_at_ratio_2_is_captured_whole_in_css_pixels() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let url = format!("{}corners", site.base);
+        let tab = fixture
+            .call("browser.open", json!({"url": url, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        watch(&mut view, &tab).await;
+        // The view, the whole page and a rectangle across all four marks.
+        for (args, name) in [
+            (json!({}), "the view"),
+            (json!({"full-page": true}), "the whole page"),
+            (json!({"clip": "0,0,800,600"}), "a rectangle"),
+        ] {
+            let mut args = args;
+            args["tab"] = json!(tab);
+            args["output"] = json!(format!("{}.png", name.replace(' ', "-")));
+            let shot = fixture.call("browser.screenshot", args).await;
+            let bytes = std::fs::read(shot["path"].as_str().unwrap()).unwrap();
+            let mut reader = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().unwrap();
+            let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+            let info = reader.next_frame(&mut pixels).unwrap();
+            assert_eq!((info.width, info.height), (800, 600), "{name}: one pixel per CSS pixel");
+            let channels = info.color_type.samples();
+            let corners = [(10, 10), (789, 10), (10, 589), (789, 589)].map(|(x, y)| {
+                let at = (y * info.width as usize + x) * channels;
+                [pixels[at], pixels[at + 1], pixels[at + 2]]
+            });
+            assert_eq!(
+                corners,
+                [[255, 0, 0], [0, 255, 0], [0, 0, 255], [0, 0, 0]],
+                "{name}: every corner's mark is in the picture"
+            );
+        }
         assert_eq!(view.close().await.exit_code, 0);
         fixture
     })
