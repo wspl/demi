@@ -690,8 +690,22 @@ async fn wait(
     let started = Instant::now();
     let seconds = input.timeout.unwrap_or(WAIT_SECONDS);
     let deadline = started + Duration::from_secs(seconds);
+    let timed_out = || {
+        let what = match &until {
+            Until::Text(text) => format!("no element shows {}", text::quoted(text)),
+            Until::Element(reference, _) => format!("{reference} did not appear"),
+            Until::Gone(reference, _) => format!("{reference} is still there"),
+        };
+        MobileError::Timeout(format!("after {seconds} s {what}"))
+    };
     loop {
-        let raw = open.device.tree().await?;
+        // A read under way at the deadline ends the wait too: a slow
+        // screen's read takes seconds. The read dropped is safe to drop:
+        // its answer, when it comes, finds nobody waiting and is let go.
+        let Ok(raw) = tokio::time::timeout_at(deadline, open.device.tree()).await else {
+            return Err(timed_out());
+        };
+        let raw = raw?;
         let found = match &until {
             Until::Text(text) => tree::find(&raw, &|element| {
                 [&element.label, &element.value]
@@ -741,12 +755,7 @@ async fn wait(
             );
         }
         if Instant::now() + WAIT_INTERVAL > deadline {
-            let what = match &until {
-                Until::Text(text) => format!("no element shows {}", text::quoted(text)),
-                Until::Element(reference, _) => format!("{reference} did not appear"),
-                Until::Gone(reference, _) => format!("{reference} is still there"),
-            };
-            return Err(MobileError::Timeout(format!("after {seconds} s {what}")));
+            return Err(timed_out());
         }
         tokio::time::sleep(WAIT_INTERVAL).await;
     }

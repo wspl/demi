@@ -1,8 +1,9 @@
 // `inspect`'s tree: the accessibility read of the frontmost application,
 // alerts and the keyboard included, with the content of the web views it
-// holds found by a grid of hit-tests. Safari's page the read cannot reach;
-// there the guest bridge reads it, and its web content takes the place of
-// the page area (`mobile.md` § iOS).
+// holds found by a grid of hit-tests. A bar the read lists without
+// children, as iOS 26 lists its toolbars, is filled the same way. Safari's
+// page the read cannot reach; there the guest bridge reads it, and its web
+// content takes the place of the page area (`mobile.md` § iOS).
 
 import FBControlCore
 import FBSimulatorAX
@@ -27,6 +28,15 @@ struct Tree {
       format: .complete, keys: keys, remoteContentOptions: AccessibilityRemoteContentOptions())
     let read = try await native.describe(.frontmost, options: options)
     var elements = try Self.elements(of: read)
+    let point = AccessibilityRequestOptions(format: .complete, keys: keys)
+    try await Self.fillChildless(elements) { at in
+      do {
+        return try Self.elements(of: await native.describe(.point(at), options: point)).first
+      } catch AccessibilityError.noTranslationObject(.point) {
+        // Nothing answers there, as in a toolbar's gaps.
+        return nil
+      }
+    }
     if !Self.contains(elements, where: { $0.traits.contains("WebContent") }),
       let safari = try? await simulator.application.processID(forBundleID: Self.safari),
       elements.first?.pid == safari
@@ -44,7 +54,9 @@ struct Tree {
   }
 
   /// An element as the read serializes it.
-  final class Node {
+  // A node is built by one task and changed only once the reads that
+  // built it ended, so it crosses from the hit-tests' tasks safely.
+  final class Node: @unchecked Sendable {
     let type: String
     let role: String
     let label: String?
@@ -98,6 +110,120 @@ struct Tree {
     let data = try response.formattedOutputJSON(format: .complete)
     let document = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     return (document?["elements"] as? [[String: Any]] ?? []).map(Node.init)
+  }
+
+  /// The distance between the points a bar is hit-tested at: less than the
+  /// 44 points a control answers a hit-test over at the least, so a point
+  /// lands in each. A smaller element within another, such as a field's
+  /// dictation button, may be missed; the field is not. A bar costs 2-3 ms
+  /// a point: Settings' toolbar 20 points, 35 ms; Files' navigation and tab
+  /// bars 60, 140 ms (iOS 26.5).
+  static let step: CGFloat = 40
+  /// The most points one read hit-tests, about 0.3 s; a screen with more
+  /// leaves the rest of its bars, in the tree's order, as the read lists
+  /// them.
+  static let maxPoints = 120
+  /// The hit-tests under way at once: the simulator answers 16 at a time
+  /// about six times as fast as one at a time.
+  static let concurrent = 16
+
+  /// Gives each bar the read lists without children the elements a
+  /// hit-test finds in it. iOS 26 lists its toolbars so, Settings' search
+  /// field and its buttons included, which a hit-test finds; idb's own grid
+  /// keeps only another process's elements, such as a web view's. A bar is
+  /// a group at least twice as wide as it is tall, within the application's
+  /// frame; a larger group without children, such as Calendar's day, would
+  /// take seconds and is left as it is. Every point of a bar's grid is
+  /// tested, one within an element of the tree too: a toolbar floats over
+  /// the rows that scroll under it, and an element found may hold another,
+  /// such as a field's Clear button. An element is adopted once, and not
+  /// when the tree has it already, the found elements' own subtrees
+  /// included; it becomes the bar's child in reading order, top to bottom,
+  /// left to right.
+  static func fillChildless(
+    _ elements: [Node], hitTest: @escaping @Sendable (CGPoint) async throws -> Node?
+  ) async throws {
+    guard let screen = elements.first?.frame, !screen.isEmpty else { return }
+    var bars: [(group: Node, area: CGRect)] = []
+    var known = Set<Identity>()
+    func walk(_ node: Node) {
+      known.insert(Identity(node))
+      let area = node.frame.intersection(screen)
+      if node.type == "Group", node.children.isEmpty, !area.isEmpty, area.width >= 2 * area.height {
+        bars.append((node, area))
+      }
+      node.children.forEach(walk)
+    }
+    elements.forEach(walk)
+    var points: [(bar: Int, point: CGPoint)] = []
+    grid: for (index, bar) in bars.enumerated() {
+      for y in stride(from: bar.area.minY + step / 2, to: bar.area.maxY, by: step) {
+        for x in stride(from: bar.area.minX + step / 2, to: bar.area.maxX, by: step) {
+          if points.count == maxPoints { break grid }
+          points.append((index, CGPoint(x: x, y: y)))
+        }
+      }
+    }
+    // Tested at once, taken in the grid's order.
+    var hits = [Node?](repeating: nil, count: points.count)
+    try await withThrowingTaskGroup(of: (Int, Node?).self) { group in
+      var next = 0
+      func start() {
+        guard next < points.count else { return }
+        let (index, point) = (next, points[next].point)
+        group.addTask { (index, try await hitTest(point)) }
+        next += 1
+      }
+      for _ in 0..<concurrent { start() }
+      while let (index, hit) = try await group.next() {
+        hits[index] = hit
+        start()
+      }
+    }
+    var found = [[Node]](repeating: [], count: bars.count)
+    var adopted: [Node] = []
+    for ((index, _), hit) in zip(points, hits) {
+      let (group, area) = bars[index]
+      guard let hit, hit.pid == group.pid, area.contains(CGPoint(x: hit.frame.midX, y: hit.frame.midY)),
+        !known.contains(Identity(hit)),
+        // One that moves reads at a new frame each time.
+        !adopted.contains(where: { Identity(sameElementAs: $0) == Identity(sameElementAs: hit) && $0.frame.intersects(hit.frame) })
+      else { continue }
+      func keepNew(_ node: Node) {
+        known.insert(Identity(node))
+        node.children = node.children.filter { !known.contains(Identity($0)) }
+        node.children.forEach(keepNew)
+      }
+      keepNew(hit)
+      adopted.append(hit)
+      found[index].append(hit)
+    }
+    for (index, bar) in bars.enumerated() {
+      bar.group.children = found[index].sorted { ($0.frame.minY, $0.frame.minX) < ($1.frame.minY, $1.frame.minX) }
+    }
+  }
+
+  /// What tells one element from another across reads, which share no
+  /// handle: its kind, process, label, identifier and, unless left out, its
+  /// frame to the point.
+  struct Identity: Hashable {
+    let type: String
+    let pid: Int32?
+    let label: String?
+    let identifier: String?
+    let frame: [Int]
+
+    init(_ node: Node) {
+      self.init(sameElementAs: node, frame: node.frame)
+    }
+
+    init(sameElementAs node: Node, frame: CGRect = .null) {
+      type = node.type
+      pid = node.pid
+      label = node.label
+      identifier = node.identifier
+      self.frame = frame.isNull ? [] : [frame.minX, frame.minY, frame.width, frame.height].map { Int($0.rounded()) }
+    }
   }
 
   static func contains(_ nodes: [Node], where test: (Node) -> Bool) -> Bool {
