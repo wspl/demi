@@ -78,41 +78,47 @@ impl LinkPolicy for ShardPolicy {
         Box::pin(async move {
             let shard = shard.map_err(RpcError::Failed)?;
             let commands = shard.commands().commands_of(&job).map_err(RpcError::Failed)?;
-            let checked = commands.check(&invocation)?;
-            let handler = checked.handler.clone();
-            // The host is resolved here once: the check asks for that very
-            // device, and the handler acts on it without reading the name
-            // again, so a rename meanwhile cannot make them differ.
-            let brought = match &checked.brings_host {
-                Some(named) => {
-                    let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
-                        .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-                    let host = resolve_host(shard.host_shard(), &conversation, named).await?;
-                    Some(BroughtHost {
-                        device: host.device.to_string(),
-                        name: host.name,
-                        cloud: host.cloud,
-                    })
+            let path = invocation.path.clone();
+            // A usage error, the check's or the handler's, is told with the
+            // leaf's usage.
+            let run = async {
+                let checked = commands.check(&invocation)?;
+                let handler = checked.handler.clone();
+                // The host is resolved here once: the check asks for that very
+                // device, and the handler acts on it without reading the name
+                // again, so a rename meanwhile cannot make them differ.
+                let brought = match &checked.brings_host {
+                    Some(named) => {
+                        let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
+                            .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
+                        let host = resolve_host(shard.host_shard(), &conversation, named).await?;
+                        Some(BroughtHost {
+                            device: host.device.to_string(),
+                            name: host.name,
+                            cloud: host.cloud,
+                        })
+                    }
+                    None => None,
+                };
+                // A leaf declares a category or brings a host, never both
+                // (`command-declarations`).
+                let need = match (pairing_code(&invocation), &brought, checked.category) {
+                    (Some(code), _, _) => Some(Need::Host(AskedHost::Pairing(code))),
+                    (None, Some(brought), _) => Some(Need::Host(AskedHost::Device(
+                        DeviceId::try_from(brought.device.clone())
+                            .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
+                    ))),
+                    (None, None, Some(category)) => Some(Need::Category(category)),
+                    (None, None, None) => None,
+                };
+                if let Some(need) = need {
+                    demi_backend_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;
                 }
-                None => None,
+                let mut invocation = invocation;
+                invocation.brought = brought;
+                handler.call(invocation, port).await
             };
-            // A leaf declares a category or brings a host, never both
-            // (`command-declarations`).
-            let need = match (pairing_code(&invocation), &brought, checked.category) {
-                (Some(code), _, _) => Some(Need::Host(AskedHost::Pairing(code))),
-                (None, Some(brought), _) => Some(Need::Host(AskedHost::Device(
-                    DeviceId::try_from(brought.device.clone())
-                        .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
-                ))),
-                (None, None, Some(category)) => Some(Need::Category(category)),
-                (None, None, None) => None,
-            };
-            if let Some(need) = need {
-                demi_backend_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;
-            }
-            let mut invocation = invocation;
-            invocation.brought = brought;
-            handler.call(invocation, port).await
+            run.await.map_err(|error| commands.tell(&path, error))
         })
     }
 

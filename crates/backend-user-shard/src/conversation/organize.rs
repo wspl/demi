@@ -100,11 +100,18 @@ pub(crate) fn failed(error: impl ToString) -> RpcError {
     RpcError::Failed(error.to_string())
 }
 
+/// Arguments a handler refuses, such as a blank title: a usage error, which
+/// the dispatcher tells with the leaf's usage, exit 2 (`commands.md` § Parse
+/// input and render help).
+pub(crate) fn refused(message: impl ToString) -> RpcError {
+    RpcError::Usage(message.to_string())
+}
+
 async fn rename(shard: Rc<Shard>, call: Call<RenameArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let title = Trimmed::from(call.args.title).into_string();
     if title.is_empty() {
-        return Err(failed("the title is blank"));
+        return Err(refused("the title is blank"));
     }
     shard
         .transition(&conversation, RecordChange::Title(title.clone()).into())

@@ -96,7 +96,9 @@ impl CommandPlugin {
         if self.placement == Placement::Demi {
             invocation.path.insert(0, DEMI_ROOT.to_owned());
         }
-        let code = self.commands.dispatch(invocation, port.rpc()).await?;
+        // The backend's dispatch, which forwarded the call, tells a usage
+        // error with the leaf's usage.
+        let code = self.commands.run(invocation, port.rpc()).await?;
         Ok(Reply::Exit { code })
     }
 

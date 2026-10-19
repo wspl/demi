@@ -611,6 +611,7 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
             ),
             shell("t8", &format!("demi conversation history read --from user {draft}..{shorter}")),
             shell("t9", &format!("demi conversation history read --from agent {draft}..{shorter}")),
+            shell("t10", "demi conversation history search --after someday README; echo \"exit $?\""),
             say("found"),
         ],
     );
@@ -682,6 +683,14 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
     );
     assert!(read.contains(&format!("[{shorter} agent · 2026-09-24T18:00:00Z]\nThe README intro is shorter")), "{read}");
     assert!(!read.contains(" user · "), "{read}");
+    // A bound that is no index and no day is a usage error, exit 2, told
+    // with the command's usage.
+    let refused = result(&backend, &master, "t10").await;
+    assert!(
+        refused.contains("error: someday: a block's index, such as 4213, or a day, such as 2026-10-14\nUsage: demi conversation history search "),
+        "{refused}"
+    );
+    assert!(refused.contains("exit 2"), "{refused}");
     backend.close().await;
 }
 

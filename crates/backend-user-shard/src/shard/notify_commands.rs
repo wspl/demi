@@ -14,7 +14,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::Shard;
-use crate::conversation::organize::{failed, verb};
+use crate::conversation::organize::{failed, refused, verb};
 
 /// The longest title, and the longest body, in characters.
 const TITLE_MAX: usize = 80;
@@ -83,7 +83,7 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     let SendArgs { title, body } = call.args;
     let title = title.trim().to_owned();
     if title.is_empty() {
-        return Err(failed("the title is blank"));
+        return Err(refused("the title is blank"));
     }
     let now = shard.services().clock.now();
     shard
