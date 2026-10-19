@@ -44,7 +44,15 @@ export function childMessageFiles(files: MessageFiles, directory: string): Messa
   }
 }
 
-/** The files a block's messages name: the conversation's, read from the directory a subagent wrote the block in when it names one. */
-export function blockMessageFiles(conversation: MessageFiles | undefined, directory: string | null): MessageFiles | undefined {
-  return conversation && directory !== null ? childMessageFiles(conversation, directory) : conversation
+/**
+ * The files a block's messages name: the conversation's, read from the
+ * directory a subagent wrote the block in when it names one, and shown as
+ * the agent `node` that wrote it sees them, null the conversation's own,
+ * whose replies show only the attachments it uploaded.
+ */
+export function blockMessageFiles(conversation: MessageFiles | undefined, directory: string | null, node: string | null): MessageFiles | undefined {
+  if (!conversation)
+    return undefined
+  const files = directory !== null ? childMessageFiles(conversation, directory) : conversation
+  return node === null ? files : { ...files, node }
 }

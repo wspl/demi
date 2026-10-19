@@ -186,11 +186,23 @@ impl Shard {
         // The attachments its messages name are its too, with the blobs
         // shared (`commands.md` § Attachment commands). They are read before
         // the sequences, so every number copied lies below the next one.
-        let attachments = services
+        // The source's root uploaded what the destination's root, which
+        // holds its history, did: its replies show them still; another
+        // agent's stay that agent's, which no reply here shows.
+        let (source_root, destination_root) = (root_of(&source.id), root_of(&destination));
+        let attachments: Vec<_> = services
             .conversations
             .read(&source.id, conversation_attachments::all)
             .await?
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mut stored| {
+                if stored.node.as_ref() == Some(&source_root) {
+                    stored.node = Some(destination_root.clone());
+                }
+                stored
+            })
+            .collect();
         if !attachments.is_empty() {
             services
                 .conversations

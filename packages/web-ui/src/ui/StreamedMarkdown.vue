@@ -20,7 +20,7 @@ import { GitCommitHorizontal, Link } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import AudioPlayer from '@demicodes/web-ui/files/AudioPlayer.vue'
 import AttachmentCard from '@demicodes/web-ui/files/AttachmentCard.vue'
-import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE } from '@demicodes/web-ui/markdown/render'
+import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE, messageAttachment } from '@demicodes/web-ui/markdown/render'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
@@ -192,7 +192,7 @@ watch(width, () => {
 /** The attachment a card's place names, as the conversation has it now; null while the page asks for it. */
 function cardAttachment(place: HTMLElement): { id: string; attachment: MessageAttachment | null } {
   const id = place.getAttribute(ATTACHMENT_CARD_ATTRIBUTE) ?? ''
-  const lookup = files()?.attachment?.(id)
+  const lookup = messageAttachment(files(), id)
   return { id, attachment: lookup?.state === 'found' ? lookup.attachment : null }
 }
 

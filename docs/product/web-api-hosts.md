@@ -122,7 +122,11 @@ as `{ id, name, mediaType, size, blob }`, with an image's `width` and `height`
 in pixels, which the backend reads from its header when it stores it, where
 `attachment` is its number,
 such as `a3`, and `blob` the hash its bytes are served under, below; a number
-the conversation does not have answers 404 `not_found`. It reads the
+the conversation does not have answers 404 `not_found`. With `?node=<id>`,
+a reply's attachment block asks for what the agent of node `id`, the one
+whose text holds the block, uploaded: a number that agent did not upload
+answers 404 `not_found` too, so the block shows it as
+missing ([Attachment blocks](file-previews.md#attachment-blocks)). It reads the
 conversation's database alone and wakes no Host.
 
 `GET /blobs/:sha256` serves a blob of the caller's own namespace, under the

@@ -21,7 +21,7 @@ use demi_web_api_protocol::conversations::{
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest,
 };
-use demi_web_api_protocol::attachments::ConversationAttachment;
+use demi_web_api_protocol::attachments::{ConversationAttachment, ConversationAttachmentQuery};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
@@ -114,14 +114,17 @@ pub(super) async fn create(
     Ok((status, Json(CreatedConversation { conversation })))
 }
 
-/// `GET /conversations/:id/attachments/:attachment`: an attachment the agent
-/// uploaded, by its number such as `a3`, from the conversation's database
-/// alone; it wakes no Host. A number the conversation does not have answers
-/// 404 `not_found`.
+/// `GET /conversations/:id/attachments/:attachment`: an attachment of the
+/// conversation, by its number such as `a3`, from the conversation's
+/// database alone; it wakes no Host. With `?node=`, only one that node's
+/// replies show (`conversation_attachments::read_shown`). A number the
+/// conversation does not have, or those replies do not show, answers 404
+/// `not_found`.
 pub(super) async fn attachment(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, attachment)): Path<(String, String)>,
+    QueryParams(query): QueryParams<ConversationAttachmentQuery>,
 ) -> Result<Json<ConversationAttachment>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
@@ -135,8 +138,9 @@ pub(super) async fn attachment(
     let number: AttachmentNumber = attachment.parse().map_err(|_| no_attachment())?;
     let row = services
         .conversations
-        .read(&record.id, move |connection| {
-            conversation_attachments::read(connection, number)
+        .read(&record.id, move |connection| match &query.node {
+            Some(node) => conversation_attachments::read_shown(connection, number, node),
+            None => conversation_attachments::read(connection, number),
         })
         .await
         .map_err(ApiError::conversation_unreadable)?

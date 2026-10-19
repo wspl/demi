@@ -12,7 +12,7 @@ import { createdAt, model } from './agent-harness'
 const shot: ToolMediaSource = { type: 'ref', ref: 'a'.repeat(64), mediaType: 'image/png' }
 const clip: ToolMediaSource = { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/mp4' }
 const status = { type: 'text', text: 'status: exited\nexitCode: 0\ncommandId: 7\noutput:\n[image 1: image/png, 1280 × 720 px, 15822 bytes]' } as const
-const note = { type: 'text', text: '[image 1: attached as image/jpeg of 2000 × 1125 px, fitted from image/png of 2560 × 1440 px]' } as const
+const note = { type: 'text', text: '[image 1: shown to you as image/jpeg of 2000 × 1125 px, fitted from image/png of 2560 × 1440 px]' } as const
 const report: ToolResultContentBlock = {
   type: 'document',
   source: { type: 'ref', ref: 'c'.repeat(64), mediaType: 'application/pdf', fileName: 'document-2.pdf' },

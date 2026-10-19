@@ -583,7 +583,7 @@ impl Budget {
     /// Why one more medium may not be attached; none when it may.
     fn full(&self) -> Option<String> {
         (self.attached >= RESULT_MEDIA)
-            .then(|| format!("a result attaches at most {RESULT_MEDIA} media"))
+            .then(|| format!("a result shows at most {RESULT_MEDIA} media"))
     }
 
     /// Takes a medium whose base64 is `base64` bytes long, or says why it
@@ -660,7 +660,10 @@ async fn viewed_medium(
     let media_type = medium.media_type.as_str();
     let entry = model_media_type_for(media_type);
     let kind = entry.map_or("medium", |entry| entry.kind.name());
-    let not_attached = |reason: &str| Some(format!("[{kind} {number}: not attached: {reason}]"));
+    // A line says the medium was shown to the model, never attached, which
+    // the model reads as given to the user (`shell-tool.md` § Media the
+    // model views).
+    let not_attached = |reason: &str| Some(format!("[{kind} {number}: not shown: {reason}]"));
     let bytes = match &medium.bytes {
         Ok(bytes) => bytes,
         Err(reason) => return (None, not_attached(reason)),
@@ -710,7 +713,7 @@ async fn viewed_medium(
             }
             let line = fitted.reencoded.then(|| {
                 format!(
-                    "[image {number}: attached as {} of {} × {} px, fitted from {media_type} of {} × {} px]",
+                    "[image {number}: shown to you as {} of {} × {} px, fitted from {media_type} of {} × {} px]",
                     fitted.media_type,
                     fitted.entered.0,
                     fitted.entered.1,
@@ -1187,7 +1190,7 @@ mod tests {
         let shown = attached(media, None, &png_model(), carrying()).await;
         assert!(shown[..20].iter().all(|part| part == "<image>"), "{shown:?}");
         let lines: Vec<String> = (21..=25)
-            .map(|number| format!("[image {number}: not attached: a result attaches at most 20 media; view it in another call]"))
+            .map(|number| format!("[image {number}: not shown: a result shows at most 20 media; view it in another call]"))
             .collect();
         assert_eq!(shown[20..], lines);
     }
@@ -1215,7 +1218,7 @@ mod tests {
         ];
         let shown = attached(media, None, &png_model(), limits).await;
         let past = |number: u32| {
-            format!("[image {number}: not attached: its base64 would take the result's media past {half} bytes, half of what this model's requests may carry]")
+            format!("[image {number}: not shown: its base64 would take the result's media past {half} bytes, half of what this model's requests may carry]")
         };
         assert_eq!(
             shown,
@@ -1254,9 +1257,9 @@ mod tests {
             [
                 "<image>",
                 "<document document-4.pdf>",
-                "[image 1: attached as image/png of 2000 × 8 px, fitted from image/png of 2400 × 10 px]",
-                "[image 2: not attached: the model does not read image/webp]",
-                "[image 3: not attached: lost with the Host's connection]",
+                "[image 1: shown to you as image/png of 2000 × 8 px, fitted from image/png of 2400 × 10 px]",
+                "[image 2: not shown: the model does not read image/webp]",
+                "[image 3: not shown: lost with the Host's connection]",
             ]
         );
         // A provider that carries images alone in a tool result.
@@ -1267,7 +1270,7 @@ mod tests {
         let shown = attached(media, None, &png_model(), images).await;
         assert_eq!(
             shown[shown.len() - 1],
-            "[document 4: not attached: the model does not read application/pdf]"
+            "[document 4: not shown: the model does not read application/pdf]"
         );
     }
 

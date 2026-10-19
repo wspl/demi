@@ -5,13 +5,18 @@
 //! namespace, and the conversation's `attachments` table holds one row per
 //! attachment, keyed by its number in the conversation's `attachment`
 //! sequence, with the file's name, its media type, its size, an image's or a
-//! video's size in pixels, and its blob. A row is written once, or copied
-//! into a Fork's destination, and never changes.
+//! video's size in pixels, its blob, and the node of the agent that
+//! uploaded it, none for a file the user sent. A row is written once, or
+//! copied into a Fork's destination, and never changes. A reply shows only
+//! the attachments its own agent uploaded, or the agent it was forked from
+//! for the history it copied (`file-previews.md` § Attachment blocks): the
+//! page asks for each as [`read_shown`] reads it, and a share keeps each as
+//! [`SHOWN`] pairs it.
 
 use std::fmt;
 use std::str::FromStr;
 
-use demi_shared_types::{BlobRef, PixelSize};
+use demi_shared_types::{BlobRef, NodeId, PixelSize};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
@@ -67,15 +72,38 @@ pub struct AttachmentRow {
     pub blob: BlobRef,
 }
 
+/// An attachment's row with who stored it: the node of the agent whose
+/// `demi attachment upload` did, a side question's included; none for a
+/// file the user sent, or uploaded from a command the user ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredAttachment {
+    pub row: AttachmentRow,
+    pub node: Option<NodeId>,
+}
+
+/// The table `shown (node, uploader)`, a recursive common table
+/// expression a statement starts `WITH`: the replies of `node` show what
+/// `uploader` uploaded, for each node and itself, and for each node and
+/// every agent it was forked from, recursively, since the history a forked
+/// agent copied was written by the agent it was forked from. A file the
+/// user sent, or another agent uploaded, is no file of its replies.
+pub const SHOWN: &str = "RECURSIVE shown (node, uploader) AS (
+       SELECT id, id FROM nodes
+       UNION
+       SELECT shown.node, source.id FROM shown
+         JOIN nodes AS forked ON forked.id = shown.uploader
+         JOIN nodes AS source ON source.number = forked.forked_from
+     )";
+
 /// Writes `rows` in `transaction`, the caller's, which gives their numbers
 /// or copies them; a number that has a row keeps it.
-pub fn insert(transaction: &Transaction<'_>, rows: &[AttachmentRow]) -> Result<(), StorageError> {
+pub fn insert(transaction: &Transaction<'_>, rows: &[StoredAttachment]) -> Result<(), StorageError> {
     let mut insert = transaction.prepare_cached(
-        "INSERT INTO attachments (number, name, media_type, size, width, height, blob)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO attachments (number, name, media_type, size, width, height, blob, node_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT (number) DO NOTHING",
     )?;
-    for row in rows {
+    for StoredAttachment { row, node } in rows {
         insert.execute(params![
             column(row.number.0),
             row.name,
@@ -84,6 +112,7 @@ pub fn insert(transaction: &Transaction<'_>, rows: &[AttachmentRow]) -> Result<(
             row.pixels.map(|pixels| pixels.width),
             row.pixels.map(|pixels| pixels.height),
             row.blob.as_str(),
+            node.as_ref().map(NodeId::as_str),
         ])?;
     }
     Ok(())
@@ -100,6 +129,26 @@ pub fn read(
              FROM attachments WHERE number = ?1",
         )?
         .query_row([column(number.0)], |row| Ok(decode_row(row)))
+        .optional()?
+        .transpose()
+}
+
+/// The attachment `number` as a reply of the node `node` shows it: none when
+/// the conversation has none by it, or [`SHOWN`] does not pair the node
+/// with its uploader.
+pub fn read_shown(
+    connection: &Connection,
+    number: AttachmentNumber,
+    node: &NodeId,
+) -> Result<Option<AttachmentRow>, StorageError> {
+    connection
+        .prepare_cached(&format!(
+            "WITH {SHOWN}
+             SELECT number, name, media_type, size, width, height, blob
+             FROM attachments AS attachment JOIN shown ON shown.uploader = attachment.node_id
+             WHERE attachment.number = ?1 AND shown.node = ?2"
+        ))?
+        .query_row(params![column(number.0), node.as_str()], |row| Ok(decode_row(row)))
         .optional()?
         .transpose()
 }
@@ -131,17 +180,21 @@ pub fn last(connection: &Connection) -> Result<u64, StorageError> {
     decode(TABLE, "number", u64::try_from(number))
 }
 
-/// Every attachment of the conversation, by number, which a Fork copies into
-/// its destination.
-pub fn all(connection: &Connection) -> Result<Vec<AttachmentRow>, StorageError> {
+/// Every attachment of the conversation, by number, with who stored it,
+/// which a Fork copies into its destination.
+pub fn all(connection: &Connection) -> Result<Vec<StoredAttachment>, StorageError> {
     let mut statement = connection.prepare_cached(
-        "SELECT number, name, media_type, size, width, height, blob
+        "SELECT number, name, media_type, size, width, height, blob, node_id
          FROM attachments ORDER BY number",
     )?;
     let mut rows = statement.query([])?;
     let mut attachments = Vec::new();
     while let Some(row) = rows.next()? {
-        attachments.push(decode_row(row)?);
+        let node: Option<String> = row.get("node_id")?;
+        attachments.push(StoredAttachment {
+            row: decode_row(row)?,
+            node: node.map(|node| decode(TABLE, "node_id", NodeId::try_from(node))).transpose()?,
+        });
     }
     Ok(attachments)
 }

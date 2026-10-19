@@ -68,12 +68,12 @@ pub(crate) fn file_group() -> GroupBuilder {
     .leaf(
         leaf(
             "view",
-            "Show yourself images, videos and PDFs, in order: each path, or stdin for - or no path, so demi file view a.png b.png shows both and demi browser screenshot t1 | demi file view shows the screenshot. Each one is attached to the result that reports the command's end, whatever its stdout is. Text is read with cat, sed -n or rg, not with this.",
+            "Show yourself images, videos and PDFs, in order: each path, or stdin for - or no path, so demi file view a.png b.png shows both and demi browser screenshot t1 | demi file view shows the screenshot. You see each one in the result that reports the command's end, whatever its stdout is; it is not given to the user, for whom demi attachment upload is. Text is read with cat, sed -n or rg, not with this.",
         )
         .input::<ViewArgs>()
         .positionals(["path"])
         .success_output(
-            "nothing on stdout; a line for each medium in the command's output, such as [image 1: image/png, 1280 × 720 px, 412000 bytes], and the medium attached to the result",
+            "nothing on stdout; a line for each medium in the command's output, such as [image 1: image/png, 1280 × 720 px, 412000 bytes], and the medium shown to you in the result",
         )
         .media()
         .failure_output(

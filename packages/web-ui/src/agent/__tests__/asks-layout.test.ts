@@ -106,7 +106,7 @@ test('a card offers Reply only once its answer is made', async () => {
   const app = createApp(defineComponent({
     setup: () => {
       provideMediaViewer()
-      return () => h(AskCard, { title: null, turns: turns.value })
+      return () => h(AskCard, { node: 'side', title: null, turns: turns.value })
     },
   }))
   app.mount(host)
@@ -120,4 +120,37 @@ test('a card offers Reply only once its answer is made', async () => {
   turns.value = [{ question: 'Why stale?', status: null, answer: 'Its TTL is an hour.', streaming: false }]
   await nextTick()
   expect(reply()).toBe(true)
+})
+
+// A card's answer is the side question's agent's (`file-previews.md`
+// § Attachment blocks): set in the root's reply, it shows the attachment
+// the side question uploaded, and the reply's own as missing. Planted
+// defect this catches: a card that asks as the reply it sits in, so the
+// side question's file is missing and the root's shows. A few milliseconds.
+test('a card shows what its side question uploaded, not what the reply it sits in did', async () => {
+  const { default: AskCard } = await import('../comments/AskCard.vue')
+  const { provideMediaViewer } = await import('../../files/media-viewer')
+  const { provideMessageFiles } = await import('../../markdown/message-files')
+  const uploaders = new Map([['a1', null], ['a3', 'side']])
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp(defineComponent({
+    setup: () => {
+      provideMediaViewer()
+      // The root's reply, whose own agent's files are the conversation's agent's.
+      provideMessageFiles(() => ({
+        cwd: '/work',
+        attachment: (id: string, node: string | null) => uploaders.has(id) && uploaders.get(id) === node
+          ? { state: 'found' as const, attachment: { name: `${id}.png`, mediaType: 'image/png', url: `/blobs/${id}`, size: 4, sha256: 'c'.repeat(64), width: 4, height: 3 } }
+          : { state: 'missing' as const },
+      }))
+      const answer = 'Here:\n\n<attachment id="a3" />\n\nAnd:\n\n<attachment id="a1" />'
+      return () => h(AskCard, { node: 'side', title: null, turns: [{ question: 'Show it', status: null, answer, streaming: false }] })
+    },
+  }))
+  app.mount(host)
+  unmount = () => app.unmount()
+  await nextTick()
+  expect([...host.querySelectorAll('img')].map((image) => image.getAttribute('alt'))).toEqual(['a3.png'])
+  expect(host.textContent).toContain('No attachment a1 in this conversation')
 })

@@ -91,9 +91,10 @@ const emit = defineEmits<{
 
 const attrs = useAttrs()
 const transcript = useTranscript()
-// A child's messages name files from the directory it wrote them in.
+// A child's messages name files from the directory it wrote them in, and
+// show only the attachments it uploaded.
 const files = useMessageFiles()
-provideMessageFiles(() => blockMessageFiles(files(), transcript?.directory(props.block.id) ?? null))
+provideMessageFiles(() => blockMessageFiles(files(), transcript?.directory(props.block.id) ?? null, transcript?.node ?? null))
 // A light block's row opens to read it whole (`web-api-conversations.md` § Light form).
 provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */

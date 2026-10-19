@@ -42,7 +42,7 @@ afterEach(() => {
 function stubBackend(stored: Set<string>, held: { name: string; mediaType: string } = { name: 'concept-28.png', mediaType: 'image/png' }): string[] {
   const asked: string[] = []
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const path = String(input)
+    const { pathname: path } = new URL(String(input), 'http://127.0.0.1:3271')
     const prefix = `/api/conversations/${CONVERSATION}/attachments/`
     if (!path.startsWith(prefix))
       throw new Error(`Unexpected request: ${path}`)
@@ -110,6 +110,54 @@ test('a reply that named an attachment before its upload shows the image in plac
   app.unmount()
   product.stop()
   // The deadline only guards against a reply that never shows it.
+}, 2000)
+
+// A reply shows only what its own agent uploaded (`file-previews.md`
+// § Attachment blocks): a subagent's reply that names the root's a2, which
+// it never uploaded, shows a2 missing, and its own a3 shows. The backend
+// stub answers each number only to the agent that uploaded it, as the
+// route does with `?node=`. Planted defect this catches: a lookup that
+// asks without the reply's agent, so a guessed number shows another
+// agent's file. A few milliseconds.
+test('a subagent\'s reply shows the attachment it uploaded and a number it did not upload as missing', async () => {
+  const CHILD = 'node-child'
+  const uploaders = new Map([['a2', CONVERSATION], ['a3', CHILD]])
+  const asked: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), 'http://127.0.0.1:3271')
+    const prefix = `/api/conversations/${CONVERSATION}/attachments/`
+    if (!url.pathname.startsWith(prefix))
+      throw new Error(`Unexpected request: ${url.pathname}`)
+    const id = url.pathname.slice(prefix.length)
+    asked.push(`${id} ${url.searchParams.get('node')}`)
+    return uploaders.get(id) === url.searchParams.get('node')
+      ? Response.json({ id, name: `${id}.png`, mediaType: 'image/png', size: 4, width: 4, height: 3, blob: BLOB })
+      : Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No attachment ${id}` }, { status: 404 })
+  }) as typeof fetch
+  const pinia = createPinia()
+  const product = useProduct(pinia)
+  product.start()
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 3 })] }))
+  const page = document.createElement('div')
+  document.body.append(page)
+  const app = createApp({
+    setup() {
+      provideMediaViewer()
+      const attachments = useMessageAttachments(() => CONVERSATION)
+      provideMessageFiles(() => ({ cwd: '/work', node: CHILD, ...(attachments.value ? { attachment: attachments.value } : {}) }))
+      return () => h(StreamedMarkdown, { content: 'The screenshots:\n\n<attachment id="a2" />\n\nMine:\n\n<attachment id="a3" />' })
+    },
+  })
+  app.use(pinia)
+  const shown = changed(page, () => page.querySelector('img') !== null && page.textContent?.includes('No attachment') === true)
+  app.mount(page)
+  await shown
+  const reply = page.firstElementChild!
+  expect(reply.textContent).toContain('No attachment a2 in this conversation')
+  expect([...reply.querySelectorAll('img')].map((image) => image.getAttribute('alt'))).toEqual(['a3.png'])
+  expect(asked.sort()).toEqual([`a2 ${CHILD}`, `a3 ${CHILD}`])
+  app.unmount()
+  product.stop()
 }, 2000)
 
 // An audio attachment plays where the reply delivers it, as a voice message

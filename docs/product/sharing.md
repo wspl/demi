@@ -114,7 +114,8 @@ already holds it, so a share copies almost nothing:
   and between two of them, where the conversation shows work, an entry
   holding the number of steps not shared; and
   each attachment those blocks show, found through the conversation's index
-  of the attachments each block names; a blob is the share's when a block on
+  of the attachments each block names, the agent that wrote the block having
+  uploaded it, as a reply shows it ([Attachment blocks](file-previews.md#attachment-blocks)); a blob is the share's when a block on
   its list names it, found through the conversation's index of the blobs
   each block names ([Storage](../backend/storage.md)), never by reading the
   blocks. The list holds positions, not
