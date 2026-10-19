@@ -32,7 +32,7 @@ it started, with no toast, and what Recall had put in the composer is taken
 back out, unless the user changed it since. A message taken back before it was
 delivered, as one whose files are still uploading, goes back into an empty
 composer with its files as they were; beside a draft it stays as an
-undelivered message with Retry, since files that never finished uploading
+undelivered message, which the dock's Retry sends, since files that never finished uploading
 have nothing stored to send again. A message can be sent while the one before
 it is still on its way: it goes the way the composer chooses, steer or
 queue, after the one before, never ahead of it.
@@ -166,6 +166,11 @@ The recovery control's label follows the cause, because the user's expectation d
 | The user pressed Stop | **Continue** | The agent goes on with the work the user cut short. |
 | It finished | none | |
 
+A message that was not delivered adds **Retry** in the same place, before
+the turn's own control when there is one: what the user expects is the
+message sent, not the turn resumed
+([Following the agent's work](#following-the-agents-work)).
+
 Both are the same operation, the session's `resume`: it unwinds to the turn's
 resume point, keeps everything that already left the process, and infers
 again from there. It adds no user message and never reruns a completed tool
@@ -284,15 +289,22 @@ few milliseconds reads as the list twitching.
   sent as a steer or to the queue, as when the message before it was not
   delivered, its row reads as the user's next message, with no line of its
   way, from the moment the page knows it starts the turn.
-- **A message that was not delivered** waits at the end, after the turn a
-  later message started, with Retry, Edit and Delete, as Messages offers Try
-  Again and Delete for one it could not send: it is the message still to
-  send, and Retry sends it next. Edit puts its text and its files back in the
-  composer, where a file that is gone shows as missing and can be removed or
-  attached again, and takes the row away; Delete takes the row away after
-  the user confirms, since the text goes with it. A message refused for a
-  reason a resend cannot change, such as a file that is gone, offers Edit
-  first and no Retry. Only the backend's refusal, or a page check that keeps the
+- **A message that was not delivered** stays where it was sent, in the
+  order the user sent it, as Messages keeps a message it could not send in
+  place: a message sent after it, and the turn that one starts, come below
+  it. Under it a failure says why, with its request id, as every failure
+  does, and nothing else: the failure is not where the user acts on the
+  message. The message's own hover actions, where a sent message has Copy
+  and Edit, offer Copy, Edit and Delete. Edit puts its text and its files
+  back in the composer, where a file that is gone shows as missing and can
+  be removed or attached again, and takes the row away; Delete takes the row
+  away at once, as deleting a draft does. Sending it again is the dock's
+  recovery control, where Resume stands for a failed turn: **Retry**, which
+  sends the conversation's undelivered messages again in the order they were
+  sent, each one moving to the end as the new message it becomes. A message
+  refused for a reason a resend cannot change, such as a file that is gone,
+  is not sent by Retry, and when no other is left the dock shows no Retry:
+  its Edit is the way on. Only the backend's refusal, or a page check that keeps the
   message from leaving, makes a message not delivered: one whose answer the
   page has not heard, as after a reload or a lost connection, stays on its
   way, sent again with its id once the session is open, until the backend

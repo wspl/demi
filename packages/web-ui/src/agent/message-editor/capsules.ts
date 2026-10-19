@@ -70,7 +70,8 @@ export type MessageTransfer =
 export interface TransferContext {
   transfer(id: string): MessageTransfer | undefined
   carries(id: string): boolean
-  retry(id: string): void
+  /** Uploads a failed file again; absent where the capsule offers no Retry, as in a sent message. */
+  retry?(id: string): void
   /**
    * The file as the composer knows it now, which the capsule the document
    * saved may predate: an upload's answer brings a text file's opening.

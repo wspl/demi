@@ -52,5 +52,9 @@
   },
   "workflows": {
     "hostSilent": "호스트가 응답하지 않았습니다."
+  },
+  "uploads": {
+    "notUploaded": "{name} 업로드에 실패했습니다. {reason}",
+    "notKept": "{name}이(가) 업로드되지 않았습니다. 다시 첨부하세요."
   }
 }

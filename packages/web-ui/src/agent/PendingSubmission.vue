@@ -11,8 +11,10 @@ import type { PendingSubmissionState } from './types'
  * answer, which the tail row tells, and a lost connection the Connecting row
  * or the connection banner; the bubble itself never says either, so it does
  * not change height when the message arrives (`turns.md` § Following the
- * agent's work). A failed delivery is told by the row under it, with Retry
- * (`DeliveryFailureRow`), which takes the Requesting row's place. A steer or a queued message shows as the one it will be from
+ * agent's work). A failed delivery is told by the row under it
+ * (`DeliveryFailureRow`), which takes the Requesting row's place, and the
+ * message's own hover actions offer Edit and Delete; the dock's Retry sends
+ * it again. A steer or a queued message shows as the one it will be from
  * the send, with its line and its controls (`turns.md` § Steer or queue),
  * which the host keeps as the user's wish until the session holds it; one
  * that was not delivered is a message to try again, without them.
@@ -21,7 +23,7 @@ const props = defineProps<PendingSubmissionState & {
   /** What it will be when it waits for the agent, which its line says (`waitingAs`). */
   pending?: 'steer' | 'queued'
 }>()
-const emit = defineEmits<{ retry: []; recall: []; sendNow: [] }>()
+const emit = defineEmits<{ edit: []; delete: []; recall: []; sendNow: [] }>()
 /** The text as the message the server confirms holds it. */
 const markdown = computed(() => sentMarkdown(props.text, props.attachments.length))
 </script>
@@ -32,11 +34,13 @@ const markdown = computed(() => sentMarkdown(props.text, props.attachments.lengt
       :content="markdown ? [{ type: 'text', text: markdown }] : []"
       :attachments="attachments"
       :comments="comments"
-      :editable="false"
+      :editable="error !== null"
+      :deletable="error !== null"
       :pending="pending"
       @recall="emit('recall')"
       @send-now="emit('sendNow')"
-      @retry="emit('retry')"
+      @edit="emit('edit')"
+      @delete="emit('delete')"
     />
   </div>
 </template>

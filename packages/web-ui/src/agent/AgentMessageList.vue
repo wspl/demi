@@ -140,11 +140,9 @@ const emit = defineEmits<{
   /** Show the `to`th version at the place of the block `blockId` (`message-editing.md` § Versions). */
   switchVersion: [blockId: string, to: number]
   retryLoad: []
-  /** Retry on the message `id`, whose delivery failed. */
-  retrySubmission: [id: string]
   /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
   editSubmission: [id: string]
-  /** Delete on the message `id`, whose delivery failed, once the user confirmed it. */
+  /** Delete on the message `id`, whose delivery failed: it goes at once. */
   deleteSubmission: [id: string]
   revealed: []
   /** The reader nears the start of the window, which does not reach the transcript's. */
@@ -509,7 +507,6 @@ defineExpose({
                 @recall-queued="(id) => emit('recallQueued', id)"
                 @send-queued="(id) => emit('sendQueued', id)"
                 @edit-user="(id) => emit('editUser', id)"
-                @retry-submission="(id) => emit('retrySubmission', id)"
                 @edit-submission="(id) => emit('editSubmission', id)"
                 @delete-submission="(id) => emit('deleteSubmission', id)"
                 @retry-load="emit('retryLoad')"

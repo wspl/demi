@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { t } from '../locales/text'
+import { t as shared } from '../../locales/text'
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
-import { useResizeObserver } from '@vueuse/core'
-import { Copy, Pencil, Zap } from '@lucide/vue'
+import { useElementSize, useResizeObserver } from '@vueuse/core'
+import { Copy, Pencil, Trash2, Zap } from '@lucide/vue'
 import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
@@ -56,6 +57,11 @@ const props = defineProps<{
   actionsPinned?: boolean
   /** Allows editing an explicitly submitted user message. */
   editable?: boolean
+  /**
+   * Offers Delete beside Edit, which takes the message away at once: a
+   * message that was not delivered (`turns.md` § Following the agent's work).
+   */
+  deletable?: boolean
   /** The message's versions, shown under it; absent with none. */
   versions?: VersionChoice
   /**
@@ -81,8 +87,8 @@ const emit = defineEmits<{
   sendNow: []
   /** Open this message's editor. */
   edit: []
-  /** Try again the upload a file of a message not yet confirmed failed, and then the message. */
-  retry: []
+  /** Delete the message, which was not delivered. */
+  delete: []
 }>()
 
 const sent = ref<InstanceType<typeof SentMessage>>()
@@ -117,14 +123,14 @@ function sentWords(): CopiedMessage {
 }
 
 // A message not yet confirmed shows how far each of its files' uploads has
-// come, and a failed one's Retry tries the message again.
+// come, and that one failed; the dock's Retry tries the message again
+// (`composer.md` § Writing a message).
 provideTransfers({
   transfer: (id) => {
     const item = props.attachments?.find((each) => each.id === id)
     return item ? composerTransfer(item) : undefined
   },
   carries: () => false,
-  retry: () => emit('retry'),
   current: (id) => {
     const item = props.attachments?.find((each) => each.id === id)
     return item ? composerCapsule(item) : undefined
@@ -144,15 +150,30 @@ const message = computed(() => {
   return props.attachments ? { ...held, capsules: props.attachments.map(composerCapsule) } : held
 })
 
-// A sent message gets Copy and, where it can be edited, Edit on hover.
+// A sent message gets Copy and, where it can be edited, Edit on hover; one
+// not delivered, Delete too.
 const actions = computed<BubbleAction[]>(() => {
   if (!props.editable || typeof props.brief === 'string') {
     return []
   }
-  return [{ key: 'edit', hint: t('transcript.user.edit'), icon: Pencil, emit: () => emit('edit') }]
+  return [
+    { key: 'edit', hint: t('transcript.user.edit'), icon: Pencil, emit: () => emit('edit') },
+    ...(props.deletable ? [{ key: 'delete', hint: shared('common.delete'), icon: Trash2, emit: () => emit('delete') }] : []),
+  ]
 })
 
 const { copy } = useCopy(copySource)
+
+/**
+ * The bubble's widest: four fifths of the row, narrower where its actions,
+ * which sit left of it, would not fit beside it otherwise, as three do on a
+ * phone.
+ */
+const actionsRef = ref<HTMLElement | null>(null)
+const { width: actionsWidth } = useElementSize(actionsRef, undefined, { box: 'border-box' })
+const bubbleWidth = computed(() => ({
+  maxWidth: `min(80%, calc(100% - ${actionsWidth.value}px - 6px))`,
+}))
 
 const targets = useSendTargets()
 /** Whether the message is the user's own, which Send to Conversation takes elsewhere; a child's brief is not. */
@@ -261,9 +282,10 @@ useResizeObserver(bodyRef, measure)
       <NoticeLabel :notice="t('transcript.user.fromAutomation')" :title="origin.name" :go="origin.go" />
       <span class="shrink-0">· {{ origin.when }}</span>
     </div>
-    <div class="relative max-w-[80%] rounded-xl bg-surface-card px-4 py-2.5">
+    <div class="relative rounded-xl bg-surface-card px-4 py-2.5" :style="bubbleWidth">
       <div
         v-if="!pending"
+        ref="actionsRef"
         class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100 phone:opacity-100"
         :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
       >

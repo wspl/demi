@@ -98,9 +98,7 @@
       "recall": "Recall",
       "recalled": "Message Recalled",
       "notDelivered": "This message was not delivered.",
-      "fromAutomation": "Automation",
-      "deleteTitle": "Delete This Message?",
-      "deleteBody": "It wasn’t sent. Its text and attachments will be deleted."
+      "fromAutomation": "Automation"
     },
     "assistant": {
       "fork": "Fork",

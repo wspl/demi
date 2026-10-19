@@ -92,7 +92,7 @@ test('a draft of release 0.1.21 reads with its message on its way as a list of o
     [['user', 'sending'], { ...record, pendingSend: sent }],
     [['user', 'idle'], { ...record, pendingSend: null, text: 'typed' }],
   ])
-  expect((await readDraft('user', 'sending'))?.pendingSends).toEqual([{ ...sent, comments: [] }])
+  expect((await readDraft('user', 'sending'))?.pendingSends).toEqual([{ ...sent, comments: [], followers: [] }])
   expect(await readDraft('user', 'idle')).toMatchObject({ pendingSends: [], text: 'typed' })
 })
 

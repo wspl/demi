@@ -52,5 +52,9 @@
   },
   "workflows": {
     "hostSilent": "ホストが応答しませんでした。"
+  },
+  "uploads": {
+    "notUploaded": "{name} をアップロードできませんでした。{reason}",
+    "notKept": "{name} はアップロードされていません。もう一度添付してください。"
   }
 }

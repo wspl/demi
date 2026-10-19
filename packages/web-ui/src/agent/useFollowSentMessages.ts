@@ -18,7 +18,9 @@ const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
  * this one, so a send reads the same in the product and the gallery. A
  * message read from a page of history, in its light form, was not just
  * sent, wherever the page puts it (`web-application.md` § Transcript
- * windows). A message is named by `keyOf` across its stages, so the server
+ * windows); nor is a message not delivered, which shows where it was sent
+ * once the window that holds that place is read, and was on its way, a
+ * row already, when it was sent. A message is named by `keyOf` across its stages, so the server
  * confirming a message sent is not another send.
  */
 export function useFollowSentMessages(
@@ -27,7 +29,7 @@ export function useFollowSentMessages(
   scrollToBottom: () => void,
 ): void {
   const readerKeys = computed(() => new Set(blocks()
-    .filter((block) => READER_BLOCK_TYPES.has(block.type) && !('light' in block && block.light))
+    .filter((block) => READER_BLOCK_TYPES.has(block.type) && !('light' in block && block.light) && !undelivered(block))
     .map(keyOf)))
   watch(readerKeys, (keys, previous) => {
     for (const key of keys) {
@@ -37,4 +39,9 @@ export function useFollowSentMessages(
       }
     }
   }, { flush: 'post' })
+}
+
+/** A message on its way whose delivery failed. */
+function undelivered(block: MessageListBlock): boolean {
+  return block.type === 'pending_submission' && block.submission.error !== null
 }

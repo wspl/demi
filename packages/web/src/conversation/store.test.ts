@@ -7,6 +7,7 @@ import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { codeText, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
+import { createPageI18n } from '@demicodes/web-ui/i18n/text'
 import { sendPageErrorReport } from '../api/page-errors'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -931,7 +932,7 @@ test('a choice made while the first message makes the record applies before that
   const messageId = conversation.pendingSends[0]!.id
   rejectCreate = false
   holdCreate = new Promise((resolve) => { open = resolve })
-  const retried = store.retrySend(conversation, messageId)
+  const retried = store.retrySends(conversation)
   await waitFor(() => requests.filter((request) => request.path === '/api/conversations').length === 2, () => 'no retry')
   expect((requests.at(-1)!.body as { workflow?: unknown }).workflow).toEqual({ type: 'workflow', id: 'review' })
   // While the retry is held, the user chooses No Subagents: it is written
@@ -960,7 +961,7 @@ test('first send failure preserves the conversation and retries its UUID and mes
   const messageId = conversation.pendingSends[0]!.id
   await reconnected()
   expect(store.items[0]?.id).toBe(conversation.id)
-  await store.retrySend(conversation, messageId)
+  await store.retrySends(conversation)
   expect(conversation.pendingSends.map((pending) => pending.id)).toEqual([messageId])
   expect(requests.filter((request) => request.path === '/api/conversations').map((request) => (request.body as { id: string }).id)).toEqual([
     conversation.id,
@@ -2004,13 +2005,82 @@ test('a message whose upload fails is not delivered and keeps its file, and Retr
     expect(current.pendingSends[0]?.error).toMatch(/^shot\.png did not upload\./)
     expect(current.files.map((each) => each.id)).toEqual([file.id])
     // Retry: the upload goes again, then the message.
-    await useConversations().retrySend(current, current.pendingSends[0]!.id)
+    await useConversations().retrySends(current)
     expect(sent).toEqual([[
       { type: 'text', text: 'What is wrong here? ' },
       { type: 'upload', ref: expect.stringMatching(/^att-/), fileName: 'shot.png' },
     ]])
     expect(current.pendingSends).toEqual([])
   })
+})
+
+// The failure under a message not delivered is in the page's language, the
+// file's name with it (`localization.md`). Before, its first sentence was
+// English on every page.
+test('a message whose upload fails says so in the page’s language', async () => {
+  try {
+    createPageI18n('zh-Hans')
+    await withSession(async (current) => {
+      const gate = deferred()
+      FakeXhr.gate = gate.promise
+      FakeXhr.failures = 1
+      pastePicture(current, 'What is wrong here? ')
+      const sending = useConversations().send(current)
+      gate.resolve()
+      await sending
+      expect(current.pendingSends[0]?.error).toMatch(/^shot\.png 未能上传。/)
+    })
+  } finally {
+    createPageI18n('en')
+  }
+})
+
+// A reload shows a message not delivered as the page showed it before
+// (`composer.md` § Writing a message): its file whose upload failed is a
+// failed capsule, and nothing uploads it until the dock's Retry. Before, the
+// page uploaded it again on its own, and its capsule showed a plain file
+// under a failure that said it did not upload.
+test('a message whose upload failed keeps its file failed after a reload, and nothing uploads it until Retry', async () => {
+  let signOut = signIn()
+  let kept: draftStorage.SavedDraft | null = null
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    if (id === FIRST) kept = structuredClone(draft)
+  })
+  try {
+    await withSession(async (current) => {
+      await useConversations().activate(FIRST)
+      const gate = deferred()
+      FakeXhr.gate = gate.promise
+      FakeXhr.failures = 1
+      pastePicture(current, 'What is wrong here? ')
+      const sending = useConversations().send(current)
+      gate.resolve()
+      await sending
+      FakeXhr.gate = null
+      expect(current.pendingSends[0]?.error).toMatch(/^shot\.png did not upload\./)
+    })
+    writes.mockRestore()
+    signOut = await reopenWith(signOut, kept!)
+    await withSession(async (current, sent) => {
+      const uploads = spyOn(FakeXhr.prototype, 'send')
+      try {
+        const store = useConversations()
+        await store.activate(FIRST)
+        const file = current.files.find((each) => each.id === current.pendingSends[0]?.fileIds[0])
+        expect(file?.kind === 'file' ? file.phase : file).toBe('failed')
+        expect(uploads).not.toHaveBeenCalled()
+        await store.retrySends(current)
+        expect(uploads).toHaveBeenCalledTimes(1)
+        expect(sent).toHaveLength(1)
+        expect(file?.kind === 'file' ? file.phase : file).toBe('ready')
+      } finally {
+        uploads.mockRestore()
+      }
+    })
+  } finally {
+    writes.mockRestore()
+    signOut()
+  }
 })
 
 // The backend decides that a delivery failed and says why; the bubble says
@@ -2052,9 +2122,185 @@ test('a message the backend failed to send says so with the request ID, which Re
         { error: 'The message couldn’t be sent.', requestId: 'req_ffb05w4w6kxpdtz0' },
       ])
       submit.mockResolvedValueOnce(undefined)
-      const retried = useConversations().retrySend(current, current.pendingSends[0]!.id)
+      const retried = useConversations().retrySends(current)
       expect(current.pendingSends[0]?.requestId).toBeUndefined()
       await retried
+    } finally {
+      submit.mockRestore()
+    }
+  })
+})
+
+// A message not delivered stays where it was sent (`turns.md` § Following
+// the agent's work): it keeps the messages sent after it, in order, before
+// the first of which that shows it stands, and one deleted leaves the list.
+test('a message not delivered keeps the messages sent after it in order, without one deleted', async () => {
+  await withSession(async (current) => {
+    const store = useConversations()
+    const submit = spyOn(ConversationRuntime.prototype, 'submit')
+      .mockRejectedValueOnce(new RefusedError({ code: 'device_offline', reason: 'offline' }))
+      .mockRejectedValueOnce(new RefusedError({ code: 'device_offline', reason: 'offline' }))
+      .mockResolvedValueOnce(undefined)
+    try {
+      current.draft = 'First'
+      await store.send(current)
+      current.draft = 'Second'
+      await store.send(current)
+      current.draft = 'Third'
+      await store.send(current)
+      const [first, second] = store.submissions(current)
+      const third = submit.mock.calls[2]![1]!
+      expect([first?.followers, second?.followers]).toEqual([[second!.id, third], [third]])
+      store.deleteSend(current, second!.id)
+      expect(store.submissions(current).map(({ text, followers }) => ({ text, followers }))).toEqual([{ text: 'First', followers: [third] }])
+    } finally {
+      submit.mockRestore()
+    }
+  })
+})
+
+// A message sent after one not delivered, which waits in the queue and is
+// taken back, leaves the order only once its removal is done, and the order
+// is saved with the page's draft; a removal refused leaves it in place.
+// Before, the message not delivered lost its place to the one taken back,
+// and stood after the next message and its answer, also after a reload.
+test.each([
+  ['done', ['third']],
+  ['refused', ['queued', 'third']],
+] as const)('Recall on a message queued after one not delivered, its removal %s, keeps the order', async (removal, followers) => {
+  const signOut = signIn()
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async () => {})
+  try {
+    await withRemoval(removal, followers, writes)
+  } finally {
+    writes.mockRestore()
+    signOut()
+  }
+})
+
+async function withRemoval(removal: 'done' | 'refused', followers: readonly string[], writes: ReturnType<typeof spyOn<typeof draftStorage, 'writeDraft'>>): Promise<void> {
+  await withSession(async (current) => {
+    const store = useConversations()
+    const answer = deferred<void>()
+    const remove = spyOn(ConversationRuntime.prototype, 'removeWaiting').mockImplementation(() => answer.promise)
+    const submit = spyOn(ConversationRuntime.prototype, 'submit')
+      .mockRejectedValueOnce(new RefusedError({ code: 'device_offline', reason: 'offline' }))
+      .mockResolvedValue(undefined)
+    try {
+      // Opened, its draft is this web browser's to save.
+      await store.activate(FIRST)
+      current.draft = 'First'
+      await store.send(current)
+      current.phase = 'running'
+      current.draft = 'Queued'
+      await store.send(current, 'queue')
+      const queued = submit.mock.calls[1]![1]!
+      current.queue = [{ id: queued, content: [{ type: 'text', text: 'Queued' }] }]
+      current.draft = 'Third'
+      await store.send(current, 'queue')
+      const third = submit.mock.calls[2]![1]!
+      const named = (ids: readonly string[]) => ids.map((id) => id === queued ? 'queued' : id === third ? 'third' : id)
+      store.recall(current, queued)
+      await waitFor(() => remove.mock.calls.length === 1, () => 'the removal was not sent')
+      // While the removal is on its way, the order holds the message.
+      expect(named(store.submissions(current)[0]!.followers!)).toEqual(['queued', 'third'])
+      writes.mockClear()
+      if (removal === 'done') {
+        answer.resolve()
+      } else {
+        answer.reject(new RemovalRefusedError('The agent had already read it.'))
+      }
+      await waitFor(() => !current.removing.includes(queued), () => 'the removal did not end')
+      expect(named(store.submissions(current)[0]!.followers!)).toEqual([...followers])
+      if (removal === 'done') {
+        await waitFor(() => writes.mock.calls.some(([, , draft]) => named(draft.pendingSends[0]?.followers ?? []).join() === 'third'), () => 'the order was not saved')
+      }
+    } finally {
+      submit.mockRestore()
+      remove.mockRestore()
+    }
+  })
+}
+
+// Retry while a message is on its way sends the messages not delivered
+// after it, never ahead of it: each waits in the queue.
+test('Retry while a message is on its way sends the one not delivered after it, in the queue', async () => {
+  await withSession(async (current) => {
+    const store = useConversations()
+    const answer = deferred<void>()
+    const sent: string[] = []
+    const submit = spyOn(ConversationRuntime.prototype, 'submit')
+      .mockRejectedValueOnce(new RefusedError({ code: 'device_offline', reason: 'offline' }))
+      .mockImplementationOnce(async (content) => {
+        sent.push('Second')
+        await answer.promise
+      })
+      .mockImplementation(async (content) => {
+        sent.push(content.map((part) => part.type === 'text' ? part.text : part.type).join(''))
+      })
+    try {
+      current.draft = 'First'
+      await store.send(current)
+      current.draft = 'Second'
+      const sending = store.send(current)
+      await waitFor(() => sent.length === 1, () => 'the second message did not go')
+      const retried = store.retrySends(current)
+      expect(current.pendingSends.map(({ text, way, error }) => ({ text, way, error }))).toEqual([
+        { text: 'Second', way: 'send', error: null },
+        { text: 'First', way: 'queue', error: null },
+      ])
+      expect(sent).toEqual(['Second'])
+      answer.resolve()
+      await Promise.all([sending, retried])
+      expect(sent).toEqual(['Second', 'First'])
+      expect(current.pendingSends).toEqual([])
+    } finally {
+      submit.mockRestore()
+    }
+  })
+})
+
+// The dock's Retry sends every message not delivered again, in the order
+// they were sent, each as a new message at the end, and skips one a resend
+// cannot deliver, which leaves no Retry (`turns.md` § Following the
+// agent's work).
+test('Retry sends the messages not delivered again in order, each at the end, and skips one whose file is gone', async () => {
+  await withSession(async (current) => {
+    const store = useConversations()
+    const answer = deferred<void>()
+    const sent: string[] = []
+    let refuse = true
+    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content) => {
+      if (refuse) {
+        throw new RefusedError({ code: 'device_offline', reason: 'offline' })
+      }
+      sent.push(content.map((part) => part.type === 'text' ? part.text : part.type).join(''))
+      await answer.promise
+    })
+    try {
+      current.draft = 'First'
+      await store.send(current)
+      // Its text holds a place for a file it has none for: no resend delivers it.
+      current.draft = `Compare ${ATTACHMENT_MARK}`
+      await store.send(current)
+      current.draft = 'Third'
+      await store.send(current)
+      expect(store.submissions(current).map(({ text, retryable }) => ({ text, retryable }))).toEqual([
+        { text: 'First', retryable: undefined },
+        { text: `Compare ${ATTACHMENT_MARK}`, retryable: false },
+        { text: 'Third', retryable: undefined },
+      ])
+      refuse = false
+      const retried = store.retrySends(current)
+      expect(current.pendingSends.map(({ text, way, error }) => ({ text, way, delivering: error === null }))).toEqual([
+        { text: `Compare ${ATTACHMENT_MARK}`, way: 'send', delivering: false },
+        { text: 'First', way: 'send', delivering: true },
+        { text: 'Third', way: 'queue', delivering: true },
+      ])
+      answer.resolve()
+      await retried
+      expect(sent).toEqual(['First', 'Third'])
+      expect(store.submissions(current).map(({ text, retryable }) => ({ text, retryable }))).toEqual([{ text: `Compare ${ATTACHMENT_MARK}`, retryable: false }])
     } finally {
       submit.mockRestore()
     }
@@ -2354,7 +2600,7 @@ test('a message whose files are out of step offers no Retry, and Edit puts it ba
         current.draft = 'Already typed'
         const id = current.pendingSends[0]!.id
         expect(store.submissions(current)[0]?.retryable, name).toBe(false)
-        await store.retrySend(current, id)
+        await store.retrySends(current)
         expect(current.pendingSends.map((pending) => pending.id), name).toEqual([id])
         store.editSend(current, id)
         expect(current.pendingSends, name).toEqual([])

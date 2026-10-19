@@ -124,11 +124,11 @@ export function createConversationUploads(
       try {
         await (running.get(item.id) ?? uploadFile(item))
       } catch (error) {
-        throw new Error(`${item.name} did not upload. ${errorMessage(error)}`)
+        throw new Error(t('uploads.notUploaded', { name: item.name, reason: errorMessage(error) }))
       }
     }
     if (!item.upload) {
-      throw new Error(`${item.name} is not uploaded. Attach it again.`)
+      throw new Error(t('uploads.notKept', { name: item.name }))
     }
     return item.upload
   }

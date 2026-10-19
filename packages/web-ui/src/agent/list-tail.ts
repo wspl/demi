@@ -29,6 +29,12 @@ export interface ListTailInput {
    * gone from the press (`turns.md` § Steer or queue).
    */
   removing?: readonly string[]
+  /**
+   * The messages not delivered that stand elsewhere than at the end, by id
+   * (`undeliveredPlaces`): before a message sent after them, or outside the
+   * window shown.
+   */
+  elsewhere?: ReadonlySet<string>
 }
 
 /** What the list shows after the transcript, in two parts the tail row stands between. */
@@ -60,6 +66,8 @@ export interface ListTail {
  * way that starts the turn, as when nothing runs and the message before it
  * was not delivered, is the user's next message (`turns.md` § Following
  * the agent's work): it stands in the turn's flow, in the row it keeps.
+ * A message not delivered stands here, at the end of what it was sent as,
+ * only while no message sent after it shows (`undeliveredPlaces`).
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
   const written = new Set(input.blocks.flatMap((block) =>
@@ -69,20 +77,13 @@ export function listTailBlocks(input: ListTailInput): ListTail {
   const queue = input.queue.filter((message) => !written.has(message.id) && !removing.has(message.id))
   const held = new Set([...written, ...input.pendingSteers.map((steer) => steer.id), ...input.queue.map((message) => message.id)])
   const sending = (input.pendingSubmissions ?? []).filter((submission) =>
-    !held.has(submission.id) && !removing.has(submission.id))
+    !held.has(submission.id) && !removing.has(submission.id) && !input.elsewhere?.has(submission.id))
   const starting = turnStartingMessage(input.phase, input.pendingSubmissions ?? [])
   const startsTurn = (submission: PendingSubmissionState) =>
     submission.way === 'steer' && submission.id === starting?.id
-  // A message whose delivery failed is told under it, as a row of its own:
-  // the row Requesting gives way to, and which Retry rolls back into it.
   const rows = (shows: (submission: PendingSubmissionState) => boolean): MessageListBlock[] => sending
     .filter(shows)
-    .flatMap((submission): MessageListBlock[] => [
-      { type: 'pending_submission', id: `pending-submission:${submission.id}`, submission, startsTurn: startsTurn(submission) },
-      ...(submission.error !== null
-        ? [{ type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission } as const]
-        : []),
-    ])
+    .flatMap((submission) => submissionRows(submission, startsTurn(submission)))
   const queued = [...queuedMessagesToRenderBlocks(queue), ...rows((submission) => submission.way === 'queue')]
   return {
     turn: [
@@ -100,6 +101,94 @@ export function listTailBlocks(input: ListTailInput): ListTail {
         : []),
     ],
   }
+}
+
+/**
+ * The rows of a message on its way: the message, and under it, when its
+ * delivery failed, the row that tells it, which the Requesting row gives
+ * way to. `startsTurn` when it is a steer that starts the turn.
+ */
+export function submissionRows(submission: PendingSubmissionState, startsTurn = false): MessageListBlock[] {
+  return [
+    { type: 'pending_submission', id: `pending-submission:${submission.id}`, submission, startsTurn },
+    ...(submission.error !== null
+      ? [{ type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission } as const]
+      : []),
+  ]
+}
+
+/** The message a row shows, by the id it was sent with; none for a row of another kind. */
+export function rowMessageId(row: MessageListBlock): string | undefined {
+  switch (row.type) {
+    case 'user':
+      return row.turnId
+    case 'steer':
+      return row.id
+    case 'pending_steer':
+      return row.pendingSteerId
+    case 'queued_message':
+      return row.queueId
+    case 'pending_submission':
+      return row.submission.id
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Where a message not delivered stands (`turns.md` § Following the agent's
+ * work): where it was sent, before the first message sent after it that has
+ * a row, in the transcript, among the steers, in the queue or on its way.
+ */
+export type UndeliveredPlace =
+  /** Before the row of the message `before`. */
+  | { before: string }
+  /** At the end of what it was sent as, since no message sent after it shows. */
+  | 'end'
+  /** Outside the window shown: a message sent after it is earlier or later than the window. */
+  | 'outside'
+
+export interface UndeliveredPlacesInput {
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  submissions: readonly PendingSubmissionState[]
+  /** The messages that have a row of their own in the list, by the id they were sent with. */
+  shown: ReadonlySet<string>
+  /** The waiting messages whose Recall is on its way, by id, which show nowhere. */
+  removing: ReadonlySet<string>
+  /** The window reaches the transcript's end. */
+  latest: boolean
+  /** The window reaches the transcript's start. */
+  atStart: boolean
+}
+
+/**
+ * The place of each message not delivered, by its id. Its place is before
+ * the first message sent after it that shows; one taken back, or one not
+ * delivered either, is passed over. A message the session took that shows
+ * nowhere is in the transcript outside the window, unless the window holds
+ * the whole transcript, where it is one taken back elsewhere and is passed
+ * over too; so is the message not delivered, which shows when its window
+ * does. In the latest window, one with no message after it that shows
+ * stands at the end; any other window holds only those it can place.
+ */
+export function undeliveredPlaces(input: UndeliveredPlacesInput): Map<string, UndeliveredPlace> {
+  const undelivered = input.submissions.filter((submission) => submission.error !== null && !input.removing.has(submission.id))
+  const passed = new Set(undelivered.map((submission) => submission.id))
+  const whole = input.latest && input.atStart
+  return new Map(undelivered.map((submission): [string, UndeliveredPlace] => {
+    for (const next of submission.followers ?? []) {
+      if (input.removing.has(next) || passed.has(next)) {
+        continue
+      }
+      if (input.shown.has(next)) {
+        return [submission.id, { before: next }]
+      }
+      if (!whole) {
+        return [submission.id, 'outside']
+      }
+    }
+    return [submission.id, input.latest ? 'end' : 'outside']
+  }))
 }
 
 /**

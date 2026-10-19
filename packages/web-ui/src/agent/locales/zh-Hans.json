@@ -98,9 +98,7 @@
       "recall": "撤回",
       "recalled": "消息已撤回",
       "notDelivered": "此消息未能送达。",
-      "fromAutomation": "自动化",
-      "deleteTitle": "删除这条消息？",
-      "deleteBody": "这条消息未发送，其文本和附件将被删除。"
+      "fromAutomation": "自动化"
     },
     "assistant": {
       "fork": "分叉",

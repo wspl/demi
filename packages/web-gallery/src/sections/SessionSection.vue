@@ -122,6 +122,7 @@ import {
 } from '@demicodes/web-ui/agent/session-status'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
+import UndeliveredRetryChip from '@demicodes/web-ui/agent/UndeliveredRetryChip.vue'
 import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
@@ -3005,7 +3006,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Send Now or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Send Now and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Send Now or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -3067,7 +3068,6 @@ onBeforeUnmount(() => {
                 :bottom-offset="turnSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only
-                @retry-submission="turnFlow.retrySubmission"
                 @edit-submission="turnFlow.editSubmission"
                 @delete-submission="turnFlow.deleteSubmission"
                 @recall-steer="turnFlow.recallSteer"
@@ -3081,6 +3081,9 @@ onBeforeUnmount(() => {
                 :show-scroll-to-bottom="!!turnList && !turnList.isAtBottom"
                 @scroll-to-bottom="turnList?.scrollToBottom()"
               >
+                <template #chips>
+                  <UndeliveredRetryChip :pending-submissions="turnFlow.pendingSubmissions.value" @retry="turnFlow.retrySubmissions()" />
+                </template>
                 <GalleryComposer
                   :running="turnFlow.state.phase === 'running' || turnFlow.startingTurn.value"
                   :compacting="turnFlow.state.phase === 'compacting'"
@@ -3497,12 +3500,14 @@ onBeforeUnmount(() => {
                 :bottom-offset="0"
                 :persisted-scroll-state="undefined"
                 read-only
-                @retry-submission="deliveryFlow.retrySubmission"
                 @edit-submission="deliveryFlow.editSubmission"
                 @delete-submission="deliveryFlow.deleteSubmission"
               />
             </div>
-            <Button size="sm" class="mt-2" @click="failDelivery">Fail Again</Button>
+            <div class="mt-2 flex items-center gap-2">
+              <UndeliveredRetryChip :pending-submissions="deliveryFlow.pendingSubmissions.value" @retry="deliveryFlow.retrySubmissions()" />
+              <Button size="sm" @click="failDelivery">Fail Again</Button>
+            </div>
           </GallerySpecimen>
           <GallerySpecimen
             variant="loading"
@@ -3704,7 +3709,7 @@ onBeforeUnmount(() => {
                 @open-aside="panelAsideOpen = true"
                 :pending-submissions="sessionFlow.pendingSubmissions.value"
                 :removing="sessionFlow.removing.value"
-                @retry-submission="sessionFlow.retrySubmission"
+                @retry-undelivered="sessionFlow.retrySubmissions()"
                 @edit-submission="sessionFlow.editSubmission"
                 @delete-submission="sessionFlow.deleteSubmission"
                 @retry="sessionFlow.resume()"
@@ -4072,7 +4077,7 @@ onBeforeUnmount(() => {
         @regenerate="regenerateMessage(editHost, $event)"
         :pending-submissions="sessionFlow.pendingSubmissions.value"
         :removing="sessionFlow.removing.value"
-        @retry-submission="sessionFlow.retrySubmission"
+        @retry-undelivered="sessionFlow.retrySubmissions()"
         @edit-submission="sessionFlow.editSubmission"
         @delete-submission="sessionFlow.deleteSubmission"
         @retry="sessionFlow.resume()"

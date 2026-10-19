@@ -79,11 +79,9 @@ const emit = defineEmits<{
   recallQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
-  /** Retry on the message `id`, whose delivery failed. */
-  retrySubmission: [id: string]
   /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
   editSubmission: [id: string]
-  /** Delete on the message `id`, whose delivery failed, once the user confirmed it. */
+  /** Delete on the message `id`, whose delivery failed: it goes at once. */
   deleteSubmission: [id: string]
   /** Retry on a session-level failure: the session opens again. */
   retryLoad: []
@@ -132,7 +130,8 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-if="block.type === 'pending_submission'"
       v-bind="{ ...attrs, ...block.submission }"
       :pending="waitingAs(block)"
-      @retry="emit('retrySubmission', block.submission.id)"
+      @edit="emit('editSubmission', block.submission.id)"
+      @delete="emit('deleteSubmission', block.submission.id)"
       @recall="recallSubmission(block.submission)"
       @send-now="sendSubmissionNow(block.submission)"
     />
@@ -294,12 +293,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         class="px-[var(--agent-pad-x,2rem)]"
         data-delivery-failure
       >
-        <DeliveryFailure
-          :submission="block.submission"
-          @retry="emit('retrySubmission', block.submission.id)"
-          @edit="emit('editSubmission', block.submission.id)"
-          @delete="emit('deleteSubmission', block.submission.id)"
-        />
+        <DeliveryFailure :submission="block.submission" />
       </div>
       <div
         v-else-if="block.type === 'session_failure'"

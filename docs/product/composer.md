@@ -108,8 +108,9 @@ moment; it reaches the agent once every upload has finished, and never
 without one of its files. For example, the user drops a 40 MB recording,
 types "what goes wrong here?" and presses Enter: the bubble shows the
 recording's capsule at 30%, and the turn starts when it reaches 100%. An
-upload that fails leaves the message undelivered, its bubble saying so with
-Retry, which retries the upload and then delivers the message; no file of it
+upload that fails leaves the message undelivered, its bubble saying so, and
+the dock's Retry retries the upload and then delivers the message
+([Following the agent's work](turns.md#following-the-agents-work)); no file of it
 is dropped. A page closed while such a message waits asks first, as a mail
 client does while it sends attachments. Enter on a message that cannot go
 yet for another reason does not send in silence: the send button says why it

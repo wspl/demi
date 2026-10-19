@@ -34,10 +34,17 @@ export interface PendingSubmissionState {
   requestId?: string | null
   /**
    * False for a refusal that sending again cannot change, such as a file of
-   * the message that is gone: its row offers Edit first and no Retry
-   * (`turns.md` § Following the agent's work). Absent otherwise.
+   * the message that is gone: the dock's Retry skips it, and its Edit is the
+   * way on (`turns.md` § Following the agent's work). Absent otherwise.
    */
   retryable?: false
+  /**
+   * The ids of the messages sent after it, a turn's, a steer's or a queued
+   * message's, in the order they were sent: a message not delivered stands
+   * before the first of them that shows (`turns.md` § Following the agent's
+   * work). Absent or empty while none was.
+   */
+  followers?: readonly string[]
 }
 
 /** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */

@@ -3,14 +3,19 @@ import { afterEach, expect, test } from 'bun:test'
 
 // A message the backend refused shows Not Delivered under it with the
 // cause, and, for a failure inside the backend, the request ID the user
-// quotes (`turns.md` § Requesting). A Vue app on a happy-dom page; a few ms
-// besides the page's start.
+// quotes (`turns.md` § Requesting); the failure carries no button, and the
+// message's own hover actions offer Copy, Edit and Delete, and the dock
+// Retry while sending again can deliver one (§ Following the agent's work).
+// A Vue app on a happy-dom page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
 const { createApp, h, nextTick } = await import('vue')
 const { default: AgentMessageVirtualBlock } = await import('../blocks/AgentMessageVirtualBlock.vue')
+const { default: UndeliveredRetryChip } = await import('../UndeliveredRetryChip.vue')
+const { provideBlobUrl } = await import('../media-source')
 type PendingSubmissionState = import('../types').PendingSubmissionState
+type MessageListBlock = import('../pending-steers').MessageListBlock
 
 let unmount: (() => void) | null = null
 afterEach(() => {
@@ -19,21 +24,18 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-/** What the row asked for, in order: Retry, Edit or Delete, by the message's id. */
+/** What the rows asked for, in order: Edit or Delete by the message's id, or the dock's Retry. */
 let asked: string[] = []
 
-async function row(submission: PendingSubmissionState): Promise<HTMLElement> {
+async function mount(render: () => ReturnType<typeof h>): Promise<HTMLElement> {
   asked = []
   const root = document.createElement('div')
   document.body.append(root)
   const app = createApp({
-    render: () => h(AgentMessageVirtualBlock, {
-      block: { type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission },
-      isThinkingStreaming: false,
-      onRetrySubmission: (id: string) => asked.push(`retry ${id}`),
-      onEditSubmission: (id: string) => asked.push(`edit ${id}`),
-      onDeleteSubmission: (id: string) => asked.push(`delete ${id}`),
-    }),
+    setup() {
+      provideBlobUrl((source) => `blob:${source}`)
+      return render
+    },
   })
   app.mount(root)
   unmount = () => app.unmount()
@@ -41,54 +43,78 @@ async function row(submission: PendingSubmissionState): Promise<HTMLElement> {
   return root
 }
 
+function row(block: MessageListBlock): Promise<HTMLElement> {
+  return mount(() => h(AgentMessageVirtualBlock, {
+    block,
+    isThinkingStreaming: false,
+    onEditSubmission: (id: string) => asked.push(`edit ${id}`),
+    onDeleteSubmission: (id: string) => asked.push(`delete ${id}`),
+  }))
+}
+
+const failure = (submission: PendingSubmissionState) =>
+  row({ type: 'delivery_failure', id: `delivery-failure:${submission.id}`, submission })
+
 const message = { id: 'm1', way: 'send' as const, text: 'Look', attachments: [] }
 
 test('a message refused for a failure inside the backend says so with the request ID to quote', async () => {
-  const root = await row({ ...message, error: 'The message couldn’t be sent.', requestId: 'req_ffb05w4w6kxpdtz0' })
+  const root = await failure({ ...message, error: 'The message couldn’t be sent.', requestId: 'req_ffb05w4w6kxpdtz0' })
   const text = root.querySelector('[data-delivery-failure]')!.textContent!
   expect(text).toContain('The message couldn’t be sent.')
   expect(text).toContain('req_ffb05w4w6kxpdtz0')
 })
 
 test('a message refused for a cause of its own says the cause and names no request', async () => {
-  const root = await row({ ...message, error: 'The device is offline.', requestId: null })
+  const root = await failure({ ...message, error: 'The device is offline.', requestId: null })
   const text = root.querySelector('[data-delivery-failure]')!.textContent!
   expect(text).toContain('The device is offline.')
   expect(text).not.toContain('req_')
 })
 
-/** The labels of the row's buttons, in the order it offers them. */
-function rowButtons(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>('[data-delivery-failure] [role="button"]')]
-}
-
-// Retry, Edit and Delete, as Messages offers Try Again and Delete; a
-// refusal sending again cannot change offers Edit first and no Retry
-// (`turns.md` § Following the agent's work).
-test('a message not delivered offers Retry, Edit and Delete, and one a resend cannot deliver offers Edit first and no Retry', async () => {
-  let root = await row({ ...message, error: 'The device is offline.' })
-  expect(rowButtons(root).map((button) => button.textContent!.trim())).toEqual(['Retry', 'Edit', 'Delete'])
-  rowButtons(root)[0]!.click()
-  rowButtons(root)[1]!.click()
-  expect(asked).toEqual(['retry m1', 'edit m1'])
-  unmount?.()
-  root = await row({ ...message, error: 'A file of this message is no longer available. Attach it again.', retryable: false })
-  expect(rowButtons(root).map((button) => button.textContent!.trim())).toEqual(['Edit', 'Delete'])
+test('the failure under a message not delivered carries no button', async () => {
+  const root = await failure({ ...message, error: 'The device is offline.' })
+  expect(root.querySelectorAll('[data-delivery-failure] [role="button"], [data-delivery-failure] button')).toHaveLength(0)
 })
 
-test('Delete on a message not delivered asks first, and Cancel keeps it', async () => {
-  const root = await row({ ...message, error: 'The device is offline.' })
-  const dialogButton = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="dialog"] [role="button"], [role="dialog"] button')]
-    .find((button) => button.textContent!.trim() === label)
-  rowButtons(root).at(-1)!.click()
+/** The names of the message's hover actions, in the order it offers them. */
+function hoverActions(root: HTMLElement): string[] {
+  return [...root.querySelectorAll<HTMLElement>('.user-actions [aria-label]')].map((each) => each.getAttribute('aria-label')!)
+}
+
+function hoverAction(root: HTMLElement, name: string): HTMLElement {
+  return root.querySelector<HTMLElement>(`.user-actions [aria-label="${name}"]`)!
+}
+
+test('a message not delivered offers Copy, Edit and Delete on hover, and Delete takes it away at once', async () => {
+  const submission = { ...message, error: 'The device is offline.' }
+  const root = await row({ type: 'pending_submission', id: 'pending-submission:m1', submission, startsTurn: false })
+  expect(hoverActions(root)).toEqual(['Copy', 'Edit', 'Delete'])
+  hoverAction(root, 'Edit').click()
+  hoverAction(root, 'Delete').click()
   await nextTick()
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Delete This Message?')
-  dialogButton('Cancel')!.click()
-  await nextTick()
-  expect(asked).toEqual([])
-  rowButtons(root).at(-1)!.click()
-  await nextTick()
-  dialogButton('Delete')!.click()
-  await nextTick()
-  expect(asked).toEqual(['delete m1'])
+  expect(asked).toEqual(['edit m1', 'delete m1'])
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+})
+
+test('a message still on its way offers Copy alone', async () => {
+  const submission = { ...message, error: null }
+  const root = await row({ type: 'pending_submission', id: 'pending-submission:m1', submission, startsTurn: false })
+  expect(hoverActions(root)).toEqual(['Copy'])
+})
+
+/** The dock's Retry, as the session shows it for its messages on their way. */
+function dock(submissions: PendingSubmissionState[]): Promise<HTMLElement> {
+  return mount(() => h(UndeliveredRetryChip, { pendingSubmissions: submissions, onRetry: () => asked.push('retry') }))
+}
+
+test('the dock offers Retry while a message not delivered can be sent again, and none while only one a resend cannot deliver is left', async () => {
+  const gone = { ...message, id: 'm2', error: 'A file of this message is no longer available. Attach it again.', retryable: false as const }
+  let root = await dock([{ ...message, error: 'The device is offline.' }, gone])
+  const retry = root.querySelector<HTMLElement>('[data-retry-undelivered]')!
+  expect(retry.textContent!.trim()).toBe('Retry')
+  retry.click()
+  expect(asked).toEqual(['retry'])
+  unmount?.()
+  root = await dock([gone, { ...message, id: 'm3', error: null }])
+  expect(root.querySelector('[data-retry-undelivered]')).toBeNull()
 })

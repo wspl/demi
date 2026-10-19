@@ -5,7 +5,7 @@ import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
-import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
+import { agentWorks, markSent, markWithdrawn, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
@@ -764,9 +764,39 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     requestId: string | null = null,
   ): string {
     const id = nextId('message')
-    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, text: message.text, attachments: message.attachments, comments, error, requestId }]
+    sendLast({ id, way, text: message.text, attachments: message.attachments, comments, error, requestId })
     contents.set(id, content)
     return id
+  }
+
+  /** The message `message` is sent now, after every message held, which it follows as the product's do. */
+  function sendLast(message: PendingSubmissionState): void {
+    const next = inOrder([...pendingSubmissions.value, message])
+    markSent(next, message.id)
+    pendingSubmissions.value = next
+  }
+
+  /** Copies of the messages on their way, whose order the next change marks. */
+  function inOrder(submissions: readonly PendingSubmissionState[]) {
+    return submissions.map((pending) => ({ ...pending, followers: [...pending.followers ?? []] }))
+  }
+
+  /**
+   * The message `id` leaves the order without staying where it was sent:
+   * the messages sent before it keep their place by the ones sent after it.
+   */
+  function withdrawFromOrder(id: string): void {
+    const next = inOrder(pendingSubmissions.value.filter((pending) => pending.id !== id))
+    markWithdrawn(next, id)
+    pendingSubmissions.value = next
+  }
+
+  /** The message `id` leaves the messages on their way without being delivered. Answers what it sends. */
+  function withdrawSubmission(id: string): UserContentBlock[] {
+    withdrawFromOrder(id)
+    const content = contents.get(id) ?? []
+    contents.delete(id)
+    return content
   }
 
   function changeSubmission(id: string, change: Partial<PendingSubmissionState>): void {
@@ -831,7 +861,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       if (wished === 'recall') {
         // A message taken back before it went goes back to the user instead.
         removing.value = removing.value.filter((each) => each !== id)
-        giveBack(dropSubmission(id), pending.way === 'steer' ? 'steer' : 'queue')
+        giveBack(withdrawSubmission(id), pending.way === 'steer' ? 'steer' : 'queue')
         return
       }
       changeSubmission(id, { way: 'send' })
@@ -937,38 +967,46 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (!pendingSubmissions.value.some((pending) => pending.id === id && pending.error)) {
       return
     }
-    const copy = contentCopy(dropSubmission(id))
+    const copy = contentCopy(withdrawSubmission(id))
     if (!composer?.takeBack(copy)) {
       productWould('Put the Message Back in the Composer')
     }
   }
 
-  /** Delete on the undelivered message, which the user confirmed: its row goes. */
+  /** Delete on the undelivered message: its row goes at once. */
   function deleteSubmission(id: string): void {
     if (pendingSubmissions.value.some((pending) => pending.id === id && pending.error)) {
-      dropSubmission(id)
+      withdrawSubmission(id)
     }
   }
 
   /**
-   * Retry sends the undelivered message again with its id, as a message, as
-   * the product's does, once `ready`, the upload it tries again, has its
-   * files; this time it arrives: it starts a turn while nothing runs, and
-   * waits in the queue while a turn runs or a message on its way starts one.
+   * The dock's Retry, as the product's: each undelivered message a resend
+   * can deliver goes again with its id, in the order they were sent, as a
+   * new message at the end, once `ready` answers the upload it tries again
+   * for it; this time each arrives. The first starts a turn while nothing
+   * runs, and the rest wait in the queue, as one does while a turn runs or a
+   * message on its way starts one. One a resend cannot deliver stays.
    */
-  function retrySubmission(id: string, ready?: Promise<UserContentBlock[]>): void {
-    const pending = pendingSubmissions.value.find((each) => each.id === id)
-    if (!pending?.error) {
-      return
+  function retrySubmissions(ready?: (id: string) => Promise<UserContentBlock[]> | undefined): void {
+    const again = pendingSubmissions.value.filter((pending) => pending.error !== null && pending.retryable !== false)
+    for (const pending of again) {
+      resend(pending, ready?.(pending.id))
     }
-    if (agentWorks(state.phase, pendingSubmissions.value)) {
-      changeSubmission(id, { error: null, requestId: null, way: 'queue' })
-      afterUploads(id, ready, () => deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery())))
+  }
+
+  function resend(pending: PendingSubmissionState, ready: Promise<UserContentBlock[]> | undefined): void {
+    const content = withdrawSubmission(pending.id)
+    contents.set(pending.id, content)
+    const works = agentWorks(state.phase, pendingSubmissions.value)
+    // A new message at the end, which no message followed yet.
+    sendLast({ ...pending, error: null, requestId: null, way: works ? 'queue' : 'send', followers: [] })
+    if (works) {
+      afterUploads(pending.id, ready, () => deliveries.set(pending.id, window.setTimeout(() => arrive(pending.id), nextDelivery())))
       return
     }
     cancel()
-    changeSubmission(id, { error: null, requestId: null, way: 'send' })
-    afterUploads(id, ready, () => deliver(token, false))
+    afterUploads(pending.id, ready, () => deliver(token, false))
   }
 
   /** Resume or retry from the current tail, the way Resume and Retry do in the product. */
@@ -1095,6 +1133,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     drop(id)
     removing.value = removing.value.filter((each) => each !== id)
     if (held) {
+      withdrawFromOrder(id)
       giveBack(held.content, way)
     }
   }
@@ -1376,7 +1415,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     play,
     settleWork,
     turn,
-    retrySubmission,
+    retrySubmissions,
     editSubmission,
     deleteSubmission,
     undelivered,

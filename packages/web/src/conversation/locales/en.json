@@ -52,5 +52,9 @@
   },
   "workflows": {
     "hostSilent": "The Host didn’t answer."
+  },
+  "uploads": {
+    "notUploaded": "{name} did not upload. {reason}",
+    "notKept": "{name} is not uploaded. Attach it again."
   }
 }

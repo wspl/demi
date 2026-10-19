@@ -50,6 +50,8 @@ export const draftSchema = z.object({
       requestId: z.string().optional(),
       /** The message saved for later it was sent from, which a retry sends again from the list as the same turn. */
       saved: z.string().optional(),
+      /** The ids of the messages sent after it, in the order they were sent, before the first of which that shows it stands while not delivered. */
+      followers: z.array(z.string()).default([]),
     }),
   ),
   /** The messages the backend did not save, which the list shows as Not Saved until their user retries or deletes them. */
