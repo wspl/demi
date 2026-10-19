@@ -39,7 +39,7 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-expanded="!collapsed"
-    class="group/project relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:text-[16px]"
+    class="group/project relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-1.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:pr-0.5 phone:text-[16px]"
     :class="[focused ? 'focus-ring-shown' : '']"
     @click="emit('toggle')"
   >
@@ -48,9 +48,10 @@ const emit = defineEmits<{
       :size="icons.row"
       class="shrink-0 text-fg-muted"
     />
-    <!-- The text, then the host's mark in its own box at the row's end, as a conversation's row
-         ends. The mark stays on hover; New conversation stands to its left, over the end of the
-         text, which gives it the place by the same margin a conversation's title does. -->
+    <!-- The text, then the host's mark in its own box at the row's end, 6px from it, as a
+         conversation's row ends. The mark stays on hover; New conversation stands to its left, its
+         glyph 6px from the mark's as Archive's is, over the end of the text, which gives it the
+         place by the same margin a conversation's title does. -->
     <span
       class="flex min-w-0 flex-1 items-center transition-[margin] duration-[80ms] ease-out group-hover/project:mr-6 group-focus-within/project:mr-6 phone:mr-8"
     >
@@ -81,7 +82,7 @@ const emit = defineEmits<{
     <RowSpinner v-if="working" />
     <DeviceMark v-else :host="project.hostKind === 'cloud' ? { kind: 'cloud' } : project.device" />
     <span
-      class="absolute inset-y-0 right-[calc(var(--spacing-hit-sm)+4px)] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
+      class="absolute inset-y-0 right-[23px] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
     >
       <Tooltip :content="t('project.newConversation')" class="flex items-center">
         <IconButton

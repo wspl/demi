@@ -15,7 +15,9 @@ import type { SidebarDevice } from './types'
  * (`conversations.md` § Conversations and projects). A device is its mark (`DeviceIcon`), the plain
  * computer without a dot once it is removed; its tip and its accessible label are the same text, "MacBook
  * Pro · Online" or "Removed device". A project on the Cloud shows the Cloud's glyph in the same box.
- * The mark stays while the pointer is over the row, so the row's buttons stand to its left.
+ * The mark stays while the pointer is over the row, so the row's buttons stand to its left. It is
+ * a mark, not a button: its box is as wide as its glyph, so it stands 6px from its neighbours as
+ * the row's other marks do (32px on a phone, as they are).
  */
 const props = defineProps<{
   host: SidebarDevice | { kind: 'cloud' }
@@ -36,14 +38,14 @@ const label = computed(() => {
   <Tooltip
     :content="label"
     tag="span"
-    class="flex size-hit-sm shrink-0 items-center justify-center text-fg-subtle phone:size-8"
+    class="flex h-6 w-4 shrink-0 items-center justify-center text-fg-subtle phone:size-8"
   >
     <component
       :is="hostIcon({ kind: 'cloud' })"
       v-if="host.kind === 'cloud'"
       role="img"
       :aria-label="label"
-      :size="phone ? ICON_PX.in32 : ICON_PX.in20"
+      :size="phone ? ICON_PX.in32 : ICON_PX.in24"
     />
     <DeviceIcon
       v-else-if="host.kind === 'paired'"
