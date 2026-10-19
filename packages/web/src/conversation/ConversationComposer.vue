@@ -32,6 +32,7 @@ import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
 import { useContextCard } from './context-card'
 import { useConversationWorkflows } from './workflows'
+import { workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
 import { t } from './locales/text'
 
 const props = defineProps<{
@@ -149,6 +150,12 @@ const workflow = computed(() => ({
   choice: props.conversation.persistence === 'synced' && record.value ? record.value.workflow : props.conversation.workflow,
   list: workflowList.value,
 }))
+/** The profiles the Workflow menu's choice offers now, whose subagents the cost's Profiles part shows. */
+const costProfiles = computed(() => workflowProfiles(
+  workflow.value.choice,
+  workflow.value.list,
+  product.snapshot?.subagents ?? { enabled: false, profiles: [] },
+))
 // A reset holds the conversations that cannot work without the Cloud: it is
 // their target, or where their provider's process runs. The account snapshot
 // the page polls says when it ends, and the input returns by itself.
@@ -261,7 +268,11 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :size-refused="sizeRefused"
       :instructions="instructions"
       :limits="limits"
+      :cost="conversation.cost"
+      :cost-profiles="costProfiles"
       @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null, $event)"
+      @cost-shown="store.showCost(conversation, $event)"
+      @retry-cost="store.retryCost(conversation)"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"

@@ -13,15 +13,16 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_database::control::ControlService;
-use demi_backend_database::usage::{ObservedWindow, UsageRow, merge_windows};
+use demi_backend_database::usage::{ApiPrice, ObservedWindow, UsageRow, merge_windows};
 use demi_provider_common::{
     Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RequestPurpose, VendorCall,
 };
-use demi_shared_types::{Clock, Model, QuotaWindow, Timestamp, TokenUsage};
+use demi_shared_types::{Clock, Model, ModelCost, QuotaWindow, Timestamp, TokenUsage};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{Stream, StreamExt, stream};
+use sha2::{Digest, Sha256};
 
 use super::rate_limit::RequestRateLimit;
 
@@ -36,6 +37,45 @@ pub struct Ledger {
     pub provider: ProviderId,
     /// The subscription account the runtime calls with; none for an API key.
     pub account: Option<CredentialId>,
+    /// Looks up the catalog's prices of a model as each of its rows is
+    /// written, so a price the catalog learns or corrects applies from the
+    /// next call (`usage-and-quota.md` § How the figures are counted).
+    pub prices: ModelPrices,
+}
+
+/// The catalog's prices of the model named, at the moment it is asked;
+/// none when the catalog has none.
+pub type ModelPrices = Rc<dyn Fn(String) -> LocalBoxFuture<'static, Option<ModelCost>>>;
+
+/// The first 16 hex digits of the SHA-256 of `text`: enough to tell two
+/// prompts apart, as the ledger's hashes do.
+fn short_hash(text: &str) -> String {
+    let digest = Sha256::digest(text.as_bytes());
+    hex::encode(&digest[..8])
+}
+
+/// The hashes of the system prompt and of the tool definitions `request`
+/// sends; none for a request outside a session (`usage-and-quota.md`
+/// § Usage ledger).
+fn prompt_hashes(request: &InferenceRequest) -> (Option<String>, Option<String>) {
+    if request.agent.is_none() {
+        return (None, None);
+    }
+    let tools: Vec<serde_json::Value> = request
+        .tools
+        .iter()
+        .map(|tool| {
+            serde_json::json!({
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.input_schema,
+            })
+        })
+        .collect();
+    (
+        Some(short_hash(&request.system_prompt)),
+        Some(short_hash(&serde_json::Value::Array(tools).to_string())),
+    )
 }
 
 /// Writes `row` and answers its id; a failure is logged and the row is
@@ -107,6 +147,8 @@ struct Calls {
     purpose: RequestPurpose,
     model: String,
     request: String,
+    system_hash: Option<String>,
+    tools_hash: Option<String>,
     /// When the open call started; none between a call's end and the next
     /// one's start.
     open: Option<Timestamp>,
@@ -122,7 +164,10 @@ struct Calls {
 impl Calls {
     fn new(ledger: Rc<Ledger>, request: &InferenceRequest, span: tracing::Span) -> Self {
         let open = Some(ledger.clock.now());
+        let (system_hash, tools_hash) = prompt_hashes(request);
         Self {
+            system_hash,
+            tools_hash,
             agent: request.agent,
             // A title request belongs to no turn.
             turn: (request.purpose != RequestPurpose::Title).then(|| request.turn_id.clone()),
@@ -164,7 +209,12 @@ impl Calls {
     }
 
     /// Writes `row` and keeps its id for windows reported after it.
-    async fn record(&mut self, row: UsageRow) {
+    async fn record(&mut self, mut row: UsageRow) {
+        // A call without counts has nothing to price.
+        if let Some(usage) = row.usage {
+            let prices = (self.ledger.prices)(row.model.clone()).await;
+            row.price = prices.and_then(|prices| ApiPrice::of(&prices, &usage, row.cache_write_1h_tokens));
+        }
         self.last_row = write(&self.ledger.control, row).await;
     }
 
@@ -211,6 +261,10 @@ impl Calls {
             ended_at,
             media_seconds: None,
             cost: None,
+            // Priced as it is written.
+            price: None,
+            system_hash: self.system_hash.clone(),
+            tools_hash: self.tools_hash.clone(),
         }
     }
 
@@ -374,6 +428,122 @@ mod tests {
 
     use super::*;
 
+    /// A call ending with `usage`, `hour` of its cache write kept for an
+    /// hour.
+    fn call(usage: TokenUsage, hour: u64) -> Turn {
+        Turn::Events(vec![
+            ProviderEvent::Call(CallEvent::Ended(VendorCall {
+                vendor_id: None,
+                usage: Some(usage),
+                cache_write_1h_tokens: hour,
+                outcome: CallOutcome::Answered,
+            })),
+            event::response(0, 0),
+        ])
+    }
+
+    fn tokens(input_tokens: u64, cache_write_tokens: u64, cache_read_tokens: u64, output_tokens: u64) -> TokenUsage {
+        TokenUsage {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+        }
+    }
+
+    /// Each row is priced as it is written, at the catalog's prices of its
+    /// model at that moment: a call before the catalog had a price, as when
+    /// its lookup failed, stays unpriced and the next is priced once it has
+    /// one; the part of a write kept for an hour is at twice the input rate,
+    /// and a call that used a kind its model has no price for has no price,
+    /// while the model's other calls do; and each row keeps the hashes of
+    /// the prompt it sent, so a request whose system prompt changed is the
+    /// miss's cause (`usage-and-quota.md` § A conversation's cost). Planted
+    /// defects: the prices looked up once as the runtime is built, the
+    /// hour-long write at the write rate, an unpriced kind priced at zero, or
+    /// one hash for every prompt.
+    /// Five scripted calls on an in-memory ledger: milliseconds.
+    #[tokio::test]
+    async fn rows_are_priced_at_the_catalog_as_written_and_keep_their_prompts_hashes() {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+            Arc::new(demi_backend_database::providers::NoSealedConfigs),
+        )
+        .await
+        .unwrap();
+        let master = testing::master(&control).await;
+        let conversation = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap();
+        // The catalog's prices of the runtime's model as each row is written.
+        let ledger = |catalog: Rc<RefCell<Option<ModelCost>>>| Ledger {
+            control: control.clone(),
+            clock: Arc::new(demi_shared_types::SystemClock),
+            user: master.id.clone(),
+            conversation: conversation.clone(),
+            provider: ProviderId::try_from("entry-1").unwrap(),
+            account: None,
+            prices: Rc::new(move |_| {
+                let prices = *catalog.borrow();
+                Box::pin(async move { prices })
+            }),
+        };
+        let limit = Rc::new(RefCell::new(RequestRateLimit::new(10)));
+        let catalog = Rc::new(RefCell::new(None));
+        let priced = ScriptedRuntime::new([
+            call(tokens(1_000, 3_000, 10_000, 200), 1_000),
+            call(tokens(100, 20_000, 0, 10), 0),
+            call(tokens(100, 1_500, 30_000, 10), 1_000),
+        ]);
+        let mut runtime = MeteredRuntime::new(Box::new(priced), limit.clone(), ledger(catalog.clone()));
+        let mut request = inference_request();
+        request.system_prompt = "You are Demi.".into();
+        runtime.run(request.clone()).collect::<Vec<_>>().await;
+        *catalog.borrow_mut() = Some(ModelCost {
+            input: Some(5.0),
+            output: Some(25.0),
+            cache_read: Some(0.5),
+            cache_write: Some(6.25),
+        });
+        request.system_prompt = "You are Demi. Read AGENTS.md.".into();
+        runtime.run(request.clone()).collect::<Vec<_>>().await;
+        runtime.run(request.clone()).collect::<Vec<_>>().await;
+        let unpriced = ScriptedRuntime::new([
+            call(tokens(100, 500, 30_000, 10), 0),
+            call(tokens(1_000, 0, 2_000, 100), 0),
+        ]);
+        let without_write = Rc::new(RefCell::new(Some(ModelCost {
+            input: Some(3.0),
+            output: Some(15.0),
+            cache_read: Some(0.3),
+            cache_write: None,
+        })));
+        let mut runtime = MeteredRuntime::new(Box::new(unpriced), limit, ledger(without_write));
+        runtime.run(request.clone()).collect::<Vec<_>>().await;
+        runtime.run(request).collect::<Vec<_>>().await;
+
+        let cost = control.conversation_cost(conversation, Vec::new()).await.unwrap();
+        let close = |found: Option<f64>, expected: f64| {
+            assert!(found.is_some_and(|found| (found - expected).abs() < 1e-9), "{found:?} ≠ {expected}");
+        };
+        let prices: Vec<Option<f64>> = cost.calls.iter().map(|call| call.price).collect();
+        assert_eq!(prices[0], None, "{prices:?}");
+        close(prices[1], 0.12575);
+        // 100 × $5 + 500 × $6.25 + 1,000 × $10 + 30,000 × $0.5 + 10 × $25,
+        // per million.
+        close(prices[2], 0.028875);
+        assert_eq!(prices[3], None, "{prices:?}");
+        close(prices[4], 0.0051);
+        close(cost.totals.price.total, 0.12575 + 0.028875 + 0.0051);
+        close(cost.totals.price.cache_write, 0.125 + 0.013125);
+        // As the page reads the causes.
+        let misses: Vec<serde_json::Value> =
+            cost.calls.iter().map(|call| serde_json::to_value(call.miss).unwrap()).collect();
+        let none = serde_json::Value::Null;
+        assert_eq!(misses, [none.clone(), "system_prompt_changed".into(), none.clone(), none.clone(), none]);
+        control.close().await.unwrap();
+    }
+
     #[tokio::test(start_paused = true)]
     async fn answered_requests_are_ledger_rows_before_their_response_and_the_limit_refuses_the_rest()
      {
@@ -393,6 +563,7 @@ mod tests {
             conversation: ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap(),
             provider: ProviderId::try_from("entry-1").unwrap(),
             account: None,
+            prices: Rc::new(|_| Box::pin(async { None })),
         };
         let script = ScriptedRuntime::new([
             Turn::Events(vec![event::text("a"), event::response(100, 10)]),

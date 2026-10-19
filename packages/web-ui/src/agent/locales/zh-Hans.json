@@ -341,6 +341,34 @@
     "instructions": "指令",
     "personalInstructions": "个人指令",
     "workflowInstructions": "工作流：{name}",
+    "cost": {
+      "title": "费用",
+      "price": "按 API 计价",
+      "hitRate": "缓存命中率",
+      "loadFailed": "无法加载费用。",
+      "kind": {
+        "input": "未缓存输入",
+        "cacheWrite": "缓存写入",
+        "cacheRead": "缓存读取",
+        "output": "输出 Token"
+      },
+      "profiles": "配置",
+      "mainConversation": "主对话",
+      "requests": "请求",
+      "time": "时间",
+      "request": "请求 #{number}",
+      "firstRequest": "首个请求",
+      "afterCompaction": "压缩后",
+      "miss": "缓存未命中 · {cause}",
+      "rewritten": "重新缓存的 Token",
+      "cause": {
+        "model_changed": "模型已更改",
+        "tools_changed": "工具已更改",
+        "system_prompt_changed": "系统提示词已更改",
+        "cache_expired": "缓存已过期",
+        "not_cached": "供应商未缓存"
+      }
+    },
     "row": {
       "messages": "消息",
       "systemPrompt": "系统提示词",

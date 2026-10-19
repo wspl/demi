@@ -548,6 +548,13 @@ impl<H: HostResolver> Tree<H> {
         self.sink.attached()
     }
 
+    /// Sends `frame`, of a fact the backend owns outside the tree, such as
+    /// a new row of the conversation's usage ledger, to every attached
+    /// connection.
+    pub fn announce(&self, frame: ServerFrame) {
+        self.sink.emit(frame);
+    }
+
     /// Writes a page's input to the conversation's command `command`: through
     /// the shells of the live node that holds it, or of the closed child it
     /// stays with while it stops (`subagents.md` § Abort); the root's shells

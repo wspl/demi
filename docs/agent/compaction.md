@@ -578,6 +578,9 @@ browser for the next time it opens, as a disclosure in Finder does.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 
+Under this part the card shows the conversation's cost and cache hit rate,
+closed and opened with it ([A conversation's cost](../providers/usage-and-quota.md#a-conversations-cost)).
+
 ### Text bounds
 
 The replay bound keeps one long text from filling a request:

@@ -105,6 +105,11 @@ impl ProjectWorkflows {
                 name: file.read.as_ref().ok().map(|workflow| workflow.name.clone()),
                 path: file.path.clone(),
                 unavailable: file.reason(),
+                profiles: file
+                    .read
+                    .as_ref()
+                    .map(|workflow| workflow.profiles.iter().map(|profile| profile.id.clone()).collect())
+                    .unwrap_or_default(),
             })
             .collect();
         let answer = ConversationWorkflows {

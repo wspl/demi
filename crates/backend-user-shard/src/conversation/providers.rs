@@ -18,7 +18,7 @@ use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_providers::llm::catalog::configured_selection;
-use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime};
+use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices};
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
@@ -596,6 +596,18 @@ impl ConversationRuntime {
                     })
                     .map_err(|error| refused(error.to_string(), None))?
             };
+            // Each row is priced at the catalog's prices as it is written.
+            let prices: ModelPrices = {
+                let assembly = scope.services.assembly.clone();
+                let entry = entry.clone();
+                let provider = provider.clone();
+                Rc::new(move |model: String| {
+                    let assembly = assembly.clone();
+                    let entry = entry.clone();
+                    let provider = provider.clone();
+                    Box::pin(async move { assembly.model_price(&entry, &Ok(provider), &model).await })
+                })
+            };
             let ledger = Ledger {
                 control: scope.services.control.clone(),
                 clock: scope.services.clock.clone(),
@@ -605,6 +617,7 @@ impl ConversationRuntime {
                 // The account the provider calls with: the agent's, else
                 // the entry's active one; none for an API key.
                 account: account.or(entry.active()).cloned(),
+                prices,
             };
             let metered = MeteredRuntime::new(runtime, scope.rate_limit.clone(), ledger);
             self.close_current().await;

@@ -9,6 +9,7 @@
 //! tolerant, so a page accepts fields it does not know.
 
 mod client;
+mod cost;
 mod ping;
 mod server;
 mod transcript;
@@ -16,6 +17,7 @@ mod transcript;
 pub use client::{
     ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery,
 };
+pub use cost::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
 pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,

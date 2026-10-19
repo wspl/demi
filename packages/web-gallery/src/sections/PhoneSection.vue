@@ -9,6 +9,7 @@ const CONVERSATION = [
   { scene: 'title', label: 'The title sheet' },
   { scene: 'drawer', label: 'The sidebar' },
   { scene: 'model', label: 'The model picker' },
+  { scene: 'context', label: 'The context card, its cost' },
   { scene: 'long-model', label: 'A long model name' },
   { scene: 'long-model', label: 'A long model name at 320 px', device: 'iphone-se' as const },
   { scene: 'passkey', label: 'The passkey offer after a handoff' },

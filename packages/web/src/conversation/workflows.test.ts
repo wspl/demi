@@ -54,7 +54,7 @@ function workflowsOf(directory: string, answer: number) {
   return {
     directory: `${directory}/.demi/workflows`,
     unavailable: null,
-    workflows: [{ id: 'review', name: `Review of ${directory} (${answer})`, path: `${directory}/.demi/workflows/review.yaml`, unavailable: null }],
+    workflows: [{ id: 'review', name: `Review of ${directory} (${answer})`, path: `${directory}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['explore'] }],
     watch: [{ kind: 'folder_details', path: `${directory}/.demi/workflows` }],
   }
 }

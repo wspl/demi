@@ -91,7 +91,8 @@ impl ReadBlob for NoBlobs {
 /// Cloud disks, 0.1.22's, before a ledger row could be an image's, and
 /// 0.1.25's, which 0.1.23 and 0.1.24 shipped too, before an entry had its
 /// Image Generation switch and a device why it will not start its runner by
-/// itself, and 0.1.27's, before the users' port forwards.
+/// itself, 0.1.27's, before the users' port forwards, and 0.1.32's, before
+/// a ledger row kept its price and its prompt's hashes.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -243,8 +244,28 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.27.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_27),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.32.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_32),
+        },
     ],
 };
+
+/// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to
+/// the current one: a usage ledger row keeps what each kind of its tokens
+/// would cost on the vendor's API and the hashes of the system prompt and
+/// the tools its request sent (`usage-and-quota.md` § Usage ledger), null
+/// for every row written before; and the ledger is read by conversation,
+/// for a conversation's cost (§ A conversation's cost).
+const CONTROL_FROM_0_1_32: &str = "
+ALTER TABLE usage_ledger ADD COLUMN api_price_input REAL CHECK (api_price_input >= 0);
+ALTER TABLE usage_ledger ADD COLUMN api_price_cache_write REAL CHECK (api_price_cache_write >= 0);
+ALTER TABLE usage_ledger ADD COLUMN api_price_cache_read REAL CHECK (api_price_cache_read >= 0);
+ALTER TABLE usage_ledger ADD COLUMN api_price_output REAL CHECK (api_price_output >= 0);
+ALTER TABLE usage_ledger ADD COLUMN system_hash TEXT;
+ALTER TABLE usage_ledger ADD COLUMN tools_hash TEXT;
+CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
+";
 
 /// From 0.1.27's control schema to the current one: the users' port
 /// forwards (`port-forwarding.md`) and exposed ports (`port-exposure.md`),
@@ -4049,9 +4070,22 @@ CREATE TABLE usage_ledger (
   -- converted; null when it said nothing in a documented unit.
   cost                  REAL CHECK (cost >= 0),
   cost_currency         TEXT CHECK (cost_currency IN ('usd', 'cny')),
+  -- What each kind of the call's tokens would cost on the vendor's API, in
+  -- dollars, fixed as the row is written; all four null when the model has
+  -- no price for a kind the call used. Their reader refuses a row that
+  -- sets some of them only, since a migration adds no table CHECK.
+  api_price_input       REAL CHECK (api_price_input >= 0),
+  api_price_cache_write REAL CHECK (api_price_cache_write >= 0),
+  api_price_cache_read  REAL CHECK (api_price_cache_read >= 0),
+  api_price_output      REAL CHECK (api_price_output >= 0),
+  -- Hashes of the system prompt and of the tool definitions the request
+  -- sent; null for a request outside a session.
+  system_hash           TEXT,
+  tools_hash            TEXT,
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
 
 CREATE TABLE attachments (
   id         TEXT PRIMARY KEY,

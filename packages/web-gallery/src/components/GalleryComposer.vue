@@ -2,8 +2,9 @@
 import type { PlaceholderText } from '@demicodes/web-ui/ui/ui-text'
 import { computed, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
+import { GLOBAL_PROFILES, OFFERED_PROFILES, useCardCost } from '../fixtures/cost'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
-import type { WorkflowChoice, WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
+import { type WorkflowChoice, type WorkflowList, workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
 import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import {
@@ -228,6 +229,8 @@ function compact() {
   }
   productWould('Compact the Conversation')
 }
+/** What the conversation cost, which the context card shows while it is open, as the product reads it. */
+const cardCost = useCardCost('profiles')
 const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
 const host = galleryUploads()
@@ -280,6 +283,10 @@ const composerProps = computed(() => {
 /** The specimen's Workflow menu choice, which the menu changes at once. */
 const workflowChoice = ref<WorkflowChoice>(props.workflowChoice ?? { type: 'default' })
 const workflow = computed(() => props.workflows ? { choice: workflowChoice.value, list: props.workflows } : null)
+/** The profiles the specimen's Workflow menu choice offers, as the product's composer works them out. */
+const costProfiles = computed(() => workflow.value
+  ? workflowProfiles(workflow.value.choice, workflow.value.list, GLOBAL_PROFILES)
+  : OFFERED_PROFILES)
 
 /** Pictures of sent files stay loadable while the transcript shows them; they go with the page. */
 const sentPictures: string[] = []
@@ -712,6 +719,10 @@ onBeforeUnmount(() => {
     :model-settings="settings"
     :usage="props.usage ?? usageAt(0.62)"
     :instructions="demoInstructions"
+    :cost="cardCost.cost.value"
+    :cost-profiles="costProfiles"
+    @cost-shown="cardCost.shown"
+    @retry-cost="cardCost.retry"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
     :saved="savedRows"

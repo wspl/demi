@@ -507,10 +507,25 @@ impl Shard {
     /// (`turns.md` § Following the agent's work). Every `error` and
     /// `rejected` frame carries the request ID of the socket's upgrade, and every refused
     /// send of `conversation` is logged.
-    async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
+    async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, mut frames: Vec<ServerFrame>) -> bool {
         // An open's handshake starts with `opened`; its size and how long it
         // takes to write are logged, as what a page waits for to open.
         let handshake = matches!(frames.first(), Some(ServerFrame::Opened));
+        // The conversation's row count goes with the state an attach
+        // brings, read once the connection is attached, so a row written
+        // after the count reaches it as its `cost` frame.
+        if handshake {
+            match self.services().control.cost_rows(conversation.clone()).await {
+                Ok(rows) => frames.push(ServerFrame::CostRows { rows }),
+                // The page keeps the cost it holds; the next row's frame
+                // shows a gap if it missed one.
+                Err(error) => tracing::warn!(
+                    %conversation,
+                    error = &error as &dyn std::error::Error,
+                    "a conversation's row count was not sent with its open"
+                ),
+            }
+        }
         let count = frames.len();
         let building = std::time::Instant::now();
         let mut texts = Vec::with_capacity(frames.len());

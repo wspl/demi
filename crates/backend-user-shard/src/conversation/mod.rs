@@ -10,6 +10,7 @@ mod announcement;
 pub mod claude_cli;
 mod cloud_workspace;
 mod connection_test;
+pub mod cost;
 mod creation;
 mod deletion;
 mod failure_facts;

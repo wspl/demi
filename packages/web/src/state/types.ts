@@ -1,3 +1,4 @@
+import type { CostState } from '@demicodes/web-ui/agent/context-cost'
 import type { Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
@@ -142,6 +143,13 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** The failure facts of the error blocks, by block id, as the backend sends them. */
   failures: Record<string, ProviderFailureFacts>
   contextUsage: ConversationState['contextUsage']
+  /**
+   * What the conversation cost, read as its context card opens and kept,
+   * with each `cost` frame added, or the failure of its read, while the
+   * card is open; null otherwise and while it is read
+   * (`usage-and-quota.md` § Reading it).
+   */
+  cost: CostState | null
 }
 
 export interface Device extends DeviceReport {

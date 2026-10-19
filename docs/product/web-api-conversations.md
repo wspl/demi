@@ -139,6 +139,11 @@ commandId, subagentId, blockId }`, `subagentId` null for the root's. The
 page then reads the page around `blockId` in that agent's transcript. A
 command the conversation does not hold answers 404 `not_found`.
 
+`GET /api/conversations/:id/cost` answers the context card's cost section:
+the conversation's token and price totals, each agent's price and the main
+conversation's calls with their misses, and the `cost` frame announces each
+new call ([Reading it](../providers/usage-and-quota.md#reading-it)).
+
 ## Work panel state
 
 The backend keeps the [work panel](web-application.md#work-panel)'s tabs of
@@ -458,7 +463,9 @@ record exists ([Workflows of a project](../agent/subagents.md#workflows-of-a-pro
 Both answer `{ directory, unavailable, workflows, watch }`: the directory
 the workflows were found in, or null; `unavailable`, the reason the whole
 directory cannot be used, such as a link, or null; each workflow as
-`{ id, name, path, unavailable }`; and `watch`, the folders the page follows
+`{ id, name, path, unavailable, profiles }`, `profiles` the ids of the
+profiles it declares, which the context card's cost part follows
+([A conversation's cost](../providers/usage-and-quota.md#a-conversations-cost)); and `watch`, the folders the page follows
 on its file watch to learn of a change. The answer carries the Host's read
 number in `X-Demi-Read-At`, as file reads do. Both take an optional
 `readAfter=<epoch>.<number>`: the backend answers what it keeps when its

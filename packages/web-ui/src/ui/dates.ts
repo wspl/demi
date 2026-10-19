@@ -112,6 +112,27 @@ export function formatAge(timestamp: string, now: Date | number): string {
 }
 
 /**
+ * When something happened on a timeline, as a chart's tip says it: the
+ * clock time, with the day when it is not `now`'s, and how long ago, to the
+ * minute within a day and in words after it: "1:17 PM · 1h 27m ago",
+ * "Sep 2, 1:17 PM · 3 days ago".
+ */
+export function formatClockAgo(timestamp: string, now: Date | number): string {
+  const moment = new Date(timestamp)
+  const at = new Date(now)
+  const when = sameDay(moment, at)
+    ? clock(moment)
+    : intl(moment, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const past = Math.max(0, at.getTime() - moment.getTime())
+  const ago = past < MINUTE_MS
+    ? t('dates.fewSecondsAgo')
+    : past < DAY_MS
+      ? t('dates.spanAgo', { span: formatSpan(Math.floor(past / MINUTE_MS) * MINUTE_MS) })
+      : relative(-past)
+  return `${when} · ${ago}`
+}
+
+/**
  * A calendar date with no time of day, `YYYY-MM-DD` such as a model's
  * release, as the day it names wherever the reader is: "Apr 21, 2026".
  */

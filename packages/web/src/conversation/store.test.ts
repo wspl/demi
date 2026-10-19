@@ -526,7 +526,7 @@ test('a new conversation whose project no longer has the workflow it remembers g
   const store = useConversations()
   const id = store.create('demi')
   const conversation = store.items.find((item) => item.id === id)!
-  const review = { id: 'review', name: 'Review Team', path: '/work/demi/.demi/workflows/review.yaml', unavailable: null }
+  const review = { id: 'review', name: 'Review Team', path: '/work/demi/.demi/workflows/review.yaml', unavailable: null, profiles: [] }
   const explore = { ...review, id: 'explore', name: 'Explore', path: '/work/demi/.demi/workflows/explore.yaml' }
   store.settleStartingWorkflow(id, { state: 'reading' })
   store.settleStartingWorkflow(id, { state: 'read', workflows: [review, explore] })
@@ -4517,6 +4517,169 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
   applyConversationEvent(conversation, { type: 'context_usage', node: conversation.id, usage: { ...usage, tokens: 1_000 } })
   expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
   expect(conversation.contextUsage).toBeNull()
+})
+
+/**
+ * A conversation open with a session whose `/cost` reads wait for the test:
+ * each read is a request the test answers with a cost, or with a response,
+ * as a failure, and whose signal it can look at.
+ */
+async function costScene() {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const totals = (input: number, price: number | null) => ({
+    inputTokens: input, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0,
+    price: { total: price, input: price, cacheWrite: null, cacheRead: null, output: null },
+  })
+  const call = { startedAt: '2026-09-13T00:00:00.000Z', inputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 90, price: 0.5, afterCompaction: false, miss: null }
+  const frame = (rows: number, agent: number, price: number | null): ServerFrame => ({
+    type: 'cost',
+    rows,
+    totals: totals(10, price),
+    agent: price === null ? null : { agent, profile: null, price },
+    call: agent === 0 ? call : null,
+  })
+  const cost = (rows: number, input: number, price: number) => ({
+    rows, totals: totals(input, price), agents: [{ agent: 0, profile: null, price }], calls: [call],
+  })
+  const reads: Array<{ answer: ReturnType<typeof deferred<unknown>>, signal: AbortSignal | null }> = []
+  const answering = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (!String(input).endsWith(`/conversations/${FIRST}/cost`))
+      return answering(input, init)
+    const read = { answer: deferred<unknown>(), signal: init?.signal ?? null }
+    reads.push(read)
+    const answer = await read.answer.promise
+    return answer instanceof Response ? answer : Response.json(answer)
+  }) as typeof fetch
+  return { conversation, sockets, store: useConversations(), totals, call, frame, cost, reads }
+}
+
+// The page holds a conversation's cost only while its context card is open,
+// and adds each `cost` frame that follows what it holds (`usage-and-quota.md`
+// § Reading it): a frame that crossed the read is dropped, one that came
+// while the read was on its way and is not in its answer is added after it,
+// and one past a gap, as after frames lost while the connection was down,
+// reads the cost again. Cost: one opening, two reads, no wait.
+test('the cost a page holds adds each frame that follows it, drops one it holds and reads again past a gap', async () => {
+  const { conversation, sockets, store, totals, call, frame, reads } = await costScene()
+
+  // The card is closed: the page holds no cost and adds nothing.
+  sockets[0]!.receive(frame(1, 0, 0.5))
+  await nextTick()
+  expect(conversation.cost).toBeNull()
+
+  // The card opens. Rows 2 and 3 are written while the read is on its
+  // way, and its answer includes row 2 but not row 3.
+  store.showCost(conversation, true)
+  await waitFor(() => reads.length === 1, () => 'the cost was not read')
+  sockets[0]!.receive(frame(2, 0, 0.5), frame(3, 2, 0.25))
+  reads[0]!.answer.resolve({
+    rows: 2,
+    totals: totals(100, 1),
+    agents: [{ agent: 0, profile: null, price: 1 }],
+    calls: [call],
+  })
+  await waitFor(() => conversation.cost !== null, () => 'the answer was not kept')
+  sockets[0]!.receive(frame(4, 3, null))
+  await nextTick()
+  expect(conversation.cost).toEqual({
+    status: 'read',
+    cost: {
+      rows: 4,
+      totals: totals(120, 1.25),
+      agents: [
+        { agent: 0, profile: null, price: 1 },
+        { agent: 2, profile: null, price: 0.25 },
+      ],
+      calls: [call],
+    },
+  })
+
+  // Row 5 was lost: row 6 reads the cost again, and the card shows what
+  // it holds until the answer comes.
+  sockets[0]!.receive(frame(6, 0, 0.5))
+  await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
+  expect(conversation.cost).toMatchObject({ status: 'read', cost: { rows: 4 } })
+  const reread = { rows: 6, totals: totals(140, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] }
+  reads[1]!.answer.resolve(reread)
+  await waitFor(() => conversation.cost?.status === 'read' && conversation.cost.cost.rows === 6, () => 'the second answer was not kept')
+  expect(conversation.cost).toEqual({ status: 'read', cost: reread })
+  expect(reads).toHaveLength(2)
+})
+
+// A call that ends while the page's connection is down leaves the open card
+// stale with no later frame to show it: the connection that attaches again
+// brings the conversation's row count, and a page that holds fewer reads the
+// cost again; one that holds as many reads nothing (`usage-and-quota.md`
+// § Reading it). Cost: two sockets, two reads, no wait.
+test('a page whose connection missed the last row reads the cost again as it attaches again', async () => {
+  const { conversation, sockets, store, cost, reads } = await costScene()
+  store.showCost(conversation, true)
+  await waitFor(() => reads.length === 1, () => 'the cost was not read')
+  reads[0]!.answer.resolve(cost(2, 100, 1))
+  await waitFor(() => conversation.cost?.status === 'read', () => 'the answer was not kept')
+
+  // The connection drops; row 3 is written meanwhile, its frame lost.
+  sockets[0]!.end()
+  reconnectNow()
+  await waitFor(() => sockets[1]?.sent.some((sent) => sent.type === 'open') === true, () => 'no second open')
+  sockets[1]!.receive({ type: 'opened' }, { type: 'phase', phase: 'idle' }, { type: 'cost_rows', rows: 3 })
+  await waitFor(() => reads.length === 2, () => 'the attach did not read the cost again')
+  reads[1]!.answer.resolve(cost(3, 110, 1.5))
+  await waitFor(() => conversation.cost?.status === 'read' && conversation.cost.cost.rows === 3, () => 'the second answer was not kept')
+
+  // Attached again with nothing missed, the page reads nothing.
+  sockets[1]!.end()
+  reconnectNow()
+  await waitFor(() => sockets[2]?.sent.some((sent) => sent.type === 'open') === true, () => 'no third open')
+  sockets[2]!.receive({ type: 'opened' }, { type: 'phase', phase: 'idle' }, { type: 'cost_rows', rows: 3 })
+  await nextTick()
+  expect(reads).toHaveLength(2)
+})
+
+// A read of the cost that fails shows the failure with its request's id,
+// never an empty section a user would take for no calls, and Retry reads
+// it again (`usage-and-quota.md` § A conversation's cost). Cost: one
+// opening, two reads, no wait.
+test('a failed read of the cost shows its failure, and Retry reads it again', async () => {
+  const { conversation, store, cost, reads } = await costScene()
+  store.showCost(conversation, true)
+  await waitFor(() => reads.length === 1, () => 'the cost was not read')
+  reads[0]!.answer.resolve(new Response(
+    JSON.stringify({ code: 'internal_error', message: 'The database is busy' }),
+    { status: 500, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req_cost00000000001' } },
+  ))
+  await waitFor(() => conversation.cost !== null, () => 'the failure was not kept')
+  expect(conversation.cost).toMatchObject({ status: 'failed', error: { requestId: 'req_cost00000000001' } })
+
+  store.retryCost(conversation)
+  await waitFor(() => reads.length === 2, () => 'Retry did not read the cost')
+  reads[1]!.answer.resolve(cost(1, 100, 1))
+  await waitFor(() => conversation.cost?.status === 'read', () => 'the answer was not kept')
+  expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
+})
+
+// A card that closes or goes, and a page that signs out, let the cost and
+// its read go: the read is cancelled, and an answer that comes anyway is
+// kept nowhere (`usage-and-quota.md` § Reading it). Cost: one opening, two
+// reads, no wait.
+test('the cost and its read go as the card closes and as the page signs out', async () => {
+  const { conversation, store, cost, reads } = await costScene()
+  store.showCost(conversation, true)
+  await waitFor(() => reads.length === 1, () => 'the cost was not read')
+  store.showCost(conversation, false)
+  expect(reads[0]!.signal?.aborted).toBe(true)
+  reads[0]!.answer.resolve(cost(1, 100, 1))
+  await nextTick()
+  expect(conversation.cost).toBeNull()
+
+  store.showCost(conversation, true)
+  await waitFor(() => reads.length === 2, () => 'the cost was not read again')
+  store.stopAll()
+  expect(reads[1]!.signal?.aborted).toBe(true)
+  reads[1]!.answer.resolve(cost(1, 100, 1))
+  await nextTick()
+  expect(conversation.cost).toBeNull()
 })
 
 // Under 50 ms each: the backend is the stub above.

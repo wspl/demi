@@ -341,6 +341,34 @@
     "instructions": "Instructions",
     "personalInstructions": "Personal instructions",
     "workflowInstructions": "Workflow: {name}",
+    "cost": {
+      "title": "Cost",
+      "price": "Equivalent API price",
+      "hitRate": "Cache hit rate",
+      "loadFailed": "Couldn’t load the cost.",
+      "kind": {
+        "input": "Uncached input",
+        "cacheWrite": "Cache write",
+        "cacheRead": "Cache read",
+        "output": "Output tokens"
+      },
+      "profiles": "Profiles",
+      "mainConversation": "Main conversation",
+      "requests": "Requests",
+      "time": "Time",
+      "request": "Request #{number}",
+      "firstRequest": "First request",
+      "afterCompaction": "After compaction",
+      "miss": "Cache miss · {cause}",
+      "rewritten": "Tokens re-cached",
+      "cause": {
+        "model_changed": "Model changed",
+        "tools_changed": "Tools changed",
+        "system_prompt_changed": "System prompt changed",
+        "cache_expired": "Cache expired",
+        "not_cached": "Not cached by the provider"
+      }
+    },
     "row": {
       "messages": "Messages",
       "systemPrompt": "System prompt",

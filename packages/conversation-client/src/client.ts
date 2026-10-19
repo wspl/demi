@@ -821,6 +821,8 @@ export class ConversationClient {
       case 'shell_write_result':
       case 'retry_scheduled':
       case 'context_usage':
+      case 'cost':
+      case 'cost_rows':
         this.emit(frame)
         return
       case 'subagent':

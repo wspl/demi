@@ -1553,6 +1553,12 @@ impl Making<'_> {
             ended_at: now,
             media_seconds: None,
             cost: None,
+            // A medium's tokens have no catalog price: the vendor's own
+            // cost prices the call (`usage-and-quota.md` § How the figures
+            // are counted), and it asked for no prompt of a session.
+            price: None,
+            system_hash: None,
+            tools_hash: None,
         };
         (OpenRow { row: Some(row), shard: self.shard.this() }, span)
     }

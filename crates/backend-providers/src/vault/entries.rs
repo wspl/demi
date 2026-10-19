@@ -883,8 +883,8 @@ mod tests {
             // shares, the one before a device's mark had a number,
             // 0.1.22-dev.20261015T105826Z's, 0.1.22-dev.20261015T134426Z's,
             // 0.1.22-dev.20261016T043704Z's, 0.1.22-dev.20261016T095626Z's,
-            // 0.1.22's, 0.1.25's and 0.1.27's follow in the history.
-            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 13);
+            // 0.1.22's, 0.1.25's, 0.1.27's and 0.1.32's follow in the history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 14);
             (data, path, own.id, proxy.id)
         };
         let clock = Arc::new(demi_shared_types::SystemClock);

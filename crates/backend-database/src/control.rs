@@ -14,19 +14,28 @@ use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use tokio::sync::broadcast;
 
 use super::accounts::{
     Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, TokenHash,
 };
 use super::columns::{decode, instant, json, to_json};
 use super::providers::ResealConfigs;
+use super::usage::UsageWritten;
 use super::{StorageError, schema, sqlite};
 
 #[derive(Clone)]
 pub struct ControlService {
     db: tokio_rusqlite::Connection,
     clock: Arc<dyn Clock>,
+    /// Each usage ledger row as it is written, for whoever shows its
+    /// conversation's cost (`usage-and-quota.md` § Reading it).
+    usage_written: broadcast::Sender<UsageWritten>,
 }
+
+/// How many written rows wait for a follower that fell behind before it
+/// misses the oldest.
+const USAGE_WAITING: usize = 1024;
 
 /// What `user_row` reads.
 pub(crate) const USER_COLUMNS: &str = "users.id, users.email, users.nickname, users.role, users.created_at,
@@ -41,7 +50,11 @@ impl ControlService {
         seals: Arc<dyn ResealConfigs>,
     ) -> Result<Self, StorageError> {
         let db = tokio_rusqlite::Connection::open(path).await?;
-        let control = Self { db, clock };
+        let control = Self {
+            db,
+            clock,
+            usage_written: broadcast::channel(USAGE_WAITING).0,
+        };
         let path = path.to_owned();
         control
             .call(move |connection, _| {
@@ -50,6 +63,16 @@ impl ControlService {
             })
             .await?;
         Ok(control)
+    }
+
+    /// Each usage ledger row written from now on.
+    pub fn usage_written(&self) -> broadcast::Receiver<UsageWritten> {
+        self.usage_written.subscribe()
+    }
+
+    pub(crate) fn announce_usage(&self, written: UsageWritten) {
+        // No follower is no one to tell: the backend follows from its start.
+        let _ = self.usage_written.send(written);
     }
 
     /// The wall-clock time the records it writes carry.

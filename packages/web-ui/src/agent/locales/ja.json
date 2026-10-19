@@ -341,6 +341,34 @@
     "instructions": "指示",
     "personalInstructions": "個人用の指示",
     "workflowInstructions": "ワークフロー: {name}",
+    "cost": {
+      "title": "コスト",
+      "price": "API 換算価格",
+      "hitRate": "キャッシュヒット率",
+      "loadFailed": "コストを読み込めませんでした。",
+      "kind": {
+        "input": "キャッシュなしの入力",
+        "cacheWrite": "キャッシュ書き込み",
+        "cacheRead": "キャッシュ読み取り",
+        "output": "出力トークン"
+      },
+      "profiles": "プロファイル",
+      "mainConversation": "メインの会話",
+      "requests": "リクエスト",
+      "time": "時間",
+      "request": "リクエスト #{number}",
+      "firstRequest": "最初のリクエスト",
+      "afterCompaction": "圧縮後",
+      "miss": "キャッシュミス · {cause}",
+      "rewritten": "再キャッシュしたトークン",
+      "cause": {
+        "model_changed": "モデルの変更",
+        "tools_changed": "ツールの変更",
+        "system_prompt_changed": "システムプロンプトの変更",
+        "cache_expired": "キャッシュの期限切れ",
+        "not_cached": "プロバイダーがキャッシュしていません"
+      }
+    },
     "row": {
       "messages": "メッセージ",
       "systemPrompt": "システムプロンプト",

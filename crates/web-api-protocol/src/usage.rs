@@ -2,6 +2,7 @@
 //! group per provider entry and model, in the order each pair was first
 //! used, with the number of requests and the sum of each token count.
 
+use demi_conversation_socket_protocol::{AgentCost, CostCall, CostTotals};
 use demi_shared_types::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -47,4 +48,27 @@ pub struct UserUsage {
     pub user_id: UserId,
     pub email: EmailAddress,
     pub totals: Vec<UsageGroup>,
+}
+
+/// `GET /conversations/:id/cost`: the conversation's cost, computed from its
+/// ledger rows when read (`usage-and-quota.md` § Reading it).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationCost {
+    /// The number of the conversation's ledger rows the cost sums, which a
+    /// `cost` frame continues.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub rows: u64,
+    /// Every row of the conversation: every agent, compactions and titles
+    /// included.
+    #[garde(dive)]
+    pub totals: CostTotals,
+    /// Every agent with a priced call, by number, the main conversation
+    /// first.
+    #[garde(dive)]
+    pub agents: Vec<AgentCost>,
+    /// The main conversation's turn calls that the vendor reported counts
+    /// for, in the order they started.
+    #[garde(dive)]
+    pub calls: Vec<CostCall>,
 }
