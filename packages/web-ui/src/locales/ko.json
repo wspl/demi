@@ -316,6 +316,7 @@
     "untitled": "새 대화"
   },
   "markdown": {
-    "mathUnavailable": "수식 표시를 사용할 수 없습니다"
+    "mathUnavailable": "수식 표시를 사용할 수 없습니다",
+    "attachmentMissing": "이 대화에 첨부 파일 {id}이(가) 없습니다"
   }
 }

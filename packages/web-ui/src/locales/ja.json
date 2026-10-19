@@ -316,6 +316,7 @@
     "untitled": "新しいチャット"
   },
   "markdown": {
-    "mathUnavailable": "数式の表示を使用できません"
+    "mathUnavailable": "数式の表示を使用できません",
+    "attachmentMissing": "このチャットに添付ファイル {id} はありません"
   }
 }

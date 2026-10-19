@@ -16,6 +16,7 @@ import { mathExtensions } from './math'
 import { scrollingTable } from './table'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
 import type { ShownMedium } from '../files/media-viewer'
+import { t } from '../locales/text'
 
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
 // building a Marked instance (and re-registering KaTeX) per call.
@@ -264,7 +265,7 @@ function attachmentBlock(id: string, raw: string): string {
     case 'loading':
       return `<div class="attachment-block" ${ATTACHMENT_CARD_ATTRIBUTE}="${id}"></div>\n`
     case 'missing':
-      return `<p class="attachment-missing">No attachment ${escapeHtml(id)} in this conversation</p>\n`
+      return `<p class="attachment-missing">${escapeHtml(t('markdown.attachmentMissing', { id }))}</p>\n`
     default:
       return `<p>${escapeHtml(raw.trim())}</p>\n`
   }
