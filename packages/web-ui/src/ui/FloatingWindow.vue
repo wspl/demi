@@ -39,7 +39,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
  *
  * It stands in the page's stack of windows (`window-stack.ts`), as the
  * session's windows do: while it is the newest, a press outside every window
- * closes it, and so does Escape, unless the focus is in a field the user
+ * closes it, except in a place that keeps the windows, such as the work
+ * panel (`KEEPS_WINDOWS`), and so does Escape, unless the focus is in a field the user
  * types in, or a menu or a dialog of `overlayStore` is open and takes the
  * key (`useEscapeClose`). The window is not one of the store's layers: a
  * menu opened beside it does not close it, and it does not close a menu.

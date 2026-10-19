@@ -34,9 +34,10 @@ import { DOCK_WINDOW_SHARE, dockWindowBounds, dockWindowHeight, dockWindowKey, d
  *
  * It stands in the page's stack of windows with what it opens, such as the
  * media viewer (`turns.md`, the dock's chips under § Recovering an
- * unfinished turn; `window-stack.ts`): while it is the newest, a press
- * outside every window, the composer and the dock's empty space included,
- * closes it, though not one on its chip. It also closes by its chip, its close control, or Escape while the
+ * unfinished turn; `window-stack.ts`): while it is the newest, a press in
+ * the sidebar or the conversation's column outside every window, the
+ * composer and the dock's empty space included, closes it, though not one
+ * on its chip nor any in the work panel. It also closes by its chip, its close control, or Escape while the
  * focus is in it; the panel takes the focus from a click in it. Escape
  * leaves it open when something in it used the key, a menu is open, or a
  * newer window, such as the media viewer, stands in front of it and takes
