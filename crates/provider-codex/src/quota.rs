@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use demi_provider_common::quota::{
-    Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
-    header_number, plan_label, severity, unix_seconds,
+    Observation, ObservedWindows, ProbeCost, ProbeReading, QuotaError, QuotaSource,
+    clamp_used_percent, header_number, plan_label, severity, unix_seconds,
 };
 use demi_shared_types::{QuotaKind, QuotaPlan, QuotaUnit, QuotaWindow};
 use futures_util::future::BoxFuture;
@@ -90,6 +90,7 @@ impl QuotaSource for CodexQuota {
                 demi_provider_common::wire::decode_untagged(&text).map_err(|error| {
                     QuotaError::Invalid(format!("Codex usage status cannot be read: {error}"))
                 })?;
+            let ObservedWindows { windows, absent } = usage_windows(usage.rate_limit);
             Ok(ProbeReading {
                 plan: usage
                     .plan_type
@@ -99,21 +100,33 @@ impl QuotaSource for CodexQuota {
                         id: plan,
                     }),
                 account_label: Some(stored.label().label),
-                windows: usage_windows(usage.rate_limit),
+                windows,
+                absent,
             })
         })
     }
 
-    fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+    fn observe(&self, observation: Observation<'_>) -> Option<ObservedWindows> {
         let Observation::Response { headers, .. } = observation else {
             return None;
         };
-        let windows: Vec<QuotaWindow> = WINDOWS
-            .into_iter()
-            .filter_map(|kind| header_window(headers, kind))
-            .collect();
-        (!windows.is_empty()).then_some(windows)
+        let mut report = ObservedWindows::default();
+        for kind in WINDOWS {
+            match header_window(headers, kind) {
+                None => {}
+                Some(Reported::Window(window)) => report.windows.push(window),
+                Some(Reported::Absent) => report.absent.push(kind.id().into()),
+            }
+        }
+        (!report.windows.is_empty() || !report.absent.is_empty()).then_some(report)
     }
+}
+
+/// What Codex says about one of its windows.
+enum Reported {
+    Window(QuotaWindow),
+    /// The account has no such window.
+    Absent,
 }
 
 /// `GET /wham/usage`, as far as Demi reads it.
@@ -125,12 +138,14 @@ struct UsageStatus {
     rate_limit: Option<RateLimit>,
 }
 
+/// A window's key: missing (`None`), `null` (`Some(None)`), which says the
+/// account has no such window, or a window.
 #[derive(Deserialize)]
 struct RateLimit {
-    #[serde(default)]
-    primary_window: Option<UsageWindow>,
-    #[serde(default)]
-    secondary_window: Option<UsageWindow>,
+    #[serde(default, with = "serde_with::rust::double_option")]
+    primary_window: Option<Option<UsageWindow>>,
+    #[serde(default, with = "serde_with::rust::double_option")]
+    secondary_window: Option<Option<UsageWindow>>,
 }
 
 /// One window of the usage status: `limit_window_seconds` in seconds and
@@ -142,38 +157,52 @@ struct UsageWindow {
     reset_at: f64,
 }
 
-fn usage_windows(rate_limit: Option<RateLimit>) -> Vec<QuotaWindow> {
+/// The windows of the usage status; a window it states as `null` is absent.
+fn usage_windows(rate_limit: Option<RateLimit>) -> ObservedWindows {
     let Some(rate_limit) = rate_limit else {
-        return Vec::new();
+        return ObservedWindows::default();
     };
     let windows = [
         (Kind::Primary, rate_limit.primary_window),
         (Kind::Secondary, rate_limit.secondary_window),
     ];
-    windows
-        .into_iter()
-        .filter_map(|(kind, window)| {
-            let window = window?;
-            Some(window_of(
+    let mut report = ObservedWindows::default();
+    for (kind, window) in windows {
+        match window {
+            None => {}
+            Some(None) => report.absent.push(kind.id().into()),
+            Some(Some(window)) => report.windows.push(window_of(
                 kind,
                 clamp_used_percent(window.used_percent),
                 Some(window.limit_window_seconds / 60.0),
                 unix_seconds(window.reset_at),
-            ))
-        })
-        .collect()
+            )),
+        }
+    }
+    report
 }
 
-/// The window the `x-codex-<kind>-*` headers report: one is present when its
-/// `used-percent` header is, even with a value Demi cannot read.
-fn header_window(headers: &HeaderMap, kind: Kind) -> Option<QuotaWindow> {
+/// What the `x-codex-<kind>-*` headers say about a window: nothing without
+/// its `used-percent` header; otherwise a window, even with a value Demi
+/// cannot read, unless the headers are the placeholder Codex sends for a
+/// window the account does not have: nothing used, a length of zero or none,
+/// and no reset time. The Codex CLI reads its headers by the same rule.
+fn header_window(headers: &HeaderMap, kind: Kind) -> Option<Reported> {
     let prefix = format!("x-codex-{}", kind.id());
     let used_name = format!("{prefix}-used-percent");
     headers.get(&used_name)?;
-    let used_percent = header_number(headers, &used_name).and_then(clamp_used_percent);
+    let used = header_number(headers, &used_name);
     let minutes = header_number(headers, &format!("{prefix}-window-minutes"));
-    let resets_at = header_number(headers, &format!("{prefix}-reset-at")).and_then(unix_seconds);
-    Some(window_of(kind, used_percent, minutes, resets_at))
+    let reset = header_number(headers, &format!("{prefix}-reset-at"));
+    if used == Some(0.0) && minutes.is_none_or(|minutes| minutes == 0.0) && reset.is_none() {
+        return Some(Reported::Absent);
+    }
+    Some(Reported::Window(window_of(
+        kind,
+        used.and_then(clamp_used_percent),
+        minutes,
+        reset.and_then(unix_seconds),
+    )))
 }
 
 fn window_of(

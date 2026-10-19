@@ -90,12 +90,13 @@ impl ProviderQuota {
     /// A response the source cannot read changes nothing and answers none,
     /// and observing never fails the request.
     pub fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
-        let windows = self.source.observe(observation)?;
+        let report = self.source.observe(observation)?;
+        let windows = report.windows.clone();
         let observed_at = self.clock.now();
-        let mut merged = Some(windows.clone());
+        let mut merged = Some(report);
         self.store.update(&mut |previous| {
-            let windows = merged.take().unwrap_or_default();
-            merge(previous, Update::Observation(windows), observed_at)
+            let report = merged.take().unwrap_or_default();
+            merge(previous, Update::Observation(report), observed_at)
         });
         Some(windows)
     }
@@ -104,7 +105,7 @@ impl ProviderQuota {
     /// snapshot, for a provider that merged them as it read the response
     /// and reports them to the usage ledger later.
     pub fn windows(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
-        self.source.observe(observation)
+        self.source.observe(observation).map(|report| report.windows)
     }
 
     /// [`Self::observe`] as the run's event for the usage ledger, none when
@@ -125,7 +126,24 @@ pub trait QuotaSource: Send + Sync {
 
     /// The windows a live response reports. It is pure and never fails a
     /// run: a response it cannot read gives `None`.
-    fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>>;
+    fn observe(&self, observation: Observation<'_>) -> Option<ObservedWindows>;
+}
+
+/// The windows a live response reports: the ones it states, and the ids of
+/// the ones it states do not exist, which leave the snapshot.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ObservedWindows {
+    pub windows: Vec<QuotaWindow>,
+    pub absent: Vec<String>,
+}
+
+impl From<Vec<QuotaWindow>> for ObservedWindows {
+    fn from(windows: Vec<QuotaWindow>) -> Self {
+        Self {
+            windows,
+            absent: Vec::new(),
+        }
+    }
 }
 
 /// What a probe costs.
@@ -155,6 +173,9 @@ pub struct ProbeReading {
     pub plan: Option<QuotaPlan>,
     pub account_label: Option<String>,
     pub windows: Vec<QuotaWindow>,
+    /// The ids of the windows the vendor states do not exist, which leave
+    /// the snapshot; a window the probe does not mention stays.
+    pub absent: Vec<String>,
 }
 
 /// Why a probe failed.
@@ -228,35 +249,39 @@ impl QuotaSnapshotStore for MemorySnapshots {
 /// What updates a snapshot.
 enum Update {
     Probe(ProbeReading),
-    Observation(Vec<QuotaWindow>),
+    Observation(ObservedWindows),
 }
 
 /// The one merge of `usage-and-quota.md` § Probe and observation: a probe
 /// sets the plan and the account label; an observation keeps them; either
-/// replaces the windows it names, keeps the others, and adds new ones after
-/// them in the order it read them.
+/// removes the windows it states do not exist, replaces the windows it
+/// names, keeps the others, and adds new ones after them in the order it
+/// read them.
 fn merge(
     previous: Option<&QuotaSnapshot>,
     update: Update,
     observed_at: Timestamp,
 ) -> QuotaSnapshot {
-    let (source, plan, account_label, windows) = match update {
+    let (source, plan, account_label, windows, absent) = match update {
         Update::Probe(reading) => (
             SnapshotSource::Probe,
             reading.plan,
             reading.account_label,
             reading.windows,
+            reading.absent,
         ),
-        Update::Observation(windows) => (
+        Update::Observation(report) => (
             SnapshotSource::Observation,
             previous.and_then(|snapshot| snapshot.plan.clone()),
             previous.and_then(|snapshot| snapshot.account_label.clone()),
-            windows,
+            report.windows,
+            report.absent,
         ),
     };
     let mut merged: Vec<QuotaWindow> = previous
         .map(|snapshot| snapshot.windows.clone())
         .unwrap_or_default();
+    merged.retain(|kept| !absent.contains(&kept.id));
     for window in windows {
         match merged.iter_mut().find(|kept| kept.id == window.id) {
             Some(kept) => *kept = window,

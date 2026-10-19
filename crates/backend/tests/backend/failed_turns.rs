@@ -118,7 +118,7 @@ impl QuotaSource for NoProbe {
         Box::pin(async { Err(QuotaError::Unsupported) })
     }
 
-    fn observe(&self, _: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+    fn observe(&self, _: Observation<'_>) -> Option<demi_provider_common::quota::ObservedWindows> {
         None
     }
 }

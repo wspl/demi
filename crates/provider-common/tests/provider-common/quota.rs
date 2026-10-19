@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use demi_provider_common::{
     quota::{
-        MemorySnapshots, Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError,
+        MemorySnapshots, Observation, ObservedWindows, ProbeCost, ProbeReading, ProviderQuota, QuotaError,
         QuotaSource, clamp_used_percent, header_number, rfc3339, severity, unix_seconds,
         used_percent_from_ratio,
     },
@@ -57,8 +57,8 @@ impl QuotaSource for Scripted {
         Box::pin(async { Ok(reading) })
     }
 
-    fn observe(&self, _observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
-        self.observations.lock().unwrap().remove(0)
+    fn observe(&self, _observation: Observation<'_>) -> Option<ObservedWindows> {
+        self.observations.lock().unwrap().remove(0).map(ObservedWindows::from)
     }
 }
 
@@ -92,6 +92,7 @@ async fn an_observation_replaces_its_windows_and_keeps_the_probed_plan_and_label
             plan: Some(plan("pro")),
             account_label: Some("person@example.com".into()),
             windows: vec![window("monthly", 25.0), window("rpm", 10.0)],
+            absent: Vec::new(),
         }]),
         observations: Mutex::new(vec![Some(vec![window("rpm", 40.0), window("tpm", 5.0)])]),
     });
@@ -129,6 +130,7 @@ async fn a_probe_says_the_plan_and_keeps_the_windows_it_does_not_name() {
                 plan: Some(plan("pro")),
                 account_label: None,
                 windows: vec![window("weekly", 40.0)],
+                absent: Vec::new(),
             },
             // A later probe that names no plan clears it.
             ProbeReading::default(),
