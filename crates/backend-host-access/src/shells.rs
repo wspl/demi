@@ -559,6 +559,10 @@ impl ShellEnvironment for Registered {
         self.environment.outliving(command)
     }
 
+    fn hint(&self, command: &CommandId) -> Option<String> {
+        self.environment.hint(command)
+    }
+
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {
         self.environment.unreachable(command)
     }

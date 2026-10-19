@@ -480,6 +480,8 @@ impl PortTransport for NodePort {
                 PortRequest::ReadStdin {} | PortRequest::ReadLiveStdin {} => {
                     Ok(PortResponse::Input { bytes: None })
                 }
+                // A test's job has no line a model reads.
+                PortRequest::Hint { .. } => Ok(PortResponse::Written {}),
             }
         })
     }
@@ -1125,6 +1127,10 @@ impl ShellEnvironment for ScriptedShell {
 
     fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
         Ok(self.record(command)?.borrow().quiet())
+    }
+
+    fn hint(&self, _: &CommandId) -> Option<String> {
+        None
     }
 
     fn outliving(&self, _: &CommandId) -> Vec<String> {

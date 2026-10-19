@@ -26,8 +26,8 @@ use crate::accounts::{awaited, device_entry, ended, start_login};
 use crate::agent_profiles::{assert_shows, last_root};
 use crate::conversations::{FIRST, Socket};
 use crate::families::{Directory, LoginScript, QuotaScript, ScriptedSubscription, VideoScript};
-use crate::permissions::{decide, permissions};
-use crate::subagents::{Scripts, say, shell, tree_among};
+use crate::permissions::{decide, permissions, settled};
+use crate::subagents::{Scripts, background, say, shell, tree_among};
 use crate::support::Harness;
 use crate::usage::{Row, rows};
 
@@ -217,27 +217,40 @@ async fn a_subscription_makes_a_video_told_as_its_job_moves_handing_on_only_befo
     assert_eq!(video_rows(&harness).last().unwrap().turn_id.as_deref(), Some("m6"));
 
     // The vendor's entry turns its videos off and on again, in its fixed
-    // shape, once the user allows managing providers.
-    let shown = ran(&scripts, &mut socket, "m7", "demi providers edit Sub --video off").await;
-    assert_shows(&shown, "demi providers edit: this conversation needs the user's permission to manage providers");
-    let requested = permissions(&backend, &master, FIRST).await;
+    // shape, once the user allows managing providers: the first change
+    // waits for the answer, and the rest runs under the grant.
     scripts.root(
         FIRST,
         vec![
-            shell(
-                "t8",
+            background(
+                "t7",
                 "demi providers edit Sub --video off > /dev/null\n\
                  demi providers show Sub | grep '^Videos'\n\
                  demi providers edit Sub --video on > /dev/null; echo exit=$?\n\
                  demi providers show Sub | grep '^Videos'",
             ),
+            say("asked"),
+            say("switched"),
             say("switched"),
         ],
     );
+    socket.chat("m7", "Film").await;
+    assert_shows(
+        &last_root(&scripts),
+        "waiting for the user's permission to manage providers; its end will report to you, so do not run it again",
+    );
+    let requested = permissions(&backend, &master, FIRST).await;
     let allowed = decide(&backend, &master, FIRST, requested.requests[0].id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&allowed.body));
-    socket.until_idle().await;
-    assert_shows(&last_root(&scripts), "Videos: grok, Video Generation off\nexit=0\nVideos: grok, Video Generation on");
+    let shown = settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage providers.", "(t7) ended with exit code 0"],
+    )
+    .await;
+    assert_shows(&shown, "Videos: grok, Video Generation off\nexit=0\nVideos: grok, Video Generation on");
     backend.close().await;
 }
 
@@ -365,24 +378,45 @@ async fn a_compatible_api_makes_videos_in_the_shape_the_agent_chose_and_cancels_
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // A model of a kind the entry does not make is refused; choosing the
-    // shape asks for the permission.
-    let shown = ran(
+    // The first change waits for the permission; once allowed it runs, and
+    // a model of a kind the entry does not make is refused.
+    scripts.root(
+        FIRST,
+        vec![
+            background(
+                "t1",
+                "demi providers models add Proxy --id wan-2.2 --name 'Wan 2.2' --kind video; echo exit=$?",
+            ),
+            say("asked"),
+            say("refused"),
+            say("refused"),
+        ],
+    );
+    socket.chat("m1", "Film").await;
+    assert_shows(
+        &last_root(&scripts),
+        "waiting for the user's permission to manage providers; its end will report to you, so do not run it again",
+    );
+    let requested = permissions(&backend, &master, FIRST).await;
+    let allowed = decide(&backend, &master, FIRST, requested.requests[0].id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&allowed.body));
+    settled(
         &scripts,
-        &mut socket,
-        "m1",
-        "demi providers models add Proxy --id wan-2.2 --name 'Wan 2.2' --kind video; demi providers edit Proxy --video openrouter-videos",
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage providers.", "(t1) ended with exit code 0"],
     )
     .await;
-    assert_shows(&shown, "demi providers edit: this conversation needs the user's permission to manage providers");
-    let requested = permissions(&backend, &master, FIRST).await;
-    scripts.root(
+    // A socket of its own, which no frame of the woken turns precedes.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root_anew(
         FIRST,
         vec![
             shell(
                 "t2",
                 &[
-                    "demi providers models add Proxy --id wan-2.2 --name 'Wan 2.2' --kind video; echo exit=$?",
                     "demi providers edit Proxy --video openrouter-videos > /dev/null",
                     "demi providers models add Proxy --id wan-2.2 --name 'Wan 2.2' --kind video > /dev/null",
                     "demi providers show Proxy",
@@ -394,9 +428,7 @@ async fn a_compatible_api_makes_videos_in_the_shape_the_agent_chose_and_cancels_
             say("filmed"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, requested.requests[0].id().as_str(), "allow").await;
-    assert_eq!(allowed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&allowed.body));
-    socket.until_idle().await;
+    socket.chat("m2", "Film again").await;
     let shown = last_root(&scripts);
     assert_shows(&shown, "demi providers models add: models: wan-2.2 is a video model, but Proxy makes no videos; choose a video shape first\nexit=1");
     assert_shows(&shown, "Videos: openrouter-videos, Video Generation on\n");

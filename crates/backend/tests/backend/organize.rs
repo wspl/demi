@@ -27,8 +27,8 @@ use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 
 use crate::conversations::{FIRST, SECOND, THIRD, Socket, choose, create, transcript, working_on};
 use rusqlite::OptionalExtension;
-use crate::permissions::{decide, host_of, permissions};
-use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
+use crate::permissions::{decide, host_of, permissions, settled};
+use crate::subagents::{Scripts, WAIT, background, say, shell, tree_on};
 use crate::support::{Harness, Paired, Session, TestBackend, eventually, stored_token};
 use demi_web_api_protocol::permissions::PermissionHost;
 
@@ -244,74 +244,69 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // A pairing asks the user, every time.
+    // A pairing asks the user, every time, and waits for the answer.
+    let waiting = "waiting for the user's permission to pair a computer and reach it; its end will report to you, so do not run it again";
     scripts.root(
         FIRST,
         vec![
             shell("t1", "demi host install-command --system linux"),
-            shell("t2", &format!("demi host pair {code}; echo exit=$?")),
+            background("t2", &format!("demi host pair {code}")),
             say("I asked the user"),
+            say("paired"),
+            say("paired"),
         ],
     );
     socket.chat("m1", "Pair the build computer").await;
     let asked = scripts.asked(|session| session == FIRST);
     // The command the agent runs there is the one Add Device shows.
     assert!(asked[1].contains(&state.install_commands.linux), "{}", asked[1]);
-    assert!(
-        asked[2].contains("this conversation needs the user's permission to pair a computer and reach it; the request was sent to the user"),
-        "{}",
-        asked[2]
-    );
-    assert!(asked[2].contains("exit=1"), "{}", asked[2]);
+    assert!(asked[2].contains(waiting), "{}", asked[2]);
     let requests = permissions(&backend, &master, FIRST).await;
     assert_eq!(requests.requests.len(), 1, "{requests:?}");
     let request = &requests.requests[0];
     assert_eq!(host_of(request), Some(&PermissionHost::Pairing {}));
 
-    // The allow lets that code pair once: the computer is paired, attached
-    // under its device's name and reached; the same code again, and another
-    // code, ask again.
-    scripts.root(
+    // The allow lets that code pair once: the waiting pair pairs the
+    // computer, attached under its device's name and reached, and uses the
+    // allow up; the same code again, and another code, ask again.
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    let paired = settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to pair a computer and reach it.", "(t2) ended with exit code 0"],
+    )
+    .await;
+    assert!(paired.contains("Paired as buildbox; attached as buildbox."), "{paired}");
+    // A socket of its own, which no frame of the woken turns precedes.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root_anew(
         FIRST,
         vec![
             shell("t3", &format!("demi host pair {code} --name build")),
-            shell("t4", &format!("demi host pair {code}")),
             shell("t5", "demi host shell --host buildbox 'echo reached'"),
-            shell("t6", "demi host pair 0000-0000-0000-0000-0000-0000-00; echo exit=$?"),
-            shell("t7", &format!("demi host pair {code}; echo exit=$?")),
+            background("t6", "demi host pair 0000-0000-0000-0000-0000-0000-00"),
+            background("t7", &format!("demi host pair {code}")),
             say("done"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
-    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    eventually("the woken turn ends", || async {
-        scripts.asked(|session| session == FIRST).len() == 9
-    })
-    .await;
-    let asked = scripts.asked(|session| session == FIRST);
-    assert!(
-        asked[3].contains("The user allowed this conversation to pair a computer and reach it"),
-        "{}",
-        asked[3]
-    );
-    // No agent names the host: `--name` is no option of the pair.
-    assert!(asked[4].contains("unexpected argument '--name'"), "{}", asked[4]);
-    assert!(
-        asked[5].contains("Paired as buildbox; attached as buildbox."),
-        "{}",
-        asked[5]
-    );
-    assert!(asked[6].contains("reached"), "{}", asked[6]);
-    // Each asks again: the result of its own call says so.
-    for (asked, step) in [(&asked[7], "t6"), (&asked[8], "t7")] {
+    socket.chat("m2", "Check the build computer").await;
+    let asked = last_asked(&scripts, FIRST);
+    let result = |step: &str| {
         let (_, result) = asked
             .rsplit_once(&format!("ToolResult {{ tool_use_id: \"{step}\""))
             .expect("the step's result");
-        assert!(
-            result.contains("permission to pair a computer and reach it; the request") && result.contains("exit=1"),
-            "{result}"
-        );
-    }
+        result.to_owned()
+    };
+    // No agent names the host: `--name` is no option of the pair.
+    assert!(result("t3").contains("unexpected argument '--name'"), "{asked}");
+    assert!(result("t5").contains("reached"), "{asked}");
+    assert!(result("t6").contains(waiting), "{asked}");
+    assert!(result("t7").contains(waiting), "{asked}");
+    assert_eq!(permissions(&backend, &master, FIRST).await.requests.len(), 2);
 
     // A code allowed in one conversation pairs nothing in another.
     harness
@@ -326,13 +321,9 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
     working_on(&harness, &laptop, SECOND);
     let mut second = Socket::connect(&backend, &master, SECOND).await;
     second.open().await;
-    scripts.root(SECOND, vec![shell("s1", "demi host pair K7QM-2XWD; echo exit=$?"), say("asked")]);
+    scripts.root(SECOND, vec![background("s1", "demi host pair K7QM-2XWD"), say("asked")]);
     second.chat("n1", "Pair it here").await;
-    assert!(
-        last_asked(&scripts, SECOND).contains("permission to pair a computer and reach it; the request"),
-        "{}",
-        last_asked(&scripts, SECOND)
-    );
+    assert!(last_asked(&scripts, SECOND).contains(waiting), "{}", last_asked(&scripts, SECOND));
     // It is the user's device, its runner holds its token, and the
     // conversation reaches it.
     let devices = backend.devices(&master).await;
@@ -652,14 +643,16 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
 
     // Listing the devices asks nothing; a move names a host, never a
     // project, so `laptop` is the conversation's own; moving to a host the
-    // conversation may not reach asks to reach it.
+    // conversation may not reach asks to reach it and waits for the answer.
     scripts.root(
         FIRST,
         vec![
             shell("t1", "demi host devices"),
             shell("t1b", &format!("demi host move laptop {root}")),
-            shell("t2", &format!("demi host move studio {app}; echo exit=$?")),
+            background("t2", &format!("demi host move studio {app}/missing")),
             say("I asked the user"),
+            say("noted"),
+            say("noted"),
         ],
     );
     socket.chat("m1", "Work on the studio").await;
@@ -667,7 +660,7 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     assert!(asked[1].contains(&format!("studio  {}  paired  online", studio.id())), "{}", asked[1]);
     assert!(asked[2].contains("This conversation runs there already."), "{}", asked[2]);
     assert!(
-        asked[3].contains("demi host move: this conversation needs the user's permission to reach studio; the request was sent to the user"),
+        asked[3].contains("waiting for the user's permission to reach studio; its end will report to you, so do not run it again"),
         "{}",
         asked[3]
     );
@@ -682,32 +675,34 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
         })
     );
 
-    // Once allowed, a directory that is none there fails at once with
-    // nothing pending, and the move to one waits until the work ends.
-    scripts.root(
-        FIRST,
-        vec![
-            shell("t3", &format!("demi host move studio {app}/missing; echo exit=$?")),
-            shell("t4", &format!("demi host move studio {app}")),
-            say("moving"),
-        ],
-    );
+    // Once allowed, the waiting move runs: a directory that is none there
+    // fails at once with nothing pending, and the move to one waits until
+    // the work ends.
     let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    let missing = settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to reach studio.", "(t2) ended with exit code 1"],
+    )
+    .await;
+    assert!(missing.contains(&format!("{app}/missing is not a directory on studio")), "{missing}");
+    assert!(!pending(&harness, FIRST));
+    // A socket of its own, which no frame of the woken turns precedes.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root_anew(FIRST, vec![shell("t3", &format!("demi host move studio {app}")), say("moving")]);
+    socket.chat("m2", "Move to the app").await;
     eventually("the move is made", || async {
         primary(&harness, FIRST) == (Some(studio.id().to_owned()), Some(app.clone()))
     })
     .await;
-    let asked = scripts.asked(|session| session == FIRST);
     assert!(
-        asked[5].contains(&format!("{app}/missing is not a directory on studio")) && asked[5].contains("exit=1"),
+        last_asked(&scripts, FIRST).contains(&format!("The move to studio ({app}) applies when this conversation's work ends")),
         "{}",
-        asked[5]
-    );
-    assert!(
-        asked[6].contains(&format!("The move to studio ({app}) applies when this conversation's work ends")),
-        "{}",
-        asked[6]
+        last_asked(&scripts, FIRST)
     );
     assert_eq!(attached(&harness, FIRST), ["laptop"]);
     assert!(!pending(&harness, FIRST));
@@ -715,16 +710,16 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     // The host it left and the one it was allowed stay reachable: moving
     // back, detaching studio and attaching it again ask nothing.
     scripts.root(FIRST, vec![shell("t5", &format!("demi host move laptop {root}")), say("back")]);
-    socket.chat("m2", "Go back").await;
+    socket.chat("m3", "Go back").await;
     eventually("the move back is made", || async {
         primary(&harness, FIRST) == (Some(laptop.id().to_owned()), Some(root.clone()))
     })
     .await;
     scripts.root(FIRST, vec![shell("t6", "demi host detach studio"), say("detached")]);
-    socket.chat("m3", "Let go of the studio").await;
+    socket.chat("m4", "Let go of the studio").await;
     eventually("the detach is made", || async { attached(&harness, FIRST).is_empty() }).await;
     scripts.root(FIRST, vec![shell("t7", "demi host attach studio"), say("attached")]);
-    socket.chat("m4", "Use the studio again").await;
+    socket.chat("m5", "Use the studio again").await;
     eventually("the attach ran", || async {
         last_asked(&scripts, FIRST).contains("Attached studio as studio")
     })

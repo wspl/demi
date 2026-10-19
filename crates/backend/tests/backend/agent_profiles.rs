@@ -19,9 +19,9 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{FIRST, Socket};
-use crate::permissions::{decide, permissions};
+use crate::permissions::{decide, permissions, settled};
 use crate::settings::synced;
-use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
+use crate::subagents::{Scripts, WAIT, background, say, shell, tree_on};
 use crate::support::Harness;
 
 /// What the root of `FIRST` was asked last.
@@ -82,13 +82,16 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // The menu, and a change the conversation has no permission for.
+    // The menu, and a change the conversation has no permission for, which
+    // waits for the user's answer.
     let create = "demi agent profiles create explore --description 'Finds code.' --model n --effort high";
     scripts.root(
         FIRST,
         vec![
-            shell("t1", &format!("demi providers list; demi providers show Tree; {create} <<< 'You only report.'")),
+            background("t1", &format!("demi providers list; demi providers show Tree; {create} <<< 'You only report.'")),
             say("asked"),
+            say("created"),
+            say("created"),
         ],
     );
     socket.chat("m1", "Make an explore profile on n").await;
@@ -100,7 +103,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     assert!(!asked.contains("Spare"), "{asked}");
     assert_shows(
         &asked,
-        "demi agent profiles create: this conversation needs the user's permission to change subagent profiles; the request was sent to the user, and you will be told when the user decides",
+        "waiting for the user's permission to change subagent profiles; its end will report to you, so do not run it again",
     );
     let requested = permissions(&backend, &master, FIRST).await;
     assert_eq!(requested.requests.len(), 1, "{requested:?}");
@@ -115,16 +118,30 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         Some("Create, edit and delete the subagent profiles every conversation of yours can use.")
     );
 
-    // Allowed, the agent creates it; what the settings page refuses, the
-    // command refuses with the page's words.
+    // Allowed, the waiting command creates it, and the agent is told.
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to change subagent profiles.", "(t1) ended with exit code 0"],
+    )
+    .await;
+    // A socket of its own, which no frame of the woken turns precedes.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    // What the settings page refuses, the command refuses with the page's
+    // words.
     let long = "x".repeat(501);
-    scripts.root(
+    scripts.root_anew(
         FIRST,
         vec![
             shell(
                 "t2",
                 &[
-                    format!("{create} <<< 'You only report.'"),
                     "demi agent profiles create Explore --description x </dev/null".to_owned(),
                     "demi agent profiles create default --description x </dev/null".to_owned(),
                     "demi agent profiles create explore --description x </dev/null".to_owned(),
@@ -138,12 +155,10 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
                 ]
                 .join("\n"),
             ),
-            say("created"),
+            say("refused"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
-    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
+    socket.chat("m1b", "Try other profiles").await;
     let asked = last_root(&scripts);
     for refusal in [
         "demi agent profiles create: name: must be 1 to 40 lowercase letters, digits and hyphens, starting with a letter",
@@ -217,7 +232,11 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         (edited.profiles[0].description.as_str(), edited.profiles[0].can_spawn),
         ("Finds code; it changes nothing.", false)
     );
-    let shown = &scripts.asked(|session| session == FIRST)[5];
+    let asked = scripts.asked(|session| session == FIRST);
+    let shown = asked
+        .iter()
+        .find(|asked| asked.contains("tool_use_id: \"t3\""))
+        .expect("the edit's result");
     assert_shows(
         shown,
         "Name: explore\nSource: user\nDescription: Finds code; it changes nothing.\nStatus: available\nUnavailable: -\nModel: n\nProvider: Tree\nEffort: high\nTier: -\nContext (tokens): -\nSpawning: no\nEnabled: yes\nInstructions:\n  You only report.\n",

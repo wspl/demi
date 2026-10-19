@@ -357,6 +357,7 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
             commands: None,
             stdin: None,
             stdout: None,
+            stop: tokio_util::sync::CancellationToken::new(),
         })
         .await
         .unwrap();
@@ -1007,6 +1008,7 @@ async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing
         commands: None,
         stdin,
         stdout,
+        stop: tokio_util::sync::CancellationToken::new(),
     };
     // In through the job's standard input, out through its standard output:
     // well past the view, so only the pipes carry it whole.

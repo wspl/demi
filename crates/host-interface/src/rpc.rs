@@ -161,6 +161,15 @@ pub enum PortRequest {
     ReadStdin {},
     /// The next interactive write to the calling job, until it ends.
     ReadLiveStdin {},
+    /// What the model reads of the calling job while the call runs, in
+    /// place of the next step a running command's result suggests, until
+    /// the call ends or another line, or none, replaces it (`shell-tool.md`
+    /// § Results and previews): the line of a call that waits for the
+    /// user's permission (`permissions.md` § The check).
+    Hint {
+        #[serde(deserialize_with = "Option::deserialize")]
+        text: Option<String>,
+    },
 }
 
 /// The reply to a [`PortRequest`].
@@ -222,6 +231,15 @@ impl RpcPort {
             self.transport.request(PortRequest::ReadStdin {}).await?,
             "read_stdin",
         )
+    }
+
+    /// Shows `text` to the model as the calling job's line while the call
+    /// runs, or no line of the call's again ([`PortRequest::Hint`]).
+    pub async fn hint(&self, text: Option<&str>) -> Result<(), PortError> {
+        let request = PortRequest::Hint {
+            text: text.map(str::to_owned),
+        };
+        written(self.transport.request(request).await?, "hint")
     }
 
     /// The next interactive write to the calling job; none once it ended.

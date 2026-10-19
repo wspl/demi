@@ -418,6 +418,7 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
                     running_ms: 300_000,
                     idle_ms: 290_000,
                     interval_ms: 300_000,
+                    hint: None,
                 },
                 "",
             ),

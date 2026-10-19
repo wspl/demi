@@ -66,10 +66,11 @@ pub fn report_text(report: &CommandReport) -> String {
         }
     };
     let mut lines = vec![headline, labelled_output(&report.output)];
-    if let ReportEvent::Running { interval_ms, .. } = report.event {
+    if let ReportEvent::Running { interval_ms, hint, .. } = &report.event {
+        lines.extend(hint.clone());
         lines.push(format!(
             "It reports every {}; change that with demi shell status {command} --interval <duration>, or with --resident to hear only of its end.",
-            duration(interval_ms.into())
+            duration((*interval_ms).into())
         ));
     }
     lines.join("\n")

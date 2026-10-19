@@ -65,8 +65,9 @@ impl LinkPolicy for ShardPolicy {
     /// the call, what it needs, its leaf's category or the host its
     /// `bringsHost` argument brings into the conversation, or the computer
     /// `demi host pair` pairs, is checked against the conversation's grants
-    /// and the hosts it may reach before the handler runs (`permissions.md`
-    /// § The check, § Hosts).
+    /// and the hosts it may reach before the handler runs, and a call that
+    /// lacks it waits for the user's answer (`permissions.md` § The check,
+    /// § Hosts).
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,
@@ -107,7 +108,7 @@ impl LinkPolicy for ShardPolicy {
                 (None, None, None) => None,
             };
             if let Some(need) = need {
-                demi_backend_permissions::check(shard.permission_shard(), &invocation, need).await?;
+                demi_backend_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;
             }
             let mut invocation = invocation;
             invocation.brought = brought;

@@ -6,10 +6,11 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# No tests of its own: the backend's permission scenarios cover the check,
-# the decisions and their messages at the boundaries the agent and the page
-# observe (`crates-and-packages.md` § Module layout); no doc examples.
-test = false
+# The backend's permission scenarios cover the check, the decisions and
+# their messages at the boundaries the agent and the page observe
+# (`crates-and-packages.md` § Module layout). The unit tests hold what no
+# scenario can order: a stop and an allow ready at the same moment. No doc
+# examples.
 doctest = false
 bench = false
 
@@ -26,3 +27,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+demi-host-interface = { path = "../host-interface", features = ["testing"] }
+tokio-util.workspace = true

@@ -156,6 +156,10 @@ pub struct Services {
     /// (`Backend::hold_watches`).
     #[cfg(feature = "testing")]
     pub watches: crate::holds::StepHolds<crate::holds::WatchStep>,
+    /// The step a test holds a call's permission check at
+    /// (`Backend::hold_permissions`).
+    #[cfg(feature = "testing")]
+    pub permissions: crate::holds::StepHolds<crate::holds::PermissionStep>,
     /// The authorities the plugins' outbound requests trust besides the
     /// system's, for a test's HTTPS servers.
     #[cfg(feature = "testing")]
@@ -486,6 +490,8 @@ impl Services {
             retries: crate::holds::StepHolds::default(),
             #[cfg(feature = "testing")]
             watches: crate::holds::StepHolds::default(),
+            #[cfg(feature = "testing")]
+            permissions: crate::holds::StepHolds::default(),
             #[cfg(feature = "testing")]
             web_roots: settings.web_roots,
         })

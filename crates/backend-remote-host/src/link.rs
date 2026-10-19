@@ -520,7 +520,7 @@ impl<E: Clone, C> Shared<E, C> {
         self.bump();
     }
 
-    fn hint(&self, invocation: String, hint: Option<String>) {
+    pub(crate) fn hint(&self, invocation: String, hint: Option<String>) {
         let mut state = self.state.borrow_mut();
         if state.end.is_some() {
             return;

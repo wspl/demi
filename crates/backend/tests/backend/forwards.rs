@@ -28,7 +28,7 @@ use demi_runner_protocol::wire::{self, ArtifactOwner, Inbound, Outbound, StreamA
 use crate::conversations::{FIRST, Socket};
 use crate::runners::{RawRunner, hello};
 use crate::permissions::{categories, decide, permissions};
-use crate::subagents::{Scripts, say, shell, tree_on};
+use crate::subagents::{Scripts, background, say, tree_on};
 use crate::support::{Harness, Session, SyncChannel, TestBackend, pattern};
 
 /// A TCP server on 127.0.0.1 that sends back what each connection sends,
@@ -290,9 +290,8 @@ async fn a_forward_goes_direct_once_the_two_runners_peer_connected() {
     drop((listen, connect));
 }
 
-const REFUSED: &str = "this conversation needs the user's permission to manage port forwards; the request was sent to the user, and you will be told when the user decides";
-
-// Several seconds: a real device runs the shell jobs of two turns.
+// Several seconds: a real device runs a shell job that waits for the
+// user's answer, and the turns its end and the decision wake.
 #[tokio::test]
 async fn adding_and_removing_a_forward_from_a_conversation_needs_manage_port_forwards() {
     let scripts = Arc::new(Scripts::default());
@@ -307,46 +306,49 @@ async fn adding_and_removing_a_forward_from_a_conversation_needs_manage_port_for
         id = device.id()
     );
 
+    // Listing needs no permission; the add waits for the user's answer,
+    // and once allowed the rest of the script runs under the grant.
     scripts.root(
         FIRST,
         vec![
-            shell(
+            background(
                 "t1",
-                &format!("demi host forward list; demi host forward remove echo; echo exit=$?; {add}; echo exit=$?"),
+                &format!(
+                    "demi host forward list; {add} && demi host forward list && demi host forward list --json && demi host forward remove echo"
+                ),
             ),
             say("I asked the user"),
+            say("done"),
+            say("done"),
         ],
     );
     socket.chat("m1", "Forward the echo server").await;
     let ran = scripts.asked(|session| session == FIRST).pop().unwrap();
     // An empty list is its header row; listing needs no permission.
     assert!(ran.contains("output:\\nID  NAME  LISTEN  CONNECT  STATE\\n"), "listing needs no permission: {ran}");
-    assert!(ran.contains(&format!("demi host forward remove: {REFUSED}")), "{ran}");
-    assert!(ran.contains(&format!("demi host forward add: {REFUSED}")), "{ran}");
-    assert!(!ran.contains("exit=0"), "{ran}");
+    assert!(
+        ran.contains("waiting for the user's permission to manage port forwards; its end will report to you, so do not run it again"),
+        "{ran}"
+    );
     let forwards = backend.get("/api/port-forwards", Some(&master)).await;
     assert_eq!(forwards.json::<serde_json::Value>()["forwards"], json!([]), "nothing was added");
     let asked = permissions(&backend, &master, FIRST).await;
-    assert_eq!(asked.requests.len(), 1, "the newer command's request replaced the first: {asked:?}");
+    assert_eq!(asked.requests.len(), 1, "{asked:?}");
     let request = &asked.requests[0];
     assert_eq!(request.command(), add);
     assert_eq!(categories(request)[0].id, "host.forward");
     assert_eq!(categories(request)[0].action.as_deref(), Some("manage port forwards"));
 
-    scripts.root(
-        FIRST,
-        vec![
-            shell(
-                "t2",
-                &format!("{add} && demi host forward list && demi host forward list --json && demi host forward remove echo"),
-            ),
-            say("done"),
-        ],
-    );
     let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
-    let ran = scripts.asked(|session| session == FIRST).pop().unwrap();
+    let ran = crate::permissions::settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage port forwards.", "(t1) ended with exit code 0"],
+    )
+    .await;
     // The new forward as labelled lines, then a row of the list and its
     // JSON, each Host by its name.
     let (id, name) = (device.id(), &device.device.name);

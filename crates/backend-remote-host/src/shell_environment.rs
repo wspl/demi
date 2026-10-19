@@ -469,6 +469,7 @@ impl RemoteShellEnvironment {
                         self.context().await,
                         Some(caller),
                         self.0.options.commands.clone(),
+                        running.stop.clone(),
                     );
                     // The runner's following of the job is unknown.
                     Ok(self.follow(&command, job, false, &running, &record).await)
@@ -606,6 +607,7 @@ impl RemoteShellEnvironment {
                 commands: self.0.options.commands.clone(),
                 stdin: None,
                 stdout: None,
+                stop: running.stop.clone(),
             })
             .await
             .map_err(|error| error.message)?;
@@ -1068,6 +1070,11 @@ impl ShellEnvironment for RemoteShellEnvironment {
             .flatten()
             .map(|job| job.outliving())
             .unwrap_or_default()
+    }
+
+    fn hint(&self, command: &CommandId) -> Option<String> {
+        // A command the environment does not hold gives no line.
+        self.running_job(command).ok().flatten()?.running_hint()
     }
 
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable> {

@@ -21,23 +21,24 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
 
 1. The command's leaf declares the category `skills.manage`, Manage Skills.
    This conversation has no grant of it, so the backend's dispatch records a
-   **permission request** and ends the call before any handler runs. The
-   command exits 1 at once and prints:
+   **permission request** and holds the call before any handler runs: the
+   command waits for the user's answer, as a command waits for its work.
+   Nothing is fetched or changed while it waits. When the `shell` call's
+   window passes, its result says the command still runs and why:
 
    ```text
-   demi skills add: this conversation needs the user's permission to manage
-   skills; the request was sent to the user, and you will be told when the
-   user decides
+   status: running
+   commandId: 31
+   waiting for the user's permission to manage skills; its end will report
+   to you, so do not run it again
    ```
 
-   Nothing was fetched or changed. The `shell` call returns as for any
-   failed command, and the agent tells the user what it is waiting for and
-   ends its turn.
+   The agent tells the user what it is waiting for and ends its turn.
 2. Every page of the user shows a yellow dot on the conversation's row in the
    sidebar. The conversation's page shows the card above its composer:
 
    ```text
-     ... transcript: the failed command, the agent's answer ...
+     ... transcript: the waiting command, the agent's answer ...
 
      +---------------------------------------------------------------+
      | Allow this conversation to manage skills?                     |
@@ -59,28 +60,24 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
    ```
 
 3. The user selects **Allow for This Conversation**. The backend records the
-   grant, and the dot and the card leave every page. It then delivers a
-   message to the agent that asked, the way a subagent's message reaches its
-   parent: the root is idle, so the message wakes it with a new turn. The
-   model reads:
-
-   ```text
-   The user allowed this conversation to manage skills; the command
-   `demi skills add vercel-labs/agent-skills --skill web-design-guidelines`
-   can now run.
-   ```
-
-4. The agent runs the command again. The grant is there, so the dispatch
-   passes it to `plugin-skills`, which fetches the repository, records the
-   source and turns the skill on.
+   grant, and the dot and the card leave every page. It delivers the
+   decision's message to the agent that asked
+   ([The decision's message](#the-decisions-message)), and the call that
+   waited goes on: the dispatch passes it to `plugin-skills`, which fetches
+   the repository, records the source and turns the skill on.
+4. The command's end reports to the agent as any command's end does
+   ([Command reports](shell-tool.md#command-reports)), so the agent has the
+   result without running the command again.
 5. Later in the same conversation, a subagent runs `demi skills enable
    vercel-labs/agent-skills --skill react-best-practices`. The grant covers
    the whole conversation, so the command runs without a request.
 
-Had the user selected **Deny**, the agent would have received a message
-saying that the user denied it, in the same way, and nothing else would have
-been recorded: the next `demi skills add` raises a
-new request.
+Had the user selected **Deny**, the waiting command would have ended with
+exit status 1 and `demi skills add: the user denied this conversation
+permission to manage skills; the command was not run`, reported as any
+command's end is, the agent would have received the decision's message in
+the same way, and nothing else would have been recorded: the next `demi
+skills add` raises a new request.
 
 ## Categories
 
@@ -106,7 +103,7 @@ category that none of its groups declares, a category declared twice, and a
 can act only on the Host and never on Demi itself, and its dispatch on the
 runner has no grants to check. The help of a leaf with a `permission` says
 that the command needs the user's permission in each conversation, and that
-the first attempt asks the user and fails.
+without it the command asks the user and waits for the answer.
 
 A category is what the user decides on, so it never changes meaning while a
 grant of it may exist: a group that needs a broader power declares a new
@@ -130,13 +127,30 @@ never sees a permission.
 - **A grant of each in the call's conversation**, whichever agent of the
   tree runs it: the call is dispatched.
 - **A category without a grant**: the backend records one request for every
-  category the call needs and the conversation lacks, ends the call with exit
-  status 1 and the message `<command>: this conversation needs the user's
-  permission to <action>; the request was sent to the user, and you will be
-  told when the user decides`, the actions joined with "and", and dispatches
-  nothing. Nothing waits: the command ends as
-  any failing command does, so the observation window, the turn and the
-  Host's idle rules are those of any command.
+  category the call needs and the conversation lacks, and holds the call
+  until the request is decided; nothing is dispatched meanwhile. The waiting
+  command is a running command: the observation window, the turn, the
+  Running window, Stop and the Host's idle rules are those of any running
+  command. Its end, whichever way it comes, reports to the agent as any
+  command's end does ([Command reports](shell-tool.md#command-reports)):
+  - **Allowed**: the call is dispatched as if the grant had been there, and
+    ends as the command ends.
+  - **Denied**: the call ends with exit status 1 and `<command>: the user
+    denied this conversation permission to <action>; the command was not
+    run`, the actions joined with "and".
+  - **Replaced** by a newer request ([Replacement](#requests)): the call ends
+    with exit status 1 and `<command>: a newer run of this command asks the
+    user instead; this one was not run`.
+
+  A call that ends before the decision, stopped or lost with a restart,
+  leaves its request as it is: the user can still decide it, and an Allow
+  grants the category for the commands that come later.
+
+  While the command waits, the `shell` call's result once its window passes,
+  and every report of its progress, say so beside its status, since a model
+  that saw it merely running might run it again: `waiting for the user's
+  permission to <action>; its end will report to you, so do not run it
+  again`.
 
 ## Requests
 
@@ -177,13 +191,14 @@ message](subagents.md#communication) from the user, admitted through the same
 entry as a subagent's message, so it follows the same delivery rules: it
 joins a running turn at its next continuation boundary, and otherwise wakes
 the agent with a continuation ([Delivery and
-scheduling](subagents.md#delivery-and-scheduling)). Its event is
+scheduling](subagents.md#delivery-and-scheduling)). The user sees it as the
+receipt row ([What the user sees](#what-the-user-sees)). Its event is
 `permission`, with the outcome `allowed` or `denied` and the actions of the
 request's categories, joined with "and", and its content one of:
 
 ```text
-The user allowed this conversation to <action>; the command `<command>` can now run.
-The user denied this conversation permission to <action>; the command `<command>` was not run.
+The user allowed this conversation to <action>.
+The user denied this conversation permission to <action>.
 ```
 
 The rules of that entry hold with one exception: deciding is the user's own
@@ -201,10 +216,10 @@ decided requests it still holds when it starts, so a decision made just
 before a restart still reaches the agent. Archiving withdraws decided
 requests whose message was not delivered with the others.
 
-When the agent that asked is closed, such as a subagent that ended its round
-after reporting the refusal, the message goes to its nearest live ancestor,
-the root at last, which owns the work the subagent was doing. The message then
-names the subagent that asked.
+When the agent that asked is closed, such as a subagent whose call was
+stopped and which ended its round, the message goes to its nearest live
+ancestor, the root at last, which owns the work the subagent was doing. The
+message then names the subagent that asked.
 
 ### Hosts
 
@@ -218,8 +233,10 @@ the conversation, a device's id, a paired device's name, then `Cloud`, and
 needs that host when the conversation may not reach it. `demi host pair`
 always brings a host the conversation may not reach, since the computer is
 not yet paired, and names it by its pairing code: Allow lets the
-conversation pair that code, so the agent's next `demi host pair` with it is
-dispatched, and the device it pairs joins the list. Another code asks again. The request holds the host as `host`; no command
+conversation pair that code, so the `demi host pair` that waited for it is
+dispatched and uses it, and the device it pairs joins the list; when that
+call ended before the decision, the agent's next `demi host pair` with the
+code uses it instead. Another code asks again. The request holds the host as `host`; no command
 needs a category and a host at once.
 
 A request for a host says *Allow this conversation to reach build-box?*, and
@@ -318,19 +335,20 @@ calls a real model.
 
 | Situation | Required observation |
 | --- | --- |
-| An agent runs `demi skills add` in a conversation without a grant | The command exits 1 with the standard message, at once; the plugin receives no command request; the request holds the command line and the agent; the summary counts one request on every page |
-| The user allows it | The grant is stored, the request is gone, the summary counts none; the root, idle, starts a turn whose input is the allowed message with the command line |
+| An agent runs `demi skills add` in a conversation without a grant | The command keeps running; the plugin receives no command request; the request holds the command line and the agent; the summary counts one request on every page; the `shell` result, once its window passes, carries the waiting line |
+| The user allows it | The grant is stored, the request is gone, the summary counts none; the plugin runs the waiting call once; the allowed message, without any line saying the command can run, and the command's end both reach the agent |
 | The decision arrives while the asking agent runs a tool | The message enters its transcript at the next continuation boundary, and the next provider request carries it |
-| The agent runs the command again | The plugin runs it |
 | A second `demi skills` change in the same conversation, by a subagent | It runs without a request |
 | The same command in another conversation | It raises a request |
-| The user denies it | The agent receives the denied message; no grant is stored; the next attempt raises a new request |
+| The user denies it | The command ends with exit status 1 and the denied line; the plugin receives nothing; the agent receives the denied message; no grant is stored; the next attempt raises a new request |
 | `demi host move build-box /srv/app` to a host the conversation may not reach; later `demi host move Cloud /home/demi/app` back, `demi host attach build-box` | The first asks *reach build-box?*; once allowed, the later ones ask nothing |
 | `demi host pair <code>` | Asks *pair a computer and reach it?*; once allowed, the same command pairs the computer and the device joins the list; a second computer's code asks again |
 | `demi host devices` | Lists without asking |
-| The agent runs the command twice before a decision | One request, with the newer command line; a subagent's request of the same category stays beside it |
-| Two subagents' requests of Manage Skills and one of another category; the user allows the first | Both subagents receive the allowed message; the other request stays |
-| A subagent asked and closed before the decision | Its parent receives the message, naming the subagent |
+| The agent runs the command twice before a decision | One request, with the newer command line; the first command ends with the replaced line; a subagent's request of the same category stays beside it |
+| Two subagents' requests of Manage Skills and one of another category; the user allows the first | Both subagents' calls run and both receive the allowed message; the other request stays |
+| The waiting command is stopped, then the user allows | The plugin receives nothing; the request stays until the Allow; the grant is stored and the allowed message reaches the agent |
+| The user stops the command and allows it at the same moment | The plugin receives nothing: a stopped call is never dispatched |
+| A subagent asked, its call was stopped and it closed before the decision | Its parent receives the message, naming the subagent |
 | The backend restarts with a request undecided | After the start the request is listed; a decision then reaches the agent |
 | The backend stops after a decision is stored and before its message is admitted | At the start, the message is delivered once |
 | A product command with a `permission`, in a test command set | It passes the same check as a plugin's |

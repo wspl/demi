@@ -18,9 +18,9 @@ use serde_json::{Value, json};
 use crate::accounts::{awaited, ended, start_login};
 use crate::agent_profiles::{assert_shows, last_root};
 use crate::conversations::{FIRST, Socket};
-use crate::permissions::{decide, permissions};
+use crate::permissions::{decide, permissions, settled};
 use crate::providers::served;
-use crate::subagents::{Scripts, say, shell, tree_among};
+use crate::subagents::{Scripts, background, say, tree_among};
 use crate::support::Harness;
 
 /// The key the agent pipes in; no output may show it.
@@ -94,13 +94,33 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // A read needs no permission; the first change asks for it.
+    // A read needs no permission; the first change asks for it and waits
+    // for the answer. Allowed, the entry joins incomplete, the search
+    // fills a model, and the key piped from a file makes it ready; a
+    // subscription's list and a key of two lines are refused with the
+    // page's words.
     let add = "demi providers add --vendor google";
     scripts.root(
         FIRST,
         vec![
-            shell("t1", &format!("demi providers list; {add}")),
+            background(
+                "t1",
+                &[
+                    "demi providers list",
+                    add,
+                    "demi providers models search gemini flash",
+                    "demi providers models add Google google/gemini-3.8-flash",
+                    "demi providers edit Google --api-key-stdin < key.txt",
+                    "demi providers show Google --json",
+                    "demi providers list --json",
+                    "demi providers models add 'Claude Code' google/gemini-3.8-flash",
+                    "printf 'two\\nlines\\n' | demi providers edit Google --api-key-stdin",
+                ]
+                .join("\n"),
+            ),
             say("asked"),
+            say("added"),
+            say("added"),
         ],
     );
     socket.chat("m1", "Add Google").await;
@@ -111,7 +131,7 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     assert_shows(&asked, "  Claude Code  subscription  ");
     assert_shows(
         &asked,
-        "demi providers add: this conversation needs the user's permission to manage providers; the request was sent to the user, and you will be told when the user decides",
+        "waiting for the user's permission to manage providers; its end will report to you, so do not run it again",
     );
     let requested = permissions(&backend, &master, FIRST).await;
     assert_eq!(requested.requests.len(), 1, "{requested:?}");
@@ -129,33 +149,16 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
         )
     );
 
-    // Allowed: the entry joins incomplete, the search fills a model, and
-    // the key piped from a file makes it ready; a subscription's list and
-    // a key of two lines are refused with the page's words.
-    scripts.root(
-        FIRST,
-        vec![
-            shell(
-                "t2",
-                &[
-                    add,
-                    "demi providers models search gemini flash",
-                    "demi providers models add Google google/gemini-3.8-flash",
-                    "demi providers edit Google --api-key-stdin < key.txt",
-                    "demi providers show Google --json",
-                    "demi providers list --json",
-                    "demi providers models add 'Claude Code' google/gemini-3.8-flash",
-                    "printf 'two\\nlines\\n' | demi providers edit Google --api-key-stdin",
-                ]
-                .join("\n"),
-            ),
-            say("added"),
-        ],
-    );
     let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
-    let asked = last_root(&scripts);
+    let asked = settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage providers.", "(t1) ended with exit code"],
+    )
+    .await;
     for shown in [
         "Status: Needs an API key\n",
         // A search match's numbers are exact, never 1M or 65.5K.

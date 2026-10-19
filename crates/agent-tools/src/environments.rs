@@ -413,6 +413,10 @@ mod tests {
             Vec::new()
         }
 
+        fn hint(&self, _: &CommandId) -> Option<String> {
+            None
+        }
+
         fn unreachable(&self, _: &CommandId) -> Option<demi_host_interface::Unreachable> {
             None
         }

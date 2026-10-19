@@ -154,8 +154,8 @@ pub struct Shard {
     /// Each conversation's watch for its tree to be idle, which makes the
     /// changes its agent asked for then.
     pending_watches: PendingWatches,
-    /// The commands that wait for the answers to their credential requests.
-    credential_waits: demi_backend_permissions::Waits,
+    /// The calls that wait for the answers to their requests.
+    waits: demi_backend_permissions::Waits,
     /// What rearms the expiry of the user's credentials.
     credential_expiry: credentials::CredentialExpiry,
     /// What the user's runners announced of their forwards, and the peers
@@ -232,7 +232,7 @@ impl Shard {
             side_revisions: demi_backend_page_sync::Revisions::default(),
             project_files,
             pending_watches: PendingWatches::default(),
-            credential_waits: demi_backend_permissions::Waits::default(),
+            waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
             forwards: port_forwards::ForwardsHeld::default(),
             automations: crate::automations::Automations::default(),

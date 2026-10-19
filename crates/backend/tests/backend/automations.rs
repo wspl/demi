@@ -25,7 +25,7 @@ use sha2::Sha256;
 
 use crate::conversations::{FIRST, Socket, send, summaries, summary, transcript};
 use crate::permissions::{categories, permissions};
-use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
+use crate::subagents::{Scripts, WAIT, background, say, shell, tree_on};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, elapse, eventually};
 
 async fn automations(backend: &TestBackend, session: &Session) -> Vec<AutomationDto> {
@@ -498,15 +498,15 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // The first create asks the user, and creates nothing.
+    // The create asks the user and creates nothing while it waits; allowed,
+    // it creates the automation.
     let create = "demi automation create --name 'Morning summary' --daily 09:00 --days mon-fri --tz Asia/Shanghai <<< 'Summarize the open issues.'";
-    scripts.root(FIRST, vec![shell("t1", create), say("asked")]);
+    scripts.root(FIRST, vec![background("t1", create), say("asked"), say("created"), say("created")]);
     socket.chat("m1", "Summarize the open issues every weekday at 9").await;
     let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
     let ids: Vec<&str> = categories(&request).iter().map(|category| category.id.as_str()).collect();
     assert_eq!(ids, ["automation.manage"]);
     assert!(automations(&backend, &master).await.is_empty());
-    scripts.root(FIRST, vec![say("allowed")]);
     let allowed = backend
         .post(
             &format!("/api/conversations/{FIRST}/permissions/requests/{}", request.id()),
@@ -515,10 +515,18 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
         )
         .await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
-
-    scripts.root(FIRST, vec![shell("t2", create), say("created")]);
-    socket.chat("m2", "Go ahead").await;
+    crate::permissions::settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to manage automations.", "(t1) ended with exit code 0"],
+    )
+    .await;
+    // A socket of its own, which no frame of the woken turns precedes.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root_anew(FIRST, Vec::new());
     let listed = automations(&backend, &master).await;
     assert_eq!(listed.len(), 1);
     let automation = &listed[0];

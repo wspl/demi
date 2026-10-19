@@ -102,7 +102,7 @@ impl PermissionShard for Shard {
     }
 
     fn waits(&self) -> &Waits {
-        &self.credential_waits
+        &self.waits
     }
 
     fn credential_seal(&self) -> Arc<dyn CredentialSeal> {
@@ -119,6 +119,16 @@ impl PermissionShard for Shard {
 
     fn asked(&self, conversation: &ConversationId, request: PermissionRequestId, ask: PushAsk) {
         self.notify_asked(conversation, request, ask);
+    }
+
+    fn raised(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async move {
+            #[cfg(feature = "testing")]
+            self.services()
+                .permissions
+                .pass(crate::holds::PermissionStep::Raised)
+                .await;
+        })
     }
 }
 

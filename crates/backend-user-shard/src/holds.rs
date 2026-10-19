@@ -1,8 +1,9 @@
 //! A test's hold on a flow at one of its steps, for the scenarios that race
 //! something against a flow while it waits: the runners' hellos
 //! (`HelloStep`), the pages' synchronization channels (`SyncStep`), a
-//! failed turn's resume at its retry time (`RetryStep`) and a change
-//! watch's check (`WatchStep`). From
+//! failed turn's resume at its retry time (`RetryStep`), a change
+//! watch's check (`WatchStep`) and a call's permission check
+//! (`PermissionStep`). From
 //! `StepHolds::hold` until the hold is released or dropped, whatever passes
 //! the held step waits there.
 
@@ -121,4 +122,13 @@ pub enum WatchStep {
     /// The check is over: it recorded what it found and when it tried, and
     /// no longer counts as under way; the scheduler has not looked again.
     Ended,
+}
+
+/// Where a call's permission check waits while a test holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionStep {
+    /// The call's request is stored and its pages told, and the call has
+    /// not begun to wait for the user's answer: an allow decided now finds
+    /// it on its way.
+    Raised,
 }

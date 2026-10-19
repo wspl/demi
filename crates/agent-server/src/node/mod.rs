@@ -886,7 +886,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));
                 let title = environment.title(command).unwrap_or_default();
-                return Some(progress_report(command, &title, running_ms, idle_ms, interval));
+                let hint = environment.hint(command);
+                return Some(progress_report(command, &title, running_ms, idle_ms, interval, hint));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
                 return None;

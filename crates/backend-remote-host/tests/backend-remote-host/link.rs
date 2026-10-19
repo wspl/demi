@@ -65,6 +65,7 @@ fn job_start(script: &str) -> JobStart {
         commands: None,
         stdin: None,
         stdout: None,
+        stop: CancellationToken::new(),
     }
 }
 
@@ -2780,6 +2781,70 @@ async fn a_command_stopped_with_its_call_ends_as_stopped() {
     ));
 }
 
+/// A Stop of a command stops its waiting rpc calls at once, before its
+/// runner hears of the stop: an answer that arrives in that round trip,
+/// such as the user's Allow of a call held for permission, finds the call
+/// stopped, and the call never acts (`permissions.md` § The check). The
+/// handler here holds as the permission check does: it waits for its
+/// release, then acts only when its call still goes on. Before, the call
+/// stopped only when the runner answered the kill, and the call acted. A
+/// few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_call_waiting_when_its_command_is_stopped_never_acts_on_a_later_release() {
+    let waiting = Rc::new(tokio::sync::Notify::new());
+    let release = Rc::new(tokio::sync::Notify::new());
+    // Whether the call acted, once its handler decided.
+    let (decided, acted) = tokio::sync::oneshot::channel();
+    let decided = Rc::new(RefCell::new(Some(decided)));
+    let mut commands = CommandSet::new();
+    let handler = TypedRpc::new({
+        let (waiting, release) = (waiting.clone(), release.clone());
+        move |_: Call<Map<String, Value>>, port: RpcPort| {
+            let (waiting, release, decided) = (waiting.clone(), release.clone(), decided.clone());
+            async move {
+                waiting.notify_one();
+                release.notified().await;
+                let acts = !port.is_cancelled();
+                if let Some(decided) = decided.borrow_mut().take() {
+                    // The test reads it before it ends.
+                    let _ = decided.send(acts);
+                }
+                Ok(u8::from(!acts))
+            }
+        }
+    });
+    commands
+        .register(
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
+                .leaf(LeafBuilder::rpc("live", "Live input.").bind(handler)),
+        )
+        .unwrap();
+    let device = TestDevice::new(CommandPolicy::new(commands));
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let started = shell
+        .exec(exec("probe live"), CancellationToken::new())
+        .await
+        .unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    link.send(rpc_call(&job_id, "call")).await;
+    tokio::time::timeout(Duration::from_secs(10), waiting.notified())
+        .await
+        .expect("the call waits within the hang guard");
+
+    // The runner answers neither the kill nor with a cancel of the call.
+    shell.abort(&started.command_id).await.unwrap();
+    release.notify_one();
+
+    let acted = tokio::time::timeout(Duration::from_secs(10), acted)
+        .await
+        .expect("the handler decides within the hang guard")
+        .unwrap();
+    assert!(!acted, "a stopped call acted on its release");
+}
+
 /// A stop while the runner's connection is away reaches the job once the
 /// runner is back (`runner.md` § Cancellation and completion): meanwhile
 /// the command shows stopping and still runs; the new connection carries
@@ -2874,7 +2939,7 @@ async fn a_recorded_job_not_listed_after_a_restart_is_lost_for_what_the_record_t
             },
         );
         let host = device.host("/work", Admission::Free);
-        let adopted = host.adopt_job(job, Some(test_command_context()), Some(caller()), None);
+        let adopted = host.adopt_job(job, Some(test_command_context()), Some(caller()), None, CancellationToken::new());
         assert_eq!(adopted.end().await.status, ProcessEnd::Lost(reason.into()));
     }
 }
