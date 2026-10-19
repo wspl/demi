@@ -285,21 +285,30 @@ case "$target" in
     exit 1
     ;;
 esac
-instance=${DEMI_INSTALLATION_ID:-$registration}
-case "$instance" in
-  ''|*[!a-zA-Z0-9_-]*)
-    echo 'Invalid installation ID' >&2
-    exit 1
-    ;;
-esac
-state="$HOME/.demi/instances/$instance"
-bin="$state/releases/$release"
+# The installation's directory: the one DEMI_HOME names, else this backend's
+# own under ~/.demi/instances (runner.md § Installation, pairing and
+# removal). Everything below, the launcher, the runner's service
+# registration and its removal command, finds the installation from here.
+if [ -n "${DEMI_HOME:-}" ]; then
+  state=$DEMI_HOME
+else
+  case "$registration" in
+    ''|*[!a-zA-Z0-9_-]*)
+      echo 'Invalid installation ID' >&2
+      exit 1
+      ;;
+  esac
+  state="$HOME/.demi/instances/$registration"
+fi
 # The installation's files are the user's alone; the runner works with the
 # mask of the shell this installer runs in (runner.md § Builtins that act on
 # a process).
 user_umask=$(umask)
 umask 077
 mkdir -p "$state/releases"
+# Absolute, as the runner and the lines this installer shows name it.
+state=$(CDPATH= cd -- "$state" && pwd)
+bin="$state/releases/$release"
 if [ -f "$state/backend-url" ]; then
   IFS= read -r existing_backend < "$state/backend-url"
   if [ "$existing_backend" != "$backend" ]; then
@@ -530,10 +539,19 @@ switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToSt
 # A server's release may lack this platform's runner, as a development
 # build of other targets does; the shell installer refuses in the same words.
 if (-not $demiArtifacts.ContainsKey($demiTarget)) { throw "This server has no Demi runner for $demiTarget." }
-$demiInstance = if ($env:DEMI_INSTALLATION_ID) { $env:DEMI_INSTALLATION_ID } else { $demiRegistration }
-if ($demiInstance -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Invalid installation ID' }
 $demiHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath('UserProfile') }
-$demiState = Join-Path $demiHome ".demi/instances/$demiInstance"
+# The installation's directory: the one DEMI_HOME names, else this backend's
+# own under ~/.demi/instances (runner.md § Installation, pairing and
+# removal). Everything below, the launcher, the runner's service
+# registration and its removal command, finds the installation from here.
+if ($env:DEMI_HOME) {
+  # Absolute, as the runner and the lines this installer shows name it; a
+  # relative one is read against this session's location.
+  $demiState = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:DEMI_HOME)
+} else {
+  if ($demiRegistration -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Invalid installation ID' }
+  $demiState = Join-Path $demiHome ".demi/instances/$demiRegistration"
+}
 $demiReleases = Join-Path $demiState 'releases'
 $demiBin = Join-Path $demiReleases $demiRelease
 $demiExe = Join-Path $demiBin 'demi-runner.exe'

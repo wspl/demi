@@ -161,8 +161,8 @@ impl Installations {
         state
     }
 
-    /// The installation state the installer makes under the installation
-    /// ID `id`.
+    /// The installation state `.demi/instances/<id>` in the home, which an
+    /// installer makes there when `DEMI_HOME` names it.
     fn state_named(&self, id: &str) -> PathBuf {
         let state = self.home.path().join(".demi/instances").join(id);
         self.runners.watch(&state);
@@ -232,8 +232,9 @@ impl Installations {
             .unwrap()
     }
 
-    /// A shell for an installer, with the home and without an installation
-    /// ID; the runners it starts call their device [`DEVICE`].
+    /// A shell for an installer, with the home and without a `DEMI_HOME`,
+    /// such as the one a job of a runner inherits; the runners it starts
+    /// call their device [`DEVICE`].
     fn shell(&self) -> tokio::process::Command {
         self.program("sh")
     }
@@ -249,7 +250,7 @@ impl Installations {
                 service_manager_stand_in(self.home.path()),
             )
             .env("SHELL", login_shell_stand_in(self.home.path()))
-            .env_remove("DEMI_INSTALLATION_ID");
+            .env_remove("DEMI_HOME");
         shell
     }
 }
@@ -563,12 +564,8 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
         .home
         .path()
         .join(format!("install-{}.sh", b.address().port()));
-    let registration_a = sha(format!("{}/", a.url).as_bytes());
     let collision = installations
-        .run(
-            &script_b,
-            &[("DEMI_INSTALLATION_ID", registration_a.as_str())],
-        )
+        .run(&script_b, &[("DEMI_HOME", state_a.to_str().unwrap())])
         .await;
     assert_eq!(collision.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&collision.stderr).contains("another backend"));
@@ -954,7 +951,7 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     let installations = Installations::new();
     let state = installations.state_named("elsewhere");
     installations
-        .install_with(&backend, &master, &[("DEMI_INSTALLATION_ID", "elsewhere")])
+        .install_with(&backend, &master, &[("DEMI_HOME", state.to_str().unwrap())])
         .await;
     let devices = backend.devices(&master).await;
     let [device] = devices.as_slice() else {
@@ -984,6 +981,43 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     assert!(again.status.success(), "{again:?}");
     assert!(String::from_utf8_lossy(&again.stdout).contains("running already"), "{again:?}");
     assert_eq!(active(&state)["endpoint"], endpoint);
+    drop(installations);
+    backend.close().await;
+}
+
+/// An installer run with `DEMI_HOME` installs the runner into the directory
+/// it names, not under `~/.demi/instances` (`runner.md` § Installation,
+/// pairing and removal): the removal command it shows and the start command
+/// the paired device shows name that directory's launcher.
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it.
+#[tokio::test]
+async fn an_installer_installs_into_the_directory_demi_home_names() {
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.home.path().join("demi-elsewhere");
+    installations.runners.watch(&state);
+    // Watched too, so that a runner installed there by mistake is stopped.
+    let default = installations.state(&format!("{}/", backend.url));
+    let printed = installations
+        .install_with(&backend, &master, &[("DEMI_HOME", state.to_str().unwrap())])
+        .await;
+    says_paired(&printed, &state);
+    assert!(state.join("runner.log").is_file(), "{printed}");
+    assert!(!default.exists(), "{printed}");
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    backend.until_online(&master, device.id.as_str(), true).await;
+    let devices = backend.devices(&master).await;
+    assert_eq!(
+        devices[0].start_command.as_deref(),
+        Some("~/demi-elsewhere/run start")
+    );
     drop(installations);
     backend.close().await;
 }
