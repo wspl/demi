@@ -226,6 +226,21 @@ pub fn light_bytes<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> usize {
         .sum()
 }
 
+/// The fewest bytes `block` takes in a page's light form, whichever of its
+/// lists of changed files the page keeps on it ([`light`]): a reader that
+/// adds these up over a request's blocks knows the request does not fit a
+/// room once they pass it, without reading its later blocks.
+pub fn least_light_bytes(block: &Block) -> usize {
+    let mut light = light_block(block);
+    if let Block::ToolCall(call) = &mut light
+        && let Some(ToolView::Shell(view)) = &mut call.view
+    {
+        view.run_files = None;
+        view.request_files = None;
+    }
+    serde_json::to_vec(&light).map_or(0, |json| json.len())
+}
+
 /// The requests of a transcript of `length` blocks whose `user` blocks are
 /// at `users`, in order: each from a `user` block to the next, the blocks
 /// before the first belonging to the first request (`web-api-conversations.md` § Pages).
@@ -256,13 +271,16 @@ pub enum PageAt {
 
 /// The blocks of the page `at` among `requests`, as a range of indices:
 /// whole requests from the one `at` names, adding requests while the page
-/// stays within [`PAGE_BYTES`], `size` giving a request's bytes; at least
-/// one request. `Around` adds the request after, then the one before, in
-/// turn. An index past the requests' ends answers an empty page there.
+/// stays within [`PAGE_BYTES`]; at least one request. `size` gives a
+/// request's bytes, or none when they are more than the room it is given,
+/// what the page has left, so a reader can stop reading a request that
+/// cannot fit; the first request has unbounded room. `Around` adds the
+/// request after, then the one before, in turn. An index past the
+/// requests' ends answers an empty page there.
 pub fn page(
     requests: &[Range<usize>],
     at: PageAt,
-    mut size: impl FnMut(Range<usize>) -> usize,
+    mut size: impl FnMut(Range<usize>, usize) -> Option<usize>,
 ) -> Range<usize> {
     let Some(last) = requests.last() else {
         return 0..0;
@@ -278,7 +296,8 @@ pub fn page(
         PageAt::Around(index) => (holding(index).min(requests.len() - 1), true, true),
     };
     let (mut low, mut high) = (first, first);
-    let mut bytes = size(requests[first].clone());
+    // The first request is kept whatever its size.
+    let mut bytes = size(requests[first].clone(), usize::MAX).unwrap_or(usize::MAX);
     let (mut down, mut up) = (toward_start, toward_end);
     // Around a block the page grows after it first, then before.
     let mut next_up = toward_end;
@@ -298,10 +317,12 @@ pub fn page(
             }
             continue;
         };
-        let more = size(requests[candidate].clone());
-        if bytes + more > PAGE_BYTES {
+        let fits = PAGE_BYTES
+            .checked_sub(bytes)
+            .and_then(|room| size(requests[candidate].clone(), room).filter(|&more| more <= room));
+        let Some(more) = fits else {
             break;
-        }
+        };
         bytes += more;
         if grow_up {
             high = candidate;
@@ -344,8 +365,8 @@ pub fn latest_page_start_within(blocks: &[Block], whole: bool) -> usize {
         leading.start = first;
         requests.insert(0, 0..first);
     }
-    page(&requests, PageAt::Latest, |range| {
-        light_bytes(&blocks[range])
+    page(&requests, PageAt::Latest, |range, _| {
+        Some(light_bytes(&blocks[range]))
     })
     .start
 }

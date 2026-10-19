@@ -16,7 +16,7 @@
 //! which keep the media references.
 
 use std::collections::{BTreeMap, HashMap};
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -26,7 +26,7 @@ use demi_agent_store::{
     Placement, Rows, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
-use demi_conversation_socket_protocol::{BlockVersions, PageAt, light_bytes, page, requests};
+use demi_conversation_socket_protocol::{BlockVersions, PageAt, least_light_bytes, light_bytes, page, requests};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
@@ -1219,7 +1219,10 @@ pub(crate) fn path_blocks(
     range: Range<i64>,
 ) -> Result<Vec<Block>, StorageError> {
     let mut blocks = Vec::new();
-    each_block(connection, node, path, range, |_, block| blocks.push(block))?;
+    each_block(connection, node, path, range, |_, block| {
+        blocks.push(block);
+        ControlFlow::Continue(())
+    })?;
     Ok(blocks)
 }
 
@@ -1232,13 +1235,13 @@ pub fn agent_blocks(connection: &Connection, node: &NodeId, range: Range<usize>)
 
 /// Hands each block at the positions `range` of `node`'s path to `take` in
 /// order, with its position, decoded one at a time: exactly one row for each
-/// position of the range.
+/// position of the range, until `take` breaks, after which no row is read.
 fn each_block(
     connection: &Connection,
     node: &NodeId,
     path: &Path,
     range: Range<i64>,
-    mut take: impl FnMut(usize, Block),
+    mut take: impl FnMut(usize, Block) -> ControlFlow<()>,
 ) -> Result<(), StorageError> {
     let mut statement = connection
         .prepare_cached("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx")?;
@@ -1252,7 +1255,9 @@ fn each_block(
                 return Err(gap(node, position));
             }
             let text: String = row.get(1)?;
-            take(position, json("blocks", "block", &text)?);
+            if take(position, json("blocks", "block", &text)?).is_break() {
+                return Ok(());
+            }
             position += 1;
             expected += 1;
         }
@@ -1842,6 +1847,7 @@ pub fn search_texts(connection: &Connection) -> Result<Vec<IndexedAgent>, Storag
                     text,
                 });
             }
+            ControlFlow::Continue(())
         })?;
         agents.push(IndexedAgent { agent, version, messages });
     }
@@ -2008,26 +2014,41 @@ impl Transcript {
 
     /// Its entries at the indices `range`, all of which it holds.
     pub fn entries_in(&self, connection: &Connection, range: Range<usize>) -> Result<Vec<Entry>, StorageError> {
-        let (start, end) = (Value::Integer(count(range.start)), Value::Integer(count(range.end)));
-        let (sql, parameters): (String, Vec<Value>) = match self {
-            Self::Agent(node) => {
-                return Ok(agent_blocks(connection, node, range)?.into_iter().map(Entry::Block).collect());
-            }
-            Self::Shared { token } => (
-                format!(
-                    "SELECT entry.position, coalesce(row.block, copy.block), entry.steps FROM {LISTED}
-                     WHERE entry.token = ?1 AND entry.position >= ?2 AND entry.position < ?3
-                     ORDER BY entry.position"
-                ),
-                vec![Value::Text(token.as_str().to_owned()), start, end],
-            ),
-        };
-        let mut statement = connection.prepare(&sql)?;
-        let mut rows = statement.query(params_from_iter(parameters))?;
         let mut entries = Vec::with_capacity(range.len());
+        self.each_entry(connection, range, |entry| {
+            entries.push(entry);
+            ControlFlow::Continue(())
+        })?;
+        Ok(entries)
+    }
+
+    /// Hands its entries at the indices `range`, all of which it holds, to
+    /// `take` in order, decoded one at a time, until `take` breaks, after
+    /// which no entry is read.
+    fn each_entry(
+        &self,
+        connection: &Connection,
+        range: Range<usize>,
+        mut take: impl FnMut(Entry) -> ControlFlow<()>,
+    ) -> Result<(), StorageError> {
+        let token = match self {
+            Self::Agent(node) => {
+                let path = Path::read(connection, node.as_str())?;
+                return each_block(connection, node, &path, count(range.start)..count(range.end), |_, block| {
+                    take(Entry::Block(block))
+                });
+            }
+            Self::Shared { token } => token,
+        };
+        let mut statement = connection.prepare(&format!(
+            "SELECT entry.position, coalesce(row.block, copy.block), entry.steps FROM {LISTED}
+             WHERE entry.token = ?1 AND entry.position >= ?2 AND entry.position < ?3
+             ORDER BY entry.position"
+        ))?;
+        let mut rows = statement.query(params![token.as_str(), count(range.start), count(range.end)])?;
+        let mut at = range.start;
         while let Some(row) = rows.next()? {
             let index: i64 = row.get(0)?;
-            let at = range.start + entries.len();
             // A share's entry whose row or copy is gone holds no block.
             let entry = match (index == count(at), row.get::<_, Option<String>>(1)?, row.get::<_, Option<i64>>(2)?) {
                 (true, Some(text), None) => Entry::Block(json(self.table(), "block", &text)?),
@@ -2036,12 +2057,56 @@ impl Transcript {
                 }
                 _ => return Err(self.gap(at)),
             };
-            entries.push(entry);
+            at += 1;
+            if take(entry).is_break() {
+                return Ok(());
+            }
         }
-        if entries.len() != range.len() {
-            return Err(self.gap(range.start + entries.len()));
+        if at != range.end {
+            return Err(self.gap(at));
         }
-        Ok(entries)
+        Ok(())
+    }
+
+    /// What `json_extract` reads at each of `paths` in the block of its
+    /// entry at `index`, which it holds, without decoding the block: NULL
+    /// for a path the block lacks, and for every path of a run of steps.
+    fn extract_at(&self, connection: &Connection, index: usize, paths: &[&str]) -> Result<Vec<Value>, StorageError> {
+        let columns = |block: &str| {
+            (0..paths.len())
+                .map(|n| format!("json_extract({block}, ?{})", n + 3))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let (sql, key) = match self {
+            Self::Agent(node) => {
+                let path = Path::read(connection, node.as_str())?;
+                let Some((_, rows)) = path.segments(count(index)..count(index) + 1).pop() else {
+                    return Err(self.gap(index));
+                };
+                (
+                    format!("SELECT {} FROM blocks WHERE node_id = ?1 AND idx = ?2", columns("block")),
+                    [Value::Text(node.as_str().to_owned()), Value::Integer(rows.start)],
+                )
+            }
+            Self::Shared { token } => (
+                // An entry whose row or copy is gone, which holds no block,
+                // reads as missing.
+                format!(
+                    "SELECT {} FROM {LISTED} WHERE entry.token = ?1 AND entry.position = ?2
+                       AND (coalesce(row.block, copy.block) IS NOT NULL OR entry.steps IS NOT NULL)",
+                    columns("coalesce(row.block, copy.block)")
+                ),
+                [Value::Text(token.as_str().to_owned()), Value::Integer(count(index))],
+            ),
+        };
+        let parameters = key.into_iter().chain(paths.iter().map(|path| Value::Text((*path).to_owned())));
+        connection
+            .query_row(&sql, params_from_iter(parameters), |row| {
+                (0..paths.len()).map(|column| row.get(column)).collect()
+            })
+            .optional()?
+            .ok_or_else(|| self.gap(index))
     }
 
     /// The index of the block `id` among its first `length` blocks. A
@@ -2198,7 +2263,8 @@ pub fn read_page(
         return Ok(PageRead::NoNode);
     };
     // The index a page extends from, while the block there is still the
-    // `edge` the page holds; otherwise why the read is refused.
+    // `edge` the page holds; otherwise why the read is refused. The block
+    // is outside the page, so only its id is read.
     let edge_at = |index: u32| -> Result<Result<usize, PageRead>, StorageError> {
         let Some(edge) = query.edge else {
             return Ok(Err(PageRead::Invalid("`before` and `after` take an `edge`")));
@@ -2207,8 +2273,12 @@ pub fn read_page(
         if index >= length {
             return Ok(Err(PageRead::Outside));
         }
-        let held = transcript.entries_in(connection, index..index + 1)?;
-        Ok(if held[0].id() == Some(edge) { Ok(index) } else { Err(PageRead::Changed) })
+        let held = transcript.extract_at(connection, index, &["$.id"])?;
+        Ok(if matches!(&held[..], [Value::Text(id)] if id == edge.as_str()) {
+            Ok(index)
+        } else {
+            Err(PageRead::Changed)
+        })
     };
     let at = match (query.before, query.after, query.around) {
         (None, None, None) => PageAt::Latest,
@@ -2229,19 +2299,20 @@ pub fn read_page(
     let users = transcript.user_blocks(connection, length)?;
     let requests = requests(length, &users);
     // Each request the selection sizes is read once, and the page is made
-    // of those it keeps.
+    // of those it keeps; one that does not fit is read no further than
+    // shows it.
     let mut read: HashMap<usize, Vec<Entry>> = HashMap::new();
     let mut failed = None;
-    let range = page(&requests, at, |request| {
-        match transcript.entries_in(connection, request.clone()) {
-            Ok(entries) => {
-                let bytes = entries_bytes(&entries);
+    let range = page(&requests, at, |request, room| {
+        match request_within(connection, transcript, request.clone(), room) {
+            Ok(Some((entries, bytes))) => {
                 read.insert(request.start, entries);
-                bytes
+                Some(bytes)
             }
+            Ok(None) => None,
             Err(error) => {
                 failed.get_or_insert(error);
-                0
+                None
             }
         }
     });
@@ -2256,16 +2327,28 @@ pub fn read_page(
                 .expect("each request of the page was read to size it")
         })
         .collect();
+    // A marker's boundary may be on another page, so only its size is read.
     let mut summaries = Vec::new();
     for entry in &blocks {
         if let Entry::Block(Block::CompactionMarker(marker)) = entry
             && let Some(index) = transcript.block_index(connection, &marker.boundary_id, length)?
-            && let Entry::Block(Block::CompactionBoundary(boundary)) =
-                &transcript.entries_in(connection, index..index + 1)?[0]
+            && let [Value::Text(kind), tokens] =
+                &transcript.extract_at(connection, index, &["$.type", "$.summaryTokens"])?[..]
+            && kind == "compaction_boundary"
         {
+            let tokens = match tokens {
+                Value::Integer(tokens) => decode(transcript.table(), "block", u64::try_from(*tokens))?,
+                _ => {
+                    return Err(StorageError::Corrupt {
+                        table: transcript.table(),
+                        column: "block",
+                        reason: format!("compaction boundary {} has no summary size", marker.boundary_id),
+                    });
+                }
+            };
             summaries.push(CompactionSummary {
                 marker: marker.id.clone(),
-                summary_tokens: boundary.summary_tokens,
+                summary_tokens: tokens,
             });
         }
     }
@@ -2320,6 +2403,34 @@ pub fn read_block(
     }
 }
 
+/// The entries of `request` with their size as a page sends them, when
+/// that is at most `room`; none when it is more. The entries are read in
+/// order only until the fewest bytes they can take pass `room`, so a
+/// request too large for what is left of a page, such as one of thousands
+/// of calls next to it, is never decoded whole.
+fn request_within(
+    connection: &Connection,
+    transcript: &Transcript,
+    request: Range<usize>,
+    room: usize,
+) -> Result<Option<(Vec<Entry>, usize)>, StorageError> {
+    let mut entries = Vec::new();
+    let mut least = 0usize;
+    transcript.each_entry(connection, request, |entry| {
+        least = least.saturating_add(match &entry {
+            Entry::Block(block) => least_light_bytes(block),
+            Entry::StepsNotShared(count) => steps_bytes(*count),
+        });
+        entries.push(entry);
+        if least > room { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+    })?;
+    if least > room {
+        return Ok(None);
+    }
+    let bytes = entries_bytes(&entries);
+    Ok((bytes <= room).then_some((entries, bytes)))
+}
+
 /// The size of whole requests' `entries` as a page sends them: its blocks
 /// in their light form, and each run of steps as its count.
 fn entries_bytes(entries: &[Entry]) -> usize {
@@ -2327,10 +2438,15 @@ fn entries_bytes(entries: &[Entry]) -> usize {
         .iter()
         .filter_map(|entry| match entry {
             Entry::Block(_) => None,
-            Entry::StepsNotShared(count) => Some(format!(r#"{{"type":"steps_not_shared","count":{count}}}"#).len()),
+            Entry::StepsNotShared(count) => Some(steps_bytes(*count)),
         })
         .sum();
     light_bytes(entries.iter().filter_map(Entry::block)) + steps
+}
+
+/// The size of a run of `count` steps not shared as a page sends it.
+fn steps_bytes(count: u64) -> usize {
+    format!(r#"{{"type":"steps_not_shared","count":{count}}}"#).len()
 }
 
 /// A subagent as [`subagents`] reads it: its record, the model selection
@@ -2777,6 +2893,58 @@ pub(crate) mod tests {
         root.save(update(Vec::new(), 1)).await.unwrap();
         let rewritten = facts(&stores).await;
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
+    }
+
+    /// A page next to a request of many blocks holds that request when it
+    /// fits and leaves it out when it does not, and in that case reads it
+    /// only until it no longer fits: a row past that point is never
+    /// decoded, which a row that does not decode shows.
+    // Cost: one database on disk with about four thousand rows, under a second.
+    #[tokio::test(flavor = "local")]
+    async fn a_page_reads_a_request_next_to_it_only_until_it_does_not_fit() {
+        let latest = PageQuery { before: None, after: None, around: None, edge: None };
+        for (calls, start) in [(10, 0), (2000, 2002)] {
+            let (tree, stores, _data) = store().await;
+            tree.create_node(record("root", None, 0), update(Vec::new(), 0))
+                .await
+                .unwrap();
+            // Request 0 is 0..1, request 1 is 1..calls + 2, and the latest is
+            // the two blocks after it.
+            let mut blocks = vec![user("u0"), user("u1")];
+            blocks.extend((0..calls).map(|n| reply(&format!("a{n}"))));
+            blocks.extend([user("u2"), reply("last")]);
+            let length = blocks.len();
+            tree.session_store(&id("root"))
+                .save(update(blocks.into_iter().enumerate().collect(), length))
+                .await
+                .unwrap();
+            if calls > 10 {
+                let last = i64::try_from(calls + 1).unwrap();
+                stores
+                    .db(&conversation())
+                    .call(move |connection| {
+                        // A text block without its fields, which the
+                        // database indexes and no read decodes.
+                        Ok(connection.execute(
+                            r#"UPDATE blocks SET block = '{"type":"text","id":"broken"}' WHERE idx = ?1"#,
+                            [last],
+                        )?)
+                    })
+                    .await
+                    .unwrap();
+            }
+            let read = stores
+                .read(&conversation(), move |connection| {
+                    read_page(connection, &Transcript::Agent(id("root")), latest)
+                })
+                .await
+                .unwrap()
+                .unwrap();
+            let PageRead::Page { start: at, blocks, .. } = read else {
+                panic!("a page");
+            };
+            assert_eq!((at, blocks.len()), (start, length - start), "a request of {calls} blocks");
+        }
     }
 
     // A child off the current path takes its own children off it, whose
