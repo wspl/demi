@@ -490,9 +490,18 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // Every job and stream shares this process's open files (`runner.md`
     // § Load); without the raise the runner still works, waiting sooner.
     #[cfg(unix)]
-    match demi_runner_process::process::raise_open_file_limit() {
-        Ok((started, raised)) => {
-            tracing::info!("open-file limit {raised} (started with {started})")
+    match demi_shared_cli::raise_open_file_limit() {
+        Ok(limit) => {
+            demi_runner_process::process::keep_started_open_file_limit(
+                limit.started_soft,
+                limit.started_hard,
+                limit.raised,
+            );
+            tracing::info!(
+                "open-file limit {} (started with {})",
+                limit.raised,
+                limit.started_soft
+            )
         }
         Err(error) => tracing::warn!("the open-file limit could not be raised: {error}"),
     }
