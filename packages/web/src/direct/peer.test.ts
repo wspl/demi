@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import type { ChannelHeader } from '../api/generated/web-api'
-import { ChannelFailed, PeerChannels, openOperation, type ChannelMaker, type OperationDataChannel } from './peer'
+import { ChannelFailed, PeerChannels, openOperation } from './peer'
+import { PlayedConnection } from './played-connection'
 
 // An operation's channel on a connected peer (`direct-channel.md` § Choosing
 // the path): one that closes before it opens while the connection stands,
@@ -9,65 +10,6 @@ import { ChannelFailed, PeerChannels, openOperation, type ChannelMaker, type Ope
 // is opened once more, and its sibling channels go on; a second such close,
 // or one on a connection that went, fails the operation, which then runs on
 // the relay. The connection and its channels are played by the test.
-
-/** A data channel the test opens, closes and answers on. */
-class PlayedChannel extends EventTarget implements OperationDataChannel {
-  readyState: RTCDataChannelState = 'connecting'
-  binaryType: BinaryType = 'blob'
-  bufferedAmount = 0
-  bufferedAmountLowThreshold = 0
-  readonly sent: string[] = []
-
-  send(data: string | Blob | ArrayBuffer | ArrayBufferView): void {
-    if (typeof data === 'string')
-      this.sent.push(data)
-  }
-
-  close(): void {
-    this.end()
-  }
-
-  open(): void {
-    this.readyState = 'open'
-    this.dispatchEvent(new Event('open'))
-  }
-
-  answer(text: string): void {
-    this.dispatchEvent(new MessageEvent('message', { data: text }))
-  }
-
-  end(): void {
-    if (this.readyState === 'closed')
-      return
-    this.readyState = 'closed'
-    this.dispatchEvent(new Event('close'))
-  }
-}
-
-/** A connection whose channels the test plays, in the order the page makes them. */
-class PlayedConnection implements ChannelMaker {
-  connectionState: RTCPeerConnectionState = 'connected'
-  readonly channels: PlayedChannel[] = []
-  /** Each channel's label and options, as the page made it. */
-  readonly inits: [string, RTCDataChannelInit][] = []
-  private made = Promise.withResolvers<void>()
-
-  createDataChannel(label: string, init: RTCDataChannelInit): PlayedChannel {
-    const channel = new PlayedChannel()
-    this.channels.push(channel)
-    this.inits.push([label, init])
-    this.made.resolve()
-    this.made = Promise.withResolvers()
-    return channel
-  }
-
-  /** The page's channel number `index`, once it made it. */
-  async channel(index: number): Promise<PlayedChannel> {
-    while (!this.channels[index])
-      await this.made.promise
-    return this.channels[index]
-  }
-}
 
 const answerSchema = z.object({ ok: z.literal(true), size: z.number() })
 

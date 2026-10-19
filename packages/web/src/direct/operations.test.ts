@@ -11,7 +11,8 @@ import { encodeAcks, encodeControl, framed } from '@demicodes/web-ui/live/frames
 import { LIVE_ACK_FRAME, LIVE_CONTROL_FRAME, LIVE_VIDEO_FRAME } from '@demicodes/protocol'
 import type { DirectRoute } from '.'
 import { directFileReads, directStream } from './operations'
-import { ChannelFailed, ChannelRefused, type ChannelMessage, type DirectPeer, type OperationChannel } from './peer'
+import { ChannelFailed, ChannelRefused, openOperation, type ChannelMessage, type DirectPeer, type OperationChannel } from './peer'
+import { PlayedConnection } from './played-connection'
 
 // A conversation's operations over either path (`direct-channel.md`
 // § Choosing the path), on a peer and a relay the test plays: each starts
@@ -245,6 +246,8 @@ class PlayedChannel<T> implements OperationChannel<T> {
   private waiting: ((message: ChannelMessage | null) => void) | null = null
   constructor(private readonly answered: T) {}
 
+  private failing: ((error: Error) => void) | null = null
+
   /** The runner sends `bytes`, or closes the channel. */
   give(bytes: Uint8Array | null): void {
     const message: ChannelMessage | null = bytes && { kind: 'bytes', bytes }
@@ -256,12 +259,18 @@ class PlayedChannel<T> implements OperationChannel<T> {
     }
   }
 
+  /** The channel fails under the page, which waits for its next message. */
+  fail(): void {
+    this.failing?.(new ChannelFailed('The direct channel failed'))
+  }
+
   answer = async () => this.answered
   next(): Promise<ChannelMessage | null> {
     if (this.messages.length)
       return Promise.resolve(this.messages.shift()!)
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       this.waiting = resolve
+      this.failing = reject
     })
   }
   sendText = async () => {}
@@ -369,4 +378,126 @@ test('a live view whose live peer cannot be made opens on the relay with what it
   stream.send(encodeControl({ type: 'input' }))
   expect(relayed).toEqual(['opened', '{"type":"hello"}', '{"type":"watch"}', '{"type":"input"}'])
   expect(route.device.choice).toBe('direct')
+})
+
+/**
+ * A live view closed while its channels are still opening (`direct-channel.md`
+ * § Choosing the path; every channel is released on cancellation): the
+ * opening channel closes and the view stops waiting for it, so that views
+ * opened and closed quickly do not use up the peer's channels. Planted
+ * defect this catches: the channel left `connecting` until it opens, or
+ * replaced by a new one when its close looks like a channel that never
+ * opened.
+ */
+test('a live view closed while its channels open closes them and opens no other', async () => {
+  const route = await directOver(new ScriptedPeer([]))
+  const connection = new PlayedConnection()
+  // The live peer opens each channel on the connection the test plays.
+  class OpeningPeer extends ScriptedPeer {
+    override open<T>(header: ChannelHeader, answer?: unknown, ordered?: boolean, signal?: AbortSignal): Promise<OperationChannel<T>> {
+      return openOperation(connection, header, answer as never, ordered, signal)
+    }
+  }
+  route.live = new DeviceLive({ connect: async () => new OpeningPeer([]), closed: () => {}, after: () => () => {} })
+  const closed: string[] = []
+  const relay = () => ({ send: () => {}, close: () => {} })
+  const stream = directStream(() => route, 'browser', relay)({ data: () => {}, closed: (reason) => closed.push(reason) }, { live: true })
+  const video = await connection.channel(0)
+  expect(connection.inits).toEqual([['video', { ordered: false }]])
+
+  stream.close()
+  await settle()
+  expect(video.readyState).toBe('closed')
+  expect(connection.channels).toHaveLength(1)
+  expect(closed).toEqual([])
+  expect(route.device.choice).toBe('direct')
+})
+
+/**
+ * A live view's channel that fails after it opened sets the device's
+ * choice to `relay` (`direct-channel.md` § Choosing the path), so the view
+ * reopens on the relay at once and stays there until the page tries the
+ * direct channel again. Planted defect this catches: only the live peer
+ * dropped, so the view reopens direct and fails again, over and over.
+ */
+test('a live view whose channel fails reopens on the relay, which stays the choice', async () => {
+  const route = await directOver(new ScriptedPeer([]))
+  const peer = new LivePeer([])
+  route.live = new DeviceLive({ connect: async () => peer, closed: () => {}, after: () => () => {} })
+  const relayOpened: string[] = []
+  const relay = () => {
+    relayOpened.push('relay')
+    return { send: () => {}, close: () => {} }
+  }
+  const open = directStream(() => route, 'browser', relay)
+  const closed: string[] = []
+  let reconnected = false
+  open({
+    data: () => {},
+    closed: (reason) => {
+      closed.push(reason)
+      waitToReconnect(1, () => {
+        reconnected = true
+      })
+    },
+  }, { live: true })
+  await settle()
+  const [video, control] = peer.opened.map(({ channel }) => channel) as [PlayedChannel<unknown>, PlayedChannel<unknown>]
+
+  control.fail()
+  await settle()
+  expect(route.device.choice).toBe('relay')
+  expect(closed).toHaveLength(1)
+  expect(reconnected).toBe(true)
+  expect([video.closed, control.closed]).toEqual([true, true])
+  // Reopened, the view opens on the relay, not on a new live peer.
+  open({ data: () => {}, closed: () => {} }, { live: true })
+  expect(relayOpened).toEqual(['relay'])
+  expect(peer.opened).toHaveLength(2)
+})
+
+/**
+ * A live view closed while its live peer is still being made, the peer's
+ * own `video` channel not yet open (`live.ts`): the attempt ends, which
+ * closes the connection and that channel, once no other view waits for the
+ * peer; one that still waits keeps it. Planted defect this catches: the
+ * attempt left running, its `video` channel `connecting`, until the
+ * connect limit.
+ */
+test('a live view closed while its live peer is made closes the peer\'s video channel, unless another view waits', async () => {
+  const route = await directOver(new ScriptedPeer([]))
+  const connection = new PlayedConnection()
+  const attempts: AbortSignal[] = []
+  // The attempt makes the peer's `video` channel at once and waits for it
+  // to open, which it never does; aborted, it closes the connection.
+  route.live = new DeviceLive({
+    connect: (signal) => {
+      attempts.push(signal)
+      const video = connection.createDataChannel('video', { ordered: false })
+      return new Promise((_, reject) => {
+        signal.addEventListener('abort', () => {
+          video.close()
+          reject(new ChannelFailed('The attempt was cancelled'))
+        })
+      })
+    },
+    closed: () => {},
+    after: () => () => {},
+  })
+  const relay = () => ({ send: () => {}, close: () => {} })
+  const open = directStream(() => route, 'browser', relay)
+  const first = open({ data: () => {}, closed: () => {} }, { live: true })
+  const second = open({ data: () => {}, closed: () => {} }, { live: true })
+  const video = await connection.channel(0)
+
+  first.close()
+  await settle()
+  expect(attempts.map((signal) => signal.aborted)).toEqual([false])
+  expect(video.readyState).toBe('connecting')
+
+  second.close()
+  await settle()
+  expect(attempts.map((signal) => signal.aborted)).toEqual([true])
+  expect(video.readyState).toBe('closed')
+  expect(connection.channels).toHaveLength(1)
 })

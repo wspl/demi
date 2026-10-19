@@ -295,7 +295,9 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
  * `stream`, whose messages the page joins into whole frames before the view
  * reads them, so that a chunk never falls inside another frame. A live peer
  * that cannot be made, or a refusal, leaves the view to the relay; bytes
- * sent before the channels open wait for them.
+ * sent before the channels open wait for them. A channel that fails sets
+ * the device's choice to `relay`, where the view reopens; closing the view
+ * closes its channels, opening ones included.
  */
 function openLive(
   route: DirectRoute,
@@ -309,7 +311,10 @@ function openLive(
   const queued: StreamBytes[] = []
   let send: ((bytes: StreamBytes) => void) | null = null
   const channels: OperationChannel<unknown>[] = []
+  // Closes the channels still opening, which `channels` holds only once open.
+  const opening = new AbortController()
   const close = () => {
+    opening.abort()
     for (const channel of channels)
       channel.close()
     lease.release()
@@ -331,14 +336,26 @@ function openLive(
         refused(queued.splice(0))
       return
     }
+    // A channel of the live peer failed: the relay is the choice, which ends
+    // this view as `moved`. A channel the view's own close ended did not fail.
+    const failed = () => {
+      if (closed)
+        return
+      route.live.failed(peer)
+      route.device.failed()
+      if (!closed)
+        finish('direct_failed')
+    }
+    if (closed)
+      return
     try {
-      const opened = await peer.open({ op: 'video' }, videoOpenedSchema, false)
+      const opened = await peer.open({ op: 'video' }, videoOpenedSchema, false, opening.signal)
       channels.push(opened)
       if (closed)
         return close()
       const { id } = await opened.answer()
       video = opened
-      const stream = await peer.open({ ...route.scope, op: 'stream', stream: name, video: id }, openedSchema)
+      const stream = await peer.open({ ...route.scope, op: 'stream', stream: name, video: id }, openedSchema, true, opening.signal)
       channels.push(stream)
       if (closed)
         return close()
@@ -351,8 +368,8 @@ function openLive(
         return
       }
       if (error instanceof ChannelFailed)
-        route.live.failed(peer)
-      if (!closed)
+        failed()
+      else if (!closed)
         finish('direct_failed')
       return
     }
@@ -362,11 +379,6 @@ function openLive(
     }
     for (const bytes of queued.splice(0))
       send(bytes)
-    const failed = () => {
-      route.live.failed(peer)
-      if (!closed)
-        finish('direct_failed')
-    }
     // The stream's end ends the view; its video channel ends with it.
     void (async () => {
       for (;;) {

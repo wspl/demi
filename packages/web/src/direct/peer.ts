@@ -85,9 +85,10 @@ export interface DirectPeer {
   /**
    * Opens an operation's channel and sends its header; the runner's answer
    * is checked against `answer`. The channel is ordered unless `ordered`
-   * says otherwise.
+   * says otherwise. Aborting `signal` while the channel opens closes it
+   * and rejects with the signal's reason.
    */
-  open<T>(header: ChannelHeader, answer: z.ZodType<T>, ordered?: boolean): Promise<OperationChannel<T>>
+  open<T>(header: ChannelHeader, answer: z.ZodType<T>, ordered?: boolean, signal?: AbortSignal): Promise<OperationChannel<T>>
   /** What the attempt that made the peer saw. */
   readonly attempt: DirectAttempt
   /** Sends probe `id` on the probe channel, unordered and never retransmitted; one that cannot go now is lost. */
@@ -258,7 +259,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
       listener(id)
   })
   return {
-    open: (header, answer, ordered) => channels.open(header, answer, ordered),
+    open: (header, answer, ordered, signal) => channels.open(header, answer, ordered, signal),
     attempt,
     probe: (id) => {
       if (probes?.readyState === 'open')
@@ -304,14 +305,16 @@ export class PeerChannels {
   }
 
   /** Opens an operation's channel, as `openOperation`; the first `video` is the one the peer made. */
-  open<T>(header: ChannelHeader, answer: z.ZodType<T>, ordered?: boolean): Promise<OperationChannel<T>> {
+  open<T>(header: ChannelHeader, answer: z.ZodType<T>, ordered?: boolean, signal?: AbortSignal): Promise<OperationChannel<T>> {
     const video = this.video
     if (header.op === 'video' && video) {
       this.video = null
-      // The runner answers a `video` channel by `VideoOpened` alone, which is what `answer` reads.
+      // The runner answers a `video` channel by `VideoOpened` alone, which is
+      // what `answer` reads. It opened with the peer, so there is no opening
+      // for `signal` to cancel; the view closes it as its own.
       return video.then((channel) => ({ ...channel, answer: async () => answer.parse(await channel.answer()) }))
     }
-    return openOperation(this.connection, header, answer, ordered)
+    return openOperation(this.connection, header, answer, ordered, signal)
   }
 }
 
@@ -464,15 +467,20 @@ export interface ChannelMaker {
   createDataChannel(label: string, init: RTCDataChannelInit): OperationDataChannel
 }
 
-/** Waits for `channel` to open, at most `limitMs` when given; one that closes first did not open. */
-function opened(channel: OperationDataChannel, limitMs?: number): Promise<void> {
+/**
+ * Waits for `channel` to open, at most `limitMs` when given; one that
+ * closes first did not open. Aborting `signal` first closes the channel and
+ * rejects with the signal's reason.
+ */
+function opened(channel: OperationDataChannel, limitMs?: number, signal?: AbortSignal): Promise<void> {
   if (channel.readyState === 'open')
     return Promise.resolve()
   return new Promise((resolve, reject) => {
-    const settle = (error: ChannelFailed | null) => {
+    const settle = (error: unknown) => {
       clearTimeout(timer)
       channel.removeEventListener('open', open)
       channel.removeEventListener('close', close)
+      signal?.removeEventListener('abort', abort)
       if (error)
         reject(error)
       else
@@ -480,9 +488,16 @@ function opened(channel: OperationDataChannel, limitMs?: number): Promise<void> 
     }
     const open = () => settle(null)
     const close = () => settle(new ChannelFailed('The direct channel did not open'))
+    const abort = () => {
+      settle(signal!.reason)
+      channel.close()
+    }
+    if (signal?.aborted)
+      return abort()
     const timer = limitMs === undefined ? undefined : setTimeout(() => settle(new ChannelFailed('The direct channel did not open in time')), limitMs)
     channel.addEventListener('open', open)
     channel.addEventListener('close', close)
+    signal?.addEventListener('abort', abort)
   })
 }
 
@@ -496,13 +511,14 @@ export async function openOperation<T>(
   header: ChannelHeader,
   answerSchema: z.ZodType<T>,
   ordered = true,
+  signal?: AbortSignal,
 ): Promise<OperationChannel<T>> {
   try {
-    return await openChannel(connection, header, answerSchema, ordered)
+    return await openChannel(connection, header, answerSchema, ordered, signal)
   } catch (error) {
     if (!(error instanceof ChannelNeverOpened))
       throw error
-    return openChannel(connection, header, answerSchema, ordered)
+    return openChannel(connection, header, answerSchema, ordered, signal)
   }
 }
 
@@ -511,6 +527,7 @@ async function openChannel<T>(
   header: ChannelHeader,
   answerSchema: z.ZodType<T>,
   ordered: boolean,
+  signal?: AbortSignal,
 ): Promise<OperationChannel<T>> {
   let channel: OperationDataChannel
   try {
@@ -518,15 +535,20 @@ async function openChannel<T>(
   } catch (error) {
     throw new ChannelFailed(error instanceof Error ? error.message : String(error))
   }
-  return channelOn(connection, channel, header, answerSchema)
+  return channelOn(connection, channel, header, answerSchema, signal)
 }
 
-/** `channel`'s operation: its header goes once it opens, and the runner's answer is checked against `answerSchema`. */
+/**
+ * `channel`'s operation: its header goes once it opens, and the runner's
+ * answer is checked against `answerSchema`; aborting `signal` while it
+ * opens closes it.
+ */
 async function channelOn<T>(
   connection: ChannelMaker,
   channel: OperationDataChannel,
   header: ChannelHeader,
   answerSchema: z.ZodType<T>,
+  signal?: AbortSignal,
 ): Promise<OperationChannel<T>> {
   channel.binaryType = 'arraybuffer'
   channel.bufferedAmountLowThreshold = DIRECT_QUEUE_BYTES / 2
@@ -546,9 +568,11 @@ async function channelOn<T>(
   })
   channel.addEventListener('error', () => inbox.finish(new ChannelFailed('The direct channel failed')))
   try {
-    await opened(channel)
+    await opened(channel, undefined, signal)
   } catch (error) {
-    // Without a limit, only a close comes before the open.
+    // Without a limit, only a close or the caller's abort comes before the open.
+    if (signal?.aborted)
+      throw error
     throw connection.connectionState === 'connected' ? new ChannelNeverOpened() : error
   }
   let answered: Promise<T> | null = null

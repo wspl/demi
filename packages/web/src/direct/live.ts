@@ -5,8 +5,9 @@
  * runs without SCTP's congestion window. It is made when a live view opens
  * on the direct path, shared by every live view on the device, closed a
  * minute after the last one ends, and closed at once when the device's
- * choice leaves `direct`. Measuring and choosing the path concern the
- * `files` peer alone.
+ * choice leaves `direct`. An attempt still making it ends at once when the
+ * last view waiting for it ends, closing its `video` channel with it.
+ * Measuring and choosing the path concern the `files` peer alone.
  */
 import type { DirectPeer } from './peer'
 
@@ -59,7 +60,13 @@ export class DeviceLive {
         released = true
         // A view of a peer that went counts for it alone.
         held.views -= 1
-        if (held.views === 0 && this.held === held)
+        if (held.views > 0 || this.held !== held)
+          return
+        // No view waits for a peer still being made: its attempt ends now,
+        // rather than holding its opening channel until the connect limit.
+        if (this.attempt)
+          this.close()
+        else
           this.cancelIdle = this.deps.after(LIVE_IDLE_MS, () => {
             this.cancelIdle = null
             this.close()
