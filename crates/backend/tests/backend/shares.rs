@@ -219,7 +219,7 @@ async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stop
 
 /// The root's answer once its child reports.
 const SAID: &str =
-    "the helper said hi:\n\n<attachment id=\"a2\" />\n<attachment id=\"a4\" />\n<attachment id=\"a5-preview\" />\n\n\
+    "the helper said hi:\n\n<attachment id=\"a2\" />\n<attachment id=\"a4\" />\n<attachment id=\"a5-preview\" />\n<attachment id=\"a1\" />\n\n\
      The child's, named only as text: see <attachment id=\"a3\" /> mid-sentence, `<attachment id=\"a3\" />` in code,\n\n\
      <!--\n<attachment id=\"a3\" />\n-->";
 
@@ -260,9 +260,8 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
             shell("t2", "demi agent spawn --description helper <<< 'Say hi'"),
             say("asked the helper"),
             // The child's completion wakes the idle parent.
-            // a1 is the message's image, a3 the child's; a4 and a5 do not exist
-            // yet; `a5-preview`
-            // is no attachment's name.
+            // a1 is the message's image, a2 the root's, a3 the child's; a4
+            // and a5 do not exist yet; `a5-preview` is no attachment's name.
             say(SAID),
         ],
     );
@@ -289,6 +288,23 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let viewed = backend.get(&format!("/api/conversations/{FIRST}/attachments/a3"), Some(&master)).await;
     assert_eq!(viewed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&viewed.body));
     let viewed = viewed.json::<demi_web_api_protocol::attachments::ConversationAttachment>().blob;
+    // An agent's reply shows only what that agent uploaded: the root's a2,
+    // not the user's a1 or the child's a3, and the child's own a3 alone
+    // (`file-previews.md` § Attachment blocks).
+    let child_node = own.subagents[0].child.subagent_id.as_str().to_owned();
+    for (agent, number, shown) in [
+        (FIRST, "a2", true),
+        (FIRST, "a1", false),
+        (FIRST, "a3", false),
+        (child_node.as_str(), "a3", true),
+        (child_node.as_str(), "a2", false),
+    ] {
+        let answer = backend
+            .get(&format!("/api/conversations/{FIRST}/attachments/{number}?node={agent}"), Some(&master))
+            .await;
+        let expected = if shown { StatusCode::OK } else { StatusCode::NOT_FOUND };
+        assert_eq!(answer.status, expected, "{number} in a reply of {agent}");
+    }
 
     let ShareAnswer::Conversation { token, .. } =
         shared(&share(&backend, &master, json!({ "kind": "conversation" })).await)
@@ -359,6 +375,9 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
     missed(&public(&backend, &answer, "/attachments/a4", None).await, "an attachment that did not exist");
+    // The user's file, which the answer names as a block, is no upload of
+    // the root's, so its reply does not show it and the share keeps none.
+    missed(&public(&backend, &answer, "/attachments/a1", None).await, "a file the agent did not upload");
     // The child's attachment, which the answer names only as text, in a
     // sentence, in code and in a comment, is not served, nor its bytes.
     missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment named only as text");

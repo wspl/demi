@@ -256,7 +256,7 @@ const mediaAddress = useMediaAddress()
 // The pictures the media viewer steps through, read only while one is open.
 const pictures = computed(() => transcriptPictures(renderBlocks.value, {
   node: props.node ?? null,
-  files: (blockId) => blockMessageFiles(conversationFiles(), directories.value?.get(blockId) ?? props.cwd ?? null),
+  files: (blockId) => blockMessageFiles(conversationFiles(), directories.value?.get(blockId) ?? props.cwd ?? null, props.node ?? null),
   address: mediaAddress,
 }))
 provideTranscript({

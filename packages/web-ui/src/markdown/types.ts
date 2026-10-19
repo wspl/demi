@@ -90,11 +90,17 @@ export interface ConversationFiles {
    */
   codeFiles?(paths: readonly string[]): ReadonlySet<string> | null
   /**
-   * The conversation's attachment `id`, such as `a3`. A render reads it as it
-   * is now and renders again when the answer arrives; absent, an attachment
-   * shows its alt text.
+   * The conversation's attachment `id`, such as `a3`, as a reply of the
+   * agent of `node` shows it: null for the conversation's own agent, a
+   * subagent's or a side question's id otherwise. A reply shows only what
+   * its own agent uploaded, or the agent it was forked from for the history
+   * it copied, so a file the user sent or another agent uploaded is missing
+   * there
+   * (`file-previews.md` § Attachment blocks). A render reads it as it is now
+   * and renders again when the answer arrives; absent, an attachment shows
+   * its alt text.
    */
-  attachment?(id: string): AttachmentLookup
+  attachment?(id: string, node: string | null): AttachmentLookup
   /**
    * Opens attachment `id`, a file that is no image, video or audio, in the
    * work panel through the `attachment` intent, previewed from its copy
@@ -132,6 +138,8 @@ export interface MessageCommitTarget {
 /** The same for one message, with the working directory its relative paths resolve against. */
 export interface MessageFiles extends ConversationFiles {
   cwd: string
+  /** The node of the agent that wrote the messages: a subagent's or a side question's id; null or absent, the conversation's own agent. */
+  node?: string | null
 }
 
 export interface MarkdownRenderOptions {

@@ -13,6 +13,7 @@ import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu
 import ErrorBlock from '../blocks/ErrorBlock.vue'
 import { t } from '../locales/text'
 import type { CardTurn } from './asks'
+import { provideMessageFiles, useMessageFiles } from '../../markdown/message-files'
 
 /**
  * A side question's card, set into the reply after the block it asks about
@@ -24,6 +25,8 @@ import type { CardTurn } from './asks'
  * purple.
  */
 const props = defineProps<{
+  /** The side question's node, whose agent wrote the answers: they show the attachments it uploaded. */
+  node: string
   /** The small model's title; null until it has one, when the card says Ask. */
   title: string | null
   turns: readonly CardTurn[]
@@ -44,6 +47,13 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement>()
+
+// The answers are the side question's agent's, not the reply's it sits in.
+const files = useMessageFiles()
+provideMessageFiles(() => {
+  const reply = files()
+  return reply && { ...reply, node: props.node }
+})
 
 /** The last turn is still made, its status shown or its answer streaming: Reply comes back with the answer. */
 const working = computed(() => {

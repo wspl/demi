@@ -304,3 +304,107 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
     assert_eq!((again.width, again.height), (Some(4), Some(3)));
     backend.close().await;
 }
+
+// A few seconds: the root, its child, the child's fork and a side question
+// each run shell jobs on a real device.
+//
+// A reply shows only what its own agent uploaded (`file-previews.md`
+// § Attachment blocks), as the page asks for it with `?node=`: the root its
+// a1, the child its a2, the side question its a3, each none of another's;
+// the child's fork, whose copied history the child wrote, the child's a2.
+// Planted defects this catches: an upload recorded by the agent's number,
+// which a side question shares with the root, so the root shows the side's
+// file; and a fork that shows only its own uploads, so its copied replies
+// lose theirs.
+#[tokio::test]
+async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked_from() {
+    use demi_conversation_socket_protocol::{ServerFrame, SubagentEvent};
+    use demi_shared_types::Block;
+
+    use crate::conversations::{FIRST, last_text, transcript};
+    use crate::subagents::Answer;
+    use crate::subagents::{Scripts, WAIT, say, shell as call, tree_on};
+
+    const SIDE: &str = "5b0e7c1a-2f3d-4e6a-9b8c-7d6e5f4a3b2d";
+    let scripts = std::sync::Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
+    for name in ["root.png", "child.png", "side.png"] {
+        std::fs::write(format!("{root}/{name}"), &*PNG).unwrap();
+    }
+    let mut socket = crate::conversations::Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    // Each round's child waits until the root's turn has ended, so that its
+    // completion wakes the idle root, which answers it.
+    let go = format!("{root}/go");
+    let mut round = async |id: &str, command: &str, child: Vec<Answer>| {
+        let _ = std::fs::remove_file(&go);
+        scripts.child(child);
+        scripts.root(FIRST, vec![call(id, command), say("dispatched"), say("received")]);
+        socket.chat(id, "Go").await;
+        std::fs::write(&go, "").unwrap();
+        socket
+            .until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, .. }))
+            .await;
+        socket.until_idle().await;
+    };
+    round(
+        "t1",
+        "demi attachment upload root.png && demi agent spawn <<< 'Upload'",
+        vec![call("c1", &format!("{WAIT} && demi attachment upload child.png")), say("child")],
+    )
+    .await;
+    round("t2", "demi agent fork 1 <<< 'Again'", vec![call("f1", WAIT), say("forked")]).await;
+    let tree = transcript(&backend, &master, FIRST).await;
+    let node = |number: u64| {
+        tree.subagents
+            .iter()
+            .find(|job| job.child.number == number)
+            .map(|job| job.child.subagent_id.as_str().to_owned())
+            .expect("the agent is listed")
+    };
+    let (child, fork) = (node(1), node(2));
+    let reply = tree
+        .blocks
+        .iter()
+        .rev()
+        .find(|block| matches!(block, Block::Text(text) if text.text == "received"))
+        .expect("the root answered")
+        .id()
+        .to_string();
+
+    // A side question about the root's reply uploads its own file.
+    scripts.child(vec![call("s1", "demi attachment upload side.png"), say("side")]);
+    let asked = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/side-questions"),
+            Some(&master),
+            serde_json::json!({ "id": SIDE, "blockId": reply, "start": 0, "end": 8, "quote": "received", "question": "Show it" }),
+        )
+        .await;
+    assert_eq!(asked.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&asked.body));
+    crate::support::eventually("the side question answers", || async {
+        last_text(&crate::conversations::agent_history(&backend, &master, FIRST, Some(SIDE)).await.0) == "side"
+    })
+    .await;
+
+    for (node, shown) in [
+        (FIRST, ["a1"].as_slice()),
+        (child.as_str(), ["a2"].as_slice()),
+        (fork.as_str(), ["a2"].as_slice()),
+        (SIDE, ["a3"].as_slice()),
+    ] {
+        let mut answered = Vec::new();
+        for number in ["a1", "a2", "a3"] {
+            let answer = backend
+                .get(&format!("/api/conversations/{FIRST}/attachments/{number}?node={node}"), Some(&master))
+                .await;
+            match answer.status {
+                StatusCode::OK => answered.push(number),
+                StatusCode::NOT_FOUND => {}
+                status => panic!("{number} for {node}: {status}"),
+            }
+        }
+        assert_eq!(answered, shown, "the replies of {node}");
+    }
+    backend.close().await;
+}

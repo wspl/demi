@@ -1,7 +1,7 @@
 import type { RendererObject, Token, Tokens } from 'marked'
 import { markdownReader } from './reader'
 import { baseName } from '@demicodes/utils'
-import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
+import type { AttachmentLookup, MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
 import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
@@ -219,9 +219,18 @@ function attachmentAudio(attachment: MessageAttachment): string {
 /** The attribute of the place of an attachment block's card, which holds the attachment's number, where `AttachmentCard` shows it. */
 export const ATTACHMENT_CARD_ATTRIBUTE = 'data-attachment-card'
 
+/**
+ * The attachment `id` a message names, as `files` show it to the agent that
+ * wrote the message (`file-previews.md` § Attachment blocks); none while the
+ * page cannot ask.
+ */
+export function messageAttachment(files: MessageFiles | undefined, id: string): AttachmentLookup | undefined {
+  return files?.attachment?.(id, files.node ?? null)
+}
+
 /** An attachment block's attachment when it is an image or a video, which stands as a tile among the message's media. */
 function blockMedium(id: string): MessageAttachment | null {
-  const lookup = activeOptions?.files?.attachment?.(id)
+  const lookup = messageAttachment(activeOptions?.files, id)
   return lookup?.state === 'found' && /^(?:image|video)\//.test(lookup.attachment.mediaType) ? lookup.attachment : null
 }
 
@@ -242,7 +251,7 @@ function attachmentTile(attachment: MessageAttachment): string {
  * failed, the line shows as its text.
  */
 function attachmentBlock(id: string, raw: string): string {
-  const lookup = activeOptions?.files?.attachment?.(id)
+  const lookup = messageAttachment(activeOptions?.files, id)
   switch (lookup?.state) {
     case 'found': {
       const { attachment } = lookup
@@ -576,7 +585,7 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
   const media: ShownMedium[] = []
   agentMarked.walkTokens(tokens, (token) => {
     if (token.type === ATTACHMENT_BLOCK) {
-      const lookup = files?.attachment?.(token.id)
+      const lookup = messageAttachment(files, token.id)
       if (lookup?.state !== 'found')
         return
       const { attachment } = lookup

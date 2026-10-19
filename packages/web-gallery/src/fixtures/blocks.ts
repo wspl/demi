@@ -587,7 +587,7 @@ export const screenshotsTool = screenshotsCall(
     { tab: 't2', width: 480, height: 300, bytes: 16_078, medium: blobImage(galleryBlobs.chart) },
     { tab: 't3', width: 360, height: 2400, bytes: 8_035, medium: blobImage(galleryBlobs.fullPage) },
   ],
-  ['[image 4: not attached: the model does not read image/webp]'],
+  ['[image 4: not shown: the model does not read image/webp]'],
   [imageLine(4, 480, 300, 9_120, 'image/webp')],
 )
 

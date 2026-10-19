@@ -23,7 +23,7 @@ use std::rc::{Rc, Weak};
 use bytes::Bytes;
 use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
 use demi_backend_blobs::blobs::OPENING_BYTES;
-use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
+use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow, StoredAttachment};
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::{StorageError, sequences};
 use demi_backend_remote_host::collect_pipe;
@@ -32,7 +32,7 @@ use demi_host_interface::{
     ByteRange, Call, GroupBuilder, Host as _, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
 };
 use demi_shared_types::{
-    BlobRef, PixelSize, Sequence, preview_media_type,
+    BlobRef, NodeId, PixelSize, Sequence, preview_media_type,
     output::{Cell, Table},
 };
 use demi_web_api_protocol::attachments::ATTACHMENT_MAX_BYTES;
@@ -225,11 +225,15 @@ async fn upload(
     let conversation = conversation_of(&invocation)?;
     let device = DeviceId::try_from(invocation.host.as_str())
         .map_err(|_| RpcError::Failed(format!("{}: names no device", invocation.host)))?;
+    // The node of the agent that runs the command, a side question's
+    // included, uploads the files, which its replies alone show; none when
+    // the user runs it.
+    let node = invocation.caller.as_ref().map(|caller| caller.node.clone());
     let mut uploaded = Vec::new();
     let mut failed = false;
     for path in args.path {
         let stored = tokio::select! {
-            stored = store(&*shard, &conversation, &device, &invocation.cwd, &path) => stored,
+            stored = store(&*shard, &conversation, &device, &invocation.cwd, node.clone(), &path) => stored,
             () = port.cancelled() => return Ok(130),
         };
         match stored {
@@ -267,8 +271,8 @@ async fn upload(
 }
 
 /// Copies the file at `path`, beside `cwd`, from the conversation's Host on
-/// `device`, and stores it as the conversation's next attachment: its blob
-/// first, then its record. The Host hashes the file first, and sends its
+/// `device`, and stores it as the conversation's next attachment, the upload
+/// of the agent of `node`: its blob first, then its record. The Host hashes the file first, and sends its
 /// bytes only when the namespace does not hold them already. Answers why
 /// when it cannot.
 async fn store(
@@ -276,6 +280,7 @@ async fn store(
     conversation: &ConversationId,
     device: &DeviceId,
     cwd: &str,
+    node: Option<NodeId>,
     path: &str,
 ) -> Result<AttachmentRow, String> {
     // Each admission waits only as long as the call: a stopped call drops it.
@@ -338,6 +343,7 @@ async fn store(
         size,
         pixels,
         blob,
+        node,
     };
     let announce = {
         let shard = shard.this();
@@ -354,6 +360,9 @@ pub(crate) struct Unnumbered {
     pub(crate) size: u64,
     pub(crate) pixels: Option<PixelSize>,
     pub(crate) blob: BlobRef,
+    /// The node of the agent that uploads it; none for a file the user
+    /// sends (`conversation_attachments::StoredAttachment`).
+    pub(crate) node: Option<NodeId>,
 }
 
 /// Stores `attachment` as the conversation's next one in `db`, its number
@@ -384,9 +393,13 @@ pub(crate) fn commit(
                     pixels: attachment.pixels,
                     blob: attachment.blob,
                 };
-                conversation_attachments::insert(&transaction, std::slice::from_ref(&row))?;
+                let stored = StoredAttachment {
+                    row,
+                    node: attachment.node,
+                };
+                conversation_attachments::insert(&transaction, std::slice::from_ref(&stored))?;
                 commit.commit(transaction)?;
-                Ok(row)
+                Ok(stored.row)
             })
             .await?;
         announce();
@@ -467,6 +480,7 @@ mod tests {
             size: 4,
             pixels: Some(PixelSize { width: 2, height: 1 }),
             blob: BlobRef::of(name.as_bytes()),
+            node: None,
         }
     }
 
@@ -490,7 +504,7 @@ mod tests {
         conversation_attachments::all(&connection)
             .unwrap()
             .into_iter()
-            .map(|row| row.number.0)
+            .map(|stored| stored.row.number.0)
             .collect()
     }
 

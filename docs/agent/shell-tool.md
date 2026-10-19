@@ -509,13 +509,15 @@ The result attaches each of its media, in order, while these rules hold:
 After the output, the result gives one line for each medium it did not
 attach, and for each it attached in another form than it came, with what
 happened; the original is the file the model viewed, so a line needs no way
-to read it:
+to read it. A line says the medium was shown to the model, never that it was
+attached, which the model would read as delivered to the user, and its
+number counts the call's media, not the conversation's attachments:
 
 ```text
-[image 2: not attached: the model does not read image/webp]
-[image 3: attached as image/jpeg of 2000 × 1000 px, fitted from image/png of 3000 × 1500 px]
-[image 21: not attached: a result attaches at most 20 media; view it in another call]
-[image 4: not attached: lost with the Host's connection]
+[image 2: not shown: the model does not read image/webp]
+[image 3: shown to you as image/jpeg of 2000 × 1000 px, fitted from image/png of 3000 × 1500 px]
+[image 21: not shown: a result shows at most 20 media; view it in another call]
+[image 4: not shown: lost with the Host's connection]
 ```
 
 #### Bounds and cut output

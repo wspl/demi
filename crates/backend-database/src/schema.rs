@@ -1394,9 +1394,60 @@ ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 /// names the file by its number in the conversation's `attachment`
 /// sequence, `a7`, instead of its path on the Host, since a send no longer
 /// writes the file there (`backend.md` § Media by reference): see
-/// [`number_attachments`].
+/// [`number_attachments`]. An attachment keeps the node of the agent that
+/// uploaded it, whose replies alone show it (`file-previews.md` § Attachment
+/// blocks; `storage.md` § Conversation state and transactions). No release
+/// kept it: a file a message holds, which this step or an earlier one
+/// numbered, is the user's, and every other row, an agent's upload, is the
+/// upload of the agent whose text first delivered it as a block, or the
+/// root's when none did, so a reply that showed it still does.
 fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
-    number_attachments(transaction)
+    transaction.execute_batch("ALTER TABLE attachments ADD COLUMN node_id TEXT;")?;
+    number_attachments(transaction)?;
+    transaction.execute_batch("CREATE TEMP TABLE held (number INTEGER PRIMARY KEY);")?;
+    {
+        let mut hold = transaction.prepare("INSERT OR IGNORE INTO temp.held (number) VALUES (?1)")?;
+        for (table, column) in [("blocks", "block"), ("share_blocks", "block"), ("nodes", "state")] {
+            let texts = transaction
+                .prepare(&format!("SELECT {column} FROM {table} WHERE instr({column}, '\"type\":\"attachment\"') > 0"))?
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for text in texts {
+                let value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+                for number in held_attachments(&value) {
+                    hold.execute([number])?;
+                }
+            }
+        }
+    }
+    transaction.execute_batch(
+        "UPDATE attachments SET node_id = coalesce(
+           (SELECT named.node_id FROM block_attachments AS named
+              JOIN blocks AS block ON block.node_id = named.node_id AND block.idx = named.idx
+            WHERE named.attachment = attachments.number
+            ORDER BY block.rowid LIMIT 1),
+           (SELECT id FROM nodes WHERE number = 0))
+         WHERE number NOT IN (SELECT number FROM temp.held);
+         DROP TABLE temp.held;",
+    )
+}
+
+/// The numbers of the attachments the records within `value` hold, each an
+/// object of type `attachment` with an `id` such as `a7`: the files a
+/// message, a queued one included, sent.
+fn held_attachments(value: &serde_json::Value) -> Vec<i64> {
+    match value {
+        serde_json::Value::Array(items) => items.iter().flat_map(held_attachments).collect(),
+        serde_json::Value::Object(object) => {
+            let held = (object.get("type").and_then(|kind| kind.as_str()) == Some("attachment"))
+                .then(|| object.get("id").and_then(|id| id.as_str()))
+                .flatten()
+                .and_then(|id| id.strip_prefix('a'))
+                .and_then(|digits| digits.parse().ok());
+            held.into_iter().chain(object.values().flat_map(held_attachments)).collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// Numbers each file an attachment record names by its path on the Host,
@@ -4277,9 +4328,14 @@ CREATE INDEX running_commands_of_node ON running_commands (node_id);
 -- Each attachment of the conversation, one the user sent or one the agent
 -- uploaded, by its number in the conversation's attachment sequence: the
 -- file's name, the media type read from its bytes, its size, an image's or a
--- video's width and height in pixels when its header gives them, and its
--- blob in the owner's namespace. A row never
--- changes; a Fork's seed copies the rows, and the blobs stay shared.
+-- video's width and height in pixels when its header gives them, its
+-- blob in the owner's namespace, and the node of the agent whose
+-- `demi attachment upload` stored it, a side question's included, null for
+-- a file the user sent or uploaded themselves; only that agent's replies,
+-- and those of the agents forked from it, show it (`file-previews.md`
+-- § Attachment blocks).
+-- A row never changes; a Fork's seed copies the rows, and the blobs stay
+-- shared.
 CREATE TABLE attachments (
   number     INTEGER PRIMARY KEY CHECK (number >= 1),
   name       TEXT NOT NULL,
@@ -4288,6 +4344,7 @@ CREATE TABLE attachments (
   width      INTEGER CHECK (width >= 1),
   height     INTEGER CHECK (height >= 1),
   blob       TEXT NOT NULL,
+  node_id    TEXT,
   CHECK ((width IS NULL) = (height IS NULL))
 ) STRICT;
 ";
@@ -4598,7 +4655,12 @@ mod tests {
     /// states with the current types see each record numbered, one number
     /// per file, its path and its bytes, in the transcript and the queue.
     /// Before, the first such step stopped at the record's path, so the
-    /// conversation never opened. One small database, milliseconds.
+    /// conversation never opened. The files the messages hold stay the
+    /// user's, numbered by an early step as they are, and only the agent's
+    /// upload of 0.1.21 is the root's (`storage.md`). Planted defect this
+    /// catches: the last step taking every row an early step numbered for the
+    /// root's upload, so the root's replies show the user's files. One small
+    /// database, milliseconds.
     #[test]
     fn a_conversation_of_0_1_21_with_files_opens_through_every_step_with_them_numbered() {
         use demi_shared_types::{Block, BlobRef, UserContentBlock};
@@ -4637,6 +4699,14 @@ mod tests {
         };
         let mut state: serde_json::Value = serde_json::from_str(&state_of_0_1_21(serde_json::json!([]))).unwrap();
         state["queue"] = serde_json::json!([{ "id": "t9", "content": [record(&other)] }]);
+        // The agent uploaded a1 before.
+        connection
+            .execute_batch(
+                "INSERT INTO sequences (name, next) VALUES ('attachment', 2);
+                 INSERT INTO attachments (number, name, media_type, size, blob)
+                 VALUES (1, 'chart.png', 'image/png', 1, 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');",
+            )
+            .unwrap();
         connection
             .execute(
                 "INSERT INTO nodes
@@ -4669,19 +4739,26 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(numbers, ["a1", "a2", "a1"]);
+        assert_eq!(numbers, ["a2", "a3", "a2"]);
         let state: String = connection.query_row("SELECT state FROM nodes", [], |row| row.get(0)).unwrap();
         let state: demi_agent_store::CheckpointState = serde_json::from_str(&state).unwrap();
         assert!(
-            matches!(&state.queue[0].content[0], UserContentBlock::Attachment(record) if record.id == "a2"),
+            matches!(&state.queue[0].content[0], UserContentBlock::Attachment(record) if record.id == "a3"),
             "{state:?}"
         );
-        let rows: Vec<(u64, String)> = conversation_attachments::all(&connection)
+        let rows: Vec<(u64, String, Option<String>)> = conversation_attachments::all(&connection)
             .unwrap()
             .into_iter()
-            .map(|row| (row.number.0, row.blob.to_string()))
+            .map(|stored| (stored.row.number.0, stored.row.blob.to_string(), stored.node.map(|node| node.as_str().to_owned())))
             .collect();
-        assert_eq!(rows, [(1, notes.to_string()), (2, other.to_string())]);
+        assert_eq!(
+            rows,
+            [
+                (1, "c".repeat(64), Some("root".to_owned())),
+                (2, notes.to_string(), None),
+                (3, other.to_string(), None)
+            ]
+        );
     }
 
     /// A node's checkpoint state as 0.1.21 saved it, with the yield
@@ -6095,12 +6172,30 @@ mod tests {
         connection
             .execute("INSERT INTO share_blocks (token, idx, block) VALUES ('s1', 0, ?1)", [&blocks[2]])
             .unwrap();
-        // The agent uploaded two files before.
+        // The agents uploaded two files before: a1, which no reply
+        // delivered, and a2, which agent 3 delivered first and the root
+        // named after it.
         connection
             .execute_batch(
                 "INSERT INTO sequences (name, next) VALUES ('attachment', 3);
                  INSERT INTO attachments (number, name, media_type, size, blob)
                  VALUES (1, 'a.txt', 'text/plain', 1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), (2, 'b.txt', 'text/plain', 1, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, parent_id, description, round, started_at, can_spawn, delivered, state,
+                    output_revision, cwd, cwd_under, leaf)
+                 VALUES ('child', 3, 'root', '', 1, 0, 0, 0, ?1, 0, NULL, NULL, 0)",
+                [serde_json::to_string(&state()).unwrap()],
+            )
+            .unwrap();
+        connection
+            .execute_batch(
+                r#"INSERT INTO blocks (node_id, idx, block) VALUES ('child', 0, '{"type":"text"}');
+                   INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', 3, '{"type":"text"}', 0);
+                   INSERT INTO block_attachments (node_id, idx, attachment) VALUES ('child', 0, 2), ('root', 3, 2);"#,
             )
             .unwrap();
         CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
@@ -6117,7 +6212,7 @@ mod tests {
             _ => panic!("{block:?}"),
         };
         let stored: Vec<Block> = connection
-            .prepare("SELECT block FROM blocks ORDER BY idx")
+            .prepare("SELECT block FROM blocks WHERE node_id = 'root' AND idx < 3 ORDER BY idx")
             .unwrap()
             .query_map([], |row| row.get::<_, String>(0))
             .unwrap()
@@ -6132,11 +6227,18 @@ mod tests {
             matches!(&checkpoint.queue[0].content[0], UserContentBlock::Attachment(record) if record.id == "a3"),
             "{checkpoint:?}"
         );
-        let rows: Vec<(u64, String, String)> = conversation_attachments::all(&connection)
+        // Each upload is its first deliverer's, the root's when none
+        // delivered it; the files the messages sent are no agent's.
+        let rows: Vec<(u64, String, String, Option<String>)> = conversation_attachments::all(&connection)
             .unwrap()
             .into_iter()
-            .map(|row| (row.number.0, row.name, row.blob.to_string()))
+            .map(|stored| (stored.row.number.0, stored.row.name, stored.row.blob.to_string(), stored.node.map(|node| node.as_str().to_owned())))
             .collect();
+        assert_eq!(
+            rows.iter().map(|row| row.3.as_deref()).collect::<Vec<_>>(),
+            [Some("root"), Some("child"), None, None, None]
+        );
+        let rows: Vec<(u64, String, String)> = rows.into_iter().map(|(number, name, blob, _)| (number, name, blob)).collect();
         assert_eq!(
             rows[2..],
             [

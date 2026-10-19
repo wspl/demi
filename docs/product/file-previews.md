@@ -475,7 +475,13 @@ a reply shows an attachment: a link or an image whose address is
 `attachment:a3` is an address the reply does not open, shown as its text, as
 any other one is. The tag in the middle of a sentence is not a block and
 shows as its text, as Markdown shows a tag it does not render. A number the conversation does not have
-shows *No attachment a9 in this conversation* in the block's place, and a
+shows *No attachment a9 in this conversation* in the block's place, and so
+does a number in an agent's reply that its own uploads never printed, the
+user's files and another agent's included: a block shows only what the agent
+that wrote it uploaded, never a file it guessed the number of. A side
+question's agent is an agent of its own here, and a subagent forked from
+another wrote, in the history it copied, what that agent wrote, so a copied
+reply still shows what it showed, and a
 number still to come shows once the upload stores it, as below.
 
 ## Media a tool returned

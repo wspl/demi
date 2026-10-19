@@ -132,7 +132,7 @@ pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, 
     blobs.extend(
         conversation_attachments::all(connection)?
             .into_iter()
-            .map(|attachment| attachment.blob),
+            .map(|attachment| attachment.row.blob),
     );
     for output in command_outputs::all(connection)? {
         if let OutputRow::Stored { blob, .. } = output.output {

@@ -750,7 +750,7 @@ async fn an_image_over_500_kb_enters_as_a_smaller_jpeg_from_an_upload_and_a_tool
     let result = requests[1]["messages"].to_string();
     assert!(
         result.contains(
-            "[image 1: attached as image/jpeg of 800 × 500 px, fitted from image/png of 800 × 500 px]"
+            "[image 1: shown to you as image/jpeg of 800 × 500 px, fitted from image/png of 800 × 500 px]"
         ),
         "{result}"
     );
@@ -817,7 +817,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_its_a
     );
     assert!(
         result.contains(
-            "[image 1: attached as image/png of 2000 × 8 px, fitted from image/png of 2400 × 10 px]"
+            "[image 1: shown to you as image/png of 2000 × 8 px, fitted from image/png of 2400 × 10 px]"
         ),
         "{result}"
     );

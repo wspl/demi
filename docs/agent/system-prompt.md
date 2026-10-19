@@ -115,14 +115,16 @@ order:
   reading only the entry weighs the split against doing the work itself and
   keeps choosing to do it alone: the five-site pricing comparison took 140
   requests and six million input tokens in one context.
-- **Files for the user.** Replies render as Markdown. A file delivered to
-  the user, one they asked for or the work made for them, an image included,
-  goes out as an attachment
+- **Files for the user.** Replies render as Markdown. A file goes to
+  whoever reads the reply: in a reply to the user, a file delivered to them,
+  one they asked for or the work made for them, an image included, goes out
+  as an attachment
   ([Attachment commands](../execution/commands.md#attachment-commands)),
-  placed as its block, `<attachment id="a3" />` on a line of its own, and
-  alone, not also a link to its path: two links to one file leave the user
-  to tell them apart. A file the reply only mentions is linked by its path,
-  as the next rule says.
+  placed as its block, `<attachment id="a3" />` on a line of its own, with
+  the number the upload printed, and alone, not also a link to its path:
+  two links to one file leave the user to tell them apart; a report to the
+  parent agent names the file by its path. A file the reply only mentions is
+  linked by its path, as the next rule says.
 - **Links in replies.** What the reply names that the user can open is a
   link, never bare code: a file of the Host is a link whose text is its
   short name and whose target is its path from the working directory, with

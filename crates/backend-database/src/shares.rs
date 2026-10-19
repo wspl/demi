@@ -353,7 +353,7 @@ fn list(transaction: &Transaction<'_>, token: &ShareToken, root: &str, rows: Ran
     // every entry still names its row.
     keep_attachments(
         transaction,
-        "SELECT named.attachment FROM share_entries AS entry
+        "SELECT named.attachment, named.node_id AS node FROM share_entries AS entry
            JOIN block_attachments AS named ON named.node_id = entry.node_id AND named.idx = entry.idx
          WHERE entry.token = ?1",
         params![token.as_str()],
@@ -422,8 +422,11 @@ fn point_at_copies(transaction: &Transaction<'_>, token: &ShareToken) -> Result<
 }
 
 /// Copies into the share whose token is `?1` of `parameters` each
-/// attachment the query `named` lists that exists now, so one uploaded later stays out until the list is made
-/// again; its blob stays shared.
+/// attachment the query `named` lists, by its `attachment` number and the
+/// `node` whose text names it, that exists now and that node's reply shows
+/// ([`crate::conversation_attachments::SHOWN`]), so one uploaded later stays
+/// out until the list is made again, and one the node's agent did not
+/// upload stays out for good; its blob stays shared.
 fn keep_attachments(
     transaction: &Transaction<'_>,
     named: &str,
@@ -431,9 +434,12 @@ fn keep_attachments(
 ) -> Result<(), StorageError> {
     transaction.execute(
         &format!(
-            "INSERT OR IGNORE INTO share_attachments (token, number, name, media_type, size, width, height, blob)
-             SELECT ?1, number, name, media_type, size, width, height, blob FROM attachments
-             WHERE number IN ({named})"
+            "WITH {}
+             INSERT OR IGNORE INTO share_attachments (token, number, name, media_type, size, width, height, blob)
+             SELECT ?1, number, name, media_type, size, width, height, blob
+             FROM attachments AS attachment JOIN ({named}) AS named ON named.attachment = attachment.number
+               JOIN shown ON shown.node = named.node AND shown.uploader = attachment.node_id",
+            crate::conversation_attachments::SHOWN
         ),
         parameters,
     )?;
