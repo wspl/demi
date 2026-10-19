@@ -349,8 +349,12 @@ export const useNotifications = defineStore('notifications', () => {
       }
     }, { signal })
     const session = () => product.snapshot?.sessions.find((candidate) => candidate.current)?.id
+    // Each source is compared by its value, so only a change of one follows:
+    // every part the channel brings replaces the snapshot, and the sessions
+    // come again after each subscription the backend keeps, as each says
+    // whether its browser has notifications on.
     const stopFollowing = watch(
-      () => [settings.value.enabled, permission.value, session(), ...Object.values(eventsOf(settings.value))],
+      [() => settings.value.enabled, permission, session, () => JSON.stringify(eventsOf(settings.value))],
       () => follow(signal, session()),
       { immediate: true },
     )
