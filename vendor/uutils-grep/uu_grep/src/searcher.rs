@@ -205,7 +205,10 @@ impl<'a> Searcher<'a> {
                 continue;
             }
 
-            let lexical = start.join(entry.path().strip_prefix(&root).expect("walk entry below root"));
+            let lexical = uucore::context::join(
+                start,
+                entry.path().strip_prefix(&root).expect("walk entry below root"),
+            );
             let mut path = lexical.as_path();
             if strip_root {
                 path = Self::strip_dot_prefix(path);

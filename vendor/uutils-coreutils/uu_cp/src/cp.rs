@@ -66,6 +66,12 @@ pub enum CpError {
     #[error("{0}")]
     Error(String),
 
+    /// GNU's refusal to link to a relative source from outside the current
+    /// directory, where the link would not reach it; the copy goes on with
+    /// the next file.
+    #[error("{}", translate!("cp-error-relative-symlink", "dest" => .0.maybe_quote()))]
+    RelativeSymlink(PathBuf),
+
     /// The SELinux security context of the destination could not be
     /// preserved; unlike other attribute failures, this one empties the
     /// destination file.
@@ -2411,6 +2417,24 @@ fn handle_copy_mode(
             )?;
         }
         CopyMode::SymLink => {
+            // A relative source links correctly only from the current
+            // directory, as GNU's cp checks; a parent it cannot read counts
+            // as the current one, and the link fails later if it must.
+            if !source.has_root() {
+                let parent = dest.parent().unwrap_or(Path::new(""));
+                let in_current_dir = parent.as_os_str().is_empty()
+                    || parent == Path::new(".")
+                    || match (
+                        FileInformation::from_path(".", true),
+                        FileInformation::from_path(parent, true),
+                    ) {
+                        (Ok(dot), Ok(parent)) => dot == parent,
+                        _ => true,
+                    };
+                if !in_current_dir {
+                    return Err(CpError::RelativeSymlink(dest.to_owned()));
+                }
+            }
             if dest.context_exists() && options.overwrite == OverwriteMode::Clobber(ClobberMode::Force) {
                 fs::remove_file(dest)?;
             }
@@ -2714,12 +2738,13 @@ fn copy_file(
         } else {
             fs::symlink_metadata(source)
         };
-        // this is just for gnu tests compatibility
+        // GNU's wording, which a match on the system's message missed on
+        // Windows, where it printed the bare message and "(os error 2)".
         result.map_err(|err| {
-            if err.to_string().contains("No such file or directory") {
+            if err.kind() == io::ErrorKind::NotFound {
                 return translate!("cp-error-cannot-stat", "source" => source.quote());
             }
-            err.to_string()
+            format!("cannot stat {}: {}", source.quote(), uucore::error::io_message(&err))
         })?
     };
 

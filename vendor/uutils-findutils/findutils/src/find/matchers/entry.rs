@@ -211,7 +211,11 @@ impl WalkEntry {
     /// Preserve command-line path spelling while traversal opens absolute paths.
     pub fn with_lexical_root(mut self, root: &Path, display: &Path) -> Self {
         let relative = self.path().strip_prefix(root).expect("walk entry below root");
-        let path = if relative.as_os_str().is_empty() { display.to_owned() } else { display.join(relative) };
+        let path = if relative.as_os_str().is_empty() {
+            display.to_owned()
+        } else {
+            uucore::context::join(display, relative)
+        };
         self.inner = Entry::Explicit(path, self.depth());
         self
     }

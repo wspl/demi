@@ -209,7 +209,12 @@ fn compare_directories(params: &Params, from: &Path, to: &Path, depth: usize) ->
     }
     for (name, (in_from, in_to)) in entries {
         let entry_status = if in_from && in_to || params.new_file {
-            compare(params, &from.join(&name), &to.join(&name), depth + 1)
+            compare(
+                params,
+                &uucore::context::join(from, &name),
+                &uucore::context::join(to, &name),
+                depth + 1,
+            )
         } else {
             let dir = if in_from { from } else { to };
             uucore::context_println!("Only in {}: {}", dir.display(), Path::new(&name).display());

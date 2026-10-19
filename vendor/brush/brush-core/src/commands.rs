@@ -734,12 +734,24 @@ pub(crate) fn execute_external_command(
 
 /// Why the command `context` names did not start, worded as bash words it:
 /// a name not found is `nosuch: command not found` and a path's failure is
-/// the path with the reason, `./nosuch: No such file or directory`.
+/// the path with the reason, `./nosuch: No such file or directory`, and a
+/// file Windows cannot run is `./file: cannot execute binary file: Exec
+/// format error`, where Windows says `%1 is not a valid Win32 application.`
 fn spawn_failure<SE: extensions::ShellExtensions>(
     context: &ExecutionContext<'_, SE>,
     spawn_err: std::io::Error,
 ) -> error::Error {
     let name = context.command_name.clone();
+    // ERROR_BAD_EXE_FORMAT and ERROR_EXE_MACHINE_TYPE_MISMATCH, which
+    // Linux's execve reports as ENOEXEC.
+    #[cfg(windows)]
+    let spawn_err = match spawn_err.raw_os_error() {
+        Some(193 | 216) => std::io::Error::new(
+            spawn_err.kind(),
+            "cannot execute binary file: Exec format error",
+        ),
+        _ => spawn_err,
+    };
     if spawn_err.kind() != std::io::ErrorKind::NotFound {
         error::ErrorKind::FailedToExecuteCommand(name, spawn_err).into()
     } else if !context.shell.working_dir().exists() {

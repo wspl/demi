@@ -179,4 +179,5 @@ patches = [
     "Child programs take uucore::context::process::Stdio for their streams",
     "Each entry of a walk checks the invocation's cancellation, so a search that finds nothing stops at its next entry; the --files printer runs in the invocation's context, and its end, such as a closed pipe's exit, ends the invocation instead of a panic of its own",
     "A parallel search's output lock that another worker poisoned, when its write ended the invocation, is an output that has ended (BrokenPipe), which a worker quits on, where upstream panicked on it",
+    "A walk's paths below the operand are joined with uucore::context::join, / on every system and the operand as written",
 ]

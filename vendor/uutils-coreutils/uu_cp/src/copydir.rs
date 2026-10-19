@@ -239,7 +239,7 @@ impl Entry {
             }
         }
 
-        let local_to_target = context.target.join(descendant);
+        let local_to_target = uucore::context::join(context.target, descendant);
         let target_is_file = context.target_is_file;
         Ok(Self {
             source_absolute,
@@ -348,6 +348,8 @@ fn copy_direntry(
                         ),
                     ));
                 }
+                // GNU reports such a link and goes on with the next file.
+                e @ CpError::RelativeSymlink(_) => show!(e),
                 e => return Err(e),
             }
         }
@@ -467,7 +469,8 @@ pub(crate) fn copy_directory(
     let mut dirs_needing_permissions: Vec<DirNeedingPermissions> = Vec::new();
 
     // Traverse the contents of the directory, copying each one.
-    for direntry_result in WalkDir::new(uucore::context::resolve(root))
+    let resolved_root = uucore::context::resolve(root);
+    for direntry_result in WalkDir::new(&resolved_root)
         .same_file_system(options.one_file_system)
         .follow_links(options.dereference)
     {
@@ -485,7 +488,12 @@ pub(crate) fn copy_directory(
                         }
                         Err(_) => (direntry_type.context_is_symlink(), direntry_type.context_is_dir()),
                     };
-                let entry = Entry::new(&context, direntry_path, options.no_target_dir)?;
+                // The entry as the user named it, which cp prints.
+                let source = match direntry_path.strip_prefix(&resolved_root) {
+                    Ok(below) => uucore::context::join(root, below),
+                    Err(_) => direntry_path.to_owned(),
+                };
+                let entry = Entry::new(&context, &source, options.no_target_dir)?;
 
                 let created = copy_direntry(
                     progress_bar,

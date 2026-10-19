@@ -262,17 +262,19 @@ pub fn normalize_path(path: &Path) -> PathBuf {
                 ret.push(component.as_os_str());
             }
             Component::CurDir => {}
+            // Names join with `/`, as GNU's utilities print the paths they
+            // build (`context::join`).
             Component::ParentDir => {
                 if ret.as_os_str().is_empty()
                     || matches!(ret.components().next_back(), Some(Component::ParentDir))
                 {
-                    ret.push("..");
+                    ret = crate::context::join(&ret, "..");
                 } else {
                     ret.pop();
                 }
             }
             Component::Normal(c) => {
-                ret.push(c);
+                ret = crate::context::join(&ret, c);
             }
         }
     }
@@ -464,28 +466,32 @@ pub fn canonicalize<P: AsRef<Path>>(
     Ok(result)
 }
 
+/// The Unix mode a file without one stands for, as `ls -l`, `stat` and
+/// `chmod -v` show it on Windows: a symbolic link, a directory or a regular
+/// file, readable and executable by everyone, and writable by everyone
+/// unless it is read-only.
+#[cfg(not(unix))]
+pub fn portable_mode(metadata: &fs::Metadata) -> u32 {
+    use mode::{S_IFDIR, S_IFLNK, S_IFREG};
+    let file_type = if metadata.context_is_symlink() {
+        S_IFLNK
+    } else if metadata.context_is_dir() {
+        S_IFDIR
+    } else {
+        S_IFREG
+    };
+    let permissions = if metadata.permissions().readonly() {
+        0o555
+    } else {
+        0o777
+    };
+    file_type | permissions
+}
+
 #[cfg(not(unix))]
 /// Display the permissions of a file
 pub fn display_permissions(metadata: &fs::Metadata, display_file_type: bool) -> String {
-    let write = if metadata.permissions().readonly() {
-        '-'
-    } else {
-        'w'
-    };
-
-    if display_file_type {
-        let file_type = if metadata.context_is_symlink() {
-            'l'
-        } else if metadata.context_is_dir() {
-            'd'
-        } else {
-            '-'
-        };
-
-        format!("{file_type}r{write}xr{write}xr{write}x")
-    } else {
-        format!("r{write}xr{write}xr{write}x")
-    }
+    display_permissions_unix(portable_mode(metadata), display_file_type)
 }
 
 #[cfg(unix)]

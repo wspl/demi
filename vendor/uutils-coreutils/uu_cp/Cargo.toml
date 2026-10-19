@@ -211,4 +211,7 @@ patches = [
     "-c, macOS cp's flag for a clone, means --reflink=auto (cp-help-clone)",
     "-p sets the destination's times at its path resolved against the shell job's working directory",
     "A recursive copy checks the invocation's cancellation at each entry of its walk",
+    "A source that cannot be read is worded as GNU's, cannot stat 'x': No such file or directory, by the error's kind; upstream matched the system's message, which on Windows printed the bare message and (os error 2)",
+    "A recursive copy names each source as the user gave its root, below it joined with uucore::context::join, and each target joined the same way, where it printed the root resolved against the working directory",
+    "-s with a relative source makes a link only in the current directory, elsewhere reporting <link>: can make relative symbolic links only in current directory and going on with status 1, as GNU's cp does; upstream linked to the relative source from anywhere",
 ]

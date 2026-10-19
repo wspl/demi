@@ -3534,7 +3534,6 @@ dependencies = [
  "brush-builtins",
  "brush-core",
  "bytes",
- "chrono",
  "clap",
  "demi-command-protocol",
  "demi-command-sdk",
@@ -11789,6 +11788,7 @@ dependencies = [
  "rustix",
  "thiserror 2.0.20",
  "uucore",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

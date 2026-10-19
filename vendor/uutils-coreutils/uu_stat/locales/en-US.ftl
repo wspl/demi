@@ -61,6 +61,7 @@ stat-error-cannot-read-filesystem = cannot read table of mounted file systems: {
 stat-error-stdin-filesystem-mode = using '-' to denote standard input does not work in file system mode
 stat-error-cannot-read-filesystem-info = cannot read file system information for {$file}: {$error}
 stat-error-cannot-statx = cannot statx {$file}: {$error}
+stat-error-missing-operand = missing operand
 
 ## Warning messages
 

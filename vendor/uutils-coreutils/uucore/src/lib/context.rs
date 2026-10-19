@@ -220,11 +220,66 @@ pub fn resolve(path: impl AsRef<Path>) -> PathBuf {
         use std::os::fd::AsRawFd;
         return PathBuf::from(format!("/dev/fd/{}", file.as_raw_fd()));
     }
+    if device(path).is_some() {
+        return PathBuf::from("NUL");
+    }
     CURRENT.with(|current| {
         let current = current.borrow();
         let context = current.as_ref().expect("utility execution context");
         context.cwd.join(path)
     })
+}
+
+/// `name` below `base` as GNU's utilities print a path they build: the
+/// names joined with `/` on every system, `base` kept as the user gave it,
+/// so `C:\x` and `e\f` make `C:\x/e/f`. An empty `name` leaves `base` as it
+/// is, and an absolute one stands alone, as in [`Path::join`].
+pub fn join(base: impl AsRef<Path>, name: impl AsRef<Path>) -> PathBuf {
+    let (base, name) = (base.as_ref(), name.as_ref());
+    if name.as_os_str().is_empty() {
+        return base.to_owned();
+    }
+    #[cfg(not(windows))]
+    return base.join(name);
+    #[cfg(windows)]
+    {
+        if name.has_root() || base.as_os_str().is_empty() {
+            return base.join(name);
+        }
+        let mut joined = base.as_os_str().to_owned();
+        for part in name.components() {
+            let bytes = joined.as_encoded_bytes();
+            // A bare drive, `C:`, names its drive's current folder.
+            let bare_drive = bytes.len() == 2 && bytes[1] == b':';
+            if !bare_drive && !matches!(bytes.last(), Some(b'/' | b'\\')) {
+                joined.push("/");
+            }
+            joined.push(part.as_os_str());
+        }
+        PathBuf::from(joined)
+    }
+}
+
+/// A device that Windows lacks and a utility's file operand may name, as in
+/// Git Bash: both are the null device, whose reads end at once and whose
+/// writes are discarded, and `/dev/zero`'s reads give zeros
+/// (`fs::File`). Nothing else under `/dev` is one.
+pub(crate) enum Device {
+    Null,
+    Zero,
+}
+
+/// The device `path` names on Windows; none on other systems, which have
+/// both.
+pub(crate) fn device(path: &Path) -> Option<Device> {
+    if !cfg!(windows) {
+        return None;
+    }
+    match path.to_str()? {
+        "/dev/null" => Some(Device::Null),
+        "/dev/zero" => Some(Device::Zero),
+        _ => None,
+    }
 }
 
 /// Shell descriptor paths refer to this invocation's descriptor table.
