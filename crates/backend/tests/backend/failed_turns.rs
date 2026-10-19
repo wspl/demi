@@ -419,6 +419,7 @@ async fn a_usage_limit_naming_no_moment_resumes_when_the_quotas_used_up_window_r
         unit: None,
         resets_at: Some(resets.parse().unwrap()),
         period_seconds: None,
+        requested_at: None,
         severity: None,
         scope: None,
     };

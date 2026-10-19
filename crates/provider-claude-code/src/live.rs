@@ -21,10 +21,10 @@ use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Si
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ResultPart, ToolCall,
-    UserPart, encode_body,
+    CallEvent, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ResultPart,
+    ToolCall, UserPart, encode_body,
 };
-use demi_shared_types::{StreamKind, ThinkingConfig};
+use demi_shared_types::{StreamKind, ThinkingConfig, Timestamp};
 use futures_channel::mpsc;
 use futures_util::future::{LocalBoxFuture, Shared as SharedFuture};
 use futures_util::stream::LocalBoxStream;
@@ -220,6 +220,15 @@ pub(crate) struct LiveCli {
     /// How the process's start went, until the first run that takes it
     /// reports it.
     pub(crate) started: Option<StartTiming>,
+    /// When the call the output belongs to now started, as the usage ledger
+    /// counts calls: a run's first call with the run, each later one when
+    /// its first line is read. A `rate_limit_event` follows the
+    /// `message_stop` of the call it reports on, so its windows carry this
+    /// time (`usage-and-quota.md` § Probe and observation).
+    call_requested_at: Timestamp,
+    /// Whether the run's first call, which started with the run, is yet to
+    /// show its first line.
+    first_call_unseen: bool,
 }
 
 impl LiveCli {
@@ -326,7 +335,26 @@ impl LiveCli {
                 session_build,
                 initialize: None,
             }),
+            // No call starts before a run gives the process input.
+            call_requested_at: shared.clock.now(),
+            first_call_unseen: false,
         })
+    }
+
+    /// A run that started at `at` takes the process: its first call
+    /// started with it.
+    pub(crate) fn run_started(&mut self, at: Timestamp) {
+        self.call_requested_at = at;
+        self.first_call_unseen = true;
+    }
+
+    /// The process showed the first line of a call: the run's first, which
+    /// started with the run, or a later one, which starts now.
+    pub(crate) fn call_started(&mut self) -> ProviderEvent {
+        if !std::mem::take(&mut self.first_call_unseen) {
+            self.call_requested_at = self.shared.clock.now();
+        }
+        ProviderEvent::Call(CallEvent::Started)
     }
 
     /// Whether the process can go on with `request`: it still runs, for the
@@ -564,7 +592,9 @@ impl LiveCli {
             Ok(value) => value,
             Err(error) => return Read::Broken(undecodable(&error, text)),
         };
-        self.shared.quota.observe(Observation::CliLine(&value));
+        self.shared
+            .quota
+            .observe(Observation::CliLine(&value), self.call_requested_at);
         match Tagged::<Line>::deserialize(value) {
             Ok(Tagged(line)) => Read::Line(text, line),
             Err(error) => Read::Broken(undecodable(&error, text)),

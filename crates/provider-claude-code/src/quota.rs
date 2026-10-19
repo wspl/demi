@@ -289,6 +289,7 @@ fn named_window(
         unit: Some(QuotaUnit::Percent),
         resets_at,
         period_seconds: Some(period),
+        requested_at: None,
         severity: severity(used_percent),
         scope: model.map(|model| QuotaScope {
             kind: "model".into(),
@@ -470,6 +471,7 @@ impl Usage {
                 unit: Some(QuotaUnit::Percent),
                 resets_at: reset_time(limit.resets_at),
                 period_seconds,
+                requested_at: None,
                 severity: limit
                     .severity
                     .into_inner()

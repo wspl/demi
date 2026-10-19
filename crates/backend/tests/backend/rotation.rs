@@ -345,6 +345,7 @@ fn window(now: Timestamp, used: f64, hours: i64, period: u64) -> QuotaWindow {
         unit: None,
         resets_at: Some(resets_at),
         period_seconds: Some(period * 3600),
+        requested_at: None,
         severity: None,
         scope: None,
     }

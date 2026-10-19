@@ -11,7 +11,7 @@ use demi_provider_common::credentials::{
     MemoryCredentialPool,
 };
 use demi_provider_common::quota::{MemorySnapshots, QuotaError};
-use demi_provider_common::testing::{MockResponse, MockVendor, login_io};
+use demi_provider_common::testing::{ManualClock, MockResponse, MockVendor, login_io};
 use demi_provider_common::{CatalogError, Provider, RuntimeEnv, RuntimeError, Secret};
 use demi_shared_types::{
     AuthState, LoginStage, QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, RuntimeState,
@@ -398,6 +398,61 @@ async fn the_quota_is_the_clis_usage_answer_in_the_accounts_directory_and_its_li
     );
     // The probe's limits stay; a window Demi does not name is left out.
     assert_eq!(observed.windows.len(), 5);
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_rate_limit_line_carries_the_start_of_the_call_it_follows() {
+    let pool = MemoryCredentialPool::new();
+    let account = seed(&pool, None).await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let clock = Arc::new(ManualClock::new(NOW.parse().unwrap()));
+    let provider = ClaudeCodeProvider::new(
+        ClaudeCodeConfig::new("entry-1", "Claude", Some(account), Some(machine(&placement))),
+        Arc::new(pool.clone()),
+        Arc::new(MemorySnapshots::new()),
+        models_dev_client(NOWHERE),
+        clock.clone(),
+    );
+    let rate_limit = |window: &str, utilization: f64| {
+        json!({
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "allowed",
+                "unifiedWindows": { window: { "utilization": utilization, "resetsAt": 1790855225 } },
+            },
+        })
+    };
+    let later = "2026-09-24T08:00:05Z";
+    let mut runtime = runtime_of(&provider, &placement);
+    let (_, ()) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+        async {
+            let cli = starts.next().await;
+            // The run started at NOW; the CLI starts a second call of the
+            // turn on its own at `later`.
+            clock.set(later.parse().unwrap());
+            cli.message_start();
+            cli.message_stop();
+            cli.say(rate_limit("five_hour", 0.5));
+            cli.message_start();
+            cli.message_stop();
+            cli.say(rate_limit("seven_day", 0.25));
+            cli.result(1, 1);
+        }
+    );
+    let snapshot = provider.quota().unwrap().latest().unwrap();
+    let requested_at = |id: &str| {
+        snapshot
+            .windows
+            .iter()
+            .find(|window| window.id == id)
+            .unwrap()
+            .requested_at
+    };
+    // The run's first call started with the run, before its first line;
+    // the second when its first line came.
+    assert_eq!(requested_at("five_hour"), Some(NOW.parse().unwrap()));
+    assert_eq!(requested_at("seven_day"), Some(later.parse().unwrap()));
 }
 
 // Thirty seconds on a paused clock, then a few milliseconds.

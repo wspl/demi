@@ -389,6 +389,7 @@ mod tests {
             unit: None,
             resets_at: resets_in_hours.map(at),
             period_seconds: period_hours.map(|hours| hours * 3600),
+            requested_at: None,
             severity: None,
             scope: None,
         }

@@ -131,6 +131,7 @@ async fn sse(
     cancel: &CancellationToken,
     observed: &mut Vec<QuotaWindow>,
 ) -> Result<Events, OpenError> {
+    let requested_at = shared.clock.now();
     let send = http
         .post(shared.responses_url.clone())
         .headers(headers.clone())
@@ -150,7 +151,7 @@ async fn sse(
     observed.extend(shared.quota.observe(Observation::Response {
         status: response.status(),
         headers: response.headers(),
-    }).into_iter().flatten());
+    }, requested_at).into_iter().flatten());
     if !response.status().is_success() {
         let status = response.status();
         let headers = response.headers().clone();
@@ -200,6 +201,7 @@ async fn websocket(
         "openai-beta",
         HeaderValue::from_static("responses_websockets=2026-02-06"),
     );
+    let requested_at = shared.clock.now();
     let connect = tokio_tungstenite::connect_async(request);
     let (mut socket, response) = match tokio::time::timeout(shared.connect_timeout, connect).await {
         Err(_) => {
@@ -213,7 +215,7 @@ async fn websocket(
             observed.extend(shared.quota.observe(Observation::Response {
                 status: response.status(),
                 headers: response.headers(),
-            }).into_iter().flatten());
+            }, requested_at).into_iter().flatten());
             let (parts, body) = (*response).into_parts();
             let body = String::from_utf8_lossy(body.as_deref().unwrap_or_default()).into_owned();
             let refusal = Refusal {
@@ -233,7 +235,7 @@ async fn websocket(
     observed.extend(shared.quota.observe(Observation::Response {
         status: response.status(),
         headers: response.headers(),
-    }).into_iter().flatten());
+    }, requested_at).into_iter().flatten());
     if let Err(error) = socket.send(Message::Text(message)).await {
         // The socket connected, so a failed send fails its stream before the
         // first event, not the connection.

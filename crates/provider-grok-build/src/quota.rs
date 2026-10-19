@@ -190,6 +190,7 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
             unit: Some(QuotaUnit::Credits),
             resets_at,
             period_seconds,
+            requested_at: None,
             severity: severity(used_percent),
             scope: None,
         });
@@ -204,6 +205,7 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
             unit: Some(QuotaUnit::Credits),
             resets_at,
             period_seconds,
+            requested_at: None,
             severity: None,
             scope: None,
         });
@@ -254,6 +256,7 @@ fn rate_limit_windows(headers: &HeaderMap) -> Option<Vec<QuotaWindow>> {
             unit: Some(unit),
             resets_at: None,
             period_seconds: None,
+            requested_at: None,
             severity: severity(used_percent),
             scope: None,
         })

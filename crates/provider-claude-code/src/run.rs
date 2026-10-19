@@ -183,6 +183,9 @@ fn run(
 ) -> impl Stream<Item = ProviderEvent> + '_ {
     stream! {
         let cancel = request.cancel.clone();
+        // The run's first call starts with the run, as the usage ledger
+        // counts it.
+        let run_started = runtime.shared.clock.now();
         // The machine stays awake from the action's first request to its
         // end, however long its process waits on a tool's result.
         if runtime.action.is_none() {
@@ -223,6 +226,7 @@ fn run(
             let mut live = match kept {
                 Some((mut live, took)) if live.serves(&request) => {
                     timing.took(took, live.started.take());
+                    live.run_started(run_started);
                     if let Some(mcp) = &live.mcp {
                         mcp.offer(request.tools.clone());
                     }
@@ -268,6 +272,7 @@ fn run(
                         }
                         Some(Ok(live)) => live,
                     };
+                    live.run_started(run_started);
                     match cancel.run_until_cancelled(live.prepare(&request)).await {
                         None => {
                             live.close().await;
@@ -359,7 +364,7 @@ fn run(
                     Some(Line::Assistant(message)) if message.is_refusal_notice() => {
                         // The refused call is one of its own, which the
                         // run's failure ends.
-                        yield ProviderEvent::Call(CallEvent::Started);
+                        yield live.call_started();
                         signed_out |= message.refused_sign_in();
                         refusal = Some(text);
                         let id = message.message_id();
@@ -387,7 +392,7 @@ fn run(
                                 yield live.last_call.ended(CallOutcome::Refused(None));
                             }
                             complete = Some(live.abandon_streaming());
-                            yield ProviderEvent::Call(CallEvent::Started);
+                            yield live.call_started();
                             live.last_call.answered(id.clone(), message.usage());
                             yield live.last_call.ended(CallOutcome::Answered);
                         }
@@ -469,7 +474,7 @@ fn run(
                             if live.streaming.is_some() {
                                 yield live.last_call.ended(CallOutcome::Refused(None));
                             }
-                            yield ProviderEvent::Call(CallEvent::Started);
+                            yield live.call_started();
                         }
                         live.last_call.observe(&event);
                         if let StreamEvent::MessageStop(_) = &event {

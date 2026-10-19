@@ -44,6 +44,7 @@ fn snapshot() -> Value {
             "unit": "percent",
             "resetsAt": "2026-09-23T12:30:00.000Z",
             "periodSeconds": 18000,
+            "requestedAt": "2026-09-23T10:04:08.000Z",
             "severity": "normal",
             "scope": null
         }]
@@ -60,8 +61,12 @@ fn a_stored_catalog_and_quota_snapshot_keep_their_wire_shape() {
     // unknown, which Balanced counts as a room of 1.
     let mut before = snapshot();
     before["windows"][0].as_object_mut().unwrap().remove("periodSeconds");
+    // One stored before windows kept when their request started reads that
+    // as unknown, which any update replaces.
+    before["windows"][0].as_object_mut().unwrap().remove("requestedAt");
     let quota: QuotaSnapshot = decode(&before.to_string()).unwrap();
     assert_eq!(quota.windows[0].period_seconds, None);
+    assert_eq!(quota.windows[0].requested_at, None);
 }
 
 #[test]
