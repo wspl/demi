@@ -1064,11 +1064,19 @@ Enabled follows the control and its ancestors, including a disabled `fieldset`
 and `aria-disabled`. Editable means an input or textarea that is not read-only,
 or a contenteditable element. Stable means the bounding box is unchanged across
 three consecutive animation frames, within a bounded number of frames: the
-two frames on either side of an animation's turn can show the same box. A tab that
-is not the front tab of its window, such as an older tab after `open` or the
-opener of a popup, has a hidden document, which runs no animation frames; there
-the box is sampled on timers of about a frame's length instead, so an action
-works on any tab while the others run in parallel. The hit test
+two frames on either side of an animation's turn can show the same box.
+
+Every tab Demi drives renders as the front tab of its window does, also a
+tab behind another, such as an older tab after `open` or the opener of a
+popup. Demi turns on Chrome's focus emulation for each tab it attaches to, as
+Playwright does: the tab stays where it is in its window, its document's
+`visibilityState` is `visible`, and it runs animation frames and timers.
+Chrome delivers mouse input only with a frame, so a tab that drew none would
+hold a scroll, a click or a drag until the user brought it to the front. So an
+action works on any tab while the others run in parallel, at the cost that a
+tab behind another keeps rendering, as a page the user looks at does.
+
+The hit test
 follows the element's shadow roots and frames, so a control inside a shadow root
 is not treated as obstructed by its host; an element that another element
 covers, or whose computed `pointer-events` is `none`, fails with `not_actionable`
