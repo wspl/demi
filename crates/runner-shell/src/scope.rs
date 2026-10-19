@@ -108,6 +108,79 @@ impl Interrupt {
     }
 }
 
+/// What one wait for a file and an interrupt saw.
+#[cfg(unix)]
+enum Readiness {
+    /// The interrupt became readable: the work is cancelled.
+    Interrupted,
+    /// The file can be read or written, or its read or write fails at once.
+    Ready,
+    /// The wait ended with neither.
+    Neither,
+}
+
+/// Waits until `file` can be read, or written when `writing`, or
+/// `interrupt` can be read.
+#[cfg(all(unix, not(target_vendor = "apple")))]
+fn wait_ready(
+    file: &File,
+    interrupt: &std::io::PipeReader,
+    writing: bool,
+) -> rustix::io::Result<Readiness> {
+    use rustix::event::{PollFd, PollFlags};
+    let events = if writing {
+        PollFlags::OUT
+    } else {
+        PollFlags::IN
+    };
+    let mut descriptors = [
+        PollFd::new(file, events),
+        PollFd::new(interrupt, PollFlags::IN),
+    ];
+    rustix::event::poll(&mut descriptors, None)?;
+    Ok(if !descriptors[1].revents().is_empty() {
+        Readiness::Interrupted
+    } else if !descriptors[0].revents().is_empty() {
+        Readiness::Ready
+    } else {
+        Readiness::Neither
+    })
+}
+
+/// Waits as on other systems, with `select()`: macOS's `poll()` and kqueue
+/// never report that a FIFO's last writer closed it, so a utility reading a
+/// FIFO would wait past its end for ever (`cat < fifo`), where its `read()`
+/// gives the end and `select()` reports the FIFO readable.
+#[cfg(target_vendor = "apple")]
+fn wait_ready(
+    file: &File,
+    interrupt: &std::io::PipeReader,
+    writing: bool,
+) -> rustix::io::Result<Readiness> {
+    use rustix::event::{FdSetElement, FdSetIter, fd_set_insert, fd_set_num_elements};
+    use std::os::fd::AsRawFd;
+    let file = file.as_raw_fd();
+    let interrupt = interrupt.as_raw_fd();
+    let bound = file.max(interrupt) + 1;
+    let empty = vec![FdSetElement::default(); fd_set_num_elements(2, bound)];
+    let mut readable = empty.clone();
+    let mut writable = empty;
+    fd_set_insert(&mut readable, interrupt);
+    fd_set_insert(if writing { &mut writable } else { &mut readable }, file);
+    // SAFETY: both descriptors stay open across the call, borrowed from
+    // `file` and `interrupt`, and each set holds `bound` bits, as `select`
+    // requires; rustix makes no safe form of it.
+    unsafe { rustix::event::select(bound, Some(&mut readable), Some(&mut writable), None, None) }?;
+    let holds = |set: &[FdSetElement], descriptor| FdSetIter::new(set).any(|ready| ready == descriptor);
+    Ok(if holds(&readable, interrupt) {
+        Readiness::Interrupted
+    } else if holds(&readable, file) || holds(&writable, file) {
+        Readiness::Ready
+    } else {
+        Readiness::Neither
+    })
+}
+
 #[derive(Clone)]
 pub struct Scope {
     /// Ends the scope's shell work. A part of the job's work (`Stop`) ends
@@ -349,29 +422,14 @@ impl Scope {
     /// Waits until `file` can be read or written, or the scope is cancelled.
     #[cfg(unix)]
     fn ready(&self, file: &File, writing: bool) -> io::Result<()> {
-        use rustix::event::{PollFd, PollFlags};
         self.check()?;
         let interrupt = self.interrupt()?;
-        let events = if writing {
-            PollFlags::OUT
-        } else {
-            PollFlags::IN
-        };
         loop {
-            let mut descriptors = [
-                PollFd::new(file, events),
-                PollFd::new(&interrupt.reader, PollFlags::IN),
-            ];
-            match rustix::event::poll(&mut descriptors, None) {
-                Ok(_) => {}
-                Err(rustix::io::Errno::INTR) => continue,
+            match wait_ready(file, &interrupt.reader, writing) {
+                Ok(Readiness::Interrupted) => return Err(io::Error::other(Cancelled)),
+                Ok(Readiness::Ready) => return Ok(()),
+                Ok(Readiness::Neither) | Err(rustix::io::Errno::INTR) => {}
                 Err(error) => return Err(error.into()),
-            }
-            if !descriptors[1].revents().is_empty() {
-                return Err(io::Error::other(Cancelled));
-            }
-            if !descriptors[0].revents().is_empty() {
-                return Ok(());
             }
         }
     }
