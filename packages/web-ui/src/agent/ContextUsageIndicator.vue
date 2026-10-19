@@ -233,17 +233,14 @@ const ringColor = computed(() => {
               fill="none"
               stroke="currentColor"
               stroke-width="2.5"
-              class="text-overlay/15"
+              class="text-overlay/8"
             />
-            <!-- A gauge, not a spinner: square ends and a track as visible as the
-                 fill's room, and no arc until there is one to read, since a short
-                 round-capped arc on a faint ring is what a spinner looks like. -->
             <circle
-              v-if="ratio >= 0.01"
               cx="7" cy="7" :r="radius"
               fill="none"
               stroke="currentColor"
               stroke-width="2.5"
+              stroke-linecap="round"
               :stroke-dasharray="String(circumference)"
               :stroke-dashoffset="strokeDashoffset"
               :class="ringColor"
