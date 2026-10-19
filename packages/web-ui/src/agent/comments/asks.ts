@@ -1,7 +1,7 @@
 import type { Block, MediaSource, ProviderFailureFacts } from '@demicodes/protocol'
 import type { HeldTranscript } from '../../transport/protocol'
 import { toolCallTitle } from '../block-helpers'
-import { quotedWords } from '../send-to-conversation'
+import { plainUserMarkdown } from '../../markdown/user-markdown'
 import { latestWindow } from '@demicodes/conversation-client'
 import type { HeldBlock } from '../history'
 import { t } from '../locales/text'
@@ -177,16 +177,27 @@ export function cardContent(question: ShownSideQuestion): CardContent {
  * turns only, the first message drawn as the user's question with its
  * quote, the asked picture for one about a picture, without the
  * instruction the model reads, the history before it being the
- * conversation's own.
+ * conversation's own. The questions were typed in a plain field and show as
+ * typed, as a comment's words do, never read as Markdown.
  */
 export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
-  // A picture shows as a comment's does: a small copy as the quote, the question under it.
-  const first = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => question.picture
-    ? {
-        ...block,
-        content: [],
-        comments: [{ id: `${block.id}-picture`, blockId: question.blockId, start: question.start, end: question.end, at: 0, quote: question.quote, picture: question.picture, text: question.question }],
-      }
-    : { ...block, content: [{ type: 'text', text: `${quotedWords(question.quote).text}\n\n${question.question}` }] }
-  return (ownBlocks(question) ?? []).map((block, index) => (index === 0 && block.type === 'user' ? first(block) : block))
+  // The first shows as a comment does: the quoted words or a small copy of the picture, the question under it.
+  const first = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => ({
+    ...block,
+    content: [],
+    comments: [{
+      id: `${block.id}-quote`, blockId: question.blockId, start: question.start, end: question.end, at: 0,
+      quote: question.quote, ...(question.picture ? { picture: question.picture } : {}), text: question.question,
+    }],
+  })
+  // A follow-up's text is the field's plain text, which the bubble reads as a message's Markdown.
+  const followUp = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => ({
+    ...block,
+    content: block.content.map((part) => (part.type === 'text' ? { ...part, text: plainUserMarkdown(part.text) } : part)),
+  })
+  return (ownBlocks(question) ?? []).map((block, index) => {
+    if (block.type !== 'user')
+      return block
+    return index === 0 ? first(block) : followUp(block)
+  })
 }
