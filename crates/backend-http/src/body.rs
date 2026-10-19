@@ -1,7 +1,8 @@
-//! Request bodies read whole (`web-api.md` § Request bodies): a JSON body is
-//! at most 1 MiB, refused with 413 `too_large` before more than that is read,
-//! and must match its request type exactly; a page's WebSocket message is at
-//! most 1 MiB too.
+//! Request bodies read whole (`web-api.md` § Request bodies): a body over
+//! its limit is refused with 413 `too_large` before more than that is read,
+//! and before any of it when its declared length is over; a JSON body is at
+//! most 1 MiB and must match its request type exactly; a page's WebSocket
+//! message is at most 1 MiB too.
 
 use axum::Json;
 use axum::body::Bytes;
@@ -106,14 +107,27 @@ where
     }
 }
 
-/// The body's bytes, within the limit.
+/// The JSON body's bytes, within its limit.
 pub(super) async fn read<S: Send + Sync>(request: Request, state: &S) -> Result<Bytes, ApiError> {
+    read_within(request, state, JSON_BODY_LIMIT, too_large).await
+}
+
+/// The body's bytes, at most `limit`, which the route's `DefaultBodyLimit`
+/// sets for the bytes as they arrive. A declared length over `limit` is
+/// refused before a byte is read, and a body without one is counted as it
+/// arrives; either way the refusal is `too_large`'s.
+pub(super) async fn read_within<S: Send + Sync>(
+    request: Request,
+    state: &S,
+    limit: usize,
+    too_large: fn() -> ApiError,
+) -> Result<Bytes, ApiError> {
     let declared = request
         .headers()
         .get(CONTENT_LENGTH)
         .and_then(|length| length.to_str().ok())
         .and_then(|length| length.parse::<u64>().ok());
-    if declared.is_some_and(|length| length > JSON_BODY_LIMIT as u64) {
+    if declared.is_some_and(|length| length > limit as u64) {
         return Err(too_large());
     }
     Bytes::from_request(request, state)

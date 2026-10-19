@@ -11,9 +11,8 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::State;
-use axum::extract::rejection::{BytesRejection, FailedToBufferBody};
-use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
+use axum::extract::{Request, State};
+use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse as _, Response};
 use demi_agent_store::attachments::{is_text, snippet, upload_media_type};
@@ -25,6 +24,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
 use garde::Validate as _;
 
+use super::body::read_within;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
@@ -65,25 +65,16 @@ pub(super) async fn upload(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     QueryParams(query): QueryParams<UploadQuery>,
-    headers: HeaderMap,
-    body: Result<Bytes, BytesRejection>,
+    request: Request,
 ) -> Result<Response, ApiError> {
     query
         .validate()
         .map_err(|report| ApiError::invalid_query(format!("name: {report}")))?;
-    let sent = sent_media_type(&headers)?;
-    // A declared length over the limit is refused before a byte is read.
-    let declared = headers
-        .get(CONTENT_LENGTH)
-        .and_then(|length| length.to_str().ok())
-        .and_then(|length| length.parse::<u64>().ok());
-    if declared.is_some_and(|length| length > ATTACHMENT_MAX_BYTES as u64) {
-        return Err(too_large());
-    }
-    let bytes = body.map_err(|rejection| match rejection {
-        BytesRejection::FailedToBufferBody(FailedToBufferBody::LengthLimitError(_)) => too_large(),
-        other => ApiError::invalid_body(other.body_text()),
-    })?;
+    let sent = sent_media_type(request.headers())?;
+    // The body is read only after the checks above, so a refusal of the
+    // query or the media type, or of a declared length over the limit,
+    // comes before a byte of it.
+    let bytes = read_within(request, &services, BODY_LIMIT, too_large).await?;
     let blobs = services.blobs.for_user(&user.id);
     let uploaded = async |opening: Bytes, size_bytes: u64, sha256| {
         record(&services, &user.id, &query.name, &sent, &opening, size_bytes, sha256).await
