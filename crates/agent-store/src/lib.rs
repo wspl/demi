@@ -50,7 +50,11 @@ pub mod pixels;
 pub mod testing;
 pub mod versions;
 
-use std::{collections::BTreeMap, ops::Range, rc::Rc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::Range,
+    rc::Rc,
+};
 
 use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob, Versions};
 use demi_host_interface::{Seen, UnsentStart, WholeOutput};
@@ -258,6 +262,11 @@ pub trait AgentTreeStore {
         &'a self,
         node: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>>;
+
+    /// Every node that ran a command the conversation records running, in
+    /// one read, so a restore finds the few closed children with commands
+    /// to take up without asking each child.
+    fn running_nodes(&self) -> LocalBoxFuture<'_, Result<BTreeSet<NodeId>, StoreError>>;
 
     /// Records that `node` has looked to `seen` in the output of the
     /// conversation's command `command`, which runs

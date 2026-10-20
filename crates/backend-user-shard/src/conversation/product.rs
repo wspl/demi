@@ -145,15 +145,17 @@ impl SubagentSource for ShardSubagents {
         })
     }
 
-    fn runs_on<'a>(&'a self, selection: &'a ModelSelection) -> LocalBoxFuture<'a, JobModel> {
+    fn runs_on<'a>(&'a self, selections: &'a [ModelSelection]) -> LocalBoxFuture<'a, Vec<JobModel>> {
         Box::pin(async move {
             let Ok(shard) = self.shard() else {
-                // The backend is shutting down: the frame names what the
-                // selection holds.
-                return job_model(selection, None, None);
+                // The backend is shutting down: the frames name what the
+                // selections hold.
+                return selections
+                    .iter()
+                    .map(|selection| job_model(selection, None, None))
+                    .collect();
             };
-            let mut models = runs_on(shard.services(), shard.user(), std::slice::from_ref(selection)).await;
-            models.pop().expect("one model for one selection")
+            runs_on(shard.services(), shard.user(), selections).await
         })
     }
 

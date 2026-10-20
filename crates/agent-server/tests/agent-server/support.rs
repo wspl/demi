@@ -20,11 +20,11 @@ use demi_agent_store::{AgentTreeStore, Placement, testing::MemoryTreeStore};
 use demi_agent_tools::{
     ContextAnswer, ContextSource, ConversationProfiles, EnvironmentScope, HostResolver, NodeContext,
     WorkflowListing,
-    ShellEnvironmentFactory, SubagentSettings, SubagentSource, Toolset,
+    ShellEnvironmentFactory, SubagentSettings, SubagentSource, Toolset, runs_on,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{ClientFrame, JobModel, ServerFrame};
 use demi_host_interface::{
     CommandRecord, CommandSet, CommandStatus, DEFAULT_OUTPUT_LIMIT_BYTES, Ending, ExecRequest,
     GroupBuilder, Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, LeafBuilder,
@@ -70,6 +70,10 @@ pub struct TestProduct {
     pub workflows: RefCell<Option<WorkflowListing>>,
     /// The Host's files `demi agent workflows check` reads, by path.
     pub files: RefCell<HashMap<String, String>>,
+    /// How many times the names of the models agents run on were read, each
+    /// a read of the user's provider entries and model catalog in the
+    /// product.
+    pub runs_on_reads: Cell<usize>,
 }
 
 /// A plugin's context source: it answers its text once per node.
@@ -112,6 +116,7 @@ impl Default for TestProduct {
             files: RefCell::default(),
             plugin: None,
             plugin_asked_meanwhile: RefCell::default(),
+            runs_on_reads: Cell::default(),
         }
     }
 }
@@ -138,6 +143,15 @@ impl SubagentSource for TestProduct {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>> {
         let settings = self.subagents.borrow().clone();
         Box::pin(async move { Ok(settings) })
+    }
+
+    fn runs_on<'a>(&'a self, selections: &'a [ModelSelection]) -> LocalBoxFuture<'a, Vec<JobModel>> {
+        self.runs_on_reads.set(self.runs_on_reads.get() + 1);
+        let models = selections
+            .iter()
+            .map(|selection| runs_on(selection, None, None))
+            .collect();
+        Box::pin(async move { models })
     }
 
     fn conversation_profiles<'a>(

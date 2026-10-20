@@ -43,7 +43,7 @@ use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::{AgentCode, ServerFrame, TranscriptPatch, index_u32};
 use demi_host_interface::{PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
-use demi_shared_types::{Block, Clock, CommandId, NodeId};
+use demi_shared_types::{Block, Clock, CommandId, ModelSelection, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -335,9 +335,11 @@ impl<H: HostResolver> Tree<H> {
         let stored = Origin::stored(store.as_ref(), root)
             .await
             .map_err(AssembleError::from)?;
+        let subagents = store.subagents().await.map_err(AssembleError::from)?;
+        let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model.clone()).collect();
+        let models = deps.subagents.runs_on(&selections).await;
         let mut summaries = BTreeMap::new();
-        for stored in store.subagents().await.map_err(AssembleError::from)? {
-            let runs_on = deps.subagents.runs_on(&stored.model).await;
+        for (stored, runs_on) in subagents.into_iter().zip(models) {
             summaries.insert(
                 stored.record.number,
                 Summary {

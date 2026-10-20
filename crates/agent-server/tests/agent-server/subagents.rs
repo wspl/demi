@@ -1559,6 +1559,43 @@ fn answer(id: &str, words: &str) -> Block {
     })
 }
 
+// The backend opens a conversation whose children all closed and were
+// delivered long ago.
+//
+// What the open reads does not grow with them: the names of the models they
+// ran on come from one read of the product, and finding the closed children
+// with commands still to take up asks the store nothing per child. Opening one
+// with 700 children read the user's provider entries and model catalog 700
+// times, and asked the store for each child's commands and children. About
+// 0.05 s.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn an_open_reads_as_much_for_many_closed_children_as_for_one() {
+    async fn reads(children: u64) -> (usize, usize) {
+        let store = MemoryTreeStore::new();
+        store
+            .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), checkpoint(Vec::new(), Vec::new()))
+            .await
+            .unwrap();
+        let completed = NodeClose {
+            phase: ClosePhase::Completed { result: "done".into() },
+            at: Timestamp::UNIX_EPOCH,
+        };
+        for number in 1..=children {
+            let record = child_record(&format!("closed-{number}"), number, "conversation", None);
+            let id = record.id.clone();
+            store.create_node(record, checkpoint(Vec::new(), Vec::new())).await.unwrap();
+            store.close_node(&id, completed.clone()).await.unwrap();
+            store.mark_delivered(&id, 1).await.unwrap();
+        }
+        let fixture = Fixture::with_model(&Model::default(), TestProduct::default(), store.clone(), ServerConfig::default());
+        let before = store.node_reads();
+        fixture.server.restore(&root()).await.unwrap();
+        (fixture.product.runs_on_reads.get(), store.node_reads() - before)
+    }
+
+    assert_eq!(reads(40).await, reads(1).await);
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_completion() {
     let store = MemoryTreeStore::new();
