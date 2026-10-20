@@ -132,6 +132,15 @@ async fn carry(
     }
 }
 
+/// Cuts `network`, which carries the connection of `session`'s device `id`,
+/// and waits until the backend recorded the connection's end.
+pub(crate) async fn dropped(harness: &Harness, backend: &TestBackend, session: &Session, network: &Network, id: &str) {
+    let before = backend.last_seen(session, id).await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(1));
+    network.cut();
+    backend.until_seen_since(session, id, before).await;
+}
+
 /// Waits until something is at `path`.
 async fn until_exists(path: &Path) {
     eventually(&format!("{} exists", path.display()), || {

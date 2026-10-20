@@ -146,6 +146,7 @@ pub(super) async fn browse(
             let host = shard
                 .devices()
                 .device_access(&device.id)
+                .await
                 .ok_or_else(ApiError::device_offline)?;
             let home = shard.devices().home(&device.id);
             let path = requested
@@ -221,6 +222,7 @@ pub(super) async fn make_directory(
             let host = shard
                 .devices()
                 .device_access(&device.id)
+                .await
                 .ok_or_else(ApiError::device_offline)?;
             let recursive = MkdirOptions { recursive: true };
             demi_host_interface::HostFs::mkdir(&host, &path, recursive)
@@ -247,6 +249,7 @@ pub(super) async fn log(
             let host = shard
                 .devices()
                 .device_access(&device.id)
+                .await
                 .ok_or_else(ApiError::device_offline)?;
             let source = query.source.as_ref().map(|source| source.as_str());
             host.read_log(query.since, query.limit.get(), source)

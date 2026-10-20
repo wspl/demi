@@ -58,7 +58,7 @@ impl dyn HostShard + '_ {
                 resolve(&access.host, directory).await
             }
             DeviceKind::User => {
-                let Some(access) = self.devices().device_access(&device.id) else {
+                let Some(access) = self.devices().device_access(&device.id).await else {
                     return Err(DirectoryRefusal::Offline(self.offline(device).message));
                 };
                 resolve(&access, directory).await

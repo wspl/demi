@@ -283,7 +283,7 @@ impl Shard {
                     listen: listens.then_some(record.listen_port),
                     connect: connects.then(|| record.connect_address.to_string()),
                     peer: peer.to_string(),
-                    peer_online: self.devices().online(peer),
+                    peer_online: self.devices().connected(peer),
                     direct,
                 })
             })
@@ -296,11 +296,11 @@ impl Shard {
     pub(crate) async fn forwards_presence(&self, device: &DeviceId, connected: bool) {
         // A runner that connected holds none, as does one that is gone; a
         // connection that a newer one replaced leaves what that one was told.
-        let online = self.devices().online(device);
-        if connected || !online {
+        let present = self.devices().connected(device);
+        if connected || !present {
             self.forwards.told.borrow_mut().remove(device);
         }
-        if !online {
+        if !present {
             self.forwards
                 .states
                 .borrow_mut()

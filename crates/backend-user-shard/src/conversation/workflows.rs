@@ -417,7 +417,7 @@ impl Shard {
         if let Some(found) = self.project_files().workflows.held(device, directory.to_owned(), after) {
             return Ok(found.menu());
         }
-        let host = self.devices().device_access(device).ok_or(DeviceWorkflowsRefusal::Offline)?;
+        let host = self.devices().device_access(device).await.ok_or(DeviceWorkflowsRefusal::Offline)?;
         let paths = host.identity().paths;
         let host = &host;
         let found = search_workflows(paths, directory, |reads| async move { look_files(host, &reads).await })

@@ -370,7 +370,7 @@ impl Shard {
                     }
                 } else {
                     let device = device.expect("a paired device's target names it");
-                    match self.devices().device_access(&device) {
+                    match self.devices().device_access(&device).await {
                         Some(host) => run_command(host, path, context, script, stop).await,
                         None => Checked::Unrunnable(Unrunnable::Offline(
                             self.offline_device(&device).await.unwrap_or_else(|| device.to_string()),

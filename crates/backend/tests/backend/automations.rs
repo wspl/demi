@@ -831,11 +831,14 @@ async fn a_call_taken_before_a_restart_still_makes_its_one_run() {
     let (harness, backend, master, paired, _root, _provider) = tree_on(&scripts, harness).await;
     let (id, bearer) = url_automation(&backend, &master, "Deploys").await;
     call(&backend, &id, &bearer, "taken-before-the-restart").await;
-    // Down while the burst waits.
+    // Down while the burst waits. The device shows online from the start,
+    // so its runner is back once the backend has seen it after the start.
+    let seen = backend.last_seen(&master, paired.id()).await;
     let address = backend.address();
     backend.close().await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(1));
     let backend = harness.start_at(address).await;
-    backend.until_online(&master, paired.id(), true).await;
+    eventually("the runner is back", || async { backend.last_seen(&master, paired.id()).await != seen }).await;
     scripts.root(FIRST, vec![say("deployed")]);
     elapse(Duration::from_secs(31)).await;
     eventually("the call's run is done", || async {

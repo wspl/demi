@@ -447,9 +447,11 @@ impl Harness {
             media_catalog_url: None,
             claude_releases: None,
             // Liveness would ping every 30 s; the tests end runners
-            // themselves.
+            // themselves. A device whose runner a test stops or cuts off is
+            // offline at once, unless the test waits for its return.
             runners: RunnerTuning {
                 ping: None,
+                returning: Duration::ZERO,
                 ..RunnerTuning::default()
             },
             // A scripted vendor answers the turns a scenario scripts; a title
@@ -1107,6 +1109,17 @@ impl TestBackend {
         self.backend.until_login_ended(&session.user.id, &login).await;
     }
 
+    /// Waits until `count` operations of `session`'s user wait for a
+    /// returning device's runner.
+    pub async fn until_waiting_for_return(&self, session: &Session, count: usize) {
+        let mut waits = self.backend.return_waits(&session.user.id).await;
+        let waiting = waits.wait_for(|waits| *waits >= count);
+        tokio::time::timeout(PATIENCE, waiting)
+            .await
+            .unwrap_or_else(|_| panic!("{count} operations never waited for a runner"))
+            .unwrap();
+    }
+
     /// What `session`'s user's device `device` is subscribed to on its
     /// runner now.
     pub async fn subscribed(&self, session: &Session, device: &str) -> Vec<demi_runner_protocol::files::Subject> {
@@ -1179,6 +1192,26 @@ impl TestBackend {
             .await
             .iter()
             .any(|device| device.id.as_str() == id && device.state == DeviceState::Online)
+    }
+
+    /// When the backend last saw the session's device `id`'s runner, as the
+    /// device list says.
+    pub async fn last_seen(&self, session: &Session, id: &str) -> Option<demi_shared_types::Timestamp> {
+        self.devices(session)
+            .await
+            .into_iter()
+            .find(|device| device.id.as_str() == id)
+            .and_then(|device| device.last_seen_at)
+    }
+
+    /// Waits until the device list's last-seen time of the session's device
+    /// `id` is no longer `before`: the backend recorded its runner's
+    /// connection ending or starting, the test having moved the clock on.
+    pub async fn until_seen_since(&self, session: &Session, id: &str, before: Option<demi_shared_types::Timestamp>) {
+        eventually(&format!("device {id} seen again"), || async {
+            self.last_seen(session, id).await != before
+        })
+        .await;
     }
 
     /// Waits until the device's online state is `online`.

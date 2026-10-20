@@ -285,7 +285,7 @@ impl Shard {
         // What its conversations keep of its files is searched again on the
         // new connection.
         self.project_files().online(device);
-        let access = self.devices().device_access(device);
+        let access = Some(serving.device_access());
         let device = device.clone();
         let reported = async move {
             let first = seen

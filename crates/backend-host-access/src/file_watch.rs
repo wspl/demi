@@ -97,11 +97,13 @@ impl dyn HostShard + '_ {
     /// Opens a device's folder dialog's file watch through device access
     /// (`crates/backend-host-access/src/lib.rs`): every
     /// subscription of it is outside a working tree. A device whose runner
-    /// is not connected is out of reach.
-    pub fn open_device_watch(&self, device: &DeviceId) -> OpenedWatch {
+    /// is not connected, once a returning one's wait is over, is out of
+    /// reach.
+    pub async fn open_device_watch(&self, device: &DeviceId) -> OpenedWatch {
         let Some(subscriber) = self
             .devices()
             .device_access(device)
+            .await
             .and_then(|host| host.subscriber().ok())
         else {
             return OpenedWatch::Offline;

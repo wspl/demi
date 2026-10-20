@@ -477,3 +477,48 @@ async fn a_job_that_touches_no_browser_leaves_the_tab_list_revision_the_summary_
     assert_eq!(revisions(&ended), browser_at(0));
     backend.close().await;
 }
+
+/// While the device's runner is away after a drop, the device shows online,
+/// and the work panel's tab list waits for the runner, rather than answering
+/// that the device is offline, and is answered once it is back
+/// (`crates/backend-runners/src/devices.rs`).
+// About two seconds: a real device installs the builtin package, stops and
+// starts again.
+#[tokio::test]
+async fn the_tab_list_waits_for_a_runner_that_dropped() {
+    let mut harness = Harness::new().with_browser_package();
+    // Longer than the test: the runner comes back first.
+    harness.runners.returning = Duration::from_secs(10 * 60);
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let id = conversation(&backend, &master).await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
+    let moved = backend.patch(&format!("/api/conversations/{id}"), &master, target).await;
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let listed = tabs(&backend, &master, &id).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+
+    let before = backend.last_seen(&master, laptop.id()).await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(1));
+    laptop.runner.stop().await;
+    backend.until_seen_since(&master, laptop.id(), before).await;
+    assert!(backend.online(&master, laptop.id()).await);
+
+    let listed = {
+        let mut listing = std::pin::pin!(tabs(&backend, &master, &id));
+        tokio::select! {
+            answered = &mut listing => panic!(
+                "the tab list answered while the runner was away: {} {}",
+                answered.status,
+                String::from_utf8_lossy(&answered.body)
+            ),
+            () = backend.until_waiting_for_return(&master, 1) => {}
+        }
+        laptop.runner.start_again();
+        listing.await
+    };
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    assert_eq!(listed.json::<Value>()["state"], no_tabs());
+    backend.close().await;
+}
