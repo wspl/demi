@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.25.11
+
+### Patch Changes
+
+- 6ce63aa: Drop tool calls a failed provider stream requested before deciding whether to retry: they never ran, so the attempt can be retried silently, and later requests never replay a call without a result.
+  - @demicodes/core@0.25.11
+  - @demicodes/provider@0.25.11
+  - @demicodes/shell@0.25.11
+  - @demicodes/utils@0.25.11
+
 ## 0.25.10
 
 ### Patch Changes
