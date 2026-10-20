@@ -5,5 +5,5 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The gallery's own text: its navigation, views and controls (`localization.md` § Where the text lives). */
+/** The gallery's own text: its navigation, views and controls. */
 export const { t } = defineText('gallery', { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })

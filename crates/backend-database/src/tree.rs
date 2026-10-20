@@ -1541,8 +1541,7 @@ pub enum Terminal {
     Abort,
 }
 
-/// The root's latest ended turn (`web-api-conversations.md` § Sidebar mutations and read
-/// state).
+/// The root's latest ended turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndedTurn {
     /// The terminal block that ended it: a turn that a Resume continues
@@ -1897,10 +1896,9 @@ pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> 
     whole_path(connection, &decode("nodes", "id", NodeId::try_from(root))?)
 }
 
-/// A transcript a page is read from (`web-api-conversations.md` § Pages): an agent's in
-/// the tree, or what a share's list shows of one (`sharing.md` § Storage and
-/// routes). The pages, their light form and a block read whole are the same
-/// for both; only the rows they come from differ.
+/// A transcript a page is read from: an agent's in the tree, or what a share's list
+/// shows of one. The pages, their light form and a block read whole are the same for
+/// both; only the rows they come from differ.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transcript {
     /// The transcript of the node, the blocks below its block count.
@@ -1912,8 +1910,8 @@ pub enum Transcript {
     Shared { token: ShareToken },
 }
 
-/// What a transcript holds at an index (`web-api-conversations.md` § Sharing): a block,
-/// or, on a share's list only, the number of steps not shared in a run.
+/// What a transcript holds at an index: a block, or, on a share's list only, the number
+/// of steps not shared in a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
     Block(Block),
@@ -2209,7 +2207,7 @@ impl Transcript {
     }
 }
 
-/// What a page read found (`web-api-conversations.md` § Pages).
+/// What a page read found.
 pub enum PageRead {
     /// The page: its first block's index, the transcript's length, its
     /// blocks whole, the entries of the newest instructions block, and the
@@ -2232,8 +2230,8 @@ pub enum PageRead {
     Invalid(&'static str),
 }
 
-/// Where a page is read from, as its query asks (`web-api-conversations.md` § Pages):
-/// none, `before` or `after` with its `edge`, or `around`.
+/// Where a page is read from, as its query asks: none, `before` or `after` with its
+/// `edge`, or `around`.
 #[derive(Debug, Clone, Copy)]
 pub struct PageQuery<'a> {
     pub before: Option<u32>,
@@ -2254,7 +2252,7 @@ impl<'a> From<&'a TranscriptQuery> for PageQuery<'a> {
 }
 
 /// The page `query` asks of `transcript`, its blocks whole: whole requests
-/// within the page budget (`web-api-conversations.md` § Pages).
+/// within the page budget.
 pub fn read_page(
     connection: &Connection,
     transcript: &Transcript,
@@ -2378,7 +2376,7 @@ pub fn read_page(
     })
 }
 
-/// What a read of one block whole found (`web-api-conversations.md` § Light form).
+/// What a read of one block whole found.
 pub enum BlockRead {
     Block(Block),
     NoNode,

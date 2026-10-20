@@ -23,10 +23,10 @@ export interface TranscriptPicturesContext {
 
 /**
  * The images and videos a list's `rows` show, in the order they stand, from the
- * oldest to the newest (`file-previews.md` § The media viewer): the images
- * the messages show, the user's attached files, and the media the tools and
- * the command reports returned. It is what the media viewer steps through,
- * and holds only what `rows` holds, each picture marked with its row.
+ * oldest to the newest: the images the messages show, the user's attached
+ * files, and the media the tools and the command reports returned. It is what
+ * the media viewer steps through, and holds only what `rows` holds, each
+ * picture marked with its row.
  */
 export function transcriptPictures(rows: readonly MessageListBlock[], context: TranscriptPicturesContext): ShownMedium[] {
   return rows.flatMap((row) => (row.type === 'work_group' ? row.steps : [row]).flatMap((block) =>

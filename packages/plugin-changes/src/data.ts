@@ -180,8 +180,8 @@ export function goForward(data: ChangeData): ChangeData {
 
 /**
  * The working tree the view shows: the directory a commit link named, else
- * the one its request was opened for (`file-previews.md` § The File view's
- * bars), the conversation's when neither names one.
+ * the one its request was opened for, the conversation's when neither names
+ * one.
  */
 export function viewDirectory(data: ChangeStep): string | undefined {
   if (data.root !== undefined)

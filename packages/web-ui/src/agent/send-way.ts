@@ -5,10 +5,10 @@ import { t } from '../locales/text'
 import type { TitleText } from '../ui/ui-text'
 
 /**
- * What a message the user sends while the agent works does
- * (`turns.md` § Steer or queue): it steers the running turn, which reads it
- * as soon as the call it waits on returns, or waits in the queue for the turn
- * to end. The user's preference chooses what Enter does; Steer when unset.
+ * What a message the user sends while the agent works does: it steers the
+ * running turn, which reads it as soon as the call it waits on returns, or
+ * waits in the queue for the turn to end. The user's preference chooses what
+ * Enter does; Steer when unset.
  */
 export type SendWhileRunning = 'steer' | 'queue'
 
@@ -47,8 +47,7 @@ export interface MessageOnItsWay {
 /**
  * A message the user sent, with the ids of the messages sent after it, in
  * the order they were sent. A message not delivered keeps its place by
- * them: before the first of them that shows (`turns.md` § Following the
- * agent's work).
+ * them: before the first of them that shows.
  */
 export interface SentInOrder {
   id: string
@@ -85,8 +84,8 @@ export function markWithdrawn(sent: readonly SentInOrder[], id: string): void {
 }
 
 /**
- * Whether the dock offers Retry (`turns.md` § Recovering an unfinished
- * turn): a message was not delivered, and sending it again can deliver it.
+ * Whether the dock offers Retry: a message was not delivered, and sending it
+ * again can deliver it.
  */
 export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: false })[]): boolean {
   return sent.some((message) => message.error !== null && message.retryable !== false)
@@ -96,9 +95,8 @@ export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: fals
  * The message on its way that starts a turn, or undefined while none does:
  * the one reading for the composer's Stop and its way of sending, the
  * transcript's Requesting row, Stop's wait and Retry's way. Its turn is as
- * good as running from the send (`turns.md` § Recovering an unfinished
- * turn), so the composer shows Stop and a message sent meanwhile steers it
- * or waits in the queue (§ Steer or queue).
+ * good as running from the send, so the composer shows Stop and a message sent
+ * meanwhile steers it or waits in the queue.
  *
  * It is the first message on its way that was sent as the next message,
  * which the session's phase leaves the starting one through its delivery
@@ -133,11 +131,11 @@ export function otherWayKeys(): string {
 
 /**
  * Enter on a message that cannot go only because what it needs is still
- * loading, as the model list is right after the page loads
- * (`composer.md` § Writing a message): the send button says why, and the
- * message goes by itself, the way Enter asked, once it can. What loaded and
- * still cannot send, such as no usable model, ends the wait, and the button
- * says why then. Call it in a component's setup, whose scope ends the watch.
+ * loading, as the model list is right after the page loads: the send button
+ * says why, and the message goes by itself, the way Enter asked, once it can.
+ * What loaded and still cannot send, such as no usable model, ends the wait,
+ * and the button says why then. Call it in a component's setup, whose scope
+ * ends the watch.
  */
 export function useSendOnceLoaded(options: {
   /** Whether the message cannot go now. */

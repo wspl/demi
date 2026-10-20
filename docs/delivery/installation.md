@@ -44,7 +44,7 @@ machine manager needs, fetches the newest release, writes the configuration,
 starts the backend and the machine manager, and checks the server from
 outside. It ends by printing `https://demi.example.com`, where the first
 visitor creates the master account on the setup page
-([Authentication](../product/web-application.md#authentication)). Until it
+(`packages/web/src/auth/session.ts`). Until it
 exists anyone who reaches the domain can create it, so the operator opens the
 page right away.
 
@@ -98,7 +98,7 @@ and composes the command.
 | Parameter | Meaning |
 | --- | --- |
 | `--domain <name>` | Required. The domain the product is reached at; the public URL is `https://<name>`. An IP address is refused ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)). |
-| `--mode shared\|isolated` | Required, with no default ([Instance mode](../product/users.md#instance-mode-shared-vs-isolated)). |
+| `--mode shared\|isolated` | Required, with no default (`crates/backend-providers/src/vault/entries.rs`). |
 | `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
 | `--storage local\|s3` | Where the object store lives ([The object store](../backend/storage.md#the-object-store)). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |

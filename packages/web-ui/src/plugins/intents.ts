@@ -8,12 +8,11 @@ import type { RequestEditSelection } from '../files/request-changes'
 export interface IntentPayloads {
   /**
    * A file on the conversation's Host, by its absolute path, and the line to
-   * open it at, scrolled there and marked for a moment, when one is named
-   * (`file-previews.md` § Files named in messages); an empty path shows the
-   * directory's tree alone. `root` is the directory the view opens for, the
-   * working directory of the agent that named the file; absent, the
-   * conversation's. `tree`, as Show in Files asks, also shows the view's
-   * tree with the file selected and scrolled into view.
+   * open it at, scrolled there and marked for a moment, when one is named; an
+   * empty path shows the directory's tree alone. `root` is the directory the
+   * view opens for, the working directory of the agent that named the file;
+   * absent, the conversation's. `tree`, as Show in Files asks, also shows the
+   * view's tree with the file selected and scrolled into view.
    */
   file: { path: string; line?: number; root?: string; tree?: true }
   /**
@@ -32,13 +31,13 @@ export interface IntentPayloads {
   /**
    * An attachment of the conversation (`commands.md` § Attachment
    * commands) that is no image, video or audio, as its block's card opens
-   * it (`file-previews.md` § Attachment blocks): its number, its file's
-   * name and size in bytes, and where its stored copy loads from.
+   * it: its number, its file's name and size in bytes, and where its stored
+   * copy loads from.
    */
   attachment: { id: string; name: string; size: number; url: string }
   /**
    * A web page, in a new tab of the conversation's browser, as a link's
-   * Open in Work Panel opens it (`web-application.md` § Context menus).
+   * Open in Work Panel opens it.
    */
   web: { url: string }
 }

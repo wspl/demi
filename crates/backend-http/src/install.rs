@@ -1,9 +1,8 @@
-//! The public installation routes (`web-api.md` § Resource index): the
-//! runner installers for the backend's current runner release, the runner
-//! executables of each release its server release's `runners/` names,
-//! sourced into the object store on their first download
-//! (`native-runtime.md` § Runner releases), and a local store's command
-//! executables (§ Backend deployment configuration). None holds a
+//! The public installation routes: the runner installers for the backend's
+//! current runner release, the runner executables of each release its server
+//! release's `runners/` names, sourced into the object store on their first
+//! download (`native-runtime.md` § Runner releases), and a local store's
+//! command executables (§ Backend deployment configuration). None holds a
 //! credential; pairing grants device access. Without runner releases, the
 //! installers answer 503 and the runner executables 404.
 

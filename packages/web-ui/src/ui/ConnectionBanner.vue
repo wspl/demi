@@ -5,10 +5,10 @@ import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import { CONNECTION_BANNER_PX } from './app-bar'
 
 /**
- * The strip across the top of the app while the backend cannot be reached
- * (`web-application.md` § A page of another build), as Slack and Linear show
- * one: everything under it stays readable, and it goes once the page reaches
- * the backend again. It takes its own row, so nothing under it is covered.
+ * The strip across the top of the app while the backend cannot be reached, as
+ * Slack and Linear show one: everything under it stays readable, and it goes
+ * once the page reaches the backend again. It takes its own row, so nothing
+ * under it is covered.
  */
 defineProps<{
   problem: ConnectionProblem

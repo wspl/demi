@@ -359,8 +359,7 @@ CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
 
 /// From 0.1.22-dev.20261016T095626Z's control schema, which a server keeps
 /// data of, to 0.1.22's: each account has the size of its Cloud
-/// disks, 16 GB each until an administrator changes it (`users.md` § User
-/// system).
+/// disks, 16 GB each until an administrator changes it.
 const CONTROL_FROM_0_1_22_DEV_20261016T095626Z: &str = "
 ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_system_gb BETWEEN 1 AND 1024);
 ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
@@ -379,11 +378,9 @@ ALTER TABLE devices ADD COLUMN autostart_unavailable TEXT;
 /// From 0.1.22's control schema to 0.1.25's: a usage ledger row may
 /// be an image's (`images.md` § Accounts and failures), which SQLite's
 /// checks let in only on a table made again, its rows as they were; each
-/// browser's push subscription is kept (`turns.md` § Notifications); a
-/// running job may wait to be sent to its device (`sessions-and-targets.md`
-/// § Host operations), which every one recorded before was; and
-/// the users' automations and their runs (`automations.md` § Records), none
-/// before.
+/// browser's push subscription is kept; a running job may wait to be sent to
+/// its device (`sessions-and-targets.md` § Host operations), which every one
+/// recorded before was; and the users' automations and their runs, none before.
 const CONTROL_FROM_0_1_22: &str = "
 ALTER TABLE running_jobs ADD COLUMN sent INTEGER NOT NULL DEFAULT 1 CHECK (sent IN (0, 1));
 CREATE TABLE usage_ledger_images (
@@ -709,10 +706,9 @@ DELETE FROM permission_requests WHERE kind = 'permission'
 
 /// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
 /// data of, to the one in which a workspace keeps what its project's next
-/// conversation starts with (`web-api-settings.md` § User preferences), none before
-/// the first choice, and a Fork's metadata holds the workflow its
-/// destination keeps (format 3). A Fork reserved before was reserved to
-/// start with Global Workflow, which its record keeps.
+/// conversation starts with, none before the first choice, and a Fork's metadata
+/// holds the workflow its destination keeps (format 3). A Fork reserved before was
+/// reserved to start with Global Workflow, which its record keeps.
 fn control_from_0_1_22_dev_20261015t105826z(
     transaction: &Transaction<'_>,
     _: &dyn ReadBlob,
@@ -779,16 +775,15 @@ mod fork_format_2 {
 }
 
 /// From the control schema that keeps each share's record to the one in
-/// which a paired device keeps the number of its mark (`conversations.md`
-/// § Conversations and projects). A device of the earlier schema takes its
-/// number at its runner's next hello.
+/// which a paired device keeps the number of its mark. A device of the earlier
+/// schema takes its number at its runner's next hello.
 const CONTROL_FROM_SHARES: &str = "
 ALTER TABLE devices ADD COLUMN mark_number INTEGER CHECK (mark_number > 0);
 ";
 
 /// From the control schema in which a conversation keeps the hosts it may
-/// reach to the one that keeps each share's record (`sharing.md` § Storage
-/// and routes). A database of the earlier schema has shared nothing.
+/// reach to the one that keeps each share's record. A database of the earlier
+/// schema has shared nothing.
 const CONTROL_FROM_REACHABLE_HOSTS: &str = "
 CREATE TABLE shares (
   token           TEXT PRIMARY KEY,
@@ -853,7 +848,7 @@ CREATE TABLE interrupted_turns (
 
 /// From the control schema with account rotation, whose placeholder titles
 /// held the English "New conversation", to the one where a placeholder
-/// title holds no words (`conversations.md` § Conversation titles).
+/// title holds no words.
 const CONTROL_FROM_ACCOUNT_ROTATION: &str =
     "UPDATE conversations SET title = '' WHERE title_origin = 'placeholder';";
 
@@ -1265,9 +1260,8 @@ CREATE INDEX credential_allowances_of_credential ON credential_allowances (crede
 ";
 
 /// From the control schema with the plugins' secrets, which a server keeps,
-/// to the one where a request has a read state (`conversations.md`
-/// § Conversations and projects): a request that waits has not been read
-/// yet.
+/// to the one where a request has a read state: a request that waits has not
+/// been read yet.
 const CONTROL_FROM_PLUGIN_SECRETS_UNREAD: &str =
     "ALTER TABLE permission_requests ADD COLUMN read INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1));";
 
@@ -1454,8 +1448,8 @@ fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
 /// (`sessions-and-targets.md` § Host operations); every one recorded before
 /// was sent. A `user` block (transcript block format 11) and a queued
 /// message (checkpoint state format 5) may name the automation's run that
-/// sent it (`automations.md` § What a run sends); one stored before names
-/// none, as a message the user wrote, so neither is rewritten.
+/// sent it; one stored before names none, as a message the user wrote, so
+/// neither is rewritten.
 const CONVERSATION_FROM_0_1_22: &str = "
 ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
 ALTER TABLE running_commands ADD COLUMN unsent TEXT;
@@ -1468,12 +1462,11 @@ ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 /// sequence, `a7`, instead of its path on the Host, since a send no longer
 /// writes the file there (`backend.md` § Media by reference): see
 /// [`number_attachments`]. An attachment keeps the node of the agent that
-/// uploaded it, whose replies alone show it (`file-previews.md` § Attachment
-/// blocks; `storage.md` § Conversation state and transactions). No release
-/// kept it: a file a message holds, which this step or an earlier one
-/// numbered, is the user's, and every other row, an agent's upload, is the
-/// upload of the agent whose text first delivered it as a block, or the
-/// root's when none did, so a reply that showed it still does.
+/// uploaded it, whose replies alone show it (`storage.md` § Conversation state
+/// and transactions). No release kept it: a file a message holds, which this
+/// step or an earlier one numbered, is the user's, and every other row, an
+/// agent's upload, is the upload of the agent whose text first delivered it as
+/// a block, or the root's when none did, so a reply that showed it still does.
 fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE attachments ADD COLUMN node_id TEXT;")?;
     number_attachments(transaction)?;
@@ -1651,9 +1644,8 @@ impl AttachmentNumbers {
 /// gain `device`, which numbers the conversation's simulators
 /// (`crates/command-package-mobile/src/operations.rs`); every sequence keeps
 /// its next number. A node
-/// may have no number, a side question's (`comments-and-ask.md` § Side
-/// questions), whose row the new `side_questions` holds; every node of
-/// 0.1.27 is an agent and keeps its number.
+/// may have no number, a side question's, whose row the new `side_questions`
+/// holds; every node of 0.1.27 is an agent and keeps its number.
 fn conversation_from_0_1_27(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
@@ -1715,9 +1707,8 @@ ALTER TABLE sequences_next RENAME TO sequences;
 fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // The shares made before a share held only what was said, each of
     // which held every block and its subagents, are removed, and their
-    // links answer as ones that never existed (`sharing.md` § Storage and
-    // routes); each conversation's database drops their lists
-    // ([`switches_with_window_names`]).
+    // links answer as ones that never existed; each conversation's database
+    // drops their lists ([`switches_with_window_names`]).
     transaction.execute("DELETE FROM shares", [])?;
     let rows = transaction
         .prepare(
@@ -2024,12 +2015,11 @@ fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rus
 }
 
 /// From the shares whose snapshots copied every block of a conversation
-/// and its subagents to shares that list what was said (`sharing.md`
-/// § Storage and routes): the shares made before are removed, as the
-/// control database removes their records
-/// ([`snapshots_with_window_kinds`]), and the tables of the lists start
-/// empty. Each blob a block names is listed in `block_blobs` and each
-/// attachment a text names in `block_attachments`, each block decoded once.
+/// and its subagents to shares that list what was said: the shares made before
+/// are removed, as the control database removes their records
+/// ([`snapshots_with_window_kinds`]), and the tables of the lists start empty.
+/// Each blob a block names is listed in `block_blobs` and each attachment a
+/// text names in `block_attachments`, each block decoded once.
 fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(SHARES_AS_LISTS)?;
     // It reads blocks with the current types (`number_attachments`).
@@ -2132,8 +2122,8 @@ fn with_its_end(block: &mut serde_json::Value) -> rusqlite::Result<bool> {
 }
 
 /// From the conversation schema of transcript block format 8 to the one
-/// that keeps the shares' snapshots (`sharing.md` § Storage and routes). A
-/// database of the earlier schema holds none.
+/// that keeps the shares' snapshots. A database of the earlier schema holds
+/// none.
 const CONVERSATION_FROM_BLOCK_FORMAT_8: &str = "
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
@@ -2366,10 +2356,9 @@ ALTER TABLE user_subagents ADD COLUMN max_live INTEGER DEFAULT 10 CHECK (max_liv
 ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1);
 ";
 
-/// From the control schema with the subagent limits: Detect Title is gone
-/// (`conversations.md` § Conversation titles), and with it the counts of the
-/// messages the user sent and the last generated title had seen, which
-/// only it read.
+/// From the control schema with the subagent limits: Detect Title is gone, and
+/// with it the counts of the messages the user sent and the last generated
+/// title had seen, which only it read.
 const CONTROL_FROM_SUBAGENT_LIMITS: &str = "
 ALTER TABLE conversations DROP COLUMN user_messages;
 ALTER TABLE conversations DROP COLUMN titled_messages;

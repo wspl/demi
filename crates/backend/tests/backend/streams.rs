@@ -1,11 +1,9 @@
-//! User streams end to end (`web-api-hosts.md` § User streams): the page's
-//! socket, the backend's admission and relay, the runner's service stream
-//! and a resident native service, and an open stream as the conversation's
-//! activity (`crates/backend-user-shard/src/lifecycle/mod.rs`). The streams bind the
-//! runner's test fixture package: `echo` answers what the page sends,
-//! `where` reports its context and directory, `tell` tells the fixture's
-//! plugin what the page sends (`native-runtime.md` § Messages to the
-//! plugin).
+//! User streams end to end: the page's socket, the backend's admission and relay,
+//! the runner's service stream and a resident native service, and an open stream as
+//! the conversation's activity (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+//! The streams bind the runner's test fixture package: `echo` answers what the page
+//! sends, `where` reports its context and directory, `tell` tells the fixture's
+//! plugin what the page sends (`native-runtime.md` § Messages to the plugin).
 
 use std::time::Duration;
 

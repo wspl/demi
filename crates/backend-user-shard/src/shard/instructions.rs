@@ -1,8 +1,7 @@
-//! The user's personal instructions (`web-api-settings.md` § Instructions), written
-//! here once the edge checked the text. Each change reaches the user's pages
-//! as the `instructions` part, and the next request of every node, since the
-//! instructions source reads them at each request (`instructions.md` § When
-//! it is sent).
+//! The user's personal instructions, written here once the edge checked the text.
+//! Each change reaches the user's pages as the `instructions` part, and the next
+//! request of every node, since the instructions source reads them at each request
+//! (`instructions.md` § When it is sent).
 
 use demi_backend_database::StorageError;
 use demi_backend_page_sync::Part;

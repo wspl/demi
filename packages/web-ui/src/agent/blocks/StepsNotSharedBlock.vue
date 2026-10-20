@@ -5,10 +5,10 @@ import NoticeRow from './NoticeRow.vue'
 import { t } from '../locales/text'
 
 /**
- * Where a share holds a run of the agent's steps it does not show
- * (`sharing.md` § Steps not shared): one muted line that counts them, in
- * their place, standing as the transcript's other rows of work stand, in
- * the same inset as a work group's row, and does not open.
+ * Where a share holds a run of the agent's steps it does not show: one muted
+ * line that counts them, in their place, standing as the transcript's other
+ * rows of work stand, in the same inset as a work group's row, and does not
+ * open.
  */
 defineProps<{
   count: number

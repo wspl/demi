@@ -14,14 +14,13 @@ import type { ToolPicture } from './tool-media'
 import { rowPictureBox } from './row-pictures'
 
 /**
- * One image or video a tool returned, small in its row's line
- * (`file-previews.md` § Media a tool returned): 20 pixels tall, as wide as
- * its proportions make it within 16 and 48, cropped as a thumbnail is, with
- * 4-pixel corners. Its box comes from the size its reference carries, known
- * before its bytes arrive, so the row never moves when they load; a video
- * shows its first frame with a play mark and never plays in place. Resting
- * the pointer on it shows it large in a card; a click opens it in the
- * viewer. One the page cannot show says so, pointed at, in its place.
+ * One image or video a tool returned, small in its row's line: 20 pixels tall,
+ * as wide as its proportions make it within 16 and 48, cropped as a thumbnail
+ * is, with 4-pixel corners. Its box comes from the size its reference carries,
+ * known before its bytes arrive, so the row never moves when they load; a video
+ * shows its first frame with a play mark and never plays in place. Resting the
+ * pointer on it shows it large in a card; a click opens it in the viewer. One
+ * the page cannot show says so, pointed at, in its place.
  */
 const props = defineProps<{ picture: ToolPicture }>()
 

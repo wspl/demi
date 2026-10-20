@@ -15,7 +15,7 @@ import {
   type SavedSave,
 } from './generated/web-api'
 
-/** A conversation's messages saved for later (`web-api-conversations.md` § Messages saved for later). */
+/** A conversation's messages saved for later. */
 function savedPath(conversationId: string, messageId?: string): string {
   const list = `/conversations/${encodeURIComponent(conversationId)}/saved`
   return messageId === undefined ? list : `${list}/${encodeURIComponent(messageId)}`

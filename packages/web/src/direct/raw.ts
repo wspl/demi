@@ -1,9 +1,8 @@
 /**
- * A raw file answer as the relay's route gives it (`web-api-hosts.md` § File text
- * and working tree changes), for the bytes the service worker serves over a
- * direct channel (`direct-channel.md` § Bytes the browser fetches itself):
- * the part a `Range` asks for, and the headers that keep the bytes inert,
- * name their version and say how long they may be kept.
+ * A raw file answer as the relay's route gives it, for the bytes the service
+ * worker serves over a direct channel (`direct-channel.md` § Bytes the browser
+ * fetches itself): the part a `Range` asks for, and the headers that keep the
+ * bytes inert, name their version and say how long they may be kept.
  */
 import { IMAGE_CONTENT_POLICY, previewMediaType, showsInPlace } from '@demicodes/protocol'
 import { baseName } from '@demicodes/utils'

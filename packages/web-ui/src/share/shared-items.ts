@@ -3,7 +3,7 @@ import type { StepsNotSharedRow } from '../agent/pending-steers'
 
 /**
  * A run of the agent's steps a share does not hold, in its place on the
- * share's page (`web-api-conversations.md` § Sharing), under an id its index gives it.
+ * share's page, under an id its index gives it.
  */
 export interface HeldSteps {
   type: 'steps_not_shared'

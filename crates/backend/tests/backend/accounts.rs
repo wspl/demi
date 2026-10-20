@@ -1,10 +1,9 @@
-//! A subscription entry's accounts (`web-api-settings.md` § Subscription accounts,
-//! `crates/backend-providers/src/vault/logins.rs`,
+//! A subscription entry's accounts
+//! (`crates/backend-providers/src/vault/logins.rs`,
 //! `crates/provider-common/src/quota.rs`): signed-in accounts sealed and never
-//! returned, explicit selection,
-//! device logins published once, held entries, cancellation, and
-//! an account's quota snapshot through a probe and a restart. The families
-//! are scripted.
+//! returned, explicit selection, device logins published once, held entries,
+//! cancellation, and an account's quota snapshot through a probe and a restart.
+//! The families are scripted.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;

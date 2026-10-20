@@ -316,7 +316,7 @@ async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | unde
 /**
  * Answers a file chosen in file mode: a link whose target is missing or
  * cannot be read, as it is now, gives nothing, and its sentence shows where
- * the browser shows its errors (`file-previews.md` § Symbolic links).
+ * the browser shows its errors.
  */
 function choose(entry: FileBrowserEntry): void {
   if (entry.link?.broken) {

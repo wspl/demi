@@ -709,8 +709,7 @@ export class BrowserTabsController {
     for (const tab of tabs) {
       this.known.set(tab.id, tab)
     }
-    // A state replaces the page's copy (`web-application.md` § What a
-    // reopened socket brings back): the view tells the downloads of the tab
+    // A state replaces the page's copy: the view tells the downloads of the tab
     // it watches again, and the page keeps none of a tab that is gone or that
     // no view watches.
     const watched = this.shownTab.value

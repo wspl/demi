@@ -9,9 +9,8 @@
 //! uploaded it, none for a file the user sent. A row is written once, or
 //! copied into a Fork's destination, and never changes. A reply shows only
 //! the attachments its own agent uploaded, or the agent it was forked from
-//! for the history it copied (`file-previews.md` § Attachment blocks): the
-//! page asks for each as [`read_shown`] reads it, and a share keeps each as
-//! [`SHOWN`] pairs it.
+//! for the history it copied: the page asks for each as [`read_shown`] reads it, and a
+//! share keeps each as [`SHOWN`] pairs it.
 
 use std::fmt;
 use std::str::FromStr;
@@ -154,7 +153,7 @@ pub fn read_shown(
 }
 
 /// The attachment `number` as the snapshot of the share `token` keeps it;
-/// none when it keeps none by it (`sharing.md` § Storage and routes).
+/// none when it keeps none by it.
 pub fn read_shared(
     connection: &Connection,
     token: &str,

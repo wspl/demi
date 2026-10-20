@@ -1,6 +1,7 @@
-//! A conversation's messages saved for later (`web-api-conversations.md` § Messages saved
-//! for later): messages the user keeps to send later, which nothing sends
-//! but the user. Each holds its text and files as a draft holds them.
+//! A conversation's messages saved for later: messages the user keeps to send later,
+//! which nothing sends but the user. Each holds its text and files as a draft holds them,
+//! and no comments: they point at the replies of the conversation it was written in, so
+//! saving the composer's message leaves them waiting in the draft.
 
 use demi_conversation_socket_protocol::ClientContent;
 use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};

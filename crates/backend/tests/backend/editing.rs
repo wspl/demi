@@ -257,7 +257,7 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
 /// A conversation socket busy with one frame, here an edit waiting for its
 /// commit, reads on: the page's next frame waits its turn, and a ping
 /// behind it is answered at once, so a page that returns meanwhile keeps a
-/// healthy socket (`web-application.md` § Liveness and reconnection).
+/// healthy socket.
 #[tokio::test]
 async fn a_socket_busy_with_a_frame_answers_a_ping_behind_the_next_one_and_keeps_their_order() {
     let vendor = MockVendor::start().await;

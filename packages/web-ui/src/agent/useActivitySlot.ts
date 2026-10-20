@@ -25,12 +25,11 @@ export interface ActivitySlotSources {
  *
  * A message sent while the conversation is idle starts a turn, so the row
  * says Requesting from the send, through its delivery and the server's
- * confirmation, until the answer begins: one wait, one word and one clock
- * (`turns.md` § Recovering an unfinished turn). Which message on its way
- * starts a turn is `turnStartingMessage`'s, which the composer's Stop reads
- * too, so the two show together. A failed delivery ends that wait. What
- * follows the wait, a step, the answer or a Stop, takes the row's place and
- * rolls over it (`succeedKeys`, `RowRoll`).
+ * confirmation, until the answer begins: one wait, one word and one clock.
+ * Which message on its way starts a turn is `turnStartingMessage`'s, which the
+ * composer's Stop reads too, so the two show together. A failed delivery ends
+ * that wait. What follows the wait, a step, the answer or a Stop, takes the
+ * row's place and rolls over it (`succeedKeys`, `RowRoll`).
  */
 export function useActivitySlot(sources: ActivitySlotSources): {
   slot: ComputedRef<ActivitySlotState | null>

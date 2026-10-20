@@ -1,9 +1,8 @@
-//! How served file bytes stay inert (`file-previews.md` § Keeping file
-//! content inert): a media type the page shows in place is served as itself,
-//! an image under a policy that keeps an SVG inert, and anything else, or
-//! anything asked for as a download, as `application/octet-stream` with
-//! `Content-Disposition: attachment` and the file's name. Every answer says
-//! `nosniff`.
+//! How served file bytes stay inert: a media type the page shows in place is
+//! served as itself, an image under a policy that keeps an SVG inert, and
+//! anything else, or anything asked for as a download, as
+//! `application/octet-stream` with `Content-Disposition: attachment` and the
+//! file's name. Every answer says `nosniff`.
 
 use axum::http::header::{
     CONTENT_DISPOSITION, CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS,

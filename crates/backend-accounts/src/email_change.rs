@@ -1,6 +1,6 @@
-//! Changing an account's email address (`web-api-settings.md` § Account API): the
-//! current password starts a challenge, and only the six-digit code sent to
-//! the new address changes the login identity.
+//! Changing an account's email address: the current password starts a challenge,
+//! and only the six-digit code sent to the new address changes the login
+//! identity.
 
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ pub trait AccountMail: Send + Sync + 'static {
 }
 
 /// A verification code on its way to the address it proves, worded in the
-/// recipient's language (`localization.md` § Text from the backend).
+/// recipient's language.
 #[derive(Debug, Clone)]
 pub struct VerificationMail {
     pub email: EmailAddress,
@@ -181,7 +181,7 @@ impl EmailChanges {
             return Ok(StartOutcome::Refused(StartRefusal::CoolingDown));
         };
         // The recipient's chosen language, or with System the one their
-        // page last resolved (`localization.md` § Text from the backend).
+        // page last resolved.
         let preferences = self.control.preferences(user.clone()).await?;
         let language = preferences
             .language

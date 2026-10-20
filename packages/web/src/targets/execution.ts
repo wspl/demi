@@ -40,10 +40,9 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
 }
 
 /**
- * Why the conversation's move controls are unavailable, if they are
- * (`hosts.md` § Where a conversation runs): it is archived, or a change of
- * it is under way. Work that runs does not lock them; moving asks to stop it
- * first.
+ * Why the conversation's move controls are unavailable, if they are: it is
+ * archived, or a change of it is under way. Work that runs does not lock them;
+ * moving asks to stop it first.
  */
 export function moveLock(
   conversation: Pick<Conversation, 'id' | 'archived'>,

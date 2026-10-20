@@ -531,8 +531,7 @@ impl SessionShared {
     /// Holds the events of the changes from now on until `release_events`:
     /// a response that requested no tool may have ended the turn, whose end
     /// reaches clients as one change, the response's last text with the
-    /// phase that goes idle after the closing save (`turns.md` § Following
-    /// the agent's work).
+    /// phase that goes idle after the closing save.
     fn hold_events(&self) {
         self.bus.hold();
     }
@@ -848,8 +847,8 @@ impl AgentSession {
     /// The automation's run whose message is the latest the user or an
     /// automation sent this agent, with when it came: every turn it starts
     /// or that continues from it works for that run, until the user writes
-    /// again, in a message or a steer (`automations.md` § What a run
-    /// sends). None when the user's own is the latest, or neither came.
+    /// again, in a message or a steer. None when the user's own is the latest,
+    /// or neither came.
     pub fn automation_input(&self) -> Option<(AutomationMark, Timestamp)> {
         self.shared.read(|core| core.transcript.user_input().flatten())
     }
@@ -948,8 +947,7 @@ impl AgentSession {
         })
     }
 
-    /// Submits a message, which may be an automation's run's
-    /// (`automations.md` § What a run sends).
+    /// Submits a message, which may be an automation's run's.
     pub fn send_message(&self, message: QueuedMessage) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| core.admit_send(message))
     }
@@ -1039,7 +1037,7 @@ impl AgentSession {
     }
 
     /// A steer that carries comments on the reply's words, which the model
-    /// reads before its content (`comments-and-ask.md` § Sending them).
+    /// reads before its content.
     pub fn steer_with_comments(
         &self,
         content: Vec<UserContentBlock>,

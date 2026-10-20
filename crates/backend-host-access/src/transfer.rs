@@ -5,8 +5,7 @@
 //! target change or a detach ends the conversation's open transfers instead
 //! of waiting for them. This module also decides what a download answers
 //! from the file's metadata: its version, a conditional request, and the
-//! part a `Range` asks for (`web-api-hosts.md` § File text and working tree
-//! changes).
+//! part a `Range` asks for.
 
 use tracing::Instrument as _;
 use std::cell::{Cell, RefCell};
@@ -118,8 +117,7 @@ impl dyn HostShard + '_ {
             Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
             Err(error) => return Err(error.into()),
         };
-        // A description of the file is read at the first read's number
-        // (`web-api-hosts.md` § File text and working tree changes).
+        // A description of the file is read at the first read's number.
         let OpenedRead {
             stat,
             version,

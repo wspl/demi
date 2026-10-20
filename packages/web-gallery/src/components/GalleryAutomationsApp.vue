@@ -25,10 +25,9 @@ import GalleryRunConversation from './GalleryRunConversation.vue'
 import GalleryWokenConversation from './GalleryWokenConversation.vue'
 
 /**
- * The app frame with Automations (`automations.md`), live: the sidebar's
- * entry with its count opens the page in the main area, a row opens its
- * automation, a run opens its conversation, whose bar goes back and moves
- * it to Conversations.
+ * The app frame with Automations, live: the sidebar's entry with its count
+ * opens the page in the main area, a row opens its automation, a run opens its
+ * conversation, whose bar goes back and moves it to Conversations.
  */
 type View =
   | { kind: 'list' }

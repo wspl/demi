@@ -2,8 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'bun:test'
 
 // The page's service worker, loaded as the web browser loads it: a script
 // that listens on its global scope. The scope, its caches and the network
-// are the test's (`web-application.md` § Installing and opening offline).
-// The file takes a few milliseconds.
+// are the test's. The file takes a few milliseconds.
 
 const ORIGIN = 'https://demi.test'
 

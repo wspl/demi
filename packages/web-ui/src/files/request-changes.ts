@@ -171,8 +171,8 @@ export const requestEditSelectionSchema = z.object({
   edit: requestEditRefSchema.nullable(),
   /**
    * The directory the agent worked in when it wrote the call, which the view
-   * roots its tree at (`file-previews.md` § The File view's bars); absent
-   * for the conversation's own agent, which works in the conversation's.
+   * roots its tree at; absent for the conversation's own agent, which works in
+   * the conversation's.
    */
   root: z.string().optional(),
 })
@@ -282,8 +282,8 @@ export function selectionCopies(file: RequestFile, index: number | null): EditCo
 
 /**
  * Whether a selection shows no sides because the file is binary, which edit
- * tracking never keeps (`file-previews.md`, Conversation mode): the edit's
- * own mark, or for All Changes any edit's, as the backend recorded why.
+ * tracking never keeps: the edit's own mark, or for All Changes any edit's, as
+ * the backend recorded why.
  */
 export function selectionIsBinary(file: RequestFile, index: number | null): boolean {
   return index !== null ? file.edits[index]?.binary === true : file.edits.some((edit) => edit.binary === true)

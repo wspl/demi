@@ -63,7 +63,7 @@ test('a reply the user stopped keeps its footer, Copy among it', () => {
 
 // A message being sent is the user's next message from the moment it is
 // sent, so the answer before it keeps Copy and Fork while the turn starts
-// and the message is written (`turns.md` § Following the agent's work).
+// and the message is written.
 test('the answer before a message being sent keeps its footer while the turn starts, and text the agent went on from does not gain one', () => {
   expect([...footerAmong([{ id: 'answer', type: 'text' }], replyEndIds([{ id: 'answer', type: 'text' }], 'running', true))])
     .toEqual(['answer'])

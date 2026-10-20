@@ -11,7 +11,7 @@ import type { ConversationState } from '../agent/types'
 /** Why a conversation's move controls are unavailable: it is archived, or a move or change of it is under way. */
 export type MoveLock = 'archived' | 'moving'
 
-/** What a lock says on the controls it holds (`hosts.md` § Where a conversation runs). */
+/** What a lock says on the controls it holds. */
 export const MOVE_LOCK_REASON: Record<MoveLock, SentenceText> = {
   get archived() {
     return t('lock.archived')
@@ -63,8 +63,7 @@ function listLocale(): string {
 }
 
 /**
- * What stops, as the dialog's first line says it
- * (`hosts.md` § Where a conversation runs): *The agent, 1 subagent and 2
+ * What stops, as the dialog's first line says it: *The agent, 1 subagent and 2
  * commands will stop.*
  */
 export function stopSentence(work: WorkToStop): string {
@@ -101,11 +100,10 @@ export interface MoveQuestion {
 
 /**
  * The question before a conversation that has messages moves, or whose
- * agent works (`hosts.md` § Where a conversation runs): `ask` opens
- * `MoveConversationDialog` and answers whether the conversation moved, once
- * the user cancelled or `carryOut` finished the move the user chose, told to
- * the agent or not. The question stays once answered, so the dialog leaves
- * showing it.
+ * agent works: `ask` opens `MoveConversationDialog` and answers whether the
+ * conversation moved, once the user cancelled or `carryOut` finished the move
+ * the user chose, told to the agent or not. The question stays once answered,
+ * so the dialog leaves showing it.
  */
 export function useMoveQuestion() {
   const question = ref<MoveQuestion | null>(null)

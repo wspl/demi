@@ -1,15 +1,13 @@
 /**
- * Loading the page again for the build its backend serves
- * (`web-application.md` § A page of another build), at most once per build:
- * a cache in front of the backend that keeps serving an earlier page would
- * otherwise make the page load itself again and again.
+ * Loading the page again for the build its backend serves, at most once per
+ * build: a cache in front of the backend that keeps serving an earlier page
+ * would otherwise make the page load itself again and again.
  */
 
 /**
  * Loads the page again, at the address it shows. A drafted message and the
- * reader's place outlive it (`web-application.md` § A page of another
- * build), so this is the one reload of the page: for another build, and for
- * a part of the page that failed to load (`infra/lazy.ts`).
+ * reader's place outlive it, so this is the one reload of the page: for another
+ * build, and for a part of the page that failed to load (`infra/lazy.ts`).
  */
 export function reloadPage(): void {
   window.location.reload()

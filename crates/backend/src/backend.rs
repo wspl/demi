@@ -410,8 +410,8 @@ impl Backend {
             );
         }
         // Each user's automations fire what a backend that was down missed
-        // and wait for their next times (`automations.md` § Records). A
-        // failure does not stop the start: a user's next call starts them.
+        // and wait for their next times. A failure does not stop the start: a
+        // user's next call starts them.
         if let Err(error) =
             demi_backend_user_shard::automations::start_schedulers(&services.control, &shards.shards()).await
         {

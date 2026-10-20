@@ -1,10 +1,9 @@
-//! Conversation titles (`conversations.md` § Conversation titles, `web-api.md`
-//! § Resource index): the first message titles the conversation at once and
-//! a request beside the first turn writes a better one, and nothing asks
-//! again; a rename that lands while the request is in flight wins; an
-//! archive ends the request; an answer without a title writes nothing. The
-//! model is a scripted family that tells a title request from a turn by its
-//! system prompt. No test calls a real model.
+//! Conversation titles: the first message titles the conversation at once and a
+//! request beside the first turn writes a better one, and nothing asks again; a
+//! rename that lands while the request is in flight wins; an archive ends the
+//! request; an answer without a title writes nothing. The model is a scripted
+//! family that tells a title request from a turn by its system prompt. No test
+//! calls a real model.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

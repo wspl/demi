@@ -112,7 +112,7 @@ pub struct TranscriptVersion {
 }
 
 /// How many bytes of JSON a page of a transcript holds past its first
-/// request (`web-api-conversations.md` § Pages).
+/// request.
 pub const PAGE_BYTES: usize = 64 * 1024;
 
 /// How long a call's input a light form keeps whole: a short script, such
@@ -120,11 +120,10 @@ pub const PAGE_BYTES: usize = 64 * 1024;
 /// call did (`rendering.md` § Work groups).
 pub const LIGHT_INPUT_BYTES: usize = 512;
 
-/// Whole requests' `blocks` in their light form (`web-api-conversations.md` § Light
-/// form): each without what only its open row shows, and of the lists of
-/// changed files a shell call carries, only those a page shows: the run's
-/// on the latest call of each run, and the request's on the latest call of
-/// each request (`rendering.md` § Rendering boundary).
+/// Whole requests' `blocks` in their light form: each without what only its open
+/// row shows, and of the lists of changed files a shell call carries, only those a
+/// page shows: the run's on the latest call of each run, and the request's on the
+/// latest call of each request (`rendering.md` § Rendering boundary).
 pub fn light<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Vec<Block> {
     let mut light: Vec<Block> = blocks.into_iter().map(light_block).collect();
     // From the end, the first call met with a run's or a request's list is
@@ -187,7 +186,7 @@ fn light_block(block: &Block) -> Block {
         }
         Block::Thinking(thinking) => {
             // Without the white space around it, as the page tests a thinking for
-            // text (`web-api-conversations.md` § Light form).
+            // text.
             thinking.text_length = Some(thinking.text.trim().chars().count() as u64);
             thinking.text.clear();
             thinking.signature = None;
@@ -243,7 +242,7 @@ pub fn least_light_bytes(block: &Block) -> usize {
 
 /// The requests of a transcript of `length` blocks whose `user` blocks are
 /// at `users`, in order: each from a `user` block to the next, the blocks
-/// before the first belonging to the first request (`web-api-conversations.md` § Pages).
+/// before the first belonging to the first request.
 pub fn requests(length: usize, users: &[usize]) -> Vec<Range<usize>> {
     if length == 0 {
         return Vec::new();
@@ -256,7 +255,7 @@ pub fn requests(length: usize, users: &[usize]) -> Vec<Range<usize>> {
     starts.iter().copied().zip(ends).map(|(start, end)| start..end).collect()
 }
 
-/// Where a page is taken from (`web-api-conversations.md` § Pages).
+/// Where a page is taken from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageAt {
     /// The latest page.

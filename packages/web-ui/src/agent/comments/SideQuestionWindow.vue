@@ -12,10 +12,9 @@ import { pageToRead, readKey, shownTurns, type ShownSideQuestion } from './asks'
 
 /**
  * A side question's conversation, its steps included, in the window a
- * subagent's opens in (`comments-and-ask.md` § Side questions): its own
- * turns only, read-only, the first drawn as the user's question with its
- * quote; full screen on a phone. The history it started from is the
- * conversation's own, and its instruction is the product's.
+ * subagent's opens in: its own turns only, read-only, the first drawn as the
+ * user's question with its quote; full screen on a phone. The history it
+ * started from is the conversation's own, and its instruction is the product's.
  */
 const props = defineProps<{
   /** The side question shown; null closes the window. */

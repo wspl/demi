@@ -41,7 +41,7 @@ export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'> &
 
 /**
  * The composer a specimen shows beside its flow, where Recall gives a
- * message back as the product's does (`turns.md` § Steer or queue).
+ * message back as the product's does.
  */
 export interface RecallComposer {
   /** Puts the message into the composer when it is empty, the caret at its end; false when it holds a draft, which stays. */
@@ -78,8 +78,8 @@ const ADMIT_MS = 400
 const CONFIRM_MS = 1600
 /**
  * What a simulated delivery failure says: the backend's refusal of a send
- * for a failure inside it, with the request to quote (`turns.md`
- * § Requesting); a lost connection marks nothing, the page sends again.
+ * for a failure inside it, with the request to quote; a lost connection marks
+ * nothing, the page sends again.
  */
 const DELIVERY_ERROR = 'The message couldn’t be sent.'
 const DELIVERY_REQUEST = 'req_ffb05w4w6kxpdtz0'

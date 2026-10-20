@@ -81,9 +81,8 @@ export function createConversationUploads(
   /**
    * Uploads a file of the composer's and answers false when it failed. Its failure
    * is told where it happened, on its capsule, which offers Retry, and on the
-   * bubble of a message that waits for it, never in a toast
-   * (`web-application.md` § Responding to the user); the reason goes to the
-   * console.
+   * bubble of a message that waits for it, never in a toast; the reason goes to
+   * the console.
    */
   function uploadInComposer(item: ComposerFile): Promise<boolean> {
     return uploadFile(item).then(() => true, (error: unknown) => {
@@ -113,11 +112,10 @@ export function createConversationUploads(
   }
 
   /**
-   * Waits until a file of a sent message is uploaded (`composer.md` § Writing
-   * a message): the upload under way, or a new one of a file whose upload
-   * failed, as Retry asks. Rejects when the upload fails, or when the file
-   * has no upload and no bytes to make one, so the message is not delivered
-   * without it.
+   * Waits until a file of a sent message is uploaded: the upload under way, or
+   * a new one of a file whose upload failed, as Retry asks. Rejects when the
+   * upload fails, or when the file has no upload and no bytes to make one, so
+   * the message is not delivered without it.
    */
   async function uploaded(item: ComposerFile): Promise<NonNullable<ComposerFile['upload']>> {
     if (!item.upload) {

@@ -72,11 +72,10 @@ function mainAgentMessage(): ReceiptRow {
 }
 
 /**
- * What a permission decision let the conversation do, in the page's words
- * (`localization.md` § Text from the backend): its categories' actions and
- * its host's, or the use of a saved credential; the English the message
- * recorded for a category the page has no words for, or for a decision
- * recorded before ids were, which names neither.
+ * What a permission decision let the conversation do, in the page's words: its
+ * categories' actions and its host's, or the use of a saved credential; the
+ * English the message recorded for a category the page has no words for, or for
+ * a decision recorded before ids were, which names neither.
  */
 function permissionAction(event: Extract<AgentMessage['event'], { type: 'permission' }>): string {
   if (event.credential) {

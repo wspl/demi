@@ -1,9 +1,9 @@
 import { t } from './locales/text'
 
 /**
- * The composer's Workflow menu (`conversations.md` § A conversation's workflow):
- * what the conversation's choice shows as, and the rows the menu offers,
- * derived from the choice and the project's workflows as the page keeps them.
+ * The composer's Workflow menu: what the conversation's choice shows as, and the
+ * rows the menu offers, derived from the choice and the project's workflows as
+ * the page keeps them.
  */
 
 /** The conversation's choice, as its record holds it. */
@@ -12,7 +12,7 @@ export type WorkflowChoice =
   | { type: 'none' }
   | { type: 'workflow'; id: string }
 
-/** A workflow file of the project, as the backend lists it (`web-api-conversations.md` § Workflows of a directory). */
+/** A workflow file of the project, as the backend lists it. */
 export interface WorkflowOption {
   /** The file's name without `.yaml`. */
   id: string

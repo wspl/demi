@@ -13,9 +13,8 @@ import { useResources } from '../state/resources'
 import { useAutomations } from './store'
 
 /**
- * The Automations page in the main area (`automations.md` § Where the user
- * sees them): the list, or the automation the address names, edited in
- * place; a run opens its conversation.
+ * The Automations page in the main area: the list, or the automation the
+ * address names, edited in place; a run opens its conversation.
  */
 const props = defineProps<{
   /** The automation the address names; none for the list. */

@@ -18,13 +18,12 @@ import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown, scr
  * (`.markdown-body`), so the two read alike.
  *
  * Edge Cases holds the rules of rendering rather than reading: a dollar
- * before an amount stays text while math renders, flush against Chinese
- * (`file-previews.md` § Markdown); Arabic joins and runs right to left in
- * code as in a sentence; a header cell starts where its column does, or as
- * the delimiter row aligns it; in the narrow column an address and a path
- * break, and a long line of code, a wide table and an equation scroll on
- * their own and fade at the side that hides more, with an overlay scrollbar
- * that takes no room.
+ * before an amount stays text while math renders, flush against Chinese; Arabic
+ * joins and runs right to left in code as in a sentence; a header cell starts
+ * where its column does, or as the delimiter row aligns it; in the narrow
+ * column an address and a path break, and a long line of code, a wide table and
+ * an equation scroll on their own and fade at the side that hides more, with an
+ * overlay scrollbar that takes no room.
  */
 const TEXTS = [...LONG_TEXT_LANGUAGES, 'edge'] as const
 type Text = (typeof TEXTS)[number]

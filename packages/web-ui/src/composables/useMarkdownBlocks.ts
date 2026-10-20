@@ -52,14 +52,13 @@ function asRendered(node: ChildNode): string {
 const renderedAs = new WeakMap<ChildNode, string>()
 
 /**
- * Renders a reply into `root` a block at a time (`file-previews.md`, a reply
- * that streams renders a block at a time): while it streams, every block
- * `messageBlockEnds` settles renders once and stays as the same nodes, and
- * only the last block renders again as text arrives; otherwise the reply
- * renders whole. Each render of a block replaces only its nodes that
- * differ, so when the stream ends and the reply renders whole, the blocks
- * that render as they did stay as they are. A fresh render fades in the
- * steps still fading within it, before it reaches the page.
+ * Renders a reply into `root` a block at a time: while it streams, every block
+ * `messageBlockEnds` settles renders once and stays as the same nodes, and only
+ * the last block renders again as text arrives; otherwise the reply renders
+ * whole. Each render of a block replaces only its nodes that differ, so when
+ * the stream ends and the reply renders whole, the blocks that render as they
+ * did stay as they are. A fresh render fades in the steps still fading within
+ * it, before it reaches the page.
  */
 export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
   const blocks = shallowRef<Block<T>[]>([])

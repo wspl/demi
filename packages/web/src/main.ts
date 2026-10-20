@@ -41,7 +41,7 @@ import './style.css'
 
 // The page's text instance, before anything reads a text; it speaks the
 // language it last showed, or the browser's the first time, until the
-// user's choice arrives (`localization.md` § Choosing the language).
+// user's choice arrives.
 const browserLanguages = shallowRef(navigator.languages)
 const startLanguage = lastShownLanguage() ?? resolveLanguage('system', browserLanguages.value)
 const i18n = createPageI18n(startLanguage)
@@ -60,7 +60,7 @@ const router = createRouter({
       path: '/chat/:id?',
       component: ChatPage,
     },
-    // The Automations page, and one automation (`automations.md` § Where the user sees them).
+    // The Automations page, and one automation.
     {
       path: '/automations/:automation?',
       component: ChatPage,
@@ -100,9 +100,8 @@ const startup = new AbortController()
 // A failure the page finds itself goes to the backend's log, which the error
 // then names (`backend.md` § Request IDs and the server log).
 const stopReports = reportPageErrorsWith(sendPageErrorReport)
-// The synchronization channel starts beside the session check
-// (`web-application.md` § Requests for one action); a page the check finds
-// signed out has no channel.
+// The synchronization channel starts beside the session check; a page the check
+// finds signed out has no channel.
 product.start()
 // The page's service worker answers the raw file requests over the page's
 // direct channels and keeps the page for opening offline, for its lifetime
@@ -118,9 +117,8 @@ function stopUnlessSignedIn(): void {
     product.stop()
   }
 }
-// The account's cache for opening offline (`web-application.md` § Installing
-// and opening offline): shown at once for the account the session names,
-// and signed in as when the backend cannot be reached.
+// The account's cache for opening offline: shown at once for the account the
+// session names, and signed in as when the backend cannot be reached.
 const accountCache = startAccountCache(session, product)
 const restored = session.restore(startup.signal, accountCache.signInOffline).then(stopUnlessSignedIn).catch((error) => {
   // Hot replacement can dispose this composition root before startup finishes.
@@ -155,7 +153,7 @@ const stopExpiry = onSessionExpired(() => {
   void settleSession()
 })
 // A page waiting on Choose Your Password goes on by itself once another page
-// of the account chose it: its channel says so (`web-api-settings.md` § Account API).
+// of the account chose it: its channel says so.
 const stopChoice = watch(
   () => product.account?.choosesPassword,
   (choosing) => {
@@ -199,7 +197,7 @@ const stopRetry = watch(
 router.beforeEach(async (to) => {
   // The session has a state once its check answers, or once the page signs
   // in as the account it kept for opening offline while the check waits for
-  // the backend (`web-application.md` § Installing and opening offline).
+  // the backend.
   await Promise.race([restored, until(() => session.current.status).not.toBe('checking')])
   if (startup.signal.aborted) {
     return false
@@ -249,8 +247,7 @@ const stopTheme = applyThemeToDocument()
 const stopThemeColor = followThemeColor()
 // The page speaks the language the user chose, or with System the first of
 // the browser's that Demi speaks; a change of either, the choice made on
-// another page included, applies at once (`localization.md` § Choosing the
-// language).
+// another page included, applies at once.
 const stopLanguage = watch(
   () => (product.snapshot ? resolveLanguage(preferences.language, browserLanguages.value) : null),
   (language) => {
@@ -266,7 +263,7 @@ const stopLanguage = watch(
 // The page reports its own facts when they may have changed: once the
 // stored preferences first arrive, when its theme changes, and on the events
 // below; never because the stored ones changed, which another page or the
-// backend's canonical spelling does (`web-api-settings.md` § User preferences).
+// backend's canonical spelling does.
 const stopLocale = watch(
   [() => product.snapshot?.preferences !== undefined, () => appThemeStore.state.mode],
   () => void preferences.reportBrowser(),
@@ -288,8 +285,8 @@ const saveDrafts = () => {
 }
 window.addEventListener('pagehide', saveDrafts)
 // A page closed while a sent message waits for its files' uploads asks first,
-// as a mail client does while it sends attachments (`composer.md` § Writing a
-// message); the prompt is held only while such a message waits.
+// as a mail client does while it sends attachments; the prompt is held only
+// while such a message waits.
 const askBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault()
 const stopLeaving = watch(
   () => conversations.waitingForUploads,

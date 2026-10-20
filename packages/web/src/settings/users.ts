@@ -39,12 +39,11 @@ function row(user: ListedUser): SettingsUser {
 }
 
 /**
- * The accounts as Settings › Users shows and changes them (`web-api-settings.md` §
- * Account API): the list is the product state's `users` part, which the
- * synchronization channel sends to the master and admins and changes with
- * each add, change, reset, disable, enable, sign-in and password choice, so
- * no action reads it again. A refusal the user corrects is said in the
- * dialog that asked; any other is reported.
+ * The accounts as Settings › Users shows and changes them: the list is the product
+ * state's `users` part, which the synchronization channel sends to the master and
+ * admins and changes with each add, change, reset, disable, enable, sign-in and
+ * password choice, so no action reads it again. A refusal the user corrects is
+ * said in the dialog that asked; any other is reported.
  */
 export const useUserSettings = defineStore('user-settings', () => {
   const session = useSession()

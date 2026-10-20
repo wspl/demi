@@ -1,4 +1,10 @@
 //! The body of every JSON error, and the one list of the codes it carries.
+//!
+//! A situation has one code on every route: an archived conversation that
+//! refuses an operation always answers `conversation_archived`. A `message` is
+//! for the log and the developer; the page words what the user sees from the
+//! `code` and its `params`, so no server path or operator command reaches the
+//! user.
 
 use std::collections::BTreeMap;
 
@@ -13,8 +19,7 @@ use crate::passkeys::PasskeyId;
 /// A JSON error answer: `{ code, message, params?, requestId }`, and a
 /// plugin's own `reason` when a plugin refused the call. The page words the
 /// answer from `code` and `params`; `message` is English, for the server
-/// log, API clients and a code the page has no words for
-/// (`localization.md` § Text from the backend).
+/// log, API clients and a code the page has no words for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ErrorBody {
     pub code: ErrorCode,
@@ -49,8 +54,7 @@ pub struct ErrorBody {
 }
 
 /// Every error code the web app can see. A situation has one code on every
-/// route (`web-api.md` § Resource index); the HTTP status belongs to the
-/// route that answers.
+/// route; the HTTP status belongs to the route that answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
@@ -153,8 +157,7 @@ pub enum ErrorCode {
     DeviceManaged,
     /// The device's runner is not connected.
     DeviceOffline,
-    /// The device is the caller's Cloud, which no direct channel reaches
-    /// (`web-api-hosts.md` § Direct channel).
+    /// The device is the caller's Cloud, which no direct channel reaches.
     NotAPairedDevice,
     /// The Host's log could not be read.
     LogUnreadable,
@@ -163,8 +166,7 @@ pub enum ErrorCode {
     /// The transcript does not hold the block a page read names.
     BlockNotFound,
     /// The block a page read extends from is no longer at its index: the
-    /// transcript was rewritten since the page read it (`web-api-conversations.md`
-    /// § Pages).
+    /// transcript was rewritten since the page read it.
     TranscriptChanged,
     /// The conversation's database could not be read on the server, as one
     /// a build that does not know its schema made: the page says so in its
@@ -174,7 +176,7 @@ pub enum ErrorCode {
     /// The conversation is archived: restore it first.
     ConversationArchived,
     /// An answer's share names a block that is not the text that ends the
-    /// agent's reply to a message (`web-api-conversations.md` § Sharing).
+    /// agent's reply to a message.
     ShareTargetInvalid,
     /// An answer's share is never taken again: its answer does not change.
     ShareNotUpdatable,
@@ -227,7 +229,7 @@ pub enum ErrorCode {
     /// The account has no session of that id.
     SessionNotFound,
     /// The work panel holds as many tabs, or as much of their data, as it
-    /// can (`web-api-conversations.md` § Work panel state).
+    /// can.
     PanelFull,
     /// No plugin the user has on declares the work panel kind.
     UnknownPanelKind,
@@ -256,8 +258,7 @@ pub enum ErrorCode {
     /// The Host's filesystem refused the operation: nothing at the path, or
     /// no permission for it.
     FsError,
-    /// The directory a request names is not on the Host (`web-api-conversations.md`
-    /// § Workflows of a directory).
+    /// The directory a request names is not on the Host.
     FsNotFound,
     /// The file is no longer the version the request named.
     FileChanged,
@@ -312,7 +313,7 @@ pub enum ErrorCode {
     FrameDeliveryFailed,
     /// A message could not be sent for a failure inside the backend that
     /// has no cause of its own, such as a storage failure; the page shows
-    /// it with the socket's request ID (`turns.md` § Requesting).
+    /// it with the socket's request ID.
     SendFailed,
     /// A message names a file on a device whose path a shell command
     /// cannot hold, such as one with a line break.
@@ -327,8 +328,7 @@ pub enum ErrorCode {
     /// the answer carries as `workspace`.
     WorkspaceExists,
     /// The directory is the device's home, which holds the conversations
-    /// outside projects and is never a project (`conversations.md`
-    /// § Conversations and projects).
+    /// outside projects and is never a project.
     WorkspaceIsHome,
     /// A move names a directory on a device whose runner never reported its
     /// home, so whether the directory is a project's is unknown
@@ -373,8 +373,7 @@ pub enum ErrorCode {
     /// The Fork's text is not a completed assistant text of the source's
     /// history.
     InvalidForkTarget,
-    /// The conversation has no side question of that id
-    /// (`comments-and-ask.md` § Side questions).
+    /// The conversation has no side question of that id.
     SideQuestionNotFound,
     /// The side question's id belongs to another question.
     SideQuestionConflict,

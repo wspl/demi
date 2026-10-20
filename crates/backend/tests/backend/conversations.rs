@@ -1,14 +1,10 @@
-//! Conversations (`web-api-conversations.md` § Conversation creation and Fork, § Sidebar
-//! mutations, read state and page synchronization; `rendering.md` § Frame
-//! protocol): creation under the web app's id, the list and the product
-//! state, a chat over the socket with an Anthropic endpoint the test
-//! scripts, a reload whose history is what the database holds, a client that
-//! falls behind, the frames the backend refuses, a user's context limit
-//! on a model, provider edits
-//! and deletion at the inference boundary, the rate limit, a shutdown in the
-//! middle of a turn and one that a page which stopped reading cannot hold
-//! up, and the patches and batches of the sidebar. No test calls a real
-//! model.
+//! Conversations (`rendering.md` § Frame protocol): creation under the web app's id, the
+//! list and the product state, a chat over the socket with an Anthropic endpoint the
+//! test scripts, a reload whose history is what the database holds, a client that falls
+//! behind, the frames the backend refuses, a user's context limit on a model, provider
+//! edits and deletion at the inference boundary, the rate limit, a shutdown in the
+//! middle of a turn and one that a page which stopped reading cannot hold up, and the
+//! patches and batches of the sidebar. No test calls a real model.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -599,10 +595,9 @@ pub(crate) async fn summary(
         .expect("the conversation is listed")
 }
 
-/// A conversation's history as the backend serves it cold
-/// (`web-api-conversations.md` § Conversation history): the root's blocks, each page read
-/// back to the start and each block then read whole, with their failure
-/// facts, and the conversation's subagents.
+/// A conversation's history as the backend serves it cold: the root's blocks, each page
+/// read back to the start and each block then read whole, with their failure facts, and
+/// the conversation's subagents.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Cold {
     pub blocks: Vec<Block>,
@@ -954,10 +949,10 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
             break message;
         }
     };
-    // The turn's end is one change (`turns.md` § Following the agent's
-    // work): the patch that completes its last text comes in the message
-    // that says the conversation went idle, so no page draws the finished
-    // text of a running turn, followed by Requesting, in between.
+    // The turn's end is one change: the patch that completes its last text
+    // comes in the message that says the conversation went idle, so no page
+    // draws the finished text of a running turn, followed by Requesting, in
+    // between.
     let completes = end.iter().position(|frame| {
         matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| matches!(
             patch,
@@ -980,8 +975,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         system.contains("You are Demi, an agent that does work for the user"),
         "{system}"
     );
-    // The files and the subagents a reply names are links the page opens
-    // (`file-previews.md` § Files named in messages).
+    // The files and the subagents a reply names are links the page opens.
     assert!(
         system.contains("`[runner.md](docs/execution/runner.md#L438)`")
             && system.contains("`[File icons](agent:4)`"),
@@ -993,7 +987,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     );
     // A file the agent delivers is its attachment block, in the guide and
     // in `demi attachment`'s entry alike, and never a link to the
-    // attachment (`file-previews.md` § Attachment blocks).
+    // attachment.
     assert!(
         system.matches(r#"`<attachment id=\"a3\" />` on a line of its own"#).count() == 2
             && !system.contains("](attachment:"),
@@ -1346,8 +1340,8 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         .unwrap();
     // A send is refused as itself, so the page marks its message not
     // delivered with the cause and the socket's request ID, and the backend
-    // logs the refusal under that ID (`turns.md` § Requesting): before, it
-    // was an `error` frame, and nothing was logged.
+    // logs the refusal under that ID: before, it was an `error` frame, and
+    // nothing was logged.
     socket.send(&send("m1", "hi")).await;
     let ServerFrame::Rejected { command, refusal, request_id } = socket.frame().await else {
         panic!("an archived conversation refuses a message");
@@ -1697,9 +1691,8 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
 
 /// The backend logs each conversation socket as it opens, with where it
 /// came from as a proxy in front of it passes that, and as it ends, with
-/// why, under the request ID of its upgrade (`web-application.md`
-/// § Liveness and reconnection):
-/// here one the page closed, and one whose connection broke without a close.
+/// why, under the request ID of its upgrade: here one the page closed, and one
+/// whose connection broke without a close.
 #[tokio::test]
 async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
     let logs = tempfile::tempdir().unwrap();
@@ -1869,8 +1862,7 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
 
 /// The summary's latest ended turn and status after each way a turn ends,
 /// each named by the block that ended it, so a turn that ends again is a
-/// new end (`web-api-conversations.md` § Sidebar mutations and read state). One
-/// backend and four turns against the mock vendor, about a second.
+/// new end. One backend and four turns against the mock vendor, about a second.
 #[tokio::test]
 async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_ended() {
     let vendor = MockVendor::start().await;
@@ -2563,12 +2555,11 @@ pub(crate) fn leveled(id: &str, fast: Option<&str>) -> Value {
     })
 }
 
-/// A conversation's model settings are one value that every page shows
-/// (`web-api.md` § Sidebar mutations, read state and page synchronization):
-/// a change names only its parts, so two pages that change different parts
-/// keep both; another page reads the change in its next snapshot; the
-/// conversation's next request uses it, whichever page sends it; and a tree
-/// opened after a change made while none was live opens with it.
+/// A conversation's model settings are one value that every page shows: a
+/// change names only its parts, so two pages that change different parts keep
+/// both; another page reads the change in its next snapshot; the conversation's
+/// next request uses it, whichever page sends it; and a tree opened after a
+/// change made while none was live opens with it.
 #[tokio::test]
 async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request() {
     let vendor = MockVendor::start().await;

@@ -6,10 +6,9 @@ import { formatBytes } from './format'
 
 /**
  * An attachment previewed in the work panel as the File view previews a
- * file, from the attachment's stored copy (`file-previews.md` § Attachment
- * blocks): the same previews under the same bar, which names the file and
- * its size and offers Download. The host keeps the Preview or Source choice
- * (v-model), as the File view's does.
+ * file, from the attachment's stored copy: the same previews under the same
+ * bar, which names the file and its size and offers Download. The host keeps
+ * the Preview or Source choice (v-model), as the File view's does.
  */
 const props = defineProps<{
   name: string

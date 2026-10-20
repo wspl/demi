@@ -1,6 +1,5 @@
-//! Instance settings and each user's preferences (`web-api-settings.md` § User
-//! preferences). Preferences hold saved overrides only: whatever is absent
-//! uses the web app's defaults.
+//! Instance settings and each user's preferences. Preferences hold saved
+//! overrides only: whatever is absent uses the web app's defaults.
 
 use std::collections::BTreeMap;
 
@@ -14,8 +13,7 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::conversations::ModelSettings;
 use crate::ids::{DeviceId, ProviderId};
 
-/// Who configures providers, fixed for the instance's lifetime
-/// (`users.md` § Instance mode).
+/// Who configures providers, fixed for the instance's lifetime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InstanceMode {
@@ -195,10 +193,9 @@ pub enum ProjectHostKind {
     Device,
 }
 
-/// Where New project starts (`conversations.md` § Conversations and projects): the
-/// kind the user last chose and the device last chosen in its device menu,
-/// kept while the Cloud is chosen. A device the user no longer has stays
-/// here; the dialog chooses no device for it.
+/// Where New project starts: the kind the user last chose and the device last
+/// chosen in its device menu, kept while the Cloud is chosen. A device the user no
+/// longer has stays here; the dialog chooses no device for it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectHostChoice {
@@ -214,9 +211,8 @@ pub struct ProjectHostChoice {
     pub device_id: Option<DeviceId>,
 }
 
-/// What a message the user sends while the agent works does (`turns.md` §
-/// Steer or queue): steer the running turn or wait in the queue. Absent
-/// means steer.
+/// What a message the user sends while the agent works does: steer the running
+/// turn or wait in the queue. Absent means steer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SendWhileRunning {
@@ -260,10 +256,10 @@ impl std::fmt::Display for Language {
 }
 
 /// The time zone and languages the user's browser last reported, and the
-/// language its page resolved for *System* (`web-api-settings.md` § User
-/// preferences). A command receives the browser's facts alone, as a
-/// [`CommandLocale`], whose contract with the runners stays as it is: the
-/// page's language is the page's and the backend's mail's, not a command's.
+/// language its page resolved for *System*. A command receives the browser's
+/// facts alone, as a [`CommandLocale`], whose contract with the runners stays
+/// as it is: the page's language is the page's and the backend's mail's, not a
+/// command's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserLocale {
@@ -367,7 +363,7 @@ pub struct Preferences {
     #[garde(dive)]
     pub last_project_host: Option<ProjectHostChoice>,
     /// The language of the user's pages and of the mail the backend sends
-    /// them (`localization.md` § Choosing the language).
+    /// them.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -612,7 +608,7 @@ pub struct PreferencesPatch {
     #[garde(dive)]
     pub last_project_host: Option<ProjectHostChoice>,
     /// The language of the user's pages and of the mail the backend sends
-    /// them (`localization.md` § Choosing the language).
+    /// them.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

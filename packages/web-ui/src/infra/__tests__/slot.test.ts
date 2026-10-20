@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import { Slot } from '../slot'
 
-// The release rule of every slot the page reads (`web-application.md`
-// § Responding to the user). Each test is a few synchronous steps.
+// The release rule of every slot the page reads. Each test is a few synchronous
+// steps.
 
 /** A list slot that holds `read` as its first value, as a page that read it. */
 function listOf(read: string[], revision?: number): Slot<string[]> {

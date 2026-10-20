@@ -7,22 +7,15 @@ import { t } from './locales/text'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
- * The page's context menus (`web-application.md` § Context menus): one
- * handler at the page's root (`installContextMenus`) takes each
- * `contextmenu` event, the menu key and Shift-F10, and on a phone each long
- * press. Over selected text the menu is the selection's alone, which ends
- * the walk before it starts; elsewhere it walks from the element under the
- * pointer up to the root. On the way it gathers the entries of content the
- * browser's own menu would offer, a link, a picture, a code block, and a link to an object (a file, a commit, an agent), whose group is that
- * object's own menu as the renderer around it answers it (`vLinkMenus`),
- * and it stops at the first object, an element that declares its menu
- * (`vContextMenu`), whose entries come last: an object's menu never holds
- * its container's. Each is a group, innermost first; the menu parts the
- * groups with dividers. A text field, Shift held, and an
- * element that stopped or prevented the event keep the browser's menu;
- * where nothing declares one, no menu opens at all. On a phone a message's
- * text keeps the system's long press, which selects words; the selection's
- * toolbar (`selectionTools`, SelectionToolbar) offers what a menu would.
+ * The page's context menus: one handler at the page's root (`installContextMenus`) takes each `contextmenu` event, the menu key and
+ * Shift-F10, and on a phone each long press. Over selected text the menu is the selection's alone, which ends the walk before it starts;
+ * elsewhere it walks from the element under the pointer up to the root. On the way it gathers the entries of content the browser's own menu
+ * would offer, a link, a picture, a code block, and a link to an object (a file, a commit, an agent), whose group is that object's own menu
+ * as the renderer around it answers it (`vLinkMenus`), and it stops at the first object, an element that declares its menu (`vContextMenu`),
+ * whose entries come last: an object's menu never holds its container's. Each is a group, innermost first; the menu parts the groups with
+ * dividers. A text field, Shift held, and an element that stopped or prevented the event keep the browser's menu; where nothing declares
+ * one, no menu opens at all. On a phone a message's text keeps the system's long press, which selects words; the selection's toolbar
+ * (`selectionTools`, SelectionToolbar) offers what a menu would.
  */
 
 /** One row of a context menu: what it says and what choosing it does. */
@@ -79,7 +72,7 @@ export interface ContextMenuDeclaration {
   /**
    * What the object offers for a picture in it, a group after the
    * picture's Copy Image and Save Image, as a reply's Comment, Ask and
-   * Send to Conversation (`comments-and-ask.md` § Images).
+   * Send to Conversation.
    */
   pictureEntries?: (image: HTMLImageElement) => readonly ContextMenuEntry[]
 }
@@ -135,9 +128,8 @@ export interface ContextMenuServices {
 
 /**
  * The menu of the object a link inside a rendered text names, the one its
- * row or tab declares (`web-application.md` § Context menus), read while
- * the menu shows; null for a link it knows nothing of, which then has Open
- * alone.
+ * row or tab declares, read while the menu shows; null for a link it knows
+ * nothing of, which then has Open alone.
  */
 export type LinkMenus = (link: Element) => (() => readonly ContextMenuGroup[]) | null
 
@@ -246,12 +238,11 @@ function caretAt(point: { x: number; y: number }): { node: Node; offset: number 
 }
 
 /**
- * The selection's menu, which ends the walk (`web-application.md` §
- * Context menus): Copy, then what the object around `target` offers for
- * `text`, its selected text, and nothing of the object's own menu. Its rows
- * are read as it opens, from the selection as it is then, so they agree
- * with each other whatever becomes of the selection meanwhile, as when the
- * focus moving into a submenu's field ends it.
+ * The selection's menu, which ends the walk: Copy, then what the object around
+ * `target` offers for `text`, its selected text, and nothing of the object's
+ * own menu. Its rows are read as it opens, from the selection as it is then, so
+ * they agree with each other whatever becomes of the selection meanwhile, as
+ * when the focus moving into a submenu's field ends it.
  */
 function selectionMenu(target: Element, text: string, services: ContextMenuServices): ComposedMenu {
   let object: Element | null = target

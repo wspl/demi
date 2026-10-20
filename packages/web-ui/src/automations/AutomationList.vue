@@ -10,11 +10,10 @@ import type { Automation, AutomationConversation, AutomationHost } from './types
 import { lastRunWords, targetWords, triggerWords } from './words'
 
 /**
- * The Automations page (`automations.md` § Where the user sees them): each
- * automation's name, its trigger and target in words, and its last run,
- * with a dot while that run notified and its conversation is unread, and a
- * warning when it failed; a paused one is dimmed and says so. New
- * Automation creates one at once, which the host opens.
+ * The Automations page: each automation's name, its trigger and target in
+ * words, and its last run, with a dot while that run notified and its
+ * conversation is unread, and a warning when it failed; a paused one is dimmed
+ * and says so. New Automation creates one at once, which the host opens.
  */
 defineProps<{
   automations: readonly Automation[]

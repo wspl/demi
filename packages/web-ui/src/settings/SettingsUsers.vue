@@ -32,14 +32,14 @@ import type { SettingsCloudStorage, SettingsNewUser, SettingsUser, SettingsUsers
 import { roleLabel, assignableRoles, userActions, type UserAction } from './users'
 
 /**
- * Settings › Users (`users.md` § User system), which only the master and
- * admins see, as macOS's Users & Groups or a GitHub organization's People:
- * one row per account with its nickname and email, its role and when it was
- * last active, *Disabled* on a disabled one, *Hasn’t Chosen a Password* on
- * one still to choose its own (new, or reset by an administrator) and *You*
- * on the user's own. A row's ··· menu offers what the user may do to that
- * account and is absent where they may do nothing (a peer or a higher
- * role); on their own row it offers Cloud Storage… alone.
+ * Settings › Users, which only the master and admins see, as macOS's Users &
+ * Groups or a GitHub organization's People: one row per account with its
+ * nickname and email, its role and when it was last active, *Disabled* on a
+ * disabled one, *Hasn’t Chosen a Password* on one still to choose its own (new,
+ * or reset by an administrator) and *You* on the user's own. A row's ··· menu
+ * offers what the user may do to that account and is absent where they may do
+ * nothing (a peer or a higher role); on their own row it offers Cloud Storage…
+ * alone.
  *
  * Add User… asks the email and the role; the server makes the first password.
  * Reset Password… asks first and makes another. Both end on one last step:

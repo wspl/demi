@@ -1,7 +1,6 @@
-//! The caller's subagent settings (`web-api-settings.md` § Subagents): the Subagents
-//! switch, the limits and the subagent profiles, with the bodies that change them. The
-//! name and text rules are the accounts service's, which checks a body
-//! before it is written.
+//! The caller's subagent settings: the Subagents switch, the limits and the subagent
+//! profiles, with the bodies that change them. The name and text rules are the
+//! accounts service's, which checks a body before it is written.
 
 use std::num::NonZeroU32;
 

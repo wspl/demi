@@ -1,11 +1,9 @@
-//! The caller's credentials (`web-api-conversations.md` § Credentials), which only their
-//! owner reads and changes: each route acts in the caller's shard, and a
-//! change reaches the caller's pages as the `credentials` part, which
-//! carries a visible field's value and never a secret one's. Only the
-//! reveal answers every value. Each refusal is in words for the user, which
-//! the page shows as they are. The reveal, which is the only route that
-//! answers a secret's value, takes the session's confirmation that it is the
-//! user (`users.md` § User system), as a handoff code does.
+//! The caller's credentials, which only their owner reads and changes: each route acts
+//! in the caller's shard, and a change reaches the caller's pages as the `credentials`
+//! part, which carries a visible field's value and never a secret one's. Only the reveal
+//! answers every value. Each refusal is in words for the user, which the page shows as
+//! they are. The reveal, which is the only route that answers a secret's value, takes
+//! the session's confirmation that it is the user, as a handoff code does.
 
 use axum::Json;
 use axum::extract::{Path, State};

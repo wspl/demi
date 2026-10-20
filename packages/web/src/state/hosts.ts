@@ -20,9 +20,8 @@ export function cloudDeviceIn<T extends { kind: DeviceKind }>(devices: readonly 
 }
 
 /**
- * The mark a page draws for `device`, one of the snapshot's `devices` (`conversations.md`
- * § Conversations and projects): its number only while another has its logo; null for the
- * Cloud and a device the snapshot does not list.
+ * The mark a page draws for `device`, one of the snapshot's `devices`: its number only
+ * while another has its logo; null for the Cloud and a device the snapshot does not list.
  */
 export function deviceMarkOf(
   device: Pick<DeviceDto, 'mark'> | null | undefined,

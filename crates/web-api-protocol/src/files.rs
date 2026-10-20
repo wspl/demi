@@ -1,6 +1,5 @@
 //! Files on a Host: directory listings, file text, and a conversation's
-//! working tree (`web-api-hosts.md` § Device files and remote references, § File
-//! text and working tree changes).
+//! working tree.
 
 pub use demi_runner_protocol::files::{
     DirectoryEntry, FileWatchMessage, FileWatchRequest, MAX_OUTSIDE_SUBSCRIPTIONS,
@@ -20,8 +19,7 @@ use crate::query::StrictBool;
 
 /// One subscription a page asks of a conversation's file watch, under a
 /// key of its own: a [`PageSubscription`], on the attached host `host`
-/// names, or on the conversation's primary Host without one (`web-api-hosts.md`
-/// § File watch).
+/// names, or on the conversation's primary Host without one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationSubscription {
@@ -118,7 +116,7 @@ pub const EXISTENCE_PATHS_MAX: usize = 200;
 
 /// `POST .../fs/exists { paths }`: which of these paths of the
 /// conversation's primary Host are regular files, as a message's inline
-/// code names them (`file-previews.md` § Files named in messages).
+/// code names them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FileExistence {
@@ -276,7 +274,7 @@ pub struct UploadQuery {
 
 /// `?directory=` of the working tree's changes list: the working tree's
 /// root on the primary Host, the conversation's execution directory when
-/// omitted (`web-api-hosts.md` § File text and working tree changes).
+/// omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct ChangesQuery {
     #[serde(default)]
@@ -313,8 +311,7 @@ pub struct CommittedFileQuery {
 }
 
 /// `?directory=&branch=&after=` of a page of a branch's history: HEAD's
-/// without `branch`, from the newest without `after` (`web-api-hosts.md` § File
-/// text and working tree changes).
+/// without `branch`, from the newest without `after`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct LogQuery {
     #[serde(default)]

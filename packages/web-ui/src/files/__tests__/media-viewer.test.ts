@@ -66,8 +66,7 @@ test('a window the user moved before its picture loaded stays where they put it'
   expect(viewer.geometry.value?.rect).toEqual({ x: 20, y: 40, width: 500, height: 360 })
 })
 
-// Stepping through the pictures of the transcript the viewer was opened from
-// (`file-previews.md` § The media viewer, Previous and next).
+// Stepping through the pictures of the transcript the viewer was opened from.
 
 const names = ['a', 'b', 'c'].map((name) => ({ kind: 'image' as const, src: `/blob/${name}`, name: `${name}.png`, size: { width: 400, height: 300 } }))
 const [a, b, c] = names as [(typeof names)[number], (typeof names)[number], (typeof names)[number]]

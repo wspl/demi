@@ -20,23 +20,22 @@ import { startsSwipe, swipeAxis, swipeOffset, swipeStep, type StepReach, type Sw
 import type { PixelSize } from './thumbnail'
 
 /**
- * A picture as an image viewer shows it (`file-previews.md` § The media
- * viewer, Zoom and move), in the media viewer's window and in the File
- * view: it opens fitted, scaled down and never enlarged (its actual size is
- * one of its pixels on one device pixel, so 100% of a 2880-pixel-wide picture
- * is 1440 page pixels wide on a display of two device pixels per page pixel,
- * and all the zoom rules below count from that); the wheel, and a
- * trackpad's pinch, zoom it about the pointer from the fitted size up to
- * eight times the actual size; while it is larger than its frame a drag
- * moves it, with the grab hand, and it never leaves an empty band on a side
- * that still has pixels; a click without a drag toggles the fitted and the
- * actual size about the clicked spot. A frame that changes size keeps a
- * fitted picture fitted and a zoomed one at its zoom; another picture opens
- * fitted. Transparency shows over a checkerboard. On a phone a tap toggles
- * and a drag moves the picture the same way, and a pinch zooms it about the
- * fingers, which the page itself never does (`phone-page.ts`). With
- * `dismissible`, as the phone's full screen shows it, a tap beside the
- * picture, outside the box it is drawn in, asks to close it instead.
+ * A picture as an image viewer shows it, in the media viewer's window and in
+ * the File view: it opens fitted, scaled down and never enlarged (its actual
+ * size is one of its pixels on one device pixel, so 100% of a 2880-pixel-wide
+ * picture is 1440 page pixels wide on a display of two device pixels per page
+ * pixel, and all the zoom rules below count from that); the wheel, and a
+ * trackpad's pinch, zoom it about the pointer from the fitted size up to eight
+ * times the actual size; while it is larger than its frame a drag moves it,
+ * with the grab hand, and it never leaves an empty band on a side that still
+ * has pixels; a click without a drag toggles the fitted and the actual size
+ * about the clicked spot. A frame that changes size keeps a fitted picture
+ * fitted and a zoomed one at its zoom; another picture opens fitted.
+ * Transparency shows over a checkerboard. On a phone a tap toggles and a drag
+ * moves the picture the same way, and a pinch zooms it about the fingers, which
+ * the page itself never does (`phone-page.ts`). With `dismissible`, as the
+ * phone's full screen shows it, a tap beside the picture, outside the box it is
+ * drawn in, asks to close it instead.
  *
  * With `steps` given, a finger swiped sideways across the picture at its
  * fitted size steps to the neighbour (`swipe-step.ts`): the picture follows

@@ -1,9 +1,8 @@
-//! Conversation drafts (`web-api-conversations.md` § Conversation drafts): the backend
-//! keeps one draft per conversation, which every session of its user
-//! follows through the draft revision its channel brings. A save always
-//! takes effect; one built on an older revision keeps the version it
-//! replaced, which a session restores or dismisses. An upload the draft
-//! names is readable from every session, with the opening its record keeps.
+//! Conversation drafts: the backend keeps one draft per conversation, which every
+//! session of its user follows through the draft revision its channel brings. A save
+//! always takes effect; one built on an older revision keeps the version it replaced,
+//! which a session restores or dismisses. An upload the draft names is readable from
+//! every session, with the opening its record keeps.
 
 use demi_web_api_protocol::attachments::AttachmentAnswer;
 use demi_shared_types::{BlockId, MessageComment};
@@ -351,11 +350,10 @@ async fn save_comments(
     saved.json::<DraftAnswer>().draft
 }
 
-/// Comments wait in the draft as its text does (`comments-and-ask.md`
-/// § Waiting comments): every session reads the ones another saved, a save
-/// built on an older revision keeps the comments it replaced with their
-/// text, and Save for Later takes the text into the list while the comments
-/// stay waiting, as Edit on a saved message leaves them too.
+/// Comments wait in the draft as its text does: every session reads the ones
+/// another saved, a save built on an older revision keeps the comments it
+/// replaced with their text, and Save for Later takes the text into the list
+/// while the comments stay waiting, as Edit on a saved message leaves them too.
 #[tokio::test]
 async fn waiting_comments_reach_every_session_and_stay_in_the_draft_when_its_text_is_saved_for_later() {
     let harness = Harness::new();

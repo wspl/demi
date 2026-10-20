@@ -16,12 +16,11 @@ import HostMenu from './HostMenu.vue'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 
 /**
- * The header's place: the Host the conversation runs on and its directory
- * (`hosts.md` § Where a conversation runs). Every move the two menus
- * start, to another Host or another directory, comes through `move`, which
- * asks first when the conversation has messages, and to stop the agent
- * first while it works; so does one the offline primary Host's card above
- * the composer starts, through `choose`.
+ * The header's place: the Host the conversation runs on and its directory.
+ * Every move the two menus start, to another Host or another directory, comes
+ * through `move`, which asks first when the conversation has messages, and to
+ * stop the agent first while it works; so does one the offline primary Host's
+ * card above the composer starts, through `choose`.
  */
 const props = defineProps<{
   project?: Project

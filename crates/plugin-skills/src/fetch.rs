@@ -67,9 +67,9 @@ pub struct Skipped {
     pub problem: Option<SkipProblem>,
 }
 
-/// Why a fetch gave no skills, as the page words it (`localization.md`
-/// § Text from the backend): one of Demi's limits or finds, or a failure in
-/// git's or the system's words, which the failure's message keeps.
+/// Why a fetch gave no skills, as the page words it: one of Demi's limits or
+/// finds, or a failure in git's or the system's words, which the failure's
+/// message keeps.
 #[derive(
     Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]

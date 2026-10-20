@@ -1,12 +1,12 @@
-// The math syntax of every Markdown render, in a message and in a file
-// (`file-previews.md` § Markdown): `$$…$$` is display math, and `$…$` is
-// inline math by Pandoc's rule, so prices such as `$10 vs $12` stay text
-// while math may touch Chinese text, as in `面积为$x^2$平方米`.
+// The math syntax of every Markdown render, in a message and in a file: `$$…$$`
+// is display math, and `$…$` is inline math by Pandoc's rule, so prices such as
+// `$10 vs $12` stay text while math may touch Chinese text, as in
+// `面积为$x^2$平方米`.
 //
-// KaTeX is a chunk of its own, which the first math shown starts loading
-// (`file-previews.md` § Markdown). Until it is there, math shows its TeX
-// source where the math will stand, inline in its line or a display on a
-// line of its own, and every Markdown render runs again on its arrival.
+// KaTeX is a chunk of its own, which the first math shown starts loading. Until
+// it is there, math shows its TeX source where the math will stand, inline in
+// its line or a display on a line of its own, and every Markdown render runs
+// again on its arrival.
 import type { KatexOptions } from 'katex'
 import type { TokenizerAndRendererExtension, Tokens } from 'marked'
 import { chunkLoadFailure, reportError } from '../infra/errors'

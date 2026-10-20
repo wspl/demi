@@ -18,8 +18,7 @@ import { provideBlockScope } from '../whole-blocks'
  * answer says what it learned, and a row for every interval would outnumber
  * the answers it caused. The notice names
  * the call that started the command, which a click brings into view. The
- * pictures an end report carries stand in its row's line, as a call's do
- * (`file-previews.md` § Media a tool returned).
+ * pictures an end report carries stand in its row's line, as a call's do.
  */
 const props = defineProps<{
   reports: readonly CommandReport[]

@@ -14,15 +14,14 @@ import type { Conversation, ProductAttachment } from '../state/types'
 import { t } from './locales/text'
 
 // A conversation's draft and its messages saved for later, which the backend
-// changes together, as the one slot the page holds of them
-// (`web-application.md` § Responding to the user, § Drafts): every write of
+// changes together, as the one slot the page holds of them: every write of
 // either is a change of the slot, sent in the order made after the writes
 // before it, and its answer names the revisions it produced, so the change
-// leaves once a read of them is held. The composer shows the slot's draft:
-// what its user types is a change of it, sent half a second after typing
-// pauses; a newer draft read shows in it unless its user has a change the
-// backend has not confirmed. Text the user wrote is never only in a change:
-// a refused one goes back to the composer or stands in the list as Not Saved.
+// leaves once a read of them is held. The composer shows the slot's draft: what
+// its user types is a change of it, sent half a second after typing pauses; a
+// newer draft read shows in it unless its user has a change the backend has not
+// confirmed. Text the user wrote is never only in a change: a refused one goes
+// back to the composer or stands in the list as Not Saved.
 
 /** How long typing pauses before the page saves the draft. */
 export const DRAFT_SAVE_DELAY_MS = 500

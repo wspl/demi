@@ -6,11 +6,10 @@ import { t } from './locales/text'
 import { shortMoment } from './words'
 
 /**
- * The bar under a run's conversation's header (`automations.md` § Where the
- * user sees them): *Automation › Failed payments every weekday › Oct 17
- * 09:00*, whose first two parts go back to the page and the automation, and
- * Move to Conversations at its end, which files the conversation in the
- * sidebar as Mail's Move to Inbox does.
+ * The bar under a run's conversation's header: *Automation › Failed payments
+ * every weekday › Oct 17 09:00*, whose first two parts go back to the page and
+ * the automation, and Move to Conversations at its end, which files the
+ * conversation in the sidebar as Mail's Move to Inbox does.
  */
 defineProps<{
   name: string

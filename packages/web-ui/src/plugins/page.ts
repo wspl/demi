@@ -43,9 +43,9 @@ import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 /**
  * What came back for a call that failed, which a page says for a reason it
- * has no words for (`web-api-sync.md` § Plugin calls): the backend's answer, by
- * its status line such as `500 Internal Server Error`; none, as for a
- * network failure or a timeout; or an answer the page could not read.
+ * has no words for: the backend's answer, by its status line such as `500
+ * Internal Server Error`; none, as for a network failure or a timeout; or an
+ * answer the page could not read.
  */
 export type PluginCallAnswer =
   | { type: 'status'; status: string }
@@ -93,8 +93,7 @@ export interface ConversationFileService {
   readonly root: string | null
   /**
    * The uncommitted changes of the working tree under `directory`, on the
-   * conversation's Host; the conversation's own without one
-   * (`file-previews.md` § The File view's bars).
+   * conversation's Host; the conversation's own without one.
    */
   changes(directory?: string): ChangeSetSource
   /**

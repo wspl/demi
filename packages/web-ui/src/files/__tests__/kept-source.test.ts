@@ -5,12 +5,11 @@ import { SimulatedWatch } from '../memory-source'
 import type { FileBrowserEntry } from '../types'
 import { WatchChannel } from '../watch-channel'
 
-// The page's own writes (`web-application.md` § Requests for one action):
-// an upload's entry shows in its folder as the answer says, with no listing
-// after it; the Host's watch reports the folder, which is listed once then.
-// And a changes list a build keeps changing is listed at most once a
-// second. Played against a simulated Host's watch and numbers.
-// Cost: no I/O, fake timers; a few milliseconds.
+// The page's own writes: an upload's entry shows in its folder as the answer
+// says, with no listing after it; the Host's watch reports the folder, which is
+// listed once then. And a changes list a build keeps changing is listed at most
+// once a second. Played against a simulated Host's watch and numbers. Cost: no
+// I/O, fake timers; a few milliseconds.
 
 beforeEach(() => {
   jest.useFakeTimers()

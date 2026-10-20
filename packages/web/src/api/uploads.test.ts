@@ -3,9 +3,9 @@ import { deferred, waitFor } from '@demicodes/utils'
 import { waitForBackendWith } from './client'
 import { claimStoredFile, uploadAttachment } from './uploads'
 
-// An upload from the composer (`web-api-hosts.md` § Uploads and media): the page
-// names the file's SHA-256 first and sends its bytes only when the backend
-// does not hold them, naming the same SHA-256 again.
+// An upload from the composer: the page names the file's SHA-256 first and sends
+// its bytes only when the backend does not hold them, naming the same SHA-256
+// again.
 
 const originalFetch = globalThis.fetch
 const originalXhr = globalThis.XMLHttpRequest
@@ -126,10 +126,9 @@ test('a pasted file the user does not hold is not claimed, and no bytes go', asy
   expect(sent).toHaveLength(1)
 })
 
-// The bytes wait for the backend as every request of the page does
-// (`web-application.md` § A page of another build), through the wait the
-// product state registers with the HTTP client; here the test says when
-// the backend is back. Cost: a few milliseconds each, no timer.
+// The bytes wait for the backend as every request of the page does, through the
+// wait the product state registers with the HTTP client; here the test says
+// when the backend is back. Cost: a few milliseconds each, no timer.
 
 /** Registers a wait for the backend that ends when the test resolves `back`, and the undo. */
 function waitForBack() {

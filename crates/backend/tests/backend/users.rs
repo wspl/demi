@@ -1,9 +1,8 @@
-//! Account administration (`web-api-settings.md` § Account API, `users.md` § User
-//! system): the master and admins manage only roles below their own; an
-//! account an administrator made or reset chooses its own password before
-//! anything else opens; a disabled account signs in no way and is signed out
-//! at once; a sign-in code signs a phone in and names its issuer; an
-//! administrator sets the Cloud storage of lower accounts and its own.
+//! Account administration: the master and admins manage only roles below their
+//! own; an account an administrator made or reset chooses its own password before
+//! anything else opens; a disabled account signs in no way and is signed out at
+//! once; a sign-in code signs a phone in and names its issuer; an administrator
+//! sets the Cloud storage of lower accounts and its own.
 
 use jiff::SignedDuration;
 use reqwest::StatusCode;

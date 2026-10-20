@@ -3,11 +3,11 @@ import { chunkLoadFailure, reportError } from '../infra/errors'
 import { lazyChunk } from '../infra/lazy'
 import { t } from './locales/text'
 
-// What the page holds of the editor before it arrives (`file-previews.md`
-// § Code): the editor, its languages and its highlighter are chunks of their
-// own, loaded on first use, so a page that shows no code downloads none of
-// them. Nothing outside the editor imports `./editor` or the highlighter
-// statically; everything reaches them through here and `markdown/highlight.ts`.
+// What the page holds of the editor before it arrives: the editor, its
+// languages and its highlighter are chunks of their own, loaded on first use,
+// so a page that shows no code downloads none of them. Nothing outside the
+// editor imports `./editor` or the highlighter statically; everything reaches
+// them through here and `markdown/highlight.ts`.
 
 /** The editor's components and the language data, as one chunk. */
 export type Editor = typeof import('./editor')

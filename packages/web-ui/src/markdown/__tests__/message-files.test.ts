@@ -3,10 +3,9 @@ import { expect, test } from 'bun:test'
 import type { FileContents } from '../../files/types'
 import type { MessageFiles, MessageFileTarget } from '../types'
 
-// A click on what a message shows (`file-previews.md` § Files named in
-// messages): an image opens in the media viewer, a Host image as any other,
-// and a link to a file still opens the File view. A page of happy-dom; a few
-// milliseconds.
+// A click on what a message shows: an image opens in the media viewer, a Host
+// image as any other, and a link to a file still opens the File view. A page of
+// happy-dom; a few milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 // After the page, since the handler asks for Element.

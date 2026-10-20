@@ -1,7 +1,7 @@
-// The `file-browser` plugin's page (`plugin-pages.md`, `file-previews.md`):
-// the pinned `file` kind, the File view, which opens the `file` intent of
-// the files messages name, and the `attachment` kind, which previews an
-// attachment's copy for the `attachment` intent.
+// The `file-browser` plugin's page (`plugin-pages.md`): the pinned `file` kind,
+// the File view, which opens the `file` intent of the files messages name, and
+// the `attachment` kind, which previews an attachment's copy for the
+// `attachment` intent.
 import { defineComponent, h, type PropType } from 'vue'
 import { File } from '@lucide/vue'
 import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demicodes/plugin-sdk'

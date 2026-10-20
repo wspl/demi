@@ -2,7 +2,7 @@ import { FileX } from '@lucide/vue'
 import { previewMediaType } from '@demicodes/protocol'
 import { t } from './locales/text'
 
-/** What a view shows a file as (`file-previews.md` § What the user sees). */
+/** What a view shows a file as. */
 export type PreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'markdown' | 'text'
 
 /** The viewer for a file, by the media type its extension names; anything else is read as text. */

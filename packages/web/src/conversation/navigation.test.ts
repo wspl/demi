@@ -116,7 +116,7 @@ test('creating a project opens a new conversation draft in it, which only the fi
 })
 
 // A directory that is already a project opens that project instead of
-// making a second (`conversations.md` § Conversations and projects).
+// making a second.
 test('New Project on a folder that is already a project opens a new conversation draft in that project', async () => {
   const router = createRouter({
     history: createMemoryHistory(),

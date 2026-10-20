@@ -434,8 +434,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   /**
    * The models.dev models `query` matches, filled from the entry's own vendor
-   * where it lists them (`web-api-settings.md` § Model configuration and provider
-   * inspection); the backend reads its kept copy, so every keystroke may ask.
+   * where it lists them; the backend reads its kept copy, so every keystroke may
+   * ask.
    */
   async function searchModels(
     providerId: string,
@@ -597,7 +597,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       // Automatic refresh stays silent unless the user explicitly joins it.
       if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
         usageFailures.value[provider.id] ??= {}
-        // The vendor's own words, as they came (`localization.md` § Text from the backend).
+        // The vendor's own words, as they came.
         usageFailures.value[provider.id]![accountId] = error instanceof ApiError && error.code === 'quota_unavailable'
           ? { message: error.message, requestId: error.requestId }
           : shownError(error)
@@ -713,8 +713,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   /**
    * Makes `id` the provider's active account as the user presses Activate:
-   * the Active mark moves at once (it is a switch, `web-application.md`
-   * § Responding to the user), the change is sent after the provider's
+   * the Active mark moves at once (it is a switch), the change is sent after the provider's
    * earlier writes, and a refusal moves the mark back with a toast. Answers
    * whether the account became active.
    */
@@ -802,8 +801,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }, { immediate: true })
   /**
    * The account a completed sign-in added. The page has it by the time it
-   * learns the sign-in completed (`web-api-settings.md` § Subscription accounts);
-   * its id stands for it only when it was removed before then.
+   * learns the sign-in completed; its id stands for it only when it was removed
+   * before then.
    */
   function addedBy(state: Extract<LoginState, { status: 'completed' }>): { account: string; active: boolean } {
     const account = resources.providers

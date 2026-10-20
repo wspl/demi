@@ -1,11 +1,9 @@
-//! The pages' synchronization channel end to end (`web-api-sync.md` § Page
-//! synchronization, `backend.md` § Page synchronization): the product
-//! state a page receives first, and the run that tells one start of the
-//! backend from the next; what it receives when another session
-//! changes something, after it reconnects, and when it falls behind; a turn
-//! and its reading as other pages see them; when the channel opens and how
-//! it ends; and the heartbeat each of a page's sockets sends when it is
-//! quiet.
+//! The pages' synchronization channel end to end (`backend.md` § Page
+//! synchronization): the product state a page receives first, and the run that
+//! tells one start of the backend from the next; what it receives when another
+//! session changes something, after it reconnects, and when it falls behind; a
+//! turn and its reading as other pages see them; when the channel opens and how
+//! it ends; and the heartbeat each of a page's sockets sends when it is quiet.
 
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
@@ -688,10 +686,9 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
 
 /// A page that returns asks each socket that still looks open whether it is
 /// alive, with `{ ping: id }`, and only a `pong` that comes at once tells it
-/// so (`web-application.md` § Liveness and reconnection): the channel
-/// answers while it is busy with a change, ahead of that change, and a
-/// conversation socket answers beside its frames. Cost: one backend, no
-/// waits beyond the messages.
+/// so: the channel answers while it is busy with a change, ahead of that
+/// change, and a conversation socket answers beside its frames. Cost: one
+/// backend, no waits beyond the messages.
 #[tokio::test]
 async fn each_socket_of_a_page_answers_a_ping_at_once_ahead_of_what_it_has_yet_to_send() {
     let harness = Harness::new();
@@ -715,9 +712,9 @@ async fn each_socket_of_a_page_answers_a_ping_at_once_ahead_of_what_it_has_yet_t
 
 /// A page tells a quiet socket from one that died without a close by the
 /// heartbeat each of its sockets sends once it has sent nothing else for the
-/// interval (`web-application.md` § Liveness and reconnection): the channel
-/// after its snapshot, and a conversation socket whose page never opened
-/// the conversation. Each waits for its heartbeat, 0.2 s here.
+/// interval: the channel after its snapshot, and a conversation socket whose
+/// page never opened the conversation. Each waits for its heartbeat, 0.2 s
+/// here.
 #[tokio::test]
 async fn each_socket_of_a_page_sends_a_heartbeat_once_it_was_quiet_for_the_interval() {
     let mut harness = Harness::new();

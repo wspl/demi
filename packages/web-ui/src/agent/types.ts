@@ -20,13 +20,12 @@ export interface PendingSubmissionState {
   id: string
   /**
    * How it was sent, which says what it will be: the next message, a steer
-   * waiting for the running turn, or a message in the queue
-   * (`turns.md` § Steer or queue).
+   * waiting for the running turn, or a message in the queue.
    */
   way: SendWay
   text: string
   attachments: ComposerAttachment[]
-  /** The comments it carries (`comments-and-ask.md` § Sending them); absent with none. */
+  /** The comments it carries; absent with none. */
   comments?: readonly MessageComment[]
   /** Why the delivery failed; null while the message is on its way. */
   error: string | null
@@ -35,14 +34,13 @@ export interface PendingSubmissionState {
   /**
    * False for a refusal that sending again cannot change, such as a file of
    * the message that is gone: the dock's Retry skips it, and its Edit is the
-   * way on (`turns.md` § Following the agent's work). Absent otherwise.
+   * way on. Absent otherwise.
    */
   retryable?: false
   /**
    * The ids of the messages sent after it, a turn's, a steer's or a queued
    * message's, in the order they were sent: a message not delivered stands
-   * before the first of them that shows (`turns.md` § Following the agent's
-   * work). Absent or empty while none was.
+   * before the first of them that shows. Absent or empty while none was.
    */
   followers?: readonly string[]
 }
@@ -53,7 +51,7 @@ export interface ConversationState {
   cwd: string
   /** Null for the placeholder, which shows as New conversation in the reader's language. */
   title: string | null
-  /** The parts of the root's transcript the page holds (`web-application.md` § Transcript windows). */
+  /** The parts of the root's transcript the page holds. */
   history: HeldTranscript
   /** The block whose window the transcript shows; null for the latest. */
   shownAt: string | null

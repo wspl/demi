@@ -20,11 +20,10 @@ import { DEFAULT_SEND_WHILE_RUNNING } from '@demicodes/web-ui/agent/send-way'
 import { DEFAULT_ACCENT, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 
 /**
- * `preferences` with what `patch` changes, as the backend applies it
- * (`web-api-settings.md` § User preferences): appearance keys merge, a shortcut set
- * to null goes back to its default, a context limit of null leaves the
- * model's full window, a small model of null goes back to Automatic, and
- * every other field replaces the stored one.
+ * `preferences` with what `patch` changes, as the backend applies it: appearance
+ * keys merge, a shortcut set to null goes back to its default, a context limit of
+ * null leaves the model's full window, a small model of null goes back to
+ * Automatic, and every other field replaces the stored one.
  */
 function withPatch(preferences: Preferences, patch: PreferencesPatch): Preferences {
   const { appearance, shortcuts, contextLimit, smallModel, ...fields } = patch
@@ -86,29 +85,27 @@ export const usePreferences = defineStore('preferences', () => {
   /**
    * The changes the user made that wait for their write, behind a write in
    * flight or for the pause after a bursty control, which shows them
-   * meanwhile (`web-application.md` § Responding to the user), and the one
-   * patch that makes them all.
+   * meanwhile, and the one patch that makes them all.
    */
   let queued: { patch: PreferencesPatch; changes: ProductChange[] } = { patch: {}, changes: [] }
 
   const lastModel = computed(() => product.snapshot?.preferences.lastModel)
   const lastWorkflow = computed(() => product.snapshot?.preferences.lastWorkflow)
   const lastProjectHost = computed(() => product.snapshot?.preferences.lastProjectHost)
-  /** The language the user chose (`localization.md` § Choosing the language); absent means System. */
+  /** The language the user chose; absent means System. */
   const language = computed(() => product.snapshot?.preferences.language ?? 'system')
-  /** What Enter does with a message while the agent works (`turns.md` § Steer or queue). */
+  /** What Enter does with a message while the agent works. */
   const sendWhileRunning = computed(() =>
     product.snapshot?.preferences.sendWhileRunning ?? DEFAULT_SEND_WHILE_RUNNING,
   )
   /**
    * Whether a turn that failed with a known time to try again resumes by
-   * itself at that time (`web-api-settings.md` § User preferences); absent means no.
+   * itself at that time; absent means no.
    */
   const resumeAtRetry = computed(() => product.snapshot?.preferences.resumeAtRetry ?? false)
   /**
    * Whether a turn a deployment, an upgrade or a restart of the backend
-   * interrupted goes on by itself once the backend is back (`web-api-settings.md`
-   * § User preferences); absent means yes.
+   * interrupted goes on by itself once the backend is back; absent means yes.
    */
   const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
   /**
@@ -124,8 +121,7 @@ export const usePreferences = defineStore('preferences', () => {
 
   /**
    * Whether the user turned the provider entry `providerId` off in
-   * Settings › Providers, which takes it out of every model menu
-   * (`web-api-settings.md` § User preferences).
+   * Settings › Providers, which takes it out of every model menu.
    */
   function hidesProvider(providerId: string): boolean {
     return product.snapshot?.preferences.hiddenProviders?.includes(providerId) ?? false
@@ -203,9 +199,8 @@ export const usePreferences = defineStore('preferences', () => {
 
   /**
    * Changes the preferences as `patch` says, at once, and writes the change
-   * after the writes before it (`web-api-settings.md` § User preferences): at once,
-   * as for a switch, or once the user pauses when the control is `bursty`,
-   * as a slider is.
+   * after the writes before it: at once, as for a switch, or once the user pauses
+   * when the control is `bursty`, as a slider is.
    */
   function update(patch: PreferencesPatch, { bursty = false } = {}): void {
     queued = {
@@ -284,9 +279,8 @@ export const usePreferences = defineStore('preferences', () => {
    * Sends the web browser's time zone and languages with the language the
    * page resolves from them, and the color scheme the
    * page shows, whichever differ from the stored ones; commands receive them,
-   * and the conversation browser starts with them (`web-api-settings.md` § User
-   * preferences). The caller calls it when the page's own facts may have
-   * changed, never because the stored ones did.
+   * and the conversation browser starts with them. The caller calls it when the
+   * page's own facts may have changed, never because the stored ones did.
    */
   async function reportBrowser(): Promise<void> {
     const stored = product.snapshot?.preferences
@@ -392,8 +386,8 @@ export const usePreferences = defineStore('preferences', () => {
 /**
  * The web browser's own time zone and languages, as the backend stores them,
  * and the language the page resolves for System from them, which the
- * backend's mail reads rather than resolving it again (`localization.md` §
- * Choosing the language); null when the browser reports neither.
+ * backend's mail reads rather than resolving it again; null when the browser
+ * reports neither.
  */
 function webBrowserLocale(): BrowserLocale | null {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone

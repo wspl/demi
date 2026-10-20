@@ -198,14 +198,14 @@ any `user` block.
 
 The edit composer opens the original content as it was sent: its formatted
 text, with each attachment a capsule in its place
-([Writing a message](../product/composer.md#writing-a-message)). The target
+(`packages/web-ui/src/agent/message-editor/extensions.ts`). The target
 message and the transcript blocks after it stay visible at reduced opacity and
 cannot receive pointer or keyboard interaction. The × to the left of the send
 button, or Escape, leaves an unsubmitted edit and restores the unrelated
 composer draft. Text and capsules edit as one text, and the submitted content
 keeps them in the order shown. Deleting a capsule drops its attachment. The
 edit composer adds files the way the main composer does
-([Attachments](../product/composer.md#attachments)): an added file is uploaded
+(`packages/web-ui/src/agent/message-editor/capsules.ts`): an added file is uploaded
 and becomes a capsule where it is dropped or pasted, and an upload still
 running stops when the edit is left. The edit request carries no file bytes: a
 new file travels as its upload, and native media the message already holds,

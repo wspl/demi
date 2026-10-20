@@ -11,6 +11,10 @@ import SettingsGroup from '../settings/SettingsGroup.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import CloudResetDialog from './CloudResetDialog.vue'
 
+// Settings shows the Cloud's storage and Reset Environment, not its lifecycle
+// state: a stopped Cloud is not unavailable, since the next operation that needs
+// it wakes it, and a label such as "Sleeping" would suggest otherwise.
+
 const props = defineProps<{
   cloud: CloudState
   resetError?: ShownError | null

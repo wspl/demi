@@ -143,9 +143,8 @@ pub enum TextRefusal {
 /// A file's bytes as the text the product shows: bytes that are not binary
 /// ([`is_binary`], the rule edit tracking and line counts read by), with
 /// each byte that is not UTF-8 as U+FFFD, up to the size an edit snapshot
-/// keeps (`web-api-hosts.md` § File text and working tree changes). The backend's
-/// file route and a runner's direct `text` channel both read a file's text
-/// through it.
+/// keeps. The backend's file route and a runner's direct `text` channel both read
+/// a file's text through it.
 pub fn text_of(bytes: Vec<u8>) -> Result<String, TextRefusal> {
     if bytes.len() > EDIT_FILE_BYTES {
         return Err(TextRefusal::TooLarge);

@@ -69,7 +69,7 @@ const RESTARTED: &str = "Demi resumed this turn after the backend restarted.";
 /// resumes a turn the process interrupted and closes once it is quiescent;
 /// the root leaves both to its client. A side question closes once it is
 /// quiescent, and its interrupted turn is its card's to retry, as the
-/// root's is its client's (`comments-and-ask.md` § Side questions).
+/// root's is its client's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NodeRole {
     Root,

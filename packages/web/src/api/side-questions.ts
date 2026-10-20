@@ -10,7 +10,7 @@ import {
   type SideQuestions,
 } from './generated/web-api'
 
-/** A conversation's side question routes (`web-api-conversations.md` § Side questions). */
+/** A conversation's side question routes. */
 function sidesPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/side-questions`
 }

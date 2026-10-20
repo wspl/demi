@@ -1,13 +1,11 @@
 //! Where a conversation's work runs, changed through the API
-//! (`sessions-and-targets.md` § Switch the primary target, § Attached hosts;
-//! `web-api-hosts.md` § Workspaces, devices, and attached hosts): a target switch
-//! moves the work and attaches the device it leaves, a switch ends the
-//! conversation's open transfers instead of waiting for them, attached
-//! hosts are detached, each change of them raises the revision a page
-//! reads them by, and an attached host's commands start where it was
-//! attached, whatever an earlier one did. The
-//! conversation's agents attach devices, which these tests write to
-//! storage. The devices are real runners.
+//! (`sessions-and-targets.md` § Switch the primary target, § Attached hosts): a
+//! target switch moves the work and attaches the device it leaves, a switch ends
+//! the conversation's open transfers instead of waiting for them, attached hosts
+//! are detached, each change of them raises the revision a page reads them by,
+//! and an attached host's commands start where it was attached, whatever an
+//! earlier one did. The conversation's agents attach devices, which these tests
+//! write to storage. The devices are real runners.
 
 use std::path::PathBuf;
 

@@ -3,8 +3,7 @@ import { fillText } from '@demicodes/utils'
 /**
  * A request's card title worded from words given whole, with no catalogue
  * running: the page words its cards so, and its service worker a request's
- * notification (`turns.md` § Notifications). The module imports nothing
- * that needs a page.
+ * notification. The module imports nothing that needs a page.
  */
 
 /**
@@ -12,8 +11,7 @@ import { fillText } from '@demicodes/utils'
  * value left as `{action}`, `{host}` or `{name}`, with the action of each
  * category by its catalogue key, its id with `_` for `.`: what a card's
  * title is worded from, and what the page hands its service worker, which
- * words a request's notification while no page runs (`turns.md`
- * § Notifications).
+ * words a request's notification while no page runs.
  */
 export interface RequestTitleWords {
   allow: string

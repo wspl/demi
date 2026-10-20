@@ -1,13 +1,12 @@
-//! A direct channel's signaling socket (`web-api-hosts.md` § Direct channel):
-//! the backend introduces a page to its paired device's real runner, which
-//! answers the page's offer; the page's probes and candidates do not wait
-//! behind that answer; the socket's close closes the runner's peer;
-//! the Cloud and an offline device are refused; a quiet socket hears a
-//! heartbeat, and the runner's connection ending closes it. A page in
-//! process opens the user's streams on the channel: one installs its service
-//! from the backend as a relay stream does, but not another stream's
-//! package, and a plugin turned off ends its streams with the peer, whose
-//! next introduction lacks them.
+//! A direct channel's signaling socket: the backend introduces a page to its
+//! paired device's real runner, which answers the page's offer; the page's
+//! probes and candidates do not wait behind that answer; the socket's close
+//! closes the runner's peer; the Cloud and an offline device are refused; a
+//! quiet socket hears a heartbeat, and the runner's connection ending closes
+//! it. A page in process opens the user's streams on the channel: one installs
+//! its service from the backend as a relay stream does, but not another
+//! stream's package, and a plugin turned off ends its streams with the peer,
+//! whose next introduction lacks them.
 
 use std::time::Duration;
 
@@ -352,8 +351,7 @@ async fn a_quiet_socket_hears_a_heartbeat_and_closes_when_the_runner_goes() {
     let mut socket = signaling(&backend, &master, &paired).await;
     assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "heartbeat" }));
     // The page's question whether the socket is alive, as it returns, is
-    // the backend's to answer, at once (`web-application.md` § Liveness and
-    // reconnection).
+    // the backend's to answer, at once.
     socket.send(Message::Text(json!({ "ping": 3 }).to_string().into())).await.unwrap();
     assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "pong", "id": 3 }));
 

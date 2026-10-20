@@ -30,13 +30,11 @@ function settingsAnswer(next: (current: SubagentSettings) => SubagentSettings): 
 }
 
 /**
- * The user's subagent settings as the Subagents section changes them
- * (`web-api-settings.md` § Subagents). A switch or a limit shows at once and its
- * write follows the earlier ones of the same setting (`web-application.md`
- * § Responding to the user): the Subagents switch, a limit, or one
- * profile's switch; a saved
- * or deleted profile shows its answer. The channel brings the same part to
- * every other page.
+ * The user's subagent settings as the Subagents section changes them. A switch
+ * or a limit shows at once and its write follows the earlier ones of the same
+ * setting: the Subagents switch, a limit, or one profile's switch; a saved or
+ * deleted profile shows its answer. The channel brings the same part to every
+ * other page.
  */
 export const useSubagentSettings = defineStore('subagent-settings', () => {
   const product = useProduct()

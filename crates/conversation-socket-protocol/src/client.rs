@@ -36,8 +36,7 @@ pub enum ClientFrame {
         #[garde(dive)]
         content: Vec<ClientContent>,
         /// The comments the message carries, which may make it without
-        /// content (`comments-and-ask.md` § Sending them); omitted when there
-        /// are none.
+        /// content; omitted when there are none.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(dive)]
         comments: Vec<MessageComment>,
@@ -78,10 +77,9 @@ pub enum ClientFrame {
         comments: Vec<MessageComment>,
     },
     /// Send a message saved for later as the composer would, as the message
-    /// `turn_id`, and remove it from the list in the same step (`web-api-conversations.md`
-    /// § Messages saved for later). The backend handles it; `turn_id`, the
-    /// page's id for this send, becomes its turn's or its steer's, never the
-    /// saved message's own.
+    /// `turn_id`, and remove it from the list in the same step. The backend handles it;
+    /// `turn_id`, the page's id for this send, becomes its turn's or its steer's, never
+    /// the saved message's own.
     SendSaved {
         #[garde(length(min = 1))]
         id: String,
@@ -264,7 +262,7 @@ impl ClientFrame {
 
 /// How a message saved for later goes, the composer's choice: as the next
 /// message while nothing runs, otherwise as a steer of the running turn or
-/// into the queue (`turns.md` § Steer or queue).
+/// into the queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SavedDelivery {
@@ -326,8 +324,8 @@ pub enum ClientContent {
         #[garde(skip)]
         reference: String,
     },
-    /// A file the page uploaded (`web-api-hosts.md` § Uploads and media); the
-    /// backend writes it to the Host before the session sees the content.
+    /// A file the page uploaded; the backend writes it to the Host before the
+    /// session sees the content.
     Upload {
         /// The upload's attachment id.
         #[garde(length(chars, min = 1))]
@@ -341,8 +339,7 @@ pub enum ClientContent {
         )]
         file_name: String,
     },
-    /// A file on a paired device, read at execution time
-    /// (`web-api-hosts.md` § Device files and remote references).
+    /// A file on a paired device, read at execution time.
     RemoteFile {
         #[garde(length(chars, min = 1))]
         device_id: String,

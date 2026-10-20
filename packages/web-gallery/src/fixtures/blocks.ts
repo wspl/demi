@@ -561,7 +561,7 @@ function screenshotsCall(
   })
 }
 
-/** A screenshot the agent viewed, under its call (`file-previews.md` § Media a tool returned). */
+/** A screenshot the agent viewed, under its call. */
 export const screenshotTool = screenshotsCall(
   { id: 'tool-screenshot', toolName: 'shell', input: screenshotInput },
   '17',
@@ -1625,8 +1625,7 @@ export function transcriptDemoBlocks(): Block[] {
 
 /**
  * A question the agent thought about, then answered: its thinking is a row
- * of its own, which a page read after a reload holds without its text
- * (`web-api-conversations.md` § Light form).
+ * of its own, which a page read after a reload holds without its text.
  */
 export function thoughtAnswerBlocks(): Block[] {
   return [
@@ -1832,9 +1831,9 @@ export function leftRunningBlocks(): Block[] {
 }
 
 /**
- * A run that viewed two screenshots, then a report that carried two
- * (`file-previews.md` § Media a tool returned): folded, the run's row shows
- * its call's screenshots under it, and the report's row its own.
+ * A run that viewed two screenshots, then a report that carried two: folded,
+ * the run's row shows its call's screenshots under it, and the report's row its
+ * own.
  */
 export function viewedMediaBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({

@@ -1,6 +1,6 @@
-//! The caller's personal instructions (`web-api-settings.md` § Instructions). The
-//! edge checks the text; the caller's shard writes it, and the change
-//! reaches the caller's pages as the `instructions` part.
+//! The caller's personal instructions. The edge checks the text; the caller's
+//! shard writes it, and the change reaches the caller's pages as the
+//! `instructions` part.
 
 use axum::extract::State;
 use axum::http::StatusCode;

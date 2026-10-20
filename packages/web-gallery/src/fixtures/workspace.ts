@@ -33,8 +33,7 @@ const at = new Date(Date.UTC(2026, 8, 12, 9, 30)).toISOString()
 
 /**
  * A Rust file and a Bash script that a reply quotes whole, so the gallery
- * shows the same code in a message and in the File view (`file-previews.md`
- * § Code).
+ * shows the same code in a message and in the File view.
  */
 export const QUOTED_CODE = {
   rust: {
@@ -232,7 +231,7 @@ Work keeps running while the laptop sleeps.
 
 /**
  * A server log past the text route's 8 MiB, which the File view opens as its
- * first 8 MiB with a line saying so (`file-previews.md` § Getting the bytes).
+ * first 8 MiB with a line saying so.
  */
 const serverLog = Array.from(
   { length: 150_000 },
@@ -325,7 +324,7 @@ function tree(): MemoryDirectory {
     '.vscode': dir(files('.vscode', ['settings.json', 'extensions.json'])),
     '.gitignore': textFile('node_modules\ndist\n', at),
     public: dir({ 'robots.txt': textFile(robotsTxt, at) }),
-    // Files the work panel previews rather than reads as text (`file-previews.md`).
+    // Files the work panel previews rather than reads as text.
     assets: dir({
       'logo.svg': textFile(logoSvg, at),
       'lockup-light.svg': textFile(lockupSvg('#1a1d24'), at),

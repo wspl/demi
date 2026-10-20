@@ -4,11 +4,11 @@ import { t } from './locales/text'
 import type { FileBrowserLink } from './types'
 
 /**
- * What a symbolic link's mark says (`file-previews.md` § Symbolic links):
- * `Symbolic link to ../shared/vendor`; of a target that is not there
- * `Symbolic link to /tmp/gone.log, which doesn’t exist`; and of one that
- * cannot be read, the system's reason as a clause of the sentence,
- * `Symbolic link to /root/notes, which can’t be read: permission denied`.
+ * What a symbolic link's mark says: `Symbolic link to ../shared/vendor`; of a
+ * target that is not there `Symbolic link to /tmp/gone.log, which doesn’t
+ * exist`; and of one that cannot be read, the system's reason as a clause of
+ * the sentence, `Symbolic link to /root/notes, which can’t be read: permission
+ * denied`.
  */
 export function linkDescription(link: FileBrowserLink): SentenceText {
   const target = link.target

@@ -1,12 +1,11 @@
 /**
  * A file watch that carries the subscriptions of what a page keeps of one
- * Host's files (`web-api-hosts.md` § File watch, `plugin-pages.md` § What the
- * service keeps): a conversation's watch, on the relay or its direct
- * channel, or a device's folder dialog's. The kept files (`HostFiles`)
- * hand each subscription to the watch of the view that brought it; the
- * watch is open while it carries any, subscribes again to all of them each
- * time it opens, renews them in one message every 3 minutes, and tells the
- * kept files what the Host says of each.
+ * Host's files (`plugin-pages.md` § What the service keeps): a conversation's
+ * watch, on the relay or its direct channel, or a device's folder dialog's. The
+ * kept files (`HostFiles`) hand each subscription to the watch of the view that
+ * brought it; the watch is open while it carries any, subscribes again to all
+ * of them each time it opens, renews them in one message every 3 minutes, and
+ * tells the kept files what the Host says of each.
  *
  * Nothing here decides whether an entry is current: a subscription holds
  * what the Host said, its `since`, the `at` of its last change and when its
@@ -16,13 +15,17 @@
 import { shallowReactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'
 
-/** How long a lease runs; the page counts it from when it sent the message the Host's answer acknowledges. */
+/**
+ * How long a lease runs; the page counts it from when it sent the message the Host's
+ * answer acknowledges, the backend from when the message arrives, so the page always
+ * believes a lease over first and never trusts a subscription the backend let go.
+ */
 export const LEASE_MS = 10 * 60 * 1000
 
 /** How often the page renews every subscription it holds, in one message. */
 export const RENEW_MS = 3 * 60 * 1000
 
-/** The most subscriptions or keys one message names (`web-api-hosts.md` § File watch). */
+/** The most subscriptions or keys one message names. */
 const MESSAGE_KEYS = 4096
 
 /** What a subscription watches, and so when it changes (`crates/runner-host/src/subscriptions.rs`). */
@@ -63,7 +66,7 @@ export interface WatchLinkHandlers {
    * It opened: what it says from now on counts. With `ping`, which sends
    * the far end a ping it answers with `pong`, as the backend's relay does
    * and a direct channel's runner does not, the page's return asks it
-   * whether it is alive (`web-application.md` § Liveness and reconnection).
+   * whether it is alive.
    */
   opened(ping?: (id: number) => void): void
   message(message: WatchMessage): void
@@ -140,8 +143,7 @@ interface SentRenewal {
  * One watch of a Host. It connects while it carries a subscription, and
  * again after its reconnect waits when the connection ends, which ends
  * every subscription on it; a connection that brings nothing, not even a
- * heartbeat, for 75 seconds is broken (`web-application.md` § Liveness and
- * reconnection).
+ * heartbeat, for 75 seconds is broken.
  */
 export class WatchChannel {
   private readonly carried = new Map<string, Subscription>()

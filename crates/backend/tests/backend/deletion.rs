@@ -1,10 +1,9 @@
-//! Deleting a conversation (`storage.md` § Deleting a conversation,
-//! `web-api.md` § Sidebar mutations, read state and page synchronization):
-//! nothing refuses it, a running conversation's command stops, and nothing
-//! finds the conversation after; a start finishes a deletion a crash cut
-//! short; and the collection after it removes only the blobs that nothing
-//! names and that are older than a day. The model is an Anthropic endpoint
-//! the test scripts; the device is a real runner.
+//! Deleting a conversation (`storage.md` § Deleting a conversation): nothing
+//! refuses it, a running conversation's command stops, and nothing finds the
+//! conversation after; a start finishes a deletion a crash cut short; and the
+//! collection after it removes only the blobs that nothing names and that are
+//! older than a day. The model is an Anthropic endpoint the test scripts; the
+//! device is a real runner.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -273,8 +272,8 @@ async fn the_collection_after_a_deletion_keeps_what_a_fork_names_and_what_is_you
         )
         .await;
     assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
-    // A picture a waiting comment of the fork's draft quotes
-    // (`comments-and-ask.md` § Images), which the draft's rule holds too.
+    // A picture a waiting comment of the fork's draft quotes, which the draft's
+    // rule holds too.
     let quoted = upload(&backend, &master, "quoted.png", "image/png", &png(5)).await;
     let commented = backend
         .put(

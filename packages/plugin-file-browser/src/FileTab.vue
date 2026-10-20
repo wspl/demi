@@ -13,10 +13,9 @@ import { goBack, goForward, showFile, treeShown, type FileData } from './data'
 import { t } from './locales/text'
 
 /**
- * The File view of one conversation (`file-previews.md`): one file of its
- * Host beside the Host's tree, over the conversation's files service. A file
- * picked in the tree or a link in a Markdown preview replaces the file, and
- * Back returns to it.
+ * The File view of one conversation: one file of its Host beside the Host's
+ * tree, over the conversation's files service. A file picked in the tree or a
+ * link in a Markdown preview replaces the file, and Back returns to it.
  */
 const props = defineProps<{
   conversation: string

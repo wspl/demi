@@ -13,11 +13,10 @@ import type { MessageCapsule, MessageTransfer } from './capsules'
 /**
  * One file in a message's text: its picture or its kind's icon, then its
  * name, and the device a file on another device is on. Pointed at, an image
- * or a video shows large in its preview card (`file-previews.md` § A
- * picture's preview on hover), and a text file its opening lines. An upload in progress
- * shows how far it has come; a failed one says so, with Retry where it can
- * be uploaded from there, as in the composer; a missing one, whose
- * bytes are gone, says so, and is deleted or attached again.
+ * or a video shows large in its preview card, and a text file its opening lines. An
+ * upload in progress shows how far it has come; a failed one says so, with Retry where
+ * it can be uploaded from there, as in the composer; a missing one, whose bytes are
+ * gone, says so, and is deleted or attached again.
  *
  * The capsule fits inside the line it stands in, at every text size: never
  * taller than the line, never reaching into the next one (`base.css`

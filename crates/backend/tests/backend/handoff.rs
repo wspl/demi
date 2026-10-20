@@ -1,10 +1,10 @@
 //! Handing the account to a phone by a code, and the account's signed-in
-//! browsers, at the edge (`web-api-settings.md` § Account API, `backend.md`
-//! § Authentication and ownership): a code needs a session verified in the
-//! last five minutes, opens a page of the product once within ten minutes,
-//! in the phone's own session of the account when it has one and else in a
-//! session of its own, which the laptop's page learns of from the
-//! `sessions` part and can sign out, its pages' sockets with it.
+//! browsers, at the edge (`backend.md` § Authentication and ownership): a code
+//! needs a session verified in the last five minutes, opens a page of the
+//! product once within ten minutes, in the phone's own session of the account
+//! when it has one and else in a session of its own, which the laptop's page
+//! learns of from the `sessions` part and can sign out, its pages' sockets with
+//! it.
 
 use jiff::SignedDuration;
 use reqwest::StatusCode;

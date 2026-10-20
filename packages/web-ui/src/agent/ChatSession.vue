@@ -86,8 +86,7 @@ const props = withDefaults(defineProps<{
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
    * The waiting messages whose Recall is on its way, by id: their rows are
-   * gone from the press, and come back only when the removal is refused
-   * (`turns.md` § Steer or queue).
+   * gone from the press, and come back only when the removal is refused.
    */
   removing?: readonly string[]
   editVersion?: TranscriptVersion | null
@@ -96,8 +95,8 @@ const props = withDefaults(defineProps<{
   fork?: MessageForkHandler
   /**
    * Shares the conversation, and an answer by its footer's Share, as the
-   * share dialog asks (`sharing.md`); absent, the conversation has nothing to
-   * share yet, as one not saved, and neither control is offered.
+   * share dialog asks; absent, the conversation has nothing to share yet, as
+   * one not saved, and neither control is offered.
    */
   share?: ShareService
   /** The conversation's shares, which the dialog opens on instead of making another. */
@@ -113,8 +112,8 @@ const props = withDefaults(defineProps<{
    */
   listed?: { pinned: boolean }
   /**
-   * The automations that wake the conversation (`automations.md` § Where the
-   * user sees them): a chip above the composer lists them.
+   * The automations that wake the conversation: a chip above the composer lists
+   * them.
    */
   automations?: readonly AutomationLink[]
   /** The conversation's Host files its messages name; absent, their paths stay text. */
@@ -139,11 +138,11 @@ const props = withDefaults(defineProps<{
   reveal?: TranscriptReveal | null
   /**
    * Finds the call that started a command a report names when the window
-   * shown does not hold it: the host reads where it lies and sets `reveal`
-   * (`web-api-conversations.md` § Subagents and commands). Absent, such a title is no link.
+   * shown does not hold it: the host reads where it lies and sets `reveal`. Absent, such a
+   * title is no link.
    */
   revealCommand?: (commandId: string) => void
-  /** Reads a block whole for a row the page holds light (`web-api-conversations.md` § Light form); absent, no row is light. */
+  /** Reads a block whole for a row the page holds light; absent, no row is light. */
   readBlock?: BlockReader
   /**
    * Reads the latest page of a subagent's transcript that the session does
@@ -173,9 +172,8 @@ const props = withDefaults(defineProps<{
    */
   isExposed?: (deviceId: string, port: number) => boolean
   /**
-   * The host's connection banner says the backend is away
-   * (`web-application.md` § A page of another build): the transcript adds no
-   * Connecting row of its own while the conversation's socket waits for it.
+   * The host's connection banner says the backend is away: the transcript adds
+   * no Connecting row of its own while the conversation's socket waits for it.
    */
   backendAway?: boolean
   /**
@@ -185,13 +183,13 @@ const props = withDefaults(defineProps<{
   resumeAtRetry?: boolean
   /**
    * The comments waiting in the draft and what to do with them, which the
-   * replies take (`comments-and-ask.md`); absent, they take none.
+   * replies take; absent, they take none.
    */
   commenting?: ReplyCommenting
   /**
    * The conversation's side questions and what to do with them, which the
-   * replies take and whose full conversation opens in the subagent window
-   * (`comments-and-ask.md` § Side questions); absent, they take none.
+   * replies take and whose full conversation opens in the subagent window;
+   * absent, they take none.
    */
   asking?: ReplyAsking
   /**
@@ -242,7 +240,7 @@ const emit = defineEmits<{
   /**
    * The dock's Retry: the messages not delivered go again in the order they
    * were sent, each as a new message at the end, but one a resend cannot
-   * deliver (`turns.md` § Following the agent's work).
+   * deliver.
    */
   retryUndelivered: []
   /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
@@ -274,7 +272,7 @@ const emit = defineEmits<{
    * it and sets `reveal`.
    */
   reveal: [at: TranscriptReveal]
-  /** The reader nears the start of the window shown, which does not reach the transcript's (`web-application.md` § Transcript windows). */
+  /** The reader nears the start of the window shown, which does not reach the transcript's. */
   readBefore: []
   /** The reader nears the end of the window shown, which does not reach the transcript's. */
   readAfter: []

@@ -7,7 +7,7 @@ import {
   type RequestedValues,
 } from './generated/web-api'
 
-/** A conversation's permission routes (`web-api-conversations.md` § Conversation permissions). */
+/** A conversation's permission routes. */
 function permissionsPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/permissions`
 }

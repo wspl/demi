@@ -5,10 +5,10 @@ import { conversationSummary, productState } from '../__tests__/product-state'
 // A reply that names `attachment:a2` before the agent uploads it shows it
 // missing, and once the upload is stored, the conversation's summary on the
 // product channel carries it as the latest attachment and the reply shows
-// the image in place (`file-previews.md` § Files named in messages). The
-// reply is the product's message view on a page of happy-dom, given the
-// conversation's attachments as the conversation page gives them; the
-// backend is a played channel and a stubbed fetch. A few milliseconds.
+// the image in place. The reply is the product's message view on a page of
+// happy-dom, given the conversation's attachments as the conversation page
+// gives them; the backend is a played channel and a stubbed fetch. A few
+// milliseconds.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
 // After the page, since the components ask for its elements and the played
@@ -112,12 +112,11 @@ test('a reply that named an attachment before its upload shows the image in plac
   // The deadline only guards against a reply that never shows it.
 }, 2000)
 
-// A reply shows only what its own agent uploaded (`file-previews.md`
-// § Attachment blocks): a subagent's reply that names the root's a2, which
-// it never uploaded, shows a2 missing, and its own a3 shows. The backend
-// stub answers each number only to the agent that uploaded it, as the
-// route does with `?node=`. Planted defect this catches: a lookup that
-// asks without the reply's agent, so a guessed number shows another
+// A reply shows only what its own agent uploaded: a subagent's reply that names
+// the root's a2, which it never uploaded, shows a2 missing, and its own a3
+// shows. The backend stub answers each number only to the agent that uploaded
+// it, as the route does with `?node=`. Planted defect this catches: a lookup
+// that asks without the reply's agent, so a guessed number shows another
 // agent's file. A few milliseconds.
 test('a subagent\'s reply shows the attachment it uploaded and a number it did not upload as missing', async () => {
   const CHILD = 'node-child'
@@ -161,10 +160,10 @@ test('a subagent\'s reply shows the attachment it uploaded and a number it did n
 }, 2000)
 
 // An audio attachment plays where the reply delivers it, as a voice message
-// does in Messages (`file-previews.md` § Attachment blocks): its block shows
-// its player with the file's name and length, its button plays and pauses
-// it, and its seek bar moves it. Planted defect this catches: an audio
-// attachment shown as a card, as any other file is. A few milliseconds.
+// does in Messages: its block shows its player with the file's name and length,
+// its button plays and pauses it, and its seek bar moves it. Planted defect
+// this catches: an audio attachment shown as a card, as any other file is. A
+// few milliseconds.
 test('an audio attachment shows its inline player with its name and length, and plays and seeks there', async () => {
   stubBackend(new Set(['a3']), { name: 'welcome.mp3', mediaType: 'audio/mpeg' })
   const pinia = createPinia()
@@ -231,12 +230,11 @@ test('an audio attachment shows its inline player with its name and length, and 
   product.stop()
 }, 2000)
 
-// Any other file the reply delivers is a card (`file-previews.md`
-// § Attachment blocks): a click on it opens the file in the work panel and
-// never downloads it, and only its Download downloads, under the file's
-// name. Planted defects this catches: a card that downloads on a click, as
-// an attachment's link once did, and a Download that also opens the panel.
-// A few milliseconds.
+// Any other file the reply delivers is a card: a click on it opens the file in
+// the work panel and never downloads it, and only its Download downloads, under
+// the file's name. Planted defects this catches: a card that downloads on a
+// click, as an attachment's link once did, and a Download that also opens the
+// panel. A few milliseconds.
 test('a file\'s card opens it in the work panel on a click, and only its Download downloads it', async () => {
   stubBackend(new Set(['a4']), { name: 'report.pdf', mediaType: 'application/pdf' })
   const pinia = createPinia()

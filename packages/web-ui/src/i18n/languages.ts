@@ -1,8 +1,14 @@
 import { z } from 'zod'
 
 /**
- * The languages Demi speaks and how the page chooses one
- * (`localization.md` § Choosing the language).
+ * The languages Demi speaks and how the page chooses one. The page alone resolves
+ * System, and reports the language it resolved with the browser's other facts in the
+ * `locale` preference, so the backend's emails read that instead of resolving it
+ * again. It starts in the language it last showed, kept in the browser's storage, so
+ * a user whose choice differs from the browser's sees no other language before the
+ * preferences arrive. The document's `lang` follows the choice, so each language's own
+ * font draws its characters: one Han character looks different in Chinese, Japanese
+ * and Korean.
  */
 
 export const LANGUAGES = ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const

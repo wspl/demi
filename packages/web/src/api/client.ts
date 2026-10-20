@@ -4,6 +4,17 @@ import { httpStatusLine } from '@demicodes/utils'
 import { coded, environmental } from '@demicodes/web-ui/infra/errors'
 import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
+// Every control operation is an ordinary HTTP request: one answer, a status and an
+// error the caller can show, visible in the network panel and the backend's log, and
+// retryable. A WebSocket carries only what a request cannot, bytes that flow while the
+// user watches and events the backend pushes; an operation is never a message on a
+// stream that a later message may or may not answer, since a lost answer would look
+// exactly like a slow one and nothing would record that it failed. A page may be half a
+// second from its server per round trip, so one user action costs as few as the work
+// allows: requests that do not depend on each other go out together, an action that
+// changes several things is one request, and an answer that says what happened is not
+// followed by a read.
+
 /** The header every answer of the backend names its request in. */
 export const REQUEST_ID_HEADER = 'X-Request-Id'
 
@@ -23,8 +34,7 @@ export class ApiError extends Error {
   readonly retryAfterSeconds: number | null
   /**
    * The answer's headers, such as the ETag and `X-Demi-Read-At` a refusal
-   * that is a file's answer carries (`web-api-hosts.md` § File text and working
-   * tree changes); empty for an error no answer gave.
+   * that is a file's answer carries; empty for an error no answer gave.
    */
   readonly headers: Headers
   /** With `unknown_passkey`, the passkey no account has. */
@@ -33,7 +43,7 @@ export class ApiError extends Error {
   readonly requestId: string | null
   /** With `provider_busy` for a sign-in's start, the caller's own sign-in that holds the entry. */
   readonly loginId: string | null
-  /** The values the page's text for `code` is filled with (`localization.md` § Text from the backend). */
+  /** The values the page's text for `code` is filled with. */
   readonly params: NonNullable<ErrorBody['params']>
   /** With `workspace_exists`, the id of the project the directory already is. */
   readonly workspaceId: string | null
@@ -248,13 +258,12 @@ interface ApiRequestOptions extends RequestInit {
 }
 
 /**
- * Sends with `send` until the backend answers (`web-application.md` § A page
- * of another build): a try that cannot reach the backend, as `unreachable`
- * judges it, waits until the page reaches the backend again and goes then,
- * so no caller sees a failure about the connection. Only the backend's own
- * answer rejects. Once `signal` aborts, it rejects with the abort's reason
- * and sends nothing more. Every request of the page goes through it: the
- * HTTP client's, and an upload's bytes.
+ * Sends with `send` until the backend answers: a try that cannot reach the
+ * backend, as `unreachable` judges it, waits until the page reaches the backend
+ * again and goes then, so no caller sees a failure about the connection. Only
+ * the backend's own answer rejects. Once `signal` aborts, it rejects with the
+ * abort's reason and sends nothing more. Every request of the page goes through
+ * it: the HTTP client's, and an upload's bytes.
  */
 export async function untilReached<T>(send: () => Promise<T>, signal?: AbortSignal, onUnreachable?: () => void): Promise<T> {
   for (let attempt = 1; ; attempt += 1) {
@@ -327,7 +336,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'on
 const unknownErrorCodeSchema = z.string().brand<'UnknownErrorCode'>()
 export type UnknownErrorCode = z.infer<typeof unknownErrorCodeSchema>
 
-/** The error envelope, read with any code (`localization.md` § Text from the backend). */
+/** The error envelope, read with any code. */
 const errorEnvelopeSchema = errorBodySchema.extend({ code: errorCodeSchema.or(unknownErrorCodeSchema) })
 
 /** `Retry-After` in seconds; its date form is not one the backend sends. */

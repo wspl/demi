@@ -1,14 +1,13 @@
-//! The web app build served beside the API (`web-api.md` § Serving the web
-//! app build): files as they are, and `index.html` for an extensionless
-//! navigation that accepts HTML, so a deep page reloads. Any other miss is a
-//! JSON 404. The build's `build.json` names it. `index.html` and
-//! `build.json` are asked for again on every load and compared by their
-//! content, never by their modification time, since a new build's files
-//! may be older than the old build's, as after a rollback; the hashed files
-//! under `assets/` never change.
+//! The web app build served beside the API: files as they are, and `index.html`
+//! for an extensionless navigation that accepts HTML, so a deep page reloads.
+//! Any other miss is a JSON 404. The build's `build.json` names it.
+//! `index.html` and `build.json` are asked for again on every load and compared
+//! by their content, never by their modification time, since a new build's
+//! files may be older than the old build's, as after a rollback; the hashed
+//! files under `assets/` never change.
 //!
 //! A share's page at `/s/:token` is the build's `share.html`, an entry of its
-//! own, under the policy and headers of `sharing.md` § Safety.
+//! own, under the content policy and headers `crates/backend-http/src/shares.rs` sets.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -127,15 +126,15 @@ async fn revalidated_shared_page(path: PathBuf, policy: String, request: Request
     response
 }
 
-/// The Content Security Policy of share `token`'s page (`sharing.md`
-/// § Safety): the build's own scripts, styles and fonts, and connections,
-/// images and videos only from the share's routes at `public`, the
-/// backend's public URL its link names, never from what a request's `Host`
-/// says. A source names `<public>/api/shares/<token>` and what lies under
-/// it, since a path is all CSP narrows below an origin and `'self'` takes
-/// none; the token is percent-encoded, so nothing in the address reaches
-/// the policy as a separator or another path. Without a public URL, which
-/// the backend sets as it starts listening, the page reaches nothing.
+/// The Content Security Policy of share `token`'s page: the build's own
+/// scripts, styles and fonts, and connections, images and videos only from the
+/// share's routes at `public`, the backend's public URL its link names, never
+/// from what a request's `Host` says. A source names
+/// `<public>/api/shares/<token>` and what lies under it, since a path is all
+/// CSP narrows below an origin and `'self'` takes none; the token is
+/// percent-encoded, so nothing in the address reaches the policy as a separator
+/// or another path. Without a public URL, which the backend sets as it starts
+/// listening, the page reaches nothing.
 ///
 /// Styles may be inline: the transcript's Markdown renders KaTeX and sized
 /// media with `style` attributes, and a style cannot run code. Fonts and

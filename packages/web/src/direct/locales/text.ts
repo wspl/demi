@@ -5,5 +5,5 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The text of `web/src/direct` (`localization.md` § Where the text lives). */
+/** The text of `web/src/direct`. */
 export const { t } = defineText('web.direct', { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })

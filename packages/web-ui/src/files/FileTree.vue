@@ -175,15 +175,15 @@ function inTree(path: string, root: string): boolean {
 let stopFollowing: (() => void) | null = null
 
 /**
- * Follows `path` as an editor's explorer follows the file it shows
- * (`file-previews.md` § The File view's bars): unfolds the root, then each
- * folder above the path in order, each once its parent's listing has put
- * its row in, so no folder opens before the tree knows it is one; once the
- * path's row is in, a directory's own listing opens when `isDirectory`, and
- * the row is brought into view if it is not. The folders opened or closed
- * elsewhere stay as they are. Another path followed meanwhile wins, this
- * one stopping where it was, as does a folder on the way that the user
- * folds; a path outside the root, or the root itself, has no row to follow.
+ * Follows `path` as an editor's explorer follows the file it shows: unfolds the
+ * root, then each folder above the path in order, each once its parent's
+ * listing has put its row in, so no folder opens before the tree knows it is
+ * one; once the path's row is in, a directory's own listing opens when
+ * `isDirectory`, and the row is brought into view if it is not. The folders
+ * opened or closed elsewhere stay as they are. Another path followed meanwhile
+ * wins, this one stopping where it was, as does a folder on the way that the
+ * user folds; a path outside the root, or the root itself, has no row to
+ * follow.
  */
 function follow(path: string | null, isDirectory: boolean): void {
   stopFollowing?.()
@@ -247,7 +247,7 @@ function entriesOf(entry: Listing | undefined): FileBrowserEntry[] {
  * The rows the open directories show, and where each symbolic link among
  * them points. A link to a directory is a directory row whose listing is the
  * link's own path, so it unfolds at any depth, level by level, a link back
- * to a folder above it included (`file-previews.md` § Symbolic links).
+ * to a folder above it included.
  */
 const laidOut = computed(() => {
   const rows: TreeRow[] = []

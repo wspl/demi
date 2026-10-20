@@ -95,10 +95,10 @@ impl InstanceSecret {
         VaultKey::new(self.subkey(VAULT_LABEL))
     }
 
-    /// The VAPID key push messages are signed with (`turns.md`
-    /// § Notifications): the same for as long as the secret is, so the
-    /// browsers' subscriptions outlive a restart. A subkey that is no P-256
-    /// scalar, one in about four billion, gives way to the next label's.
+    /// The VAPID key push messages are signed with: the same for as long as the
+    /// secret is, so the browsers' subscriptions outlive a restart. A subkey
+    /// that is no P-256 scalar, one in about four billion, gives way to the
+    /// next label's.
     pub(crate) fn push_key(&self) -> PushKey {
         (0u32..)
             .find_map(|attempt| {

@@ -1,5 +1,4 @@
-//! Account rotation (`crates/backend-providers/src/llm/rotation.rs`, `web-api-settings.md`
-//! § Subscription accounts): an entry's rotation and account order over the
+//! Account rotation (`crates/backend-providers/src/llm/rotation.rs`): an entry's rotation and account order over the
 //! API, each agent's own account kept across requests and a restart and
 //! taken again after a compaction, a used-up account's request sent again
 //! on another account, every account used up, and Manual's *Continue with*.

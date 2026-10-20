@@ -1,9 +1,8 @@
 import { afterEach, expect, test } from 'bun:test'
 import { lookupCodeFiles } from './code-files'
 
-// A reply's inline code paths go to the Host in one question, asked once
-// (`file-previews.md` § Files named in messages). Pure: the backend is a
-// stubbed fetch; a few milliseconds.
+// A reply's inline code paths go to the Host in one question, asked once. Pure:
+// the backend is a stubbed fetch; a few milliseconds.
 
 const realFetch = globalThis.fetch
 afterEach(() => {

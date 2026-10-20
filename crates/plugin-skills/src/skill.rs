@@ -29,8 +29,7 @@ struct FrontMatter {
     disable_model_invocation: Option<bool>,
 }
 
-/// Why a `SKILL.md` is not a skill, as the page words it (`localization.md`
-/// § Text from the backend).
+/// Why a `SKILL.md` is not a skill, as the page words it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "code", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum SkipProblem {

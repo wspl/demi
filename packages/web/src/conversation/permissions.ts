@@ -62,15 +62,13 @@ function view(request: PermissionRequest): RequestView {
 }
 
 /**
- * The conversations' permission requests (`web-application.md`
- * § Synchronized state, `web-api-conversations.md` § Conversation permissions): a page
- * reads them for a conversation it shows, and again whenever the summary's
- * `permissionsRevision` is newer than the revision it holds, a count of
- * another run of the backend included (`web-api-sync.md` § Revisions counted in
- * memory); an answer older than the one it holds is dropped, since a read
- * and the summary can arrive in either order. A decision shows at once and
- * is not read back; one refused goes back to the requests as they were, and
- * another page's decision reaches this one through the summary.
+ * The conversations' permission requests: a page reads them for a conversation it
+ * shows, and again whenever the summary's `permissionsRevision` is newer than the
+ * revision it holds, a count of another run of the backend included; an answer older
+ * than the one it holds is dropped, since a read and the summary can arrive in either
+ * order. A decision shows at once and is not read back; one refused goes back to the
+ * requests as they were, and another page's decision reaches this one through the
+ * summary.
  */
 /**
  * Why the values in a credential card do not fit its request, in the page's

@@ -5,9 +5,8 @@ import { imagePlaceholderHtml } from '../markdown/image-placeholder'
 import type { FileContents } from './types'
 
 /**
- * The images of a Markdown document the page shows (`file-previews.md`
- * § Markdown, § Files named in messages), in the element `root` holds the
- * rendering `html` in.
+ * The images of a Markdown document the page shows, in the element `root` holds
+ * the rendering `html` in.
  *
  * Each Host image of the document (`hostFiles` are their paths) is given the
  * address of its file's version the page keeps, where it stands, so a new

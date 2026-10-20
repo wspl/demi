@@ -38,16 +38,16 @@ only the latest call of each run carries `runFiles`, and only the latest of
 each request `requestFiles`, since a page uses no other.
 
 A block the page read from a page of the transcript is in its light form,
-without what only its open row shows ([Light form](../product/web-api-conversations.md#light-form)).
+without what only its open row shows (`crates/web-api-protocol/src/conversations.rs`).
 Its folded row renders from what it carries, the same as the block whole;
 opening the row reads the block whole and shows it in place, with the
 row's loading state until it arrives
-([Transcript windows](../product/web-application.md#transcript-windows)).
+(`packages/web/src/conversation/history-reads.ts`).
 
 The media a result carries are parts of its `output`, held by
 reference ([Media](transcript.md#media)); the view never holds them. Each tool's rendering
 shows them with the call, and a medium that is gone where it was
-([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
+(`packages/web-ui/src/files/MediaPreview.vue`).
 
 Live frames add to the transcript; they do not replace it:
 
@@ -65,7 +65,7 @@ Live frames add to the transcript; they do not replace it:
   the script as a terminal shows what was typed: `$ ` and the first line, a
   continuation line `> ` for each further line, wrapped at the terminal's
   width, the prompt muted and the script highlighted as Bash, in the colors all code shows in
-  ([Code](../product/file-previews.md#code)), then the output; the line is the page's, not part of the command's output. A page adds to what it shows
+  (`packages/web-ui/src/editor/useCodeView.ts`), then the output; the line is the page's, not part of the command's output. A page adds to what it shows
   only the characters beyond those it has shown (`chars`), so a terminal
   keeps its scrollback; after a gap it shows the `tail` anew. A command's tab
   shows its status as its last frame, or after a reload its stored view,
@@ -94,7 +94,7 @@ wears how long, counting up, as a grey tag in that place, *1m 32s*, since its
 title is the agent's own words and takes no time; a shorter one shows
 none, so a quick command does not flash a tag. The tag goes when the command
 ends: a succeeded row shows nothing, a failed or stopped one its tag. The expanded row shows the script highlighted as Bash, in the colors all code shows in
-([Code](../product/file-previews.md#code)), and says above the output how long the command has run or ran, *Running for
+(`packages/web-ui/src/editor/useCodeView.ts`), and says above the output how long the command has run or ran, *Running for
 1m 28s*, then *Exited with 0 after 2m 13s*, *Failed with exit code 1 after 47s*
 or *Stopped after 5s*; a command that ended within a second says no time,
 *Exited with 0*. Component structure, expansion, icons, typography, motion and the
@@ -265,13 +265,13 @@ The wait for the model ends when a call's title is written, not when the call
 opens ([Waiting for the model](#waiting-for-the-model)). A vendor that sends
 calls only whole has no calls being written: between its text and its call,
 the tail row says Requesting, and its wait runs on
-([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+(`packages/web-ui/src/agent/dock-cards.ts`).
 
 ### Waiting for the model
 
 While a node waits for the model's answer, the tail row of its transcript
 says Requesting with how long the wait has lasted
-([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+(`packages/web-ui/src/agent/dock-cards.ts`).
 How long is the session's fact, not the page's. For example, a subagent's
 request has waited eight minutes when the user first opens its view: the view
 says Requesting for 8m, and so does a page reloaded a minute later, where a
@@ -312,7 +312,7 @@ starts again.
   minus `waitedMs`, and compares no time of the server's with its own, so a
   difference between the two clocks never shows.
 - **A message the page sent.** Its wait starts at the send, before the server
-  has the message ([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)):
+  has the message (`packages/web-ui/src/agent/dock-cards.ts`):
   that page counts from the send, the earlier of the two starts.
 
 So whenever the row says Requesting, the server holds the wait's start, but
@@ -344,7 +344,7 @@ names the work the user cares about, not how the tool works.
 ## Frame protocol
 
 A page of the web app opens `WS /api/conversations/:id/stream` for a
-conversation ([Web API](../product/web-api.md)), with the session cookie
+conversation (`crates/web-api-protocol/src/lib.rs`), with the session cookie
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 The connection belongs to that one
 conversation: the backend supplies the session id and the working directory
@@ -356,7 +356,7 @@ protocol.
 
 For example, a page opens a conversation whose root is running. It has read
 the latest page of the transcript, blocks 2,940 to 2,999
-([Pages](../product/web-api-conversations.md#pages)), and asks the stream for the blocks
+(`crates/backend-database/src/tree.rs`), and asks the stream for the blocks
 from its last one on:
 
 ```text
@@ -376,11 +376,11 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 
 | Frame | Meaning | Answer |
 | --- | --- | --- |
-| `open { from, edge }` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds; `from` and `edge` name the root's blocks the page holds ([Where a reset starts](#where-a-reset-starts)) | `opened`, then the snapshot frames, whose state the page takes whole ([What a reopened socket brings back](../product/web-application.md#what-a-reopened-socket-brings-back)) |
+| `open { from, edge }` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds; `from` and `edge` name the root's blocks the page holds ([Where a reset starts](#where-a-reset-starts)) | `opened`, then the snapshot frames, whose state the page takes whole (`packages/web/src/conversation/store.ts`) |
 | `send { messageId, content }` | Submit a message ([Input](runtime.md#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
-| `send_saved { id, turnId, delivery }` | Send a message saved for later as the composer would, `delivery` `message`, `steer` or `queue`, as the message `turnId`, and remove it from the list in the same step ([Messages saved for later](../product/web-api-conversations.md#messages-saved-for-later)). The page keeps it as a message on its way that remembers it came from `id`, across a reload, so Retry sends `send_saved` again with the same `turnId`; a `turnId` the session already took answers as the first did, and the saved message is gone either way | The frames of that delivery; `rejected` with `saved_not_found` when the message is gone and `turnId` was never taken |
+| `send_saved { id, turnId, delivery }` | Send a message saved for later as the composer would, `delivery` `message`, `steer` or `queue`, as the message `turnId`, and remove it from the list in the same step (`crates/backend-http/src/saved.rs`). The page keeps it as a message on its way that remembers it came from `id`, across a reload, so Retry sends `send_saved` again with the same `turnId`; a `turnId` the session already took answers as the first did, and the saved message is gone either way | The frames of that delivery; `rejected` with `saved_not_found` when the message is gone and `turnId` was never taken |
 | `cancel_pending_steer { steerId }` | Withdraw a pending steer | `remove_result`, after the `pending_steers` list |
 | `steer_now { steerId }` | Deliver a pending steer now ([Send now](runtime.md#send-now)) | None; the transcript and the `pending_steers` list |
 | `dequeue_message { messageId }` | Remove a queued message | `remove_result`, after `queue` |
@@ -408,7 +408,7 @@ or `steer` that holds `media` or `attachment` is an invalid frame. No frame
 carries file bytes. The backend
 resolves uploads and remote files before the session sees the content
 ([Media by reference](../backend/backend.md#media-by-reference),
-[Device files and remote references](../product/web-api-hosts.md#device-files-and-remote-references)),
+`crates/backend-http/src/devices.rs`),
 and the session resolves an edit's kept files from the edited message
 ([Files the edit keeps](message-editing.md#files-the-edit-keeps)).
 
@@ -441,7 +441,7 @@ Host, with the handle checks of Running shell tools (`crates/agent-tools/src/lib
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts (`crates/agent-server/src/server/tree.rs`) |
 | `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
 | `heartbeat` | Nothing: the connection sent no other frame for 30 seconds ([Order and delivery](#order-and-delivery)) |
-| `pong` | `id`: the page's `ping` it answers, at once and ahead of any other frame waiting ([A dropped connection](../product/web-application.md#liveness-and-reconnection)) |
+| `pong` | `id`: the page's `ping` it answers, at once and ahead of any other frame waiting (`packages/web-ui/src/transport/liveness.ts`) |
 
 `failures` is the backend's reading of the error blocks a frame carries,
 attached when the frame is sent and never stored
@@ -474,7 +474,7 @@ page replaces its block 2,999 and adds the rest.
   end, means the transcript was rewritten between the page's read and the
   stream: the reset then starts at the start of the latest page, and the page
   drops what it held and takes the reset as its latest page
-  ([Rewrites](../product/web-application.md#rewrites)).
+  (`packages/web/src/conversation/history-reads.ts`).
 - Without `from`, as when the page has read nothing, the reset starts at the
   start of the latest page.
 - A subagent's reset (`subagent_transcript_reset`) starts at the start of its
@@ -507,7 +507,7 @@ whether the page holds them or not.
 - The backend handles one connection's frames one at a time, in arrival order.
   A frame waits for the conversation's admission and is refused while the
   conversation is archived
-  ([Sidebar mutations and read state](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
+  (`crates/backend-http/src/conversations.rs`).
   A frame whose handling waits, such as a send whose uploads are being written
   to the Host or an edit waiting for its durable acceptance, delays the frames
   behind it.
@@ -528,7 +528,7 @@ whether the page holds them or not.
   still looks open. A page that receives nothing on its connection for 75
   seconds, two and a half heartbeats, takes the connection as broken, closes
   it and opens the conversation again
-  ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+  (`packages/web-ui/src/transport/liveness.ts`).
 - The open handshake is one step: nothing can happen to the session between
   `opened` and the handshake's last frame, so the snapshot frames agree with
   each other.
@@ -561,7 +561,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
 ```
 
 - A page that opens a conversation without a copy of it shows it in two
-  steps ([Opening a conversation](../product/web-application.md#backend-communication)):
+  steps (`packages/web/src/api/client.ts`):
   the transcript with its agents once both are read, then the phase, the
   queue, the pending steers, the wait and the running commands together
   once its handshake is applied, so a reload never draws a moment without
@@ -586,7 +586,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
 - `open` names no model. The backend opens the tree with the model selection
   the conversation's record holds, and a live tree already follows that
   record, so an open changes no model
-  ([the conversation's model settings](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
+  (`crates/backend-http/src/conversations.rs`).
   An open of a conversation whose record has no model yet is answered with an
   `error` whose code is `model_not_selected`, and one whose provider entry the
   user may no longer use with `provider_not_found`. A runtime the tree needs
@@ -620,4 +620,4 @@ decides a lone client's frame decides each:
   `abort_result` says what it stopped.
 - No frame changes the model selection: the conversation's model settings
   change by a conversation patch, which the backend applies one at a time
-  ([the conversation's model settings](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
+  (`crates/backend-http/src/conversations.rs`).

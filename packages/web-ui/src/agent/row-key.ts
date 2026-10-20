@@ -2,18 +2,16 @@ import type { MessageListBlock } from './pending-steers'
 import { isWorkStep, workRowId } from './work-groups'
 
 /**
- * What names a row of the list across the forms it takes
- * (`turns.md` § Following the agent's work): the message being sent and
- * the message the server confirmed are one row, named by the message's id,
- * which the confirmed message keeps as its turn's id; a steer waiting for
- * the turn and the steer written, and a queued message and the message it
- * becomes, likewise. A run is named after the run the backend stored, and
- * a step that runs after itself; the row a lone step ran in becomes its
- * run's row by taking its place (`succeedKeys`). The list keeps a row it names the
- * same, with the height it measured, and changes it in place, rather than
- * building a new one that it lays out at a guess for a frame. What replaces
- * a row of another name takes the key the list draws it under
- * (`succeedKeys`).
+ * What names a row of the list across the forms it takes: the message being sent
+ * and the message the server confirmed are one row, named by the message's id,
+ * which the confirmed message keeps as its turn's id; a steer waiting for the turn
+ * and the steer written, and a queued message and the message it becomes,
+ * likewise. A run is named after the run the backend stored, and a step that runs
+ * after itself; the row a lone step ran in becomes its run's row by taking its
+ * place (`succeedKeys`). The list keeps a row it names the same, with the height
+ * it measured, and changes it in place, rather than building a new one that it
+ * lays out at a guess for a frame. What replaces a row of another name takes the
+ * key the list draws it under (`succeedKeys`).
  */
 export function rowKey(block: MessageListBlock): string {
   if (isWorkStep(block)) {
@@ -74,19 +72,17 @@ export interface DrawnRow extends ListRow {
 }
 
 /**
- * The keys the list draws `next` under, after it drew `previous`
- * (`turns.md` § Following the agent's work: what replaces a row takes its
- * place). A row the list drew before keeps the key it was drawn under,
- * wherever it moved. A row that is gone gives its key to the first new row
- * that stands where it stood, between the same rows that stayed in their
- * order, so the new state takes the old one's place, its height and its
- * entrance, and rolls over it rather than one row going while another
- * appears: Stopped and the Requesting row of the Continue, Requesting and
- * the step it waited for, a call being written and its call. A row gone
- * with no new row in its place goes, as the Requesting row of a Continue
- * when the step it waited for joins the run above it. `fixed` rows,
- * such as the edges of a window of history, neither give nor take a key. A
- * new row whose own key another row is drawn under takes a key of its own.
+ * The keys the list draws `next` under, after it drew `previous`. A row the
+ * list drew before keeps the key it was drawn under, wherever it moved. A row
+ * that is gone gives its key to the first new row that stands where it stood,
+ * between the same rows that stayed in their order, so the new state takes the
+ * old one's place, its height and its entrance, and rolls over it rather than
+ * one row going while another appears: Stopped and the Requesting row of the
+ * Continue, Requesting and the step it waited for, a call being written and its
+ * call. A row gone with no new row in its place goes, as the Requesting row of
+ * a Continue when the step it waited for joins the run above it. `fixed` rows,
+ * such as the edges of a window of history, neither give nor take a key. A new
+ * row whose own key another row is drawn under takes a key of its own.
  */
 export function succeedKeys(
   previous: readonly DrawnRow[],

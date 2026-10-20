@@ -1,7 +1,6 @@
 /**
- * A plugin's user stream over the product's WebSocket at `url`
- * (`web-api-hosts.md` § User streams): bytes sent before the socket opens wait
- * for it, and the close reason ends the stream.
+ * A plugin's user stream over the product's WebSocket at `url`: bytes sent
+ * before the socket opens wait for it, and the close reason ends the stream.
  */
 import type { OpenUserStream, StreamBytes } from '../plugins/streams'
 import { openSocket } from './liveness'

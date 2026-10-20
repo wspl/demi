@@ -12,11 +12,11 @@ import CommentItem from './CommentItem.vue'
 
 /**
  * The comments waiting in the draft, as the composer shows them inside its
- * box (`comments-and-ask.md` § Waiting comments): a round-ended pill as tall
- * as the composer's own buttons, a comment mark, *2 Comments* and a ghost ×,
- * which removes them all. A click on the pill lists them, each its quoted
- * text and its comment, with Edit and Delete: by the pill on the desktop, as
- * a sheet on a phone. The composer's `context` slot holds it.
+ * box: a round-ended pill as tall as the composer's own buttons, a comment
+ * mark, *2 Comments* and a ghost ×, which removes them all. A click on the pill
+ * lists them, each its quoted text and its comment, with Edit and Delete: by
+ * the pill on the desktop, as a sheet on a phone. The composer's `context` slot
+ * holds it.
  */
 const props = defineProps<{
   /** The waiting comments, in the order the conversation reads them. */

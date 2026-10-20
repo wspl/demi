@@ -13,9 +13,8 @@ import {
   type ImageView,
 } from '../image-zoom'
 
-// Zooming and moving a picture in the media viewer and the File view
-// (`file-previews.md` § The media viewer, Zoom and move), on numbers alone:
-// a few milliseconds.
+// Zooming and moving a picture in the media viewer and the File view, on
+// numbers alone: a few milliseconds.
 
 const shot = { width: 1280, height: 720 }
 const frame = { width: 640, height: 480 }

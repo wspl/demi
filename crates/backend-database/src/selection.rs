@@ -2,11 +2,10 @@
 //! (`sessions-and-targets.md` § Resolve a target): the Cloud's directory of
 //! a conversation, a Host's home, or a workspace, and the one rule that
 //! turns a destination, a directory on a Host or a project, into one of
-//! them (`conversations.md` § Conversations and projects). Every move, a
-//! conversation's creation, a restore whose project was deleted and the
-//! upgrade's leftovers go through [`select`], in the transaction that
-//! writes the selection, which makes the directory's workspace when the
-//! user has none.
+//! them. Every move, a conversation's creation, a restore whose project was
+//! deleted and the upgrade's leftovers go through [`select`], in the
+//! transaction that writes the selection, which makes the directory's workspace
+//! when the user has none.
 
 use demi_host_interface::HostPaths;
 use demi_backend_remote_host::host_paths;

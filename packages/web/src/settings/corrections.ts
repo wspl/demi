@@ -1,9 +1,9 @@
 import { t } from './locales/text'
 /**
  * The refusals the user corrects in the account forms they filled, in the
- * page's words (`web-api.md` § Resource index): they name no request. One
- * the catalogue words, as `email_taken`, takes null, so it says the
- * catalogue's words in the page's language.
+ * page's words: they name no request. One the catalogue words, as
+ * `email_taken`, takes null, so it says the catalogue's words in the page's
+ * language.
  */
 export const PASSWORD_CORRECTIONS = {
   get invalid_credentials() {

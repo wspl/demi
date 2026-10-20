@@ -17,7 +17,7 @@ Three changes fix it:
 
 export const COMMENTED_REPLY_ID = 'comments-reply'
 
-/** The reply's picture, its first (`comments-and-ask.md` § Images), as a comment or a side question names it. */
+/** The reply's picture, its first, as a comment or a side question names it. */
 export const REPLY_PICTURE = { start: 0, end: 1, quote: 'The upload cut off at 30 seconds' } as const
 
 /** Where the reply's picture is, the blob of its attachment `a6`. */

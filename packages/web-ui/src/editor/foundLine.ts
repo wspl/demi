@@ -61,8 +61,7 @@ export function foundLineExtension(): Extension {
 /**
  * Brings line `line` (1-based, held to the text's lines) into view as every
  * reveal places its block (`revealOffset`), puts the cursor at its start,
- * and marks it for a moment, as a search result is (`file-previews.md` §
- * Files named in messages).
+ * and marks it for a moment, as a search result's block is.
  */
 export function revealLine(view: EditorView, line: number): void {
   const doc = view.state.doc

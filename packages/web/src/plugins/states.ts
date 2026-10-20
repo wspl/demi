@@ -19,16 +19,13 @@ interface Held {
 }
 
 /**
- * The plugins' conversation states, as a page reads them by revision
- * (`web-api-sync.md` § Conversation state of plugins): while anything follows a
- * plugin's state of a conversation, the page reads it whenever the
- * conversation's summary carries a newer revision than the one it holds, a
- * count of another run of the backend included (`web-api-sync.md` § Revisions
- * counted in memory). A read that cannot reach the backend waits for it in
- * the HTTP client and shows no failure (`plugin-pages.md` § The page
- * context).
- * What it read stays for the page's lifetime, so following again shows it at
- * once.
+ * The plugins' conversation states, as a page reads them by revision: while
+ * anything follows a plugin's state of a conversation, the page reads it
+ * whenever the conversation's summary carries a newer revision than the one it
+ * holds, a count of another run of the backend included. A read that cannot
+ * reach the backend waits for it in the HTTP client and shows no failure
+ * (`plugin-pages.md` § The page context). What it read stays for the page's
+ * lifetime, so following again shows it at once.
  */
 export function conversationStates(snapshot: () => ProductState | null) {
   const held = reactive(new Map<string, Held>())

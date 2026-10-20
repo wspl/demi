@@ -17,9 +17,8 @@ export type { Showing, ShownEntry } from './file-cache'
 
 /**
  * One row of a directory listing. Size and time are shown when the source
- * knows them. A symbolic link is what its target is (`file-previews.md`
- * § Symbolic links): a link to a directory opens as a folder, its entries
- * the target's, and any other link as a file.
+ * knows them. A symbolic link is what its target is: a link to a directory
+ * opens as a folder, its entries the target's, and any other link as a file.
  */
 export interface FileBrowserEntry {
   name: string
@@ -41,9 +40,9 @@ export interface FileBrowserLink {
 }
 
 /**
- * Why a link's target cannot be reached (`file-previews.md` § Symbolic
- * links): nothing is there, or something may be but cannot be read, for the
- * system's `reason`, such as a folder on the way closed to the user.
+ * Why a link's target cannot be reached: nothing is there, or something may be
+ * but cannot be read, for the system's `reason`, such as a folder on the way
+ * closed to the user.
  */
 export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; reason: string }
 
@@ -99,7 +98,7 @@ export interface FileDescription {
   version: string | null
 }
 
-/** A file's bytes as the page loads them (`file-previews.md` § Getting the bytes). */
+/** A file's bytes as the page loads them. */
 export interface FileContents {
   /**
    * Where the page loads the file from: `version` pins the one a preview
@@ -113,8 +112,7 @@ export interface FileContents {
   /**
    * The file's first `length` bytes, or all of a shorter file, at `version`
    * when given; absent when the source reads no part of a file. A text file
-   * too large to read whole shows them (`file-previews.md` § Getting the
-   * bytes).
+   * too large to read whole shows them.
    */
   readStart?(path: string, length: number, options?: { version?: string; signal?: AbortSignal }): Promise<Uint8Array>
 }

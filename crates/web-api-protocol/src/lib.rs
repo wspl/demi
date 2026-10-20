@@ -1,12 +1,14 @@
 //! The web app's REST contract: every request and response body the backend
 //! serves, the error body with the one list of its codes, and the identifier
-//! and text types those bodies use (`web-api.md`). The backend decodes each
-//! request into its type and serializes each response from its type. The
-//! data the web app, the agent and the backend share, such as times, comes
-//! from `core`.
+//! and text types those bodies use. The backend decodes each request into its
+//! type and serializes each response from its type. The data the web app, the
+//! agent and the backend share, such as times, comes from `core`.
 //!
 //! A type the backend receives refuses unknown fields; a type only the
 //! web app receives accepts them (`contracts.md` § Generated TypeScript).
+//! A response carries the fields its type declares and nothing more: what the
+//! backend keeps for itself in a stored record, such as a conversation's owner
+//! or its message counts, never reaches the web app.
 
 pub mod attachments;
 pub mod auth;
@@ -47,8 +49,7 @@ pub mod workflows;
 pub mod workspaces;
 
 /// The largest message a page sends on any of its WebSockets: the
-/// conversation socket, the synchronization channel and a user stream
-/// (`web-api.md` § Request bodies). A frame refers to an upload and never
-/// carries its bytes, and a user stream frames its own messages, so no page
-/// needs a larger one.
+/// conversation socket, the synchronization channel and a user stream. A frame
+/// refers to an upload and never carries its bytes, and a user stream frames
+/// its own messages, so no page needs a larger one.
 pub const MAX_PAGE_MESSAGE_BYTES: usize = 1024 * 1024;

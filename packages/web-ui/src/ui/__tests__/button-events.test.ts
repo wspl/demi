@@ -1,10 +1,9 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { beforeEach, expect, test } from 'bun:test'
 
-// A button-like element that is not a native button presses as one does
-// (`web-application.md` § Keyboard): Return as it goes down, Space as it
-// comes up, never while it is aria-disabled. A page of happy-dom; a few
-// milliseconds.
+// A button-like element that is not a native button presses as one does: Return
+// as it goes down, Space as it comes up, never while it is aria-disabled. A
+// page of happy-dom; a few milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 // After the page, since the handler asks for HTMLElement.

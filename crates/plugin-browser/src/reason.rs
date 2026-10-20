@@ -62,7 +62,7 @@ pub enum PanelReason {
     CloudCapacity,
     CloudCrashLoop,
     HostOperationFailed,
-    // The plugin call route's own (`web-api-sync.md` § Plugin calls).
+    // The plugin call route's own.
     UnknownPluginMethod,
     PluginDisabled,
 }

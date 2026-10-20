@@ -4,8 +4,7 @@ import { targetLine } from '../filePath'
 import { replyCodeFiles } from '../code-files'
 import type { MessageFiles } from '../types'
 
-// Inline code that names a file, and a link's line (`file-previews.md`
-// § Files named in messages). Pure, a few milliseconds.
+// Inline code that names a file, and a link's line. Pure, a few milliseconds.
 
 test('inline code reads as a path when it has a slash or is a name with an extension, with an optional line', () => {
   const read = (code: string) => codePath(code)

@@ -22,15 +22,14 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 
 /**
  * Where a conversation runs, as the header shows it and its one-level menu
- * changes it (`hosts.md` § Where a conversation runs): Run On lists the
- * Cloud and every paired device, each online device with the path this page
- * reaches it by, the primary Host checked; Attached lists the devices the
- * conversation's agents attached, each with Detach. Choosing a Host is the
- * host's to carry out: a conversation outside a project moves there, one in
- * a project opens that device's directory picker, which `chooseDirectory`
- * marks with an ellipsis on each device but the checked one. The Cloud
- * lists no directories to a page, so it moves the conversation to its own
- * directory there and never opens a picker.
+ * changes it: Run On lists the Cloud and every paired device, each online
+ * device with the path this page reaches it by, the primary Host checked;
+ * Attached lists the devices the conversation's agents attached, each with
+ * Detach. Choosing a Host is the host's to carry out: a conversation outside a
+ * project moves there, one in a project opens that device's directory picker,
+ * which `chooseDirectory` marks with an ellipsis on each device but the checked
+ * one. The Cloud lists no directories to a page, so it moves the conversation
+ * to its own directory there and never opens a picker.
  */
 const props = defineProps<{
   primaryHost: HostMenuHost

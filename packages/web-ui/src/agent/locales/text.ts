@@ -5,7 +5,7 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The text of the agent area: the transcript, composer, dock, windows and menus (`localization.md` § Where the text lives). */
+/** The text of the agent area: the transcript, composer, dock, windows and menus. */
 export const { t, find } = defineText('ui.agent', { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })
 
 /** Marks where something that is not text stands in a sentence, which `around` splits at. */

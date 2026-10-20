@@ -12,18 +12,17 @@ const fileEntrySchema = z.object({
 type FileEntry = z.infer<typeof fileEntrySchema>
 
 /**
- * What the File view shows (`file-previews.md`): one file of the
- * conversation's Host, by its absolute path, and the files Back and Forward
- * return to, and the directory it was opened for.
+ * What the File view shows: one file of the conversation's Host, by its
+ * absolute path, and the files Back and Forward return to, and the directory it
+ * was opened for.
  */
 export const fileDataSchema = z.object({
   /** Empty while it shows no file. */
   path: z.string(),
   /**
-   * The directory the view was opened for, whose tree it shows
-   * (`file-previews.md` § The File view's bars): the working directory of the
-   * agent whose link, file change or folder opened it; absent, the
-   * conversation's.
+   * The directory the view was opened for, whose tree it shows: the working
+   * directory of the agent whose link, file change or folder opened it; absent,
+   * the conversation's.
    */
   root: z.string().optional(),
   /** The line the file was opened at, which the view scrolls to and marks for a moment; absent for none. */

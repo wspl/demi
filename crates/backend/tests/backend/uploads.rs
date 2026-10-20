@@ -1,12 +1,11 @@
-//! Uploads (`web-api-hosts.md` § Uploads and media, `backend.md` § Media by
-//! reference): a file's bytes go to the caller's blobs with its record, the
-//! answer says what the backend read from them, and a message or a steer
-//! that names the upload numbers it as the conversation's attachment, gives
-//! the model the file's native medium and record, and shows the page the
-//! medium by reference. An edit that keeps the medium names it by that
-//! reference, and the model reads its bytes again. A frame whose media
-//! cannot be stored reaches the page as an error, and the frames after it
-//! still arrive. No test calls a real model.
+//! Uploads (`backend.md` § Media by reference): a file's bytes go to the
+//! caller's blobs with its record, the answer says what the backend read from
+//! them, and a message or a steer that names the upload numbers it as the
+//! conversation's attachment, gives the model the file's native medium and
+//! record, and shows the page the medium by reference. An edit that keeps the
+//! medium names it by that reference, and the model reads its bytes again. A
+//! frame whose media cannot be stored reaches the page as an error, and the
+//! frames after it still arrive. No test calls a real model.
 
 use std::sync::LazyLock;
 

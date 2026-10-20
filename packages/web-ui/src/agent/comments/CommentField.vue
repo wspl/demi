@@ -7,13 +7,12 @@ import { otherWayKeys } from '../send-way'
 import { t } from '../locales/text'
 
 /**
- * The box a new comment is written in under its words or its picture
- * (`comments-and-ask.md` § Comments), as GitHub's review offers *Add single
- * comment* beside *Start a review*: **Comment**, the default, which adds it
- * to the waiting comments, and **Send Now**, which sends a message holding
- * it alone at once. Return comments, ⌘Return (Control-Return elsewhere)
- * sends now, Shift-Return starts a new line, Escape cancels. Without
- * `sendNow` it has Comment alone.
+ * The box a new comment is written in under its words or its picture, as
+ * GitHub's review offers *Add single comment* beside *Start a review*:
+ * **Comment**, the default, which adds it to the waiting comments, and **Send
+ * Now**, which sends a message holding it alone at once. Return comments,
+ * ⌘Return (Control-Return elsewhere) sends now, Shift-Return starts a new line,
+ * Escape cancels. Without `sendNow` it has Comment alone.
  */
 const props = defineProps<{
   sendNow: boolean

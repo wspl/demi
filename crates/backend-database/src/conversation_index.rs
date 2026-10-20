@@ -29,8 +29,7 @@ pub struct ConversationRecord {
     pub id: ConversationId,
     pub owner: UserId,
     /// Its title; none while it is the placeholder, which holds no words
-    /// and which the page shows in the reader's language (`conversations.md`
-    /// § Conversation titles).
+    /// and which the page shows in the reader's language.
     pub title: Option<String>,
     pub archived: bool,
     pub pinned: bool,
@@ -66,8 +65,7 @@ pub struct ConversationRecord {
     /// How many of those the user has not read yet: none has been
     /// acknowledged since it was raised (`mark_conversation_read`).
     pub unread_permission_requests: u64,
-    /// The automation's run it is filed under, out of the sidebar
-    /// (`automations.md` § Runs).
+    /// The automation's run it is filed under, out of the sidebar.
     pub filed: Option<FiledRun>,
 }
 
@@ -187,9 +185,8 @@ pub enum ChangeOutcome {
     Archived,
 }
 
-/// What a new conversation starts with (`web-api-conversations.md` § Conversation
-/// creation and Fork); by default the Cloud, the placeholder title and no
-/// model.
+/// What a new conversation starts with; by default the Cloud, the placeholder
+/// title and no model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationStart {
     /// The user's title; the placeholder, which holds no words, when none.
@@ -488,8 +485,7 @@ impl ControlService {
 
     /// Acknowledges the output up to `revision`, and the permission requests
     /// that wait; an acknowledgement never moves the read revision back. A
-    /// request raised later is unread (`conversations.md` § Conversations and
-    /// projects).
+    /// request raised later is unread.
     pub async fn mark_conversation_read(
         &self,
         id: ConversationId,
@@ -1488,8 +1484,7 @@ pub fn may_reach(
 }
 
 /// Raises the revision of the conversation's attached hosts, which its
-/// summary carries, so a page that shows them reads them again
-/// (`web-api-conversations.md` § Sidebar mutations and read state).
+/// summary carries, so a page that shows them reads them again.
 pub fn raise_hosts_revision(
     connection: &Connection,
     conversation: &ConversationId,

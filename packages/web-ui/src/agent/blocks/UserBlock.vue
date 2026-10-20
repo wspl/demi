@@ -43,14 +43,14 @@ const props = defineProps<{
    * A message the agent has not read yet, drawn faded, with what happens to
    * it said under it and its controls in view: a steer, which the running
    * turn reads at its next step, or a queued message, which runs after it.
-   * Send Now delivers either at once (`turns.md` § Steer or queue);
-   * Recall takes it back, into the composer when that is empty.
+   * Send Now delivers either at once; Recall takes it back, into the composer
+   * when that is empty.
    */
   pending?: 'steer' | 'queued'
   /**
-   * The comments sent with the message (`comments-and-ask.md` § Sending
-   * them): each quoted text as a quote block followed by its comment,
-   * before the message's own text; a picture's as a small copy of it.
+   * The comments sent with the message: each quoted text as a quote block
+   * followed by its comment, before the message's own text; a picture's as a
+   * small copy of it.
    */
   comments?: readonly { id: string; quote: string; picture?: MediaSource | null; text: string }[]
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
@@ -59,7 +59,7 @@ const props = defineProps<{
   editable?: boolean
   /**
    * Offers Delete beside Edit, which takes the message away at once: a
-   * message that was not delivered (`turns.md` § Following the agent's work).
+   * message that was not delivered.
    */
   deletable?: boolean
   /** The message's versions, shown under it; absent with none. */
@@ -71,9 +71,8 @@ const props = defineProps<{
    */
   brief?: string | null
   /**
-   * What sent the message when the user did not write it, an automation
-   * (`automations.md` § What a run sends): named above the bubble, as a
-   * receipt names the agent that sent one.
+   * What sent the message when the user did not write it, an automation: named
+   * above the bubble, as a receipt names the agent that sent one.
    */
   origin?: MessageOrigin | null
 }>()
@@ -96,10 +95,9 @@ const sent = ref<InstanceType<typeof SentMessage>>()
 const clipboard = useMessageClipboard()
 
 /**
- * Copy puts the message on the clipboard in every form, its files with it
- * (`composer.md` § Writing a message), its comments before its text as the
- * model reads them (`comments-and-ask.md` § Sending them); a brief, as its
- * Markdown, as an answer's Copy does.
+ * Copy puts the message on the clipboard in every form, its files with it, its
+ * comments before its text as the model reads them; a brief, as its Markdown,
+ * as an answer's Copy does.
  */
 function copySource(): CopySource {
   if (typeof props.brief === 'string') {
@@ -123,8 +121,7 @@ function sentWords(): CopiedMessage {
 }
 
 // A message not yet confirmed shows how far each of its files' uploads has
-// come, and that one failed; the dock's Retry tries the message again
-// (`composer.md` § Writing a message).
+// come, and that one failed; the dock's Retry tries the message again.
 provideTransfers({
   transfer: (id) => {
     const item = props.attachments?.find((each) => each.id === id)

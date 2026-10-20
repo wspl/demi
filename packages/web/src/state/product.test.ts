@@ -200,8 +200,7 @@ test('a connection whose handshake does not complete within 10 seconds is abando
 
 // When the channel's snapshot arrives after the backend was away, every
 // other socket of the page that waits to connect connects at once, so no
-// Connecting row outlives the banner (`web-application.md` § Liveness and
-// reconnection). Cost: fake timers, a few milliseconds.
+// Connecting row outlives the banner. Cost: fake timers, a few milliseconds.
 test('a socket waiting its backoff, as a conversation\'s does, connects as soon as the channel\'s snapshot is back after a restart', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(1)
@@ -515,7 +514,7 @@ test('a page back from sleep replaces a channel silent for 75 seconds at once, a
   expect(next.closed).toBe(true)
 })
 
-// `web-application.md` § Liveness and reconnection: the return asks the
+// The return asks the
 // channel for a pong; one that answers was never broken, and the page shows
 // nothing of the check. Cost: fake timers, a few milliseconds.
 test('a page back whose channel answers the return\'s ping keeps it and shows no banner', async () => {
@@ -555,7 +554,7 @@ test('a channel still connecting when the page went away is abandoned at the ret
   }
 })
 
-// `web-application.md` § Liveness and reconnection: the browser's word that
+// The browser's word that
 // it went offline counts once it has held for a second, as a network that
 // macOS re-evaluates reports offline for a moment; one that holds shows the
 // banner and closes no socket, which may still work through a VPN's tunnel,

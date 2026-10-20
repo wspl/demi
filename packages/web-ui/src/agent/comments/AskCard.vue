@@ -16,13 +16,12 @@ import type { CardTurn } from './asks'
 import { provideMessageFiles, useMessageFiles } from '../../markdown/message-files'
 
 /**
- * A side question's card, set into the reply after the block it asks about
- * (`comments-and-ask.md` § Side questions): each question in bold and its
- * short answer, one status line in place of the steps while it works, a
- * failure's record with Retry; × at its corner folds it into the margin
- * and Open Full Conversation, beside it, shows every step in the subagent
- * window; Reply opens a field for a follow-up. Only the header's icon is
- * purple.
+ * A side question's card, set into the reply after the block it asks about:
+ * each question in bold and its short answer, one status line in place of the
+ * steps while it works, a failure's record with Retry; × at its corner folds it
+ * into the margin and Open Full Conversation, beside it, shows every step in
+ * the subagent window; Reply opens a field for a follow-up. Only the header's
+ * icon is purple.
  */
 const props = defineProps<{
   /** The side question's node, whose agent wrote the answers: they show the attachments it uploaded. */

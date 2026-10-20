@@ -71,9 +71,8 @@ import type { FileContents } from './types'
  *
  * Text shows as a diff. In Commits mode an image, a video, an audio file or
  * a PDF shows its two versions side by side, and a binary file without a
- * preview a card per side (`file-previews.md` § Changes). Markdown and SVG
- * offer Diff and Preview, which renders both sides; the host keeps the
- * choice.
+ * preview a card per side. Markdown and SVG offer Diff and Preview, which
+ * renders both sides; the host keeps the choice.
  */
 const props = defineProps<{
   changes: ChangeSources
@@ -128,7 +127,7 @@ const presentationOptions = computed<readonly SegmentedOption<'diff' | 'preview'
   { value: 'diff', label: t('changes.diff'), icon: Diff },
   { value: 'preview', label: t('changes.preview'), icon: Eye },
 ])
-/** Git's copy is decoded whole, so the committed side stops at the runner's limit (`file-previews.md` § Changes). */
+/** Git's copy is decoded whole, so the committed side stops at the runner's limit. */
 const committedTooLarge = computed(() => t('view.committedTooLarge'))
 
 const workingTree = computed(() => props.changes.uncommitted)

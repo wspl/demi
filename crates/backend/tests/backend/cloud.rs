@@ -1631,9 +1631,9 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
 
 // Over a second: the Cloud boots twice, and a paired device's runner starts.
 //
-// A page's watch of an attached Cloud does not wake it (`web-api-hosts.md` § File
-// watch): stopped, it answers `offline` and closes, and once something else
-// woke it, the page's next watch is live there.
+// A page's watch of an attached Cloud does not wake it: stopped, it answers
+// `offline` and closes, and once something else woke it, the page's next watch is
+// live there.
 #[tokio::test]
 async fn a_watch_of_an_attached_cloud_answers_offline_while_it_is_stopped_without_waking_it() {
     let mut harness = Harness::new();

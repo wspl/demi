@@ -1,7 +1,5 @@
-//! Push notifications (`web-api-settings.md` § Push notifications,
-//! `turns.md` § Notifications): the backend's VAPID public key, a browser's
-//! subscription with the events it chose, and the message each push carries to the page's service worker, which
-//! words and shows it.
+//! Push notifications: the backend's VAPID public key, a browser's subscription with the events it chose, and
+//! the message each push carries to the page's service worker, which words and shows it.
 
 use std::borrow::Cow;
 

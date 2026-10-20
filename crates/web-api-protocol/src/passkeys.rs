@@ -1,6 +1,5 @@
-//! Passkeys (`web-api-settings.md` § Account API): signing in with one, and the
-//! account's list of them, which Settings › Account adds to, renames and
-//! removes from.
+//! Passkeys: signing in with one, and the account's list of them, which
+//! Settings › Account adds to, renames and removes from.
 //!
 //! WebAuthn's options and the browser's answers are JSON whose shape the
 //! WebAuthn standard owns: the backend decodes and encodes them as

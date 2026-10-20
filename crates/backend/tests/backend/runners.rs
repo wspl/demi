@@ -1,5 +1,4 @@
-//! Runners and their devices (`crates/runner-protocol/src/wire/mod.rs`,
-//! `web-api-hosts.md` § Workspaces, devices, and attached hosts, § Device log):
+//! Runners and their devices (`crates/runner-protocol/src/wire/mod.rs`):
 //! pairing, the runner socket's protocol, one live connection per device,
 //! revocation, the pipe routes' authentication, the device routes, and a
 //! backend restart, with real runners.
@@ -791,8 +790,7 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
         (hello.is_directory, &hello.link, hello.size),
         (false, &None, 2)
     );
-    // Each link names its target and what is there, in the page's terms
-    // (`file-previews.md` § Symbolic links).
+    // Each link names its target and what is there, in the page's terms.
     let page = browsed.json::<serde_json::Value>();
     let link_of = |name: &str| {
         page["entries"]
@@ -968,8 +966,7 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
 /// hello named, the Cloud's too; a paired device takes a new name, trimmed,
 /// which the user's pages see at once, or a route,
 /// while the Cloud keeps its name and its path and another user's device is
-/// not the caller's to change (`web-api-hosts.md` § Workspaces, devices, and
-/// attached hosts).
+/// not the caller's to change.
 // About half a second: a runner pairs and the Cloud boots.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_new_name_or_route() {
@@ -1135,7 +1132,7 @@ fn system(name: &str, distribution: Option<&str>) -> wire::OperatingSystem {
 /// distribution its hello names, with a number among the user's devices of
 /// that logo: given at the first hello as one more than the highest, kept
 /// while the device stays and when another goes, and given anew when a
-/// reinstall changes the logo (`conversations.md` § Conversations and projects).
+/// reinstall changes the logo.
 // About 0.2 s: six raw runners pair and two say hello again.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo() {

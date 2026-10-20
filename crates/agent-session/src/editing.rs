@@ -276,7 +276,7 @@ impl Candidate {
                 let content = Self::content(target, content)?;
                 let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
                 // A new version is the user's own, whoever sent the first, and keeps
-                // the comments sent with the first (`comments-and-ask.md`).
+                // the comments sent with the first.
                 candidate.push_user(turn.clone(), &model, content, target.comments.clone(), preamble, None);
                 candidate.blocks().to_vec()
             }

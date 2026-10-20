@@ -3,8 +3,8 @@ import { Slot, type SlotChange } from '../infra/slot'
 import { removeTabs, type PanelTab } from './panel-tabs'
 
 /**
- * One change of the work panel's tabs (`web-api-conversations.md` § Work panel state). An
- * update sets the fields of `data` it names and removes the null ones.
+ * One change of the work panel's tabs. An update sets the fields of `data` it names and
+ * removes the null ones.
  */
 export type PanelChange =
   | { type: 'create'; tab: PanelTab; index?: number }
@@ -100,19 +100,16 @@ interface Unsent {
 }
 
 /**
- * The work panel's tabs as a page shows them (`web-application.md` § Work
- * panel): a slot (`infra/slot`) of the panel it last read, its revision the
- * panel's, with the page's own changes that are not in it yet on top. A
- * change shows at once; the changes made while none is on its way go
- * together, in order, as one request, so Close Others is one request
- * (`web-application.md` § Requests for one action). An answer that changed
- * the panel one revision past the one the page holds is the panel with the
- * request in it; the panel is read only when an answer, or the summary,
- * names a revision past the one the page then holds, which says another
- * change came in between (`web-api-conversations.md` § Work panel state). A change leaves
- * once a panel at least as new as its answer is held, so a panel read after
- * a removal never brings the tab back. A request the backend refuses leaves
- * at once, and the panel shows as the backend has it.
+ * The work panel's tabs as a page shows them: a slot (`infra/slot`) of the panel it last
+ * read, its revision the panel's, with the page's own changes that are not in it yet on
+ * top. A change shows at once; the changes made while none is on its way go together, in
+ * order, as one request, so Close Others is one request. An answer that changed the panel
+ * one revision past the one the page holds is the panel with the request in it; the panel
+ * is read only when an answer, or the summary, names a revision past the one the page
+ * then holds, which says another change came in between. A change leaves once a panel at
+ * least as new as its answer is held, so a panel read after a removal never brings the
+ * tab back. A request the backend refuses leaves at once, and the panel shows as the
+ * backend has it.
  */
 export class PanelTabs {
   /** Before the first read the panel is empty, so a change shows over it. */
@@ -240,9 +237,8 @@ export interface PanelHistory {
 }
 
 /**
- * Closes the tabs `ids` as one change of the panel, one request, as Close
- * Others is (`web-application.md` § Requests for one action); the panel
- * shows what was selected before a closed one.
+ * Closes the tabs `ids` as one change of the panel, one request, like Close
+ * Others; the panel shows what was selected before a closed one.
  */
 export function closePanelTabs(selection: PanelHistory, tabs: PanelTabs, ids: readonly string[]): void {
   selection.history = removeTabs({ history: selection.history, tabs: tabs.tabs.value }, ids).history

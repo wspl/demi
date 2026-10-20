@@ -7,12 +7,12 @@ import type { md as Md } from '../../markdown/md'
 import type * as Vue from 'vue'
 import { STREAM_PACE } from '../../ui/stream-reveal'
 
-// A streaming reply renders a block at a time (`file-previews.md`): a
-// settled block renders once and stays as the same nodes, the last block
-// renders again as text arrives, and the render of the whole reply at its
-// end replaces only the blocks it changes. In a real Chromium, for the
-// message renderer's sanitizer and the fades' animations: about 1.5 s for
-// the file, the build and the browser's start, shared by its tests.
+// A streaming reply renders a block at a time: a settled block renders once and
+// stays as the same nodes, the last block renders again as text arrives, and
+// the render of the whole reply at its end replaces only the blocks it changes.
+// In a real Chromium, for the message renderer's sanitizer and the fades'
+// animations: about 1.5 s for the file, the build and the browser's start,
+// shared by its tests.
 
 /** What the page is given: Vue, the composable and the message renderer. */
 interface Exposed {

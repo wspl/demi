@@ -7,9 +7,8 @@ import { dropSource } from './preview'
 
 /**
  * An audio file played where it shows, as a voice message plays in
- * Messages (`file-previews.md` § Files named in messages): its name, its
- * length, which counts the time played once it plays, a play button and a
- * seek bar. Leaving the page stops it.
+ * Messages: its name, its length, which counts the time played once it plays, a
+ * play button and a seek bar. Leaving the page stops it.
  */
 const props = defineProps<{
   src: string

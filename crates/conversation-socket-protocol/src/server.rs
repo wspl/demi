@@ -415,11 +415,10 @@ pub enum SteerOutcome {
     },
 }
 
-/// A frame the backend or the session refused, as the page words it
-/// (`localization.md` § Text from the backend): the code its text is looked
-/// up by, one of the agent's [`AgentCode`]s or of the backend's
-/// `ErrorCode`s, the values that text needs, and the refusal in English, for
-/// the log and for a code the page has no words for.
+/// A frame the backend or the session refused, as the page words it: the code
+/// its text is looked up by, one of the agent's [`AgentCode`]s or of the
+/// backend's `ErrorCode`s, the values that text needs, and the refusal in
+/// English, for the log and for a code the page has no words for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Refusal {
     pub code: String,
@@ -447,10 +446,9 @@ impl Refusal {
     }
 }
 
-/// The codes of the agent's own refusals and failures, which the page words
-/// (`localization.md` § Text from the backend): a [`Refusal`]'s, and an
-/// `error` frame's that no provider failure gave; the backend's are
-/// `ErrorCode`s.
+/// The codes of the agent's own refusals and failures, which the page words: a
+/// [`Refusal`]'s, and an `error` frame's that no provider failure gave; the
+/// backend's are `ErrorCode`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentCode {

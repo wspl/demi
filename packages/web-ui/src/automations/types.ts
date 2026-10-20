@@ -2,10 +2,9 @@ import type { ModelSettings } from '../agent/model-selection'
 import type { DeviceMark } from '../devices/mark'
 
 /**
- * An automation as the page shows and edits it (`automations.md`): what
- * starts it, where it runs, what it sends, and its runs, newest first. Its
- * fields are the web API's, with the target's place named as the host menu
- * names it.
+ * An automation as the page shows and edits it: what starts it, where it runs,
+ * what it sends, and its runs, newest first. Its fields are the web API's, with
+ * the target's place named as the host menu names it.
  */
 export interface Automation {
   id: string

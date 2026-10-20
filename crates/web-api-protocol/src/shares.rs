@@ -1,6 +1,6 @@
-//! Shares (`web-api-conversations.md` § Sharing, `sharing.md`): what was said in a
-//! conversation or in one answer of it, read-only behind a random link. The owner
-//! makes, takes again and removes one; anyone with its link reads it.
+//! Shares: what was said in a conversation or in one answer of it, read-only
+//! behind a random link. The owner makes, takes again and removes one; anyone with
+//! its link reads it.
 
 use std::borrow::Cow;
 
@@ -116,8 +116,8 @@ pub struct SharedConversation {
 }
 
 /// `GET /shares/:token/transcript`: a page of what the share holds, as a
-/// conversation's page is answered (`web-api-conversations.md` § Pages), with no failure
-/// facts and its `instructions` always empty.
+/// conversation's page is answered, with no failure facts and its `instructions` always
+/// empty.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedTranscriptPage {
@@ -130,9 +130,9 @@ pub struct SharedTranscriptPage {
     pub summaries: Vec<CompactionSummary>,
 }
 
-/// What a share's page holds at an index (`sharing.md` § Steps not
-/// shared): a message or a text, as a page sends a block, or in place of a
-/// run of the agent's steps, `{ "type": "steps_not_shared", "count": 12 }`.
+/// What a share's page holds at an index: a message or a text, as a page sends
+/// a block, or in place of a run of the agent's steps, `{ "type":
+/// "steps_not_shared", "count": 12 }`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SharedEntry {
     Block(Block),
@@ -204,8 +204,7 @@ impl JsonSchema for SharedEntry {
 
 /// `?before=|after=|around=&edge=` of `GET /shares/:token/transcript`,
 /// which reads the share's list as a conversation's page reads the
-/// transcript (`web-api-conversations.md` § Pages). Queries are the backend's alone and
-/// are not emitted.
+/// transcript. Queries are the backend's alone and are not emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ShareTranscriptQuery {

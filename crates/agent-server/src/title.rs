@@ -1,9 +1,8 @@
-//! Conversation titles (`conversations.md` § Conversation titles): the title the
-//! first message gives at once, the small request that writes a better one,
-//! and the title in its answer. The backend decides when a request starts,
-//! runs it on the user's small model, keeps the one in flight per
-//! conversation, and writes the title only while it is still the one the
-//! request began from.
+//! Conversation titles: the title the first message gives at once, the small
+//! request that writes a better one, and the title in its answer. The backend
+//! decides when a request starts, runs it on the user's small model, keeps the
+//! one in flight per conversation, and writes the title only while it is still
+//! the one the request began from.
 
 use std::num::NonZeroU32;
 
@@ -29,10 +28,14 @@ pub const INPUT_MAX_CHARS: usize = 4_000;
 /// leaves room for the lowest thinking effort and one line of text: a
 /// reasoning model counts its thinking against the limit, so a cap sized for
 /// the line alone can end before any text. A model whose own output limit is
-/// lower sends that one.
+/// lower sends that one. At 1,024 the baseline model's lowest effort left about
+/// one title in ten empty, its thinking spending the whole limit.
 pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(4_096).expect("the cap is not zero");
 
-/// The whole system prompt of a title request.
+/// The whole system prompt of a title request. It describes the place the title
+/// is shown rather than a length per language, and holds no examples: a model
+/// copies an example's language and shape, and gave an English request a
+/// half-Chinese title when the examples ended in Chinese ones.
 pub const TITLE_INSTRUCTION: &str = "You are a title generator. You output ONLY a conversation title. Nothing else.
 
 The input is the first message the user sent in a conversation. Title the
@@ -73,11 +76,10 @@ pub fn title_input(message: &str) -> String {
 /// A user message's Markdown as the user reads it, plain text: `` `pnpm
 /// build` `` is `pnpm build`, and no mark or escape shows.
 ///
-/// The message dialect (`composer.md` § Writing a message) keeps some
-/// CommonMark as typed: each line reads only inline constructs, so a list,
-/// heading or quote marker at a line's start stays, as do `_` and `__`,
-/// a single `~` and `<…>`. Those come from the source; the rest is the
-/// parser's text.
+/// The message dialect keeps some CommonMark as typed: each line reads only
+/// inline constructs, so a list, heading or quote marker at a line's start
+/// stays, as do `_` and `__`, a single `~` and `<…>`. Those come from the
+/// source; the rest is the parser's text.
 fn plain_text(markdown: &str) -> String {
     let mut options = Options::default();
     options.extension.strikethrough = true;
@@ -142,7 +144,7 @@ fn plain_text(markdown: &str) -> String {
         }
     }
     // U+FFFC, the object replacement character, stands for an object that
-    // has no text: in a message, a file's capsule (`web-api.md` § Drafts).
+    // has no text: in a message, a file's capsule.
     text.replace('\u{FFFC}', "")
 }
 

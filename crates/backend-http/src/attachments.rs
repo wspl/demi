@@ -1,11 +1,10 @@
-//! `POST /api/attachments?name=&sha256=` (`web-api-hosts.md` § Uploads and
-//! media): a file's bytes, at most 25 MiB, into the caller's blobs with one
-//! attachment record; with a SHA-256 and no body, the blob the caller holds
-//! already gains the record, and no bytes travel, and a blob it does not
-//! hold answers 200 with a null attachment. The answer carries the
-//! media type the backend reads from the bytes and, for a text file, its
-//! opening, which the composer shows on the file's capsule as the message
-//! will carry it.
+//! `POST /api/attachments?name=&sha256=`: a file's bytes, at most 25 MiB, into
+//! the caller's blobs with one attachment record; with a SHA-256 and no body,
+//! the blob the caller holds already gains the record, and no bytes travel, and
+//! a blob it does not hold answers 200 with a null attachment. The answer
+//! carries the media type the backend reads from the bytes and, for a text
+//! file, its opening, which the composer shows on the file's capsule as the
+//! message will carry it.
 
 use std::sync::Arc;
 
@@ -58,7 +57,7 @@ fn sent_media_type(headers: &HeaderMap) -> Result<String, ApiError> {
 }
 
 /// The route's body limit, which the router gives this route instead of
-/// the JSON bodies' (`web-api.md` § Request bodies).
+/// the JSON bodies'.
 pub(super) const BODY_LIMIT: usize = ATTACHMENT_MAX_BYTES;
 
 pub(super) async fn upload(
@@ -128,7 +127,7 @@ async fn record(
 ) -> Result<AttachmentDto, ApiError> {
     let media_type = upload_media_type(sent, opening);
     // The record keeps the snippet, so a draft that names the upload shows
-    // it on every page (`web-api-conversations.md` § Conversation drafts).
+    // it on every page.
     let snippet = is_text(name, &media_type).then(|| snippet(opening));
     let record = services
         .control

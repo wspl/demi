@@ -1,12 +1,10 @@
-//! The changes of the provider entries in a user's scope (`web-api-settings.md`
-//! § Model configuration and provider inspection), and the model search
+//! The changes of the provider entries in a user's scope, and the model search
 //! that fills a configured model
 //! (`crates/backend-providers/src/llm/vendors.rs`): one path, with its checks
-//! and its words, for the settings
-//! page and for `demi providers`
+//! and its words, for the settings page and for `demi providers`
 //! (`crates/backend-user-shard/src/shard/provider_commands.rs`). An entry may
-//! be added with nothing but its kind; it is
-//! incomplete until it has what it needs.
+//! be added with nothing but its kind; it is incomplete until it has what it
+//! needs.
 //!
 //! A vendor entry and a compatible one differ in who decides the models: a
 //! vendor's own API serves the vendor's catalog, so its entry lists them at
@@ -458,7 +456,7 @@ impl Services {
     }
 
     /// Each entry's models of `kind` by entry id, which `GET /api/models`
-    /// carries for the settings page (`web-api-settings.md` § Models).
+    /// carries for the settings page.
     pub async fn entry_media_models(
         &self,
         user: &UserId,

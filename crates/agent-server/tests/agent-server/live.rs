@@ -118,8 +118,7 @@ async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the
 
 /// A page whose connection dropped while a command ran opens again after
 /// the command ended: its snapshot brings the command with its end, and
-/// the page's running commands are the snapshot's
-/// (`web-application.md` § What a reopened socket brings back).
+/// the page's running commands are the snapshot's.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_reopened_page_is_told_of_the_command_that_ended_while_it_was_away() {
     let (server, shell, first, _script) = serving().await;
@@ -167,9 +166,8 @@ async fn a_detached_tree_stays_live_while_its_command_runs_and_goes_after_its_id
 }
 
 /// A command that outlives its turn is the conversation's work, but it does
-/// not make the conversation running (`web-api-conversations.md` § Sidebar mutations and
-/// read state): once the turn ended the tree no longer works, while the
-/// command keeps the tree live.
+/// not make the conversation running: once the turn ended the tree no longer works,
+/// while the command keeps the tree live.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_command_that_outlives_its_turn_does_not_keep_the_tree_working() {
     let (server, _shell, _first, _script) = serving().await;

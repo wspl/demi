@@ -1,11 +1,9 @@
-//! Provider entries (`web-api-settings.md` § Model configuration and provider
-//! inspection, `crates/backend-providers/src/vault/entries.rs`,
-//! `crates/shared-types/src/catalog.rs`): API-key
-//! entries sealed at rest and answered without their key, the master's
-//! entries serving every user's conversations on a shared instance and
-//! nobody else's on an isolated one, the vendor list from a scripted
-//! models.dev, each catalog source with its cache, and the provider test
-//! through a real family against a scripted vendor.
+//! Provider entries (`crates/backend-providers/src/vault/entries.rs`,
+//! `crates/shared-types/src/catalog.rs`): API-key entries sealed at rest and
+//! answered without their key, the master's entries serving every user's
+//! conversations on a shared instance and nobody else's on an isolated one, the
+//! vendor list from a scripted models.dev, each catalog source with its cache,
+//! and the provider test through a real family against a scripted vendor.
 
 use std::sync::Arc;
 use std::time::Duration;

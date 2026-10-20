@@ -3,7 +3,7 @@ import { Link2Off } from '@lucide/vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { t } from './locales/text'
 
-/** What a shared link shows when it names no share: never made, or removed by Stop Sharing (`sharing.md`). */
+/** What a shared link shows when it names no share: never made, or removed by Stop Sharing. */
 </script>
 
 <template>

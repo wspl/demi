@@ -14,17 +14,16 @@ import type { Action, Operation } from '../ui/operations'
 import type { SharePhase } from './sharing'
 
 /**
- * The dialog of a share (`sharing.md` § Making, updating and removing a
- * share): who can read it, its link in a read-only field, and Copy Link,
- * Update Link for a conversation's share, and Stop Sharing, which stands
- * apart at the leading edge since it ends the link. It opens before the
- * link exists: while `phase` makes it, Creating link… and a spinner stand
- * in the field where the link will, and Copy Link waits; a failure says why
- * under the field, and Try Again takes Copy Link's place; Update Link shows
- * its progress in the field the same way. Copy Link is the
- * default button and turns to Copied after a copy. Update Link and Stop
- * Sharing are the caller's `onUpdate` and `onStop`, which return the promise
- * of their work: the button shows it, and the other waits.
+ * The dialog of a share: who can read it, its link in a read-only field, and
+ * Copy Link, Update Link for a conversation's share, and Stop Sharing, which
+ * stands apart at the leading edge since it ends the link. It opens before the
+ * link exists: while `phase` makes it, Creating link… and a spinner stand in
+ * the field where the link will, and Copy Link waits; a failure says why under
+ * the field, and Try Again takes Copy Link's place; Update Link shows its
+ * progress in the field the same way. Copy Link is the default button and turns
+ * to Copied after a copy. Update Link and Stop Sharing are the caller's
+ * `onUpdate` and `onStop`, which return the promise of their work: the button
+ * shows it, and the other waits.
  */
 const props = defineProps<{
   isOpen: boolean

@@ -1,8 +1,7 @@
-//! A user's plugins (`plugins.md` § A user's plugins, `web-api-sync.md` § A
-//! user's plugins): a plugin turned off leaves the user's pages at once and
-//! refuses its page calls, while an open conversation keeps the commands its
-//! tree opened with and offers a reload, which opens the tree with the
-//! commands of the plugins the user has on.
+//! A user's plugins (`plugins.md` § A user's plugins): a plugin turned off
+//! leaves the user's pages at once and refuses its page calls, while an open
+//! conversation keeps the commands its tree opened with and offers a reload,
+//! which opens the tree with the commands of the plugins the user has on.
 
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::testing::{MockResponse, MockVendor};

@@ -65,7 +65,7 @@ the eye asks for the password, or a passkey when the account has one,
 unless the browser confirmed in the last five minutes, and a confirmation
 then lets every eye and copy of that browser through for those five minutes,
 the same confirmation Hand Off to Phone and adding a passkey take
-([Confirming it is the user](../product/users.md#user-system)). Changing a
+(`crates/backend-accounts/src/lib.rs`). Changing a
 secret field's value, which replaces it unseen, asks nothing. An agent never removes a credential
 the user did not ask it to: `remove` needs the user's permission.
 
@@ -130,7 +130,7 @@ The two cards a credential brings, *Save a credential* for `request` and
 requests as permission requests are ([Requests](permissions.md#requests)):
 the same list, the same yellow mark, read and answered through the same
 routes, each request carrying its `kind`, `permission`, `credential` or
-`allowance` ([Conversation permissions](../product/web-api-conversations.md#conversation-permissions)).
+`allowance` (`crates/backend-http/src/permissions.rs`).
 A credential request is answered with its values,
 `{ decision: "allow", credential: { values } }`, kept as the request's
 `keep` says, or declined with
@@ -138,7 +138,7 @@ A credential request is answered with its values,
 request for a name already saved asks for new values of the same fields.
 
 Settings › Credentials reads and changes the user's credentials through
-`/api/credentials` ([Credentials](../product/web-api-conversations.md#credentials)).
+`/api/credentials` (`crates/backend-http/src/credentials.rs`).
 
 ## Storage and expiry
 

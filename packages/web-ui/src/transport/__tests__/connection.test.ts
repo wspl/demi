@@ -1,9 +1,8 @@
 import { expect, test } from 'bun:test'
 import { connectionProblem } from '../connection'
 
-// What the connection banner says (`web-application.md` § A page of another
-// build); the product state's tests play the channel that leads to each.
-// About 1 ms.
+// What the connection banner says; the product state's tests play the channel
+// that leads to each. About 1 ms.
 
 const reachable = { online: true, restarting: false, failedAttempts: 0, hasSnapshot: true }
 

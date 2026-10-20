@@ -1008,9 +1008,8 @@ function endpointCheck(value: string) {
                       @refresh="emit('refreshUsage', selected, account.id, true)"
                     />
                   </template>
-                  <!-- A sign-in that names the account replaces its sign-in
-                       (`web-api-settings.md` § Subscription accounts), so it skips the warning
-                       about several accounts. -->
+                  <!-- A sign-in that names the account replaces its sign-in, so it skips the
+                       warning about several accounts. -->
                   <Button
                     size="sm"
                     v-if="account.signedOut"

@@ -10,11 +10,10 @@ import { t } from './locales/text'
 import type { AutomationLink } from './types'
 
 /**
- * The chip above the composer of a conversation automations wake
- * (`automations.md` § Where the user sees them), beside Running and Agents:
- * the automations' bolt and the count. It opens a menu upward of the automations, each by
- * its name and trigger, a paused one dimmed, as Agents lists the
- * subagents; an entry opens that automation.
+ * The chip above the composer of a conversation automations wake, beside Running and
+ * Agents: the automations' bolt and the count. It opens a menu upward of the automations,
+ * each by its name and trigger, a paused one dimmed, as Agents lists the subagents; an
+ * entry opens that automation.
  */
 defineProps<{
   automations: readonly AutomationLink[]

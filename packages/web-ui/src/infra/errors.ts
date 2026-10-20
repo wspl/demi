@@ -136,12 +136,11 @@ export function codeText(code: string, params: Readonly<Record<string, unknown>>
 }
 
 /**
- * What the page says of `error`, the one place a failure becomes words
- * (`localization.md` § Text from the backend): a refusal's catalogue text
- * for its `code`, filled with its `params` ([`codeText`]); for an answer
- * that carries no code, as a proxy's, the text of its HTTP status; its own
- * `message` for a code the catalogue has no text for, as a newer backend
- * may send, and for any other failure.
+ * What the page says of `error`, the one place a failure becomes words: a
+ * refusal's catalogue text for its `code`, filled with its `params`
+ * ([`codeText`]); for an answer that carries no code, as a proxy's, the text of
+ * its HTTP status; its own `message` for a code the catalogue has no text for,
+ * as a newer backend may send, and for any other failure.
  */
 export function errorMessage(error: unknown): SentenceText {
   if (!(error instanceof Error)) {

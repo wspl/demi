@@ -7,8 +7,8 @@ import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReach
 import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
 
 /**
- * Where the page loads a blob of the user's own, seen as `mediaType`
- * (`web-api-hosts.md` § Uploads and media): a message's upload or a tool's medium.
+ * Where the page loads a blob of the user's own, seen as `mediaType`: a message's
+ * upload or a tool's medium.
  */
 export const blobUrl: BlobUrl = (ref, mediaType) =>
   apiUrl(`/blobs/${encodeURIComponent(ref)}?${new URLSearchParams({ type: mediaType })}`)
@@ -152,8 +152,8 @@ function uploadedFile(attachment: AttachmentDto): UploadedFile {
 
 /**
  * Makes an upload of a file a pasted message names by its blob, which sends
- * no bytes (`web-api-hosts.md` § Uploads and media); null when the user's blobs do
- * not hold it, as one of another account or one since deleted.
+ * no bytes; null when the user's blobs do not hold it, as one of another account
+ * or one since deleted.
  */
 export const claimStoredFile: ClaimFile = async (file, signal) => {
   const query = new URLSearchParams({ name: file.name, sha256: file.sha256 })
@@ -161,13 +161,12 @@ export const claimStoredFile: ClaimFile = async (file, signal) => {
 }
 
 /**
- * Uploads a file a message will carry (`web-api-hosts.md` § Uploads and media):
- * its bytes become a blob of the user's, and the answer names the upload a
- * frame refers to, with the media type and the opening the backend read.
- * A file whose blob the user holds already sends no bytes: the page names
- * the file's SHA-256 first, and sends the bytes, naming it again, only when
- * the backend does not hold them. The main composer and the edit composer
- * both upload through this.
+ * Uploads a file a message will carry: its bytes become a blob of the user's,
+ * and the answer names the upload a frame refers to, with the media type and
+ * the opening the backend read. A file whose blob the user holds already sends
+ * no bytes: the page names the file's SHA-256 first, and sends the bytes,
+ * naming it again, only when the backend does not hold them. The main composer
+ * and the edit composer both upload through this.
  */
 export const uploadAttachment: UploadFile = async (file, options) => {
   const sha256 = await fileSha256(file)
@@ -188,10 +187,9 @@ export const uploadAttachment: UploadFile = async (file, options) => {
 
 /**
  * Keeps a picture the page shows, a Host image's bytes at the version it
- * shows or a picture of the web the page can read, as a blob of the user's
- * (`comments-and-ask.md` § Images): an upload of its bytes, which sends none
- * the user holds already. A comment and a side question quote it so, and
- * Send to Conversation adds it to another draft.
+ * shows or a picture of the web the page can read, as a blob of the user's: an
+ * upload of its bytes, which sends none the user holds already. A comment and a
+ * side question quote it so, and Send to Conversation adds it to another draft.
  */
 export const keepPicture: KeepPicture = async (src, name) => {
   // Read as a pasted image is: the page's sign-in only for its own address, within a bounded time.

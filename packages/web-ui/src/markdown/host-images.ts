@@ -18,12 +18,11 @@ export function hostImagePaths(content: string, files: MessageFiles | undefined)
 }
 
 /**
- * What shows of each Host image at `paths`, by its path
- * (`file-previews.md` § Files named in messages): each file's description
- * is shown from the kept files `contents` gives while the calling component
- * lives, so when the Host reports the file changed it is read again and its
- * image shows the new version, wherever it is named. The one owner of how a
- * Host image follows its file, for a message and for a Markdown document.
+ * What shows of each Host image at `paths`, by its path: each file's
+ * description is shown from the kept files `contents` gives while the calling
+ * component lives, so when the Host reports the file changed it is read again
+ * and its image shows the new version, wherever it is named. The one owner of
+ * how a Host image follows its file, for a message and for a Markdown document.
  */
 export function useHostImagesAt(
   contents: () => FileContents | undefined,

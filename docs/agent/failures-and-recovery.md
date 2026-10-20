@@ -221,7 +221,7 @@ before the third, 4 before the fourth. Before each wait, the client receives `re
 attempt number, the delay, the code and the diagnostics. The turn stays in its
 streaming stage while it waits, so steers keep being accepted, and Stop ends
 the wait. The product shows the whole wait as one Requesting row
-([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+(`packages/web-ui/src/agent/dock-cards.ts`).
 
 A request refused as too large is never sent again as it was: the same
 request would be refused again. The attempt left nothing in the transcript,
@@ -260,7 +260,7 @@ turn ran the pass, and a turn it ended is unfinished like any other.
 The last turn is unfinished when the record that ended it is an `error`
 block (something broke) or an `abort` block (the user stopped it); any other
 end means it finished. The product offers recovery from that record
-([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+(`packages/web-ui/src/agent/dock-cards.ts`).
 Only an action that began a turn, that is, wrote into the transcript, can
 leave such a record, and a compaction leaves none:
 
@@ -306,7 +306,7 @@ turn is not held, since its parent decides for it.
 A turn that a graceful shutdown interrupted, for a deployment, an upgrade
 or a restart, goes on by itself once the backend is back, unless the user
 turned that off (`resumeAfterRestart`, on unless turned off,
-[User preferences](../product/web-api-settings.md#user-preferences)). The restart
+`crates/web-api-protocol/src/settings.rs`). The restart
 was Demi's doing, not the turn's, so nothing about the turn suggests it
 would fail again. As it starts, the backend opens each conversation whose
 root's last turn ended with the `interrupted` record its own shutdown
@@ -335,7 +335,7 @@ background, removing each mark before it acts on it; the start waits for
 none of them.
 
 Continuing by itself is the user's choice, off unless they turn it on
-(`resumeAtRetry`, [User preferences](../product/web-api-settings.md#user-preferences)):
+(`resumeAtRetry`, `crates/web-api-protocol/src/settings.rs`):
 with it on, a root's turn whose failure names its `retryAt` is resumed at that
 moment, as the user's Resume would, so a usage limit that resets at 09:00
 continues then; with it off, the hold lasts until the user acts. The
@@ -416,7 +416,7 @@ after a restart.
 
 The product offers `resume` in one control above the composer, labeled Resume
 after an error and Continue after the user's Stop
-([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+(`packages/web-ui/src/agent/dock-cards.ts`).
 A turn the backend shut down, or that a crash interrupted, ends with an `error`
 block with the code `interrupted`
 ([Dispose and restore](runtime.md#dispose-and-restore)), and `resume` drops it

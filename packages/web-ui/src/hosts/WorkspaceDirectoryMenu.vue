@@ -35,8 +35,7 @@ const props = defineProps<{
   browseEnabled: boolean
   /**
    * The projects on the Host the conversation runs on, in the sidebar's
-   * order: every directory a conversation runs in, but the home, is one
-   * (`conversations.md` § Conversations and projects).
+   * order: every directory a conversation runs in, but the home, is one.
    */
   projects: {
     id: string

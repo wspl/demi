@@ -1,7 +1,6 @@
-//! The user's credentials (`credentials.md`, `web-api-conversations.md` § Credentials):
-//! what Settings › Credentials reads and sends, the answer to a credential
-//! request, and the rules a name, a field and a value follow wherever they
-//! arrive, a page's body or an agent's command alike.
+//! The user's credentials (`credentials.md`): what Settings › Credentials reads and
+//! sends, the answer to a credential request, and the rules a name, a field and a value
+//! follow wherever they arrive, a page's body or an agent's command alike.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -143,8 +142,8 @@ pub struct ChangedField {
     pub value: Option<String>,
 }
 
-/// A field as Settings lists it (`web-api-conversations.md` § Credentials): a visible
-/// field with its value, a secret one without, which only the reveal reads.
+/// A field as Settings lists it: a visible field with its value, a secret one
+/// without, which only the reveal reads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedField {
@@ -296,9 +295,8 @@ fn changed_fields(fields: &Option<Vec<ChangedField>>, _: &()) -> garde::Result {
 }
 
 /// The words a refused credential body says to the user, who reads them as
-/// they are (`web-api-conversations.md` § Credentials): one sentence for each rule broken,
-/// found by the path of the value that broke it, since garde's own words
-/// name the check, not what to do.
+/// they are: one sentence for each rule broken, found by the path of the value that broke
+/// it, since garde's own words name the check, not what to do.
 pub fn refusal(report: &garde::Report) -> String {
     let mut sentences: Vec<String> = Vec::new();
     for (path, error) in report.iter() {

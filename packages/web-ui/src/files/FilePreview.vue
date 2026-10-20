@@ -13,13 +13,12 @@ import type { FileContents, FileDescription } from './types'
 
 /**
  * An image, a video, an audio file or a PDF, loaded from `contents` in the
- * web browser's own viewer (`file-previews.md` § What the user sees). The
- * preview pins the version it shows, so it never shows a mix of two; when
- * the file's description is read again with a new version, the new one
- * replaces it in place. A viewer that cannot show its bytes has the file
- * described again: a new version shows, and the same one is a file this
- * browser cannot show. Its pixel size, an image's zoom and its file size
- * stand under it, unless its host shows them elsewhere, as the File view's
+ * web browser's own viewer. The preview pins the version it shows, so it never
+ * shows a mix of two; when the file's description is read again with a new
+ * version, the new one replaces it in place. A viewer that cannot show its
+ * bytes has the file described again: a new version shows, and the same one is
+ * a file this browser cannot show. Its pixel size, an image's zoom and its file
+ * size stand under it, unless its host shows them elsewhere, as the File view's
  * bar does from what the preview reports (`shown`).
  */
 const props = withDefaults(defineProps<{

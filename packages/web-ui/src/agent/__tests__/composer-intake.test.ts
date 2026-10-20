@@ -7,12 +7,11 @@ import { composerExtensions } from '../message-editor/extensions'
 import type { IntakeOptions } from '../message-editor/intake'
 import { attachmentDrag, type CopiedMessage } from '../message-input/copied-message'
 
-// What a composer takes in (`composer.md` § Attachments): whatever is pasted
-// or dropped becomes text in the user dialect or a capsule, never a picture
-// set into the text or a node of another kind. The events go through
-// ProseMirror's own handlers on a page of happy-dom, which lays nothing out,
-// so a drop says where it lands instead of where the pointer is. About
-// 250 ms in all, most of it the page's start.
+// What a composer takes in: whatever is pasted or dropped becomes text in the
+// user dialect or a capsule, never a picture set into the text or a node of
+// another kind. The events go through ProseMirror's own handlers on a page of
+// happy-dom, which lays nothing out, so a drop says where it lands instead of
+// where the pointer is. About 250 ms in all, most of it the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 

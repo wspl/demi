@@ -1,5 +1,4 @@
-//! Devices: the list, pairing, and a Host's log (`web-api-hosts.md` § Workspaces,
-//! devices, and attached hosts, § Device log).
+//! Devices: the list, pairing, and a Host's log.
 
 use demi_runner_protocol::direct::CANDIDATE_CHARS;
 /// The STUN servers' URLs, which the product state names to the page.
@@ -44,9 +43,8 @@ pub enum DeviceRoute {
 serde_plain::derive_display_from_serialize!(DeviceRoute);
 serde_plain::derive_fromstr_from_deserialize!(DeviceRoute);
 
-/// The logo of a device's mark (`conversations.md` § Conversations and projects):
-/// its system's, Apple for macOS, the Windows logo, for Linux its
-/// distribution's, or Tux for any other.
+/// The logo of a device's mark: its system's, Apple for macOS, the Windows logo,
+/// for Linux its distribution's, or Tux for any other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceLogo {
@@ -165,8 +163,7 @@ pub struct DeviceDto {
 
 /// The commands that install and start the runner on a computer of each
 /// system, which the Add Device dialog and `demi host install-command` show
-/// as they are (`web-api-hosts.md` § Workspaces, devices, and attached hosts).
-/// They hold no credential.
+/// as they are. They hold no credential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct InstallCommands {
     pub linux: String,
@@ -209,8 +206,7 @@ pub struct DeviceAnswer {
 }
 
 /// `{ removed }`: the answer of a revocation, the ids of the workspaces
-/// that went with the device (`web-api-hosts.md` § Workspaces, devices, and
-/// attached hosts).
+/// that went with the device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RevokedDevice {
     pub removed: Vec<WorkspaceId>,
@@ -324,7 +320,7 @@ pub enum DirectPeer {
 }
 
 /// A message the page sends on a device's direct channel signaling socket,
-/// `WS /devices/:deviceId/direct` (`web-api-hosts.md` § Direct channel).
+/// `WS /devices/:deviceId/direct`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DirectRequest {
@@ -369,8 +365,7 @@ pub enum DirectMessage {
     /// STUN server saw it at; it may come before the answer.
     Candidate { peer: DirectPeer, candidate: String },
     /// The runner's answer to the page's probe `id`, or the backend's own,
-    /// at once, to the page's `{ ping: id }` (`web-application.md`
-    /// § Liveness and reconnection).
+    /// at once, to the page's `{ ping: id }`.
     Pong { id: u32 },
     /// The runner did not answer the page's last offer for `peer`.
     Unanswered { peer: DirectPeer, code: Unanswered },

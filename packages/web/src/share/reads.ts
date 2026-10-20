@@ -12,9 +12,8 @@ import {
 } from '../api/generated/web-api'
 
 /**
- * The public routes of share `token` (`web-api-conversations.md` § Sharing), the only
- * ones its page calls: the page's Content Security Policy lets it connect
- * to nothing else.
+ * The public routes of share `token`, the only ones its page calls: the page's
+ * Content Security Policy lets it connect to nothing else.
  */
 export function sharePath(token: string): string {
   return `/shares/${encodeURIComponent(token)}`
@@ -45,10 +44,9 @@ export function sharedPage(page: SharedTranscriptPage): { start: number; length:
 
 /**
  * The reads of share `token`'s pages, from its latest back as the reader
- * scrolls, as a conversation's history reads its pages (`web-api-conversations.md`
- * § Pages): `held` is what the page holds, and `hold` takes what a read
- * added. A page one read is fetching already is not fetched twice. Nothing
- * streams to a share, so each page's length stands.
+ * scrolls, as a conversation's history reads its pages: `held` is what the page
+ * holds, and `hold` takes what a read added. A page one read is fetching already
+ * is not fetched twice. Nothing streams to a share, so each page's length stands.
  */
 export function createShareReads(
   token: string,

@@ -359,7 +359,7 @@ pub struct BackendConfig {
     pub manage_socket: Option<PathBuf>,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
-    /// Who configures providers (`users.md` § Instance mode).
+    /// Who configures providers.
     pub mode: InstanceMode,
     /// The web app build's directory, served beside the API.
     pub web_directory: Option<PathBuf>,

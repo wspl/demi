@@ -115,9 +115,8 @@ watch(
 )
 onUnmounted(() => void store.activate(null))
 // The chat's own address with no conversation open starts a new one, an
-// immediately typeable draft, as New does (`conversations.md` § Conversations and
-// projects). Settings opened by a link over that address leave it as it is,
-// since moving the address would close them.
+// immediately typeable draft, as New does. Settings opened by a link over that
+// address leave it as it is, since moving the address would close them.
 watch(
   () => router.currentRoute.value.path === '/chat' && store.listStatus === 'ready',
   (start) => {
@@ -128,9 +127,8 @@ watch(
   { immediate: true },
 )
 // A conversation deleted while the page shows it, by this page or another,
-// gives way to a new one (`conversations.md` § Conversations and projects). Under
-// open settings the address waits until they close, since moving it would
-// close them.
+// gives way to a new one. Under open settings the address waits until they close,
+// since moving it would close them.
 watch(
   () => props.id !== undefined && store.deleted.has(props.id) && router.currentRoute.value.path.startsWith('/chat/'),
   (gone) => {
@@ -142,8 +140,8 @@ watch(
 )
 // An address the page has no conversation for, once it knows them all,
 // was a new conversation's when its history entry says so, as a reload of
-// it finds: a new conversation opens again (`web-application.md` § What the
-// reload opens). Any other shows that the conversation is not found.
+// it finds: a new conversation opens again. Any other shows that the
+// conversation is not found.
 watch(
   () => props.id !== undefined && !conversation.value && store.listStatus === 'ready' && router.currentRoute.value.path.startsWith('/chat/'),
   (missing) => {
@@ -189,9 +187,7 @@ function readHistory(read: Promise<void>): void {
 
 // A search result opens at its message, and a report's title at its
 // command's call: the page reads the window around it once the
-// conversation's latest page is there, at the first step of its opening
-// (`web-application.md` § Transcript windows, § Opening a conversation shows
-// in two steps).
+// conversation's latest page is there, at the first step of its opening.
 watch(
   () => [store.reveal, !!conversation.value && transcriptShown(conversation.value.load)] as const,
   ([reveal, shown]) => {

@@ -16,10 +16,9 @@ import { followMessageLink } from './message-links'
 import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
- * The composer's editor, where a user message is written (`composer.md`
- * § Writing a message): its Markdown formatted as it will look, each file a
- * capsule where it stands. A sent message is drawn from the same schema,
- * without an editor (`SentMessage`).
+ * The composer's editor, where a user message is written: its Markdown
+ * formatted as it will look, each file a capsule where it stands. A sent
+ * message is drawn from the same schema, without an editor (`SentMessage`).
  */
 const props = withDefaults(
   defineProps<{
@@ -218,7 +217,7 @@ function fieldAttributes(state: EditorState): Record<string, string> {
     'role': 'textbox',
     'aria-multiline': 'true',
     // A touch keyboard's return key says what Enter does here: it sends,
-    // and in a code block it breaks the line (`composer.md` § Writing a message).
+    // and in a code block it breaks the line.
     'enterkeyhint': state.selection.$from.parent.type.name === 'codeBlock' ? 'enter' : 'send',
   }
   if (props.label) {

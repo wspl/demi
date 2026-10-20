@@ -2,10 +2,9 @@ import { expect, test } from 'bun:test'
 import { fieldMoment, shortMoment, zonedMoment } from '../words'
 
 // An automation's times are shown and taken in its own time zone, not the
-// browser's (`automations.md` § Triggers): the editor's Once field reads
-// and writes them through these. A skipped time is the first minute after
-// the gap and a repeated one its first occurrence, as the scheduler reads
-// them. Pure functions; milliseconds.
+// browser's: the editor's Once field reads and writes them through these. A
+// skipped time is the first minute after the gap and a repeated one its first
+// occurrence, as the scheduler reads them. Pure functions; milliseconds.
 
 test('a Once moment is shown and taken by the clocks of the automation’s zone, whatever the browser’s', () => {
   // 08:00 in Tokyo, New York and Shanghai: three different moments.

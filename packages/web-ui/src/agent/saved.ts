@@ -4,15 +4,13 @@ import { t } from './locales/text'
 
 /**
  * Where a message of the list stands: kept by the server, on its way there,
- * or refused, which the list shows as Not Saved with Retry and Delete
- * (`conversations.md` § Saved for later).
+ * or refused, which the list shows as Not Saved with Retry and Delete.
  */
 export type SavedRowState = 'saved' | 'saving' | 'notSaved'
 
 /**
- * One message saved for later as the list under the composer shows it
- * (`conversations.md` § Saved for later): the message's first line and how many
- * files it carries. The list shows no time.
+ * One message saved for later as the list under the composer shows it: the
+ * message's first line and how many files it carries. The list shows no time.
  */
 export interface SavedRow {
   id: string

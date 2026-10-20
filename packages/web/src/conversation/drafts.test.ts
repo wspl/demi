@@ -37,10 +37,9 @@ test('a saved edit keeps its operation, its files and the separate composer draf
   expect(() => draftSchema.parse({ ...value, messageEdit: { phase: 'sending', request: {} } })).toThrow()
 })
 
-// The page's records follow its releases (`web-application.md` § Persistence
-// and adapters): a record of 0.1.21 is upgraded, and a record that still does
-// not read is set aside without costing the others. An IndexedDB in memory;
-// milliseconds.
+// The page's records follow its releases: a record of 0.1.21 is upgraded, and a
+// record that still does not read is set aside without costing the others. An
+// IndexedDB in memory; milliseconds.
 const realIndexedDB = globalThis.indexedDB
 const realKeyRange = globalThis.IDBKeyRange
 beforeEach(() => {

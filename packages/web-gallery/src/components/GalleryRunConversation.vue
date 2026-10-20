@@ -10,10 +10,10 @@ import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
- * A run's conversation (`automations.md` § Runs): the bar under its header
- * while it belongs to its automation, and the automation's message, marked
- * with the automation. A message the user sends moves it to Conversations,
- * as Move to Conversations does.
+ * A run's conversation: the bar under its header while it belongs to its
+ * automation, and the automation's message, marked with the automation. A
+ * message the user sends moves it to Conversations, as Move to Conversations
+ * does.
  */
 const props = defineProps<{
   automation: Automation

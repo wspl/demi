@@ -1,8 +1,8 @@
 import { ATTACHMENT_MARK } from '../../markdown/user-markdown'
 
-// A message's content blocks and the Markdown the editor shows them as
-// (`composer.md` § Attachments): the text blocks are the Markdown, and each
-// file stands at a mark between them, in order.
+// A message's content blocks and the Markdown the editor shows them as: the
+// text blocks are the Markdown, and each file stands at a mark between them, in
+// order.
 
 type TextBlock = { type: 'text'; text: string }
 
@@ -80,8 +80,7 @@ export function joinMessageContent<Block>(
  * sends, `joinMessageContent`, read back as `splitMessageContent` reads the
  * message's blocks. A message being sent shows this, so it is drawn as the
  * message it becomes, without a space or a line break the send drops, such
- * as the newline an input method's Enter can leave
- * (`turns.md` § Following the agent's work).
+ * as the newline an input method's Enter can leave.
  */
 export function sentMarkdown(markdown: string, fileCount: number): string {
   return splitMessageContent(joinMessageContent(markdown, Array.from({ length: fileCount }, () => [FILE]))).markdown

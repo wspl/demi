@@ -20,13 +20,11 @@ function blockWidth(element: HTMLElement): number {
 }
 
 /**
- * Sizes an image or a video of a message as a tile
- * (`file-previews.md` § Files named in messages), in a block `width`
- * pixels wide, by its size once loaded, else by the size its render gave it
- * from its record, which is known before its bytes arrive. An image whose
- * size neither gives yet is held within its tile's frame, which fits it the
- * same way once it loads. A block that is not laid out, 0 pixels wide,
- * leaves it as it is.
+ * Sizes an image or a video of a message as a tile, in a block `width` pixels
+ * wide, by its size once loaded, else by the size its render gave it from its
+ * record, which is known before its bytes arrive. An image whose size neither
+ * gives yet is held within its tile's frame, which fits it the same way once it
+ * loads. A block that is not laid out, 0 pixels wide, leaves it as it is.
  */
 export function fitMessageMedium(element: HTMLImageElement | HTMLVideoElement, width = blockWidth(element)): void {
   if (width === 0)
@@ -68,10 +66,8 @@ export function messagePictures(root: ParentNode): MessagePicture[] {
 }
 
 /**
- * The preview of a message's picture `element`
- * (`file-previews.md` § A picture's preview on hover): its picture, its
- * size, known from its attachment's record before its bytes arrive, and its
- * alt text.
+ * The preview of a message's picture `element`: its picture, its size, known
+ * from its attachment's record before its bytes arrive, and its alt text.
  */
 export function messagePicture(element: HTMLImageElement | HTMLVideoElement): MessagePicture {
   const isVideo = element instanceof HTMLVideoElement

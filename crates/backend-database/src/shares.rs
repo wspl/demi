@@ -1,9 +1,8 @@
-//! Shares (`sharing.md` § Storage and routes): each share's record in the
-//! control database, which the token finds, and its list in its
-//! conversation's database, the messages and texts it shows by the
-//! transcript rows that hold them or by its copies of the few still being
-//! written, and the counts of the steps between them, which a share's pages
-//! read as a conversation's pages read its transcript
+//! Shares: each share's record in the control database, which the token finds,
+//! and its list in its conversation's database, the messages and texts it shows
+//! by the transcript rows that hold them or by its copies of the few still
+//! being written, and the counts of the steps between them, which a share's
+//! pages read as a conversation's pages read its transcript
 //! ([`tree::Transcript::Shared`]). A record goes with its conversation; the
 //! list goes with the conversation's database.
 
@@ -220,10 +219,9 @@ impl ControlService {
     }
 }
 
-/// Makes the list of the conversation's share `token` (`sharing.md`
-/// § Storage and routes), in place of one it had: what the root's current
-/// path says (`message-editing.md` § Versions), its messages and texts,
-/// with the steps between them.
+/// Makes the list of the conversation's share `token`, in place of one it had:
+/// what the root's current path says (`message-editing.md` § Versions), its
+/// messages and texts, with the steps between them.
 pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> Result<(), StorageError> {
     remove(transaction, token)?;
     let Some(root) = root(transaction)? else {
@@ -237,7 +235,7 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
 /// the steps between them, along the root's current path. False, and
 /// nothing made, when `block` is not a complete text of that path: the
 /// page offers Share only on the text that ends a reply, and which text
-/// does is the page's to judge (`web-api-conversations.md` § Sharing).
+/// does is the page's to judge.
 pub fn take_answer(
     transaction: &Transaction<'_>,
     token: &ShareToken,
@@ -295,9 +293,9 @@ fn root(transaction: &Transaction<'_>) -> Result<Option<String>, StorageError> {
 /// The block types a share shows, the root's messages and texts.
 const SAID: &str = "('user', 'steer', 'text')";
 
-/// The block types a share counts as steps not shared (`sharing.md`
-/// § Steps not shared): thinking and calls, a command's or a subagent's
-/// start among them. Every other block shows nothing and counts nothing.
+/// The block types a share counts as steps not shared: thinking and calls, a
+/// command's or a subagent's start among them. Every other block shows nothing
+/// and counts nothing.
 const STEPS: &str = "('thinking', 'redacted_thinking', 'tool_call')";
 
 /// Lists under `token` the rows of the root's current path numbered within
@@ -379,10 +377,10 @@ fn name_copied_blobs(transaction: &Transaction<'_>, token: &ShareToken) -> Resul
 
 /// Keeps what every share shows of the row `index` of `node` before a
 /// write replaces it, as a later event marks it (`message-editing.md`
-/// § Versions; `sharing.md` § Storage and routes): a listed row is copied
-/// into the share as it stands, with the blobs it names, and its entry
-/// points at the copy, in the write's transaction. The one guard of every
-/// write to `blocks` that changes a row; no write removes one.
+/// § Versions): a listed row is copied into the share as it stands, with the
+/// blobs it names, and its entry points at the copy, in the write's
+/// transaction. The one guard of every write to `blocks` that changes a row; no
+/// write removes one.
 pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index: i64) -> Result<(), StorageError> {
     let rows = "entry.node_id = ?1 AND entry.idx = ?2";
     let parameters = params![node.as_str(), index];
@@ -446,12 +444,11 @@ fn keep_attachments(
     Ok(())
 }
 
-/// The attachments a text delivers as blocks (`file-previews.md` §
-/// Attachment blocks): each line whose whole content, after the Markdown that
-/// places it (a list item's marker, a quote's `>`), is the tag
-/// `<attachment id="a3" />`, the space before `/>` optional. A tag in code, in
-/// an HTML comment or block, or among other content on its line names none,
-/// nor does a link or an image to `attachment:a3`. The web app's renderer
+/// The attachments a text delivers as blocks: each line whose whole content,
+/// after the Markdown that places it (a list item's marker, a quote's `>`), is
+/// the tag `<attachment id="a3" />`, the space before `/>` optional. A tag in
+/// code, in an HTML comment or block, or among other content on its line names
+/// none, nor does a link or an image to `attachment:a3`. The web app's renderer
 /// follows the same rule (`packages/web-ui/src/markdown/attachment-block.ts`);
 /// both are held to the cases of
 /// `crates/shared-types/tests/shared-types/fixtures/attachment-blocks.json`.
@@ -547,10 +544,10 @@ pub fn remove(connection: &Connection, token: &ShareToken) -> Result<(), Storage
     Ok(())
 }
 
-/// Whether the share `token` shows `blob` (`sharing.md` § Safety): a block
-/// on its list names it, as a medium or a side of an edit, by
-/// `block_blobs` or by its copies' `share_blobs`, or it is the blob of an
-/// attachment the share keeps. No block is read.
+/// Whether the share `token` shows `blob`: a block on its list names it, as a
+/// medium or a side of an edit, by `block_blobs` or by its copies'
+/// `share_blobs`, or it is the blob of an attachment the share keeps. No block
+/// is read.
 pub fn shows_blob(connection: &Connection, token: &ShareToken, blob: &BlobRef) -> Result<bool, StorageError> {
     let shown: Option<i64> = connection
         .query_row(
@@ -605,9 +602,8 @@ mod tests {
     use crate::tree::tests::{conversation, id, record, reply, response, store, update, user};
     use crate::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
 
-    // A share's list of a conversation's transcripts (`sharing.md` § Storage
-    // and routes), made and read on a conversation database in a temporary
-    // directory; a few milliseconds each.
+    // A share's list of a conversation's transcripts, made and read on a
+    // conversation database in a temporary directory; a few milliseconds each.
 
     /// Which attachments a share keeps of a text: exactly those its
     /// blocks deliver, by the cases the web app's renderer is held to.

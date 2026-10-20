@@ -9,8 +9,7 @@ import {
   serializeUserMarkdown,
 } from '../user-markdown'
 
-// A user message's Markdown and the editor document it shows as
-// (`composer.md` § Writing a message).
+// A user message's Markdown and the editor document it shows as.
 
 function paragraph(...content: JSONContent[]): JSONContent {
   return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }

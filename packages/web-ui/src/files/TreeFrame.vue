@@ -31,7 +31,7 @@ import { t } from './locales/text'
  *
  * In the phone layout (`ui/phone.ts`) the tree never docks: it covers the
  * view's whole width, sliding in from the end, and a pick in it slides it
- * away again (`web-application.md` § The phone layout).
+ * away again.
  */
 const props = defineProps<{
   /** What the tree lists, which names its control: the files of a folder, or the files a change touches. */

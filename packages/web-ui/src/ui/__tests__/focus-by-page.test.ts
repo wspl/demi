@@ -1,11 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { beforeEach, expect, test } from 'bun:test'
 
-// The focus ring shows only where the keyboard moved the focus
-// (`web-application.md` § Keyboard): a focus the page moves, giving it back to
-// what opened a layer or taking it on opening, says so to the browser
-// (`focusVisible: false`), whatever key closed the layer. A page of happy-dom;
-// a few milliseconds.
+// The focus ring shows only where the keyboard moved the focus: a focus the
+// page moves, giving it back to what opened a layer or taking it on opening,
+// says so to the browser (`focusVisible: false`), whatever key closed the
+// layer. A page of happy-dom; a few milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 // After the page, since the modules ask for HTMLElement.

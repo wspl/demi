@@ -1,10 +1,9 @@
 import { pageLanguage } from '../i18n/text'
 import { t } from '../locales/text'
 
-// The interface's dates, times, ages and spans, in the page's language
-// (`localization.md` § Where the text lives): Intl says each date and time
-// as the language does ("6:12 PM", "下午6:12"), and the catalogue words the
-// compact forms Intl has no words for ("2h", "2 小时").
+// The interface's dates, times, ages and spans, in the page's language: Intl
+// says each date and time as the language does ("6:12 PM", "下午6:12"), and the
+// catalogue words the compact forms Intl has no words for ("2h", "2 小时").
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
@@ -196,14 +195,13 @@ export function formatSpan(ms: number): string {
 /**
  * A moment to come, `timestamp`, after `verb`: when a failed request can
  * succeed again, as a failure's record says it and as the control that
- * resumes the turn then names it (`turns.md` § Recovering an unfinished
- * turn), or when a credential kept for a while is removed (`credentials.md`).
- * "Resets at 9:00 AM" or "Removed today at 6:00 PM" on `now`'s day, "Resume
- * Sat at 9:00 AM" within a week either way, then "Resets Oct 24 at 9:00 AM",
- * with the year when it is not this one. The moment is rounded up to the
- * minute, so it never names a time before the moment: 7:03:55 PM is 7:04 PM.
- * `resetting` says it inside a sentence, as the line that says an agent moved
- * to another account does.
+ * resumes the turn then names it, or when a credential kept for a while is
+ * removed (`credentials.md`). "Resets at 9:00 AM" or "Removed today at 6:00 PM"
+ * on `now`'s day, "Resume Sat at 9:00 AM" within a week either way, then
+ * "Resets Oct 24 at 9:00 AM", with the year when it is not this one. The moment
+ * is rounded up to the minute, so it never names a time before the moment:
+ * 7:03:55 PM is 7:04 PM. `resetting` says it inside a sentence, as the line
+ * that says an agent moved to another account does.
  */
 export function formatVerbAt(verb: 'Resets' | 'Resume' | 'resetting' | 'Removed', timestamp: string, now: Date): string {
   const moment = toMinute(new Date(timestamp), true)

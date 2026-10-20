@@ -1,11 +1,10 @@
-//! A conversation's files through its host access (`web-api-hosts.md` § Device
-//! files and remote references, § File text and working tree changes;
-//! `sessions-and-targets.md` § Host operations): listings, directories,
-//! deletes and text; a file's bytes by range under the headers that keep
-//! them inert, and back as an upload; the working tree's changes; what the
-//! host access refuses; and the transfer a shutdown ends. The conversation
-//! works in a directory of a paired device's real runner, which a workspace
-//! written to the control database names, as the workspace routes would.
+//! A conversation's files through its host access (`sessions-and-targets.md` §
+//! Host operations): listings, directories, deletes and text; a file's bytes by
+//! range under the headers that keep them inert, and back as an upload; the
+//! working tree's changes; what the host access refuses; and the transfer a
+//! shutdown ends. The conversation works in a directory of a paired device's
+//! real runner, which a workspace written to the control database names, as the
+//! workspace routes would.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -1232,9 +1231,8 @@ fn read_at(answer: &Answer) -> (String, u64) {
 /// Two pages that subscribe to one file hear it live, from one subscription
 /// on the Host, and changed; every read answers the Host's number, a 304
 /// and a binary file's 415 as much as a text, so a change after a read is
-/// numbered above it and a read after the change not below it
-/// (`web-api-hosts.md` § File watch, § File text and working tree changes). A
-/// second or two: a paired device's real runner starts its watch.
+/// numbered above it and a read after the change not below it. A second or two:
+/// a paired device's real runner starts its watch.
 #[tokio::test]
 async fn pages_hear_a_file_live_and_changed_at_numbers_that_order_its_reads() {
     let device = OnDevice::start().await;
@@ -1290,8 +1288,7 @@ async fn pages_hear_a_file_live_and_changed_at_numbers_that_order_its_reads() {
 }
 
 /// A file watch that has sent nothing else for the heartbeat interval sends
-/// a `heartbeat`, so the page tells a quiet watch from a dead one
-/// (`web-api-hosts.md` § File watch); 0.2 s here.
+/// a `heartbeat`, so the page tells a quiet watch from a dead one; 0.2 s here.
 #[tokio::test]
 async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
     let mut harness = Harness::new();
@@ -1306,7 +1303,7 @@ async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
     assert_eq!(heartbeat, json!({ "type": "heartbeat" }));
     assert!(quiet.elapsed() >= Duration::from_millis(200), "no heartbeat before the interval");
     // The page's question whether the watch is alive, as it returns, is
-    // answered at once (`web-application.md` § Liveness and reconnection).
+    // answered at once.
     send_watch(&mut socket, json!({ "ping": 3 })).await;
     assert_eq!(watch_message(&mut socket).await, json!({ "type": "pong", "id": 3 }));
     device.backend.close().await;
@@ -1345,10 +1342,9 @@ async fn a_devices_folder_dialog_hears_its_folders_change_through_device_access(
 }
 
 /// A conversation's watch carries a subscription that names an attached
-/// host to that host's runner (`web-api-hosts.md` § File watch): it is live and
-/// changes at that runner's numbers, which its listings answer, not at the
-/// primary Host's. A second or two: two paired devices' real runners start
-/// their watches.
+/// host to that host's runner: it is live and changes at that runner's numbers,
+/// which its listings answer, not at the primary Host's. A second or two: two
+/// paired devices' real runners start their watches.
 #[tokio::test]
 async fn a_subscription_naming_an_attached_host_is_watched_by_that_hosts_runner() {
     let device = OnDevice::start().await;

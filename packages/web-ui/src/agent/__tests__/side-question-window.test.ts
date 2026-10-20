@@ -1,11 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// The full window of a side question (`comments-and-ask.md` § Side
-// questions): opened from the card's ↗, it takes the focus, and closed, by
-// Escape too, it gives it back to ↗ as the page moves focus, so the browser
-// draws no ring there (`focus-by-page.ts`). A Vue app on a happy-dom page;
-// a few ms besides the page's start.
+// The full window of a side question: opened from the card's ↗, it takes the
+// focus, and closed, by Escape too, it gives it back to ↗ as the page moves
+// focus, so the browser draws no ring there (`focus-by-page.ts`). A Vue app on
+// a happy-dom page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -74,10 +73,10 @@ test('the full window takes the focus and gives it back to ↗ without a focus r
   }
 })
 
-// A side question about a picture (`comments-and-ask.md` § Images): the
-// window's first message, in the side's transcript, shows the picture as its
-// quote with the question under it, as a comment's bubble does; a message
-// with comments is no subagent's brief, which would draw it empty.
+// A side question about a picture: the window's first message, in the side's
+// transcript, shows the picture as its quote with the question under it, as a
+// comment's bubble does; a message with comments is no subagent's brief, which
+// would draw it empty.
 test('a picture side question\'s first message in its window shows the picture quoted above the question', async () => {
   const { default: AgentMessageVirtualBlock } = await import('../blocks/AgentMessageVirtualBlock.vue')
   const { provideTranscript } = await import('../edit-selection')

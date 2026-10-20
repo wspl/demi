@@ -1,6 +1,5 @@
-//! The instance's settings and the caller's preferences (`web-api-settings.md` §
-//! User preferences). Preferences belong to the signed-in user alone, in
-//! both instance modes.
+//! The instance's settings and the caller's preferences. Preferences belong to
+//! the signed-in user alone, in both instance modes.
 
 use std::sync::Arc;
 

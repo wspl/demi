@@ -30,8 +30,7 @@ use demi_backend_host_access::access::{HostAccessError, host_error_code};
 use demi_backend_host_access::stream::StreamError;
 use demi_backend_user_shard::shard::ShardUnavailable;
 
-/// The header that carries the Host's number a read answer was read at
-/// (`web-api-hosts.md` § File text and working tree changes).
+/// The header that carries the Host's number a read answer was read at.
 pub(crate) const READ_AT: HeaderName = HeaderName::from_static("x-demi-read-at");
 
 /// `<epoch>.<number>`, as [`READ_AT`] carries it; none for an epoch a
@@ -59,7 +58,7 @@ pub(crate) struct ApiError {
     /// The `Retry-After` the answer carries, in whole seconds.
     retry_after: Option<u64>,
     /// The ETag of the file a refused read is an answer of, such as one
-    /// that is binary (`web-api-hosts.md` § File text and working tree changes).
+    /// that is binary.
     etag: Option<String>,
     /// The Host's number before the read the failure answers, which the
     /// answer carries as `X-Demi-Read-At`.
@@ -94,7 +93,7 @@ impl ApiError {
     }
 
     /// The error with the value `name` that the page's text for its code
-    /// is filled with (`localization.md` § Text from the backend).
+    /// is filled with.
     pub(crate) fn with_param(mut self, name: &str, value: impl Into<serde_json::Value>) -> Self {
         self.params.insert(name.to_owned(), value.into());
         self
@@ -244,9 +243,9 @@ impl ApiError {
         }
     }
 
-    /// A Host's failure of a history read (`web-api-hosts.md` § File text and
-    /// working tree changes): a commit or a branch the repository does not
-    /// have is 404 `not_found`, and otherwise as a working-tree operation's.
+    /// A Host's failure of a history read: a commit or a branch the repository
+    /// does not have is 404 `not_found`, and otherwise as a working-tree
+    /// operation's.
     pub(crate) fn history(error: HostError) -> Self {
         if error.code() != Some("ENOENT") {
             return Self::working_tree(error);

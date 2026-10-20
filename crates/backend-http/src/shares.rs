@@ -1,10 +1,9 @@
-//! Sharing (`web-api-conversations.md` § Sharing): the owner's routes, which make, make
-//! again and remove a conversation's share, and the public routes under
-//! `/api/shares/:token`, which take no session and ignore one: the token is
-//! the only key, and every miss answers the same 404 `share_not_found`, so
-//! an answer tells nothing of what exists. A public route finds the share's
-//! record, then reads through its list on the owner's shard, the conversation's
-//! history reads (`history.rs`) answering it.
+//! Sharing: the owner's routes, which make, make again and remove a conversation's
+//! share, and the public routes under `/api/shares/:token`, which take no session and
+//! ignore one: the token is the only key, and every miss answers the same 404
+//! `share_not_found`, so an answer tells nothing of what exists. A public route finds
+//! the share's record, then reads through its list on the owner's shard, the
+//! conversation's history reads (`history.rs`) answering it.
 
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
@@ -192,8 +191,8 @@ pub(super) async fn transcript(
     // A conversation without a database holds no share's list.
     let read = read.ok_or_else(not_found)?;
     // What the list does not hold, an anchor included, answers as a token
-    // that names no share (`sharing.md` § Safety); a share's list never
-    // changes under its page, so an edge not at its index is not on it.
+    // that names no share; a share's list never changes under its page, so an
+    // edge not at its index is not on it.
     let PageRead::Page {
         start,
         length,
@@ -273,9 +272,8 @@ pub(super) async fn blob(
     Ok(blob_answer(&bytes, query.as_deref(), &request))
 }
 
-/// What every answer of the public routes carries (`web-api-conversations.md` § Sharing):
-/// not indexed, no referrer that would carry the token, and kept by no
-/// cache, so a removed share is not served from one.
+/// What every answer of the public routes carries: not indexed, no referrer that would
+/// carry the token, and kept by no cache, so a removed share is not served from one.
 pub(super) async fn public_headers(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(

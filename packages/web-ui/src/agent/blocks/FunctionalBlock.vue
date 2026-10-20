@@ -32,7 +32,7 @@ const props = defineProps<{
   cutKey?: string
   /** The body is rows of their own, as a work group's steps: in flow, unbounded, never scrolled. */
   flow?: boolean
-  /** The images and videos the row's step returned, small in its line after the face (`file-previews.md` § Media a tool returned). */
+  /** The images and videos the row's step returned, small in its line after the face. */
   pictures?: readonly ToolPicture[]
 }>()
 

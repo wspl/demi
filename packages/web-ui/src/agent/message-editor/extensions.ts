@@ -22,10 +22,9 @@ import { readCapsule } from './capsules'
 import ImageNodeView from './ImageNodeView.vue'
 import { ComposerIntake, MESSAGE_IMAGE_ATTRIBUTE, type IntakeOptions } from './intake'
 
-// The editor a user message is written and shown in (`composer.md` § Writing
-// a message): the schema the dialect reads into, formatting applied as a
-// construct is typed, the composer's keys, and what the page draws over the
-// text (links for bare URLs, colors for code).
+// The editor a user message is written and shown in: the schema the dialect
+// reads into, formatting applied as a construct is typed, the composer's keys,
+// and what the page draws over the text (links for bare URLs, colors for code).
 
 /**
  * A file's capsule, standing where the file is in the text. The node carries
@@ -61,10 +60,10 @@ const AttachmentNode = Node.create({
 /**
  * Which events a capsule keeps from the editor. A drag is the editor's, in a
  * sent message as in the composer, so a capsule can be dragged out of the
- * conversation into a composer (`composer.md` § Attachments): tiptap's own
- * rule lets a node be dragged only after a press in an editable editor. A
- * press selects the capsule and the clipboard's events are the editor's;
- * everything else, Retry's press among it, is the capsule's own.
+ * conversation into a composer: tiptap's own rule lets a node be dragged only
+ * after a press in an editable editor. A press selects the capsule and the
+ * clipboard's events are the editor's; everything else, Retry's press among it,
+ * is the capsule's own.
  */
 function capsuleStopsEvent({ event }: { event: Event }): boolean {
   const { type } = event
@@ -76,8 +75,7 @@ function capsuleStopsEvent({ event }: { event: Event }): boolean {
 }
 
 /**
- * `![alt](target)`: the image, loaded as `file-previews.md` § Files named in
- * messages says. It is read back only from a message editor's own HTML: an
+ * `![alt](target)`: the image. It is read back only from a message editor's own HTML: an
  * image from anywhere else enters as a capsule or its link (`intake.ts`).
  */
 const ImageNode = Node.create({
@@ -333,7 +331,7 @@ export interface MessageKeyOptions {
    * Enter outside a code block, or ⌘/Ctrl+Enter anywhere: send. `otherWay`
    * is true for ⌘/Ctrl+Enter outside a code block, which sends the message
    * the other way while the agent works; in a code block ⌘/Ctrl+Enter is the
-   * send key, as Enter is elsewhere (`turns.md` § Steer or queue).
+   * send key, as Enter is elsewhere.
    */
   submit: (otherWay: boolean) => void
   /** Escape: true when it ended something, such as an edit. */
@@ -416,9 +414,8 @@ export function redrawDecorations(editor: Editor): void {
 }
 
 /**
- * A code block's colors (`file-previews.md` § Code): the theme's text color
- * for the block, and its tokens' where the language colors them, each run
- * by its offset in the code.
+ * A code block's colors: the theme's text color for the block, and its tokens'
+ * where the language colors them, each run by its offset in the code.
  */
 export function codeColors(node: ProseMirrorNode): { style: string; runs: { from: number; to: number; classes: string }[] } {
   const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''

@@ -1,9 +1,8 @@
-//! The file watch at the edge (`web-api-hosts.md` § File watch): the upgrades of
-//! a conversation's watch and of a device's folder dialog's, and the relay
-//! of the Hosts' reports to the page and of the page's `subscribe`,
-//! `unsubscribe` and `renew` messages to the shard, which holds the Hosts'
-//! subscriptions. Only a conversation's watch takes a subscription that
-//! names a host.
+//! The file watch at the edge: the upgrades of a conversation's watch and of a
+//! device's folder dialog's, and the relay of the Hosts' reports to the page and
+//! of the page's `subscribe`, `unsubscribe` and `renew` messages to the shard,
+//! which holds the Hosts' subscriptions. Only a conversation's watch takes a
+//! subscription that names a host.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocketUpgrade};

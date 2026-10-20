@@ -1,15 +1,14 @@
-//! The signaling socket of a direct channel (`web-api-hosts.md` § Direct
-//! channel, `direct-channel.md` § Making the channel): the backend
-//! introduces the page to its paired device's runner, through device
-//! access, and is the only check. It relays each offer to the runner and
-//! its answer to the page, each side's candidates found after them to the
-//! other, and the page's probes of the relay path and their answers, which
-//! never wait behind an offer's answer. The page keeps two peers with the
-//! device, one for files and one for live views, and each message names
-//! its peer; the backend gives each its own id toward the runner. The
-//! socket's close closes the runner's peers, and so does the user turning a
-//! plugin on or off, which the socket tells the page so that it offers
-//! again with the new introduction.
+//! The signaling socket of a direct channel (`direct-channel.md` § Making the
+//! channel): the backend introduces the page to its paired device's runner,
+//! through device access, and is the only check. It relays each offer to the
+//! runner and its answer to the page, each side's candidates found after them
+//! to the other, and the page's probes of the relay path and their answers,
+//! which never wait behind an offer's answer. The page keeps two peers with the
+//! device, one for files and one for live views, and each message names its
+//! peer; the backend gives each its own id toward the runner. The socket's
+//! close closes the runner's peers, and so does the user turning a plugin on or
+//! off, which the socket tells the page so that it offers again with the new
+//! introduction.
 
 use std::future::poll_fn;
 use std::task::Poll;

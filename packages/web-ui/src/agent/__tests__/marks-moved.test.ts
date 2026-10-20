@@ -5,10 +5,9 @@ import { chromium, type Browser } from 'playwright'
 
 // The marks on a reply's words stay painted when the page moves the list
 // holding them, as a window opening beside the transcript moves its
-// ancestors (`comments-and-ask.md` § Side questions): a move collapses
-// every live Range inside what moved and changes nothing the comments
-// layer watches, so it does not measure again. Ranges and the Custom
-// Highlight API are the browser's, so this runs in a real Chromium;
+// ancestors: a move collapses every live Range inside what moved and changes
+// nothing the comments layer watches, so it does not measure again. Ranges and
+// the Custom Highlight API are the browser's, so this runs in a real Chromium;
 // happy-dom has neither. About 2 s: the page's build and the browser's start.
 
 declare global {

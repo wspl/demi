@@ -28,8 +28,8 @@ type SessionState =
   | { status: 'passkeyStep'; user: User }
   /**
    * The account is signed in and still to choose its own password, which
-   * nothing else of the product opens before (`users.md` § User system):
-   * the wizard asks, and `passwordChosen` ends the state.
+   * nothing else of the product opens before: the wizard asks, and
+   * `passwordChosen` ends the state.
    */
   | { status: 'choosingPassword'; user: User }
   | {
@@ -38,8 +38,7 @@ type SessionState =
     }
   /**
    * The backend answered the first session check with its own failure; the
-   * page shows it with Retry, which checks again (`web-application.md`
-   * § Page synchronization).
+   * page shows it with Retry, which checks again.
    */
   | { status: 'failed'; error: ShownError }
   | {
@@ -96,8 +95,7 @@ export const useSession = defineStore('session', {
      * in the HTTP client; only its 401 signs the page out. The first check, or its retry,
      * that the backend fails otherwise shows the failure. `offline` names
      * the account the page kept for opening offline, which a first check
-     * that cannot reach the backend signs in as meanwhile
-     * (`web-application.md` § Installing and opening offline).
+     * that cannot reach the backend signs in as meanwhile.
      */
     async restore(signal?: AbortSignal, offline?: () => Promise<User | null>): Promise<void> {
       const previous = this.current

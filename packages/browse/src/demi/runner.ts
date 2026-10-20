@@ -120,7 +120,7 @@ async function pair(tool: Tool, generation: number, backend?: string): Promise<s
 
   const page = await tool.browser.page()
   const back = page.url()
-  // Settings have addresses of their own (`web-application.md` § Authentication).
+  // Settings have addresses of their own.
   await page.goto(`${webBase(slot)}/settings/devices`)
   // Each step is a locator, which Playwright finds again for each attempt:
   // a button the dialog replaces while it is clicked, as Continue is, is

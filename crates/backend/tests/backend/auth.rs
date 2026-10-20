@@ -1,7 +1,6 @@
 //! Setup, the session cookie and its gate, the pages a request that could
 //! act may come from, login and its lockout, and the caller's own account
-//! (`backend.md` § Authentication and ownership, `web-api.md`
-//! § Authentication, § Account API).
+//! (`backend.md` § Authentication and ownership).
 
 use std::sync::atomic::Ordering;
 

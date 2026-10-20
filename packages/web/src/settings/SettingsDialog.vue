@@ -69,7 +69,7 @@ const conversations = useConversations()
 const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
-/** The rail lists Users for the master and admins only (`users.md` § User system). */
+/** The rail lists Users for the master and admins only. */
 const withUsers = computed(() => withUsersSection(settingsSections(), product.snapshot?.user.role ?? 'user'))
 const sections = computed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
@@ -149,7 +149,7 @@ function rename(nickname: string): Promise<void> {
     })
 }
 
-/** Why the email cannot be changed on a server without mail (`web-api-settings.md` § Account API). */
+/** Why the email cannot be changed on a server without mail. */
 
 const emailDraft = ref({ email: '', password: '', code: '' })
 const passwordDraft = ref({ current: '', next: '', confirm: '' })

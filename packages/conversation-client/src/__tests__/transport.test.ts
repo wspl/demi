@@ -78,8 +78,7 @@ test('frames travel as JSON text messages both ways', async () => {
 })
 
 // The backend sends the frames it has ready at once in one message, as a
-// turn's end: its last text, the usage and the idle phase
-// (`turns.md` § Following the agent's work).
+// turn's end: its last text, the usage and the idle phase.
 test('the frames of one message reach the client in their order, within the message\'s event', async () => {
   const socket = new FakeSocket()
   const client = new ConversationClient(createWebSocketTransport(socket))

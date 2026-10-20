@@ -1,6 +1,5 @@
-//! What the conversation's agent learns of its side questions
-//! (`comments-and-ask.md` § What the agent learns): with the user's next
-//! message or steer, each question asked aside since it last heard of
+//! What the conversation's agent learns of its side questions: with the user's
+//! next message or steer, each question asked aside since it last heard of
 //! them, with its final answer, under the words it asked about.
 
 use demi_agent_store::{Kind, SessionStore, SideOf, StoreError};

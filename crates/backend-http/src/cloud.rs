@@ -1,5 +1,5 @@
-//! `/api/cloud` (`web-api-hosts.md` § Cloud): the caller's Cloud status, which
-//! wakes nothing, and a reset named by the page's operation id.
+//! `/api/cloud`: the caller's Cloud status, which wakes nothing, and a reset
+//! named by the page's operation id.
 
 use axum::Json;
 use axum::extract::State;

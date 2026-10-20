@@ -8,7 +8,7 @@ import type { Conversation } from '../state/types'
 /**
  * How long the page lets a conversation's changes gather before it writes
  * its copy for opening offline: a turn that streams changes the transcript
- * many times a second (`web-application.md` § Installing and opening offline).
+ * many times a second.
  */
 export const COPY_DELAY_MS = 3_000
 

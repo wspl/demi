@@ -79,8 +79,8 @@ const props = withDefaults(
     /** Makes an upload of a file the user's blobs hold, for a message pasted into the edit composer. */
     claim: ClaimFile
     /**
-     * Takes the files of a message pasted into the draft (`composer.md`
-     * § Writing a message): the host carries the draft's files.
+     * Takes the files of a message pasted into the draft: the host carries the
+     * draft's files.
      */
     paste: PasteHost
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
@@ -88,9 +88,8 @@ const props = withDefaults(
     focused?: boolean
     /**
      * The draft takes the focus as the composer shows, so a new or opened
-     * conversation is typed into at once (`conversations.md` § Conversations and
-     * projects); not on a phone, where the keyboard waits for a tap
-     * (`useAutofocus`), nor while another field holds the focus.
+     * conversation is typed into at once; not on a phone, where the keyboard
+     * waits for a tap (`useAutofocus`), nor while another field holds the focus.
      */
     focusOnShow?: boolean
     attachOpen?: boolean
@@ -155,15 +154,13 @@ const props = withDefaults(
      */
     draftShown?: number
     /**
-     * The conversation's Workflow menu choice and the project's workflows
-     * (`conversations.md` § A conversation's workflow); none where a conversation
-     * has no choice yet, as before its first send.
+     * The conversation's Workflow menu choice and the project's workflows; none
+     * where a conversation has no choice yet, as before its first send.
      */
     workflow?: { choice: WorkflowChoice; list: WorkflowList } | null
     /**
-     * The conversation's messages saved for later, newest first
-     * (`conversations.md` § Saved for later): the entry under the composer counts
-     * them and opens their list.
+     * The conversation's messages saved for later, newest first: the entry under
+     * the composer counts them and opens their list.
      */
     saved?: SavedRow[]
   }>(),
@@ -364,8 +361,7 @@ const modelsLoading = computed(() => props.modelLoad === 'loading' && modelState
 /**
  * The phases of the draft's uploads that keep it from going: a failed one,
  * or a file that is gone.
- * A message whose files are still uploading goes, and waits for them
- * (`composer.md` § Writing a message).
+ * A message whose files are still uploading goes, and waits for them.
  */
 const failedUploads = computed(() => carrying.value
   .filter(isComposerFile)
@@ -417,7 +413,7 @@ const compactUnavailable = computed(() => {
   }
   return null
 })
-/** The agent works: a message steers it or waits in the queue, one or the other (`turns.md` § Steer or queue). */
+/** The agent works: a message steers it or waits in the queue, one or the other. */
 const working = computed(() => props.running || props.compacting)
 const submitLabel = computed(() => shownEdit.value
   ? shownEdit.value.phase === 'uncertain' ? shared('common.retry') : t('composer.saveAndResend')
@@ -509,9 +505,9 @@ function insertCapsules(added: readonly MessageCapsule[]): void {
 /**
  * A copied message pasted: it goes in where it was pasted at once, text and
  * capsules, and each stored file attaches beside it as an upload does, so the
- * message can be sent meanwhile (`composer.md` § Writing a message). A file
- * the paste could not add stands as its name where its capsule stood, and a
- * toast names it once the paste's files have all answered.
+ * message can be sent meanwhile. A file the paste could not add stands as its
+ * name where its capsule stood, and a toast names it once the paste's files
+ * have all answered.
  */
 function pasteCopied(message: CopiedMessage, image: File | null): void {
   // The editor the message was pasted into, which an edit opened or closed meanwhile does not change.

@@ -1,10 +1,7 @@
-//! `/api/conversations` (`web-api-conversations.md` § Conversation creation and Fork,
-//! § Sidebar mutations, read state and page synchronization): creating a
-//! conversation under the id the web app chose, listing the caller's
-//! conversations, changing their fields one patch at a time or in a batch,
-//! forking one, acknowledging its output, deleting it, and its socket, `WS /conversations/:id/stream`,
-//! which moves into the caller's shard once upgraded. A conversation the
-//! caller does not own answers like a missing one.
+//! `/api/conversations`: creating a conversation under the id the web app chose, listing the caller's
+//! conversations, changing their fields one patch at a time or in a batch, forking one, acknowledging
+//! its output, deleting it, and its socket, `WS /conversations/:id/stream`, which moves into the
+//! caller's shard once upgraded. A conversation the caller does not own answers like a missing one.
 
 use axum::Json;
 use axum::extract::ws::WebSocketUpgrade;
@@ -346,8 +343,7 @@ pub(super) async fn read(
         .control
         .mark_conversation_read(record.id.clone(), revision)
         .await?;
-    // Opening a run's conversation marks the run read (`automations.md`
-    // § Where the user sees them).
+    // Opening a run's conversation marks the run read.
     if services.control.read_automation_runs(record.id.clone()).await? {
         services.sync.mark(&user.id, Part::Automations);
     }

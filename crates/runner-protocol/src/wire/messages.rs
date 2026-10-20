@@ -1675,8 +1675,8 @@ pub struct OperatingSystem {
     #[garde(length(chars, min = 1, max = 256))]
     pub name: String,
     /// On Linux, the distribution's os-release `ID`, such as `ubuntu` or
-    /// `fedora`, which picks the logo of the device's mark (`conversations.md`
-    /// § Conversations and projects); none on other systems.
+    /// `fedora`, which picks the logo of the device's mark; none on other
+    /// systems.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(inner(length(chars, min = 1, max = 64)))]
     pub distribution: Option<String>,
@@ -1803,8 +1803,7 @@ impl FileHash {
 }
 
 /// A file's version, from its size and modification time in milliseconds:
-/// a weak ETag, the one the web app's file routes answer
-/// (`web-api-hosts.md` § File text and working tree changes). A negative time is
+/// a weak ETag, the one the web app's file routes answer. A negative time is
 /// written with a minus sign, as JavaScript's `toString(16)` writes it.
 pub fn file_version(size: u64, modified_ms: i64) -> String {
     let time = if modified_ms < 0 {
@@ -1845,7 +1844,7 @@ pub struct SymbolicLink {
     pub leads_to: LinkTarget,
 }
 
-/// What a symbolic link leads to (`file-previews.md` § Symbolic links).
+/// What a symbolic link leads to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LinkTarget {
@@ -1970,8 +1969,7 @@ pub enum Looked {
 }
 
 /// A working tree's changes, as `git status` lists them. The web app
-/// receives it too, beside the directory it lists (`web-api-hosts.md` § File text
-/// and working tree changes).
+/// receives it too, beside the directory it lists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]

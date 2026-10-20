@@ -1,11 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// Side questions' cards in a reply (`comments-and-ask.md` § Side questions):
-// two questions about words of one paragraph each set their card after it,
-// in the order they were asked, and the layer comes to rest, moving nothing
-// once they stand there. A Vue app on a happy-dom page; a few ms besides the
-// page's start.
+// Side questions' cards in a reply: two questions about words of one paragraph
+// each set their card after it, in the order they were asked, and the layer
+// comes to rest, moving nothing once they stand there. A Vue app on a happy-dom
+// page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -122,11 +121,11 @@ test('a card offers Reply only once its answer is made', async () => {
   expect(reply()).toBe(true)
 })
 
-// A card's answer is the side question's agent's (`file-previews.md`
-// § Attachment blocks): set in the root's reply, it shows the attachment
-// the side question uploaded, and the reply's own as missing. Planted
-// defect this catches: a card that asks as the reply it sits in, so the
-// side question's file is missing and the root's shows. A few milliseconds.
+// A card's answer is the side question's agent's: set in the root's reply, it
+// shows the attachment the side question uploaded, and the reply's own as
+// missing. Planted defect this catches: a card that asks as the reply it sits
+// in, so the side question's file is missing and the root's shows. A few
+// milliseconds.
 test('a card shows what its side question uploaded, not what the reply it sits in did', async () => {
   const { default: AskCard } = await import('../comments/AskCard.vue')
   const { provideMediaViewer } = await import('../../files/media-viewer')

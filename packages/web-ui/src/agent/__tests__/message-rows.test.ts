@@ -9,11 +9,10 @@ import { rowKey } from '../row-key'
 import { createdAt, model, userBlock } from './agent-harness'
 
 // The rows the transcript list renders, followed through a message sent while
-// the reader is at the end of a conversation (`turns.md` § Following the
-// agent's work, `rendering.md` § Work groups). The list draws what this gives
-// it, so a row lost between two steps is a frame in which the list is
-// shorter. Real heights and the frame they are drawn in are checked in the
-// product. Pure, with a fake clock: a few milliseconds.
+// the reader is at the end of a conversation (`rendering.md` § Work groups).
+// The list draws what this gives it, so a row lost between two steps is a frame
+// in which the list is shorter. Real heights and the frame they are drawn in
+// are checked in the product. Pure, with a fake clock: a few milliseconds.
 
 const text = (id: string, body: string): Block => ({ type: 'text', id, createdAt, model, text: body })
 /** A step of the run `run`, the id of its first block, as the backend stores it. */
@@ -69,11 +68,10 @@ function answered(): MessageRowsSource {
 /**
  * Follows the rows the list draws over the changes the page receives, in
  * the order it receives them. Whatever replaces a row takes its key, so a
- * row drawn before is drawn still after any change the user did not make
- * (`turns.md` § Following the agent's work: what replaces a row takes its
- * place), and no key is drawn twice. `gives` names the keys a change the
- * user asked for lets go, as the Requesting row of a Continue gives way to
- * a step that joins the run above it.
+ * row drawn before is drawn still after any change the user did not make, and
+ * no key is drawn twice. `gives` names the keys a change the user asked for
+ * lets go, as the Requesting row of a Continue gives way to a step that joins
+ * the run above it.
  */
 function follow(state: MessageRowsSource) {
   const scope = effectScope()
@@ -205,10 +203,9 @@ const sentAndWritten: Change[] = [
 /** The run the stopped or failed turn had done: the user's message and a command that ended. */
 const workedOn = (...end: Block[]): Block[] => [userBlock('u-1', 'm-1', 'Fix the login test.'), call('c-1', 'completed'), ...end]
 
-// Each way a row gives way to the next state without the user removing it
-// (`turns.md` § Following the agent's work), as the events reach the page:
-// the row that showed the old state stays drawn, under its key, and the row
-// at the end keeps its key from `from` on.
+// Each way a row gives way to the next state without the user removing it, as
+// the events reach the page: the row that showed the old state stays drawn,
+// under its key, and the row at the end keeps its key from `from` on.
 const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['phase']; from: string; changes: Change[] }[] = [
   {
     name: 'Stop, then Continue',
@@ -519,10 +516,9 @@ test.each([
   stop()
 })
 
-// A steer shows what it is from the moment it is sent (`turns.md` § Steer
-// or queue): its line under it, in the row the steer the session holds
-// keeps, so the row neither pops its line in late nor grows; the line goes
-// only once the turn reads the steer.
+// A steer shows what it is from the moment it is sent: its line under it, in
+// the row the steer the session holds keeps, so the row neither pops its line
+// in late nor grows; the line goes only once the turn reads the steer.
 test('a steer on its way has its line from the send, and keeps its row and its line until the turn reads it', async () => {
   const state = running()
   const scope = effectScope()
@@ -561,9 +557,9 @@ test('a steer on its way has its line from the send, and keeps its row and its l
   scope.stop()
 })
 
-// A steer that will start the turn is drawn as the message it becomes
-// (`turns.md` § Following the agent's work): the message before it was not
-// delivered, nothing runs, and the steer goes as the user's next message.
+// A steer that will start the turn is drawn as the message it becomes: the
+// message before it was not delivered, nothing runs, and the steer goes as the
+// user's next message.
 test('a steer on its way that comes to start the turn reads as the next message from then, in the row it keeps', async () => {
   const state = answered()
   const { list, step, stop } = follow(state)
@@ -600,8 +596,8 @@ test('a queued message on its way is counted under the queue divider from the se
   scope.stop()
 })
 
-// Messages that wait stay out of the turn's flow (`turns.md` § Following
-// the agent's work): what the turn does is read from the transcript alone.
+// Messages that wait stay out of the turn's flow: what the turn does is read
+// from the transcript alone.
 test('a steer waiting under a call the model is still writing adds no Requesting row', async () => {
   const state = running()
   state.pendingSteers = [{ id: 's-1', content: [{ type: 'text', text: 'Also check the sign-up page.' }] }]
@@ -687,7 +683,7 @@ function finishedRows(blocks: Block[]): string[] {
   return rows
 }
 
-/** `blocks` as a page read after a reload holds them: each in its light form (`web-api-conversations.md` § Light form). */
+/** `blocks` as a page read after a reload holds them: each in its light form. */
 function reopened(blocks: Block[]): Block[] {
   const light = blocks.map((block): Block =>
     block.type === 'thinking' ? { ...block, text: '', signature: null, textLength: [...block.text.trim()].length } : block)
@@ -803,9 +799,8 @@ test('a turn that streams leaves the rows of the runs before it the same rows, w
 })
 
 // A message not delivered stays where it was sent, as Messages keeps one it
-// could not send in place (`turns.md` § Following the agent's work): before
-// the first message sent after it that shows, in the transcript, among the
-// steers, in the queue or on its way.
+// could not send in place: before the first message sent after it that shows,
+// in the transcript, among the steers, in the queue or on its way.
 describe('a message not delivered stays where it was sent', () => {
   /** The rows drawn for a conversation answered to m-1, changed by `change`, without the tail row. */
   function rows(change: (state: MessageRowsSource) => void): string[] {

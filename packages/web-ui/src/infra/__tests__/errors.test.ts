@@ -114,8 +114,7 @@ test('a refusal the form leaves to the catalogue says its words and names no req
 })
 
 // A failure keeps what it was, and the page words it as it shows it: a
-// language chosen while it shows rewords it, inline and in its toast
-// (`localization.md` § Text from the backend).
+// language chosen while it shows rewords it, inline and in its toast.
 test('an error shown before the language changes is reworded in the new language, inline and in its toast', () => {
   const refusal = new Worded('saved_full', 'The conversation keeps 200 messages saved for later', { limit: 200 })
   try {

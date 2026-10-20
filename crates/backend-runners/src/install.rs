@@ -1,13 +1,11 @@
-//! The runner installers (`builds-and-releases.md` § Packaging, `web-api-hosts.md`
-//! § Workspaces, devices, and attached hosts): a shell script for macOS and
-//! Linux and a PowerShell script for Windows, each naming the backend and
-//! one runner release. A script downloads its platform's runner from the
-//! backend, checks its SHA-256, installs it under an installation of its own
-//! per backend, drains an older runner of that installation before it
-//! upgrades, and starts the runner, which asks to be paired. It then shows
-//! the runner's pairing codes until the runner is paired, and the device's
-//! name and the removal command once it is. A script holds no credential:
-//! pairing grants device access.
+//! The runner installers (`builds-and-releases.md` § Packaging): a shell script
+//! for macOS and Linux and a PowerShell script for Windows, each naming the
+//! backend and one runner release. A script downloads its platform's runner from
+//! the backend, checks its SHA-256, installs it under an installation of its own
+//! per backend, drains an older runner of that installation before it upgrades,
+//! and starts the runner, which asks to be paired. It then shows the runner's
+//! pairing codes until the runner is paired, and the device's name and the removal
+//! command once it is. A script holds no credential: pairing grants device access.
 //!
 //! The scripts leave the runner's departure from its terminal to the runner
 //! (`crates/runner/src/console.rs`) and show only the lines it writes to its log,

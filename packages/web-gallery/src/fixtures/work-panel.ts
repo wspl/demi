@@ -53,13 +53,12 @@ export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace
 const CONVERSATION = 'gallery'
 
 /**
- * One work panel the way the product's work store holds it
- * (`web-application.md` § Work panel): its selection history, the pinned tabs' data,
- * and the tabs of a panel kept as the backend keeps them, with the
- * specimen's changes shown at once over them; the plugin pages' kinds are
- * bound to it over the specimen's files and its own conversation browser,
- * whose plugin opens and closes browser tabs for the panel's tabs as the
- * backend's does. Intents open in it as they open in the product.
+ * One work panel the way the product's work store holds it: its selection history,
+ * the pinned tabs' data, and the tabs of a panel kept as the backend keeps them,
+ * with the specimen's changes shown at once over them; the plugin pages' kinds are
+ * bound to it over the specimen's files and its own conversation browser, whose
+ * plugin opens and closes browser tabs for the panel's tabs as the backend's does.
+ * Intents open in it as they open in the product.
  */
 export function useGalleryWork(
   selection: string | null,

@@ -135,7 +135,7 @@ impl Channel<'_> {
     /// channel ends.
     async fn serve(&mut self) -> Result<Infallible, End> {
         // An account still to choose its password sees the account alone, until
-        // it is chosen, on this page or another (`web-api-settings.md` § Account API).
+        // it is chosen, on this page or another.
         let mut choosing = self.session.user.chooses_password;
         if choosing {
             let user = self.session.user.clone();
@@ -158,14 +158,13 @@ impl Channel<'_> {
                         .pass(super::SyncStep::Changes)
                         .await;
                     // The parts go in their order, each read only after the
-                    // change that marked it (`web-api-sync.md` § Page
-                    // synchronization): a part marked while another was read
-                    // goes first when it comes before it, and the part read
-                    // is read again after it, since the read may show a
-                    // later change than what the page has of the part
-                    // before. A login's completion, read after the provider
-                    // publication that marked the providers first, thereby
-                    // never reaches the page before its account.
+                    // change that marked it: a part marked while another was
+                    // read goes first when it comes before it, and the part
+                    // read is read again after it, since the read may show a
+                    // later change than what the page has of the part before. A
+                    // login's completion, read after the provider publication
+                    // that marked the providers first, thereby never reaches
+                    // the page before its account.
                     let mut pending = BTreeSet::new();
                     loop {
                         let marked = self.registration.take();

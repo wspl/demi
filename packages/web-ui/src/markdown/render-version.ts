@@ -2,8 +2,8 @@ import { readonly, shallowRef } from 'vue'
 import { appThemeStore } from '../theme/appTheme'
 
 // When rendered Markdown should render again: a chunk it waits for has
-// arrived, the highlighter, a language or KaTeX (`file-previews.md` § Code,
-// § Markdown), or the page's mode has changed, which code shows in.
+// arrived, the highlighter, a language or KaTeX, or the page's mode has
+// changed, which code shows in.
 
 const renderVersion = shallowRef(0)
 

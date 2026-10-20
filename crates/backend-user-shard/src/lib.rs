@@ -5,6 +5,11 @@
 //! shard implements what the Cloud, the conversations' host access, the
 //! conversation permissions and the plugin host need of it (`CloudShard`,
 //! `HostShard`, `PermissionShard`, `PluginShard`).
+//!
+//! A user's conversations, devices, workspaces and attachments belong to that
+//! user alone in both instance modes: an administrator's role gives no access to
+//! another user's conversations or files, and account administration and the
+//! shared instance's usage report are the only records the role reaches.
 
 pub mod automations;
 pub mod conversation;

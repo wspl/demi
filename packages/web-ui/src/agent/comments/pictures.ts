@@ -7,12 +7,12 @@ import { pictureQuote } from './anchors'
 
 /**
  * A picture in the agent's reply as a comment, a side question and Send to
- * Conversation take it (`comments-and-ask.md` § Images): the blob of the
- * user's it already is, for an attachment; the blob the page makes of the
- * bytes it shows, for a Host image, whose file may change or go, and for a
- * picture of the web whose site lets the page read it, so every provider
- * reads its bytes; or else the address the picture loads from, which a
- * provider that fetches addresses reads and any other names in a note.
+ * Conversation take it: the blob of the user's it already is, for an
+ * attachment; the blob the page makes of the bytes it shows, for a Host image,
+ * whose file may change or go, and for a picture of the web whose site lets the
+ * page read it, so every provider reads its bytes; or else the address the
+ * picture loads from, which a provider that fetches addresses reads and any
+ * other names in a note.
  */
 
 /** A blob of the user's: its name, its SHA-256 and its media type. */

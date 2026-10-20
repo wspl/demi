@@ -1,14 +1,13 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterAll, afterEach, expect, test } from 'bun:test'
 
-// The File view's tree follows the file it shows (`file-previews.md` § The
-// File view's bars): whenever the view shows a file, however it came, the
-// folders above it unfold, its row is selected and brought into view; a
-// file opened while another's folders still list wins; a file outside the
-// tree's root leaves no row selected. FileTree over a memory Host whose
-// listings can be held, on a page of happy-dom, which lays nothing out: each
-// row stands one pitch under the last and the tree's view is 200 px tall.
-// Tens of ms, besides the start of the page every happy-dom test pays.
+// The File view's tree follows the file it shows: whenever the view shows a
+// file, however it came, the folders above it unfold, its row is selected and
+// brought into view; a file opened while another's folders still list wins; a
+// file outside the tree's root leaves no row selected. FileTree over a memory
+// Host whose listings can be held, on a page of happy-dom, which lays nothing
+// out: each row stands one pitch under the last and the tree's view is 200 px
+// tall. Tens of ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 await import('../../__tests__/vue-components')

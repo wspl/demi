@@ -58,8 +58,8 @@ for (const outcome of ['rejected', 'error', 'closed', 'disconnected'] as const) 
 
 // A send the backend received waits for the backend's word however long
 // it takes, such as a slow store of the message's files, and
-// fails only with the refusal, which says why (`turns.md` § Requesting).
-// Before, the page gave up after its own 30 seconds. Fake timers; instant.
+// fails only with the refusal, which says why. Before, the page gave up after
+// its own 30 seconds. Fake timers; instant.
 test('a send has no deadline of its own and fails with the backend\'s refusal and its cause', async () => {
   const h = harness()
   let settled = false

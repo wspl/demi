@@ -58,7 +58,7 @@ const emit = defineEmits<{
   abortAgent: [id: string]
   /**
    * Read the page of the child's transcript before the window shown, as the
-   * reader nears its start (`web-application.md` § Transcript windows).
+   * reader nears its start.
    */
   read: [id: string]
   /** The block `reveal` names is in view. */

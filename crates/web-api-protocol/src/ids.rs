@@ -62,8 +62,8 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
-    /// A share's token (`sharing.md` § Safety): 128 random bits in URL-safe
-    /// base64, the only key to the share.
+    /// A share's token: 128 random bits in URL-safe base64, the only key to the
+    /// share.
     ShareToken
 );
 
@@ -104,8 +104,7 @@ demi_shared_types::id!(
 
 demi_shared_types::id!(
     /// A message saved for later's id, which the page chooses: a UUID. A save
-    /// sent again with the same id and content is the same save
-    /// (`web-api-conversations.md` § Messages saved for later).
+    /// sent again with the same id and content is the same save.
     SavedMessageId,
     check = uuid,
     error = NotUuid,
@@ -115,8 +114,7 @@ demi_shared_types::id!(
 demi_shared_types::id!(
     /// An edit of a message saved for later, which the page names: a UUID.
     /// The backend keeps each edit's answer by it for a day, so the same edit
-    /// sent again answers as it first did (`web-api-conversations.md` § Messages saved for
-    /// later).
+    /// sent again answers as it first did.
     SavedEditId,
     check = uuid,
     error = NotUuid,

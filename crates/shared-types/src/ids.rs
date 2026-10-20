@@ -164,9 +164,8 @@ crate::id!(
     CommandId
 );
 crate::id!(
-    /// An automation (`automations.md`): 128 random bits as 32 lowercase
-    /// hexadecimal digits, which its URL trigger's address names, so the
-    /// address cannot be guessed.
+    /// An automation: 128 random bits as 32 lowercase hexadecimal digits, which
+    /// its URL trigger's address names, so the address cannot be guessed.
     AutomationId
 );
 crate::id!(

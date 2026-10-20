@@ -3,10 +3,10 @@ import { afterEach, expect, test } from 'bun:test'
 
 // A message the backend refused shows Not Delivered under it with the
 // cause, and, for a failure inside the backend, the request ID the user
-// quotes (`turns.md` § Requesting); the failure carries no button, and the
-// message's own hover actions offer Copy, Edit and Delete, and the dock
-// Retry while sending again can deliver one (§ Following the agent's work).
-// A Vue app on a happy-dom page; a few ms besides the page's start.
+// quotes; the failure carries no button, and the message's own hover actions
+// offer Copy, Edit and Delete, and the dock Retry while sending again can
+// deliver one. A Vue app on a happy-dom page; a
+// few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')

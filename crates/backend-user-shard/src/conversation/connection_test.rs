@@ -1,9 +1,8 @@
-//! The provider **Test** (`web-api-settings.md` § Model configuration and provider
-//! inspection): one real, minimal request to the model the user names, with
-//! the account the user names or the active one. It runs on the acting
-//! user's shard, which builds the runtime with its own HTTP client, or over
-//! the acting user's Cloud for a provider that runs a process. A test that
-//! ran and failed is a result carrying the provider's own reason.
+//! The provider **Test**: one real, minimal request to the model the user names,
+//! with the account the user names or the active one. It runs on the acting user's
+//! shard, which builds the runtime with its own HTTP client, or over the acting
+//! user's Cloud for a provider that runs a process. A test that ran and failed is
+//! a result carrying the provider's own reason.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;

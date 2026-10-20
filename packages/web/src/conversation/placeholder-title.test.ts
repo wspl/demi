@@ -3,10 +3,9 @@ import { afterEach, expect, test } from 'bun:test'
 
 // A conversation before its first send has the placeholder title, which
 // holds no words: the page shows it as New conversation in the language the
-// reader has chosen, and changes with it (`conversations.md` § Conversation
-// titles), and a rename from it is an ordinary rename. The row is the
-// sidebar's, on a page of happy-dom. A few milliseconds, besides the start
-// of the page.
+// reader has chosen, and changes with it, and a rename from it is an ordinary
+// rename. The row is the sidebar's, on a page of happy-dom. A few milliseconds,
+// besides the start of the page.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
 await import('@demicodes/web-ui/__tests__/vue-components')

@@ -1,11 +1,11 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, spyOn, test } from 'bun:test'
 
-// Comments on a reply's words (`comments-and-ask.md`): Comment on selected
-// words saves the comment with its quote and where it stands; the reply
-// marks a waiting comment and, once a message sent it, marks it dimmer; the
-// sent message's bubble shows each quote and its comment before its text.
-// Vue apps on a happy-dom page; a few ms besides the page's start.
+// Comments on a reply's words: Comment on selected words saves the comment with
+// its quote and where it stands; the reply marks a waiting comment and, once a
+// message sent it, marks it dimmer; the sent message's bubble shows each quote
+// and its comment before its text. Vue apps on a happy-dom page; a few ms
+// besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -255,8 +255,8 @@ test('a steer carries its comments: its bubble shows each quote and comment, wai
 
 // Copy Message and Send to Conversation take a sent message's comments as the
 // model reads them, quotes and comments before its text, a message of
-// comments alone included (`comments-and-ask.md` § Sending them). Before,
-// they took the text alone, and a message of comments alone copied nothing.
+// comments alone included. Before, they took the text alone, and a message of
+// comments alone copied nothing.
 test.each([
   { holds: 'text', content: [{ type: 'text' as const, text: 'Otherwise go ahead.' }], text: 'Otherwise go ahead.' },
   { holds: 'no text', content: [], text: '' },
@@ -314,11 +314,11 @@ test.each([
   expect(sent).toEqual([whole])
 })
 
-// A comment's anchor is character offsets into the reply's own text
-// (`comments-and-ask.md` § Sending them): a selection across code and a link
-// finds the same words once the reply is drawn again with its text split
-// otherwise, as a theme change re-coloring its code does, and a control set
-// into the reply, as a code block's Copy, is not counted.
+// A comment's anchor is character offsets into the reply's own text: a
+// selection across code and a link finds the same words once the reply is drawn
+// again with its text split otherwise, as a theme change re-coloring its code
+// does, and a control set into the reply, as a code block's Copy, is not
+// counted.
 test('an anchor across code and a link finds the same words after the reply is drawn again', async () => {
   const { anchorOf, rangeOf } = await import('../comments/anchors')
   const draw = (code: string, control: string) => {
@@ -419,10 +419,9 @@ async function commentOnPicture(page: Awaited<ReturnType<typeof pictured>>, inde
   return field
 }
 
-// A comment on a picture of the reply (`comments-and-ask.md` § Images):
-// Comment in its menu opens the box, and the comment keeps the picture by
-// its place among the reply's pictures, its alt text as its words, and the
-// picture itself; the reply outlines it.
+// A comment on a picture of the reply: Comment in its menu opens the box, and
+// the comment keeps the picture by its place among the reply's pictures, its
+// alt text as its words, and the picture itself; the reply outlines it.
 test('Comment on a picture of the reply saves it by its place with the picture as its quote, and outlines it', async () => {
   const page = await pictured([['The login page', 'https://example.com/login.png'], ['The chart', CHART]], { waiting: [] })
   const field = await commentOnPicture(page, 1, 'Which connection?')
@@ -436,8 +435,7 @@ test('Comment on a picture of the reply saves it by its place with the picture a
 })
 
 // Return comments; ⌘Return (Control-Return elsewhere) sends the comment
-// alone at once, leaving the waiting ones as they are (`comments-and-ask.md`
-// § Comments).
+// alone at once, leaving the waiting ones as they are.
 test('in a comment\'s box Command-Return sends it alone now and adds nothing to the waiting comments', async () => {
   const sentNow: MessageComment[] = []
   const page = await pictured([['The chart', CHART]], { waiting: [], sendNow: (comment) => sentNow.push(comment) })
@@ -468,8 +466,7 @@ test('a picture comment finds its picture after the reply is drawn again, and no
 })
 
 // The bubble of a message sent with a comment on a picture shows a small
-// copy of the picture as the quote, then the comment (`comments-and-ask.md`
-// § Images).
+// copy of the picture as the quote, then the comment.
 test('a message sent with a picture comment shows the picture as its quote', async () => {
   const root = document.createElement('div')
   document.body.append(root)
@@ -491,10 +488,9 @@ test('a message sent with a picture comment shows the picture as its quote', asy
   expect(text.indexOf('Which connection?')).toBeLessThan(text.indexOf('Otherwise go ahead.'))
 })
 
-// Comments go in reading order, words and pictures together
-// (`comments-and-ask.md` § Sending them): a comment on words before the
-// reply's first picture goes before the comment on that picture, whichever
-// was made first.
+// Comments go in reading order, words and pictures together: a comment on words
+// before the reply's first picture goes before the comment on that picture,
+// whichever was made first.
 test('a comment on words before a picture goes before the comment on the picture', async () => {
   const { inReadingOrder } = await import('../comments/comments')
   const page = await pictured([['The chart', CHART]], { waiting: [] })
@@ -521,10 +517,9 @@ test('a comment on words before a picture goes before the comment on the picture
   expect(inReadingOrder(page.added, ['text-1']).map((comment) => comment.quote)).toEqual(['the chart', 'The chart'])
 })
 
-// A Host image still being read stands as a box with its alt text, and is a
-// picture as the image it becomes is (`comments-and-ask.md` § Images): a
-// later picture keeps its place, even of the same alt, and the words after
-// the box keep their offsets as it loads.
+// A Host image still being read stands as a box with its alt text, and counts
+// as the picture it becomes: a later picture keeps its place, even of
+// the same alt, and the words after the box keep their offsets as it loads.
 test('a picture still being read counts as a picture, so a later picture and later words keep their anchors as it loads', async () => {
   const { anchorOfText, pictureAnchor, pictureOf, rangeOf } = await import('../comments/anchors')
   const { imagePlaceholderHtml } = await import('../../markdown/image-placeholder')
@@ -546,8 +541,8 @@ test('a picture still being read counts as a picture, so a later picture and lat
 })
 
 // A message's comment on a picture goes with Copy Message and Send to
-// Conversation as the message's own pictures go (`comments-and-ask.md`
-// § Images): the picture as a file, before its comment and the message's text.
+// Conversation as the message's own pictures go: the picture as a file, before
+// its comment and the message's text.
 test('Copy Message and Send to Conversation take a picture comment\'s picture as a file before its comment', async () => {
   const menus = await import('../../ui/context-menu')
   const { provideSendTargets } = await import('../send-to-conversation')
@@ -604,10 +599,9 @@ test('Copy Message and Send to Conversation take a picture comment\'s picture as
   }
 })
 
-// A comment on a Host image keeps the picture's bytes before it is saved
-// (`comments-and-ask.md` § Images): until they are kept, the box stays open
-// with its text; a failure leaves both, says why, and the same press tries
-// again.
+// A comment on a Host image keeps the picture's bytes before it is saved: until
+// they are kept, the box stays open with its text; a failure leaves both, says
+// why, and the same press tries again.
 test('a comment on a Host picture keeps its box and text until the picture is kept, and after a failure', async () => {
   let attempts = 0
   const kept = { sha256: 'cd'.repeat(32), mediaType: 'image/png' }

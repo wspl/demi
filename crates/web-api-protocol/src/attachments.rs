@@ -1,6 +1,5 @@
-//! Uploads (`web-api-hosts.md` § Uploads and media): a file's bytes go to the
-//! caller's blobs with one attachment record, and a send, steer or edit
-//! frame names the upload by its id.
+//! Uploads: a file's bytes go to the caller's blobs with one attachment record,
+//! and a send, steer or edit frame names the upload by its id.
 
 use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp};
 use garde::Validate;
@@ -76,8 +75,8 @@ pub struct AttachmentDto {
 /// `?node=<id>` of `GET /conversations/:id/attachments/:attachment`: the
 /// node whose text names the attachment in a block, the root's by the
 /// conversation's id, a subagent's or a side question's by its own, which
-/// shows only what that agent uploaded (`file-previews.md` § Attachment
-/// blocks); absent, any attachment of the conversation.
+/// shows only what that agent uploaded; absent, any attachment of the
+/// conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationAttachmentQuery {

@@ -81,7 +81,7 @@ function collectReports(): { messages: string[]; stop: () => void } {
   return { messages, stop }
 }
 
-// `web-application.md` § Liveness and reconnection: what the return reads
+// What the return reads
 // may have waited in the browser since before the page went away, so only
 // a pong to the return's own ping shows the socket alive. Cost: fake
 // timers, a few milliseconds.

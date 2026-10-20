@@ -1,12 +1,11 @@
-//! Deleting a conversation (`storage.md` § Deleting a conversation,
-//! `web-api.md` § Sidebar mutations, read state and page synchronization):
-//! nothing refuses it. Its work stops as Stop stops it, its subagents and
-//! commands included, and its streams and Host operations end as an archive
-//! ends them; then one transaction of the control database removes its
-//! records and records the deletion as pending, its tree closes, its Hosts
-//! hear the conversation release, which closes its tabs in the conversation
-//! browser, its database goes, and the pending record last. The owner's blob
-//! namespace is collected after it (`lifecycle::collection`).
+//! Deleting a conversation (`storage.md` § Deleting a conversation): nothing
+//! refuses it. Its work stops as Stop stops it, its subagents and commands
+//! included, and its streams and Host operations end as an archive ends them;
+//! then one transaction of the control database removes its records and records
+//! the deletion as pending, its tree closes, its Hosts hear the conversation
+//! release, which closes its tabs in the conversation browser, its database
+//! goes, and the pending record last. The owner's blob namespace is collected
+//! after it (`lifecycle::collection`).
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;

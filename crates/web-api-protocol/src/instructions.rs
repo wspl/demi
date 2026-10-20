@@ -1,6 +1,6 @@
-//! The caller's personal instructions (`web-api-settings.md` § Instructions), which
-//! every node of the caller's conversations follows. The length rule is the
-//! accounts service's, which checks a body before it is written.
+//! The caller's personal instructions, which every node of the caller's
+//! conversations follows. The length rule is the accounts service's, which checks a
+//! body before it is written.
 
 use garde::Validate;
 use schemars::JsonSchema;

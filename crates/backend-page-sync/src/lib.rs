@@ -246,10 +246,9 @@ impl Drop for Registration {
 }
 
 /// How many times one part of each conversation changed since its shard
-/// started, which its summary carries (`web-api-sync.md` § Revisions counted
-/// in memory), such as its permission requests or its side questions; a
-/// conversation without an entry has changed none. It lives on the user's
-/// shard, which nothing else reaches.
+/// started, which its summary carries, such as its permission requests or its
+/// side questions; a conversation without an entry has changed none. It lives
+/// on the user's shard, which nothing else reaches.
 #[derive(Default)]
 pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);
 

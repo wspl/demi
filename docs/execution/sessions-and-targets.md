@@ -19,7 +19,7 @@ device's runner connection, and a shell environment on that Host.
 | Workspace | The workspace's device | The workspace path |
 
 These three are the only selections, and which one a destination is follows
-from its directory ([Conversations and projects](../product/conversations.md#conversations-and-projects)):
+from its directory (`crates/backend-database/src/selection.rs`):
 a move to a Host and directory, the user's or an agent's, selects the
 Cloud's directory of a conversation (any directory directly under
 `/home/demi/sessions`, so a Fork stays outside projects in its source's) or
@@ -59,9 +59,9 @@ A workspace is a named `(user, device, path)` record, one per device and
 directory. It groups conversations but
 does not own a sandbox or restrict filesystem access. Revoking its device
 removes the workspace but not its files; its conversations stay outside any
-project and cannot run there any more ([Web API](../product/web-api.md)).
+project and cannot run there any more (`crates/web-api-protocol/src/lib.rs`).
 Deleting a workspace archives its conversations
-([Conversations and projects](../product/conversations.md#conversations-and-projects));
+(`crates/backend-database/src/selection.rs`);
 restoring one moves it back to its directory by the rule above, which makes
 the workspace again. Default Cloud project paths are
 `/home/demi/projects/<workspaceId>`. A user can also select an existing directory.
@@ -124,7 +124,7 @@ those jobs to the runner that keeps them, and they report when it is back.
 For example, the user's laptop goes offline with a build running while the
 agent waits to run its next command there, and the user moves the
 conversation to the Cloud from the offline card
-([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)),
+(`packages/web/src/targets/execution.ts`),
 telling the agent.
 
 The backend performs one protected transition:
@@ -161,7 +161,7 @@ their original device; another directory on the same Cloud machine remains
 locally accessible.
 
 **Telling the agent.** A switch the user makes may tell the agent at once
-([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)):
+(`packages/web/src/targets/execution.ts`):
 with `notifyAgent`, the backend commits the switch and then admits a message
 from the user into the root, through the entry a permission decision uses
 ([The decision's message](../agent/permissions.md#the-decisions-message)), so
@@ -265,7 +265,7 @@ The conversation's agents attach the devices their work needs, with
 `demi host attach`, which the user allows for each host
 ([Hosts a conversation may reach](#hosts-a-conversation-may-reach)); the product offers
 no way to attach one by hand, and the user detaches one from the header's
-menu ([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)).
+menu (`packages/web/src/targets/execution.ts`).
 Each device appears once across the primary and attached bindings.
 An attached host goes by its device's name, the one the user sees in the
 header's menu and in Settings, with a numeric suffix when two names collide;
@@ -335,7 +335,7 @@ hosts it reaches:
 
 | Command | Does | Permission |
 | --- | --- | --- |
-| `demi conversation rename "<title>"` | Renames this conversation ([Conversation titles](../product/conversations.md#conversation-titles)) | `conversation.organize` |
+| `demi conversation rename "<title>"` | Renames this conversation (`crates/agent-server/src/title.rs`) | `conversation.organize` |
 | `demi conversation projects` | Lists the user's projects: name, Host, directory | `conversation.organize` |
 | `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there, and so puts it in that directory's project, or among Conversations for the Host's home ([Resolve a target](#resolve-a-target)); the primary Host it leaves is attached. The command checks the directory at once and fails, with nothing pending, when the host is offline or the path is no directory there (`/srv/x is not a directory on build-box`) | The host, when the conversation may not reach it |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |
@@ -489,7 +489,7 @@ Web app            Edge                          User's shard                 Ru
 ```
 
 The first is a file transfer: the bytes of a
-[file preview](../product/file-previews.md) or a download, which last as long as
+`packages/web-ui/src/files/FileView.vue` or a download, which last as long as
 a user watches a video, and of an upload, which last as long as the user's
 browser takes to send them. It holds Host access like any operation, until its
 last byte is delivered or the user's browser ends it. Two rules keep a forgotten
@@ -533,7 +533,7 @@ same way and ends the same way: a transition ends it instead of waiting for it
 to finish. A call that operates the Host, such as closing a tab, is activity; a
 look at what runs there, such as listing the tabs, is not.
 
-The [file watch](../product/web-api-hosts.md#file-watch), which carries the Host's
+The `crates/backend-http/src/file_watch.rs`, which carries the Host's
 reports of changed files to a page, is admitted and ended as a user stream is,
 and never wakes a stopped Cloud, whose files cannot change. It is not
 activity: a page that shows files does not keep a Cloud awake. When a stopped
@@ -555,10 +555,10 @@ touches no conversation's files. This table names every way to a Host:
 | The conversation's host access | The agent's tool calls and shell jobs, with the plugins' Host directories each job needs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a conversation browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host; a plugin's [reads of the conversation's files](../architecture/plugins.md#reading-a-conversations-files) | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
-| Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the [device log](../product/web-api-hosts.md#device-log); browsing a paired device's directories to choose a target, and reading
+| Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the `crates/backend-http/src/devices.rs`; browsing a paired device's directories to choose a target, and reading
 the workflows (`crates/backend-user-shard/src/conversation/workflows.rs`) of a directory
-for a new conversation there, on a paired device or the user's Cloud, with the [file watch](../product/web-api-hosts.md#file-watch) that keeps the dialog's listings current; the Claude Code versions (`crates/backend-user-shard/src/conversation/claude_cli.rs`) a provider's settings show, from the Claude Code machine; an [automation's change watch](../product/automations.md) whose target is a new conversation, on a paired device; a [port forward](port-forwarding.md)'s listener and connections | Nothing: the caller must own the device, or, for the Claude Code machine, own a Claude Code entry; its runner must be connected | Not woken |
-| Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; placing a provider's process (`crates/provider-claude-code/src/placement.rs`), a Claude Code sign-in (`crates/provider-claude-code/src/account.rs`) and its usage probe, on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine); an [automation's change watch](../product/automations.md) whose target is a new conversation, on the user's Cloud | The machine's admission; no file gate | Woken; a running reset is waited for |
+for a new conversation there, on a paired device or the user's Cloud, with the `crates/backend-http/src/file_watch.rs` that keeps the dialog's listings current; the Claude Code versions (`crates/backend-user-shard/src/conversation/claude_cli.rs`) a provider's settings show, from the Claude Code machine; an `crates/backend-user-shard/src/automations/mod.rs` whose target is a new conversation, on a paired device; a [port forward](port-forwarding.md)'s listener and connections | Nothing: the caller must own the device, or, for the Claude Code machine, own a Claude Code entry; its runner must be connected | Not woken |
+| Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; placing a provider's process (`crates/provider-claude-code/src/placement.rs`), a Claude Code sign-in (`crates/provider-claude-code/src/account.rs`) and its usage probe, on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine); an `crates/backend-user-shard/src/automations/mod.rs` whose target is a new conversation, on the user's Cloud | The machine's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no
 file gate and check no conversation's binding. Device access reaches a device

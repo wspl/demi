@@ -5,5 +5,5 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The text of `web-ui/src/ui` (`localization.md` § Where the text lives). */
+/** The text of `web-ui/src/ui`. */
 export const { t } = defineText('ui.ui', { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })

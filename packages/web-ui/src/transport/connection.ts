@@ -2,10 +2,9 @@ import type { SentenceText } from '../ui/ui-text'
 import { t } from './locales/text'
 
 /**
- * Why the page cannot reach the backend, as its connection banner says
- * (`web-application.md` § A page of another build): the browser has no
- * network, the backend said it shuts down and will be back, or a lost
- * synchronization channel's first new attempt failed too.
+ * Why the page cannot reach the backend, as its connection banner says: the
+ * browser has no network, the backend said it shuts down and will be back, or a
+ * lost synchronization channel's first new attempt failed too.
  */
 export type ConnectionProblem = 'offline' | 'restarting' | 'reconnecting'
 

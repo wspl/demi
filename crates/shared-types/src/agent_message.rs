@@ -99,8 +99,8 @@ pub enum AgentMessageEvent {
         #[garde(length(min = 1))]
         action: String,
         /// The ids of the request's categories, such as `skills.manage`,
-        /// which the page words the receipt row from (`localization.md`
-        /// § Text from the backend); empty for a credential's use.
+        /// which the page words the receipt row from; empty for a credential's
+        /// use.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(skip)]
         categories: Vec<String>,
@@ -143,8 +143,7 @@ pub enum AgentMessageEvent {
         #[garde(length(min = 1))]
         reason: String,
         /// Why, as the code of the refusal the page words it from, such as
-        /// `workspace_not_found` (`localization.md` § Text from the
-        /// backend); none for a failure no refusal names.
+        /// `workspace_not_found`; none for a failure no refusal names.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
         code: Option<String>,

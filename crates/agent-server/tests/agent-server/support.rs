@@ -1351,7 +1351,7 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
 }
 
 /// The side questions source as the product's: what the root's tree tells
-/// of its side questions (`comments-and-ask.md` § What the agent learns).
+/// of its side questions.
 #[derive(Default)]
 pub struct SideQuestionsSource {
     server: RefCell<Weak<AgentServer<TestProduct>>>,

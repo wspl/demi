@@ -6,7 +6,7 @@ import type { ContextMenuEntry } from '../ui/context-menu'
  * the reply's text block `blockId`, whose element is `root`: for selected
  * text, after Copy and before Send to Conversation, and for a picture,
  * after Copy Image and Save Image and before Send to Conversation, such as
- * Comment and Ask (`ReplyComments`, `comments-and-ask.md` § Images).
+ * Comment and Ask (`ReplyComments`).
  * `streaming` reads whether the reply is still arriving now, where a tool
  * that needs its whole text is disabled; read where the tool is drawn, so it
  * turns enabled as the reply ends under a selection that stays. A page that

@@ -1,9 +1,9 @@
-//! A conversation's side questions on the backend (`comments-and-ask.md`
-//! § Side questions): asking one, which opens the conversation's tree when
-//! it is closed and starts the side's node there, beside the root's turn;
-//! its card's title, which the user's small model writes as a
-//! conversation's; its follow-ups and Retry, which are turns of its node;
-//! its fold; and the list a page reads, whose revision every change raises.
+//! A conversation's side questions on the backend: asking one, which opens the
+//! conversation's tree when it is closed and starts the side's node there,
+//! beside the root's turn; its card's title, which the user's small model
+//! writes as a conversation's; its follow-ups and Retry, which are turns of its
+//! node; its fold; and the list a page reads, whose revision every change
+//! raises.
 
 use demi_agent_server::AskError;
 use demi_agent_store::SideOf;

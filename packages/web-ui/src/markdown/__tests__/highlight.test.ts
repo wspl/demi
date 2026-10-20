@@ -7,9 +7,8 @@ import { editorTheme } from '../../editor/theme/cmTheme'
 import { loadHighlighter } from '../highlight'
 import { renderMarkdown } from '../render'
 
-// Code shows in one highlighter and theme wherever it shows (`file-previews.md`
-// § Code). Cost: the highlighter and two languages loaded and a few lines
-// parsed, under 50 ms.
+// Code shows in one highlighter and theme wherever it shows. Cost: the
+// highlighter and two languages loaded and a few lines parsed, under 50 ms.
 
 // The page has the highlighter, as it does once the first code has shown.
 beforeAll(() => loadHighlighter())

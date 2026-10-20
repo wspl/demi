@@ -8,8 +8,7 @@ import { fileBrowserError, rawFileContents, readAtOf } from '../api/files'
 /**
  * How the page reads the uncommitted changes of a working tree, the
  * conversation's execution directory or the `directory` a child works in,
- * each a request (`web-api-hosts.md` § File text and working tree
- * changes): the list, both sides of one file, and the committed side's
+ * each a request: the list, both sides of one file, and the committed side's
  * bytes. The conversation's files service keeps what they answer.
  */
 export function workingTreeReads(conversationId: string, directory?: string): ChangeReads {
@@ -61,9 +60,8 @@ export function workingTreeReads(conversationId: string, directory?: string): Ch
 /**
  * How the page reads the history of the repository a working tree is in,
  * the conversation's execution directory or the `directory` a child works
- * in, each a request (`web-api-hosts.md` § File text and working tree changes):
- * its branches, a page of a branch's commits, one commit, one of its files'
- * two sides, and a commit's files' bytes.
+ * in, each a request: its branches, a page of a branch's commits, one commit,
+ * one of its files' two sides, and a commit's files' bytes.
  */
 export function historyReads(conversationId: string, directory?: string): HistoryReads {
   const id = encodeURIComponent(conversationId)

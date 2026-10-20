@@ -36,8 +36,8 @@ function wallClock(moment: Date, zone?: string): { year: number; month: number; 
 
 /**
  * A moment to the minute, short: Oct 17 09:00, as the clocks of `zone`
- * read it, an automation's times in the automation's zone
- * (`automations.md` § Triggers); the browser's zone without one.
+ * read it, an automation's times in the automation's zone; the browser's zone
+ * without one.
  */
 export function shortMoment(iso: string, zone?: string): string {
   const moment = new Date(iso)

@@ -21,16 +21,15 @@ import VerifyForm from './VerifyForm.vue'
 import { useVerification } from './verification'
 
 /**
- * Hand Off to Your Phone (`users.md` § User system). Opening it asks the
- * host for a code; when the backend wants the user to confirm it is them
- * first, the confirmation step comes before it: the password, red with
- * Required or the host's sentence under it as other forms are, or Use
- * Passkey where the host offers one. The code step shows the code's URL as
- * a QR code and the time left; an expired one offers Show New Code, which
- * asks again. Once the host names the browser the code was handed off to,
- * the dialog says so and closes by itself a moment later. `wording` words
- * it for who shows the code and who scans it; a `code-lead` slot puts
- * something above the QR code, such as Add User's first password.
+ * Hand Off to Your Phone. Opening it asks the host for a code; when the backend
+ * wants the user to confirm it is them first, the confirmation step comes
+ * before it: the password, red with Required or the host's sentence under it as
+ * other forms are, or Use Passkey where the host offers one. The code step
+ * shows the code's URL as a QR code and the time left; an expired one offers
+ * Show New Code, which asks again. Once the host names the browser the code was
+ * handed off to, the dialog says so and closes by itself a moment later.
+ * `wording` words it for who shows the code and who scans it; a `code-lead`
+ * slot puts something above the QR code, such as Add User's first password.
  */
 const props = withDefaults(defineProps<{
   isOpen: boolean

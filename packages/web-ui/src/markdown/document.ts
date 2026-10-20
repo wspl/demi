@@ -1,8 +1,7 @@
-// A Markdown file rendered the way GitHub shows a repository file
-// (`file-previews.md` § Markdown). Unlike a message, the file's own HTML
-// renders, so the output passes an allowlist; math and code render after it,
-// from their text, because their output depends on inline styles the
-// allowlist removes.
+// A Markdown file rendered the way GitHub shows a repository file. Unlike a
+// message, the file's own HTML renders, so the output passes an allowlist; math
+// and code render after it, from their text, because their output depends on
+// inline styles the allowlist removes.
 import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import type { MarkedExtension, Token, Tokens } from 'marked'
 import { gfmHeadingId } from 'marked-gfm-heading-id'
@@ -177,8 +176,8 @@ const otherTheme = new WeakSet<Node>()
 /**
  * The document as HTML the page can show as it is, and the Host files its
  * images name. `theme` is the theme the page shows, which picks a
- * `<picture>`'s source for a color scheme and GitHub's mode-only images
- * (`file-previews.md` § Files named in messages), so a new theme is a new render.
+ * `<picture>`'s source for a color scheme and GitHub's mode-only images, so a new
+ * theme is a new render.
  */
 export function renderMarkdownDocument(text: string, place: DocumentPlace, theme: ThemeMode): RenderedDocument {
   const html = documentMarked.parse(frontMatterAsCode(text), { async: false })
@@ -397,9 +396,8 @@ function hasScheme(target: string): boolean {
 }
 
 /**
- * What a link leads to (`file-previews.md` § Markdown): a heading of this
- * document, a web page, or a Host path; null for anything else, whose text
- * stays without the link.
+ * What a link leads to: a heading of this document, a web page, or a Host path;
+ * null for anything else, whose text stays without the link.
  */
 export function linkTarget(target: string, place: DocumentPlace): string | null {
   const trimmed = target.trim()

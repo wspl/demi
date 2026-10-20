@@ -902,9 +902,9 @@ fn two_comments(reply: &BlockId) -> Vec<MessageComment> {
 const TWO_COMMENTS_READ: &str = "> Upload in chunks\n> of 4 MB.\n\n4 MB feels large on 2G.\n\n\
     > the same 30-second timeout\n\nShould uploads get their own?";
 
-/// A steer carries its comments as a message does (`comments-and-ask.md` §
-/// Sending them): the page's pending steer shows them, the model reads them
-/// as quotes before the steer's text, and its `steer` block keeps them.
+/// A steer carries its comments as a message does: the page's pending steer
+/// shows them, the model reads them as quotes before the steer's text, and its
+/// `steer` block keeps them.
 #[tokio::test(flavor = "local")]
 async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
     let gate = Gate::new();
@@ -960,7 +960,7 @@ async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
 }
 
 /// A comment on a picture of the reply, sent with a text comment, as
-/// `comments-and-ask.md` § Images has the model read it: the text comment's
+/// the model reads it: the text comment's
 /// quote and comment, then the picture as an image the message carries,
 /// read from its blob, then its comment, then the message's own text. A
 /// model that reads no images gets a note naming the picture in its place.
@@ -1030,8 +1030,8 @@ async fn a_picture_comment_reaches_the_model_as_the_image_then_its_comment() {
     }
 }
 
-/// Fork copies a message's comments with it (`comments-and-ask.md` §
-/// Sending them): the fork's model reads them as the source's did.
+/// Fork copies a message's comments with it: the fork's model reads them as the
+/// source's did.
 #[tokio::test(flavor = "local")]
 async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
     let script = ScriptedRuntime::new([said("Uploads fail because"), said("Starting at 1 MB"), said("Done")]);
@@ -1078,10 +1078,10 @@ async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
     );
 }
 
-/// A message's comments (`comments-and-ask.md` § Sending them): the model
-/// reads each quoted text as a `>` quote with its comment after it, then the
-/// typed text; the `user` block keeps them apart from its content, and an
-/// edit of the message changes its text and keeps them.
+/// A message's comments: the model reads each quoted text as a `>` quote with
+/// its comment after it, then the typed text; the `user` block keeps them apart
+/// from its content, and an edit of the message changes its text and keeps
+/// them.
 #[tokio::test(flavor = "local")]
 async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_edit_keeps_them() {
     let script = ScriptedRuntime::new([said("Uploads fail because"), said("Starting smaller"), said("Starting at 1 MB")]);

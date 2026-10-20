@@ -50,11 +50,9 @@ export interface ModelMenuRows {
 }
 
 /**
- * The rows of the model menu (`web-application.md` § Web app scope: a profile's model is
- * chosen with the composer's menu, the same items plus Parent's Model): one
- * derivation for the composer, the profile editor and the small model's
- * menu, so the stand-in at the top, Parent's Model or Automatic, is the only
- * row another menu adds.
+ * The rows of the model menu: one derivation for the composer, the profile editor and
+ * the small model's menu, so the stand-in at the top, Parent's Model or Automatic, is
+ * the only row another menu adds.
  */
 export function modelMenuRows(
   providers: readonly ProviderInfo[],

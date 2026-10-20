@@ -25,9 +25,8 @@ const props = defineProps<{
 const command = computed(() => (props.input['script'] as string) ?? '')
 const renderVersion = useMarkdownRenderVersion()
 /**
- * The script highlighted as Bash, in the colors all code shows in
- * (`file-previews.md` § Code): its runs once Bash's parser is there, and its
- * text color, again in each mode.
+ * The script highlighted as Bash, in the colors all code shows in: its runs
+ * once Bash's parser is there, and its text color, again in each mode.
  */
 const commandColors = computed(() => {
   void renderVersion.value

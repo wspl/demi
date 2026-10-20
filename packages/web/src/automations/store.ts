@@ -35,11 +35,10 @@ function withAutomation(automations: AutomationDto[], automation: AutomationDto)
 }
 
 /**
- * The user's automations as the Automations page shows and edits them
- * (`automations.md` § Where the user sees them): the product state's
- * `automations` part, which the synchronization channel brings to every
- * page, read in the page's shapes; each edit shows at once and is written
- * after the earlier ones of the same automation.
+ * The user's automations as the Automations page shows and edits them: the
+ * product state's `automations` part, which the synchronization channel brings
+ * to every page, read in the page's shapes; each edit shows at once and is
+ * written after the earlier ones of the same automation.
  */
 export const useAutomations = defineStore('automations', () => {
   const product = useProduct()

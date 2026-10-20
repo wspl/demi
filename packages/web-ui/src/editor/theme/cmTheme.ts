@@ -15,9 +15,9 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
     },
     '&.cm-editor.cm-focused': { outline: 'none' },
     // Both code views are read-only, but read with the keyboard as well as
-    // the mouse (`file-previews.md` § Code): focused, they blink a caret in
-    // the theme's color, which the arrows move and Shift extends a selection
-    // from; without the focus the editor draws none.
+    // the mouse: focused, they blink a caret in the theme's color, which the
+    // arrows move and Shift extends a selection from; without the focus the
+    // editor draws none.
     '.cm-content': {
       caretColor: p.caret,
       fontFamily: 'inherit',

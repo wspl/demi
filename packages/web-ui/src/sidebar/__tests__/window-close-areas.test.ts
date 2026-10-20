@@ -4,10 +4,9 @@ import { afterEach, expect, test } from 'bun:test'
 // Only a press in the sidebar or the conversation's column closes the
 // newest of the session's windows; a press in the work panel or on its
 // divider closes nothing, so a subagent's changes can be read beside its
-// Agents window (`turns.md`, the dock's chips under § Recovering an
-// unfinished turn). The frame (SidebarLayout) on a happy-dom page 1280 px
-// wide, with a window in the page's stack as the Agents window puts itself
-// there: a few ms, besides the start of the page every happy-dom test pays.
+// Agents window. The frame (SidebarLayout) on a happy-dom page 1280 px wide,
+// with a window in the page's stack as the Agents window puts itself there: a
+// few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 await import('../../__tests__/vue-components')

@@ -24,14 +24,14 @@ import { useTextStart } from './text-start'
 import type { FileBrowserSource } from './types'
 
 /**
- * One file of a source as the File view shows it (`file-previews.md` § What
- * the user sees), under the bar that says what it is and holds what can be
- * done with it (§ The File view's bars): text read-only in the code editor,
- * an image, a video, an audio file or a PDF in the web browser's own viewer,
- * Markdown rendered as a document, and a card for a file the page cannot
- * show. The bar offers Preview and Source for Markdown and SVG, Copy of a
- * text file's whole text, and Download; `label`, when given, says what the
- * file is in its place, as an attachment's preview names its file and size.
+ * One file of a source as the File view shows it, under the bar that says what
+ * it is and holds what can be done with it: text
+ * read-only in the code editor, an image, a video, an audio file or a PDF in
+ * the web browser's own viewer, Markdown rendered as a document, and a card for
+ * a file the page cannot show. The bar offers Preview and Source for Markdown
+ * and SVG, Copy of a text file's whole text, and Download; `label`, when given,
+ * says what the file is in its place, as an attachment's preview names its file
+ * and size.
  *
  * The File view puts it beside its tree, and an attachment's preview shows
  * it alone over the attachment's copy (`AttachmentView`). A link in a
@@ -44,7 +44,7 @@ import type { FileBrowserSource } from './types'
  * says so quietly, with Retry; a file the Host cannot watch has the view say
  * that it shows it as last read, with Refresh. A text file too large to read
  * whole shows its start, with a line saying how much of it shows and
- * Download (`file-previews.md` § Getting the bytes).
+ * Download.
  */
 const props = withDefaults(defineProps<{
   source: FileBrowserSource
@@ -111,10 +111,9 @@ type TextState =
  * The folder of the file shown, whose listing says whether the file is a
  * symbolic link whose target is gone or cannot be read: such a link says so
  * in the file's place from the listing, whatever the read of the file
- * answers (`file-previews.md` § Symbolic links). The listing and the file
- * are asked for at once, so a file whose folder is not kept yet costs no
- * extra round trip; the tree's own listing, kept, when the file was opened
- * there.
+ * answers. The listing and the file are asked for at once, so a file whose
+ * folder is not kept yet costs no extra round trip; the tree's own listing,
+ * kept, when the file was opened there.
  */
 const folder = useShowing(
   () => props.source,
@@ -279,11 +278,11 @@ const place = computed<DocumentPlace | null>(() => props.path === null ? null : 
 
 /**
  * A link opened, from a message, Back, the crumbs or the tree, is a link
- * used (`file-previews.md` § Symbolic links): its folder, when kept, is
- * listed again, unless the tree has just done so to open it, and the file
- * is read again, at once, since neither the folder's watch nor the file's
- * sees its target come or go; so a link its listing called missing whose
- * target is back shows the file. A read on its way is joined, not repeated.
+ * used: its folder, when kept, is listed again, unless the tree has just done
+ * so to open it, and the file is read again, at once, since neither the
+ * folder's watch nor the file's sees its target come or go; so a link its
+ * listing called missing whose target is back shows the file. A read on its way
+ * is joined, not repeated.
  */
 function readOpenedLink(listFolder: boolean): void {
   if (props.path === null || listed.value?.link === undefined)

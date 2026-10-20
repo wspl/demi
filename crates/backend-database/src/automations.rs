@@ -1,8 +1,7 @@
-//! The users' automations and their runs (`automations.md` § Records): each
-//! automation's parts as the web contract carries them, its secrets sealed
-//! by the caller, a change watch's last output, and every run. The backend's
-//! scheduler reads what it needs of these when it starts and when one
-//! changes; nothing here polls.
+//! The users' automations and their runs: each automation's parts as the web
+//! contract carries them, its secrets sealed by the caller, a change watch's
+//! last output, and every run. The backend's scheduler reads what it needs of
+//! these when it starts and when one changes; nothing here polls.
 
 use demi_shared_types::{AutomationId, AutomationRunId, Timestamp, TurnId};
 use demi_web_api_protocol::automations::{AutomationTarget, PauseReason, RunNote, RunState, Trigger};

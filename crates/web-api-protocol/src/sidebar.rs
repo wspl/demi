@@ -1,6 +1,5 @@
-//! The sidebar's explicit order (`web-api.md` § Sidebar mutations, read
-//! state and page synchronization): a move of one row before another, or to
-//! the end.
+//! The sidebar's explicit order: a move of one row before another, or to the
+//! end.
 
 use demi_shared_types::Nullable;
 use garde::Validate;

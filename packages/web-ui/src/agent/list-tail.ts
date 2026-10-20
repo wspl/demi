@@ -5,6 +5,19 @@ import { queuedMessagesToRenderBlocks } from './queued-messages'
 import { turnStartingMessage } from './send-way'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 
+// The end of a running conversation changes in the frame that causes it, so the
+// list never twitches: it only grows, except where the user's own action shrinks
+// it (folding, editing, deleting) or asks for the change (Continue, Resume,
+// Retry), and a row that gives way to what comes next rolls over it in place
+// (`RowRoll`) instead of leaving while another appears. Messages that wait, the
+// pending steers and the queue, stand below the turn and never in its flow: what
+// the turn is doing is read from the transcript alone, so the tail row
+// (Requesting or Connecting) stands right after the transcript, above them.
+// The Requesting row says one word for as long as the provider is asked, since
+// which part of the system holds a message is no concern of the person waiting,
+// and a row that changed its word as Demi confirmed the message, or with each
+// retry, would show two names for one wait.
+
 /**
  * A compaction in progress: its divider, at the end of the transcript, where
  * the pass appends the marker that shows the finished one
@@ -26,7 +39,7 @@ export interface ListTailInput {
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
    * The waiting messages whose Recall is on its way, by id: their rows are
-   * gone from the press (`turns.md` § Steer or queue).
+   * gone from the press.
    */
   removing?: readonly string[]
   /**
@@ -47,10 +60,9 @@ export interface ListTail {
    */
   turn: MessageListBlock[]
   /**
-   * The messages that wait below the turn (`turns.md` § Following the
-   * agent's work): the steers, then the queue under its divider, each with
-   * the messages on their way that will be ones of them, shown from their
-   * send as what they will be, in the order they were sent.
+   * The messages that wait below the turn: the steers, then the queue under its
+   * divider, each with the messages on their way that will be ones of them,
+   * shown from their send as what they will be, in the order they were sent.
    */
   waiting: MessageListBlock[]
 }
@@ -64,10 +76,10 @@ export interface ListTail {
  * tells first. A message whose Recall is on its way shows nowhere. A message
  * whose delivery failed is followed by the row that tells it. A steer on its
  * way that starts the turn, as when nothing runs and the message before it
- * was not delivered, is the user's next message (`turns.md` § Following
- * the agent's work): it stands in the turn's flow, in the row it keeps.
- * A message not delivered stands here, at the end of what it was sent as,
- * only while no message sent after it shows (`undeliveredPlaces`).
+ * was not delivered, is the user's next message: it stands in the turn's flow,
+ * in the row it keeps. A message not delivered stands here, at the end of what
+ * it was sent as, only while no message sent after it shows
+ * (`undeliveredPlaces`).
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
   const written = new Set(input.blocks.flatMap((block) =>
@@ -136,9 +148,9 @@ export function rowMessageId(row: MessageListBlock): string | undefined {
 }
 
 /**
- * Where a message not delivered stands (`turns.md` § Following the agent's
- * work): where it was sent, before the first message sent after it that has
- * a row, in the transcript, among the steers, in the queue or on its way.
+ * Where a message not delivered stands: where it was sent, before the first
+ * message sent after it that has a row, in the transcript, among the steers, in
+ * the queue or on its way.
  */
 export type UndeliveredPlace =
   /** Before the row of the message `before`. */

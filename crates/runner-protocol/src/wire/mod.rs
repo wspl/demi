@@ -112,7 +112,7 @@ pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// reports them, each once (`crates/runner-host/src/subscriptions.rs`).
 pub const WATCH_GATHER: Duration = Duration::from_millis(100);
 /// How long a subscription's lease runs from the `fs_subscribe` or the
-/// `fs_renew` that started it, as each end counts it (`crates/runner-host/src/subscriptions.rs`, `web-api-hosts.md` § File watch).
+/// `fs_renew` that started it, as each end counts it (`crates/runner-host/src/subscriptions.rs`).
 pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 /// The most subscriptions one `fs_changed` names; more changed at once go
 /// in as many messages as they take, within the frame limit.

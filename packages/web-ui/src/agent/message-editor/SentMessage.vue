@@ -15,16 +15,15 @@ import { useMessageClipboard } from './message-clipboard'
 import { followMessageLink } from './message-links'
 
 /**
- * A sent message as the conversation shows it (`composer.md` § Writing a
- * message): drawn once from the composer's schema, each node as the schema
- * draws it and each file as its capsule, with what the composer's editor
- * draws over its text (code's colors, bare URLs as links), and no editor
- * behind it. Its text selects as any text does; a copy or a drag of it, or
- * of a capsule, carries that part of the message in every form, its
- * formatting and its files with it, as the composer's own copy does: each
- * node it draws says where it stands in the message's document, so the
- * page's selection maps to the document's positions, and the document's
- * slice between them is what goes, as ProseMirror's own copy takes it.
+ * A sent message as the conversation shows it: drawn once from the composer's
+ * schema, each node as the schema draws it and each file as its capsule, with
+ * what the composer's editor draws over its text (code's colors, bare URLs as
+ * links), and no editor behind it. Its text selects as any text does; a copy or
+ * a drag of it, or of a capsule, carries that part of the message in every
+ * form, its formatting and its files with it, as the composer's own copy does:
+ * each node it draws says where it stands in the message's document, so the
+ * page's selection maps to the document's positions, and the document's slice
+ * between them is what goes, as ProseMirror's own copy takes it.
  */
 const props = withDefaults(defineProps<{
   /** The message's Markdown, an attachment mark where each capsule stands. */
@@ -264,7 +263,7 @@ function copy(event: ClipboardEvent): void {
 /**
  * A drag of a capsule, or of the selected text, carries the message in
  * every form, its files with it, so a composer brings them back as capsules
- * without uploading them (`composer.md` § Attachments).
+ * without uploading them.
  */
 function dragStart(event: DragEvent): void {
   const transfer = event.dataTransfer

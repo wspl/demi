@@ -306,8 +306,7 @@ pub struct UserBlock {
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
     /// The comments sent with the message, in the order they were saved,
-    /// which the model reads before the content (`comments-and-ask.md`
-    /// § Sending them); omitted when there are none.
+    /// which the model reads before the content; omitted when there are none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub comments: Vec<MessageComment>,
@@ -319,7 +318,7 @@ pub struct UserBlock {
     pub preamble: Option<String>,
     /// The automation's run that sent the message, which the transcript
     /// names above it as a receipt names the agent that sent one; absent
-    /// for a message the user wrote (`automations.md` § What a run sends).
+    /// for a message the user wrote.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -353,8 +352,8 @@ impl UserBlock {
     }
 }
 
-/// The automation's run a message came from (`automations.md` § What a run
-/// sends): which automation, as it was named when it fired, and when.
+/// The automation's run a message came from: which automation, as it was named
+/// when it fired, and when.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutomationMark {
@@ -420,8 +419,7 @@ pub struct ContextBlock {
 /// sends whole.
 pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 
-/// The context source of what the user asked aside, in side questions
-/// (`comments-and-ask.md` § What the agent learns).
+/// The context source of what the user asked aside, in side questions.
 pub const SIDE_QUESTIONS_SOURCE: &str = "side_questions";
 
 /// The context source of the conversation's execution context
@@ -677,8 +675,7 @@ pub struct SteerBlock {
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
     /// The comments sent with it, which the model reads before its content
-    /// as a message's (`comments-and-ask.md` § Sending them); omitted when
-    /// there are none.
+    /// as a message's; omitted when there are none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub comments: Vec<MessageComment>,
@@ -852,8 +849,8 @@ pub struct ThinkingBlock {
     pub run: Option<BlockId>,
     /// The length in characters (Unicode scalar values) of the text without
     /// the white space around it, which a page's light form carries in
-    /// place of the text, so the page tells a withheld text from none
-    /// (`web-api-conversations.md` § Light form); omitted from a block whole.
+    /// place of the text, so the page tells a withheld text from none; omitted
+    /// from a block whole.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

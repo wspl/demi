@@ -1,13 +1,12 @@
-//! Automations (`automations.md`): the scheduler fires a time trigger's run
-//! into a new conversation filed out of the sidebar, and once for the times
-//! a backend that was down missed; a change watch records its first output,
-//! fires on a change and stops at its daily limit until the next day; a URL
-//! refuses every call without its secret alike, gathers a burst into one
-//! run, answers a repeated delivery as the first, counts what its limit
-//! holds back and makes a run's credential reads ask; and `demi automation`
-//! needs the user's permission, which a run's own agent cannot use. The
-//! model is the scripted family of the subagent scenarios; the device is a
-//! real runner. No test calls a real model.
+//! Automations: the scheduler fires a time trigger's run into a new
+//! conversation filed out of the sidebar, and once for the times a backend that
+//! was down missed; a change watch records its first output, fires on a change
+//! and stops at its daily limit until the next day; a URL refuses every call
+//! without its secret alike, gathers a burst into one run, answers a repeated
+//! delivery as the first, counts what its limit holds back and makes a run's
+//! credential reads ask; and `demi automation` needs the user's permission,
+//! which a run's own agent cannot use. The model is the scripted family of the
+//! subagent scenarios; the device is a real runner. No test calls a real model.
 
 use std::sync::Arc;
 use std::time::Duration;

@@ -3,8 +3,7 @@ import { ICON_PX } from '../../ui/icon-metrics'
 
 /**
  * The lines of a row's media that are gone, under the row, each saying why
- * it was not stored (`file-previews.md` § Media a tool returned); the
- * row's pictures stand in its own line.
+ * it was not stored; the row's pictures stand in its own line.
  */
 defineProps<{ lines: readonly string[] }>()
 </script>

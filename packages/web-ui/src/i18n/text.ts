@@ -2,10 +2,18 @@ import { createI18n, type NamedValue, type PickupPaths } from 'vue-i18n'
 import { LANGUAGES, type Language } from './languages'
 
 /**
- * The page's text (`localization.md` § Where the text lives): each package
- * keeps a catalogue per language, and reads it through the one vue-i18n
- * instance the app creates, under a scope of its own (`ui` for this
- * package, `plugins.<id>` for a plugin's), so no two packages' keys meet.
+ * The page's text: each package keeps a catalogue per language, and reads it
+ * through the one vue-i18n instance the app creates, under a scope of its own
+ * (`ui` for this package, `plugins.<id>` for a plugin's), so no two packages'
+ * keys meet. A package brings its own text, a plugin's included, so the shell
+ * knows none of it; a large package splits its catalogue by folder, so the text
+ * of one area is found beside its components. Keys name the place and the
+ * meaning, `settings.general.language`, never the English words, so rewording
+ * English keeps the key, and a new text is written in every language with the
+ * change that adds it. A count uses the catalogue's plural forms; Chinese,
+ * Japanese and Korean have a single one. Numbers, sizes, dates, times, ages and lists
+ * are formatted with `Intl` in the chosen language by the existing formatters
+ * (`ui/dates.ts`), never by hand in a component.
  */
 
 /**
@@ -153,9 +161,8 @@ export function findText(path: string, named: NamedValue = {}): string | null {
 }
 
 /**
- * A plugin's own text, under its plugin's id, which no other plugin has
- * (`localization.md` § Where the text lives): a plugin brings its text with
- * it, and the shell knows none of it.
+ * A plugin's own text, under its plugin's id, which no other plugin has: a
+ * plugin brings its text with it, and the shell knows none of it.
  */
 export function definePluginText<Schema extends object>(plugin: string, catalogue: Catalogue<Schema>): Text<Schema> {
   return defineText(`plugins.${plugin}`, catalogue)

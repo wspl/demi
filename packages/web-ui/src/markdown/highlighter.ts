@@ -10,9 +10,9 @@ import type { CodeRun } from './highlight'
 import { escapeHtml } from './html'
 
 // The highlighter of code outside the editor, in the editor's highlighter and
-// theme (`file-previews.md` § Code): its languages' parsers, loaded as a fence
-// first names each, and its highlight style's classes. A chunk of its own,
-// which `highlight.ts` loads as the first code shows.
+// theme: its languages' parsers, loaded as a fence first names each, and its
+// highlight style's classes. A chunk of its own, which `highlight.ts` loads as
+// the first code shows.
 
 /** The highlighter, which tells `languageArrived` each time a language it was asked for has loaded. */
 export function createHighlighter(languageArrived: () => void) {

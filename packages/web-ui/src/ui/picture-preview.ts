@@ -13,10 +13,9 @@ export interface PreviewPage {
 }
 
 /**
- * The CSS size of a picture in its hover card (`file-previews.md` § A picture's
- * preview on hover, The card): its own size on the screen, its pixels one to
- * one as a browser shows an image at 100%, scaled down to fit 70% of the
- * page's width and of its height, never enlarged.
+ * The CSS size of a picture in its hover card: its own size on the screen, its
+ * pixels one to one as a browser shows an image at 100%, scaled down to fit 70%
+ * of the page's width and of its height, never enlarged.
  */
 export function previewBox(size: PixelSize, pixelRatio: number, page: PixelSize): PixelSize {
   const own = { width: size.width / pixelRatio, height: size.height / pixelRatio }
@@ -37,11 +36,10 @@ export interface PreviewPlacement {
 }
 
 /**
- * Where a hover card goes (`file-previews.md` § A picture's preview on
- * hover, Where): above its picture when the whole card fits there, below it
- * when it fits there instead, and otherwise on the side with more room, its
- * picture scaled down so the whole card fits that side, so it never covers
- * the picture it shows. `picture` is the picture's size in the card
+ * Where a hover card goes: above its picture when the whole card fits there,
+ * below it when it fits there instead, and otherwise on the side with more
+ * room, its picture scaled down so the whole card fits that side, so it never
+ * covers the picture it shows. `picture` is the picture's size in the card
  * (`previewBox`), `chrome` the height the card adds to it (its padding and
  * caption), and `room` the space between the picture and the page's top and
  * bottom edges; the card keeps `PREVIEW_GAP` to the picture and to the edge.

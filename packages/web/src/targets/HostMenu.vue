@@ -10,9 +10,8 @@ import { executionFor, hostDeviceOptions, primaryHostOf } from './execution'
 import { useConversations } from '../conversation/store'
 
 /**
- * The header's host menu over the product's data (`hosts.md` § Where a
- * conversation runs). Choosing a Host is the header's to carry out, which
- * asks before a conversation with messages moves.
+ * The header's host menu over the product's data. Choosing a Host is the
+ * header's to carry out, which asks before a conversation with messages moves.
  */
 const props = defineProps<{
   conversation: Conversation

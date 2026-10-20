@@ -1,7 +1,6 @@
-//! A workspace on the user's Cloud (`web-api-hosts.md` § Workspaces, devices, and
-//! attached hosts): a new project directory there, made through the Cloud's
-//! machine access (`sessions-and-targets.md` § Every way to a Host), which
-//! wakes a stopped Cloud.
+//! A workspace on the user's Cloud: a new project directory there, made through
+//! the Cloud's machine access (`sessions-and-targets.md` § Every way to a Host),
+//! which wakes a stopped Cloud.
 
 use demi_backend_database::workspaces::{WorkspaceCreation, WorkspaceRecord, new_workspace_id};
 use demi_host_interface::{Host as _, HostFs, MkdirOptions};

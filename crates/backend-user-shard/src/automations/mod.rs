@@ -1,7 +1,7 @@
-//! The user's automations in their shard (`automations.md`): what the
-//! Automations page and `demi automation` read and change, the scheduler
-//! that owns every trigger, a run from its trigger to its turn's end, the
-//! change watches, and the calls of the URL triggers.
+//! The user's automations in their shard: what the Automations page and `demi
+//! automation` read and change, the scheduler that owns every trigger, a run
+//! from its trigger to its turn's end, the change watches, and the calls of the
+//! URL triggers.
 //!
 //! The scheduler is one task per shard. It reads the user's automations when
 //! the shard starts and whenever one changes, fires what is due, and sleeps
@@ -56,9 +56,8 @@ pub(crate) struct Automations {
 /// What an automation has under way in the shard: a URL's burst waiting
 /// out its quiet, and a change watch's check. Pausing it, editing its
 /// trigger or deleting it drops both, which stops their tasks, and moves
-/// its generation on, so what either finishes after is not recorded
-/// (`automations.md` § An automation, State). The shard's end drops them
-/// all.
+/// its generation on, so what either finishes after is not recorded. The
+/// shard's end drops them all.
 #[derive(Default)]
 struct Pending {
     generation: u64,
@@ -268,8 +267,7 @@ impl Shard {
             },
             prompt: String::new(),
             // The model the user's next new conversation outside projects
-            // starts with, as the composer's (`automations.md` § An
-            // automation); none before the first choice.
+            // starts with, as the composer's; none before the first choice.
             model: control.preferences(self.user().clone()).await?.last_model,
             paused: true,
             paused_because: None,
@@ -559,11 +557,10 @@ impl Shard {
     }
 
     /// Fires the automations of the user as their times come, until the
-    /// shard closes (`automations.md` § Records): it settles the runs a run
-    /// of the backend before left running, then fires what is due, starts
-    /// the change watches whose time came, and sleeps until the nearest next
-    /// time or a change of the automations. A time that passed while the
-    /// backend was down fires once.
+    /// shard closes: it settles the runs a run of the backend before left
+    /// running, then fires what is due, starts the change watches whose time
+    /// came, and sleeps until the nearest next time or a change of the
+    /// automations. A time that passed while the backend was down fires once.
     pub(crate) async fn follow_automations(self: Rc<Self>) {
         self.settle_left_runs().await;
         self.resume_pending_calls().await;
@@ -727,7 +724,7 @@ impl Shard {
 
 /// Opens the shard of every user who has an automation, whose scheduler
 /// then fires what a backend that was down missed and waits for the next
-/// times (`automations.md` § Records).
+/// times.
 pub async fn start_schedulers(
     control: &demi_backend_database::control::ControlService,
     shards: &crate::shard::Shards,

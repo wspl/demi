@@ -2,8 +2,7 @@ import type { ProductState, SyncEvent } from '../api/generated/web-api'
 
 /**
  * A page's synchronization channel in a test, which the test plays as the
- * backend would (`web-api-sync.md` § Page synchronization): it opens the channel,
- * sends its messages and ends it.
+ * backend would: it opens the channel, sends its messages and ends it.
  */
 export class TestChannel extends EventTarget {
   static readonly CONNECTING = 0

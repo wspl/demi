@@ -16,18 +16,17 @@ import { ICON_PX } from '../ui/icon-metrics'
 import { SEARCH_QUERY_MAX, useConversationSearch, type SearchRow, type SearchSource } from './search'
 
 /**
- * The search window (`conversations.md` § Finding a conversation), which ⌘K and
- * Search in the sidebar open, as ⌘K does in Slack, Linear and ChatGPT: a
- * field, and under it the most recent conversations until the user types,
- * then, once typing pauses, the conversations that match. Each row shows the
- * title and the line of the message that matched, the matches marked in
- * both, when the conversation was last active, and Archived for an archived
- * one. The window is as tall as its list, up to a limit past which the list
- * scrolls, and hangs from the top, so the field stays put as the list
- * changes, as in Spotlight and Raycast. ↑ and
- * ↓ move the selection, Return or a click opens the selected conversation,
- * and Escape closes the window. An input method's Return picks its
- * candidate and opens nothing.
+ * The search window, which ⌘K and Search in the sidebar open, as ⌘K does in
+ * Slack, Linear and ChatGPT: a field, and under it the most recent
+ * conversations until the user types, then, once typing pauses, the
+ * conversations that match. Each row shows the title and the line of the
+ * message that matched, the matches marked in both, when the conversation was
+ * last active, and Archived for an archived one. The window is as tall as its
+ * list, up to a limit past which the list scrolls, and hangs from the top, so
+ * the field stays put as the list changes, as in Spotlight and Raycast. ↑ and ↓
+ * move the selection, Return or a click opens the selected conversation, and
+ * Escape closes the window. An input method's Return picks its candidate and
+ * opens nothing.
  */
 const props = defineProps<{
   isOpen: boolean

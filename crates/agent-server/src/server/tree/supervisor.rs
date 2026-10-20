@@ -105,7 +105,7 @@ const SHOW_RECENT_TOOLS: usize = 8;
 /// Why the root's directory does not change (`crates/agent-server/src/node/mod.rs`).
 const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.";
 /// Why a side question starts no subagent, sends no message and keeps its
-/// directory (`comments-and-ask.md` § Side questions).
+/// directory.
 const SIDE_SPAWNS: &str = "a side question cannot start subagents";
 const SIDE_SENDS: &str = "a side question cannot send messages to agents";
 const SIDE_CWD: &str = "a side question works in the conversation's directory and cannot change it";
@@ -1587,8 +1587,7 @@ impl<H: HostResolver> Tree<H> {
     /// Every child as [`subagent_summaries`](Self::subagent_summaries)
     /// lists it, each with the result of a completed round: what the
     /// conversation's subagent list answers while the tree is live, so the
-    /// open's `subagents` frame never takes back a child the list showed
-    /// (`web-application.md` § Opening a conversation shows in two steps).
+    /// open's `subagents` frame never takes back a child the list showed.
     pub fn subagent_jobs(&self, placement: Option<&Placement>) -> Vec<SubagentJob> {
         self.summaries
             .borrow()

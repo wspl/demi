@@ -1,6 +1,5 @@
-//! A conversation's permission requests (`web-api-conversations.md` § Conversation
-//! permissions, `permissions.md`): what a page reads to show the card above
-//! the composer, and the decision it sends.
+//! A conversation's permission requests (`permissions.md`): what a page reads to
+//! show the card above the composer, and the decision it sends.
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use serde_with::rust::unwrap_or_skip;

@@ -284,7 +284,7 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
     assert_eq!(field(&failed.received[0], "exitCode"), "3");
 
     // A report's title brings the call that started it into view, wherever
-    // the transcript is (`web-api-conversations.md` § Subagents and commands).
+    // the transcript is.
     let call = backend
         .get(&format!("/api/conversations/{ENDED}/commands/{command}"), Some(&master))
         .await;

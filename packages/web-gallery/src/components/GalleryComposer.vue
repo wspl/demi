@@ -354,8 +354,8 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
 /**
  * Sends the draft the way the composer chose: at once, as a steer, or to the
  * queue. A message whose files still upload shows at once and waits for
- * them, as the product's does (`composer.md` § Writing a message); a steer or
- * a queued message is handed on once they are in.
+ * them, as the product's does; a steer or a queued message is handed on once
+ * they are in.
  */
 function submit(way: SendWay) {
   const sent = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
@@ -513,9 +513,8 @@ function handOn(text: string, sent: ComposerAttachment[], way: SendWay): boolean
 
 /**
  * Recall gives a message back into this composer when it is empty, as
- * the product's does (`turns.md` § Steer or queue): its text, and its
- * files as capsules a paste brings back, the caret at its end; a draft it
- * holds stays as it is.
+ * the product's does: its text, and its files as capsules a paste brings back,
+ * the caret at its end; a draft it holds stays as it is.
  */
 const recall: RecallComposer = {
   takeBack(message) {

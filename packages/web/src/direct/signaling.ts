@@ -1,15 +1,12 @@
 /**
- * A device's signaling socket (`web-api-hosts.md` § Direct channel): the page's
- * introduction to the device's runner, for both of the page's peers with it,
- * `files` and `live` (`direct-channel.md` § Making the channel), each
- * message naming its peer. It carries one offer at a time for each peer and
- * its answer, each side's candidates found after them, and the page's
- * probes of the relay path with their answers; a socket that brings nothing, not even a heartbeat, for as
- * long as the page's sockets may is broken, and a closed or broken socket
- * connects again after the page's reconnect waits (`web-application.md`
- * § Liveness and reconnection). Its close closes the runner's peers, and the
- * backend closes a peer too when the user turns a plugin on or off, which
- * the socket says so that the page offers again at once.
+ * A device's signaling socket: the page's introduction to the device's runner, for both of the page's
+ * peers with it, `files` and `live` (`direct-channel.md` § Making the channel), each message naming its
+ * peer. It carries one offer at a time for each peer and its answer, each side's candidates found after
+ * them, and the page's probes of the relay path with their answers; a socket that brings nothing, not
+ * even a heartbeat, for as long as the page's sockets may is broken, and a closed or broken socket
+ * connects again after the page's reconnect waits. Its close closes the runner's peers, and the backend
+ * closes a peer too when the user turns a plugin on or off, which the socket says so that the page offers
+ * again at once.
  */
 import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'

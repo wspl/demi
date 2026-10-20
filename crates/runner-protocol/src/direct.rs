@@ -387,8 +387,7 @@ pub struct ChannelRefusal {
 /// answers for the same failure, and the runner's words. A `text` of a file
 /// that is binary or too large also carries the file's version and the
 /// Host's number before it read, as the relay's 415 and 413 carry its ETag
-/// and `X-Demi-Read-At`, since such a file is an answer like any other
-/// (`web-api-hosts.md` § File text and working tree changes).
+/// and `X-Demi-Read-At`, since such a file is an answer like any other.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChannelError {

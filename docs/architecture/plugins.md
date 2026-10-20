@@ -346,10 +346,10 @@ again: not a job's end, not a reconnect, not a timer.
 
 ### Panel kinds
 
-A plugin's page shows [work panel](../product/web-application.md#work-panel)
+A plugin's page shows `packages/web-ui/src/agent/panel-tabs.ts`
 tabs of kinds it declares, and the manifest names the kinds whose tabs the
 backend keeps, such as `plugin-browser`'s `browser`. The backend keeps each
-conversation's tabs ([Work panel state](../product/web-api-conversations.md#work-panel-state))
+conversation's tabs (`crates/backend-http/src/panel.rs`)
 and lets the plugin that names a kind take part in its tabs:
 
 - **The user's changes reach the plugin.** When the user removes a tab of
@@ -364,7 +364,7 @@ and lets the plugin that names a kind take part in its tabs:
 - **The plugin changes its own tabs.** Through the port, the plugin lists,
   creates, updates and removes the tabs of its kinds in the request's
   conversation, as the page does, with ids that are used once
-  ([Work panel state](../product/web-api-conversations.md#work-panel-state)). For example,
+  (`crates/backend-http/src/panel.rs`). For example,
   the browser plugin writes the browser's tab id into the tab it opened, and
   adds a tab for each tab the agent opened.
 
@@ -691,8 +691,8 @@ not use.
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
 | `image` | Image Generation | `plugin-image` | The `demi image` group, rpc leaves; Host file reads; the Providers service | None | [Image generation](../agent/images.md) |
-| `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
-| `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
+| `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | `packages/web-ui/src/files/ChangeView.vue`, [Edit tracking](../execution/edit-tracking.md) |
+| `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | `packages/web-ui/src/files/FileView.vue` |
 
 Besides the plugins, the components that carry them are:
 
@@ -718,16 +718,16 @@ manifest, and each marked changed on its own, through the port:
 
 | Scope | Holds, for example | Reaches the pages |
 | --- | --- | --- |
-| User | The user's skill sources | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user ([Page synchronization](../product/web-api-sync.md#page-synchronization)) |
-| Conversation | The conversation browser's tab list | By revision, as a draft does: the conversation's summary carries the revision of each plugin's conversation state, and a page that shows the conversation reads the state when the revision is higher than the one it holds ([Conversation state of plugins](../product/web-api-sync.md#conversation-state-of-plugins)) |
+| User | The user's skill sources | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user (`crates/backend-http/src/sync.rs`) |
+| Conversation | The conversation browser's tab list | By revision, as a draft does: the conversation's summary carries the revision of each plugin's conversation state, and a page that shows the conversation reads the state when the revision is higher than the one it holds (`crates/backend-http/src/plugins.rs`) |
 
 The plugin host answers a read of either scope with a `page_state` request
 for that scope, and counts the revision of each conversation's state in
-memory ([Revisions counted in memory](../product/web-api-sync.md#revisions-counted-in-memory)). A page
+memory (`crates/backend-user-shard/src/services.rs`). A page
 call is `POST /api/plugins/:plugin/calls/:method` for a method of the user
 scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method` for one
 of the conversation scope, with the parameters as its JSON body
-([Web API](../product/web-api-sync.md#plugin-calls)). The edge authenticates the
+(`crates/backend-http/src/plugins.rs`). The edge authenticates the
 session, the plugin host validates the parameters against the method's
 declared schema, as a command's arguments are validated
 ([Contracts](contracts.md#validation-at-entry)), and the user's instance

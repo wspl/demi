@@ -1,8 +1,7 @@
-//! The product's `demi notify` group (`turns.md` § The agent's
-//! notifications): `send` sends the user a notification from the
-//! conversation, at most 3 a minute and 30 an hour; `status` says whether
-//! one would reach the user. Neither needs a permission, and no command
-//! changes which events notify, which each browser chooses.
+//! The product's `demi notify` group: `send` sends the user a notification from
+//! the conversation, at most 3 a minute and 30 an hour; `status` says whether
+//! one would reach the user. Neither needs a permission, and no command changes
+//! which events notify, which each browser chooses.
 
 use std::rc::{Rc, Weak};
 
@@ -96,9 +95,8 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
         title,
         body: body.map(|body| body.trim().to_owned()).unwrap_or_default(),
     };
-    // The run whose message this turn works for notified (`automations.md`
-    // § Runs): it ends Notified, and stays unread until the user opens the
-    // conversation.
+    // The run whose message this turn works for notified: it ends Notified, and
+    // stays unread until the user opens the conversation.
     if let Some((mark, _)) = shard.automation_input(&conversation)
         && shard.services().control.notify_run(mark.run_id).await.map_err(failed)?
     {

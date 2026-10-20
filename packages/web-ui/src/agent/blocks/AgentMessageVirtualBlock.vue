@@ -93,7 +93,7 @@ const transcript = useTranscript()
 // show only the attachments it uploaded.
 const files = useMessageFiles()
 provideMessageFiles(() => blockMessageFiles(files(), transcript?.directory(props.block.id) ?? null, transcript?.node ?? null))
-// A light block's row opens to read it whole (`web-api-conversations.md` § Light form).
+// A light block's row opens to read it whole.
 provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
 const entersAsChrome = computed(() =>

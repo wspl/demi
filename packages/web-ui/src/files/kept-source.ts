@@ -6,8 +6,7 @@
  * when it is read again; a one-shot read answers from what is current, and
  * reads otherwise. The source's own writes edit the listings they change as
  * their answers tell, without listing them again: the Host's watch reports
- * the write, and the folder is listed once for it (`web-application.md`
- * § Requests for one action).
+ * the write, and the folder is listed once for it.
  */
 import { reactive } from 'vue'
 import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'

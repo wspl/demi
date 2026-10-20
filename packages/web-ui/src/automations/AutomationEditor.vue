@@ -42,12 +42,11 @@ import {
 import { cronWords, fieldMoment, intervalOf, minutesOf, pausedWords, runLine, shortMoment, weekdayName, zonedMoment } from './words'
 
 /**
- * One automation (`automations.md` § Where the user sees them), every part
- * editable in place as a provider's page is: its name, On or Paused and Run
- * Now in its header; its trigger, target, prompt and model; its runs,
- * newest first, each opening its conversation; and Delete, which asks
- * first. Every edit is one `change` of the parts it changes, which the host
- * saves.
+ * One automation, every part editable in place as a provider's page is: its
+ * name, On or Paused and Run Now in its header; its trigger, target, prompt and
+ * model; its runs, newest first, each opening its conversation; and Delete,
+ * which asks first. Every edit is one `change` of the parts it changes, which
+ * the host saves.
  */
 const props = defineProps<{
   automation: Automation

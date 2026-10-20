@@ -594,9 +594,8 @@ impl ControlService {
             }
             // While the conversation works for a run a URL started, every
             // read asks, whatever the conversation's grants: another
-            // system's call wrote part of what its agent reads
-            // (`automations.md` § What a run sends). An allowance then
-            // covers one read, the first after it.
+            // system's call wrote part of what its agent reads. An allowance
+            // then covers one read, the first after it.
             let since = match asks_since {
                 Some(started) => {
                     let used = stored.last_used_at.map_or(i64::MIN, |used| used.as_millisecond());
@@ -862,7 +861,7 @@ fn allow(
 
 /// Why an answer does not fit its request: its English is the refusal's
 /// message, and the field and the limit it names are the values the page
-/// words it with (`localization.md` § Text from the backend).
+/// words it with.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AnswerProblem {
     /// An allow of a credential request came without its values.
@@ -886,7 +885,7 @@ pub enum AnswerProblem {
 }
 
 /// Whether `values` holds a value of at most 64 KiB for each of `fields`
-/// and nothing else (`web-api-conversations.md` § Conversation permissions).
+/// and nothing else.
 fn fitting(
     fields: &[CredentialField],
     values: &BTreeMap<String, String>,

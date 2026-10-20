@@ -1,7 +1,7 @@
-//! Automations (`automations.md`): what the Automations page reads and
-//! changes, and the rules each part follows wherever it arrives, a page's
-//! body or an agent's `demi automation` alike. The backend's scheduler reads
-//! the schedule; this crate only carries it.
+//! Automations: what the Automations page reads and changes, and the rules each
+//! part follows wherever it arrives, a page's body or an agent's `demi
+//! automation` alike. The backend's scheduler reads the schedule; this crate
+//! only carries it.
 
 use demi_shared_types::{AutomationId, AutomationRunId, Nullable, Timestamp};
 use garde::Validate;
@@ -73,8 +73,7 @@ impl Weekday {
     }
 }
 
-/// When a time trigger fires, in the automation's time zone
-/// (`automations.md` § An automation).
+/// When a time trigger fires, in the automation's time zone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(
     tag = "kind",
@@ -159,7 +158,7 @@ fn not_blank(text: &str, _: &()) -> garde::Result {
     }
 }
 
-/// Where an automation's runs work (`automations.md` § An automation).
+/// Where an automation's runs work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(
     tag = "kind",
@@ -191,7 +190,7 @@ pub enum PauseReason {
     ConversationDeleted,
 }
 
-/// Where a run stands (`automations.md` § Runs).
+/// Where a run stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RunState {
@@ -373,7 +372,7 @@ pub struct AutomationSecret {
 }
 
 /// The run of an automation a conversation is filed under, out of the
-/// sidebar, until the user answers it or moves it (`automations.md` § Runs).
+/// sidebar, until the user answers it or moves it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FiledRun {

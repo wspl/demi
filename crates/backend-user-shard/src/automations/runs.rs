@@ -1,10 +1,9 @@
-//! One run of an automation (`automations.md` § Runs, § When the target
-//! cannot run it): recorded as it fires, before anything else, so it never
-//! starts twice; skipped when its target's device is offline, after the
+//! One run of an automation: recorded as it fires, before anything else, so it
+//! never starts twice; skipped when its target's device is offline, after the
 //! restart hold for one the backend's own restart disconnected, or its
 //! conversation is gone; otherwise its message goes to a new conversation,
-//! filed under the automation, or wakes the existing one, queued behind a
-//! turn that runs. It ends with the turn its message started.
+//! filed under the automation, or wakes the existing one, queued behind a turn
+//! that runs. It ends with the turn its message started.
 
 use std::rc::Rc;
 
@@ -177,9 +176,9 @@ impl Shard {
 
     /// The automation's run whose message the conversation works for, with
     /// when it came: from that message until the user next writes to the
-    /// conversation, every turn of its tree, whatever the run's state
-    /// (`automations.md` § What a run sends). None while the user's own
-    /// message is the latest, or for a conversation no tree holds.
+    /// conversation, every turn of its tree, whatever the run's state. None
+    /// while the user's own message is the latest, or for a conversation no
+    /// tree holds.
     pub(crate) fn automation_input(&self, conversation: &ConversationId) -> Option<(AutomationMark, Timestamp)> {
         let root = root_of(conversation);
         self.agent().node(&root, &root)?.session().automation_input()
@@ -203,7 +202,7 @@ impl Shard {
         let place = self.place_of(automation).await;
         let note = match &place {
             // A new conversation starts with the automation's model, and
-            // without one none starts (`automations.md` § An automation).
+            // without one none starts.
             Ok(Place::New { .. }) if automation.model.is_none() => Some(RunNote::NoModel),
             Ok(_) | Err(Unrunnable::Returning { .. }) => None,
             Err(Unrunnable::Offline(device)) => Some(RunNote::Offline { device: device.clone() }),

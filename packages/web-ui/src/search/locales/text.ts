@@ -5,5 +5,5 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The search area's text (`localization.md` § Where the text lives). */
+/** The search area's text. */
 export const { t, find } = defineText('ui.search', { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })

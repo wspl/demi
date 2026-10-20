@@ -1,9 +1,9 @@
-//! Side questions on the backend (`comments-and-ask.md` § Side questions):
-//! asked about a reply's words over HTTP, answered in a side conversation
-//! whose transcript the page reads by its node, kept with its anchor and
-//! its fold across a restart, announced to the pages through the summary's
-//! revision, counted under the conversation in the usage ledger, and never
-//! copied by a Fork or shown by a share. No test calls a real model.
+//! Side questions on the backend: asked about a reply's words over HTTP,
+//! answered in a side conversation whose transcript the page reads by its node,
+//! kept with its anchor and its fold across a restart, announced to the pages
+//! through the summary's revision, counted under the conversation in the usage
+//! ledger, and never copied by a Fork or shown by a share. No test calls a real
+//! model.
 
 use demi_provider_common::testing::{MockResponse, MockVendor, sse_body};
 use demi_shared_types::Block;
@@ -167,10 +167,10 @@ async fn a_side_question_is_answered_beside_the_conversation_and_kept_with_its_r
     assert_eq!(kept, [folded]);
 }
 
-// The user asks about a picture of the reply (`comments-and-ask.md` §
-// Images): the side's request carries the picture before the question, and
-// the listed side question keeps it with its place among the block's
-// pictures. A backend with a mock vendor: under a second.
+// The user asks about a picture of the reply: the side's request carries the
+// picture before the question, and the listed side question keeps it with its
+// place among the block's pictures. A backend with a mock vendor: under a
+// second.
 #[tokio::test]
 async fn a_side_question_about_a_picture_sends_the_picture_and_keeps_it() {
     let vendor = MockVendor::start().await;

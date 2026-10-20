@@ -1,9 +1,7 @@
-//! Account administration (`web-api-settings.md` § Account API; `users.md` § User
-//! system): an administrator lists the accounts, creates one of a role it
-//! outranks with a first password the server makes, makes another first
-//! password, changes a role or disables an account, sets the size of an
-//! account's Cloud disks, signs an account out everywhere, and makes a
-//! sign-in code for it.
+//! Account administration: an administrator lists the accounts, creates one of a
+//! role it outranks with a first password the server makes, makes another first
+//! password, changes a role or disables an account, sets the size of an account's
+//! Cloud disks, signs an account out everywhere, and makes a sign-in code for it.
 
 use std::fmt;
 
@@ -27,9 +25,9 @@ pub struct ListedUser {
     pub cloud_storage: CloudStorage,
 }
 
-/// The size of an account's Cloud disks in whole GB, each from 1 to 1024
-/// (`users.md` § User system), which the next start of its Cloud takes; a
-/// GB here is 2^30 bytes, as the Cloud's storage shows it.
+/// The size of an account's Cloud disks in whole GB, each from 1 to 1024, which
+/// the next start of its Cloud takes; a GB here is 2^30 bytes, as the Cloud's
+/// storage shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CloudStorage {

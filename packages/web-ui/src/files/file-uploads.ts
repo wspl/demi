@@ -94,7 +94,7 @@ export type FileUploadState =
 const RATE_WINDOW_MS = 3000
 const RATE_MIN_SPAN_MS = 500
 
-/** How many steps run at once, across every upload of a source (`web-application.md` § Requests for one action). */
+/** How many steps run at once, across every upload of a source. */
 export const UPLOADS_AT_ONCE = 4
 
 /** One file or folder sent into a directory of a source. */

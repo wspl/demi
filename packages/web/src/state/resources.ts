@@ -148,9 +148,9 @@ export const useResources = defineStore('resources', () => {
       : { kind: 'removed' }
   }
   /**
-   * The device a conversation's sidebar row shows (`conversations.md` § Conversations and projects):
-   * for one outside a project on a paired device, its name and state, or that it was removed;
-   * none on the Cloud, in a project, or before the first snapshot names the devices.
+   * The device a conversation's sidebar row shows: for one outside a project on a paired device, its
+   * name and state, or that it was removed; none on the Cloud, in a project, or before the first
+   * snapshot names the devices.
    */
   function conversationDevice(target: ConversationTarget): SidebarDevice | undefined {
     return target.kind === 'device' && product.snapshot ? sidebarDevice(target.deviceId) : undefined
@@ -296,7 +296,7 @@ export const useResources = defineStore('resources', () => {
   /**
    * Makes the project `draft` names and answers its id; a directory that is
    * already a project answers that project, which the caller opens instead
-   * of making a second (`conversations.md` § Conversations and projects).
+   * of making a second.
    */
   async function createProject(draft: CreateWorkspace): Promise<string> {
     const current = controller
@@ -322,9 +322,9 @@ export const useResources = defineStore('resources', () => {
 
   /**
    * Saves `choice`, made in a conversation of the project `id`, as what the
-   * project's next conversation starts with (`web-api-settings.md` § User
-   * preferences): it shows at once, the write follows the project's earlier
-   * ones, and the channel brings it to the user's other pages.
+   * project's next conversation starts with: it shows at once, the write
+   * follows the project's earlier ones, and the channel brings it to the user's
+   * other pages.
    */
   function rememberInProject(id: string, choice: RememberedChoices): void {
     const change = product.change('workspaces', (state) => ({

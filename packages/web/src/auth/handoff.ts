@@ -20,9 +20,8 @@ import { useProduct } from '../state/product'
 import { browserHasPasskeys, signWithPasskey } from './webauthn'
 
 /**
- * A code that opens `to`, the page the user is on, on a phone
- * (`web-api-settings.md` § Account API); `verify` when the backend wants the session
- * confirmed first, which its 403 decides.
+ * A code that opens `to`, the page the user is on, on a phone; `verify` when the
+ * backend wants the session confirmed first, which its 403 decides.
  */
 export function makeHandoffCode(to: string): Promise<HandoffStart> {
   return startCode(() =>
@@ -31,9 +30,8 @@ export function makeHandoffCode(to: string): Promise<HandoffStart> {
 }
 
 /**
- * An administrator's sign-in code for the account `id` (`web-api-settings.md` § Account
- * API): as a handoff code is made, for a session verified in the last five
- * minutes, and opening the product's home.
+ * An administrator's sign-in code for the account `id`: as a handoff code is made, for
+ * a session verified in the last five minutes, and opening the product's home.
  */
 export function makeSignInCode(id: string): Promise<HandoffStart> {
   return startCode(() => apiRequest(`/users/${encodeURIComponent(id)}/sign-in-code`, { method: 'POST' }))
@@ -67,9 +65,8 @@ export async function verifyWithPassword(password: string): Promise<HandoffVerif
 }
 
 /**
- * How the user confirms it is them (`users.md` § User system): the
- * password, and a passkey where this server, this account and this browser
- * offer one.
+ * How the user confirms it is them: the password, and a passkey where this
+ * server, this account and this browser offer one.
  */
 export function confirmationHost(): VerificationHost {
   const state = useProduct().snapshot
@@ -108,7 +105,7 @@ export type HandoffSpent =
   | { kind: 'expired' }
   | ({ kind: 'failed' } & ShownError)
 
-/** Spends the code a phone's page read from its address (`web-api-settings.md` § Account API). */
+/** Spends the code a phone's page read from its address. */
 export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
   try {
     const response = await apiRequest('/auth/handoff', {
@@ -125,10 +122,10 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
 }
 
 /**
- * The account's signed-in browsers (`users.md` § User system), which the
- * synchronization channel's `sessions` part brings, and the dialog that
- * hands off to a phone: it learns of the phone from the session that
- * carries the code, the one the code made or the phone's own.
+ * The account's signed-in browsers, which the synchronization channel's
+ * `sessions` part brings, and the dialog that hands off to a phone: it learns
+ * of the phone from the session that carries the code, the one the code made or
+ * the phone's own.
  */
 export const useSessions = defineStore('sessions', () => {
   const product = useProduct()

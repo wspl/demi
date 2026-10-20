@@ -208,9 +208,8 @@ impl dyn CloudShard {
 
     /// Writes the operation's phase, then shows it. A status read while the
     /// write waits on the database still shows the phase before, so the
-    /// last phase shows in the same step as the state the reset leaves
-    /// (`web-api-hosts.md` § Cloud). A phase that could not be written shows too,
-    /// as the reset's outcome does.
+    /// last phase shows in the same step as the state the reset leaves. A phase
+    /// that could not be written shows too, as the reset's outcome does.
     async fn record_phase(
         &self,
         machine: &Machine,

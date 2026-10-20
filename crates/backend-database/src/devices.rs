@@ -76,9 +76,8 @@ pub struct DeviceRecord {
     pub cloud_started_at: Option<Timestamp>,
     /// How pages reach it (`direct-channel.md` § Choosing the path).
     pub route: DeviceRoute,
-    /// A paired device's number among its user's devices of its logo
-    /// (`conversations.md` § Conversations and projects); none before its runner
-    /// first reported its system, and for a Cloud.
+    /// A paired device's number among its user's devices of its logo; none
+    /// before its runner first reported its system, and for a Cloud.
     pub mark_number: Option<u32>,
     /// Which managed machine a managed device is; none for a paired device.
     pub machine: Option<ManagedMachine>,
@@ -359,9 +358,7 @@ impl ControlService {
     /// Deletes the device with its attachments to conversations, its
     /// workspaces, the port forwards it is an end of and its exposed ports, one transaction. The workspaces' conversations first move
     /// off them, each to its workspace's directory
-    /// on the device as a direct device target, which no longer runs
-    /// (`web-api-hosts.md` § Workspaces, devices, and attached hosts). A
-    /// workspace is a pointer: no file goes.
+    /// on the device as a direct device target, which no longer runs. A workspace is a pointer: no file goes.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -472,8 +469,7 @@ impl ControlService {
     /// crosses releases), which changes no directory they work in. A paired
     /// device whose mark has no number yet, or whose logo the report
     /// changes, takes one more than the highest number among its user's
-    /// other devices of its new logo (`conversations.md` § Conversations and
-    /// projects).
+    /// other devices of its new logo.
     pub async fn set_device_runner(
         &self,
         device: DeviceId,

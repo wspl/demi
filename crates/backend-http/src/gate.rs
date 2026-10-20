@@ -226,10 +226,9 @@ pub(super) async fn session(
     (renewed, response).into_response()
 }
 
-/// Whether a request opens for an account still to choose its password
-/// (`web-api-settings.md` § Account API): reading who it is, choosing the password,
-/// signing out, and the passkey routes. `path` is the one the `/api` router
-/// sees.
+/// Whether a request opens for an account still to choose its password: reading who
+/// it is, choosing the password, signing out, and the passkey routes. `path` is the
+/// one the `/api` router sees.
 fn opens_before_password_choice(method: &Method, path: &str) -> bool {
     match (method, path) {
         (&Method::GET, "/auth/me") | (&Method::PUT, "/auth/password") | (&Method::POST, "/auth/logout") => true,

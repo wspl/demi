@@ -42,11 +42,11 @@ export interface SidebarConversation {
    */
   needsYou?: boolean
   /**
-   * The paired device a conversation outside a project runs on, which its row's end shows
-   * (`conversations.md` § Conversations and projects); absent on the Cloud and in a project.
+   * The paired device a conversation outside a project runs on, which its row's end shows;
+   * absent on the Cloud and in a project.
    */
   device?: SidebarDevice
-  /** The automations that wake it, which a bolt at its row's end marks (`automations.md` § Where the user sees them). */
+  /** The automations that wake it, which a bolt at its row's end marks. */
   automations?: readonly AutomationLink[]
 }
 

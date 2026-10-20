@@ -33,9 +33,8 @@ const plugin = page.plugin
 const state = plugin.state(skillsStateSchema)
 
 /**
- * Why the last fetch failed, in the page's words (`localization.md` § Text
- * from the backend): one of Demi's limits or finds, or git's or the
- * system's own words, as they came.
+ * Why the last fetch failed, in the page's words: one of Demi's limits or
+ * finds, or git's or the system's own words, as they came.
  */
 function fetchFailure(failure: Failure): string {
   const problem = failure.problem

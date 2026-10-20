@@ -12,8 +12,8 @@ export type { HeldBlock } from '@demicodes/conversation-client'
 
 /**
  * The blocks at the transcript's end, its latest window, which the stream
- * keeps live (`web-application.md` § Transcript windows): what a running
- * turn, the message offered to edit and the tail rows read.
+ * keeps live: what a running turn, the message offered to edit and the tail
+ * rows read.
  */
 export function latestBlocks(history: HeldTranscript): HeldBlock[] {
   return latestWindow(history)?.blocks ?? []
@@ -46,10 +46,9 @@ export function windowEdges<B extends Held>(
 }
 
 /**
- * Where the page next to `window` on `side` is read from (`web-api-conversations.md`
- * § Pages): the index of the window's item at that edge and its id, which
- * the page must still hold there; none where the window reaches the
- * transcript's start or end.
+ * Where the page next to `window` on `side` is read from: the index of the window's
+ * item at that edge and its id, which the page must still hold there; none where the
+ * window reaches the transcript's start or end.
  */
 export function pageBeside<B extends Held>(
   history: HeldTranscript<B>,

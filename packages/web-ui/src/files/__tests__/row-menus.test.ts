@@ -1,14 +1,13 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A file tree's rows and the commit list's are objects of their own
-// (`web-application.md` § Context menus): each row's menu is its object's
-// less what the row already is. A file's is Copy Path, and Download where
-// the source serves its bytes, and never the tree's Upload Files, which the
-// tree's empty space offers; a commit's is Copy Commit Hash. The tree is
-// FileTree over a memory Host, the list CommitList, on a page of happy-dom
-// whose clipboard is stubbed. Tens of ms, besides the start of the page
-// every happy-dom test pays.
+// A file tree's rows and the commit list's are objects of their own: each row's
+// menu is its object's less what the row already is. A file's is Copy Path, and
+// Download where the source serves its bytes, and never the tree's Upload
+// Files, which the tree's empty space offers; a commit's is Copy Commit Hash.
+// The tree is FileTree over a memory Host, the list CommitList, on a page of
+// happy-dom whose clipboard is stubbed. Tens of ms, besides the start of the
+// page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 await import('../../__tests__/vue-components')

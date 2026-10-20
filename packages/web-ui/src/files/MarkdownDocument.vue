@@ -10,9 +10,9 @@ import ScrollArea from '../ui/ScrollArea.vue'
 import CodeBlockCopy from '../markdown/CodeBlockCopy.vue'
 
 /**
- * A Markdown file rendered as a document (`file-previews.md` § Markdown). A
- * link to a file asks the host to open it, a `#` link scrolls the document
- * to its heading or anchor, and a web link opens in a new tab of the web browser.
+ * A Markdown file rendered as a document. A link to a file asks the host to open
+ * it, a `#` link scrolls the document to its heading or anchor, and a web link
+ * opens in a new tab of the web browser.
  */
 const props = defineProps<{
   text: string

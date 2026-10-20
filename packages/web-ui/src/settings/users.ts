@@ -1,4 +1,4 @@
-/** Who may do what to whom in Settings › Users (`users.md` § User system). */
+/** Who may do what to whom in Settings › Users. */
 import type { SettingsUser, UserRole } from './types'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import { t } from './locales/text'

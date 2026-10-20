@@ -25,11 +25,10 @@ import {
 import { useChangeSources } from './sources'
 
 /**
- * The Change view of one conversation (`file-previews.md` § Changes): the
- * repository's commits and uncommitted changes in Commits, a request's in
- * Conversation, over
- * the conversation's files service, which reads the request from the
- * transcript as it is now, so the view follows calls that end later.
+ * The Change view of one conversation: the repository's commits and uncommitted
+ * changes in Commits, a request's in Conversation, over the conversation's
+ * files service, which reads the request from the transcript as it is now, so
+ * the view follows calls that end later.
  */
 const props = defineProps<{
   conversation: string

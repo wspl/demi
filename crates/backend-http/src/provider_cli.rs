@@ -1,9 +1,8 @@
-//! A process provider's command-line tool (`web-api-settings.md` § Model
-//! configuration and provider inspection,
-//! `crates/backend-user-shard/src/conversation/claude_cli.rs`): the vendor's
-//! newest version and the caller's last install on the
-//! Claude Code machine, read without waking it; and the install again. A
-//! sign-in installs the tool it runs itself.
+//! A process provider's command-line tool
+//! (`crates/backend-user-shard/src/conversation/claude_cli.rs`): the vendor's
+//! newest version and the caller's last install on the Claude Code machine,
+//! read without waking it; and the install again. A sign-in installs the tool
+//! it runs itself.
 
 use std::sync::Arc;
 

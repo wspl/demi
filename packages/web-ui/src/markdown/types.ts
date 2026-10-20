@@ -19,7 +19,7 @@ export interface MessageAttachment {
   sha256: string
   /**
    * An image's or a video's size in pixels, which its record carries when
-   * the backend read it from its header (`web-api.md`).
+   * the backend read it from its header.
    */
   width?: number
   height?: number
@@ -50,8 +50,7 @@ export interface MessageFileTarget {
 
 /**
  * What the host offers for the files a conversation's messages name on its
- * Host and the attachments they name (`file-previews.md` § Files named in
- * messages).
+ * Host and the attachments they name.
  */
 export interface ConversationFiles {
   /**
@@ -70,9 +69,8 @@ export interface ConversationFiles {
   /**
    * Shows the file at a Host path, at its line when it names one, through
    * the `file` intent; absent while no plugin the user has on opens it, so a
-   * link to a file shows as text and a Host image only shows
-   * (`file-previews.md` § Files named in messages). What the panel already
-   * shows stays as it is (`openIntent`).
+   * link to a file shows as text and a Host image only shows. What the panel
+   * already shows stays as it is (`openIntent`).
    */
   open?(target: MessageFileTarget): void
   /**
@@ -95,18 +93,15 @@ export interface ConversationFiles {
    * subagent's or a side question's id otherwise. A reply shows only what
    * its own agent uploaded, or the agent it was forked from for the history
    * it copied, so a file the user sent or another agent uploaded is missing
-   * there
-   * (`file-previews.md` § Attachment blocks). A render reads it as it is now
-   * and renders again when the answer arrives; absent, an attachment shows
-   * its alt text.
+   * there. A render reads it as it is now and renders again when the answer
+   * arrives; absent, an attachment shows its alt text.
    */
   attachment?(id: string, node: string | null): AttachmentLookup
   /**
    * Opens attachment `id`, a file that is no image, video or audio, in the
-   * work panel through the `attachment` intent, previewed from its copy
-   * (`file-previews.md` § Attachment blocks); absent while no plugin the
-   * user has on opens it, as on a share, and its card then only offers
-   * Download.
+   * work panel through the `attachment` intent, previewed from its copy; absent
+   * while no plugin the user has on opens it, as on a share, and its card then
+   * only offers Download.
    */
   openAttachment?(id: string, attachment: MessageAttachment): void
   /**

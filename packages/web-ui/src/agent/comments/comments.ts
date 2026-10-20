@@ -2,9 +2,9 @@ import type { MessageEditContent } from '../message-editing'
 import type { MessageComment } from '@demicodes/protocol'
 
 /**
- * Comments on a reply's words (`comments-and-ask.md`): each saved comment
- * waits in the conversation's draft until a message sends it, and the reply
- * shows the marks of both, a sent one dimmer, read from the sent messages.
+ * Comments on a reply's words: each saved comment waits in the conversation's
+ * draft until a message sends it, and the reply shows the marks of both, a sent
+ * one dimmer, read from the sent messages.
  */
 
 /** A comment the transcript marks: one waiting in the draft, or one a message sent. */
@@ -40,11 +40,10 @@ export function sentComments(block: { type: string; comments?: readonly MessageC
 }
 
 /**
- * `comments` as the model reads them before a message's text
- * (`comments-and-ask.md` § Sending them): each quoted text as a `>` quote,
- * its comment after it, a blank line between them; empty for none. The
- * page's twin of the backend's `comments_markdown`, which writes them into
- * the model's request.
+ * `comments` as the model reads them before a message's text: each quoted text
+ * as a `>` quote, its comment after it, a blank line between them; empty for
+ * none. The page's twin of the backend's `comments_markdown`, which writes them
+ * into the model's request.
  */
 export function commentsMarkdown(comments: readonly Pick<MessageComment, 'quote' | 'text'>[]): string {
   return comments
@@ -60,11 +59,11 @@ export function commentsMarkdown(comments: readonly Pick<MessageComment, 'quote'
 }
 
 /**
- * `comments` as content before a message's own, as the model reads them
- * (`comments-and-ask.md` § Images): the quoted words as `commentsMarkdown`
- * writes them, and each quoted picture as an image, then its comment. The
- * page's twin of the backend's `comments_content`, by which Copy Message and
- * Send to Conversation take a message's comments, its pictures as files.
+ * `comments` as content before a message's own, as the model reads them: the
+ * quoted words as `commentsMarkdown` writes them, and each quoted picture as an
+ * image, then its comment. The page's twin of the backend's `comments_content`,
+ * by which Copy Message and Send to Conversation take a message's comments, its
+ * pictures as files.
  */
 export function commentsContent(comments: readonly Pick<MessageComment, 'quote' | 'picture' | 'text'>[]): MessageEditContent[] {
   const content: MessageEditContent[] = []

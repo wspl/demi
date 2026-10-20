@@ -16,10 +16,9 @@ import { environmental } from '@demicodes/web-ui/infra/errors'
 /**
  * Set once a newer build has upgraded a database this page uses, as a page
  * of that build in another tab does: this page would write in a shape the
- * newer build has left behind, so it loads itself again
- * (`web-application.md` § A page of another build). The value names the
- * database and the version this page knows, which the page loads itself
- * again for only once.
+ * newer build has left behind, so it loads itself again. The value names the
+ * database and the version this page knows, which the page loads itself again
+ * for only once.
  */
 export const newerStorage = shallowRef<string | null>(null)
 

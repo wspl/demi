@@ -52,8 +52,7 @@ pub fn protocol() -> Vec<Root> {
     vec![
         receives::<frames::ServerFrame>(),
         sends::<frames::ClientFrame>(),
-        // Every page socket takes it (`web-application.md` § Liveness and
-        // reconnection).
+        // Every page socket takes it.
         sends::<frames::PagePing>(),
         receives::<core::Block>(),
         receives::<core::ProviderModelList>(),

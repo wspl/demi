@@ -17,8 +17,7 @@ import type { FileBrowserSource } from './types'
 /**
  * One file of a Host, read through its source: the whole path as crumbs
  * from the Host's root, the file itself under its bar (`FileContent`), and
- * beside it the workspace tree with the file selected (`file-previews.md`
- * § The File view's bars).
+ * beside it the workspace tree with the file selected.
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
  * decides; the host keeps whether it is open, its width, and the Preview or

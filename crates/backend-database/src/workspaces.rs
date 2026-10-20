@@ -3,8 +3,7 @@
 //! a pointer: it owns no files, and the user has one per device and
 //! directory. A new workspace joins the user's others at the end of their
 //! order. It keeps the model settings and the workflow
-//! the project's next conversation starts with (`web-api-settings.md` § User
-//! preferences).
+//! the project's next conversation starts with.
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
@@ -89,7 +88,7 @@ pub enum WorkspaceCreation {
     /// The device is not the user's.
     DeviceNotFound,
     /// The directory is the device's home, which holds the conversations
-    /// outside projects (`conversations.md` § Conversations and projects).
+    /// outside projects.
     Home,
 }
 
@@ -203,10 +202,9 @@ impl ControlService {
     }
 
     /// Deletes the user's workspace `id` and archives `conversations`, the
-    /// ones in it, as one transaction (`conversations.md` § Conversations and
-    /// projects); when they are no longer all the unarchived ones in it,
-    /// nothing changes. An archived conversation in it keeps its
-    /// directory, which its restore selects again.
+    /// ones in it, as one transaction; when they are no longer all the
+    /// unarchived ones in it, nothing changes. An archived conversation in it
+    /// keeps its directory, which its restore selects again.
     pub async fn delete_workspace(
         &self,
         user: UserId,

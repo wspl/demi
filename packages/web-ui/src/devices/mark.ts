@@ -13,8 +13,8 @@ import {
 } from '@mdi/js'
 
 /**
- * The logo of a device's mark (`conversations.md` § Conversations and projects): its system's, Apple
- * for macOS, the Windows logo, a Linux distribution's, or Tux for any other Linux.
+ * The logo of a device's mark: its system's, Apple for macOS, the Windows logo, a Linux
+ * distribution's, or Tux for any other Linux.
  */
 export type DeviceLogo =
   | 'apple'

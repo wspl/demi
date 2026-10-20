@@ -17,12 +17,11 @@ import {
  *   which an image, a video, a PDF or a download makes, goes to the page
  *   that made it, which answers it over its direct channel when it has one
  *   to the conversation's device, or sends it to the network.
- * - Opening offline (`web-application.md` § Installing and opening
- *   offline): a navigation of the app goes to the network first and, only
+ * - Opening offline : a navigation of the app goes to the network first and, only
  *   when the network fails, is answered with the page of the build that
  *   last ran; that build's hashed files are kept as its pages fetch them
  *   and answered from the cache. One build is kept.
- * - Push notifications (`turns.md` § Notifications): it shows every push
+ * - Push notifications: it shows every push
  *   the backend sends, worded from the words the page left it, since a
  *   browser shows one of its own for a push that shows none, or ends the
  *   subscription, and one whose words cannot be read still shows; a click
@@ -35,7 +34,7 @@ import {
 
 declare const self: ServiceWorkerGlobalScope
 
-/** The raw file route of a conversation (`web-api-hosts.md` § File text and working tree changes). */
+/** The raw file route of a conversation. */
 const RAW_ROUTE = /^\/api\/conversations\/[^/]+\/fs\/raw$/
 
 /** Where a build's hashed files lie, whose names change with their content. */

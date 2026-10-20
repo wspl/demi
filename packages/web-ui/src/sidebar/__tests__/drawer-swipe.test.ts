@@ -1,15 +1,14 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A finger on the phone's drawer (`web-application.md` § The phone layout):
-// a leftward swipe drags the drawer from where the finger first touched, a
-// lift past 30% of its width or with a flick still moving closes it from
-// where it stands, a pull held still before the lift springs back, and a
-// second finger or the system taking the touch springs it back too; a
-// finger never reorders the list. The drawer is SidebarLayout on a page of
-// happy-dom 390 px wide, touched by touch events whose times the test gives;
-// happy-dom lays nothing out, so the drawer is given its 320 px width. A few
-// ms, besides the start of the page every happy-dom test pays.
+// A finger on the phone's drawer: a leftward swipe drags the drawer from where
+// the finger first touched, a lift past 30% of its width or with a flick still
+// moving closes it from where it stands, a pull held still before the lift
+// springs back, and a second finger or the system taking the touch springs it
+// back too; a finger never reorders the list. The drawer is SidebarLayout on a
+// page of happy-dom 390 px wide, touched by touch events whose times the test
+// gives; happy-dom lays nothing out, so the drawer is given its 320 px width. A
+// few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 390, height: 844 })
 await import('../../__tests__/vue-components')
@@ -156,8 +155,7 @@ test('a second finger or the system taking the touch springs the drawer back, an
   expect(drawerAt(cancelled.drawer)).toEqual({ pull: null, held: false })
 })
 
-// From the screen's left edge a rightward swipe opens the closed drawer
-// (`web-application.md` § The phone layout, "The edges are the app's"),
+// From the screen's left edge a rightward swipe opens the closed drawer,
 // following the finger and settling by the closing swipe's rule.
 
 /** A finger down on the conversation at x 4, the screen's edge, that moves to each of `points`, 16 ms apart from t 0. */
@@ -225,8 +223,7 @@ test('a move down from the edge, or a swipe right away from it, draws no drawer'
 
 // Over the full-screen work panel the left edge is the panel's: a rightward
 // swipe from it takes the panel back to the conversation beneath, following
-// the finger and settling by the drawer's rule (`web-application.md` § The
-// phone layout, "Whole-screen panels"), and draws no drawer.
+// the finger and settling by the drawer's rule, and draws no drawer.
 
 /** The work panel open full screen on a phone; `panel` is the element a finger touches. */
 async function openPanel(content: () => ReturnType<typeof h> = () => h('aside', { class: 'panel' }, 'Work panel')) {
