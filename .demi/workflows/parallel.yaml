@@ -48,6 +48,7 @@ profiles:
       - You do not accept your own work: start no servers unless the brief asks, and stop every process you start, by the id you recorded.
       - If the design leaves a question open or the code contradicts it, implement the rest and name the gap in your report; never guess a design.
 
+      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: branch and its commit, what changed per item, tests and that each failed before, checks run, what the acceptance pass should walk, gaps.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
@@ -61,6 +62,7 @@ profiles:
       - Do not decide or recommend a design unless asked; give the facts a decision needs, including the options you found and their trade-offs.
       - Never print secrets: read only the names of environment variables and keys, not their values.
 
+      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: the answer first, then the evidence per point, then open questions.
   - id: rewrite
     description: "Use to rewrite the comments of the paths the brief names to the project's writing and comment standards; it changes no code and no meaning."
@@ -85,6 +87,7 @@ profiles:
       Git: start the branch as the brief says, stage files by name, keep one commit and fold later work into it with `git commit --amend`, never push or merge, never `git stash`.
       Check at the end, after rebasing onto the current `feat/demi-next`: strip the comments from every changed file, old and new, and compare what is left; it must be identical. A change of comments alone cannot break a build or a test, so run no build, type check or test.
 
+      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: branch and commit; how many files and comment blocks changed; how many comments you deleted as restating the code, with three examples; anything you left alone and why.
   - id: review
     description: "Use to review a delivered change before it is merged: reads the branch's diff against the design and the project rules and reports the defects it finds, leaving their weight to the lead; it changes nothing."
@@ -101,6 +104,7 @@ profiles:
       5. Check the tests: each protects a behavior at its boundary, would fail without the fix, waits for events rather than time, and no test asserts a defect or restates the implementation. Say which claimed behavior has no test.
       6. Verify claims you can verify cheaply (run the named tests, grep for leftovers the report says are gone).
 
+      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Report, concisely:
       - Verdict: merge, merge after small fixes, or rework.
       - Design conformance: each rule or example of the design the change implements, one line each, with the file:line that carries it out, or *missing* or *differs* and how.
@@ -123,6 +127,7 @@ profiles:
       5. Write whatever scripts, probes and rigs the check needs, a `bun browse` script, a test page, a proxy that shapes a link, outside the repository: you change no project code, but your own tools are yours to make. Keep every one you checked with under ../demi-shots/<branch>/acceptance/scripts/ beside the screenshots, with a README line each saying how to run it, until the branch is merged: a fix is checked again the same way it was seen failing, by you or by the next acceptance agent. When a rig is one other checks will need too, such as a shaped link, say so in your report; the lead decides whether it goes into `bun browse`.
       6. Stop every process you started, by the id you recorded, and remove the runner, devices, conversations and test data you made; the scripts stay.
 
+      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Report, in English and short:
       - Verdict: accepted, accepted with findings, or not accepted.
       - Each flow you walked: what you did and what happened, passed or failed.
@@ -144,4 +149,5 @@ profiles:
       - Leave things as you found them: remove what you installed or changed for a run, and leave VMs and sandboxes as they were (stopped if they were stopped).
       - Never print secrets.
 
+      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: the answer first; the timeline or numbers in a table with the setup; the root causes in order of cost, each with its evidence and file:line; the options to fix each with their expected gain; what is measured vs inferred; where the raw results are.

@@ -519,10 +519,17 @@ impl Shard {
                     }
                 }
             };
+            // Every child hears the workflow's shared instructions, then
+            // its profile's.
+            let instructions: Vec<&str> = [&workflow.subagent_instructions, &profile.instructions]
+                .into_iter()
+                .flatten()
+                .map(|text| text.trim_end())
+                .collect();
             profiles.push(WorkflowChild {
                 name: profile.id.clone(),
                 description: profile.description.clone(),
-                instructions: profile.instructions.clone(),
+                instructions: (!instructions.is_empty()).then(|| instructions.join("\n\n")),
                 can_spawn: profile.spawning,
                 model,
                 context_limit,

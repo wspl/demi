@@ -53,6 +53,7 @@ Where: .demi/workflows/<id>.yaml in the nearest directory, from the working dire
 Fields:
   name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. Up to 30 characters, with no colon, plus sign or brackets; check warns of a name that is not. Good: Review Team, Parallel Development, 并行开发. Bad: Payments refactor: lead + 2 workers, Review (strict), 支付重构：主管 + 两个 worker. 1 to 60 characters. Required.
   instructions  For the agent leading the conversation: when to use which profile and how to split the work. Up to 65,536 characters. Optional.
+  subagent_instructions  For every subagent of every profile, added to its system prompt after Demi's own and before its profile's instructions: what all of them share, such as when to message the lead. Up to 65,536 characters. Optional.
   profiles      The workflow's profiles, a list. Required. Each has:
     id            The --profile value of demi agent spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default; unique in the list. Required.
     description   When an agent should use it: one line of 1 to 500 characters, which demi agent profiles list shows. Required.
@@ -95,6 +96,11 @@ pub struct Workflow {
     #[serde(default)]
     #[garde(inner(length(chars, min = 1, max = INSTRUCTIONS_MAX)))]
     pub instructions: Option<String>,
+    /// What every child of every profile is told, before its profile's
+    /// instructions.
+    #[serde(default)]
+    #[garde(inner(length(chars, min = 1, max = INSTRUCTIONS_MAX)))]
+    pub subagent_instructions: Option<String>,
     #[garde(dive, custom(unique_ids))]
     pub profiles: Vec<WorkflowProfile>,
 }

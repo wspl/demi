@@ -50,7 +50,7 @@ const SPAWN_PROMPT: &str = "The child's first user message and only task brief. 
 
 const SPAWN_SUMMARY: &str = "Start a child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show to wait for children. Use agent send to communicate and agent abort to stop it. Children can spawn children of their own.";
 
-const SEND_SUMMARY: &str = "Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. Use for what the recipient must act on now, such as a question, a blocker or an instruction; a child's final answer is delivered automatically. Archived recipients must be reopened by their parent with resume.";
+const SEND_SUMMARY: &str = "Deliver information to any live agent in the tree, or parent. A busy recipient incorporates it through internal steering; an idle recipient wakes. Returns after durable acceptance, without waiting for an answer. A child's final answer is delivered automatically. Archived recipients must be reopened by their parent with resume.";
 
 const ABORT_SUMMARY: &str = "Abort your own running children, each with its whole subtree. Siblings are untouched; only the spawning session may abort a child. --json takes one id.";
 
