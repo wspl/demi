@@ -244,7 +244,7 @@ async fn a_move_releases_what_the_conversation_kept_where_it_worked() {
             .subscribed(&master, device)
             .await
             .iter()
-            .any(|path| path.starts_with(&directory))
+            .any(|subject| subject.path.starts_with(&directory))
     };
     switch(&backend, &master, FIRST, &alpha, &first_dir).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;

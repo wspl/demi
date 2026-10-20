@@ -12,16 +12,20 @@
 //!   off adds no block.
 //! - A job that `demi host shell` runs on an attached device finds the skill
 //!   installed there too.
+//! - What the search watches changes for a skill added or edited, or a
+//!   skills directory that comes, and not for the other files beside them.
 
 use std::sync::Arc;
 
 use demi_plugin_skills::testing::{Repos, skill_md};
 use demi_provider_common::testing::MockVendor;
+use demi_runner_protocol::files::{Subject, SubscriptionKind};
 use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{FIRST, anthropic_at, create};
+use crate::files::{send_watch, watch_message, watch_socket_of};
 use crate::instructions::until_carried;
 use crate::support::{Harness, Session, TestBackend};
 use crate::work::{Driven, into_project, say, shell, switch};
@@ -245,10 +249,117 @@ async fn a_skill_created_added_to_a_group_or_repaired_reaches_a_later_request() 
     backend.close().await;
 }
 
-/// Whether any of `paths` is in `directory`.
-fn any_under(paths: &[String], directory: &std::path::Path) -> bool {
+// One to four seconds: a real runner on a paired device answers the search,
+// and the page subscribes to what the search watches.
+//
+// Fixed bug: a project without `.claude` was subscribed to the names of
+// `.claude/skills`, which a runner on Linux or Windows watches through
+// `.claude` and so fails to watch, and a skills directory made later went
+// unnoticed.
+#[tokio::test]
+async fn the_skills_search_hears_of_skills_and_a_new_skills_directory_but_not_of_other_files() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
+    create(&backend, &master, FIRST).await;
+    let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
+
+    // `app` has `.agents/skills` with a skill and a group of one, and no
+    // `.claude`.
+    let app = alpha.runner.home_dir().join("app");
+    let skills = app.join(".agents/skills");
+    let claude = app.join(".claude");
+    let manifest = |name: &str| skill_md(&format!("name: {name}\ndescription: The skill {name}."));
+    std::fs::create_dir_all(skills.join("release")).unwrap();
+    std::fs::create_dir_all(skills.join("group/one")).unwrap();
+    std::fs::write(skills.join("release/SKILL.md"), manifest("release")).unwrap();
+    std::fs::write(skills.join("group/one/SKILL.md"), manifest("one")).unwrap();
+    let initialized = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&app)
+        .status()
+        .unwrap();
+    assert!(initialized.success());
+    into_project(&backend, &master, FIRST, &alpha, &app).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let first = work.turn(vec![say("hello")]).await.first_request();
+    assert!(first.contains("<name>release</name>"), "{first}");
+
+    // The search watches the skills directory and the group's names, each
+    // `SKILL.md` it looked for, and the coming of `.claude`.
+    let subject = |kind, path: &std::path::Path| Subject {
+        kind,
+        path: path.to_str().unwrap().to_owned(),
+        suffix: None,
+    };
+    let mut expected = vec![
+        subject(SubscriptionKind::File, &skills.join("release/SKILL.md")),
+        subject(SubscriptionKind::File, &skills.join("group/SKILL.md")),
+        subject(SubscriptionKind::File, &skills.join("group/one/SKILL.md")),
+        subject(SubscriptionKind::File, &claude),
+        subject(SubscriptionKind::FolderNames, &skills),
+        subject(SubscriptionKind::FolderNames, &skills.join("group")),
+    ];
+    expected.sort();
+    let mut watched: Vec<Subject> = backend
+        .subscribed(&master, alpha.id())
+        .await
+        .into_iter()
+        .filter(|subject| [&skills, &claude].iter().any(|under| subject.path.starts_with(&path(under))))
+        .collect();
+    watched.sort();
+    assert_eq!(watched, expected);
+
+    // The page holds the repository's tree, so one watch carries everything
+    // below in the order it happens, and the search's subjects under keys of
+    // its own.
+    let mut socket = watch_socket_of(&backend, &master, &format!("/api/conversations/{FIRST}/fs/watch")).await;
+    let tree = json!({ "key": "tree", "kind": "worktree", "path": path(&app) });
+    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": [tree] })).await;
+    let live = watch_message(&mut socket).await;
+    assert_eq!(live["type"], "live", "{live}");
+    let key = |wanted: &Subject| format!("w{}", watched.iter().position(|subject| subject == wanted).unwrap());
+    let subscriptions: Vec<Value> = watched
+        .iter()
+        .map(|subject| json!({ "key": key(subject), "kind": subject.kind, "path": subject.path }))
+        .collect();
+    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": subscriptions })).await;
+    for _ in 0..subscriptions.len() {
+        let live = watch_message(&mut socket).await;
+        assert_eq!(live["type"], "live", "{live}");
+    }
+    let others_until = async |socket: &mut crate::files::Socket, subject: Subject| {
+        crate::workflows::others_until(socket, &key(&subject)).await
+    };
+
+    // Files beside the skills directories and in a skill, then a new skill:
+    // only the skills directory's names change.
+    std::fs::write(app.join("notes.txt"), "notes").unwrap();
+    std::fs::write(app.join(".agents/notes.txt"), "notes").unwrap();
+    std::fs::create_dir_all(skills.join("release/scripts")).unwrap();
+    std::fs::write(skills.join("release/scripts/run.sh"), "true").unwrap();
+    std::fs::create_dir(skills.join("deploy")).unwrap();
+    let names = subject(SubscriptionKind::FolderNames, &skills);
+    assert_eq!(others_until(&mut socket, names).await, Vec::<String>::new());
+    // A file in a skill of the group, then a `.claude/skills` made: only
+    // `.claude`'s subscription changes.
+    std::fs::write(skills.join("group/one/notes.md"), "notes").unwrap();
+    std::fs::create_dir_all(claude.join("skills")).unwrap();
+    let claude = subject(SubscriptionKind::File, &claude);
+    assert_eq!(others_until(&mut socket, claude).await, Vec::<String>::new());
+    // A skill edited in place.
+    std::fs::write(skills.join("release/SKILL.md"), manifest("release-two")).unwrap();
+    let release = subject(SubscriptionKind::File, &skills.join("release/SKILL.md"));
+    assert_eq!(others_until(&mut socket, release).await, Vec::<String>::new());
+    backend.close().await;
+}
+
+/// Whether any of `subjects` is in `directory`.
+fn any_under(subjects: &[Subject], directory: &std::path::Path) -> bool {
     let directory = directory.to_str().unwrap();
-    paths.iter().any(|path| path.starts_with(directory))
+    subjects.iter().any(|subject| subject.path.starts_with(directory))
 }
 
 // A few seconds: a real runner on a paired device answers the search and

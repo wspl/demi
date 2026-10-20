@@ -688,14 +688,14 @@ impl Backend {
             .expect("the user's shard serves while the backend runs")
     }
 
-    /// The paths `user`'s device `device` is subscribed to on its runner
-    /// now, by every holder (`crates/runner-host/src/subscriptions.rs`).
+    /// What `user`'s device `device` is subscribed to on its runner now, by
+    /// every holder (`crates/runner-host/src/subscriptions.rs`).
     #[cfg(feature = "testing")]
     pub async fn subscribed(
         &self,
         user: &demi_web_api_protocol::ids::UserId,
         device: &demi_web_api_protocol::ids::DeviceId,
-    ) -> Vec<String> {
+    ) -> Vec<demi_runner_protocol::files::Subject> {
         let device = device.clone();
         self.shards
             .shards()
@@ -704,7 +704,7 @@ impl Backend {
                 let Some(link) = demi_backend_host_access::HostShard::devices(&*shard).link(&device) else {
                     return Vec::new();
                 };
-                link.subscribed().into_iter().map(|subject| subject.path).collect()
+                link.subscribed()
             })
             .await
             .expect("the user's shard serves while the backend runs")
