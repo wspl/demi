@@ -1,5 +1,5 @@
 // A device's frame as DeviceKit's own renderer draws it, the one DeviceHub
-// and Simulator.app show (`mobile.md` § The live view). The device type's
+// and Simulator.app show (`crates/command-package-mobile/src/live.rs`). The device type's
 // chrome is a bundle in /Library/Developer/DeviceKit/Chrome: the bezel as
 // PDF pieces, nine that stretch around the screen or one composite of them,
 // and its buttons with the edge and the place each sits at.
@@ -11,7 +11,8 @@
 // edges reaching two points under the corners at each end (DeviceKit's
 // one point leaves an edge's fading end showing at 1x); the pieces are
 // drawn into one context with no piece clipped, the screen, the edges, then
-// the corners, which DeviceKit draws before the edges (`mobile.md`); the
+// the corners, which DeviceKit draws before the edges
+// (`crates/command-package-mobile/src/lib.rs`); the
 // buttons sit outside the frame by their artwork's size less their travel.
 // Everything is laid out upright, then turned about the frame's centre.
 

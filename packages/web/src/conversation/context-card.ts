@@ -21,7 +21,7 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
   /**
    * The subscription account an agent of the entry `providerId` runs on:
    * `account`, the one its context usage names under account rotation
-   * (`providers.md` § Account rotation), else the entry's active account;
+   * (`crates/backend-providers/src/llm/rotation.rs`), else the entry's active account;
    * none on an API key.
    */
   function accountOf(providerId: string, account: string | null) {
@@ -31,7 +31,7 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
     return provider && used ? { provider, account: used } : null
   }
 
-  /** What the card shows of that account's usage limits (`usage-and-quota.md`). */
+  /** What the card shows of that account's usage limits (`crates/backend-providers/src/usage/mod.rs`). */
   function limitsOf(providerId: string, account: string | null): UsageLimits | null {
     const current = accountOf(providerId, account)
     return current

@@ -145,7 +145,7 @@ what any call made.
 Each entry that makes videos has **Video Generation** on its page, below
 Images, with its video models newest first, as Images has; a compatible
 entry chooses its video shape there and adds its video models with Add
-Video Model ([Providers](../providers/providers.md)). The Grok subscription's
+Video Model (`packages/web-ui/src/settings/SettingsProvidersPage.vue`). The Grok subscription's
 models are the ones it accepted when tried in October 2026,
 `grok-imagine-video-1.5`, `grok-imagine-video-1.5-lite` and
 `grok-imagine-video`; a key's are those its vendor lists, read when the list

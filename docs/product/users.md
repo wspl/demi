@@ -24,8 +24,8 @@ A provider is a configured entry with a stable ID and label. Model selection use
 `(providerId, modelId)`, so two entries can offer the same vendor model under
 different accounts or endpoints. Subscription entries can contain multiple
 accounts with one selected account. Credential rules belong to
-[Providers](../providers/providers.md), and catalog rules to
-[Models](../providers/models.md).
+Providers (`crates/backend-providers/src/lib.rs`), and catalog rules to
+Models (`crates/shared-types/src/catalog.rs`).
 
 ## User system
 

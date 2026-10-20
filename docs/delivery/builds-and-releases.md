@@ -73,7 +73,7 @@ Each executable is built for the targets where it runs:
 | `demi-server` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | It installs, upgrades and rolls back a server, which runs Linux ([Upgrades](upgrades.md)) |
 
 On `aarch64-apple-darwin`, `demi-mobile`'s build script also builds its iOS
-helper with the machine's Xcode ([iOS](../mobile/mobile.md#ios)), keeping
+helper with the machine's Xcode (`crates/command-package-mobile/src/ios/mod.rs`), keeping
 the downloads and builds in the target directory's `ios-sim/`; without
 Xcode it builds none and warns, which `xtask native build` makes an error,
 so no release ships without it.

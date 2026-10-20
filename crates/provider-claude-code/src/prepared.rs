@@ -1,4 +1,4 @@
-//! Processes prepared ahead (`claude-code.md` § Preparing a process ahead):
+//! Processes prepared ahead:
 //! when a session's next request is known but for its input, its process
 //! starts before the request, resumes the history and waits, and the
 //! request takes it as it would take a kept process. A task owns the
@@ -6,6 +6,17 @@
 //! process to the request that matches it, and closes it once it went
 //! unused for ten minutes, when the runtime drops it, or when its machine
 //! needs its seat. A preparation that fails is logged and forgotten.
+//!
+//! A request that finds no kept process waits for a new one (on a production
+//! server a subagent's median first turn waited 3.0 s before its CLI was ready
+//! and 5.7 s for its first word, against 1.4 s for a kept process), so the
+//! process is started whenever the request it will serve is known but for its
+//! input. A preparation does everything a start does, so it reads the blobs of
+//! the media its history replays, after the page's open is answered: the rule
+//! that an open reads no blob holds for the open itself. It never gets in the
+//! way: it takes no admission the user's own commands wait for, and one that
+//! fails is logged and forgotten. A user has at most two prepared processes not
+//! yet used; a third closes the oldest.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;

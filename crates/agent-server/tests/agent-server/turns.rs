@@ -371,8 +371,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
 
 /// A page that opens a restored conversation whose history replays an
 /// image has its next request readied with the image's bytes, read from
-/// the blob after the open was answered (`claude-code.md` § Preparing a
-/// process ahead).
+/// the blob after the open was answered (`crates/provider-claude-code/src/prepared.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_its_bytes() {
     let script = ScriptedRuntime::new([Turn::Events(vec![

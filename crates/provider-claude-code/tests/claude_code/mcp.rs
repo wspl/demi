@@ -1,5 +1,4 @@
-//! The SDK MCP channel and the model's tool batches (`claude-code.md` § The
-//! SDK MCP channel, § Tool-call batches).
+//! The SDK MCP channel and the model's tool batches (`crates/provider-claude-code/src/mcp.rs`).
 
 use bytes::Bytes;
 use demi_host_interface::Signal;

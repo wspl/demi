@@ -141,7 +141,7 @@ command the conversation does not hold answers 404 `not_found`.
 `GET /api/conversations/:id/cost` answers the context card's cost section:
 the conversation's token and price totals, each agent's price and the main
 conversation's calls with their misses, and the `cost` frame announces each
-new call ([Reading it](../providers/usage-and-quota.md#reading-it)).
+new call (`crates/backend-database/src/usage.rs`).
 
 ## Work panel state
 
@@ -464,7 +464,7 @@ the workflows were found in, or null; `unavailable`, the reason the whole
 directory cannot be used, such as a link, or null; each workflow as
 `{ id, name, path, unavailable, profiles }`, `profiles` the ids of the
 profiles it declares, which the context card's cost part follows
-([A conversation's cost](../providers/usage-and-quota.md#a-conversations-cost)); and `watch`, the folders the page follows
+(`crates/backend-database/src/usage.rs`); and `watch`, the folders the page follows
 on its file watch to learn of a change. The answer carries the Host's read
 number in `X-Demi-Read-At`, as file reads do. Both take an optional
 `readAfter=<epoch>.<number>`: the backend answers what it keeps when its
@@ -515,7 +515,7 @@ up to 100 `{ id, patch }` items and returns 207 with an outcome per item:
 not have.
 
 A conversation's model settings are one value, the model selection its record
-holds ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+holds (`crates/shared-types/src/catalog.rs`).
 The conversation lists carry the settings as `model`,
 `{ providerId, modelId, thinkingEffort, serviceTierId }`, or null while the
 conversation has no model yet; `thinkingEffort` is null only for a model that

@@ -1,4 +1,4 @@
-//! The quota of a Grok Build account (`usage-and-quota.md` § Grok Build): a
+//! The quota of a Grok Build account: a
 //! free probe of the account's subscription and credits billing, and the
 //! short-window rate limits on every chat response.
 

@@ -1,5 +1,6 @@
-//! Readying the next request's runtime ahead (`claude-code.md` § Preparing
-//! a process ahead): once the session is idle, the worker builds the request
+//! Readying the next request's runtime ahead
+//! (`crates/provider-claude-code/src/prepared.rs`): once the session is idle,
+//! the worker builds the request
 //! the next one is but for its input, as the selection that request lands
 //! with sees the history, and hands it to the runtime that request lands
 //! on, which readies what it needs. It takes no admission: what the runtime

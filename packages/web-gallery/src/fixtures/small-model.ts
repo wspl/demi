@@ -32,7 +32,7 @@ export const smallModelCatalog = computed<Record<string, ModelInfo[]>>(() => ({
 
 /**
  * What the backend answers Automatic resolves to for these entries
- * (`models.md` § Small model): Claude Haiku, or nothing while small
+ * (`crates/backend-providers/src/llm/small_model.rs`): Claude Haiku, or nothing while small
  * requests stay on the conversation's provider, which the page cannot know.
  */
 export function galleryAutomaticModel(state: SmallModelState): string | null {

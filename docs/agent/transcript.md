@@ -32,7 +32,7 @@ Words used for session data:
 | `tool_call` | The provider's call, completed by the session with the result | The call and, once completed, its result | Yes |
 | `response` | The provider: the usage of one completed request | Nothing; its usage anchors the context estimate | No |
 | `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)); `outsideTurn` when the failure ended no turn ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)) | Nothing | Yes |
-| `account_switch` | [Account rotation](../providers/providers.md#account-rotation): the account that reached its limit, the window and its reset, and the account the agent continues with | Nothing | Yes, as a neutral line, its time in the viewer's zone |
+| `account_switch` | Account rotation (`crates/backend-providers/src/llm/rotation.rs`): the account that reached its limit, the window and its reset, and the account the agent continues with | Nothing | Yes, as a neutral line, its time in the viewer's zone |
 | `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
 | `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
 
@@ -125,9 +125,9 @@ switch back to Codex sends its own id again, unchanged.
 
 An image, video or document is replayed as a text that names it and says why
 it was not sent when the request's model does not accept its type
-([Accepted attachment types](../providers/models.md#accepted-attachment-types)),
+(`crates/shared-types/src/model.rs`),
 or when its base64 is longer than half of the model's request body limit
-([Request limits](../providers/models.md#request-limits)), which leaves no room
+(`crates/provider-common/src/contract.rs`), which leaves no room
 for the history around it:
 
 | The medium | Its text |
@@ -165,7 +165,7 @@ Reasoning between the last `compaction_boundary` and its marker, which
 compaction kept after the summary, is marked as kept past a summary: the
 history it followed is gone, and a provider whose vendor checks reasoning
 against that history leaves it out
-([Per vendor](../providers/providers.md#per-vendor)). When an edit removed the
+(`crates/provider-anthropic-api/src/request.rs`). When an edit removed the
 marker, all reasoning after the boundary is marked, since leaving reasoning
 out is safe and replaying reasoning whose history changed is not.
 
@@ -177,7 +177,7 @@ are appended, a tool call's result completes a call no request has carried
 yet, and a view is never replayed. Only compaction, a model switch and an edit
 change what an earlier request carried; a retry and a resume cut back to an
 earlier request. This is how a session keeps its vendor's cache
-([Prompt cache](../providers/providers.md#prompt-cache)).
+(`crates/provider-common/src/contract.rs`).
 
 A request also says how many of its leading items the session's latest
 answered request carried. That request is the one whose `response` block
@@ -189,10 +189,10 @@ answer replay. Compaction summarizes that content
 ([One pass](compaction.md#one-pass)), and a vendor reads its cache entry at its
 end. Before any request is answered after the last compaction, the request
 says none. With Claude Code, a run that ends in a batch of tool calls
-([Tool-call batches](../providers/claude-code.md#tool-call-batches)) writes no
+(`crates/provider-claude-code/src/mcp.rs`) writes no
 `response` block, because the CLI reports usage only on the line that ends its
 turn
-([Requests over stream-json](../providers/claude-code.md#requests-over-stream-json)),
+(`crates/provider-claude-code/src/run.rs`),
 so its latest answered request is the last request that ended a turn. A title request says instead that it is no session's
 ([Conversation titles](../product/conversations.md#conversation-titles)).
 

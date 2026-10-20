@@ -1,4 +1,4 @@
-//! The usage ledger's totals (`usage-and-quota.md` § Usage ledger): each
+//! The usage ledger's totals (`crates/backend-database/src/usage.rs`): each
 //! user's own, and on a shared instance every account's for an
 //! administrator.
 

@@ -1,5 +1,6 @@
-//! The `mobile` stream as the page speaks it (`mobile.md` § The live
-//! view): the view reports the agent's activity on the device it watches,
+//! The `mobile` stream as the page speaks it
+//! (`crates/command-package-mobile/src/live.rs`): the view reports the agent's
+//! activity on the device it watches,
 //! and keeps reading the page meanwhile.
 
 use std::time::Duration;
@@ -29,7 +30,7 @@ pub(crate) struct Page {
     buffered: Vec<u8>,
     /// The pictures that came while the test waited for a control message:
     /// a key frame may come before the frame message, and a still screen
-    /// sends no other (`mobile.md` § The live view).
+    /// sends no other (`crates/command-package-mobile/src/live.rs`).
     pictures: std::collections::VecDeque<Vec<u8>>,
     demanded: bool,
 }
@@ -164,7 +165,7 @@ async fn the_view_reports_the_agents_activity_and_keeps_reading_the_page() {
 /// The view says the agent uses a device from the start of its command on
 /// it until three seconds after its last one ends, a running command
 /// keeping it on, and marks where the agent taps; the panel's controls are
-/// the user's and show neither (`mobile.md` § The live view). Planted
+/// the user's and show neither (`crates/command-package-mobile/src/live.rs`). Planted
 /// defects this catches: the note only while input is delivered, a panel
 /// control shown as the agent's, and a linger the agent's next command does
 /// not renew. One fake device, a paused clock.
@@ -283,8 +284,9 @@ async fn recording_is(page: &mut Page, wanted: bool) {
 }
 
 /// The user's input on a device reaches it while the agent's `wait` on the
-/// same device runs, which holds nothing the input waits for (`mobile.md`
-/// § The live view). Planted defect this catches: one turn for every
+/// same device runs, which holds nothing the input waits for
+/// (`crates/command-package-mobile/src/live.rs`). Planted defect this catches:
+/// one turn for every
 /// command on a device, which kept the panel's Home waiting for the
 /// agent's five-minute wait. One fake device, a paused clock.
 #[tokio::test(start_paused = true)]
@@ -370,7 +372,7 @@ pub(crate) async fn screen(page: &mut Page) -> LiveModuleMessage {
 /// The viewer's scroll wheel scrolls the device's screen: a turn is the
 /// swipe that moves the screen as far, the finger going against the turn
 /// from where the pointer is, and stopping at the screen's edge
-/// (`mobile.md` § The live view). Planted defect this catches: a wheel the
+/// (`crates/command-package-mobile/src/live.rs`). Planted defect this catches: a wheel the
 /// view drops, as it did before. One fake device, milliseconds.
 #[tokio::test]
 async fn the_viewers_wheel_scrolls_the_screen() {

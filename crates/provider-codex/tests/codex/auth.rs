@@ -1,6 +1,6 @@
 //! The account's sign-in: its status, the refresh of its tokens before a
 //! request or after a request refused with HTTP 401, one refresh at a time
-//! (`providers.md` § Token refresh).
+//! (`crates/provider-codex/src/auth.rs`).
 
 use demi_provider_codex::TransportMode;
 use demi_provider_common::{
@@ -356,7 +356,7 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
 }
 
 /// A sign-in without a refresh token, as the development backend's
-/// (`providers.md` § Token refresh).
+/// (`crates/provider-codex/src/auth.rs`).
 fn unrenewable(access: &str, last_refresh: &str) -> String {
     json!({
         "accessToken": access,

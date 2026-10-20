@@ -1,16 +1,23 @@
-//! The catalog of image, video and audio models (`media-models.md`): what
+//! The catalog of image, video and audio models: what
 //! each vendor publishes of its media models, which no vendor's listing and no
 //! subscription tells. The release carries a copy of
 //! `catalog/media/v1/models.json`, taken at build time, and a backend built
 //! from a branch downloads that branch's file at start and once a day, with
 //! its `ETag`; it uses the newer of the two by the file's `updated` field.
 //! A download that fails, does not decode or is not newer is logged and
-//! changes nothing.
+//! changes nothing. The catalog describes and does not limit: a capability the
+//! vendor does not state is left out and means unknown, and a command warns
+//! when the agent asks for what the catalog does not list but sends the request
+//! anyway, since a vendor may take more than it wrote down.
 //!
 //! The types below are the file's shape, the one decoder every reader and
 //! the repository's own check use: `vendor`, `id`, `kind` and `name` are
 //! required, every other field is optional, and a field the backend does
-//! not know is ignored, so a field added to the file keeps its version.
+//! not know is ignored, so a field added to the file keeps its version. A
+//! change an older backend would misread, a field renamed or its meaning
+//! changed, starts the next directory, `v2`; the old directory stays and is
+//! still updated with new models for as long as a release that reads it is
+//! supported.
 
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 use std::time::Duration;
@@ -56,8 +63,7 @@ pub fn branch_url(branch: Option<&str>) -> Option<Url> {
 pub struct Catalog {
     pub updated: Timestamp,
     /// The vendors that make media and no text, which models.dev, a
-    /// catalog of text models, does not list (`providers.md` § Media-only
-    /// vendors).
+    /// catalog of text models, does not list (`crates/backend/src/families.rs`).
     #[serde(default)]
     pub vendors: Vec<CatalogVendor>,
     pub models: Vec<MediaModel>,

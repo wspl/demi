@@ -1,6 +1,17 @@
 //! The `demi.claude-code` command package: Demi's own verified copy of the Claude
-//! Code CLI on the machine that runs it, which the runner installs
-//! (`claude-code.md` § The package).
+//! Code CLI on the machine that runs it, which the runner installs.
+//!
+//! It is a package of its own: the runner knows nothing about Claude Code, and
+//! removing the package and the backend's use of it leaves the rest of Demi as
+//! it was. The CLI is an artifact of the package, installed as every artifact
+//! is, through the runner's cache; there is no fallback to another version,
+//! location or executable. The package picks the platform from the machine,
+//! not from the runner's own target, because a runner built for musl runs on
+//! glibc machines and the CLI's `linux-*` and `linux-*-musl` builds are not
+//! interchangeable; a platform the release does not carry is
+//! `unsupported_platform`, never another platform's build. It reads no pointers
+//! and chooses no versions: the backend builds the release record, and Demi is
+//! the only thing that changes the CLI's version (the CLI's own updater is off).
 
 pub mod install;
 pub mod platform;

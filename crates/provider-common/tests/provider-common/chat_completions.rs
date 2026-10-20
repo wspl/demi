@@ -1,5 +1,6 @@
-//! The Chat Completions stream mapped onto a run's events (`providers.md` §
-//! A run, § Vendors from models.dev), over recorded frames.
+//! The Chat Completions stream mapped onto a run's events
+//! (`crates/provider-common/src/contract.rs`,
+//! `crates/backend-providers/src/llm/vendors.rs`), over recorded frames.
 
 use std::sync::Arc;
 

@@ -1,4 +1,4 @@
-//! The provider contract (`providers.md` § Provider contract): a shared
+//! The provider contract (`crates/provider-common/src/lib.rs`): a shared
 //! [`Provider`] for each entry and account, and a [`ProviderRuntime`] that runs
 //! one session's requests on the user's shard.
 
@@ -36,9 +36,9 @@ pub trait Provider: Send + Sync + 'static {
 
     /// A fresh read of the provider's model directory. The provider keeps no
     /// catalog of its own: the backend's catalog cache is the only one
-    /// (`models.md` § Catalog cache). A provider without a directory, whose
+    /// (`crates/backend-providers/src/llm/catalog_cache.rs`). A provider without a directory, whose
     /// entry lists its vendor's models from models.dev or the ones the user
-    /// configured (`models.md` § Directories), lists none.
+    /// configured (`crates/backend-providers/src/llm/catalog.rs`), lists none.
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
         Box::pin(async {
             Ok(ProviderModelList {
@@ -54,7 +54,7 @@ pub trait Provider: Send + Sync + 'static {
     /// What the directory [`list_models`](Self::list_models) would read
     /// depends on besides the entry, such as the client version the Codex
     /// catalog asks with; a kept catalog read under another revision is
-    /// stale (`models.md` § The Codex catalog). Read without waiting; none
+    /// stale (`crates/provider-codex/src/models.rs`). Read without waiting; none
     /// for a directory that depends on the entry alone.
     fn catalog_revision(&self) -> Option<String> {
         None
@@ -155,14 +155,15 @@ pub trait ProviderRuntime {
     /// provider shares and none of this runtime's execution state.
     fn fresh(&self) -> Box<dyn ProviderRuntime>;
 
-    /// Releases what outlives a run, such as a kept process. A runtime
-    /// dropped without closing still has its process killed, without
-    /// waiting.
+    /// Releases what outlives a run, such as a kept process. Releasing a
+    /// process on another machine takes time, so closing is an explicit,
+    /// awaited step; a runtime dropped without closing still has its process
+    /// killed, without waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
 
     /// The session's action ended, such as a turn: nothing of it runs
     /// until its next request. A runtime that counts what runs, such as an
-    /// agent's account under rotation (`providers.md` § Account rotation),
+    /// agent's account under rotation (`crates/backend-providers/src/llm/rotation.rs`),
     /// stops counting it; most runtimes have nothing to do.
     fn idle(&mut self) {}
 
@@ -175,8 +176,9 @@ pub trait ProviderRuntime {
 
     /// Readies ahead what the session's next request needs, now that the
     /// request is known but for its input: `request` is that request
-    /// without it, and `ahead` says what made it known (`claude-code.md`
-    /// § Preparing a process ahead). What it starts goes on by itself once
+    /// without it, and `ahead` says what made it known
+    /// (`crates/provider-claude-code/src/prepared.rs`). What it starts goes on
+    /// by itself once
     /// the future ends, and a failure of it is the runtime's to log and
     /// forget: the request then does what it would have done. Most
     /// runtimes have nothing to ready.
@@ -186,12 +188,12 @@ pub trait ProviderRuntime {
     }
 
     /// What the vendor accepts in one request of `model`, however few tokens
-    /// it holds (`models.md` § Request limits).
+    /// it holds.
     fn request_limits(&self, model: &Model) -> RequestLimits;
 }
 
 /// What made a session's next request known but for its input
-/// (`claude-code.md` § Preparing a process ahead).
+/// (`crates/provider-claude-code/src/prepared.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ahead {
     /// A page opened the conversation.
@@ -204,7 +206,7 @@ pub enum Ahead {
     Ended,
 }
 
-/// What a vendor accepts in one request (`models.md` § Request limits). A
+/// What a vendor accepts in one request. A
 /// limit the vendor does not document is none: a request it refuses for its
 /// size fails with `request_too_large`, and is never compacted.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -217,8 +219,8 @@ pub struct RequestLimits {
     pub tool_results: ToolResultKinds,
 }
 
-/// The kinds of media a provider's wire carries in a tool result
-/// (`providers.md` § Media in tool results). A provider names only what it
+/// The kinds of media a provider's wire carries in a tool result.
+/// A provider names only what it
 /// carries, so it never drops a medium silently.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ToolResultKinds {
@@ -331,8 +333,7 @@ pub struct InferenceRequest {
     /// This request, unique per attempt.
     pub request_id: String,
     pub model_id: String,
-    /// The current model's output limit; null when the model names none
-    /// (`models.md` § Output limit).
+    /// The current model's output limit; null when the model names none.
     pub output_limit: Option<NonZeroU32>,
     /// The most output the request itself asks for, whatever the model's
     /// limit, such as a title request's; null for a turn.
@@ -341,8 +342,9 @@ pub struct InferenceRequest {
     /// The transcript as the model receives it (`transcript.md` § Replay).
     pub items: Arc<[InferenceItem]>,
     /// The replayed blocks that give `items`, in order: which items each
-    /// gives and the entries a vendor kept on it (`claude-code.md` § The
-    /// session a process resumes). A request that is no session's, such as
+    /// gives and the entries a vendor kept on it
+    /// (`crates/provider-claude-code/src/session.rs`). A request that is no
+    /// session's, such as
     /// a title request, names none.
     pub blocks: Arc<[RequestBlock]>,
     pub tools: Arc<[ToolDefinition]>,
@@ -356,11 +358,10 @@ pub struct InferenceRequest {
     pub cancel: CancellationToken,
     /// The account the session's agent took under its entry's rotation,
     /// as its state keeps it; none before it took one, after a compaction,
-    /// and for a request that is no session's (`providers.md` § Account
-    /// rotation).
+    /// and for a request that is no session's (`crates/backend-providers/src/llm/rotation.rs`).
     pub account: Option<AgentAccount>,
     /// What the request is for, which its usage ledger rows say
-    /// (`usage-and-quota.md` § Usage ledger).
+    /// (`crates/backend-database/src/usage.rs`).
     pub purpose: RequestPurpose,
     /// The number of the session's agent in the conversation's tree, 0 for
     /// the root; none for a request that is no session's, such as a title
@@ -376,7 +377,7 @@ impl InferenceRequest {
     }
 }
 
-/// What a request is for (`usage-and-quota.md` § Usage ledger).
+/// What a request is for (`crates/backend-database/src/usage.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestPurpose {
     /// A request of a session's turn: its first, a continuation or a retry.
@@ -398,8 +399,20 @@ impl RequestPurpose {
     }
 }
 
-/// How a request extends the session's earlier requests (`providers.md`
-/// § Prompt cache).
+/// How a request extends the session's earlier requests.
+///
+/// A vendor finds what it has cached only when a request begins with exactly
+/// what an earlier one sent, so each request of a session begins with the
+/// session's previous request, byte for byte, in the provider's own format,
+/// and only new content follows; Demi never rewrites what it has sent. What
+/// changes it is a compaction, a model switch (a vendor keeps one cache per
+/// model), an edit, a change of the thinking setting, an edit of a configured
+/// model's accepted file types, or a Demi release that changes the system
+/// prompt, the tools or the request format. `retry` and `resume` are no
+/// exceptions: they cut the history back to an earlier request. Nor is a change
+/// of the output limit or the service tier, which no vendor counts in the
+/// cached prefix. The prompt and the tools hold no time, id, Host or state, and
+/// a body holds no request id or time, which would break the prefix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptCache {
     /// A request that is no session's, such as a title request or a
@@ -416,7 +429,7 @@ pub enum PromptCache {
 impl InferenceRequest {
     /// The output limit a provider sends: the model's limit, lowered to the
     /// request's cap, or the cap alone when the model has no limit; null
-    /// when neither is set (`models.md` § Output limit).
+    /// when neither is set.
     pub fn max_output_tokens(&self) -> Option<NonZeroU32> {
         match (self.output_limit, self.output_cap) {
             (Some(limit), Some(cap)) => Some(limit.min(cap)),
@@ -452,15 +465,17 @@ pub enum InferenceItem {
         text: String,
     },
     /// Reasoning with the vendor's signature when it signed it; a provider
-    /// replays only signatures it recognizes as its vendor's.
+    /// replays only signatures it recognizes as its vendor's, since a vendor
+    /// refuses one it did not sign. The `openai` family tags by its entry's
+    /// vendor, because OpenAI and xAI speak one API but sign apart.
     AssistantThinking {
         model_id: String,
         text: String,
         signature: Option<String>,
         /// Compaction kept it after a summary, which replaced the history it
         /// followed (`transcript.md` § Replay): a provider whose vendor checks
-        /// reasoning against that history leaves it out (`providers.md`
-        /// § Per vendor).
+        /// reasoning against that history leaves it out
+        /// (`crates/provider-anthropic-api/src/request.rs`).
         kept_past_summary: bool,
     },
     /// Opaque reasoning data, replayed as received.
@@ -546,7 +561,7 @@ pub fn offers(tools: &[ToolDefinition], name: &str) -> bool {
     tools.iter().any(|tool| tool.name == name)
 }
 
-/// An event of a run (`providers.md` § A run). A run ends after `Response`,
+/// An event of a run. A run ends after `Response`,
 /// after `Error`, after the last `ToolCall` of a batch when the vendor needs
 /// the results before it can finish, or when its request's token is
 /// cancelled. Cancellation ends it without a further event, and dropping the
@@ -586,7 +601,7 @@ pub enum ProviderEvent {
     /// The account the agent uses from this run on, sent before anything
     /// else of the run when it is not the one the request named; none when
     /// the entry's rotation gives the agent no account of its own. The
-    /// session keeps it with its state (`providers.md` § Account rotation).
+    /// session keeps it with its state (`crates/backend-providers/src/llm/rotation.rs`).
     Account(Option<AgentAccount>),
     /// The agent's account reached its limit and the request goes on with
     /// another account, which an `Account` event names next.
@@ -594,7 +609,7 @@ pub enum ProviderEvent {
     /// Entries of the vendor's own record of the session that belong to one
     /// block, which the agent keeps on that block, after those it holds,
     /// and gives back in the request's [`RequestBlock`]s
-    /// (`claude-code.md` § The session a process resumes). They change
+    /// (`crates/provider-claude-code/src/session.rs`). They change
     /// nothing the model sees in this run.
     Entries {
         of: EntriesOf,
@@ -604,8 +619,7 @@ pub enum ProviderEvent {
     /// Code run in which the CLI calls the vendor more than once, for the
     /// usage ledger, which keeps a row per call; the agent reads nothing of
     /// it. A run's first call starts with the run, and a call no `Ended`
-    /// reports is ended by the run's end (`usage-and-quota.md` § Usage
-    /// ledger).
+    /// reports is ended by the run's end (`crates/backend-database/src/usage.rs`).
     Call(CallEvent),
 }
 
@@ -702,7 +716,7 @@ impl ProviderEvent {
     /// the agent's account and the vendor's record of the session are
     /// bookkeeping, which writes nothing of the answer: a usage limit after
     /// only those still sends the request again on another account
-    /// (`providers.md` § Account rotation).
+    /// (`crates/backend-providers/src/llm/rotation.rs`).
     pub fn is_output(&self) -> bool {
         match self {
             Self::ThinkingStart

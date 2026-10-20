@@ -1,5 +1,5 @@
 //! The two-step decode of vendor payloads tagged by `type`
-//! (`providers.md` § Reading vendor input).
+//! (`crates/provider-common/src/wire/mod.rs`).
 
 use demi_provider_common::{
     tagged_wire,

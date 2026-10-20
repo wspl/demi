@@ -90,8 +90,8 @@ pub struct Profile {
     pub enabled: bool,
 }
 
-/// A profile's model settings (`models.md` § A conversation's model
-/// settings): the provider entry, the model, the thinking effort and the
+/// A profile's model settings (`crates/shared-types/src/catalog.rs`): the
+/// provider entry, the model, the thinking effort and the
 /// service tier the user chose, which the product builds a child's model
 /// selection from at each spawn.
 #[derive(Debug, Clone, PartialEq, Eq)]

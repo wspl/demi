@@ -1,8 +1,9 @@
-//! The metered runtime (`providers.md` § Inference admission and runtime
-//! ownership): the backend wraps each session's runtime so that the user's
+//! The metered runtime
+//! (`crates/backend-user-shard/src/conversation/providers.rs`): the backend
+//! wraps each session's runtime so that the user's
 //! rate limit applies before every run and every call the run makes to the
 //! vendor is a usage ledger row as it ends, the run's last before the run's
-//! response reaches the agent (`usage-and-quota.md` § Usage ledger). A
+//! response reaches the agent (`crates/backend-database/src/usage.rs`). A
 //! ledger write that fails is logged and the request goes on: inference
 //! never fails because accounting did. Each run logs under a span that names
 //! its request, its agent and its account, so a row finds its course in the
@@ -39,7 +40,7 @@ pub struct Ledger {
     pub account: Option<CredentialId>,
     /// Looks up the catalog's prices of a model as each of its rows is
     /// written, so a price the catalog learns or corrects applies from the
-    /// next call (`usage-and-quota.md` § How the figures are counted).
+    /// next call (`crates/backend-database/src/usage.rs`).
     pub prices: ModelPrices,
 }
 
@@ -55,8 +56,7 @@ fn short_hash(text: &str) -> String {
 }
 
 /// The hashes of the system prompt and of the tool definitions `request`
-/// sends; none for a request outside a session (`usage-and-quota.md`
-/// § Usage ledger).
+/// sends; none for a request outside a session (`crates/backend-database/src/usage.rs`).
 fn prompt_hashes(request: &InferenceRequest) -> (Option<String>, Option<String>) {
     if request.agent.is_none() {
         return (None, None);
@@ -84,7 +84,7 @@ async fn write(control: &ControlService, row: UsageRow) -> Option<String> {
     match control.append_usage(row).await {
         Ok(id) => Some(id),
         Err(error) => {
-            // The row is lost; the request goes on (`usage-and-quota.md`).
+            // The row is lost; the request goes on (`crates/backend-providers/src/usage/mod.rs`).
             tracing::warn!(
                 error = &error as &dyn std::error::Error,
                 "a usage ledger row was not written"
@@ -458,7 +458,7 @@ mod tests {
     /// and a call that used a kind its model has no price for has no price,
     /// while the model's other calls do; and each row keeps the hashes of
     /// the prompt it sent, so a request whose system prompt changed is the
-    /// miss's cause (`usage-and-quota.md` § A conversation's cost). Planted
+    /// miss's cause (`crates/backend-database/src/usage.rs`). Planted
     /// defects: the prices looked up once as the runtime is built, the
     /// hour-long write at the write rate, an unpriced kind priced at zero, or
     /// one hash for every prompt.

@@ -91,7 +91,7 @@ its epoch and revision ([Patches and versions](transcript.md#patches-and-version
 The transcript owns suffix replacement and the patch that replicates it. The
 session prepares the replacement turn, commits the checkpoint, publishes the
 accepted history, and starts inference with a fresh provider runtime, a runtime
-fork ([Runtime forks and closing](../providers/providers.md#runtime-forks-and-closing)),
+fork (`crates/provider-common/src/lib.rs`),
 so that no state the provider kept about the removed history reaches the
 replacement. The replacement uses a new turn ID, the selected model, and a
 freshly prepared preamble. Retained blocks keep their IDs, timestamps, content,

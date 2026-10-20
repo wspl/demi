@@ -648,7 +648,7 @@ defines the HTTP contracts; [Authentication](#authentication) defines session
 integration.
 
 Model discovery uses one account-wide cache and shared pending request
-([Catalog cache](../providers/models.md#catalog-cache)).
+(`crates/backend-providers/src/llm/catalog_cache.rs`).
 Execution availability is derived separately for each conversation. History
 loading does not wait for model discovery; starting a conversation's session
 does, for the provider entries the page holds when it starts, so a change to

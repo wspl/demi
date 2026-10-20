@@ -1,6 +1,6 @@
 //! What a Codex request sends: the Responses body as the Codex backend wants
 //! a transcript replayed, and the headers that name the account and the
-//! session (`models.md` § Request parameters).
+//! session (`crates/shared-types/src/model.rs`).
 
 use std::borrow::Cow;
 
@@ -22,7 +22,9 @@ use tokio_tungstenite::tungstenite::Utf8Bytes;
 use crate::{SIGNATURE_TAG, auth::Credentials};
 
 /// A request's body, encoded once: over server-sent events as it is, and
-/// over a WebSocket as one `response.create` message with the same fields.
+/// over a WebSocket as one `response.create` message with the same fields, in
+/// the same bytes, so that a request extends the previous one for the vendor's
+/// cache whichever way each went.
 #[derive(Debug, Clone)]
 pub(crate) struct Encoded {
     pub(crate) http: Bytes,

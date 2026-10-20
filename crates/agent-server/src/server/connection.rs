@@ -332,8 +332,7 @@ impl<H: HostResolver> Connection<H> {
         }
         // The open is answered. The user will likely send next: its request
         // is known but for its input, and readying it may read the media
-        // the open read none of (`claude-code.md` § Preparing a process
-        // ahead).
+        // the open read none of (`crates/provider-claude-code/src/prepared.rs`).
         tree.root().session().prepare_ahead(Ahead::Opened);
         if let Some(continuation) = continuation
             && let Err(error) = tree.continue_restored(continuation).await

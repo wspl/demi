@@ -256,7 +256,7 @@ async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_
         let asked = script.asked.lock().unwrap();
         assert!(input(&asked[0]).contains(message), "{}", input(&asked[0]));
         // The request's own cap, although the configured model allows more
-        // (`models.md` § Output limit).
+        // (`crates/provider-common/src/contract.rs`).
         assert_eq!(
             asked[0].max_output_tokens().map(|limit| limit.get()),
             Some(4_096)
@@ -420,7 +420,7 @@ async fn first_message(backend: &TestBackend, master: &Session, id: &str, provid
     socket.chat("m1", "why does pnpm build fail").await;
 }
 
-/// The small model (`models.md` § Small model): a conversation on one entry
+/// The small model (`crates/backend-providers/src/llm/small_model.rs`): a conversation on one entry
 /// is titled by Haiku of another, at its highest version with thinking off;
 /// a chosen model is kept in the preferences and writes the titles while
 /// its entry lists it, Automatic again once it is gone; with Only the

@@ -183,11 +183,11 @@ deployment, an upgrade or a restart interrupted goes on by itself once the
 backend is back ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
 absent means `true`. `multiAccountWarned` is true once the user went on
 past the dialog about using several subscription accounts
-([Account rotation](../providers/providers.md#account-rotation)), which
+(`crates/backend-providers/src/llm/rotation.rs`), which
 then never shows again. Settings › Agent shows `sendWhileRunning`, `resumeAfterRestart` as *Resume after Demi
 restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
-09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
+09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` (`crates/backend-providers/src/llm/small_model.rs`). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
@@ -208,7 +208,7 @@ its choice on its workspace (`lastModel`, `lastWorkflow`), deleted with it;
 the conversations outside a project keep theirs in the preferences
 (`lastModel`, `lastWorkflow`). `lastModel` holds model settings,
 `{ providerId, modelId, thinkingEffort, serviceTierId }`
-([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
+(`crates/shared-types/src/catalog.rs`),
 and `lastWorkflow` is a workflow choice as a conversation holds it,
 `{ type: "default" }`, `{ type: "none" }` for No Subagents or
 `{ type: "workflow", id }`; absent means No Subagents, as does a workflow the directory no longer
@@ -253,7 +253,7 @@ Commands receive it in their
 [command context](../execution/native-runtime.md#command-context), and the
 conversation browser (`crates/command-package-browser-chrome/src/driver/launch.rs`) starts with it.
 `contextLimits` holds the user's
-[context limits](../providers/models.md#context-limit), by provider entry id
+context limits (`crates/shared-types/src/context_limit.rs`), by provider entry id
 and then model id, each in tokens, such as
 `{ "<entry id>": { "claude-opus-5-5": 300000 } }`; a model it does not name
 uses its full window. A patch changes one model's limit with
@@ -319,7 +319,7 @@ body before it writes:
   outside the caller's scope, 404 `model_not_found`, and 409
   `setting_unavailable` for an effort or a tier the model does not offer. A
   body whose model names no effort gets the first effort the model lists
-  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+  (`crates/shared-types/src/catalog.rs`).
   Turning a profile on or off checks nothing else, so an unavailable profile
   can be disabled and enabled as it is.
 
@@ -352,15 +352,15 @@ every node of the user's conversations.
 a vendor entry of a models.dev vendor, a family's own vendor's entry, such as
 Anthropic's, and a compatible entry, Anthropic Messages unless
 `providerType` and `wireApi` say otherwise
-([Endpoints](../providers/providers.md#endpoints)). Everything but the kind
+(`crates/provider-common/src/endpoint.rs`). Everything but the kind
 may come later, and the entry is
-[incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start)
+incomplete (`crates/backend-user-shard/src/provider_settings.rs`)
 until it has what it needs; `label` defaults to the vendor's or family's
 name, or *Compatible API*, with the first free *(2)*, *(3)* when the user
 has an entry of that name.
 The first derives the family, its wire and its endpoint from the vendor
 catalog, `GET /api/providers/catalog`, which lists the
-[vendors from models.dev](../providers/providers.md#vendors-from-modelsdev);
+vendors from models.dev (`crates/backend-providers/src/llm/vendors.rs`);
 the second names the family explicitly. `wireApi` is
 `responses` or `chat-completions`, and only a family that speaks both takes
 it. A label has 1 to 80 characters after trimming, a key is one line of text,
@@ -376,7 +376,7 @@ kind it is. The Test endpoint deliberately makes a real inference
 request. A change of an entry, its accounts included, holds the entry while it
 runs; another change meanwhile answers 409 `provider_busy`.
 
-API providers accept `models` as a complete manual list of 0–1000 entries; an empty list leaves the entry [incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start). Each entry supplies
+API providers accept `models` as a complete manual list of 0–1000 entries; an empty list leaves the entry incomplete (`crates/backend-user-shard/src/provider_settings.rs`). Each entry supplies
 `id`, `displayName`, `contextWindow`, positive or null when unknown, nullable `outputLimit`,
 `thinkingEfforts`, nullable `acceptedExtensions` (without dots) and nullable
 `fastTier`. IDs must be unique and output limits cannot exceed context length.
@@ -385,7 +385,7 @@ clears saved models. A subscription entry's catalog comes from its provider.
 
 How a manual list's models become a conversation's model selection, and how
 an edit of the list reaches a running conversation, is defined in
-[Request parameters](../providers/models.md#request-parameters). Changing a
+Request parameters (`crates/shared-types/src/model.rs`). Changing a
 catalog never resends a failed message.
 
 `GET /api/models` is an account-wide catalog, independent of any conversation. Each of its providers carries `imageModels`, `[{ id, name, released }]`
@@ -402,7 +402,7 @@ runs a process. The entries of the product state carry the same `cliPackage`. `a
 `{ type: "unavailable", reason: "setup", message, missing }` while the entry
 is incomplete, `missing` naming what it lacks (`apiKey`, `endpoint`, `models`,
 `account`)
-([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)),
+(`crates/backend-user-shard/src/provider_settings.rs`),
 `{ type: "unavailable", reason: "authentication", message }` while the
 credential is refused or a subscription's account expired, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
@@ -410,25 +410,25 @@ message }` with the runtime's message while the provider cannot run, and
 the `selection` the backend built from it. The first effort of a model's
 `supportedThinkingEfforts` is the one a conversation's model settings hold on
 the model when a change names none
-([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+(`crates/shared-types/src/catalog.rs`).
 One provider's catalog failure does not remove the other providers or saved
 models. A static catalog, or one never fetched, reports the Unix epoch as
 `sourceFetchedAt`. `refresh=true` waits for
 a shared forced refresh; how catalogs are cached and refreshed is defined in
-[Catalog cache](../providers/models.md#catalog-cache). The route does not wake
+Catalog cache (`crates/backend-providers/src/llm/catalog_cache.rs`). The route does not wake
 Cloud or execute a model. The web app combines each provider's health with the
 state of the conversation's target and, for a provider whose transport is a
 process, of the user's Cloud. Inference admission checks the actual target.
 Unknown auth/runtime status stays explicit; catalog availability is not a
 successful inference test. Beside the providers, `smallModel` is the selection Automatic resolves
-to for the [small model](../providers/models.md#small-model), as for a
+to for the small model (`crates/backend-providers/src/llm/small_model.rs`), as for a
 conversation on the first entry with the user's hidden entries and models
 left out, or null when Only the Conversation's Provider is on or no tier
 matches; Settings › Agent shows it beside *Automatic*.
 
 `GET /api/models/search?q=<query>&entry=<id>` answers `{ results }`, the
 models.dev models the query matches, filled from `entry`'s vendor where it
-lists them ([Adding a model from models.dev](../providers/models.md#adding-a-model-from-modelsdev)):
+lists them (`crates/backend-providers/src/llm/vendors.rs`):
 each `{ ref, displayName, id, vendor, contextWindow, outputLimit,
 thinkingEfforts, acceptedExtensions, releaseDate }`, `ref` being
 `<vendor>/<model id>`. It reads the backend's kept copy and asks models.dev
@@ -450,7 +450,7 @@ cancelling the request stops the probe. An unknown account is
 `quota_requires_inference`, and a probe the vendor fails answers 503
 `quota_unavailable`, with the vendor's reason; a family that cannot probe answers the kept snapshot, and
 no data returns null, not a fabricated percentage
-([Vendor quota](../providers/usage-and-quota.md#vendor-quota)). Reading status
+(`crates/provider-common/src/quota.rs`). Reading status
 never invokes inference.
 `POST /api/providers/:id/test` takes `{ modelId?, credentialId? }` and tests
 with that account, in use or not; an unknown account is `account_not_found`.
@@ -465,7 +465,7 @@ when the provider answers, or `{ type: "failed", message, model? }` with the
 provider's own reason: a test that ran and failed is a result, not an error. A
 provider whose transport is a process is tested on the Claude Code machine,
 where its requests run too
-([Where it runs](../providers/claude-code.md#where-it-runs)); the test wakes
+(`crates/provider-claude-code/src/placement.rs`); the test wakes
 it.
 
 The CLI of an entry whose provider runs a process is read and managed under
@@ -486,7 +486,7 @@ accounts, plan and usage: for everyone else `accounts` is empty, `active` names
 no account, `quota` is null and an authenticated `auth` carries no account
 label, in the status, in the account list and in the product state alike.
 Configuring, testing and refreshing usage are the master's, and anyone else is
-refused with 403 `forbidden` ([Scope](../providers/providers.md#scope)).
+refused with 403 `forbidden` (`crates/backend-providers/src/vault/entries.rs`).
 
 ## Subscription accounts
 
@@ -494,7 +494,7 @@ Every subscription account comes from a sign-in, below.
 `GET /api/providers/:id/accounts` lists public
 account metadata and the active account as `{ accounts, active }`. An account
 whose sign-in the vendor refused carries `signedOut: true`
-([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in));
+(`crates/provider-claude-code/src/account.rs`);
 its row says *Sign In Again* and offers that action, which starts
 `…/accounts/login` and replaces the account's sign-in when it names the same
 account.
@@ -502,7 +502,7 @@ account.
 `PUT …/accounts/order` takes `{ credentialIds }`, every account of the entry
 once, in the order In Order uses and the list shows. `PATCH
 /api/providers/:id` takes `rotation`, `manual`, `in_order` or `balanced`
-([Account rotation](../providers/providers.md#account-rotation)); an entry
+(`crates/backend-providers/src/llm/rotation.rs`); an entry
 with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`). It also takes `media`, `{ image?, video?, audio? }`, each `{ shape?,
 enabled? }`: `shape`, the kind's shape, for a compatible entry only (400
 `shape_fixed` for a vendor entry), a shape name or null for none, and
@@ -515,7 +515,7 @@ user once, in the order Settings › Providers shows.
 `DELETE …/accounts/:credentialId` removes any account, the active one
 included, and answers `{ active }`, the account now active or null when the
 entry has none left
-([Login and publication](../providers/providers.md#login-and-publication)). An entry that does not take accounts this way answers 400
+(`crates/backend-providers/src/vault/logins.rs`). An entry that does not take accounts this way answers 400
 `accounts_unsupported`.
 
 Codex, Grok Build and Claude Code use `POST /api/providers/subscription-login { providerType, label? }`
@@ -530,7 +530,7 @@ reaches every page of its starter on the sync channel's `logins` message
 `stage` says what the login waits for (`preparing`, then `waiting_for_user`
 once it has something to show; Claude Code adds `waiting_for_machine`,
 `installing` and `starting` before it,
-[Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)), the
+Accounts and sign-in (`crates/provider-claude-code/src/account.rs`)), the
 `verificationUrl` and `userCode`
 null until the vendor names them and `expiresAt` the moment the login ends
 unless the user finishes it, null while it is `preparing` and set, with its
@@ -564,7 +564,7 @@ id answers 404 `login_not_found`. Terminal results are retained for ten
 minutes. A start on an entry that a login of the same user reserves answers
 409 `provider_busy` with `loginId`, that login's id, so the page opens it
 rather than a second one; a reservation of another kind names none. Login lifetime, credential publication, and account
-selection follow [Providers](../providers/providers.md#credential-vault).
+selection follow Providers (`crates/backend-providers/src/vault/entries.rs`).
 
 Provider account mutations obey the same shared-master/isolated-owner rule as
 configuration. A switch takes effect at the next request, while an

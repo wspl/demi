@@ -1,5 +1,4 @@
-//! A Codex account's sign-in (`providers.md` § Subscription secrets, § Token
-//! refresh): its secret document, what its tokens say about the account, and
+//! A Codex account's sign-in: its secret document, what its tokens say about the account, and
 //! the refresh of its tokens by the one protocol every family follows.
 
 use std::{sync::Arc, time::Duration};

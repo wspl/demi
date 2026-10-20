@@ -65,7 +65,7 @@ both of its regions, so a ByteDance speech key is an entry of its own, as
 the key a user copies from that console is; a user whose one key works for
 both pastes it into both. Volcengine Ark is a vendor of models.dev, whose
 entry also makes text; BytePlus ModelArk and both speech services are
-[media-only vendors](../providers/providers.md#media-only-vendors).
+media-only vendors (`crates/backend/src/families.rs`).
 
 A MiniMax entry, models.dev's `minimax` or `minimax-cn`, whose endpoint is
 MiniMax's Anthropic-shaped text API, makes its media through the same key on
@@ -79,18 +79,18 @@ appears in the model menu. A vendor entry's shapes are its vendor's and are not 
 entry's are chosen on its page and by `demi providers edit`, as its
 protocol for text is, so a self-hosted vLLM-Omni server, OpenRouter or a
 reseller that speaks a shape is reached with its address, its key and the
-model names it serves ([Providers](../providers/providers.md)). The shapes
+model names it serves (`packages/web-ui/src/settings/SettingsProvidersPage.vue`). The shapes
 are the request and answer formats the vendors' APIs share; Images, Video
 and Audio name each one's requests. A shape's model list is the entry's:
 a vendor entry lists what its vendor's API lists, described by the catalog
-([Image and video models](../providers/media-models.md)); a compatible
+(`crates/provider-common/src/media_catalog.rs`); a compatible
 entry lists the models the user added for that kind, as it does for text.
 
 Each entry that makes a kind has a switch for it on its page, **Image
 Generation**, **Video Generation** and **Audio Generation**, on from the
 start; turned off, the entry makes none of that kind and its models are
 not listed. The switches belong to the entry, as its configuration does
-([Image generation switch](../providers/providers.md)).
+(`crates/backend-providers/src/vault/entries.rs`).
 
 ## Which entry makes a call
 
@@ -154,7 +154,7 @@ answer.
 ## Managing it from a conversation
 
 `demi providers` changes all of it with the user's permission, as it
-changes text models ([Managing providers from a conversation](../providers/models.md#managing-providers-from-a-conversation)):
+changes text models (`crates/backend-user-shard/src/shard/provider_commands.rs`):
 `edit <entry> --image <shape|on|off> --video <shape|on|off> --audio <shape|on|off>`
 sets a compatible entry's shapes and any entry's switches, `on` turning a
 vendor entry's kind on with its fixed shape,

@@ -7,7 +7,7 @@
 //! Speech's or Doubao Speech's, makes Seed speech and Seed Audio's sound
 //! effects. No ByteDance API lists its models to an API key, so the models
 //! are the catalog's, and a key is checked by a request ByteDance refuses
-//! for its body (`providers.md` § Media-only vendors).
+//! for its body.
 
 mod ark;
 mod images;

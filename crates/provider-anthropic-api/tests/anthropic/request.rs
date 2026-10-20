@@ -1,4 +1,4 @@
-//! The request a run sends (`models.md` § Request parameters).
+//! The request a run sends (`crates/shared-types/src/model.rs`).
 
 use std::{num::NonZeroU32, sync::Arc};
 

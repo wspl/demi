@@ -3,7 +3,7 @@
 //! quota kept for each, and its capabilities, read when the backend answers
 //! and never stored. A user who only infers with an entry learns whether it
 //! works, not whose account it is or how much of it is used
-//! (`providers.md` § Scope).
+//! (`crates/backend-providers/src/vault/entries.rs`).
 
 use std::sync::Arc;
 

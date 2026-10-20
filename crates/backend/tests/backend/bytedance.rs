@@ -1,5 +1,5 @@
 //! ByteDance's entries (`media.md` § Which entries make which media,
-//! `providers.md` § Media-only vendors): BytePlus ModelArk and Doubao
+//! `crates/backend/src/families.rs`): BytePlus ModelArk and Doubao
 //! Speech offered from the media catalog with the endpoints it names,
 //! Volcengine Ark from models.dev, each with the shapes its vendor makes;
 //! a speech key checked by Test Connection through a request the service

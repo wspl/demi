@@ -1421,8 +1421,7 @@ export function deviceOfflineErrorBlock(id: string): Block {
 /**
  * The record of a turn whose sign-in Claude refused, as Claude Code 2.1.301
  * prints it: its made-up assistant line saying `authentication_failed`,
- * then a failed result that names no status (`claude-code.md` § Accounts
- * and sign-in).
+ * then a failed result that names no status (`crates/provider-claude-code/src/account.rs`).
  */
 export function signedOutErrorBlock(id: string): Block {
   const words = 'Failed to authenticate: OAuth session expired and could not be refreshed'
@@ -1457,7 +1456,7 @@ export function signedOutErrorBlock(id: string): Block {
  * The line an agent's move to another account leaves when its account
  * reached its 5-hour limit, which resets at `resetsAt`, and the
  * answer the same request then got from the next account
- * (`providers.md` § Account rotation).
+ * (`crates/backend-providers/src/llm/rotation.rs`).
  */
 export function accountSwitchBlocks(resetsAt: string): Block[] {
   return [

@@ -1,4 +1,4 @@
-//! The panel's controls (`mobile.md` § The live view): each control runs
+//! The panel's controls (`crates/plugin-mobile/src/lib.rs`): each control runs
 //! the operation the agent's command of the same meaning runs, as a package
 //! call for the conversation's user, and holds no simulator logic. The
 //! panel opens no device of its own; the agent does. Every control operates
@@ -183,8 +183,7 @@ pub(crate) async fn call(
         }
         // Without --output, the user's call saves the picture or the MP4 in
         // the conversation's scratch directory and answers its path, which
-        // the page saves on the user's computer (`mobile.md` § The live
-        // view).
+        // the page saves on the user's computer (`crates/plugin-mobile/src/lib.rs`).
         "screenshot" => {
             let OnDevice { device } = decode(params)?;
             let input = ScreenshotInput {

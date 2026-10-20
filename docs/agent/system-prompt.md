@@ -36,7 +36,7 @@ transcript, so it stays there and costs nothing more when replayed.
 
 A node's system prompt is rendered once, when the node is assembled, from
 five layers in this order, and holds no time, Host or other state
-([Prompt cache](../providers/providers.md#prompt-cache)):
+(`crates/provider-common/src/contract.rs`):
 
 | Layer | Written by | Holds |
 | --- | --- | --- |

@@ -1,5 +1,5 @@
 //! The WebSocket transport and the fallback to server-sent events
-//! (`providers.md` § Endpoints).
+//! (`crates/provider-codex/src/transport.rs`).
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 

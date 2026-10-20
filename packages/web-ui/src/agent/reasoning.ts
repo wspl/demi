@@ -28,7 +28,7 @@ export interface ReasoningState {
   /**
    * Off, when the model can turn thinking off, and the efforts the model
    * lists: only choices whose effect the user can tell
-   * (`models.md` § A conversation's model settings).
+   * (`packages/web-ui/src/agent/model-selection.ts`).
    */
   options: ReasoningOption[]
   /** The effort settings that name none hold on this model: its first. */

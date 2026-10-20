@@ -1,6 +1,6 @@
 // Detaching puts the UI automation mode the guest bridge turned on back as
 // it was, against a guest `defaults` that behaves as iOS 26.5's does
-// (`mobile.md` § iOS).
+// (`crates/command-package-mobile/src/ios/mod.rs`).
 
 import FBSimulatorControl
 import Foundation

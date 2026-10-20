@@ -455,7 +455,7 @@ impl<'a> RequestView<'a> {
 
     /// A tool result's document: its held bytes, or its text when the
     /// request's model does not read it in a tool result
-    /// (`providers.md` § Media in tool results).
+    /// (`crates/provider-common/src/contract.rs`).
     pub(crate) fn tool_document(&self, source: &DocumentSource) -> Result<MediaBytes, String> {
         let DocumentSource::Ref {
             r#ref,
@@ -469,7 +469,7 @@ impl<'a> RequestView<'a> {
 
     /// A tool result's image or video: its held bytes, or its text when the
     /// request's model does not read it in a tool result
-    /// (`providers.md` § Media in tool results).
+    /// (`crates/provider-common/src/contract.rs`).
     pub(crate) fn tool_medium(
         &self,
         kind: ModelMediaKind,

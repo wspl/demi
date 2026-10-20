@@ -1,5 +1,5 @@
 //! The session a new process resumes and the blocks the CLI's entries
-//! belong to (`claude-code.md` § The session a process resumes).
+//! belong to (`crates/provider-claude-code/src/session.rs`).
 
 use bytes::Bytes;
 use demi_provider_common::{

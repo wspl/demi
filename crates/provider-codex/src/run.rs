@@ -1,4 +1,4 @@
-//! One run (`providers.md` § A run): resolve the account's credentials, open
+//! One run (`crates/provider-common/src/contract.rs`): resolve the account's credentials, open
 //! the request by the provider's transport, and map the Responses events.
 //! A request refused with HTTP 401 before any event refreshes the token that
 //! was refused, once, and is sent again.

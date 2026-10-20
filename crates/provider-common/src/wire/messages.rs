@@ -1,6 +1,6 @@
 //! The token counts of the Anthropic Messages stream, which both providers
 //! that read it share: the Anthropic API's own, and Claude Code, whose CLI
-//! passes the API's stream events through (`claude-code.md` § Reading).
+//! passes the API's stream events through (`crates/provider-claude-code/src/output.rs`).
 
 use std::borrow::Cow;
 
@@ -112,7 +112,7 @@ impl CallUsage {
     }
 
     /// The latest call as the usage ledger keeps it, ended as `outcome`
-    /// says (`usage-and-quota.md` § Usage ledger).
+    /// says (`crates/backend-database/src/usage.rs`).
     pub fn call(&self, outcome: CallOutcome) -> VendorCall {
         VendorCall {
             vendor_id: self.id.clone(),

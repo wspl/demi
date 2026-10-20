@@ -1,6 +1,7 @@
 // One capture of the live view: the upright picture scaled to the size
 // the view asked for, encoded with VideoToolbox as H.264 High, Annex B, in
-// real time without B-frames (`mobile.md` § iOS). A still screen sends no
+// real time without B-frames (`crates/command-package-mobile/src/ios/mod.rs`).
+// A still screen sends no
 // frame; a key frame asked for is sent at once, of the picture as it is. A
 // picture drawn while the viewers' windows have no room waits, replaced by
 // any newer one, until they do.

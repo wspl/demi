@@ -1,5 +1,5 @@
 //! One run: the request, then the Messages API's event stream mapped onto
-//! provider events (`providers.md` § A run).
+//! provider events (`crates/provider-common/src/contract.rs`).
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -231,7 +231,7 @@ impl Mapper {
         };
         match block {
             // The call's start is for display; the call is whole at its
-            // block's end (`providers.md` § A run).
+            // block's end (`crates/provider-common/src/contract.rs`).
             ContentBlock::ToolUse(tool) => {
                 let start_event = ProviderEvent::ToolCallStart {
                     tool_use_id: tool.id.0.clone(),

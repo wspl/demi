@@ -1,4 +1,4 @@
-//! The `mobile.*` operations (`mobile.md` § Commands): their limits, the
+//! The `mobile.*` operations: their limits, the
 //! values they share, their failures, and each operation's input and
 //! result. Inputs are the flat argument objects a command's flags and
 //! positionals make; results are what `--json` prints. Every coordinate an
@@ -30,8 +30,7 @@ pub const INLINE_BYTES: usize = 64 * 1024;
 
 numbered!(
     /// A device's handle in the conversation, which `open` answers: `m` and
-    /// the device's number, given once across the conversation's Hosts
-    /// (`mobile.md` § Commands).
+    /// the device's number, given once across the conversation's Hosts.
     DeviceId,
     "m",
     "a device handle, such as m1"
@@ -233,7 +232,7 @@ pub struct ElementSummary {
     pub label: Option<String>,
 }
 
-/// One element of the screen's tree (`mobile.md` § Commands): its
+/// One element of the screen's tree: its
 /// reference, role, text or label, value, identifier, frame and state. A
 /// state the tree does not carry is left out rather than reported false.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

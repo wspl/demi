@@ -1,6 +1,5 @@
 //! An account's quota snapshot: the merge of probes and observations, and
-//! the helpers a family reads its vendor's windows with (`usage-and-quota.md`
-//! § Vendor quota).
+//! the helpers a family reads its vendor's windows with (`crates/provider-common/src/quota.rs`).
 
 use std::sync::{Arc, Mutex};
 

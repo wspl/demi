@@ -1,5 +1,5 @@
 //! The product's rules over a subscription entry's accounts
-//! (`providers.md` § Login and publication, `web-api-settings.md` § Subscription
+//! (`crates/backend-providers/src/vault/logins.rs`, `web-api-settings.md` § Subscription
 //! accounts): every account comes from a sign-in, selecting an account is
 //! explicit, and removing the active account selects the entry's next one,
 //! or leaves it with none. A change of accounts invalidates the entry's
@@ -123,7 +123,7 @@ pub async fn remove(
         return Err(AccountRefusal::NotFound);
     }
     // The family's own keeping of the account goes first, so a failure
-    // leaves the account whole (`claude-code.md` § Accounts and sign-in).
+    // leaves the account whole (`crates/provider-claude-code/src/account.rs`).
     if let LoginAccounts::Machine(accounts) = assembly.login_accounts(entry).await? {
         accounts
             .forget(account.as_str())

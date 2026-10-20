@@ -1,5 +1,5 @@
 /**
- * The device toolbar's controls (`mobile.md` § The live view), in their
+ * The device toolbar's controls (`packages/plugin-mobile/src/index.ts`), in their
  * order: each the page method it calls and that method's parameters, which
  * run the operation of the `demi mobile` command that does the same, so
  * Rotate Left is `demi mobile rotate <m> left` and Lock is

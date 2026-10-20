@@ -2719,8 +2719,9 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
 }
 
 /// A change that names no effort takes the first effort the model lists,
-/// on a model that can turn thinking off too (`models.md` § A conversation's
-/// model settings): the settings never leave thinking to the vendor, and the
+/// on a model that can turn thinking off too
+/// (`crates/shared-types/src/catalog.rs`): the settings never leave thinking to
+/// the vendor, and the
 /// request carries the effort every page shows. A patch cannot name no
 /// effort with null.
 #[tokio::test]

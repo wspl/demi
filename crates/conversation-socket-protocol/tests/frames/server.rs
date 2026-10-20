@@ -71,7 +71,7 @@ fn patched(patches: &mut [TranscriptPatch]) -> Vec<&mut Block> {
 }
 
 // The entries a provider keeps on a block never leave the backend
-// (`claude-code.md` § The session a process resumes): a frame that carries
+// (`crates/provider-claude-code/src/session.rs`): a frame that carries
 // blocks holding them has the wire shape of one whose blocks hold none.
 #[test]
 fn a_block_reaches_the_page_without_the_entries_its_provider_kept_on_it() {

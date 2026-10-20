@@ -1,5 +1,6 @@
-//! Grok Build's device login and the account it stores (`providers.md` §
-//! Login and publication). The login waits at least a second between polls,
+//! Grok Build's device login and the account it stores
+//! (`crates/provider-grok-build/src/login.rs`). The login waits at least a
+//! second between polls,
 //! so these tests run on a paused clock; no other timer is pending while
 //! they wait on the scripted issuer.
 

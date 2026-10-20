@@ -93,17 +93,17 @@ import type { TitleText } from '../ui/ui-text'
  * subscription is always listed and manages its accounts; an API key is added from
  * the rail. A vendor entry shows its vendor's endpoint as plain text and lists the
  * vendor's catalog; a compatible API sets its protocol, its endpoint and, when its
- * server takes one, its key, and lists only the models the user adds (`providers.md`
- * § Provider management). Adding creates the entry at once, selected, on the page
+ * server takes one, its key, and lists only the models the user adds. Adding
+ * creates the entry at once, selected, on the page
  * every entry has, and what it still lacks is a plain wait, the rail's yellow dot,
  * an empty field and the words *No models yet*; red marks a failure only. Add Model
  * adds the model it is given at once and opens it in Edit Model, the dialog every
- * model of the list opens (`models.md` § Adding a model from models.dev). Removing
+ * model of the list opens (`crates/backend-user-shard/src/provider_settings.rs`). Removing
  * an entry, an account or a model asks first. Field edits land on the entry itself;
  * everything that needs the host is emitted. A subscription with several accounts
  * offers its rotation and orders its accounts by dragging; adding its second account
  * and choosing In Order or Balanced first warn, once, that several personal
- * subscriptions may be against the vendor's terms (`providers.md` § Account rotation).
+ * subscriptions may be against the vendor's terms (`crates/backend-providers/src/llm/rotation.rs`).
  */
 /** Each rotation's mark: the one by hand, the one down the list, the one weighed by room. */
 const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, balanced: Scale }
@@ -350,7 +350,7 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
 
 /**
  * Removing the active account switches the provider to its first other account in the list,
- * as the backend does, or leaves it with none (`providers.md` § Login and publication); the
+ * as the backend does, or leaves it with none (`crates/backend-providers/src/vault/logins.rs`); the
  * question says which.
  */
 function askRemoveAccount(
@@ -372,7 +372,7 @@ function askRemoveAccount(
   })
 }
 
-// The warning about several accounts (`providers.md` § Account rotation): what
+// The warning about several accounts (`crates/backend-providers/src/llm/rotation.rs`): what
 // Continue goes on with, which Cancel drops.
 const warning = ref<(() => void) | null>(null)
 const warningOpen = ref(false)
@@ -448,8 +448,8 @@ function madeKinds(provider: SettingsProviderEntry): SettingsMediaKind[] {
 }
 
 /**
- * The kinds whose sections the entry's page shows below Models
- * (`providers.md` § Provider management): each a vendor entry makes, and
+ * The kinds whose sections the entry's page shows below Models:
+ * each a vendor entry makes, and
  * every kind for a compatible API, which chooses its shape there.
  */
 function mediaSections(provider: SettingsProviderEntry): SettingsMediaKind[] {
@@ -1483,8 +1483,8 @@ function endpointCheck(value: string) {
                 </SettingsRow>
               </SettingsModelList>
             </SettingsGroup>
-            <!-- One section for each kind of media the entry can make, below its models
-               (`providers.md` § Provider management): a vendor entry's switch and its vendor's
+            <!-- One section for each kind of media the entry can make, below its models:
+a vendor entry's switch and its vendor's
                models, which it does not edit; a compatible API's shape, then once chosen its
                switch and the models its user added with the section's own Add. -->
             <template v-for="kind in mediaSections(selected)" :key="kind">

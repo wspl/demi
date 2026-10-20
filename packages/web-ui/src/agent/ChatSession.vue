@@ -231,7 +231,7 @@ const emit = defineEmits<{
   /**
    * The failed turn's usage limit offered another account of its entry,
    * without rotation: the host makes it active, then resumes
-   * (`providers.md` § Account rotation).
+   * (`crates/backend-providers/src/llm/rotation.rs`).
    */
   continueWith: [providerId: string, credentialId: string]
   /** Open Settings › Providers, where an account the vendor signed out is signed in again. */

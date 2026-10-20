@@ -1,5 +1,5 @@
 //! The words of a model's ID or name, which the small model's tiers
-//! (`models.md` § Small model) and a key's image models (`images.md`
+//! (`crates/backend-providers/src/llm/small_model.rs`) and a key's image models (`images.md`
 //! § Vendors) match whole.
 
 /// The lowercase words of `text`, split at `-`, `_`, `.`, `/` and spaces.

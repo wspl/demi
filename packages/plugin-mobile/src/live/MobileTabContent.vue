@@ -8,7 +8,7 @@ import { MobilePlatformLogo, type MobileTabData } from './kind'
 import { t } from '../locales/text'
 
 /**
- * A device's tab (`mobile.md` § The live view): its toolbar, which starts
+ * A device's tab (`packages/plugin-mobile/src/index.ts`): its toolbar, which starts
  * with the device's system's logo and name where the whole name fits, never on a phone,
  * whose tab names the device, and holds the panel's controls, each the
  * operation of the command that does the same, and the device live. The
@@ -44,8 +44,7 @@ function save(path: string | null): void {
 /**
  * A toolbar control's call. Screenshot and Record leave a file, which the
  * press waits for and saves on this computer; the rest only send input,
- * which waits for nothing, the picture showing the effect (`mobile.md`
- * § The live view).
+ * which waits for nothing, the picture showing the effect (`packages/plugin-mobile/src/index.ts`).
  */
 function act(control: DeviceControl): Promise<void> | undefined {
   const call = control.call(props.data.device, { recording: recording.value })

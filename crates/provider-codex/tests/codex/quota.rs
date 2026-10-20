@@ -1,5 +1,5 @@
 //! A Codex account's quota: the `x-codex-*` headers on every answer of the
-//! service and the free usage probe (`usage-and-quota.md` § Codex).
+//! service and the free usage probe (`crates/provider-codex/src/quota.rs`).
 
 use demi_provider_codex::TransportMode;
 use demi_provider_common::{

@@ -4,8 +4,8 @@ import { formatTokens } from '../ui/token-count'
 import { t } from './locales/text'
 
 /**
- * One model's context limit as the model menu changes it (`models.md`
- * § Context limit): the user's, for every conversation with that model. Null
+ * One model's context limit as the model menu changes it: the user's, for every
+ * conversation with that model. Null
  * tokens remove the limit, so the model uses its full window.
  */
 export interface ContextLimitChange {

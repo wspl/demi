@@ -1,5 +1,6 @@
-//! One change of an entry at a time (`providers.md` § Login and
-//! publication): an edit, a deletion, an account change or a test holds the
+//! One change of an entry at a time
+//! (`crates/backend-providers/src/vault/logins.rs`): an edit, a deletion, an
+//! account change or a test holds the
 //! entry while it runs, and a login into the entry holds it until the login
 //! ends. A login that makes a new entry holds that entry, the owner's new
 //! entry of its family, the same way. Another change meanwhile is refused as

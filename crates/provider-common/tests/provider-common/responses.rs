@@ -1,5 +1,6 @@
-//! The Responses stream mapped onto a run's events (`providers.md` § A run,
-//! § Reading vendor input), over recorded frames.
+//! The Responses stream mapped onto a run's events
+//! (`crates/provider-common/src/contract.rs`,
+//! `crates/provider-common/src/wire/mod.rs`), over recorded frames.
 
 use std::{sync::Arc, time::Duration};
 

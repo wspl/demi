@@ -43,7 +43,7 @@ const providerSettings = useProviderSettings()
 /**
  * Continue with another account after a usage limit, without rotation: the
  * account becomes the entry's active one, as Activate in Settings makes it,
- * then the turn resumes on it (`providers.md` § Account rotation).
+ * then the turn resumes on it (`crates/backend-providers/src/llm/rotation.rs`).
  */
 async function continueWith(conversation: Parameters<typeof store.start>[0], providerId: string, credentialId: string): Promise<void> {
   const provider = providerSettings.providers.find((entry) => entry.id === providerId)

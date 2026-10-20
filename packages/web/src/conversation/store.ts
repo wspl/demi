@@ -1483,7 +1483,7 @@ export const useConversations = defineStore('conversations', () => {
   }
   const costReads = new Map<string, CostRead>()
 
-  /** The backend's answer for what the conversation `id` cost (`usage-and-quota.md` § Reading it). */
+  /** The backend's answer for what the conversation `id` cost (`packages/web-ui/src/agent/context-cost.ts`). */
   function readCostOf(id: string, signal: AbortSignal): Promise<ConversationCostView> {
     return apiRequest(`/conversations/${encodeURIComponent(id)}/cost`, { signal })
       .then((response) => readResponse(response, conversationCostSchema))
@@ -1504,7 +1504,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads the cost of `conversation`, which the page holds while the
-   * conversation is open (`usage-and-quota.md` § Reading it), keeping what
+   * conversation is open (`packages/web-ui/src/agent/context-cost.ts`), keeping what
    * it shows until the answer comes, then adds to the answer the frames
    * that came meanwhile and that it does not include, and reads again when
    * an attach said the conversation has more rows than it holds then. A

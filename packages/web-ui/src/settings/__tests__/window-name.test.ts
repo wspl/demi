@@ -4,8 +4,8 @@ import { createPageI18n } from '../../i18n/text'
 import { windowName, windowNameInSentence } from '../window-name'
 
 // A usage window reads by its kind, its period and its scope in the page's
-// language, the same for every vendor (`usage-and-quota.md` § Window
-// names), and a sentence names it in lowercase but for a model, with room
+// language, the same for every vendor (`packages/web-ui/src/ui/dates.ts`), and
+// a sentence names it in lowercase but for a model, with room
 // beside Chinese text. Microseconds.
 
 const HOUR = 3600

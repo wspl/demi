@@ -1,4 +1,4 @@
-//! The `mobile` kind's tabs on the backend (`mobile.md` § The live view):
+//! The `mobile` kind's tabs on the backend (`crates/plugin-mobile/src/lib.rs`):
 //! one tab for each device the conversation has open on its own Host, added
 //! when the agent opens it and removed when it closes, is lost or goes with
 //! the package's state on the Host; closing a tab closes its device, as

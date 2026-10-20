@@ -1,7 +1,11 @@
-//! The limits a user may set on the context window Demi uses for a model
-//! (`models.md` § Context limit). The steps and their lookups are generated
+//! The limits a user may set on the context window Demi uses for a model.
+//! The steps and their lookups are generated
 //! into `@demicodes/protocol`, so the model menu offers what a session
-//! applies.
+//! applies. A limit replaces the model's window wherever Demi uses the window
+//! for itself, the compaction thresholds and the usage indicator, and changes
+//! nothing a vendor receives or enforces: the request limits and the check that
+//! a reported usage can belong to one request still follow the model's own
+//! window.
 
 use std::str::FromStr;
 

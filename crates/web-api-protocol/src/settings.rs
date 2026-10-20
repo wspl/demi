@@ -430,7 +430,7 @@ pub struct Preferences {
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
     /// Whether the user went on past the dialog about using several
-    /// subscription accounts (`providers.md` § Account rotation), which then
+    /// subscription accounts (`crates/backend-providers/src/llm/rotation.rs`), which then
     /// never shows again. Absent means no.
     #[serde(
         default,
@@ -441,8 +441,9 @@ pub struct Preferences {
     #[garde(skip)]
     pub multi_account_warned: Option<bool>,
     /// The limit the user set on the context window of each model, in
-    /// tokens, by provider entry id and then model id (`models.md` § Context
-    /// limit); a model it does not name uses its full window.
+    /// tokens, by provider entry id and then model id
+    /// (`crates/shared-types/src/context_limit.rs`); a model it does not name
+    /// uses its full window.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[garde(custom(stored_limits))]
     pub context_limits: ContextLimits,
@@ -458,7 +459,7 @@ pub struct Preferences {
     #[garde(dive)]
     pub hidden_models: Vec<HiddenModel>,
     /// The model Settings › Agent chose for small jobs, such as a
-    /// conversation's title (`models.md` § Small model). Absent means
+    /// conversation's title (`crates/backend-providers/src/llm/small_model.rs`). Absent means
     /// Automatic.
     #[serde(
         default,
@@ -672,7 +673,7 @@ pub struct PreferencesPatch {
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
     /// Whether the user went on past the dialog about using several
-    /// subscription accounts (`providers.md` § Account rotation), which then
+    /// subscription accounts (`crates/backend-providers/src/llm/rotation.rs`), which then
     /// never shows again. Absent means no.
     #[serde(
         default,

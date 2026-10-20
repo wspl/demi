@@ -1,6 +1,6 @@
 //! A credential pool held in memory: the accounts of a login before it
 //! completes, which the backend then stores in one transaction
-//! (`providers.md` § Login and publication), and the pool of tests.
+//! (`crates/backend-providers/src/vault/logins.rs`), and the pool of tests.
 
 use std::{
     collections::BTreeMap,

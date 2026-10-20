@@ -1,4 +1,4 @@
-//! The user's small model (`models.md` § Small model): the model a small
+//! The user's small model: the model a small
 //! job such as a conversation's title runs on. A model the user chose in
 //! Settings › Agent while it is still offered, else Automatic: the first
 //! tier any offered model reaches, Haiku, then GPT Sol, then Flash, at the

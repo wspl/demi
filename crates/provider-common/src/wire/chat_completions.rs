@@ -124,7 +124,8 @@ pub fn decode_chunk(data: &str) -> Result<Chunk, WireError> {
 }
 
 /// Maps a Chat Completions body sent as server-sent events onto a run's
-/// events (`providers.md` § A run, § Reading vendor input), until the body
+/// events (`crates/provider-common/src/contract.rs`,
+/// `crates/provider-common/src/wire/mod.rs`), until the body
 /// ends or `cancel` fires. When the stream ends, with its `[DONE]` sentinel
 /// or with the body, the run ends with the tool calls collected and one
 /// response if a choice finished with `stop` or `tool_calls`, and otherwise
@@ -264,7 +265,7 @@ impl Mapper {
     /// `index` sends one call at a time, in order. The first increment that
     /// names the function reports the call's start, with the arguments so
     /// far, and each later piece of arguments is reported as it comes, for
-    /// display (`providers.md` § A run); the call is whole at the flush.
+    /// display (`crates/provider-common/src/contract.rs`); the call is whole at the flush.
     fn collect(&mut self, delta: ToolCallDelta, out: &mut Vec<ProviderEvent>) {
         let index = delta
             .index

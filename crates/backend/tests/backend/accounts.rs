@@ -1,6 +1,7 @@
 //! A subscription entry's accounts (`web-api-settings.md` § Subscription accounts,
-//! `providers.md` § Login and publication, `usage-and-quota.md` § Vendor
-//! quota): signed-in accounts sealed and never returned, explicit selection,
+//! `crates/backend-providers/src/vault/logins.rs`,
+//! `crates/provider-common/src/quota.rs`): signed-in accounts sealed and never
+//! returned, explicit selection,
 //! device logins published once, held entries, cancellation, and
 //! an account's quota snapshot through a probe and a restart. The families
 //! are scripted.
@@ -718,7 +719,7 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
 }
 
 /// Removing the active account selects the entry's next one, and the last
-/// one's removal leaves none (`providers.md` § Login and publication): a
+/// one's removal leaves none (`crates/backend-providers/src/vault/logins.rs`): a
 /// request already running finishes with its own account, the next one runs
 /// with the account now active, and with none left the request is refused
 /// before inference with the message to add an account. One backend, three

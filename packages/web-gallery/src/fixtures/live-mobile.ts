@@ -1,6 +1,7 @@
 /**
- * The conversation's simulators without a Host (`mobile.md` § The live
- * view): the gallery's plugin, which gives each device the agent opens its
+ * The conversation's simulators without a Host
+ * (`packages/plugin-mobile/src/index.ts`): the gallery's plugin, which gives
+ * each device the agent opens its
  * `mobile` tab and closes a device whose tab is closed, as the backend's
  * does, and a live view that draws a device's screen in the frame the view draws,
  * encodes it as the helper would and speaks the `mobile` protocol, so the

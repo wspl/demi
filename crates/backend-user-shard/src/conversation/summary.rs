@@ -132,8 +132,7 @@ impl Shard {
     }
 }
 
-/// The model settings a conversation's selection shows (`models.md` § A
-/// conversation's model settings).
+/// The model settings a conversation's selection shows (`crates/shared-types/src/catalog.rs`).
 fn settings(selection: &ModelSelection) -> Result<ModelSettings, StorageError> {
     Ok(ModelSettings {
         provider_id: decode(

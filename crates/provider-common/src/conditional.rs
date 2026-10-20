@@ -1,5 +1,5 @@
 //! The conditional download of a document a backend keeps a copy of
-//! (`models.md` § The models.dev document, `media-models.md` § Versions):
+//! (`crates/provider-common/src/models_dev.rs`, `crates/provider-common/src/media_catalog.rs`):
 //! a `GET` that sends the copy's `ETag` and `Last-Modified`, so an
 //! unchanged document answers 304 without its body. The models.dev client
 //! and the media catalog both download this way; what each keeps and when

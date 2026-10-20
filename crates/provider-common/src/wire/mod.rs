@@ -1,9 +1,18 @@
-//! The building blocks every HTTP provider decodes its vendor's answers with
-//! (`providers.md` § Reading vendor input): server-sent event framing, the
+//! The building blocks every HTTP provider decodes its vendor's answers with:
+//! server-sent event framing, the
 //! two-step decode of payloads tagged by `type`, fields Demi only reports,
 //! the OpenAI-shaped Responses and Chat Completions streams with their
 //! mappers onto a run's events, and the token counts of the Anthropic
 //! Messages stream.
+//!
+//! Everything a vendor sends is untrusted input, decoded into a type where it
+//! enters. A run ends with a response only when the vendor said the reply is
+//! complete (a Responses completion event, a Chat Completions `finish_reason`,
+//! an Anthropic `message_stop`; the closing `data: [DONE]` is not required,
+//! since gateways leave it out). A body that ends before that is a failure of
+//! the run even when a usage count came with it, because a gateway that sends
+//! running totals in every chunk makes a cut reply look complete, and the
+//! agent would answer the next request from half a sentence.
 
 pub mod chat_completions;
 pub mod messages;
@@ -45,7 +54,7 @@ pub struct Vendor {
 
 /// The usage an OpenAI-shaped API reports, whose input count includes what
 /// it read from its cache and what it wrote to it: Demi keeps the three
-/// apart, so both leave the input count (`providers.md` § Usage). An absent
+/// apart, so both leave the input count. An absent
 /// count is zero.
 pub(crate) fn usage_with_cached_input(
     input: Option<u64>,

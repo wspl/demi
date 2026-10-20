@@ -27,7 +27,7 @@ a URL is called ──────────┘     and a new conversation or 
 | Trigger | One of the three below |
 | Target | Where the work runs and in which conversation (below) |
 | Prompt | The message each run sends, written as the user would write it |
-| Model | The model settings a new conversation starts with, as a conversation's own ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)); an existing conversation keeps its own. New Automation takes the model the user's next new conversation would start with; an automation without one shows the row as missing, *Choose a Model*, and its runs are Skipped, *No model chosen*, starting no conversation |
+| Model | The model settings a new conversation starts with, as a conversation's own (`crates/shared-types/src/catalog.rs`); an existing conversation keeps its own. New Automation takes the model the user's next new conversation would start with; an automation without one shows the row as missing, *Choose a Model*, and its runs are Skipped, *No model chosen*, starting no conversation |
 | State | On or paused. Pausing, editing the trigger or deleting drops what the automation had pending: calls waiting out a burst start nothing, and a check under way is discarded, so nothing fires from before the change |
 
 **Triggers.**

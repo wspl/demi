@@ -29,7 +29,7 @@ pub struct ControlService {
     db: tokio_rusqlite::Connection,
     clock: Arc<dyn Clock>,
     /// Each usage ledger row as it is written, for whoever shows its
-    /// conversation's cost (`usage-and-quota.md` § Reading it).
+    /// conversation's cost (`crates/backend-database/src/usage.rs`).
     usage_written: broadcast::Sender<UsageWritten>,
 }
 

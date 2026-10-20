@@ -1,4 +1,4 @@
-//! The Grok Build catalog (`models.md` § Directories).
+//! The Grok Build catalog (`crates/backend-providers/src/llm/catalog.rs`).
 
 use demi_provider_common::{
     CatalogError, Provider,
@@ -61,7 +61,7 @@ async fn the_catalog_reads_the_proxys_models_each_time_from_an_envelope_or_a_bar
         |model| model.supports_tools == Some(true)
     ));
     // The proxy drops a document: a model reads images, and no PDF
-    // (`models.md` § Accepted attachment types).
+    // (`crates/shared-types/src/model.rs`).
     assert!(list.models.iter().all(|model| model.accepted_extensions.as_deref()
         == Some(&demi_shared_types::IMAGE_FILE_EXTENSIONS[..])));
     let sent = &vendor.requests()[0];

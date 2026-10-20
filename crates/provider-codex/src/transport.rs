@@ -1,5 +1,5 @@
-//! How a Codex request reaches the Responses backend (`providers.md` §
-//! Endpoints): over a WebSocket as one `response.create` message, over
+//! How a Codex request reaches the Responses backend: over a WebSocket as one
+//! `response.create` message, over
 //! server-sent events, or the WebSocket first with server-sent events as the
 //! fallback. Every answer of the service, a refusal included, is shown to the
 //! account's quota, and the windows it reported are kept for the call's usage
@@ -23,6 +23,8 @@ use http::{
     header::{ACCEPT, CONTENT_TYPE},
 };
 use serde::Deserialize;
+// tokio-tungstenite rather than a higher-level client: the handshake must
+// carry Codex's own headers.
 use tokio_tungstenite::tungstenite::{
     self, Message,
     client::IntoClientRequest,

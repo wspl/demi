@@ -96,14 +96,14 @@ pub struct ProviderFailureFacts {
     pub retry_at: Option<Timestamp>,
     /// For a usage limit of an entry without rotation that has other
     /// accounts, the account with the most room now, which the dock offers
-    /// to continue with (`providers.md` § Account rotation); omitted
+    /// to continue with (`crates/backend-providers/src/llm/rotation.rs`); omitted
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub continue_with: Option<ContinueWith>,
     /// For a request whose sign-in the vendor refused, the account it
     /// signed out while it still is, which the conversation names with
-    /// Open Providers (`claude-code.md` § Accounts and sign-in); omitted
+    /// Open Providers (`crates/provider-claude-code/src/account.rs`); omitted
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]

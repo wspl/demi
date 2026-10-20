@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// The agent's activity over a live view (`mobile.md` § The live view): while
+// The agent's activity over a live view (`packages/plugin-mobile/src/index.ts`): while
 // its input is delivered, a note says so and a ring marks where it acted;
 // once it is done the note leaves and the ring fades where it was. One Vue
 // app on a happy-dom page; a few ms.

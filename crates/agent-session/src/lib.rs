@@ -1357,8 +1357,8 @@ impl AgentSession {
     }
 
     /// Readies ahead what the session's next request needs, now that it is
-    /// known but for its input (`claude-code.md` § Preparing a process
-    /// ahead): a page opened the conversation, or the user chose another
+    /// known but for its input (`crates/provider-claude-code/src/prepared.rs`):
+    /// a page opened the conversation, or the user chose another
     /// model, effort or account for it. From then on each action's end
     /// readies it again. It is done once the session is idle; a subagent's
     /// session is never asked.

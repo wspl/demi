@@ -68,7 +68,7 @@ pub struct OpenAiConfig {
 }
 
 impl OpenAiConfig {
-    /// The base URL of an entry that names none (`providers.md` § Endpoints).
+    /// The base URL of an entry that names none (`crates/provider-common/src/endpoint.rs`).
     pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 }
 
@@ -220,7 +220,7 @@ impl ProviderRuntime for OpenAiRuntime {
     /// refuses a request as too large, which compaction answers.
     fn request_limits(&self, _model: &Model) -> RequestLimits {
         // Images and documents in a user message right after the call's
-        // output, in both APIs (`providers.md` § Media in tool results).
+        // output, in both APIs (`crates/provider-common/src/contract.rs`).
         RequestLimits {
             tool_results: ToolResultKinds::IMAGES_AND_DOCUMENTS,
             ..RequestLimits::OPENAI

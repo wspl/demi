@@ -1,4 +1,4 @@
-//! The Claude sign-in (`claude-code.md` § Accounts and sign-in): Demi runs
+//! The Claude sign-in (`crates/provider-claude-code/src/account.rs`): Demi runs
 //! the CLI's own login on the Claude Code machine, in a new configuration
 //! directory, shows the user the link the CLI prints, and writes the code
 //! the user pastes to the CLI's input. When the CLI exits with success, Demi

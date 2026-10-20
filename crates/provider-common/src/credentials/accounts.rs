@@ -1,5 +1,6 @@
-//! The account operations of a subscription family (`providers.md` §
-//! Credential vault): listing, selecting and logging in the accounts of the
+//! The account operations of a subscription family
+//! (`crates/backend-providers/src/vault/entries.rs`): listing, selecting and
+//! logging in the accounts of the
 //! provider's entry; the vault removes them. One implementation, [`Accounts`], serves
 //! every family over its credential pool; a family supplies only what differs,
 //! its [`AccountKit`]: how it logs in, and how an account names itself.
@@ -38,8 +39,9 @@ pub trait SubscriptionAccounts: Send + Sync {
 
     /// Deletes what the family keeps of the account `id` outside its
     /// record, before the vault removes the record: Claude Code's directory
-    /// of the account on its machine (`claude-code.md` § Accounts and
-    /// sign-in). Most families keep nothing.
+    /// of the account on its machine
+    /// (`crates/provider-claude-code/src/account.rs`). Most families keep
+    /// nothing.
     fn forget<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
 }
 
@@ -68,8 +70,9 @@ pub struct LoginIo<'a> {
     pub pending: &'a (dyn Fn(LoginPending) + Send + Sync),
     /// What the login waits for before it has anything to show, for a
     /// family whose login prepares in steps the user should see, such as a
-    /// Claude sign-in waiting for the Claude Code machine (`claude-code.md` § Accounts
-    /// and sign-in). A login is `preparing` until it reports another stage,
+    /// Claude sign-in waiting for the Claude Code machine
+    /// (`crates/provider-claude-code/src/account.rs`). A login is `preparing`
+    /// until it reports another stage,
     /// and `waiting_for_user` once it reports `pending`; a family whose
     /// login prepares in one step reports none.
     pub stage: &'a (dyn Fn(LoginStage) + Send + Sync),

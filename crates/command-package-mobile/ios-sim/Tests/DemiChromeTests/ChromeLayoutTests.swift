@@ -54,7 +54,7 @@ private func expect(_ rect: CGRect, _ x: Double, _ y: Double, _ width: Double, _
   expect(layout.chrome, 3.7, 3.33, 415.88, 543.16, "the outline")
   expect(layout.screen, 20.72, 20.35, 381.84, 509.12, "the screen")
   // The corners are drawn last, over the edges' ends, which reach two
-  // points under them where DeviceKit's reach one (`mobile.md`).
+  // points under them where DeviceKit's reach one (`crates/command-package-mobile/src/lib.rs`).
   #expect(layout.pieces.map(\.image) == [
     "Screen", "iPadTop", "iPadLeft", "iPadRight", "iPadBase", "iPadTL", "iPadTR", "iPadBL", "iPadBR",
   ])

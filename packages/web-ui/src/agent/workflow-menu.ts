@@ -71,7 +71,7 @@ export interface GlobalProfiles {
  * The profiles `choice` offers now, by their `--profile` values: a project
  * workflow's, from `list` while it is read; under Global Workflow the user's
  * enabled profiles while the Subagents switch is on, none while it is off;
- * and none under No Subagents (`usage-and-quota.md` § A conversation's cost).
+ * and none under No Subagents (`packages/web-ui/src/agent/ContextUsageIndicator.vue`).
  */
 export function workflowProfiles(choice: WorkflowChoice, list: WorkflowList, global: GlobalProfiles): readonly string[] {
   if (choice.type === 'default')

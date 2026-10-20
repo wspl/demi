@@ -391,13 +391,13 @@ pub struct BackendConfig {
     /// Where the catalog of image and video models is downloaded: the
     /// file of the branch the backend was built from, none for a build
     /// from no branch, which keeps the release's copy
-    /// (`media-models.md` § Versions).
+    /// (`crates/provider-common/src/media_catalog.rs`).
     pub media_catalog_url: Option<Url>,
     /// The media catalog the release carries, until a newer one is
     /// downloaded.
     pub media_catalog: Arc<media_catalog::Catalog>,
     /// The Claude Code distribution whose newest release the CLI on each
-    /// Cloud follows (`claude-code.md` § Which version).
+    /// Cloud follows (`crates/backend-providers/src/llm/claude_releases.rs`).
     pub claude_releases: Url,
     /// How long a device login waits for its user, and how long its result
     /// is kept.

@@ -1,4 +1,4 @@
-//! The Grok CLI version every request names (`providers.md` § Endpoints):
+//! The Grok CLI version every request names (`crates/provider-grok-build/src/releases.rs`):
 //! the newest stable release the pointer names, kept as Codex's release is.
 
 use std::sync::Arc;

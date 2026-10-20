@@ -1,5 +1,7 @@
 /**
- * The viewer's input as the live view carries it (`mobile.md` § The live view): the events of the user's own browser, in
+ * The viewer's input as the live view carries it
+ * (`packages/plugin-mobile/src/index.ts`): the events of the user's own
+ * browser, in
  * the picture's coordinates, whatever the source turns them into.
  */
 import type { ViewerInput } from '@demicodes/protocol'

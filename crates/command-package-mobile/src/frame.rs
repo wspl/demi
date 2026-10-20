@@ -1,4 +1,4 @@
-//! A device's frame in the live view (`mobile.md` § The live view): the one
+//! A device's frame in the live view (`crates/command-package-mobile/src/live.rs`): the one
 //! its platform installs for the model, which the driver draws, or the
 //! frame the view draws itself, whose buttons this places on the edges
 //! of the device as its picture shows it.

@@ -3,7 +3,7 @@
 // holds found by a grid of hit-tests. A bar the read lists without
 // children, as iOS 26 lists its toolbars, is filled the same way. Safari's
 // page the read cannot reach; there the guest bridge reads it, and its web
-// content takes the place of the page area (`mobile.md` § iOS).
+// content takes the place of the page area (`crates/command-package-mobile/src/ios/mod.rs`).
 
 import FBControlCore
 import FBSimulatorAX

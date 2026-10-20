@@ -1,5 +1,6 @@
-//! The events a run makes of Gemini's stream (`providers.md` § A run,
-//! § Endpoints).
+//! The events a run makes of Gemini's stream
+//! (`crates/provider-common/src/contract.rs`,
+//! `crates/provider-common/src/endpoint.rs`).
 
 use demi_provider_common::{
     CallEvent, CallOutcome, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, VendorCall,
@@ -256,7 +257,7 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
 }
 
 /// The run's one call is the usage ledger's under the response's id, with
-/// its counts, before the run's end (`usage-and-quota.md` § Usage ledger).
+/// its counts, before the run's end (`crates/backend-database/src/usage.rs`).
 #[tokio::test]
 async fn the_call_ends_under_the_response_id_with_its_counts() {
     let vendor = MockVendor::start().await;

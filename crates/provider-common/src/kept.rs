@@ -1,6 +1,7 @@
 //! A value read from a vendor's service and kept for a while, such as the
-//! newest release of a vendor's CLI (`claude-code.md` § Which version,
-//! `models.md` § The Codex catalog): believed until it is older than its
+//! newest release of a vendor's CLI
+//! (`crates/backend-providers/src/llm/claude_releases.rs`,
+//! `crates/provider-codex/src/models.rs`): believed until it is older than its
 //! lifetime, then read again in the background while the kept one still
 //! answers, so that a reader that can use it never waits. Concurrent readers
 //! share one read, and a failed read keeps what was read before.

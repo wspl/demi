@@ -1,4 +1,4 @@
-//! The simulators Demi booted (`mobile.md` § Lifetime), kept in
+//! The simulators Demi booted (`crates/command-package-mobile/src/devices.rs`), kept in
 //! `<installation>/mobile/booted.json` across the program's ends: a
 //! `demi-mobile` that stops, updates or is killed shuts nothing down, and
 //! the next one gives each simulator still booted from Demi's boot the

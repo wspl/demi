@@ -1,8 +1,14 @@
-//! The H.264 encoder of an emulator's live view (`mobile.md` § Android):
-//! Cisco's own build of OpenH264, which Cisco pays the patent royalties
-//! for, as Firefox uses it. Demi does not ship it: the first view of an
-//! emulator downloads it from Cisco and checks it against its pinned hash
-//! before the program loads it, and keeps it for the next.
+//! The H.264 encoder of an emulator's live view: Cisco's own build of
+//! OpenH264, which Cisco pays the patent royalties for, as Firefox uses it.
+//! Cisco pays for its binary only, not for a build Demi would make and ship
+//! from the source, so Demi does not ship it: the first view of an emulator
+//! downloads it from Cisco and checks it against its pinned hash before the
+//! program loads it, and keeps it for the next.
+//!
+//! It encodes every emulator's pictures, on a Mac too, rather than using
+//! VideoToolbox: the iOS helper's encoder lives inside the helper, which needs
+//! Xcode, so a Mac with only Android Studio could not use it, and a second
+//! VideoToolbox encoder for Android alone would be the same thing written twice.
 
 use std::{
     path::{Path, PathBuf},

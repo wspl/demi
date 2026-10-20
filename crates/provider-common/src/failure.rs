@@ -136,7 +136,7 @@ impl ProviderFailure {
     }
 
     /// A stream that ended before the vendor said the reply was complete,
-    /// even with a usage count seen (`providers.md` § Reading vendor input):
+    /// even with a usage count seen (`crates/provider-common/src/wire/mod.rs`):
     /// no answer, as any network failure is.
     pub fn cut_short() -> Self {
         Self::no_answer("The provider's stream ended before the reply was complete")
@@ -226,7 +226,7 @@ pub enum ErrorCode {
     /// Throttling: too many requests or tokens for a short while.
     RateLimit,
     /// The backend's own request rate limit refused the attempt before it
-    /// reached the vendor (`usage-and-quota.md` § Rate limit); unlike
+    /// reached the vendor (`crates/backend-providers/src/usage/rate_limit.rs`); unlike
     /// `rate_limit`, the agent does not retry it by itself.
     RateLimited,
     /// A transient failure: HTTP 5xx, a timeout, a network or socket failure.

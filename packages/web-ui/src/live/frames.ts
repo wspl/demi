@@ -1,5 +1,6 @@
 /**
- * The live view's frames on the page's side (`mobile.md` § The live view): the stream carries bytes, so each
+ * The live view's frames on the page's side
+ * (`packages/plugin-mobile/src/index.ts`): the stream carries bytes, so each
  * message is a length, a kind and a payload. Control messages are JSON in
  * the source's protocol, which decodes them; pictures are the live view's
  * own, in chunks of at most 16 KiB that the page joins and acknowledges.

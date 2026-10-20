@@ -1,4 +1,4 @@
-//! The Android driver (`mobile.md` § Android): the Host's AVDs, booted with
+//! The Android driver: the Host's AVDs, booted with
 //! the SDK's emulator without a window; each open emulator's pictures,
 //! touches and keys over its own gRPC interface, with no adb in that path;
 //! its UI tree and a field's text through `u2.jar` inside it, over adb.
@@ -597,7 +597,7 @@ impl AndroidDevice {
     }
 
     /// Reads the screen's corners in the background, never holding up the
-    /// view (`mobile.md` § The live view), and announces them once known;
+    /// view (`crates/command-package-mobile/src/live.rs`), and announces them once known;
     /// the read ends with the device, or falls back after
     /// [`corners::LIMIT`].
     fn read_corners(&self) {

@@ -1,5 +1,5 @@
 //! The pieces of an Android emulator's frame read from files
-//! (`mobile.md` § The live view): Android Studio's installations and the
+//! (`crates/command-package-mobile/src/live.rs`): Android Studio's installations and the
 //! device art in them, and the rounded-corner drawable SystemUI paints the
 //! screen's corners with, compiled as its APK holds it.
 

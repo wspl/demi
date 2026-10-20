@@ -1,5 +1,5 @@
 //! An account's sign-in, which its CLI keeps in the account's directory
-//! (`claude-code.md` § Accounts and sign-in): a sign-in the vendor refused
+//! (`crates/provider-claude-code/src/account.rs`): a sign-in the vendor refused
 //! marks the account signed out and fails with the authentication error,
 //! and the account starts no process until it signs in again; a sign-in an
 //! earlier release kept in the record goes to the account's directory with

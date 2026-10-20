@@ -658,7 +658,7 @@ impl TranscriptLog {
     }
 
     /// Records that the agent's account reached its limit and the request
-    /// went on with another (`providers.md` § Account rotation).
+    /// went on with another (`crates/backend-providers/src/llm/rotation.rs`).
     pub fn push_account_switch(&mut self, model: &ModelSelection, switch: AccountSwitch) {
         let (id, created_at) = self.stamp();
         self.append(Block::AccountSwitch(AccountSwitchBlock {

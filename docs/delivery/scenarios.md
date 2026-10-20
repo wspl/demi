@@ -181,7 +181,7 @@ otherwise the end of the pipe's HTTP exchange is what settles it.
 
 The usage ledger is checked by the scenarios that read it through
 `GET /api/usage`, not after every scenario
-([Usage ledger](../providers/usage-and-quota.md#usage-ledger)).
+(`crates/backend-database/src/usage.rs`).
 
 Cleanup belongs to the world and its fake machine manager, including after
 assertion failures: drivers detach, runners stop, and the backend closes. Tests
@@ -384,7 +384,7 @@ their world with the vendor's CLI in place of a scripted provider
 world's Cloud installs Demi's copy of the CLI through `claude-code.ensure`, from a
 local distribution that serves the supplied executable with a manifest the
 suite computes, and the provider starts it as in the product
-([Claude Code](../providers/claude-code.md#requests-over-stream-json)). The
+(`crates/provider-claude-code/src/run.rs`). The
 CLI's inference goes to the scripted Anthropic-compatible endpoint the other
 suites use, which the Cloud's runner names in `ANTHROPIC_BASE_URL`. That
 runner's environment is the suite's alone, so no proxy of the machine's
@@ -415,5 +415,4 @@ Linux, the Cloud's platform. The scenarios cover what the product relies on from
 
 Each scenario asserts what the product observes: the transcript, the frames,
 the usage ledger and what the scripted endpoint received. What the suite cannot
-show, a real account against the real vendor, stays a check by hand
-([Claude Code](../providers/claude-code.md#acceptance)).
+show, a real account against the real vendor, stays a check by hand.

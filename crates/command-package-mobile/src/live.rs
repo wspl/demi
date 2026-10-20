@@ -1,4 +1,4 @@
-//! The simulators' live view on the Host (`mobile.md` § The live view): one
+//! The simulators' live view on the Host: one
 //! invocation of `mobile.live` per view of a conversation's page. A device
 //! is a source of the shared live view: viewers of one device share its
 //! capture, its pictures are the screen turned upright, and the viewer's
@@ -66,7 +66,7 @@ pub struct Hub {
 
 /// The share of a device's screen pixels its pictures take: the largest
 /// any of its viewers has shown it at since its capture began, at most
-/// all of them; none until a viewer says (`mobile.md` § The live view).
+/// all of them; none until a viewer says.
 type Fit = Arc<watch::Sender<Option<f64>>>;
 
 /// The share of a screen of `pixels` that a view showing it at `shown`

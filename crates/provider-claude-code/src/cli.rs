@@ -1,5 +1,6 @@
-//! How a CLI process starts (`claude-code.md` § Requests over stream-json,
-//! § Accounts and sign-in): no tools, slash commands or permission prompts
+//! How a CLI process starts (`crates/provider-claude-code/src/run.rs`,
+//! `crates/provider-claude-code/src/account.rs`): no tools, slash commands or
+//! permission prompts
 //! of its own, and nothing the machine or the account adds to them; the
 //! session the provider wrote, resumed and mirrored, with
 //! the system prompt and tools of the request rather than those the session
@@ -45,8 +46,9 @@ pub(crate) fn start(site: &CliSite, args: Vec<String>, session: &SessionFile) ->
 
 /// What starts the usage probe's process at `site`: stream-json in and out,
 /// with no message, so the CLI renews the sign-in when it is due and
-/// answers control requests without inferring (`claude-code.md` § Accounts
-/// and sign-in). Its environment never turns the CLI's nonessential
+/// answers control requests without inferring
+/// (`crates/provider-claude-code/src/account.rs`). Its environment never turns
+/// the CLI's nonessential
 /// traffic off, which turns its quota reading off with it. It is work of
 /// the machine while it runs.
 pub(crate) fn probe(site: &CliSite) -> CliStart {
@@ -115,7 +117,7 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         "--include-partial-messages",
         // Each user message is printed back as the CLI takes it into a
         // turn, so a run knows which `result` answers its last one
-        // (`claude-code.md` § Which `result` ends a run).
+        // (`crates/provider-claude-code/src/run.rs`).
         "--replay-user-messages",
         "--resume",
         session,
@@ -151,9 +153,11 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         args.push(effort.to_owned());
     }
     // The vendor's summary of the thinking, the most it gives, whatever the
-    // selection's summary says: without the flag the CLI leaves the display
-    // to the vendor, which sends every thinking block empty (Claude Code
-    // 2.1.296).
+    // selection's summary says, unless the selection turns thinking off:
+    // without the flag the CLI leaves the display to the vendor, which sends
+    // every thinking block empty (Claude Code 2.1.296). A summarized block's
+    // text arrives in its `thinking_delta`s, and the block's start ends the
+    // page's Requesting at once.
     if !matches!(request.thinking, Some(ThinkingConfig::Disabled {})) {
         args.extend(["--thinking-display".into(), "summarized".into()]);
     }
@@ -179,7 +183,11 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
 /// the conversation itself; an MCP tool-output limit of one million tokens,
 /// so the CLI never cuts a result Demi sends; `CLAUDECODE` removed, so the
 /// CLI never takes itself for a session inside another Claude Code; and
-/// the input the session ends with answered at once.
+/// the input the session ends with answered at once. The CLI's telemetry
+/// stays on: turning it off (`DISABLE_TELEMETRY=1`) halved the CLI's start in
+/// a gVisor sandbox, but CLI 2.1.296 then reports each call's `iterations`
+/// empty, and Demi read the turn's sum as the last call's usage and compacted
+/// after every response.
 fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
     let set = |value: &str| Some(value.to_owned());
     BTreeMap::from([

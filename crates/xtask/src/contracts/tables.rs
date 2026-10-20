@@ -79,7 +79,7 @@ pub fn module(header: &str) -> String {
         &mut source,
         Some(
             "The limits a user may set on the context window Demi uses for a model, largest\n\
-             first, each with the smallest window that offers it (`models.md` § Context limit).",
+             first, each with the smallest window that offers it (`crates/shared-types/src/context_limit.rs`).",
         ),
         0,
     );

@@ -1,5 +1,5 @@
 //! The screen's rounded corners as Android draws them into its pictures
-//! (`mobile.md` § The live view): SystemUI paints a drawable over each
+//! (`crates/command-package-mobile/src/live.rs`): SystemUI paints a drawable over each
 //! corner of the panel, `rounded_corner_top` at the top two and
 //! `rounded_corner_bottom` at the bottom two, each drawn for the top left
 //! and mirrored into its place, and none at all where the display reports

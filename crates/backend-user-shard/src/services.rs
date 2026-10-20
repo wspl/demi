@@ -81,7 +81,7 @@ pub struct Services {
     /// backend).
     pub master_account: Option<SeededAccount>,
     pub assembly: Arc<ProviderAssembly>,
-    /// The catalog of image and video models (`media-models.md`).
+    /// The catalog of image and video models (`crates/provider-common/src/media_catalog.rs`).
     pub media: MediaCatalog,
     /// The vendor's Claude Code releases, which the CLI on the Claude Code machine follows.
     pub claude_releases: ClaudeReleases,
@@ -170,7 +170,7 @@ pub struct ProviderSetup {
     pub families: FamilyRegistry,
     pub models_dev_url: url::Url,
     /// The media catalog of the build's branch; none keeps the release's
-    /// copy (`media-models.md` § Versions).
+    /// copy (`crates/provider-common/src/media_catalog.rs`).
     pub media_catalog_url: Option<url::Url>,
     /// The media catalog the release carries, or a test's.
     pub media_catalog: Arc<demi_provider_common::media_catalog::Catalog>,

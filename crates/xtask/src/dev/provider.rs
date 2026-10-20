@@ -20,7 +20,7 @@ const NAMES: [&str; 4] = [
 /// them; without it the model has none, and the page offers no effort.
 const EFFORTS: &str = "DEMI_DEV_PROVIDER_THINKING_EFFORTS";
 /// The file types the model reads natively, comma-separated, as its
-/// `acceptedExtensions` names them (`models.md` § Accepted attachment types);
+/// `acceptedExtensions` names them (`crates/shared-types/src/model.rs`);
 /// without it which types the model reads is unknown.
 const ACCEPTED: &str = "DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS";
 

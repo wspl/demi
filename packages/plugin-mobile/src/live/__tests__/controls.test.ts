@@ -8,7 +8,7 @@ import { DEVICE_CONTROLS, deviceControls } from '../controls'
 import { MobileSession } from '../session'
 
 // The device toolbar's controls and the agent's activity on the page's side
-// (`mobile.md` § The live view). The plugin's own tests show that each page
+// (`packages/plugin-mobile/src/index.ts`). The plugin's own tests show that each page
 // method runs the operation of its command; here, that each control calls
 // the method of the command that does the same. No page, a few ms.
 

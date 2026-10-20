@@ -16,7 +16,7 @@ it off as any plugin. The plugin owns the commands, their help, words and
 checks; the vendor call goes through the port's Providers service, so the
 subscription token never leaves the backend's vault and the account,
 rotation and ledger rules below are the backend's
-([Credential vault](../providers/providers.md#credential-vault)). It asks
+(`crates/backend-providers/src/vault/entries.rs`). It asks
 the user for no permission, as `demi web search` does not: it spends the
 user's own subscription, as the agent's turns do.
 
@@ -79,7 +79,7 @@ instead of *from*: `1254×1254 PNG, asked of gpt-image-2.5-sunburst
 confirmed model. The
 account is named only to a user who manages the entry; a user of a shared
 instance's entries reads `(ChatGPT)`, as the account is the administrator's
-([Scope](../providers/providers.md#scope)). The image is decoded before a
+(`crates/backend-providers/src/vault/entries.rs`). The image is decoded before a
 byte reaches stdout: one that does not decode whole fails the call and
 writes nothing.
 
@@ -138,7 +138,7 @@ dated snapshots and aliases included, each with the release date the
 vendor publishes (an alias such as `chatgpt-image-latest` takes that of the
 model it names at the time of the list), as the catalog of image and video
 models lists them for that subscription
-([Image and video models](../providers/media-models.md)), so a model the
+(`crates/provider-common/src/media_catalog.rs`), so a model the
 vendor adds needs a change to the catalog and no Demi release.
 Grok's models are those the subscription accepted, each tried once; the retired `dall-e-*` and
 `grok-2-image*` are left out. A Grok answer by URL is never used: the URL
@@ -195,13 +195,13 @@ down.
 The call takes an account of the entry as a new agent takes one at its first
 request: the active account with Manual rotation, the first not used up with
 In Order, the one with the most room with Balanced
-([Account rotation](../providers/providers.md#account-rotation)). An account
+(`crates/backend-providers/src/llm/rotation.rs`). An account
 that fails with `usage_limit` is used up, as for a turn; with In Order or
 Balanced the call goes on at once with another account, and when none is
 left, or with Manual, the entry is used up and the call goes on with the
 next entry Automatic takes, or fails when there is none. A key fails as
 its vendor reads its failures for text
-([Failures](../providers/providers.md#failures)): a usage or billing limit
+(`crates/provider-common/src/failure.rs`): a usage or billing limit
 is `usage_limit`, a refused key fails the call naming it, and a policy
 block is a refusal in the vendor's words; a failure the provider does not
 recognise prints the vendor's own message. Whatever the vendor's failure
@@ -210,11 +210,11 @@ names to trace it, its error code and its request or trace ID (OpenAI's
 speech's `X-Tt-Logid`), ends the words in parentheses, a usage limit's
 included, as `(code 1042, trace 0a1b2c…)`, since a vendor's support asks for
 it first. Each call writes a row of the
-[usage ledger](../providers/usage-and-quota.md#usage-ledger), with the
+usage ledger (`crates/backend-database/src/usage.rs`), with the
 purpose `image`, the account, the model asked and the counts the vendor
 reported. The quota a response reports, as the ChatGPT backend's `x-codex-*`
 headers do, a refusal's included, updates the account's snapshot as a
-turn's does ([Vendor quota](../providers/usage-and-quota.md#vendor-quota)).
+turn's does (`crates/provider-common/src/quota.rs`).
 The 120 seconds bound the whole call: the token's refresh, the request and
 the reading of the answer or the refusal.
 

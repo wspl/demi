@@ -172,7 +172,7 @@ part of another release, and each is a contract that a release never breaks:
   Code machine kept each account's tokens sealed in its record; a later
   release hands them to the account's directory at the account's first use
   and clears the record
-  ([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)),
+  (`crates/provider-claude-code/src/account.rs`),
   so an upgrade never asks the user to sign in again. The handover stays
   until the history starts again with the first formal release.
 - **A conversation outside a project in a directory other than its home.**

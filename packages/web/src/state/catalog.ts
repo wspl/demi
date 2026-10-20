@@ -99,7 +99,7 @@ export interface Hidden {
 
 /**
  * Why an incomplete entry cannot infer yet, from its catalog's availability
- * (`models.md` § A provider is in the list from the start); null once it has
+ * (`crates/backend-user-shard/src/provider_settings.rs`); null once it has
  * everything it needs to try.
  */
 export function setupOf(catalog: CatalogProvider | undefined): { message: string } | null {
@@ -123,7 +123,7 @@ function healthMessage(health: AuthState | RuntimeState): string | undefined {
 const PLAN_IN_DETAIL = new Set(['claude-code'])
 
 /**
- * The plan an account is on (`usage-and-quota.md` § What a snapshot says):
+ * The plan an account is on (`packages/web-ui/src/ui/dates.ts`):
  * what its quota snapshot reports, else the plan its sign-in recorded, in
  * title case ("max" reads "Max"); empty when neither says.
  */
@@ -167,7 +167,7 @@ export function providerView(
     keyConfigured: entry.hasApiKey,
     vendorId: entry.vendorId,
     compatible: entry.compatible,
-    // The `media` family's entries make media alone (`providers.md` § Media-only vendors).
+    // The `media` family's entries make media alone.
     makesText: entry.providerType !== 'media',
     baseUrl: entry.endpoint ?? '',
     wireApi: wireApi(entry.providerType, entry.wireApi),

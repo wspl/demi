@@ -1,4 +1,4 @@
-//! The `generateContent` request body (`models.md` § Request parameters):
+//! The `generateContent` request body (`crates/shared-types/src/model.rs`):
 //! the transcript as Gemini contents, the tools with their schemas reduced
 //! to what Gemini accepts, the output limit and thinking.
 
@@ -17,7 +17,9 @@ use crate::SIGNATURE_TAG;
 /// `maxOutputTokens` when the model names no output limit.
 const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 32_000;
 
-/// The JSON body of `request`.
+/// The JSON body of `request`. It makes no explicit cache: Gemini caches by
+/// prefix on its own, and an explicit cache is a stored resource with a storage
+/// price, a second copy of the history.
 pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
     let body = Body {
         contents: contents(&request.items),
@@ -260,6 +262,10 @@ fn contents(items: &[InferenceItem]) -> Vec<Content<'_>> {
                         },
                         thought_signature,
                     },
+                    // Gemini requires the signature of each function call it
+                    // is sent, so a call without one of Google's, such as
+                    // history from another provider, is replayed as text, and
+                    // so is its result.
                     None => {
                         as_text.push(tool_use_id);
                         let text = format!("[called {tool_name} with {}]", tool_arguments(input));

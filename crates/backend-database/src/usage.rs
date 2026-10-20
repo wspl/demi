@@ -1,7 +1,9 @@
-//! The usage ledger of the control store (`usage-and-quota.md` § Usage
-//! ledger): one row per vendor call, kept as written and announced as it
-//! is, and the totals and a conversation's cost (§ A conversation's cost)
-//! computed when they are read.
+//! The usage ledger of the control store: one row per vendor call, kept as
+//! written and announced as it is, and the totals and a conversation's cost
+//! computed when they are read. The counts are the vendor's, so the ledger is a
+//! record for reconciliation and not a bill. Prices tiered by a request's
+//! length, as some models charge more past 200K tokens, are not modelled: a
+//! call is priced at the model's base rates.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -67,8 +69,7 @@ pub struct UsageRow {
 }
 
 /// What each kind of a call's tokens would cost on the vendor's API, in
-/// dollars, fixed as its row is written (`usage-and-quota.md` § How the
-/// figures are counted).
+/// dollars, fixed as its row is written.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ApiPrice {
     pub input: f64,
@@ -286,7 +287,7 @@ impl ControlService {
     }
 
     /// The conversation's cost from its ledger rows, its agents named by
-    /// `labels` (`usage-and-quota.md` § Reading it).
+    /// `labels`.
     pub async fn conversation_cost(
         &self,
         conversation: ConversationId,
@@ -447,8 +448,7 @@ fn group(row: &Row<'_>) -> Result<UsageGroup, StorageError> {
     })
 }
 
-/// A cache miss writes again more than this share of the call's prompt
-/// (`usage-and-quota.md` § How the figures are counted).
+/// A cache miss writes again more than this share of the call's prompt.
 const MISS_SHARE: f64 = 0.05;
 /// And at least this many tokens, as Claude Code's own cache diagnosis
 /// counts one.
@@ -801,8 +801,8 @@ mod tests {
     /// same model's latest write was kept for an hour, its hour, across a
     /// switch of model and a compaction, and otherwise the provider; the
     /// first call and the first after an answered compaction are never
-    /// misses, and a call the vendor reported no counts for is no call
-    /// (`usage-and-quota.md` § How the figures are counted). Planted
+    /// misses, and a call the vendor reported no counts for is no call.
+    /// Planted
     /// defects: a threshold of share or tokens alone, the causes in another
     /// order, the hour-long write ignored or taken from another model, or a
     /// miss after a compaction.
@@ -885,7 +885,7 @@ mod tests {
     /// the vendor's own cost in dollars and never one in another currency;
     /// each agent with a priced call has its price, named by its profile,
     /// and the calls are the main conversation's
-    /// turns (`usage-and-quota.md` § Reading it). Planted defects: a cost
+    /// turns. Planted defects: a cost
     /// in yuan counted as dollars, a title counted as an agent, or a
     /// subagent's call among the main conversation's.
     /// Six rows of an in-memory ledger: milliseconds.

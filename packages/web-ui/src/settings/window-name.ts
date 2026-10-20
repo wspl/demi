@@ -4,8 +4,8 @@ import { t } from './locales/text'
 
 /**
  * A usage window's name in the page's language, from its kind, its period
- * and its scope, the same for every vendor (`usage-and-quota.md` § Window
- * names): *5-hour limit*, *Weekly Opus limit*, *Monthly credits*, *Usage
+ * and its scope, the same for every vendor (`packages/web-ui/src/ui/dates.ts`):
+ * *5-hour limit*, *Weekly Opus limit*, *Monthly credits*, *Usage
  * limit*. Settings, the context card and the account switch's line all name
  * a window through this.
  */

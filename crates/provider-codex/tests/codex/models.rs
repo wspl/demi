@@ -1,4 +1,4 @@
-//! The Codex catalog (`models.md` § The Codex catalog).
+//! The Codex catalog (`crates/provider-codex/src/models.rs`).
 
 use std::sync::Arc;
 
@@ -256,7 +256,7 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
         (Some(true), Some(true))
     );
     // The backend documents no file part: a model reads images, and no PDF
-    // (`models.md` § Accepted attachment types).
+    // (`crates/shared-types/src/model.rs`).
     assert_eq!(
         gpt.accepted_extensions.as_deref(),
         Some(&demi_shared_types::IMAGE_FILE_EXTENSIONS[..])

@@ -1,4 +1,5 @@
-//! The screen's tree as `inspect` shows it (`mobile.md` § Commands): each
+//! The screen's tree as `inspect` shows it
+//! (`crates/command-package-mobile/src/operations.rs`): each
 //! element with a reference, its frame in screenshot pixels, and the
 //! software keyboard as one Keyboard element with its frame unless its
 //! keys are asked for.

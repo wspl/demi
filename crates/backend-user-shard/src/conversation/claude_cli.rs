@@ -1,12 +1,22 @@
-//! Demi's Claude Code CLI on the Claude Code machine (`claude-code.md` §
-//! The package, § Where it runs, § Accounts and sign-in, § What the user
-//! sees; `managed-hosts.md` § The Claude Code machine): the versions the
+//! Demi's Claude Code CLI on the Claude Code machine
+//! (`crates/command-package-claude-code/src/lib.rs`,
+//! `crates/provider-claude-code/src/placement.rs`,
+//! `crates/provider-claude-code/src/account.rs`; `managed-hosts.md` § The
+//! Claude Code machine): the versions the
 //! machine has and the install of the vendor's newest, through the
 //! `demi.claude-code` package; the placement that starts a provider's
 //! process there, in its account's directory with a directory of its own
 //! for its session, or a sign-in's new directory; the machine as every
 //! user's sign-in and usage probe reach it; and the installs no
 //! conversation asked for, whose outcome the settings page shows.
+//!
+//! What each machine has installed is kept per runner connection, and a process
+//! start asks the machine nothing: the root's process and three subagents'
+//! starting on a laptop ask its runner once in all. Showing a version is never
+//! a reason to wake a machine, and a newer version does not interrupt work: a
+//! machine with a usable version keeps answering with it while the newer one
+//! installs beside it. Installing leaves nothing in the transcript; a failure
+//! is that request's error, or the result of the account action that asked.
 //!
 //! The machine's record is the master's, so the master's shard holds it.
 //! Another user's work crosses there once per process start: the master's
@@ -94,7 +104,7 @@ impl From<ReleaseError> for CliError {
     }
 }
 
-/// What a provider's process is for (`claude-code.md` § Where it runs); it
+/// What a provider's process is for (`crates/provider-claude-code/src/placement.rs`); it
 /// names the command context the package's operations run under.
 #[derive(Debug, Clone)]
 pub(crate) enum ProcessWork {
@@ -521,8 +531,9 @@ fn relay(shard: &Shard, placed: Placed, hold: Option<AccountHold>) -> Relayed {
 }
 
 /// The accounts whose processes run on the Claude Code machine, each with
-/// its gate, which the master's shard keeps (`claude-code.md` § Accounts
-/// and sign-in): every process of an account holds its gate shared, from
+/// its gate, which the master's shard keeps
+/// (`crates/provider-claude-code/src/account.rs`): every process of an account
+/// holds its gate shared, from
 /// before its directory is readied until the directory the process made of
 /// its own is removed. Signing the account in again and removing it take
 /// the gate whole, one change at a time: a change first stops new starts of
@@ -689,7 +700,7 @@ impl MachinePlacement {
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
             stages(StartStage::Machine);
             // Each step's time, which the run's span carries
-            // (`claude-code.md` § Preparing a process ahead).
+            // (`crates/provider-claude-code/src/prepared.rs`).
             let mut steps = StartSteps::default();
             let mut step = Instant::now();
             let mut lap = |into: &mut Duration| {
@@ -799,8 +810,8 @@ impl MachinePlacement {
             lap(&mut steps.spawn);
             // A start that finds the executable it was given gone, as after
             // another runner sharing the cache removed it, drops what is
-            // kept of the machine's versions (`claude-code.md` § Which
-            // version).
+            // kept of the machine's versions
+            // (`crates/backend-providers/src/llm/claude_releases.rs`).
             let kept_by = self.shard.clone();
             let device = access.device.id.clone();
             let exit = process
@@ -895,8 +906,9 @@ fn account_dir(accounts: &str, account: &str) -> Result<String, StartError> {
 /// Writes the sign-in an earlier release kept, as the CLI's `files`, into
 /// the account's directory `dir`, private to the machine's user, unless the
 /// directory holds a sign-in already: its last file, the CLI's credentials,
-/// is there, and nothing is written over it (`claude-code.md` § Accounts
-/// and sign-in). One handover of the account runs at a time (`gate`). Each
+/// is there, and nothing is written over it
+/// (`crates/provider-claude-code/src/account.rs`). One handover of the account
+/// runs at a time (`gate`). Each
 /// file is written whole beside its place, then all are renamed into place
 /// in order, so the directory holds a sign-in only once every file is
 /// there; a handover that fails leaves no sign-in, and the record keeps it.
@@ -1121,7 +1133,7 @@ pub(crate) struct ClaudeCli {
 type Versions = Shared<LocalBoxFuture<'static, Result<Vec<Installed>, CliError>>>;
 
 /// What the backend keeps of the CLI versions a machine has
-/// (`claude-code.md` § Which version): the answer of the runner
+/// (`crates/backend-providers/src/llm/claude_releases.rs`): the answer of the runner
 /// connection `link`, asked once on it, or what the backend's own install
 /// over it left. A new connection asks again. `waiting` counts the starts
 /// that wait for an ask still under way.
@@ -1143,8 +1155,8 @@ impl KeptVersions {
 
 /// A start waiting for an ask of a machine's versions. The last one to
 /// give up before the answer drops the ask, so the next start asks again
-/// rather than wait for an ask nobody waits for (`claude-code.md` § Which
-/// version).
+/// rather than wait for an ask nobody waits for
+/// (`crates/backend-providers/src/llm/claude_releases.rs`).
 struct WaitingForVersions<'a> {
     cli: &'a ClaudeCli,
     device: &'a DeviceId,
@@ -1193,7 +1205,7 @@ impl ClaudeCli {
 impl Shard {
     /// What the machine `access` holds tells a process in `run_dir` of
     /// itself, as the CLI reads it to describe its environment
-    /// (`claude-code.md` § The session a process resumes): the kernel and
+    /// (`crates/provider-claude-code/src/session.rs`): the kernel and
     /// the `SHELL` its runner reported in its hello, and the directory with
     /// its links resolved, once per runner connection. No process starts
     /// for them.
@@ -1253,8 +1265,9 @@ impl Shard {
             .map_err(|error| error.to_string())
     }
 
-    /// The executable to start on `target` (`claude-code.md` § Which
-    /// version): the wanted version when the machine has it, else the
+    /// The executable to start on `target`
+    /// (`crates/backend-providers/src/llm/claude_releases.rs`): the wanted
+    /// version when the machine has it, else the
     /// newest it has while the wanted one installs beside it. A machine
     /// with a version never waits for the release pointer: without a
     /// believed answer it starts its newest, and the pointer is read in the
@@ -1295,8 +1308,9 @@ impl Shard {
     }
 
     /// The versions `target`'s machine has, newest install first, as the
-    /// backend keeps them for its runner connection (`claude-code.md`
-    /// § Which version): asked once on the connection, by whichever start
+    /// backend keeps them for its runner connection
+    /// (`crates/backend-providers/src/llm/claude_releases.rs`): asked once on
+    /// the connection, by whichever start
     /// comes first, while the others wait for the same answer. A failed
     /// ask, or one every start waiting for it gave up on, is kept by
     /// nobody, so the next start asks again; a machine whose runner is not
@@ -1383,7 +1397,7 @@ impl Shard {
 
     /// Drops what is kept of `device`'s CLI versions when `lost` names the
     /// package's state there, which went without the runner saying so
-    /// (`claude-code.md` § Which version).
+    /// (`crates/backend-providers/src/llm/claude_releases.rs`).
     pub(crate) fn cli_package_lost(&self, device: &DeviceId, lost: &Lost<'_>) {
         if matches!(lost, Lost::Every | Lost::Package(PACKAGE)) {
             self.claude_cli().forget_versions(device);
@@ -1425,7 +1439,7 @@ impl Shard {
     }
 
     /// Follows the vault's announcements of active-account changes until
-    /// the shard closes (`claude-code.md` § Preparing a process ahead): for
+    /// the shard closes (`crates/provider-claude-code/src/prepared.rs`): for
     /// each, the processes prepared for the user in the previous
     /// account's directory close, and the conversations on the entry that a page
     /// has open prepare again. `changes` was subscribed when the shard was
@@ -1530,7 +1544,7 @@ async fn ensure(
     };
     let record = serde_json::to_vec(release).map_err(|error| failed(error.to_string()))?;
     // The runner may download each of the release's executables from its
-    // official URL (`claude-code.md` § The package).
+    // official URL (`crates/command-package-claude-code/src/lib.rs`).
     let attached = release
         .platforms
         .values()

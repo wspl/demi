@@ -4773,8 +4773,9 @@ async function costScene() {
 // Production: the context card showed without its Cost, which popped in
 // when the read it sent as it opened returned. The page reads the cost with
 // the conversation's other reads, and the transcript shows once it holds
-// it, so the card is whole the moment it opens (`usage-and-quota.md`
-// § Reading it). Cost: one opening, one read, no wait.
+// it, so the card is whole the moment it opens
+// (`packages/web-ui/src/agent/context-cost.ts`). Cost: one opening, one read,
+// no wait.
 test('a conversation shows once the page holds its cost, read with its transcript', async () => {
   const { conversation, opening, cost, reads } = await costScene()
   const shownWith: unknown[] = []
@@ -4791,7 +4792,7 @@ test('a conversation shows once the page holds its cost, read with its transcrip
 })
 
 // The page adds each `cost` frame that follows what it holds
-// (`usage-and-quota.md` § Reading it): a frame it holds is dropped, one past
+// (`packages/web-ui/src/agent/context-cost.ts`): a frame it holds is dropped, one past
 // a gap, as after frames lost while the connection was down, reads the cost
 // again, and of the frames that came while that read was on its way, one
 // its answer includes is dropped and one it does not is added after it.
@@ -4835,8 +4836,9 @@ test('the cost a page holds adds each frame that follows it, drops one it holds 
 // A call that ends while the page's connection is down leaves the cost
 // stale with no later frame to show it: the connection that attaches again
 // brings the conversation's row count, and a page that holds fewer reads the
-// cost again; one that holds as many reads nothing (`usage-and-quota.md`
-// § Reading it). Cost: two sockets, two reads, no wait.
+// cost again; one that holds as many reads nothing
+// (`packages/web-ui/src/agent/context-cost.ts`). Cost: two sockets, two reads,
+// no wait.
 test('a page whose connection missed the last row reads the cost again as it attaches again', async () => {
   const { conversation, sockets, opening, cost, reads } = await costScene()
   reads[0]!.answer.resolve(cost(2, 100, 1))
@@ -4863,7 +4865,7 @@ test('a page whose connection missed the last row reads the cost again as it att
 // A read of the cost that fails shows the failure with its request's id,
 // never an empty section a user would take for no calls, and the
 // conversation opens all the same; Retry reads it again
-// (`usage-and-quota.md` § A conversation's cost). Cost: one opening, two
+// (`packages/web-ui/src/agent/ContextUsageIndicator.vue`). Cost: one opening, two
 // reads, no wait.
 test('a failed read of the cost shows its failure, and Retry reads it again', async () => {
   const { conversation, opening, store, cost, reads } = await costScene()
@@ -4885,8 +4887,9 @@ test('a failed read of the cost shows its failure, and Retry reads it again', as
 // A conversation that goes from the page while a read of its cost has no
 // answer yet, its opening's or the one a gap started, cancels that read,
 // and an answer that comes anyway is shown nowhere: each read lives as long
-// as the conversation's stay in the page's cache (`usage-and-quota.md`
-// § Reading it). Cost: one opening and one read, then one opening and two
+// as the conversation's stay in the page's cache
+// (`packages/web-ui/src/agent/context-cost.ts`). Cost: one opening and one
+// read, then one opening and two
 // reads, no wait.
 test('a conversation that goes while its opening reads its cost cancels the read', async () => {
   const { conversation, opening, cost, reads } = await costScene()
@@ -4914,8 +4917,9 @@ test('a conversation that goes cancels the read of its cost a gap started', asyn
 })
 
 // A page that signs out lets the cost's read go: the read is cancelled, and
-// an answer that comes anyway is kept nowhere (`usage-and-quota.md`
-// § Reading it). Cost: one opening, two reads, no wait.
+// an answer that comes anyway is kept nowhere
+// (`packages/web-ui/src/agent/context-cost.ts`). Cost: one opening, two reads,
+// no wait.
 test('the cost\'s read goes as the page signs out', async () => {
   const { conversation, sockets, opening, store, cost, frame, reads } = await costScene()
   reads[0]!.answer.resolve(cost(1, 100, 1))

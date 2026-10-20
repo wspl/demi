@@ -1,5 +1,5 @@
 //! An agent's subscription account under its entry's rotation
-//! (`providers.md` § Account rotation).
+//! (`crates/backend-providers/src/llm/rotation.rs`).
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

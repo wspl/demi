@@ -2,7 +2,7 @@
 //! crates): a `grok-build` subscription entry's account, signed in by OAuth
 //! device authorization at `auth.x.ai`, inferring over Chat Completions
 //! through the chat proxy Grok's own CLI uses. It refreshes the account's
-//! OIDC tokens by the one protocol of `providers.md` § Token refresh, reads
+//! OIDC tokens by the one protocol of `crates/provider-grok-build/src/auth.rs`, reads
 //! the model catalog from `/v1/models`, and keeps the account's quota from a
 //! free billing and subscription probe and the rate-limit headers of every
 //! chat response. It makes images and videos through the proxy's image and
@@ -241,8 +241,7 @@ impl ProviderRuntime for GrokRuntime {
 
     /// The Grok Build proxy documents none.
     /// The proxy takes no media in a tool message and documents no
-    /// follow-up, so a tool result carries none (`providers.md` § Media in
-    /// tool results).
+    /// follow-up, so a tool result carries none (`crates/provider-common/src/contract.rs`).
     fn request_limits(&self, _model: &Model) -> RequestLimits {
         RequestLimits {
             tool_results: ToolResultKinds::NONE,

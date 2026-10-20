@@ -15,8 +15,9 @@ import type { SettingsModelDraft, SettingsModelMatch, SettingsModelSearch } from
 import { formatTokens } from '../ui/token-count'
 
 /**
- * Add Model is a search and nothing else (`models.md` § Adding a model from
- * models.dev): typing searches models.dev, and the list under the field
+ * Add Model is a search and nothing else
+ * (`crates/backend-providers/src/llm/vendors.rs`): typing searches models.dev,
+ * and the list under the field
  * offers *Custom* first and then the matches with their vendor and context
  * window. Choosing a row adds the model at once, filled from the match, or
  * with the typed text as its id and name for *Custom*; the host then opens it

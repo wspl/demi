@@ -1,4 +1,5 @@
-//! A device's element references (`mobile.md` § Commands): each `inspect`
+//! A device's element references
+//! (`crates/command-package-mobile/src/operations.rs`): each `inspect`
 //! numbers the elements it lists on from the last number the device gave,
 //! so a reference from an older inspect is never another element's, and an
 //! action resolves one to the centre of the frame the inspect listed.

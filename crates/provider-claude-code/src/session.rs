@@ -1,5 +1,4 @@
-//! The session a new CLI process resumes (`claude-code.md` § The session a
-//! process resumes): written from the request's replayed blocks, in their
+//! The session a new CLI process resumes: written from the request's replayed blocks, in their
 //! order, into the process's own directory before it starts. A
 //! block gives the entries the CLI wrote for it, as they were; what no entry
 //! of a block stands for, such as another provider's turn or input Demi
@@ -10,6 +9,24 @@
 //! wherever blocks were cut out, and every entry carries the file's
 //! session. A medium an entry holds is kept on its block as a reference to
 //! the block's own medium (`demiBlob`), and its bytes return here.
+//!
+//! The history goes in as a session file and never as text: written as text,
+//! every new process sent a new prefix and paid for the whole history again,
+//! and the model read its own tool calls as a retelling under names unlike its
+//! tools'. With the file, the request the CLI sends begins with the bytes the
+//! previous process's last request sent, also across a turn of another provider
+//! and back.
+//!
+//! The entries are the backend's: stored with the blocks and carried by no
+//! client-facing form of a block. A request given up (a `usage_limit` sent
+//! again on another account) leaves the blocks as they were before it, so no
+//! entry is twice and the model never reads a failure as its own words. The
+//! provider writes the `environment` entry itself, with a single space as its
+//! text, because the CLI's own would describe the machine it runs on and not
+//! the conversation's Host. These rules use the session file as CLI 2.1.295
+//! reads it, which the vendor documents only as a file to move between
+//! machines, and the Claude Code scenario suite checks them against the CLI it
+//! is given.
 
 use std::collections::HashMap;
 
@@ -151,7 +168,7 @@ fn snapshot(system: &CliSystem) -> Value {
 
 /// The type of the entry the provider keeps on a block the CLI left out of
 /// its history: what an abandoned stream showed that the complete answer
-/// replacing it did not repeat (`claude-code.md` § Tool-call batches). It
+/// replacing it did not repeat (`crates/provider-claude-code/src/mcp.rs`). It
 /// stands for every item of its block no entry of the CLI's stands for, so
 /// those give nothing, and it is never written to a session.
 const LEFT_OUT: &str = "demi_left_out";
@@ -274,7 +291,7 @@ fn message_id(written: &[Value], pending: &[Value]) -> String {
 /// dropped, and the block's items are written instead; reasoning no entry
 /// stands for is left out, since only its own vendor checks it, and so is
 /// reasoning kept past a summary, since that vendor checks it against the
-/// history the summary replaced (`providers.md` § Per vendor).
+/// history the summary replaced (`crates/provider-anthropic-api/src/request.rs`).
 fn block_entries(
     items: &[InferenceItem],
     block: &RequestBlock,
@@ -537,7 +554,7 @@ fn result_content(output: &[ResultPart]) -> Vec<Value> {
 
 /// `entries` with the ids of another session's renamed for `session`: a
 /// fork's blocks hold its parent's entries, and the fork's file is a
-/// session of its own (`claude-code.md` § The session a process resumes).
+/// session of its own.
 /// A field that names a renamed entry names its new id.
 fn renamed(mut entries: Vec<Value>, session: &Uuid) -> Vec<Value> {
     let ours = session.to_string();

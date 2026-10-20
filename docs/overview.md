@@ -66,7 +66,7 @@ Most providers make HTTP requests from the backend. Claude Code instead runs
 its CLI on the user's Cloud, whatever the conversation's execution target is.
 The provider in the backend exchanges stream-json with that process through the
 Host process interface, and the CLI contacts the vendor directly.
-[Providers](providers/providers.md) and [Claude Code](providers/claude-code.md)
+Providers (`crates/backend-providers/src/lib.rs`) and Claude Code (`crates/provider-claude-code/src/lib.rs`)
 define that boundary; [native execution](execution/native-runtime.md) defines
 native command services, which are separate from provider CLIs.
 

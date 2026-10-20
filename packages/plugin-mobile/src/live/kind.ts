@@ -9,7 +9,7 @@ import { t } from '../locales/text'
 /**
  * What a `mobile` tab keeps: the device the agent opened, its native id,
  * its name and its system, which the plugin writes as it opens the tab
- * (`mobile.md` § The live view).
+ * (`packages/plugin-mobile/src/index.ts`).
  */
 export const mobileTabDataSchema = z.looseObject({
   device: z.string(),

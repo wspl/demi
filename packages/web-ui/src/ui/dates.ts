@@ -219,8 +219,8 @@ export function formatVerbAt(verb: 'Resets' | 'Resume' | 'resetting' | 'Removed'
 
 /**
  * When a usage window resets, as specifically as the user would say it,
- * counted from `now` in the user's time zone (`usage-and-quota.md` § What a
- * snapshot says): "Resets now" once the clock has passed it, "Resets in <1m"
+ * counted from `now` in the user's time zone: "Resets now" once the clock has
+ * passed it, "Resets in <1m"
  * within a minute, "Resets in 42m" within the hour, "Resets in 3h 42m"
  * within a day, the minutes left out on the hour, "Resets Sat 4:00 PM" from
  * 24 hours to under 7 days, then the day alone, "Resets Oct 24", with the

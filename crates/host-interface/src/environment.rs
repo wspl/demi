@@ -185,8 +185,9 @@ pub struct JobCaller {
     /// The provider's id of the `shell` call.
     pub tool_use_id: String,
     /// The turn that call belongs to, which a command's call to a vendor
-    /// is counted under, even after the turn ended (`usage-and-quota.md`
-    /// § Usage ledger); none for a job recorded before records kept it.
+    /// is counted under, even after the turn ended
+    /// (`crates/backend-database/src/usage.rs`); none for a job recorded before
+    /// records kept it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn: Option<TurnId>,
 }

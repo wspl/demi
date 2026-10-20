@@ -87,7 +87,7 @@ pub(crate) struct SessionCore {
     pub(super) edits: Vec<EditReceipt>,
     /// The account the agent took under its entry's rotation, which every
     /// request names; none before it took one and after a compaction
-    /// (`providers.md` § Account rotation).
+    /// (`crates/backend-providers/src/llm/rotation.rs`).
     pub(super) account: Option<AgentAccount>,
     /// The edit being prepared or run, from its admission until its action
     /// ends.
@@ -107,7 +107,7 @@ pub(crate) struct SessionCore {
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
     /// What the next request's runtime is to ready ahead, once the session
-    /// is idle (`claude-code.md` § Preparing a process ahead).
+    /// is idle (`crates/provider-claude-code/src/prepared.rs`).
     ahead: Option<Ahead>,
     /// Whether the session readies ahead: a page opened its conversation,
     /// or the user chose its model; a subagent's session never does.
@@ -1841,7 +1841,7 @@ impl SessionCore {
         }
     }
 
-    // Readying ahead (`claude-code.md` § Preparing a process ahead).
+    // Readying ahead (`crates/provider-claude-code/src/prepared.rs`).
 
     /// Asks for the next request's runtime to ready ahead, once the session
     /// is idle. A page that opened the conversation or a choice of the user
@@ -1967,7 +1967,7 @@ impl SessionCore {
     }
 
     /// What the current model's vendor takes in one request
-    /// (`models.md` § Request limits): from the runtime in its slot, or as
+    /// (`crates/provider-common/src/contract.rs`): from the runtime in its slot, or as
     /// it was read when a run took the runtime.
     pub(super) fn request_limits(&self) -> RequestLimits {
         match &self.provider {

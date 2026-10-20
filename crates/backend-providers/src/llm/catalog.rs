@@ -1,9 +1,13 @@
-//! Where an entry's catalog comes from (`models.md` § Catalog sources): its
+//! Where an entry's catalog comes from (`crates/shared-types/src/catalog.rs`): its
 //! configured model list, read from the entry and never cached; its vendor's
 //! list in models.dev; or its provider's directory, both through the catalog
 //! cache. A compatible entry has no source but its configured list: empty
-//! until the user adds a model. And the account-wide catalog `GET /api/models` answers, each model
-//! with the selection the backend builds from it.
+//! until the user adds a model. An unavailable source is not replaced by the
+//! next one: a vendor entry whose vendor models.dev does not list has an empty
+//! catalog, and a configured list is user configuration that no fetched
+//! catalog changes and no refresh clears. And the account-wide catalog
+//! `GET /api/models` answers, each model with the selection the backend builds
+//! from it.
 
 use std::sync::Arc;
 
@@ -54,8 +58,9 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
 }
 
 /// `selection` with the facts of the entry's configured model applied again,
-/// as every inference boundary applies them (`models.md` § Request
-/// parameters): an edit of a model's limits reaches the next request, and
+/// as every inference boundary applies them
+/// (`crates/shared-types/src/model.rs`): an edit of a model's limits reaches
+/// the next request, and
 /// the thinking and tier stay as the user chose them. An entry without a
 /// configured list keeps the selection as it is.
 pub fn configured_selection(
@@ -111,8 +116,8 @@ impl ProviderAssembly {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) => {
                 // The model menu's are the text models; an image model of
-                // the list is `demi image`'s (`providers.md` § Provider
-                // management).
+                // the list is `demi image`'s
+                // (`crates/backend-user-shard/src/provider_settings.rs`).
                 if let Some(models) = &config.models {
                     let text = models.0.iter().filter(|model| model.kind == ModelKind::Text);
                     return unfetched(text.map(configured_model).collect(), Vec::new());
@@ -159,7 +164,7 @@ impl ProviderAssembly {
     }
 
     /// The prices `model` of the entry is priced at as its calls' rows are
-    /// written (`usage-and-quota.md` § How the figures are counted): its
+    /// written (`crates/backend-database/src/usage.rs`): its
     /// catalog's, and for a subscription, whose catalog has none, the same
     /// model's on the vendor's API, from the backend's models.dev copy,
     /// which asks models.dev at most once a day. None for a model the API
@@ -367,8 +372,8 @@ mod tests {
     /// A subscription's model is priced as the same model on the vendor's
     /// API, from the backend's models.dev copy, Codex's at OpenAI's; a model
     /// the API does not sell, and an API entry whose own catalog has no
-    /// price, stay unpriced (`usage-and-quota.md` § How the figures are
-    /// counted). Planted defects: a subscription priced from its own catalog
+    /// price, stay unpriced (`crates/backend-database/src/usage.rs`). Planted
+    /// defects: a subscription priced from its own catalog
     /// alone, or every entry priced from the vendor's listing.
     /// One served document on an empty ledger: milliseconds.
     #[tokio::test]

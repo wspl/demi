@@ -1,8 +1,25 @@
-//! Provider entries (`providers.md` § Credential vault, § Scope): each
+//! Provider entries: each
 //! entry's record with its configuration sealed, whose entries a user infers
 //! with, and the account records of a subscription entry. The vault opens a
 //! configuration when it reads an entry and validates it strictly; a value
 //! that does not open or decode is corrupt and is never repaired.
+//!
+//! Every credential of the product is a record of the control store, sealed
+//! under a key derived from the instance secret and bound to its row; nothing
+//! the product authenticates with is a file. The backend never reads a vendor's
+//! own login from the machine it runs on (`~/.codex`, `~/.grok`, the Claude
+//! Code keychain item, a vendor token in its environment): those belong to
+//! whoever operates the machine, and a multi-user product must not lend them to
+//! a user whose entry has no account.
+//!
+//! A credential has no owner of its own: it belongs to a provider entry, and
+//! every entry belongs to a user; instance mode only decides whose entries a
+//! user infers with. There is no ownerless entry and no second kind of
+//! credential. On a shared instance the master's accounts are used by many
+//! users on many workers at once, so refreshes rely on the versioned replace of
+//! the credential pool, the vendor's windows describe the account and not a
+//! user (per-user consumption is the usage ledger's), and a Claude Code sign-in
+//! stays on the Claude Code machine.
 
 use std::sync::Arc;
 
@@ -81,7 +98,7 @@ pub struct ProviderEntry {
     pub credential: EntryCredential,
     pub created_at: Timestamp,
     /// Whether the entry makes images when its provider can: its Image
-    /// Generation switch (`providers.md` § Provider management).
+    /// Generation switch (`crates/backend-user-shard/src/provider_settings.rs`).
     pub image_generation: bool,
     /// Whether the entry makes videos when its provider can: its Video
     /// Generation switch.
@@ -97,7 +114,7 @@ pub enum EntryCredential {
     ApiKey(ApiKeyConfig),
     /// Accounts in the entry's credential records, of which `active` is the
     /// one the entry infers with unless `rotation` gives each agent one of
-    /// its own (`providers.md` § Account rotation).
+    /// its own (`crates/backend-providers/src/llm/rotation.rs`).
     Subscription {
         active: Option<CredentialId>,
         rotation: Rotation,
@@ -180,8 +197,9 @@ pub struct ApiKeyConfig {
 }
 
 impl ApiKeyConfig {
-    /// Whether the entry is a **compatible entry** (`providers.md` §
-    /// Endpoints): it names no vendor. A vendor entry uses its vendor's
+    /// Whether the entry is a **compatible entry**
+    /// (`crates/provider-common/src/endpoint.rs`): it names no vendor. A vendor
+    /// entry uses its vendor's
     /// endpoint and lists its vendor's catalog; a compatible entry has the
     /// endpoint the user gives, none until then, and lists only the models
     /// the user configures.
@@ -220,7 +238,7 @@ impl ProviderEntry {
     }
 
     /// What the entry lacks to infer, in the order the page lists it
-    /// (`models.md` § A provider is in the list from the start): a vendor
+    /// (`crates/backend-user-shard/src/provider_settings.rs`): a vendor
     /// entry's key, a compatible entry's endpoint (its key is optional), a
     /// model when its catalog is its configured list and the list is empty
     /// (a compatible entry's always is), and a subscription's account. A
@@ -344,7 +362,7 @@ impl Vault {
     }
 
     /// Makes `account` the one the entry `entry` infers with, and announces
-    /// the change (`claude-code.md` § Preparing a process ahead); `false`
+    /// the change (`crates/provider-claude-code/src/prepared.rs`); `false`
     /// when the entry holds no such account.
     pub async fn set_active_account(
         &self,
@@ -536,7 +554,7 @@ impl Vault {
     }
 
     /// Publishes a completed login's entry with the accounts of its staged
-    /// pool, in one transaction (`providers.md` § Login and publication):
+    /// pool, in one transaction (`crates/backend-providers/src/vault/logins.rs`):
     /// the entry, its accounts, and the staged active account, or its first.
     /// `None` when the owner already holds the family's subscription entry,
     /// and then nothing is stored.

@@ -1,5 +1,4 @@
-//! A vendor's request requirements (`providers.md` § Vendors from
-//! models.dev).
+//! A vendor's request requirements (`crates/backend-providers/src/llm/vendors.rs`).
 
 /// A vendor's request requirements, which the backend's vendor policy
 /// applies to every model of the vendor. Each protocol's provider reads the

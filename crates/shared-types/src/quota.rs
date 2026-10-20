@@ -1,5 +1,6 @@
-//! A subscription account's quota snapshot (`usage-and-quota.md` § Vendor
-//! quota): the vendor's latest report of how much of the account's plan is
+//! A subscription account's quota snapshot
+//! (`crates/provider-common/src/quota.rs`): the vendor's latest report of how
+//! much of the account's plan is
 //! used. The backend stores it with the account, without the vendor's
 //! payload, and reads it back, so it refuses unknown fields.
 
@@ -62,7 +63,7 @@ pub struct QuotaWindow {
     #[garde(length(chars, min = 1))]
     pub id: String,
     /// What the window meters; the page names the window from it, its
-    /// period and its scope (`usage-and-quota.md` § Window names).
+    /// period and its scope.
     #[garde(skip)]
     pub kind: QuotaKind,
     /// The share used, from 0 to 100; null when unknown.
@@ -95,8 +96,9 @@ pub struct QuotaWindow {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub period_seconds: Option<u64>,
     /// When the request whose response gave this value started, the
-    /// probe's or the inference request's (`usage-and-quota.md` § Probe and
-    /// observation); null when unknown, which any update replaces. A
+    /// probe's or the inference request's
+    /// (`crates/provider-common/src/quota.rs`); null when unknown, which any
+    /// update replaces. A
     /// snapshot stored before windows kept it reads as unknown.
     #[serde(default)]
     #[schemars(with = "Nullable<Timestamp>")]
@@ -130,7 +132,7 @@ pub enum QuotaKind {
     Cap,
 }
 
-/// What names a window (`usage-and-quota.md` § Window names): the parts of a
+/// What names a window: the parts of a
 /// [`QuotaWindow`] the page words its name from, in the user's language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -1,4 +1,4 @@
-//! What the CLI writes on its standard output (`claude-code.md` § Reading),
+//! What the CLI writes on its standard output,
 //! as Demi reads it: one type for each line Demi reads, decoded by its `type`
 //! tag, and the events a line becomes. A line, content block, stream event
 //! or delta of a type Demi does not read is skipped, so a CLI release that
@@ -353,7 +353,7 @@ pub(crate) struct ResultLine {
 }
 
 /// The token counts of the CLI's latest API call, which the response
-/// carries (`claude-code.md` § Reading), read from the API's stream events
+/// carries, read from the API's stream events
 /// the CLI passes through as the Anthropic API's provider reads them
 /// ([`CallUsage`]). The `result` line's `usage` is never read: it sums every
 /// call of the CLI's turn, which spans every tool call the model made, and
@@ -389,7 +389,7 @@ impl LastCall {
 
     /// The latest call as the usage ledger keeps it, ended as `outcome`
     /// says: one row per call, never the `result` line's sum
-    /// (`usage-and-quota.md` § Usage ledger).
+    /// (`crates/backend-database/src/usage.rs`).
     pub(crate) fn ended(&self, outcome: CallOutcome) -> ProviderEvent {
         ProviderEvent::Call(CallEvent::Ended(self.0.call(outcome)))
     }
@@ -453,8 +453,9 @@ enum ShownKind {
     Redacted,
 }
 
-/// The assistant response the CLI is streaming (`claude-code.md` §
-/// Tool-call batches): the id its `message_start` names, which every whole
+/// The assistant response the CLI is streaming
+/// (`crates/provider-claude-code/src/mcp.rs`): the id its `message_start`
+/// names, which every whole
 /// assistant line that repeats a block of it carries, and what its events
 /// showed, block by block. A whole line of another message is a complete
 /// answer: the CLI's retry without streaming after the stream failed, which
@@ -651,8 +652,9 @@ impl ToolUseBlock {
 impl StreamEvent {
     /// The events of a streamed piece: a thinking block's start, the text,
     /// reasoning and signatures as they come, and a tool use's start and its
-    /// input pieces, for display only (`claude-code.md` § Tool-call
-    /// batches): the call itself is read from the whole message, the only
+    /// input pieces, for display only
+    /// (`crates/provider-claude-code/src/mcp.rs`): the call itself is read from
+    /// the whole message, the only
     /// place its input is whole. `writing` keeps the tool uses opened, by
     /// their block's index.
     pub(crate) fn events(self, writing: &mut HashMap<u64, String>) -> Vec<ProviderEvent> {

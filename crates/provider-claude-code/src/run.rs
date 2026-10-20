@@ -1,16 +1,32 @@
-//! A session's runtime and its runs (`claude-code.md` § Requests over
-//! stream-json, § Tool-call batches, § Process lifetime). The runtime keeps
+//! A session's runtime and its runs (`crates/provider-claude-code/src/mcp.rs`,
+//! `crates/provider-claude-code/src/live.rs`). The runtime keeps
 //! at most one CLI process. A run takes it, or starts a new one, and hands it
 //! back only where the conversation can go on in it: at the `result` printed
-//! once the CLI took every message the run wrote (`claude-code.md` § Which
-//! `result` ends a run), and at a batch of tool calls whose results the next
+//! once the CLI took every message the run wrote, and at a batch of tool calls
+//! whose results the next
 //! run delivers. It hands
 //! it back before the run's last event, since the agent stops reading a run
 //! at its failure. Every other end closes it, SIGTERM first.
 //! When the next request is known but for its input, the runtime prepares
 //! its process ahead, and the request takes that one as a kept process
-//! when it is the request it was prepared for (`claude-code.md` §
-//! Preparing a process ahead).
+//! when it is the request it was prepared for (`crates/provider-claude-code/src/prepared.rs`).
+//!
+//! A request that gains nothing over what a kept process received, no new user
+//! message and no results for held calls, is a retry of a turn that failed: the
+//! process already holds the transcript and would wait for input that never
+//! comes, so a new one resumes the history the retry cut back to.
+//!
+//! The CLI answers user messages that reach it at different times in turns of
+//! their own (two subagents' receipts, a steer written while it waits for a
+//! batch's results), each with a `result`. Ending the run at the first would
+//! leave the second answer to reach no request: the next run would take part of
+//! it for its own, and the answer to its own input would print after it ended,
+//! never shown. So the CLI prints each user message back as it takes it into a
+//! turn (`--replay-user-messages`), and a `result` ends the run only once every
+//! message the run wrote has been printed back before it. A message the CLI
+//! answers itself without the model, such as `/cost`, is never printed back;
+//! its `result` stands for the oldest message not yet printed back, so a
+//! message starting with `/` never leaves a run waiting.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -159,8 +175,8 @@ impl ProviderRuntime for ClaudeCodeRuntime {
     /// The Anthropic API's, which the CLI sends its history to.
     fn request_limits(&self, model: &Model) -> RequestLimits {
         // Images as MCP image content; the CLI saves an MCP PDF resource to
-        // a file of its own instead of giving it to the model (`providers.md`
-        // § Media in tool results).
+        // a file of its own instead of giving it to the model
+        // (`crates/provider-common/src/contract.rs`).
         RequestLimits {
             tool_results: ToolResultKinds::IMAGES,
             ..RequestLimits::anthropic_messages(model)
@@ -175,7 +191,7 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 /// response of its own, or a batch of tool calls, with the entries the CLI
 /// mirrors of its session. A turn
 /// whose sign-in the vendor refused fails with the authentication error and
-/// marks the account signed out (`claude-code.md` § Accounts and sign-in).
+/// marks the account signed out (`crates/provider-claude-code/src/account.rs`).
 fn run(
     runtime: &mut ClaudeCodeRuntime,
     request: InferenceRequest,
@@ -209,8 +225,7 @@ fn run(
             }
             // A process kept at a `result` prints nothing until it is given
             // input; one that did went on without a request, and a new one
-            // starts from the transcript (`claude-code.md` § Which `result`
-            // ends a run). One kept at a batch goes on with its turn, which
+            // starts from the transcript. One kept at a batch goes on with its turn, which
             // this run reads.
             let kept = match kept {
                 Some((mut live, Took::Kept)) if live.held.is_empty() => {
@@ -402,8 +417,7 @@ fn run(
                                     // A call of a tool the request does not
                                     // offer is the CLI's to answer, which it
                                     // does with an error, and the model goes
-                                    // on in this run (`claude-code.md` §
-                                    // Tool-call batches).
+                                    // on in this run (`crates/provider-claude-code/src/mcp.rs`).
                                     Ok(call) if !offers(&request.tools, &call.tool_name) => {}
                                     Ok(call) => live.collect(call),
                                     Err(error) => {
@@ -545,8 +559,7 @@ fn run(
                         // A turn the CLI answered itself, with no message
                         // printed back and no model call, as for a `/cost`
                         // it does not offer, took the oldest message not yet
-                        // printed back (`claude-code.md` § Which `result`
-                        // ends a run). A failed turn is never one: a call the
+                        // printed back. A failed turn is never one: a call the
                         // vendor refused starts no stream either.
                         if !std::mem::take(&mut live.turn_began) && matches!(end, TurnEnd::Answered) {
                             live.unreplayed = live.unreplayed.saturating_sub(1);

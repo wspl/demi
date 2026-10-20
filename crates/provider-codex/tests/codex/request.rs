@@ -1,6 +1,6 @@
 //! What a Codex request sends: the body as the backend wants a transcript
 //! replayed, and the headers that name the account and the session
-//! (`models.md` § Request parameters, `providers.md` § Endpoints).
+//! (`crates/shared-types/src/model.rs`, `crates/provider-codex/src/transport.rs`).
 
 use std::sync::Arc;
 

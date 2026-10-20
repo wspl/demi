@@ -147,7 +147,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * What the conversation cost, read with the conversation as it opens and
    * kept, with each `cost` frame added, or the failure of its read; null
    * while it opens, and for a conversation without a record
-   * (`usage-and-quota.md` § Reading it).
+   * (`packages/web-ui/src/agent/context-cost.ts`).
    */
   cost: CostState | null
 }

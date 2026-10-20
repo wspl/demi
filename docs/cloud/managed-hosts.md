@@ -681,10 +681,10 @@ every VPS.
 
 Besides each user's Cloud, the manager keeps one more machine: the **Claude
 Code machine**, where every CLI process of the Claude Code provider runs, for
-every user ([Where it runs](../providers/claude-code.md#where-it-runs)). It
+every user (`crates/provider-claude-code/src/placement.rs`). It
 holds each Claude Code account's sign-in in a directory of its own, so the one
 copy of a sign-in lives where no user has a shell
-([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)).
+(`crates/provider-claude-code/src/account.rs`).
 
 It is a Cloud in every mechanism this document describes: the same image and
 base, a gVisor sandbox with its runner, a home kept across stop and wake, the

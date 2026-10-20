@@ -57,7 +57,7 @@ pub struct GoogleConfig {
 }
 
 impl GoogleConfig {
-    /// The base URL of an entry that names none (`providers.md` § Endpoints).
+    /// The base URL of an entry that names none (`crates/provider-common/src/endpoint.rs`).
     pub const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 }
 
@@ -193,8 +193,8 @@ impl ProviderRuntime for GoogleRuntime {
         RequestLimits {
             body_bytes: Some(20_000_000),
             images: Some(3_600),
-            // `inlineData` parts beside the `functionResponse` (`providers.md`
-            // § Media in tool results).
+            // `inlineData` parts beside the `functionResponse`
+            // (`crates/provider-common/src/contract.rs`).
             tool_results: ToolResultKinds::ALL,
         }
     }

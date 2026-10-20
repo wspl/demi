@@ -29,8 +29,9 @@ impl Shard {
     /// Tests the key of an entry of media alone, which makes no text, as
     /// its maker checks one: by reading its vendor's list of its media
     /// models, as ElevenLabs' `GET /v1/models` does, or by a request the
-    /// vendor refuses for its body, as ByteDance's (`providers.md`
-    /// § Media-only vendors). It needs only the key: a passed test names
+    /// vendor refuses for its body, as ByteDance's
+    /// (`crates/backend/src/families.rs`). It needs only the key: a passed test
+    /// names
     /// the first model the maker answers, or the entry when it answers
     /// none, and a refused key fails in the vendor's words.
     async fn test_media_key(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, cancel: CancellationToken) -> TestResult {

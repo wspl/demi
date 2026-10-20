@@ -11,8 +11,9 @@ import type { SettingsQuotaWindow } from './types'
  * Displays an account's quota, each window a `QuotaWindowRow`, and requests a
  * free refresh each time it becomes visible. A failed manual refresh is a fact
  * of the account, so its line, the vendor's words in the secondary color,
- * stands above the windows wherever they show (`usage-and-quota.md`
- * § Refreshing in the product), until the account's next answer.
+ * stands above the windows wherever they show
+ * (`packages/web-ui/src/settings/quota-refresh.ts`), until the account's next
+ * answer.
  */
 const props = defineProps<{
   windows: SettingsQuotaWindow[]

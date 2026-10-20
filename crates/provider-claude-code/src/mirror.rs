@@ -1,5 +1,5 @@
 //! Which block each entry belongs to that a process mirrors of its session
-//! (`claude-code.md` § The session a process resumes, `--session-mirror`):
+//! (`crates/provider-claude-code/src/session.rs`, `--session-mirror`):
 //! the user's message to its block, the model's reasoning, text and tool
 //! calls to theirs, a call's result to the call's; an entry that stands for
 //! no block, such as a `date` attachment, to the next block. The CLI prints

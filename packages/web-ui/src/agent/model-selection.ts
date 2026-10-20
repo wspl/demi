@@ -6,8 +6,7 @@ import { fastServiceTier, isFastMode } from './fast-mode'
 export const THINKING_OFF = 'disabled'
 
 /**
- * A conversation's model settings (`models.md` § A conversation's model
- * settings): the provider entry and model, the thinking effort, and the
+ * A conversation's model settings: the provider entry and model, the thinking effort, and the
  * service tier. A conversation with a record shows the record's; a new one
  * keeps its own until its first send writes them there. An empty provider
  * and model mean none is chosen yet.
@@ -72,7 +71,7 @@ export function applyModelChange(settings: ModelSettings, change: ModelSettingsC
 
 /**
  * The effort a model's settings hold when no change names one: the first the
- * model lists (`models.md` § A conversation's model settings), or null when
+ * model lists, or null when
  * it lists none.
  */
 export function firstEffort(model: ModelInfo): string | null {
@@ -95,8 +94,8 @@ export function offersTier(model: ModelInfo, tier: string): boolean {
 
 /**
  * The change a switch to the model `next` of the entry `providerId` makes of
- * `settings`, whose model is `current` (`models.md` § A conversation's model
- * settings): it keeps the effort when the new model offers it, else names the
+ * `settings`, whose model is `current`: it keeps the effort when the new model
+ * offers it, else names the
  * new model's first effort, and keeps Fast when Fast is on and the new model
  * has a Fast tier of its own; the vendor's default tier stands otherwise.
  */

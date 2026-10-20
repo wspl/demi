@@ -1,9 +1,12 @@
-//! The `mobile` plugin (`plugins.md` § Built-in plugins, `mobile.md`): the
+//! The `mobile` plugin (`plugins.md` § Built-in plugins,
+//! `crates/command-package-mobile/src/lib.rs`): the
 //! `demi mobile` group, every leaf bound to an operation of the
 //! `demi.mobile` command package, which runs it on the Host; the `mobile`
 //! user stream of the live view; the methods behind the panel's controls,
 //! each the operation of the command that does the same; and the `mobile`
-//! kind's tabs on the backend.
+//! kind's tabs on the backend. It is a plugin as the browser is: the commands,
+//! the panel and the Host-side drivers are its own, and nothing in the agent,
+//! the backend or the runner knows a simulator.
 
 mod commands;
 pub mod page;
@@ -64,7 +67,7 @@ impl PluginFactory for Mobile {
     }
 }
 
-/// The live view's user stream (`mobile.md` § The live view), with the
+/// The live view's user stream, with the
 /// notice codes its two ends share.
 fn live_stream() -> Stream {
     let operation = NativeOperation {

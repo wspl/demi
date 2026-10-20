@@ -556,8 +556,7 @@ pub struct CheckpointState {
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
     /// The account the agent took under its entry's rotation; absent before
-    /// it took one and after a compaction (`providers.md` § Account
-    /// rotation).
+    /// it took one and after a compaction (`crates/backend-providers/src/llm/rotation.rs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub account: Option<AgentAccount>,

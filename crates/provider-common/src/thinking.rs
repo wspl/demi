@@ -1,5 +1,5 @@
 //! How providers whose vendor levels thinking by a token budget read an
-//! effort (`models.md` § Thinking and service tiers).
+//! effort.
 
 /// The thinking budget each effort names, in tokens.
 const EFFORT_BUDGETS: [(&str, u32); 5] = [

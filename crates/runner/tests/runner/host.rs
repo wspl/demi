@@ -290,7 +290,7 @@ async fn the_device_environment_leaves_out_the_runners_own_names_and_keeps_its_t
 
 /// A process reads the bytes its descriptor carries, and then the pipe's
 /// end, and the bytes appear nowhere else: a token a provider's process
-/// reads from a descriptor (`claude-code.md` § Accounts and sign-in).
+/// reads from a descriptor (`crates/provider-claude-code/src/account.rs`).
 #[cfg(unix)]
 #[tokio::test]
 async fn a_raw_spawn_reads_its_descriptors_bytes_and_their_end() {

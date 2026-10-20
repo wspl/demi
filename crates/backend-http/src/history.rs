@@ -191,7 +191,7 @@ pub(super) async fn subagents(
 
 /// `GET /conversations/:id/cost`: the conversation's cost from its ledger
 /// rows, its subagents named as its database holds them
-/// (`usage-and-quota.md` § Reading it).
+/// (`crates/backend-database/src/usage.rs`).
 pub(super) async fn cost(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

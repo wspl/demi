@@ -301,7 +301,7 @@ developer: the page writes it to the browser console, never into the toast.
   tell, not the page's. A control that only sends input to what the user
   watches, such as a simulator's Home, is the exception: it waits for
   nothing, since the picture shows the effect, and a failure is reported
-  in a toast ([The live view](../mobile/mobile.md#the-live-view)).
+  in a toast (`crates/command-package-mobile/src/live.rs`).
 
 ## The conversation files service
 

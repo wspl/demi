@@ -1,4 +1,4 @@
-//! Codex's device login (`providers.md` § Login and publication), the
+//! Codex's device login, the
 //! protocol of the Codex CLI's own device-code sign-in: ask for a user code,
 //! let the user confirm it at `…/codex/device` from any web browser, poll until
 //! the service issues an authorization code with its own PKCE verifier, and

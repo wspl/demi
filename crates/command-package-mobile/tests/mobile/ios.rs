@@ -1,4 +1,5 @@
-//! The iOS driver against a helper the test plays (`mobile.md` § iOS): the
+//! The iOS driver against a helper the test plays
+//! (`crates/command-package-mobile/src/ios/mod.rs`): the
 //! connection `demi-ios-sim serve` speaks, its end with the conversation's
 //! last device, its captures' pictures, and a recording too large for one
 //! frame of it.

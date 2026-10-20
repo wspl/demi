@@ -1,4 +1,4 @@
-//! A small request (`models.md` § Small model): one request with a fixed
+//! A small request (`crates/backend-providers/src/llm/small_model.rs`): one request with a fixed
 //! instruction as its system prompt and one user message, for a small job
 //! that serves a conversation rather than answers it, such as its title. It
 //! goes to the runtime the caller supplies, the metered one a turn uses, and
@@ -23,7 +23,7 @@ pub struct SmallRequest {
     /// The one user message.
     pub message: String,
     /// The request's cap on its output; a model whose own output limit is
-    /// lower sends that one (`models.md` § Output limit).
+    /// lower sends that one (`crates/provider-common/src/contract.rs`).
     pub output_cap: NonZeroU32,
     /// What the usage ledger counts the request under.
     pub purpose: RequestPurpose,

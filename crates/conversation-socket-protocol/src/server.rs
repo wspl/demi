@@ -131,7 +131,7 @@ pub enum ServerFrame {
         usage: Option<ContextUsage>,
     },
     /// What a new usage ledger row of the conversation adds to its cost
-    /// (`usage-and-quota.md` § Reading it): to the totals, to its agent's
+    /// (`crates/backend-database/src/usage.rs`): to the totals, to its agent's
     /// price when it has one, and the call itself when it is a turn call
     /// of the main conversation. A page that holds the cost adds it; any
     /// other ignores it.
@@ -156,7 +156,7 @@ pub enum ServerFrame {
     /// The number of the conversation's ledger rows, which the backend
     /// sends with an open's handshake: a page that holds fewer rows of the
     /// cost missed the last ones while its connection was down and reads
-    /// the cost again (`usage-and-quota.md` § Reading it).
+    /// the cost again (`crates/backend-database/src/usage.rs`).
     CostRows {
         #[garde(range(max = MAX_SAFE_INTEGER))]
         rows: u64,

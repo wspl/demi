@@ -21,8 +21,9 @@ import {
 import { t } from './locales/text'
 
 /**
- * The context card's Cost section (`usage-and-quota.md` § A conversation's
- * cost): closed, the equivalent API price and the main conversation's cache
+ * The context card's Cost section
+ * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): closed, the
+ * equivalent API price and the main conversation's cache
  * hit rate side by side; opened by its caption, a disclosure of its own,
  * the price by kind of token, the share of the profiles the conversation's
  * workflow offers and the chart of the main conversation's recent cache

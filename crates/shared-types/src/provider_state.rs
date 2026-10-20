@@ -1,7 +1,8 @@
 //! What the product shows about a provider entry besides its catalog: the
 //! wire format it speaks, whether its credential is usable, whether it can
-//! run, and its subscription accounts (`providers.md` § Provider contract, §
-//! Credential vault). The backend reads the states when it answers and never
+//! run, and its subscription accounts (`crates/provider-common/src/lib.rs`,
+//! `crates/backend-providers/src/vault/entries.rs`). The backend reads the
+//! states when it answers and never
 //! stores them, so they accept unknown fields.
 
 use schemars::JsonSchema;
@@ -10,7 +11,7 @@ use serde_with::rust::unwrap_or_skip;
 
 use crate::{Nullable, Timestamp};
 
-/// The wire format an `openai` entry speaks (`providers.md` § Endpoints): the
+/// The wire format an `openai` entry speaks (`crates/provider-common/src/endpoint.rs`): the
 /// Responses API, or Chat Completions as OpenAI-compatible vendors serve it.
 /// An entry that names none speaks Responses.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -421,13 +422,13 @@ pub struct AccountInfo {
     #[schemars(with = "Nullable<Timestamp>")]
     pub updated_at: Option<Timestamp>,
     /// The vendor refused the account's sign-in, and it waits for the user
-    /// to sign in again (`claude-code.md` § Accounts and sign-in); rotation
+    /// to sign in again (`crates/provider-claude-code/src/account.rs`); rotation
     /// passes over it until a login replaces it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub signed_out: bool,
 }
 
-/// What a login waits for (`claude-code.md` § Accounts and sign-in): it is
+/// What a login waits for (`crates/provider-claude-code/src/account.rs`): it is
 /// `preparing` from its start, and `waiting_for_user` once it has a link or
 /// a code to show. A Claude sign-in waits for the Claude Code machine, for
 /// the CLI's install and for the CLI's start in between.
@@ -460,7 +461,7 @@ impl LoginStage {
 }
 
 /// What a login asks the user to do, reported while the login
-/// waits (`providers.md` § Login and publication). When the login ends is
+/// waits (`crates/backend-providers/src/vault/logins.rs`). When the login ends is
 /// the vault's, not the vendor's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

@@ -1,5 +1,6 @@
 //! The credential pool, the refresh protocol and the account operations
-//! (`providers.md` § Credential vault, § Token refresh).
+//! (`crates/backend-providers/src/vault/entries.rs`,
+//! `crates/provider-common/src/credentials/refresh.rs`).
 
 use std::{
     collections::VecDeque,

@@ -1,5 +1,5 @@
-//! A conversation's cost as the context card shows it
-//! (`usage-and-quota.md` § A conversation's cost): the token and price
+//! A conversation's cost as the context card shows it:
+//! the token and price
 //! totals of its ledger rows, each agent's price and the main
 //! conversation's turn calls with their cache misses. `GET
 //! /api/conversations/:id/cost` answers them whole, and the `cost` frame

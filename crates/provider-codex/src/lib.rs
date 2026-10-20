@@ -2,7 +2,7 @@
 //! `codex` subscription entry's account, signed in by Codex's device login,
 //! inferring through the Codex Responses backend over a WebSocket with
 //! server-sent events as the fallback. It refreshes the account's tokens by
-//! the one protocol of `providers.md` § Token refresh, reads its failure
+//! the one protocol of `crates/provider-codex/src/auth.rs`, reads its failure
 //! records' usage-limit resets, keeps the account's quota from the
 //! `x-codex-*` headers and a free usage probe, and reads the account's model
 //! catalog, and makes images through the backend's image endpoints.
@@ -310,7 +310,7 @@ impl ProviderRuntime for CodexRuntime {
 
     fn request_limits(&self, _model: &Model) -> RequestLimits {
         // Images inside `function_call_output.output`; the backend documents
-        // no file part (`providers.md` § Media in tool results).
+        // no file part (`crates/provider-common/src/contract.rs`).
         RequestLimits {
             tool_results: ToolResultKinds::IMAGES,
             ..RequestLimits::OPENAI

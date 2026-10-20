@@ -23,8 +23,7 @@ pub const LABEL_MAX: usize = 80;
 /// after trimming.
 pub const CODE_MAX: usize = 4096;
 
-/// How an entry authenticates (`providers.md` § Families, vendors and
-/// endpoints).
+/// How an entry authenticates (`crates/backend-providers/src/llm/families.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialKind {
@@ -39,7 +38,7 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 
 pub use demi_shared_types::Rotation;
 
-/// What a configured model makes (`providers.md` § Provider management):
+/// What a configured model makes (`crates/backend-user-shard/src/provider_settings.rs`):
 /// text, the model menu's, unless its user added it as an image, video or
 /// audio model of a compatible entry with a shape for that kind.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -68,7 +67,7 @@ serde_plain::derive_display_from_serialize!(ModelKind);
 serde_plain::derive_fromstr_from_deserialize!(ModelKind);
 
 /// One model of an entry's configured list, which states its facts directly
-/// (`models.md` § Catalog sources): its first thinking effort is its
+/// (`crates/shared-types/src/catalog.rs`): its first thinking effort is its
 /// default, its Fast tier, when it names one, is its only service tier, and
 /// it is taken to call tools. A model that is not text uses only its ID
 /// and name.
@@ -124,7 +123,7 @@ fn within(context_window: Option<u32>) -> impl FnOnce(&Option<u32>, &()) -> gard
 /// are distinct in a list that is kept ([`ConfiguredModels::repeated_id`]):
 /// a request that repeats one is refused as `duplicate_model`, not as an
 /// invalid body. An empty list leaves the entry incomplete until a model is
-/// added (`models.md` § A provider is in the list from the start).
+/// added (`crates/backend-user-shard/src/provider_settings.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
@@ -230,7 +229,7 @@ pub enum CreateProvider {
 /// `null` returns to the vendor's catalog; and, for a compatible entry only,
 /// a new endpoint, where `null` removes it, and a new protocol: a
 /// `providerType` with the `wireApi` it speaks, or a `wireApi` alone for the
-/// entry's own family (`providers.md` § Endpoints).
+/// entry's own family (`crates/provider-common/src/endpoint.rs`).
 #[derive(Debug, Default, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderPatch {
@@ -409,7 +408,7 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub vendor_id: Option<String>,
-    /// A compatible entry (`providers.md` § Endpoints): its endpoint is its
+    /// A compatible entry (`crates/provider-common/src/endpoint.rs`): its endpoint is its
     /// own and its models are the ones the user adds. Any other API-key
     /// entry is a vendor entry; false for a subscription.
     pub compatible: bool,
@@ -560,7 +559,7 @@ pub struct QuotaAnswer {
 pub struct TestRequest {
     /// The text model the test sends its message to; absent for an entry
     /// of media alone, whose key is checked through its vendor's list of
-    /// models (`providers.md` § Media-only vendors).
+    /// models (`crates/backend/src/families.rs`).
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     #[garde(inner(length(min = 1)))]
@@ -835,7 +834,7 @@ pub struct ListedLogin {
 pub struct ModelCatalog {
     pub providers: Vec<CatalogProvider>,
     /// The selection Automatic resolves to for the small model
-    /// (`models.md` § Small model), as for a conversation on the first
+    /// (`crates/backend-providers/src/llm/small_model.rs`), as for a conversation on the first
     /// entry; null when Only the Conversation's Provider is on or no tier
     /// matches.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -930,8 +929,8 @@ pub enum Availability {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
-    /// The entry lacks a part it needs to infer (`models.md` § A provider
-    /// is in the list from the start).
+    /// The entry lacks a part it needs to infer
+    /// (`crates/backend-user-shard/src/provider_settings.rs`).
     Setup,
     /// The credential is refused, or a subscription's account expired.
     Authentication,
