@@ -1,4 +1,4 @@
-//! The plugins' OAuth sign-ins (`plugins.md` § OAuth sign-in): for a plugin
+//! The plugins' OAuth sign-ins: for a plugin
 //! whose manifest names its vendor's authorization server, the host
 //! registers Demi as a public client once per instance and issuer (RFC
 //! 7591), starts a user's sign-in with PKCE (RFC 7636, S256) and a `state`
@@ -6,8 +6,7 @@
 //! brings, keeps the tokens sealed as the plugin's secret under a name no
 //! plugin can read, renews them by the provider credentials' protocol
 //! (`crates/provider-common/src/credentials/refresh.rs`) and revokes them (RFC 7009) at sign
-//! out. Every call to the vendor is an outbound request of the plugin
-//! (`plugins.md` § Outbound requests); the endpoints are read from the
+//! out. Every call to the vendor is an outbound request of the plugin; the endpoints are read from the
 //! server's metadata (RFC 8414). A plugin sees only the access token.
 
 use std::collections::HashMap;

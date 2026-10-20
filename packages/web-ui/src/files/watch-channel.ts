@@ -1,6 +1,6 @@
 /**
  * A file watch that carries the subscriptions of what a page keeps of one
- * Host's files (`plugin-pages.md` § What the service keeps): a conversation's
+ * Host's files: a conversation's
  * watch, on the relay or its direct channel, or a device's folder dialog's. The
  * kept files (`HostFiles`) hand each subscription to the watch of the view that
  * brought it; the watch is open while it carries any, subscribes again to all

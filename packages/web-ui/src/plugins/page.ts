@@ -34,11 +34,38 @@ import type { Operation } from '../ui/operations'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 /**
- * A plugin's page (`plugin-pages.md`): the object it declares with
+ * A plugin's page: the object it declares with
  * `definePage`, and the page context every component of it reaches through
  * `usePage()`. The shell knows a page only through this object, and a page
  * knows the shell only through its context, which `web` supplies over the
- * backend and the gallery over each specimen's fixtures.
+ * backend and the gallery over each specimen's fixtures. A component never
+ * names a plugin and cannot reach another plugin's state or calls.
+ *
+ * - Everything a page shows is pushed to it, or read when a pushed revision
+ *   says it changed: no page polls, and none guesses when to read again.
+ * - A state that does not read is reported, never thrown. A component that
+ *   throws while it renders stops updating (in development Vue keeps the DOM
+ *   of its last render, so a switch that showed its call pending stays
+ *   pending; in a production build the component shows nothing), so the
+ *   context keeps the last state that read and says why the latest did not.
+ *   An answer that does not read fails its call.
+ * - A control waits for its own call, and only for it, never for the state
+ *   the call causes, and shows the plugin's state when the call succeeds. A
+ *   call is an operation of the page, which goes on when the component that
+ *   showed the control goes. A control that only sends input to what the user
+ *   watches, such as a simulator's Home, waits for nothing: the picture shows
+ *   the effect.
+ * - Work panel kinds are data on the page, so the panel knows every kind of
+ *   every page the user has on before it opens and an intent can open a kind
+ *   while the panel is closed. Intents are the only way a page opens a tab,
+ *   and a control that opens one asks first whether any page does and shows
+ *   plain text otherwise. What follows from a tab being created or closed,
+ *   such as the browser closing its own tab, is the plugin's work on the
+ *   backend, never the page's.
+ *
+ * `web-ui` knows no plugin, no plugin's kind and no plugin's types, imports no
+ * Node module, and ships no control-plane transport of its own: it consumes
+ * an injected `ConversationClient` and injected plugin services.
  */
 
 /**
@@ -83,8 +110,7 @@ export interface PluginCallOptions {
 }
 
 /**
- * A conversation's files (`plugin-pages.md` § The conversation files
- * service): a product service, whichever page shows them.
+ * A conversation's files: a product service, whichever page shows them.
  */
 export interface ConversationFileService {
   /** The Host's file tree and file contents, while the conversation's Host is known. */
@@ -115,13 +141,12 @@ export interface ConversationFileService {
    * The calling component shows the working tree under the directory
    * `directory()` names, read at each change, the conversation's when it
    * names none: the service follows the Host's reports for it and keeps
-   * `changes` of it current until the component's scope ends
-   * (`plugin-pages.md` § What the service keeps).
+   * `changes` of it current until the component's scope ends.
    */
   showChanges(directory?: () => string | undefined): void
 }
 
-/** Opening intents (`plugin-pages.md` § Intents). */
+/** Opening intents. */
 export interface IntentService {
   /** Opens `request` in the conversation's panel; what the panel already shows stays as it is (`openIntent`). */
   open(conversation: string, request: IntentRequest): void
@@ -151,8 +176,7 @@ export interface PageHost {
    * answers its JSON result; a refusal rejects with a `PluginCallError`. A
    * call that cannot reach the backend, as while it restarts, waits until it
    * can and goes then, so it never rejects for the connection; one whose
-   * `signal` aborts meanwhile rejects with the abort and is never sent
-   * (`plugin-pages.md` § The page context).
+   * `signal` aborts meanwhile rejects with the abort and is never sent.
    */
   call(
     plugin: string,
@@ -231,7 +255,7 @@ export interface PagePlugin {
   conversation(id: string): ConversationPlugin
 }
 
-/** What every component of a page reaches (`plugin-pages.md` § The page context). */
+/** What every component of a page reaches. */
 export interface PageContext {
   readonly plugin: PagePlugin
   readonly intents: IntentService
@@ -249,11 +273,10 @@ export interface PageContext {
   readonly overlays: OverlayStore
   files(conversation: string): ConversationFileService
   /**
-   * The page's operation of the plugin's `action` on what `key` names, such
-   * as `operation('set_source_enabled', source)` for a skill source's switch
-   * (`plugin-pages.md` § Calls and states). A control given it shows the
-   * call working whenever it is drawn, its component gone and drawn again
-   * included, and a press while it runs starts nothing.
+   * The page's operation of the plugin's `action` on what `key` names, such as
+   * `operation('set_source_enabled', source)` for a skill source's switch. A control given it shows
+   * the call working whenever it is drawn, its component gone and drawn again included, and a press
+   * while it runs starts nothing.
    */
   operation(action: string, key: string): Operation
 }
@@ -266,9 +289,8 @@ export interface KindTab<Session> {
 }
 
 /**
- * A work panel kind, declared once on its page (`plugin-pages.md` § Work
- * panel kinds). Its functions are methods, so kinds of different data fit
- * one list.
+ * A work panel kind, declared once on its page. Its functions are methods, so kinds of different
+ * data fit one list.
  */
 export interface PanelKind<Data, Session = undefined> {
   /** Its id, unique across plugins. */
@@ -279,8 +301,7 @@ export interface PanelKind<Data, Session = undefined> {
   /**
    * What makes a tab of a kind that is not pinned the one it is, such as an
    * attachment's number: an intent whose new data has the key of a tab the
-   * strip holds selects that tab instead of adding another
-   * (`plugin-pages.md` § Intents). Without it, each intent adds a tab, as a
+   * strip holds selects that tab instead of adding another. Without it, each intent adds a tab, as a
    * browser opens each link in a tab of its own.
    */
   key?(data: Data): string
@@ -317,8 +338,7 @@ export interface PanelKind<Data, Session = undefined> {
   /**
    * How many times something asked that the user see the tab, from its
    * data. When the count rises above the one the page last applied for the
-   * tab, the panel opens and selects it, open or closed before
-   * (`plugin-pages.md` § Work panel kinds).
+   * tab, the panel opens and selects it, open or closed before.
    */
   shows?(data: Data): number
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `conversation`, `data`. */
@@ -350,7 +370,7 @@ export interface PanelSession {
   dispose?(): void
 }
 
-/** What a page contributes to the shell (`plugin-pages.md` § The page object). */
+/** What a page contributes to the shell. */
 export interface PluginPage<Session extends PanelSession | undefined = undefined> {
   /** Its plugin's id, imported from its generated module. */
   plugin: string
@@ -359,9 +379,8 @@ export interface PluginPage<Session extends PanelSession | undefined = undefined
   /** The kinds of tab it shows in the work panel. */
   kinds?: readonly PanelKind<unknown, Session>[]
   /**
-   * What runs for a conversation while its panel is open with the plugin on
-   * (`plugin-pages.md` § Panel sessions). It runs in its own effect scope,
-   * which stops with it, and its `dispose`, if it has one, is called then.
+   * What runs for a conversation while its panel is open with the plugin on. It runs in its own
+   * effect scope, which stops with it, and its `dispose`, if it has one, is called then.
    */
   panel?(conversation: string, page: PageContext): Session
 }
@@ -424,8 +443,7 @@ function unreadable(reason: string, error: z.ZodError): PluginCallError {
 }
 
 /**
- * `raw` read with `schema` while the calling scope lives
- * (`plugin-pages.md` § Calls and states): the last state that read, null
+ * `raw` read with `schema` while the calling scope lives: the last state that read, null
  * while there is none, and why the latest did not read, until one does. A
  * state that does not read never reaches the page's components, and the
  * last one that read stays shown.

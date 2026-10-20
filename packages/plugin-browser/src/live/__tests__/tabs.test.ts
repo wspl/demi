@@ -761,8 +761,8 @@ test('a tab not shown that was lost with the browser keeps its title and waits, 
   end()
 })
 
-// `plugin-pages.md` § The page context: a call whose caller goes away, as a
-// panel that closes, is dropped and never sent.
+// A call whose caller goes away, as a panel that closes, is dropped and
+// never sent.
 test('a call still waiting for the backend when the panel session ends is dropped with the abort', async () => {
   const waiting: AbortSignal[] = []
   const plugin: ConversationPlugin = {

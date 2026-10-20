@@ -312,7 +312,7 @@ impl ContextSource for ExecutionContext {
 }
 
 /// A plugin that is a context source, asked while its user has it on
-/// (`plugins.md` § Prompt text and context).
+/// (`crates/plugin-interface/src/manifest.rs`).
 pub(crate) struct PluginContext {
     pub(crate) shard: Weak<Shard>,
     pub(crate) plugin: PluginId,

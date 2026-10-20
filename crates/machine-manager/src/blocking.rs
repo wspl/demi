@@ -1,9 +1,7 @@
-//! The ways off the loop for blocking work (`concurrency.md` § Blocking
-//! work): the blocking pool for file sequences and syncs, mounts, loop and
-//! freeze ioctls, copies, hashing and firewall updates, and a dedicated
-//! thread for work that must not run on a pooled one. Every function that
-//! blocks takes an [`OffLoop`], and only this module makes one, so calling
-//! such a function on the loop does not compile.
+//! The ways off the loop for blocking work: the blocking pool for file sequences and syncs, mounts,
+//! loop and freeze ioctls, copies, hashing and firewall updates, and a dedicated thread for work
+//! that must not run on a pooled one. Every function that blocks takes an [`OffLoop`], and only
+//! this module makes one, so calling such a function on the loop does not compile.
 
 /// Proof that the caller runs on a blocking thread, not on the loop.
 pub struct OffLoop {

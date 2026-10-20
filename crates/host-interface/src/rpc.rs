@@ -1,4 +1,4 @@
-//! The rpc handler interface (`contracts.md` § The TypeScript boundary): a
+//! The rpc handler interface (`crates/plugin-interface/src/lib.rs`): a
 //! handler receives its call as data ([`RpcInvocation`]) and acts only
 //! through a port whose every operation is one request and one reply, so a
 //! process of its own could serve the same calls over a wire.

@@ -38,6 +38,30 @@
 //! routes, files under `/sys` and `/proc`, `oci-spec` for the bundle), so
 //! results and errors are values and no command output is parsed. It runs a
 //! program only where no library does the job (`tools`).
+//!
+//! ```text
+//! loop thread: LocalRuntime; owns the manager state
+//!   the socket server and its connections; one task per request
+//!   one DeviceWorker per device: owns its sandbox, runs its operations in order
+//!   Admission: a fair semaphore; device operations share it,
+//!     reconcile and shutdown take it whole
+//! blocking pool, through one entry point: file work and fsync, mounts, loop and
+//!   freeze ioctls, sparse copies, hashing, firewall updates
+//! one-shot threads: work inside another namespace; each exits after one job
+//! child processes: runsc, mke2fs, e2fsck, resize2fs, bsdtar, nft
+//! ```
+//!
+//! Namespace work never runs on a pool thread: one that entered another
+//! namespace would run later jobs in the wrong one. Recovery of the saved mount
+//! namespace is a separate process, which the manager starts by re-executing
+//! itself through `/proc/self/exe` and which enters the namespace before
+//! `exec`, so every thread and child of that process lives in it. The manager
+//! never cancels a device operation: shutdown drains the device queues, and a
+//! checkpoint's frozen window is one synchronous job whose guard always thaws
+//! the filesystem. The manager listens on no TCP socket, links no backend and
+//! executes no image content on the host; workload credentials use
+//! `runner-protocol`'s `ManagedBoot`. The crate also holds the Lima
+//! configuration and the pinned `runsc` build inputs.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 pub mod blocking;

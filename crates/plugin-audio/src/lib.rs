@@ -1,4 +1,4 @@
-//! The `audio` plugin (`plugins.md` § Built-in plugins): the
+//! The `audio` plugin: the
 //! `demi audio` group, which asks the port's Providers service for one
 //! file of speech, music or a sound effect, wraps a vendor's raw PCM as
 //! WAV, checks the file it reads, writes it to stdout, and says what came

@@ -162,7 +162,7 @@ impl ChromeProcess {
 
     /// Runs `work` over the process table on the blocking pool: refreshing
     /// every process's executable and environment takes milliseconds of CPU
-    /// and waits on the kernel (`concurrency.md` § Blocking work). A scan
+    /// and waits on the kernel. A scan
     /// whose waiter left finishes there; the next one reads the table anew.
     #[cfg(unix)]
     async fn scan<T: Send + 'static>(

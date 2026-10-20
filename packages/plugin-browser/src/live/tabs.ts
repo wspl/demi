@@ -125,8 +125,7 @@ function tabsFailureSentence(failure: TabsFailure): SentenceText {
  * A request that failed, keeping what it failed for. Its `message` is worded
  * as it is read, from the failure, so a language chosen while it shows
  * rewords it, as a `ShownError` does. A request never fails for the page's
- * connection: the shell's call waits for the backend (`plugin-pages.md` §
- * The page context).
+ * connection: the shell's call waits for the backend (`packages/web-ui/src/plugins/page.ts`).
  */
 export class BrowserTabsError extends Error {
   /** The backend's or the browser's reason; null for a failure that carries none. */

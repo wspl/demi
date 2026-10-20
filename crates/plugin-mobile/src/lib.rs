@@ -1,5 +1,4 @@
-//! The `mobile` plugin (`plugins.md` § Built-in plugins,
-//! `crates/command-package-mobile/src/lib.rs`): the
+//! The `mobile` plugin (`crates/command-package-mobile/src/lib.rs`): the
 //! `demi mobile` group, every leaf bound to an operation of the
 //! `demi.mobile` command package, which runs it on the Host; the `mobile`
 //! user stream of the live view; the methods behind the panel's controls,

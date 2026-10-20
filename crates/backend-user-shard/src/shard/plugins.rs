@@ -1,4 +1,4 @@
-//! The product's side of the plugins' port (`plugins.md` § The contract):
+//! The product's side of the plugins' port (`crates/plugin-interface/src/lib.rs`):
 //! package calls and reads of a conversation through its host access, the
 //! user's blobs, and the Providers service's images. The plugin host
 //! answers the rest itself.
@@ -231,7 +231,7 @@ impl ProductPort for ShardPort {
 }
 
 /// The client of a shard thread's plugins' outbound requests
-/// (`plugins.md` § Outbound requests). A test's backend trusts the
+/// (`crates/backend-plugins/src/web.rs`). A test's backend trusts the
 /// authorities its HTTPS servers present.
 pub(crate) fn web_client(services: &Services) -> reqwest::Client {
     #[cfg(feature = "testing")]
@@ -303,9 +303,8 @@ pub enum ReloadRefusal {
 }
 
 impl Shard {
-    /// Turns `plugin` on or off for the user (`plugins.md` § A user's
-    /// plugins); every live tree's summary is marked, since whether a
-    /// reload would change it may have changed.
+    /// Turns `plugin` on or off for the user (`crates/backend-plugins/src/lib.rs`); every live
+    /// tree's summary is marked, since whether a reload would change it may have changed.
     pub async fn switch_plugin(
         &self,
         plugin: &str,

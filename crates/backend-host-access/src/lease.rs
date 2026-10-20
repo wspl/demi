@@ -1,4 +1,4 @@
-//! Leases (`concurrency.md` § The user shard): a host operation the shard
+//! Leases (`crates/backend-user-shard/src/lib.rs`): a host operation the shard
 //! admitted that outlives the call, such as a file transfer or a user
 //! stream, whose bytes the edge moves. The edge holds the lease while bytes
 //! move; dropping it tells the shard the operation is over, which releases

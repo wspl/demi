@@ -64,7 +64,7 @@ export interface IntentOutcome {
 }
 
 /**
- * What opening `request` does (`plugin-pages.md` § Intents): the first kind
+ * What opening `request` does: the first kind
  * of a page the user has on that opens it shows the data it returns, in its
  * pinned tab or in a tab it creates. When the panel's selected tab is that
  * kind's and the kind, which alone knows what its data means, would show
@@ -166,8 +166,7 @@ export function removeTabs(state: PanelState, ids: readonly string[]): PanelStat
 export type AppliedShows = Readonly<Record<string, number>>
 
 /**
- * The tabs whose kind counts more showings than the page applied
- * (`plugin-pages.md` § Work panel kinds), in the panel's order, and the
+ * The tabs whose kind counts more showings than the page applied, in the panel's order, and the
  * record once they are applied: the panel opens and selects each, so the
  * last of them shows. Tabs the panel no longer has leave the record. Null
  * when no tab asks; the record then stays as it is.

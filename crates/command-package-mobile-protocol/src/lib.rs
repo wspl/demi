@@ -1,5 +1,4 @@
-//! The `demi.mobile` package's contract (`crates-and-packages.md`
-//! § command-package-mobile-protocol): the arguments and results of its
+//! The `demi.mobile` package's contract: the arguments and results of its
 //! `mobile.*` operations, their failures, the message the package sends its
 //! plugin, and the live view's protocol for a simulator. It holds types and
 //! their checks only; the operations, the drivers and their IO live in

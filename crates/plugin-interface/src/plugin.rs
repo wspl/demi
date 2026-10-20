@@ -21,7 +21,18 @@ pub trait PluginFactory: Send + Sync {
     fn instance(&self) -> Rc<dyn Plugin>;
 }
 
-/// A plugin's instance for one user.
+/// A plugin's instance for one user. It runs on its user's shard thread, so
+/// it follows the shard's rules:
+///
+/// - It never blocks the thread; blocking work, such as a git fetch, runs on
+///   the blocking pool.
+/// - It may keep state in memory, for its own user only, as a cache: the
+///   instance ends with the shard, and what must last is a value or a blob.
+/// - Every task it starts ends when the instance is dropped, and the instance
+///   saves nothing from a task that was cut off.
+/// - A task may keep the port of the page call that started it, which answers
+///   after the call's reply until the task ends. Over a wire that is a message
+///   of a request that already has its reply, which an encoding must allow.
 pub trait Plugin {
     fn call(
         &self,
@@ -160,7 +171,7 @@ impl Plugin for CommandPlugin {
 }
 
 /// The instance of a plugin that declares nothing but its identity, such as
-/// one that only shows a page (`plugin-pages.md` § Registration): no request
+/// one that only shows a page (`crates/xtask/src/contracts/registry.rs`): no request
 /// reaches it, and one that did would be refused.
 pub struct NoRequests;
 

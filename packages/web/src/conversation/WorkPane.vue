@@ -25,10 +25,9 @@ const state = computed(() => work.stateFor(props.conversationId))
 const recorded = computed(() => work.recorded(props.conversationId))
 
 /**
- * The pages' kinds for this conversation (`plugin-pages.md` § Panel
- * sessions), for as long as the panel is open beside it with each plugin on.
- * A closed panel, or one beside a conversation its first send has not
- * created yet, holds no session and no view.
+ * The pages' kinds for this conversation (`packages/web-ui/src/plugins/page.ts`), for as long as
+ * the panel is open beside it with each plugin on. A closed panel, or one beside a conversation its
+ * first send has not created yet, holds no session and no view.
  */
 const bound = shallowRef<BoundKinds | null>(null)
 /** Which pages the user has on, as one value that changes only when one is turned on or off. */

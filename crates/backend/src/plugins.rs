@@ -1,6 +1,5 @@
-//! The built-in plugins, one per plugin crate (`plugins.md` § Built-in
-//! plugins), in their order of registration: the list the composition root
-//! registers. A plugin leaves a deployment by leaving this list.
+//! The built-in plugins, one per plugin crate, in their order of registration: the list the
+//! composition root registers. A plugin leaves a deployment by leaving this list.
 
 use demi_plugin_audio::Audio;
 use demi_plugin_browser::Browser;

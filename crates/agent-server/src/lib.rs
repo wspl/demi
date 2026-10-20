@@ -31,6 +31,14 @@
 //! Everything here runs on the user's shard, a single-threaded runtime:
 //! nothing is `Send`, and shared state sits in `Rc` and `RefCell` behind
 //! synchronous methods, so no borrow crosses an await.
+//!
+//! The node assembly is the one place that creates a node's session; the
+//! supervisor asks it for a child and never builds one. A session stores and
+//! reads media only through its tree store: the product's store decides where
+//! media bytes go, and `AgentServer` never sees a blob store. The crate depends
+//! on no concrete provider, Host implementation or user interface, owns no
+//! shell interpreter, and owns no socket: the backend owns the conversation
+//! socket and hands the server decoded frames.
 
 mod node;
 mod server;

@@ -1,3 +1,10 @@
+// The browser's client of the conversation socket. It validates every frame it
+// receives with the schemas of `@demicodes/protocol`, and imports no user
+// interface package. `applyTranscriptPatches` is the one transcript patch
+// applier: the agent's Rust tests write patch sequences together with the
+// snapshot each must produce and this package's tests apply them, so no
+// second applier exists in Rust.
+
 export { ActionOutlivedError, ConversationClient, EditRejectedError, RefusedError, SavedGoneError, SessionError, SteerRejectedError, type HeldEdge } from './client'
 export type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
 export {

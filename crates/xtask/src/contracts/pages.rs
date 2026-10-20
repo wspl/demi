@@ -1,4 +1,4 @@
-//! Each page package's generated module (`plugin-pages.md` § Types): its
+//! Each page package's generated module: its
 //! plugin's id, the types of every schema its plugin's manifest declares for
 //! the page, and the constants of the plugin's streams. The plugins are the
 //! backend's, in their order of registration; xtask keeps no list of its

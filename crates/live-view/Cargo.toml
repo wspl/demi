@@ -7,8 +7,7 @@ publish.workspace = true
 
 [lib]
 # Its tests drive a fake source through the layer's internals, so they are
-# unit tests and the crate has no integration tests (`crates-and-packages.md`
-# § Module layout). No doc examples.
+# unit tests and the crate has no integration tests (`ARCHITECTURE.md`). No doc examples.
 doctest = false
 bench = false
 

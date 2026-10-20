@@ -1,5 +1,4 @@
-//! The Google Gemini provider (`crates-and-packages.md` § Vendor provider
-//! crates): a `google` entry authenticated by an API key, speaking Gemini's
+//! The Google Gemini provider: a `google` entry authenticated by an API key, speaking Gemini's
 //! native `generateContent` API rather than its OpenAI-compatible one, so a
 //! video is a real inline part and thought summaries, thought signatures and
 //! thinking token counts arrive as fields of their own. It reads its

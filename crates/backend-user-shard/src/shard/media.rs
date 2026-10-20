@@ -1,5 +1,5 @@
 //! The Providers service of the plugins' port for generated media
-//! (`plugins.md` § The contract): the models of one kind the
+//! (`crates/plugin-interface/src/lib.rs`): the models of one kind the
 //! user's entries offer, each with every fact the catalog of media models
 //! states and the entries that offer it; one image made through an entry's
 //! account or key; one video's job, from its ask to its download; and one

@@ -1,9 +1,11 @@
-//! Shard threads and calls into a user's shard (`concurrency.md` § The user
-//! shard). A shard thread is a single-threaded `LocalRuntime` hosting the
-//! shards of every user pinned to it; a stable hash of the user id pins each
-//! user to one thread. The edge reaches a user's shard with
-//! `shards.of(user).call(..)`: the closure is `Send`, the future it starts
-//! runs on the shard and need not be, and the answer is `Send`.
+//! Shard threads and calls into a user's shard. A shard thread is a single-threaded `LocalRuntime`
+//! hosting the shards of every user pinned to it; a stable hash of the user id pins each user to
+//! one thread. The edge reaches a user's shard with `shards.of(user).call(..)`: the closure is
+//! `Send`, the future it starts runs on the shard and need not be, and the answer is `Send`.
+//!
+//! The pool is Demi's own small set of `LocalRuntime` threads fed by a job
+//! channel. tokio-util's `LocalPoolHandle` is not used: it gives each worker a
+//! runtime of its own, which a test's paused clock cannot reach.
 
 mod adoption;
 #[cfg(test)]

@@ -1,5 +1,4 @@
-//! The plugins' secrets and OAuth clients (`plugins.md` § Secrets, § OAuth
-//! sign-in; `crates/backend/src/config/secret.rs`): each plugin's sealed
+//! The plugins' secrets and OAuth clients (`crates/backend-plugins/src/secrets.rs`; `crates/backend/src/config/secret.rs`): each plugin's sealed
 //! values for a user, by name, each with the revision a conditional write
 //! names; and the public client each plugin registered with its vendor's
 //! authorization server, with the redirect URI it was registered with. The

@@ -2,6 +2,17 @@
 //! command manifest, and a managed runner's boot file; and where a Cloud
 //! image puts what the runner reads. Both ends link this crate, so each is
 //! defined once.
+//!
+//! A job's and a service stream's messages carry the command context.
+//! `conversation_release` is the one generic release message and
+//! `numbers_reserve` the one generic request for a conversation's numbers;
+//! `package_message` and `package_lost` carry a package's word to its plugin
+//! without reading it, so the wire holds no conversation browser policy. The
+//! bytes of the wire are pinned at both ends by a golden corpus with one
+//! message of every kind.
+//!
+//! The crate holds no network IO, Host implementation, shell environment, job
+//! table, credentials, claim policy, device registry or conversation state.
 
 pub mod boot;
 pub mod console;

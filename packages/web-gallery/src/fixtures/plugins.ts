@@ -26,9 +26,8 @@ import type { GalleryBrowser } from './live-browser'
 import type { GalleryBrowserPlugin } from './panel'
 
 /**
- * The plugins as the gallery's specimens answer them (`plugins.md` § The
- * page): each over the specimen's own state, so every control of a plugin's
- * page acts on it the way the backend's plugin would, after a beat where the
+ * The plugins as the gallery's specimens answer them: each over the specimen's own state, so every
+ * control of a plugin's page acts on it the way the backend's plugin would, after a beat where the
  * plugin would reach a Host or git.
  */
 export interface GalleryPlugin {

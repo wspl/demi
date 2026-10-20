@@ -1,7 +1,6 @@
 # @demicodes/conversation-client
 
-The browser's client of Demi's conversation socket
-([Contract crates](../../docs/architecture/contracts.md#contract-crates)): `ConversationClient`
+The browser's client of Demi's conversation socket: `ConversationClient`
 opens a conversation, sends messages, edits, steers and aborts, and keeps the
 transcript current from the backend's patches; `createWebSocketTransport`
 carries its frames over a WebSocket; `applyTranscriptPatches` applies a patch
@@ -26,6 +25,6 @@ await client.submit([{ type: 'text', text: 'Fix the failing test.' }])
 
 Demi has no TypeScript SDK: the client drives a conversation the backend
 runs; it does not run Demi's agent itself
-([The TypeScript boundary](../../docs/architecture/contracts.md#the-typescript-boundary)).
+([ARCHITECTURE.md](../../ARCHITECTURE.md)).
 
 Part of [Demi](../../README.md). Apache License 2.0; see [LICENSE](../../LICENSE).

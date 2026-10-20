@@ -1,4 +1,4 @@
-//! The plugin's side of a request (`plugins.md` § The contract): every
+//! The plugin's side of a request: every
 //! operation is one message and one answer, carried by a transport the
 //! plugin host supplies. A refusal is an answer too, so it crosses a wire as
 //! data.
@@ -301,7 +301,7 @@ pub struct StoredValue {
 }
 
 /// A directory the plugin keeps on every Host its user's jobs run on
-/// (`plugins.md` § Host directories).
+/// (`crates/backend-host-access/src/plugin_files.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostDirectory {

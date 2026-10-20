@@ -1,7 +1,7 @@
-//! The crate boundary check (`crates-and-packages.md` § Boundary checks): the
-//! Cargo workspace's members and the first-party dependencies their manifests
-//! declare, against the document's Rust crate graph, which the check reads
-//! rather than a copy of it, and each member's one test binary.
+//! The crate boundary check: the Cargo workspace's members and the
+//! first-party dependencies their manifests declare, against the document's
+//! Rust crate graph, which the check reads rather than a copy of it, and each
+//! member's one test binary.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -53,7 +53,7 @@ impl Target {
     }
 
     /// Whether an integration test's file says at its top why it is a test
-    /// binary of its own (`crates-and-packages.md` § Module layout).
+    /// binary of its own (`ARCHITECTURE.md`).
     fn is_its_own_binary(&self) -> bool {
         let source = std::fs::read_to_string(&self.src_path).expect("a test's source is readable");
         source

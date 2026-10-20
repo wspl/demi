@@ -1,8 +1,22 @@
-//! The plugin host (`plugins.md` § The plugin host): the registry of the
+//! The plugin host: the registry of the
 //! backend's plugins with the checks of their manifests, and each user's
 //! plugins, whose command set every node of the user's conversations starts
 //! from, whose instances serve the user's requests, and whose port
 //! operations the host answers.
+//!
+//! The composition root registers the plugins linked into the backend, as it
+//! registers the provider families, and a user turns each on or off while the
+//! backend runs. A plugin's commands reach a conversation only when its tree
+//! opens, though every other contribution follows a switch at once or at the
+//! next request: a node's capability index is part of its system prompt,
+//! which is rendered once, and a change in the middle of a conversation would
+//! change what the model was told it may run.
+//!
+//! Plugins are trusted with every user's data: a plugin serves every user of
+//! the backend, and choosing the plugins is the deployment's decision, made
+//! when it is built. The host must not see the user's `Shard` (what it needs
+//! of it is `PluginShard`), reach a Host, know an agent's session or hold the
+//! logic of one plugin.
 
 mod commands;
 mod oauth;

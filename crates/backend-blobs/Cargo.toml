@@ -7,7 +7,7 @@ publish.workspace = true
 
 [lib]
 # Its tests reach the stores' private parts, so they are unit tests and the
-# crate has no integration tests (`crates-and-packages.md` § Module layout);
+# crate has no integration tests (`ARCHITECTURE.md`);
 # no doc examples.
 doctest = false
 bench = false

@@ -31,6 +31,17 @@
 //!   second shell or model-tool loop.
 //! - Where Codex's browser API and Playwright differ, Codex's verified normal
 //!   behavior decides; an obvious defect of the reference is not adopted.
+//!
+//! It is a program of its own: it hosts no runner connection, defines no part
+//! of the agent's command tree, stores no conversation, and is never linked
+//! into the runner.
+//!
+//! Its runtime is multi-threaded because several conversations' browsers must
+//! make progress at once, and the Chrome DevTools connection decodes large
+//! messages (a screenshot is megabytes of base64 JSON) on whichever worker
+//! polls it. Owner tasks take the place of locks, so a thread per conversation
+//! would add only a hop and pin a conversation's commands, live view frames and
+//! DevTools decoding to one thread.
 
 // Whether the service is `Send` and `Sync` is decided through a conversation's
 // browser and the channels that answer with it, deeper than the default 128

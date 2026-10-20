@@ -29,9 +29,9 @@ process.
    Host process interface. Never depend on what sits above a provider: the
    agent, the backend or a Host implementation.
 3. Add the crate and its edges to the Rust graph in
-   [Dependency graphs](../architecture/crates-and-packages.md#dependency-graphs),
-   and its entry to [Crates](../architecture/crates-and-packages.md#crates).
-   The [boundary check](../architecture/crates-and-packages.md#boundary-checks)
+   [Dependency graphs](../../ARCHITECTURE.md),
+   and its entry to [Crates](../../ARCHITECTURE.md).
+   The [boundary check](../../crates/xtask/src/boundaries.rs)
    refuses an edge that the graph does not list.
 
 ## Implement the provider
@@ -116,17 +116,17 @@ A run (`crates/provider-common/src/contract.rs`):
    `request.max_output_tokens()`, which lowers the model's limit to the
    request's cap. Serialize a body that carries media on the blocking
    pool, not on the shard
-   ([Blocking work](../architecture/concurrency.md#blocking-work)).
+   ([Blocking work](../../ARCHITECTURE.md)).
 2. Send it once, with the client from `RuntimeEnv`. Never build a client of your
    own: pooled connections belong to the Tokio runtime that created them
-   ([Programs and threads](../architecture/concurrency.md#programs-and-threads)).
+   ([Programs and threads](../../ARCHITECTURE.md)).
 3. Yield events as the vendor streams them. End after `Response`, after
    `Error`, or after the last `ToolCall` of a batch when the vendor needs the
    results before it can finish, and yield nothing after that.
 4. Wait on the vendor inside `select!` against `request.cancel`. When the token
    fires, drop the connection or stop the process, and end the stream without
    an event. Dropping your stream must stop the work too
-   ([Cancellation and cleanup](../architecture/concurrency.md#cancellation-and-cleanup)).
+   ([Cancellation and cleanup](../../ARCHITECTURE.md)).
 5. Report every failure as `Error`. Never panic, and never fail outside the
    stream.
 6. For a subscription family, when the vendor answers HTTP 401 before any
@@ -235,7 +235,7 @@ Then:
   package to your family
   (`crates/backend-providers/src/llm/vendors.rs`).
 - The family is a value of the REST contract, so regenerate the web app's
-  contracts ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
+  contracts ([Generated TypeScript](../../crates/xtask/src/contracts/mod.rs)).
   How users add your family's entries (a key, a device login or a token import)
   is a `web-ui` change that lands in `web` and the gallery together.
 
@@ -255,7 +255,7 @@ streams, and the `provider-common` crate's `testing` feature supplies the fakes:
 | `MemoryCredentialPool` | A credential pool held in memory, for account and refresh tests |
 
 Run timeouts, polling intervals and freshness windows on Tokio's paused clock
-([Tests and time](../architecture/concurrency.md#tests-and-time)). Cover at
+([Tests and time](../../ARCHITECTURE.md)). Cover at
 least:
 
 - each way a run ends, including cancellation that drops the connection, and

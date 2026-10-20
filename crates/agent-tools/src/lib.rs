@@ -34,6 +34,8 @@
 //! each result recorded as its call returns, and each call takes its own lease
 //! of the conversation's file gate, so a step's calls never take a lease while
 //! holding another.
+//!
+//! The crate creates no session, node or tree and owns no shell interpreter.
 
 mod environments;
 mod frames;

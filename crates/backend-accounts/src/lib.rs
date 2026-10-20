@@ -4,6 +4,8 @@
 //! instructions, and each user's push subscriptions with the sending of push
 //! notifications. The key email codes are hashed under, and the VAPID key, are
 //! given to it; it derives no keys.
+//!
+//! The crate knows no conversations, devices or providers.
 
 // The text of the mail the backend sends, one catalogue per language.
 rust_i18n::i18n!("locales", fallback = "en");

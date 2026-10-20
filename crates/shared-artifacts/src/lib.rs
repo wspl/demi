@@ -1,4 +1,4 @@
-//! Verified bytes (`crates-and-packages.md` § shared-artifacts): downloads over HTTPS
+//! Verified bytes: downloads over HTTPS
 //! (plain HTTP too for a caller whose digest came over a connection it
 //! trusts) with a declared size and SHA-256, and measured ones for a release
 //! being prepared, digests, durable atomic publication, release publication,
@@ -6,6 +6,13 @@
 //! installation, and the content coding a command executable is served in.
 //! Callers name the location, size and digest they expect; nothing here
 //! chooses what to install.
+//!
+//! Every download-and-verify path and every atomic publication of a file,
+//! durable or not, goes through this crate: the runner's artifact cache, the
+//! Claude Code installer, the machine manager's image store, the edit
+//! recorder's snapshots and journal in `command-sdk`, and `xtask`'s release
+//! packaging. It also owns `WORKSPACE_VERSION`, the version in `Cargo.toml`
+//! that every program and package reports.
 
 mod archive;
 mod coding;

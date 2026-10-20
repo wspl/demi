@@ -2,6 +2,8 @@
 //! to them, the identities it gives blocks and turns, the points it is cut
 //! at, the model's replay of them, the token estimates compaction decides
 //! by.
+//!
+//! The crate runs no turn, calls no provider and stores nothing itself.
 
 mod compaction;
 mod cut;

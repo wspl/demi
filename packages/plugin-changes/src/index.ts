@@ -1,4 +1,4 @@
-// The `changes` plugin's page (`plugin-pages.md`): the pinned `change` kind,
+// The `changes` plugin's page (`packages/plugin-sdk/src/index.ts`): the pinned `change` kind,
 // the Change view, which opens the `edit` intent of the file pills and the
 // `commit` intent of commit links.
 import { defineComponent, h } from 'vue'
@@ -31,5 +31,5 @@ export const changeKind: PanelKind<ChangeData> = {
 
 export const changesPage = definePage({ plugin: PLUGIN, kinds: [changeKind] })
 
-/** The page the registry imports (`plugin-pages.md` § Registration). */
+/** The page the registry imports (`crates/xtask/src/contracts/registry.rs`). */
 export default changesPage

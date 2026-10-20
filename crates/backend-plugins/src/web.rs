@@ -1,4 +1,4 @@
-//! The plugins' outbound requests (`plugins.md` § Outbound requests): one
+//! The plugins' outbound requests: one
 //! HTTPS request through the client the product gives every plugin, with
 //! the deadline and the body limit the plugin names and the request's
 //! cancellation. A log line names the plugin, the host and the status,

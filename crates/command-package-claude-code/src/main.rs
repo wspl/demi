@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-// Invocations are rare and wait on the network and the disk
-// (`concurrency.md` § demi-claude-code and the command-sdk).
+// Invocations are rare and wait on the network and the disk.
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     // A panic leaves its report on standard error

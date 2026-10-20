@@ -1,4 +1,4 @@
-//! Skills on a paired device (`plugins.md` § Host directories): a user skill
+//! Skills on a paired device (`crates/backend-host-access/src/plugin_files.rs`): a user skill
 //! turned on reaches the model's catalog beside the repository's own skills,
 //! the job that reads it finds its directory installed, read-only and with its
 //! script executable, a conversation that runs no job installs nothing, a skill

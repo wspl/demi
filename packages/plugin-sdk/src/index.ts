@@ -1,13 +1,48 @@
 /**
- * The plugin page API (`plugin-pages.md`): everything a plugin page may use
- * of the web app. A page imports this package, `@demicodes/utils`, Vue, Zod
- * and its own generated types, and nothing else of the workspace. Its major
- * version is the page API's version: removing or changing an export
- * incompatibly raises it.
+ * The plugin page API: everything a plugin page may use of the web app. The
+ * web app is a shell that plugins fill, and a page is written only against
+ * this package, so the shell knows no plugin and a plugin knows no part of
+ * the shell beyond it. A page imports this package, `@demicodes/utils`, Vue,
+ * Zod and its own generated types, and nothing else of the workspace.
+ *
+ * ```text
+ * web (services over the backend)      web-gallery (fixture services)
+ *            \                              /
+ *             +--> generated registry <----+
+ *                        |
+ *          plugin-browser  plugin-skills  plugin-changes  ...  (feature UI)
+ *                        |
+ *                   plugin-sdk   definePage, usePage, intents, services, kit
+ *                        |
+ *                     web-ui     the shell's components and the primitives
+ * ```
+ *
+ * A page is a plain object, `definePage`, that names its plugin and says what
+ * it contributes; everything else about it derives from the plugin's manifest
+ * (`crates/plugin-interface/src/manifest.rs`): its plugin's id, imported from
+ * its generated module rather than spelled, its types, and its place in the
+ * registry. Its fields are fixed: a page declares what it fills, not what it
+ * does at a given moment. A slot joins the SDK when a feature needs it, not
+ * before.
+ *
+ * The kit's components are chosen as a set, not by what one page happened to
+ * use: a primitive joins it when a page needs it and another page could use
+ * it, and one only a single page could use stays in that page.
+ *
+ * The package's major version is the page API's version: a change that could
+ * break a page written against it, such as a slot, a part of the page
+ * context, an intent or a kit component removed or changed incompatibly,
+ * raises it, and adding one does not. Pages of this repository always build
+ * against the SDK beside them. The package is private until pages from
+ * outside the repository load, which is open and decided with a TypeScript
+ * SDK for plugins. The design keeps it possible: such a page is an ES module
+ * built against one SDK major version, with Vue and the SDK supplied by the
+ * page around it, and every part of the page context passes data, so a page
+ * whose code nobody reviewed can run in a sandboxed frame, with `usePage()`
+ * over messages to the shell, without changing the page's code.
  */
 
-// The page object and its context (`plugin-pages.md` § The page object,
-// § The page context).
+// The page object and its context.
 export {
   PluginCallError,
   type PluginCallAnswer,
@@ -47,8 +82,7 @@ export type { HeadlineText, PlaceholderText, SentenceText, TitleText } from '@de
 export { definePluginText, type Catalogue, type Text } from '@demicodes/web-ui/i18n/text'
 export type { Language } from '@demicodes/web-ui/i18n/languages'
 
-// The plugin kit (`plugin-pages.md` § The plugin kit).
-// Streams: the liveness a stream's protocol uses.
+// The plugin kit. Streams: the liveness a stream's protocol uses.
 export {
   pageReturned,
   pageVisibility,

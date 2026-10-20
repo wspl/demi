@@ -1281,7 +1281,7 @@ pub fn alive(pid: &str) -> bool {
 /// Lets `duration` pass at once for the timers on this test's runtime, such
 /// as the lifetime of a pairing code, which the backend's handler of a
 /// waiting runner holds there, and then lets the clock run on in real time
-/// (`concurrency.md` § Tests and time): an expiry is reached when the test
+/// (`ARCHITECTURE.md`): an expiry is reached when the test
 /// says, not when a loaded machine happens to get there. The clock is
 /// paused only while it moves, when nothing outside the runtime is awaited,
 /// so no other wait sees the jump; a timer already running on the runtime,

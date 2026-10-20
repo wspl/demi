@@ -5,10 +5,16 @@
 //! agent and the backend share, such as times, comes from `core`.
 //!
 //! A type the backend receives refuses unknown fields; a type only the
-//! web app receives accepts them (`contracts.md` § Generated TypeScript).
+//! web app receives accepts them (`crates/xtask/src/contracts/mod.rs`).
 //! A response carries the fields its type declares and nothing more: what the
 //! backend keeps for itself in a stored record, such as a conversation's owner
 //! or its message counts, never reaches the web app.
+//!
+//! It reuses the runner's working-tree change types and platform, and the
+//! command locale, rather than declaring them again. A Host log line is its own
+//! type: the runner wire carries its time as integer milliseconds and the web
+//! app receives an RFC 3339 time. The crate holds no route handling and no
+//! domain logic.
 
 pub mod attachments;
 pub mod auth;

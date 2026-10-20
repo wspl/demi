@@ -37,6 +37,12 @@
 //! one models know best. On Windows a job takes drive paths as Windows writes them
 //! (`C:/Users/…`), never the Git Bash `/c/…` form, which would name `/c` at the root
 //! of the current drive.
+//!
+//! The crate knows no jobs, execution contexts, services or connection: a
+//! declared command reaches the dispatcher only through the `command-sdk`
+//! `Handler` the job gives it. It is the only crate that links brush and the
+//! standard utilities, and nothing below the executable depends on it, so a
+//! change elsewhere recompiles none of them.
 
 mod declared;
 mod interpreter;
@@ -65,7 +71,7 @@ pub fn host_environment() -> impl Iterator<Item = (String, String)> {
     brush_core::sys::env::get_host_env_vars()
 }
 
-/// The shell runtime (`concurrency.md` § Runner): every interpreter unit
+/// The shell runtime (`crates/runner/src/main.rs`): every interpreter unit
 /// and utility of a job runs on a thread of its blocking pool, apart from the
 /// control thread. A unit blocked on a full pipe waits for a sibling that has
 /// a thread of its own, since the pool is far larger than a job can use.

@@ -18,6 +18,9 @@
 //! catalog is its directory on a Host, the same on every Host, so a target
 //! switch changes no path: the new Host receives the directory when its first
 //! job needs it.
+//!
+//! The plugin writes to no Host, sends no credential when it fetches, and never
+//! blocks the shard thread: git runs on the blocking pool.
 
 mod catalog;
 mod commands;

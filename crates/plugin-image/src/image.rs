@@ -137,7 +137,7 @@ async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk, form
         .map_err(|failure| refused(MediaKind::Image, failure, aspect, invocation))?;
     let bytes = made.bytes.clone().into_bytes();
     // Decoding takes the thread for a while; the shard's thread never
-    // blocks (`plugins.md` § Rules for a plugin in process).
+    // blocks (`crates/plugin-interface/src/plugin.rs`).
     let finished = tokio::task::spawn_blocking(move || finish(&bytes, format))
         .await
         .map_err(|error| PluginError::failed(format!("the image's decoding stopped: {error}")))?;

@@ -1260,8 +1260,7 @@ const CONTROL_FROM_PLUGIN_SECRETS_UNREAD: &str =
     "ALTER TABLE permission_requests ADD COLUMN read INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1));";
 
 /// From the control schema whose subagent limits keep their numbers to the
-/// one with the plugins' secrets and OAuth clients (`plugins.md` § Secrets,
-/// § OAuth sign-in): two new tables, empty.
+/// one with the plugins' secrets and OAuth clients: two new tables, empty.
 const CONTROL_FROM_KEPT_LIMITS: &str = "
 CREATE TABLE plugin_secrets (
   user_id  TEXT NOT NULL REFERENCES users (id),

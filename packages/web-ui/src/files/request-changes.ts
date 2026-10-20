@@ -157,7 +157,7 @@ export const requestEditRefSchema = z.object({
 export type RequestEditRef = z.infer<typeof requestEditRefSchema>
 
 /**
- * What the `edit` intent opens (`plugin-pages.md` § Intents): a request of
+ * What the `edit` intent opens: a request of
  * one agent, the file of it to show, and the edit of that file, or null for
  * All Changes.
  */
@@ -293,8 +293,7 @@ export function selectionIsBinary(file: RequestFile, index: number | null): bool
  * Whether two readings of a request's files hold the same files and edits.
  * The request is read anew on each frame of a turn, so the same files come
  * as new objects; a view compares them by what they hold and keeps what it
- * shows while a frame changes none of it (`plugin-pages.md` § What the
- * service keeps). They are plain data in the order the backend stored them,
+ * shows while a frame changes none of it. They are plain data in the order the backend stored them,
  * so their JSON tells them apart, whatever fields they gain.
  */
 export function sameRequestFiles(a: readonly RequestFile[], b: readonly RequestFile[]): boolean {

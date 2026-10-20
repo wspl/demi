@@ -8,7 +8,7 @@ import type { SettingsPlugin } from './types'
 
 /**
  * The backend's plugins, one row each with a switch that turns it on or off
- * for the user (`plugins.md` § A user's plugins). The host shows a switch's
+ * for the user (`crates/backend-plugins/src/lib.rs`). The host shows a switch's
  * choice at once in the list it passes back, and that list is the one that
  * holds. The switch alone says whether a plugin is off; its row reads at
  * full strength either way.

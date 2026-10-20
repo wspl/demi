@@ -5,7 +5,7 @@ import Button from '../ui/Button.vue'
 
 /**
  * The conversation's tree runs with commands of plugins the user has since
- * turned on or off (`plugins.md` § A user's plugins): offered above the
+ * turned on or off (`crates/backend-plugins/src/lib.rs`): offered above the
  * composer, with Reload, which opens the conversation again with the
  * plugins on. Nothing is lost by a reload. The row owns the Reload
  * button's inset from its edges.

@@ -7,8 +7,7 @@ publish.workspace = true
 
 
 [lib]
-# The crate's one test binary is tests/cli (`crates-and-packages.md`
-# § Module layout); no doc examples.
+# The crate's one test binary is tests/cli (`ARCHITECTURE.md`); no doc examples.
 test = false
 doctest = false
 bench = false

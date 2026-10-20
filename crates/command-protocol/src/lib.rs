@@ -1,5 +1,4 @@
-//! The command wire between an execution host and a command program
-//! (`crates-and-packages.md` § command-protocol): its values and its bounded
+//! The command wire between an execution host and a command program: its values and its bounded
 //! incremental response framing.
 //!
 //! ```text
@@ -45,6 +44,9 @@
 //!   Command arguments are the exception: their schemas come from the
 //!   declarations at run time, so the dispatcher validates them and the
 //!   handler decodes them into its argument type.
+//!
+//! It does not speak the wire: the client, the server and the recorder are
+//! `command-sdk`'s.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;

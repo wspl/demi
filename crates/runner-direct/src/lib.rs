@@ -65,6 +65,10 @@
 //! runners keeps its peer as [`Pairs`] says: made at the pair's first
 //! connection, closed a minute after its last, and tried again on the
 //! direct channel's schedule while the pair is on the relay.
+//!
+//! The crate knows no backend connection, jobs or commands, and carries out no
+//! operation in a way of its own: only through the Host operations and service
+//! streams the runner supplies.
 
 mod addresses;
 mod channel;

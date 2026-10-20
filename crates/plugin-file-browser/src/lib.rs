@@ -1,7 +1,7 @@
-//! The `file-browser` plugin (`plugins.md` § Built-in plugins): its identity,
+//! The `file-browser` plugin: its identity,
 //! its page package, and the `attachment` panel kind its page shows. Its
 //! page, `@demicodes/plugin-file-browser`, shows the work panel's File view
-//! over the product's file routes (`plugin-pages.md` § Registration), and an
+//! over the product's file routes (`crates/xtask/src/contracts/registry.rs`), and an
 //! attachment's stored copy in a tab of the `attachment` kind, which the
 //! page opens for an attachment block's card.
 

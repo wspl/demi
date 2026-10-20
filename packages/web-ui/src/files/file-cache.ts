@@ -1,6 +1,5 @@
 /**
- * What a page keeps of one Host's files (`plugin-pages.md` § What the
- * service keeps): listings, texts, descriptions, the changes list and each
+ * What a page keeps of one Host's files: listings, texts, descriptions, the changes list and each
  * changed file's sides, each the last answer read, by the absolute path on
  * the Host. Every entry kept holds the subscriptions it depends on, carried
  * by the watch of the view that brought it, until it leaves the cache; only
@@ -17,6 +16,24 @@
  * route of the view that came on screen last. Reads of one entry share one
  * request. At most `budget` of text and `MAX_ENTRIES` entries stay, the
  * entries shown longest ago leaving first.
+ *
+ * The cache follows the Host's own file system as VS Code, JetBrains IDEs and
+ * Zed follow a remote workspace: the Host says when a subscription's subject
+ * changed and pushes no content, so a change says only that the answer kept
+ * may be out of date, and an answer read is the Host's whole truth. Nothing is
+ * read on a timer.
+ *
+ * Every answer is a result: a text, a binary file, one too large to read as
+ * text and one that is gone each carry their version and number, and a view
+ * draws each as itself. Only a read that could not be made, a Host out of
+ * reach or a refusal, is a failure.
+ *
+ * No update remounts or resets a view. A view is keyed by what the user
+ * chose, such as the mode, the file or the edit, never by the version of its
+ * content; an update that changes nothing it shows changes nothing on screen,
+ * and one that changes its content replaces it in place with its scroll kept.
+ * A loading state shows only for another choice of the user's or a Reload,
+ * and never replaces content already shown.
  */
 import { errorMessage, requestIdOf } from '../infra/errors'
 import { reactive, shallowRef } from 'vue'
@@ -52,8 +69,7 @@ export function goneMessage(): string {
 }
 
 /**
- * What an entry is, which decides what it subscribes to (`plugin-pages.md`
- * § What the service keeps): a file's text or description its `file`, a
+ * What an entry is, which decides what it subscribes to: a file's text or description its `file`, a
  * listing its folder's names or details, the changes list its working tree,
  * a changed file's sides its `file` and its repository's `head`, and its
  * committed contents the `head` alone; an `answer` of the backend that
@@ -115,8 +131,7 @@ export interface Showing<T> {
   release(): void
   /**
    * The view holds it but is not on screen, as a work panel tab the user
-   * switched away from: changes are only noted (`plugin-pages.md` § What
-   * the service keeps). A second call does nothing.
+   * switched away from: changes are only noted. A second call does nothing.
    */
   away(): void
   /** The view is on screen again: an entry that is not current is read once. */
@@ -335,8 +350,7 @@ class Entry<T> {
   }
 
   /**
-   * Whether its answer holds now (`plugin-pages.md` § What the service
-   * keeps): current when every subscription it holds is live within its
+   * Whether its answer holds now: current when every subscription it holds is live within its
    * lease as the page counts it, of the answer's epoch, started at or before
    * the answer's number and changed last at or before it; stale when the
    * subscriptions are live but the numbers say a change came after the

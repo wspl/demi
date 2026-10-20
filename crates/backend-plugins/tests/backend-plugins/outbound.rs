@@ -1,4 +1,4 @@
-//! A plugin's outbound requests (`plugins.md` § Outbound requests): only
+//! A plugin's outbound requests: only
 //! `https`, through the plugins' client, within the deadline and the body
 //! limit the plugin names, and ended by the request's cancellation.
 

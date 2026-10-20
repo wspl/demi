@@ -1,4 +1,4 @@
-//! A driver the tests script (`crates-and-packages.md` § Module layout): its
+//! A driver the tests script (`ARCHITECTURE.md`): its
 //! simulators, each device's screen, tree and drawing are what the test
 //! sets, and what reaches a device is logged in its points.
 

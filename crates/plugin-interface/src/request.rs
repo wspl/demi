@@ -1,6 +1,5 @@
-//! What the plugin host asks of a plugin, and what the plugin answers
-//! (`plugins.md` § The contract). Each request names its user, since a
-//! plugin process would serve every user.
+//! What the plugin host asks of a plugin, and what the plugin answers. Each request names its user,
+//! since a plugin process would serve every user.
 
 use demi_host_interface::{HostPaths, PortError, RpcError, RpcInvocation};
 use demi_shared_types::{NodeId, TurnId};
@@ -28,8 +27,7 @@ pub enum Request {
         invocation: Box<RpcInvocation>,
     },
     /// A node is about to send a provider request, and the plugin, a
-    /// context source, may add a context block (`plugins.md` § Prompt text
-    /// and context): `seen` holds the text of its own blocks the model
+    /// context source, may add a context block: `seen` holds the text of its own blocks the model
     /// receives, oldest first, `cwd` is the node's working directory and
     /// `paths` how its Host writes paths (`crates/runner-shell/src/lib.rs`).
     /// `project` is what the plugin's project search last found in the
@@ -51,8 +49,7 @@ pub enum Request {
     /// port's reads, and answers what it found and what tells of a change
     /// to it. The backend keeps the answer, searches again when the runner
     /// says one of `watch` changed or the Host comes online again, and gives
-    /// what it holds to each context request (`plugins.md` § Reading a
-    /// conversation's files).
+    /// what it holds to each context request (`crates/backend-host-access/src/plugin_files.rs`).
     ProjectSearch {
         user: UserId,
         conversation: ConversationId,
@@ -76,18 +73,21 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         conversation: Option<ConversationId>,
     },
-    /// The user removed a tab of one of the plugin's panel kinds; the
-    /// backend applied the change and answered the page (`plugins.md` §
-    /// Panel kinds). `tab` is the tab as it was when it was removed. The
-    /// user creates no tab of a plugin's kind: the plugin does.
+    /// The user removed a tab of one of the plugin's panel kinds; the backend applied the change
+    /// and answered the page (`crates/backend-http/src/panel.rs`). `tab` is the tab as it was when
+    /// it was removed. The user creates no tab of a plugin's kind: the plugin does.
     PanelTab {
         user: UserId,
         conversation: ConversationId,
         tab: PanelTab,
     },
     /// The command package the plugin's commands bind said `message` about
-    /// `conversation`, from a service on one of the conversation's Hosts
-    /// (`plugins.md` § Messages from its command package).
+    /// `conversation`, from a service on one of the conversation's Hosts. The
+    /// package says so the moment its state changes and the plugin never asks
+    /// whether it did: no job's end, reconnect or timer makes a plugin read a
+    /// Host again. What a message says is for the package and its plugin to
+    /// agree; the runner and the backend only carry it, and a plugin hears
+    /// only the package its commands bind.
     PackageMessage {
         user: UserId,
         conversation: ConversationId,

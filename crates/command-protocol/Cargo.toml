@@ -7,7 +7,7 @@ publish.workspace = true
 
 [lib]
 # Its behavior is tested through the SDK, in command-sdk's tests
-# (`crates-and-packages.md` § Module layout); no doc examples.
+# (`ARCHITECTURE.md`); no doc examples.
 test = false
 doctest = false
 bench = false

@@ -30,6 +30,15 @@
 //! `compact` need an idle session. While an edit is prepared, the session
 //! refuses sends, steers, agent messages and command reports, and a model
 //! switch waits for it, so the edit never discards one.
+//!
+//! A session runs a tool only through the tool-call contract it defines
+//! (`ToolInvocation`, `ToolOutcome`, `ToolEffect`, `ToolFailure`), which the
+//! tools implement.
+//!
+//! A turn races provider streams, tools, backoff sleeps and admission waits
+//! against its cancellation token and drops them, but never races a store save;
+//! work that must outlive its waiter is owned by a task of the session, never
+//! by the waiting future.
 
 mod ahead;
 mod breakdown;

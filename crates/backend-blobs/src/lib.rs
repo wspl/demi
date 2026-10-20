@@ -1,5 +1,7 @@
 //! The object store, on local disk or S3 through `object_store`, and the
 //! attachment and transcript media over it.
+//!
+//! The crate holds no records other than the blobs'.
 
 pub mod blobs;
 #[cfg(any(test, feature = "testing"))]

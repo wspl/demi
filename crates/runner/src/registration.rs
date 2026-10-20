@@ -68,7 +68,7 @@ pub struct Options {
     /// A managed guest's writable filesystems, which a `sync` flushes;
     /// none on a paired device.
     pub volumes: Vec<PathBuf>,
-    /// Runs the jobs' scripts (`concurrency.md` § Runner).
+    /// Runs the jobs' scripts.
     pub shell: Arc<dyn JobShell>,
     /// The installation an installer made, which updates itself to its
     /// backend's runner release; none for a runner started otherwise.

@@ -3,9 +3,8 @@ import type { MediaSequence } from '../files/media-viewer'
 import type { RequestEditSelection, TranscriptRequests } from '../files/request-changes'
 
 /**
- * Opens a request's changes, through the `edit` intent (`plugin-pages.md`
- * § Intents), on a pill's click; what the panel already shows stays as it
- * is (`openIntent`).
+ * Opens a request's changes, through the `edit` intent, on a pill's click; what the panel already
+ * shows stays as it is (`openIntent`).
  */
 export type EditSelectionHandler = (selection: RequestEditSelection) => void
 const editSelectionKey: InjectionKey<() => EditSelectionHandler | undefined> = Symbol('edit-selection')

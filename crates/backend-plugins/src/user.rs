@@ -1,5 +1,4 @@
-//! One user's plugins on the user's shard (`plugins.md` § The plugin
-//! host, § A user's plugins): an instance of every plugin, made when the
+//! One user's plugins on the user's shard: an instance of every plugin, made when the
 //! shard starts; which of them the user has on, which decides the toolset a
 //! conversation's tree opens with and which page states, page calls and
 //! user streams exist; the context sources among them; the Host directories
@@ -142,8 +141,7 @@ pub trait ProductPort {
     /// What `sealed` holds as that secret; none when it does not open.
     fn open(&self, user: &UserId, plugin: &str, name: &str, sealed: &[u8]) -> Option<Vec<u8>>;
 
-    /// The client every outbound request of the plugins goes through
-    /// (`plugins.md` § Outbound requests): the shard's, which sends only
+    /// The client every outbound request of the plugins goes through: the shard's, which sends only
     /// `https` and follows no redirect away from it.
     fn web_client(&self) -> reqwest::Client;
 
@@ -161,7 +159,7 @@ pub trait ProductPort {
     fn spawn(&self, work: LocalBoxFuture<'static, ()>);
 }
 
-/// Where a request's reads of files go (`plugins.md` § The contract).
+/// Where a request's reads of files go (`crates/plugin-interface/src/lib.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadOn {
     /// The conversation's primary Host.
@@ -852,7 +850,7 @@ impl UserPlugins {
     /// The command package `package` said `message` about `conversation`
     /// from a service on one of its Hosts: each plugin that binds it and
     /// that the user has on receives it, in the order the messages came
-    /// (`plugins.md` § Messages from its command package).
+    /// (`crates/plugin-interface/src/request.rs`).
     pub async fn package_message(
         &self,
         package: &str,
@@ -966,9 +964,8 @@ impl UserPlugins {
         Ok((revision, changed))
     }
 
-    /// The vendor sent the browser back to `plugin`'s OAuth callback
-    /// (`plugins.md` § OAuth sign-in): a sign-in this user started, of a
-    /// plugin the user has on, is completed; answers the vendor's name.
+    /// The vendor sent the browser back to `plugin`'s OAuth callback: a sign-in this user started,
+    /// of a plugin the user has on, is completed; answers the vendor's name.
     pub async fn oauth_callback(
         &self,
         plugin: &str,

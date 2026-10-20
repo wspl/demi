@@ -731,7 +731,7 @@ closed_set! {
 }
 
 /// The message the package sends its plugin when a conversation's open
-/// devices change (`plugins.md` § Messages from its command package):
+/// devices change (`crates/plugin-interface/src/request.rs`):
 /// `{"devices":"changed"}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]

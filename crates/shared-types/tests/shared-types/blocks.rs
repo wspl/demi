@@ -93,8 +93,7 @@ fn mutated(case: &Value) -> Value {
 }
 
 /// The cases the web app's generated schemas are checked with too; each
-/// says whether the web app refuses it as well (`contracts.md` § Strict and
-/// tolerant objects, § Rules only Rust checks).
+/// says whether the web app refuses it as well (`crates/xtask/src/contracts/roots.rs`).
 #[test]
 fn stored_blocks_refuse_what_the_contract_does_not_hold() {
     let table: Value =

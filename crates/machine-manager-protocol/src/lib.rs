@@ -18,6 +18,8 @@
 //!   completion order, matched to their requests by id. A reply for a connection
 //!   that has closed is discarded and its operation still completes. A death
 //!   event goes to every connection.
+//!
+//! It holds no manager policy and no IO.
 
 pub mod image;
 pub mod runtime;

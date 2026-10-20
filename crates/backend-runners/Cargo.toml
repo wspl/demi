@@ -8,7 +8,7 @@ publish.workspace = true
 [lib]
 # Its tests reach the pending claims' window, the codes' alphabet and the
 # publication's object layout, so they are unit tests and the crate has no
-# integration tests (`crates-and-packages.md` § Module layout); no doc
+# integration tests (`ARCHITECTURE.md`); no doc
 # examples.
 doctest = false
 bench = false

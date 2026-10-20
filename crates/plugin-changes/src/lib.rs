@@ -1,7 +1,7 @@
-//! The `changes` plugin (`plugins.md` § Built-in plugins): its identity and its page
+//! The `changes` plugin: its identity and its page
 //! package, and nothing else. Its page, `@demicodes/plugin-changes`, shows
 //! the work panel's Change view over the product's edit tracking and file
-//! routes (`plugin-pages.md` § Registration).
+//! routes (`crates/xtask/src/contracts/registry.rs`).
 //!
 //! Edit tracking has this one consumer: the conversation's view of what the
 //! agent changed (the file pills under a shell call and the Change view they

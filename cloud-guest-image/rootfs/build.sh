@@ -31,6 +31,12 @@
 # release's files are local and it downloads nothing. The script's downloads,
 # the container image and the packages, go through the builder's HTTPS proxy.
 #
+# The image holds the filesystem assembly only, done at build time, with
+# native binaries from the machine's cross tools. No guest kernel, bootloader
+# or hypervisor configuration is here, and neither is runtime OCI policy,
+# mounts, networking, device credentials, lifecycle or backend configuration,
+# which belong to the machine manager and the backend.
+#
 # Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
 #          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
 #

@@ -22,6 +22,9 @@
 //! thread, a few at a time (filesystem requests 32, working-tree requests 8,
 //! computations 2, syncs 4), and a request beyond that waits for a slot, still
 //! ending when its connection closes.
+//!
+//! The crate knows no jobs, commands or the connection that carries the
+//! requests.
 
 pub mod files;
 pub mod fs;

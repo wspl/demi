@@ -200,7 +200,7 @@ mod tests {
     /// The idle window, short and in real time: the watch and the Host
     /// access read the database, which answers on threads outside the
     /// runtime, and a paused clock would jump to the watch's next timer
-    /// whenever the test waits for them (`concurrency.md` § Tests and time).
+    /// whenever the test waits for them (`ARCHITECTURE.md`).
     /// A test that shows activity restarting the window acts again half a
     /// window after the first activity, which leaves the half as margin for
     /// the database's answers on a loaded machine.

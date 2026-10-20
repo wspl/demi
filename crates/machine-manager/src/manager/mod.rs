@@ -1,7 +1,6 @@
-//! The manager's state and its request path (`concurrency.md` § Machine
-//! manager): one worker per device runs that device's operations in order,
-//! and the manager-wide admission gate lets `reconcile` and shutdown wait for
-//! the operations in flight.
+//! The manager's state and its request path: one worker per device runs that device's operations in
+//! order, and the manager-wide admission gate lets `reconcile` and shutdown wait for the operations
+//! in flight.
 
 pub mod admission;
 #[cfg(target_os = "linux")]

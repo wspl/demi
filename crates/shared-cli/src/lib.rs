@@ -1,5 +1,4 @@
-//! What every program's command line shares (`crates-and-packages.md` §
-//! `shared-cli`): a variable under the program's prefix that none of its
+//! What every program's command line shares: a variable under the program's prefix that none of its
 //! settings reads stops startup, so a misspelt setting is never ignored. The
 //! backend and the machine manager read one configuration file
 //! (`crates/backend/src/config/mod.rs`): the manager checks the names under its
@@ -9,6 +8,8 @@
 //! (`crates/xtask/src/native/build.rs`). And raising a program's soft limit on
 //! open files, which the runner and the backend do as they start
 //! (`crates/runner/src/main.rs`, `crates/backend/src/backend.rs`).
+//!
+//! It parses no program's settings, which each program's clap command does.
 
 use std::{ffi::OsString, io::Write as _};
 

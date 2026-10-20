@@ -1,5 +1,4 @@
-//! What every plugin's tests run through (`plugins.md` § One contract, two
-//! transports): a loopback that encodes each request, reply and port message
+//! What every plugin's tests run through: a loopback that encodes each request, reply and port message
 //! to JSON and decodes it again, so a plugin that relied on something only a
 //! call in process can carry fails its tests; and [`TestDemi`], which
 //! answers the port's operations from memory.

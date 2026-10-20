@@ -57,7 +57,7 @@ fn main() -> std::process::ExitCode {
                 .with_target(false),
         )
         .init();
-    // One thread owns the manager's state (`concurrency.md` § Machine manager).
+    // One thread owns the manager's state.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build_local(tokio::runtime::LocalOptions::default())

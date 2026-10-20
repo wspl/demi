@@ -1,4 +1,4 @@
-//! `xtask vendor diff` (`crates-and-packages.md` § Module layout): how
+//! `xtask vendor diff` (`ARCHITECTURE.md`): how
 //! each vendored crate differs from the upstream release it was taken from.
 //! It downloads that release from crates.io through `artifact`, checks it
 //! against the SHA-256 the crates.io index records, and compares it with the

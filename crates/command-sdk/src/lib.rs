@@ -19,6 +19,10 @@
 //! caller's connection may still send its own GOAWAY), so a write into the
 //! closed transport, a reset or an end of input after an answered shutdown
 //! ends the connection and is not a failure.
+//!
+//! The runner and every command program use this one SDK, and a command program
+//! depends on it and on `command-protocol` without depending on the runner or
+//! on Demi's command implementations. It holds no credentials.
 
 pub mod descriptors;
 pub mod edits;

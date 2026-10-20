@@ -1426,8 +1426,7 @@ impl Conversations {
                 .operation(cancellation, deadline)
                 .run(demi_command_package_browser_chrome::page::screenshot::bytes(tab, false, None))
                 .await?;
-            // Decoding and encoding a screenshot takes milliseconds of CPU
-            // (`concurrency.md` § Blocking work).
+            // Decoding and encoding a screenshot takes milliseconds of CPU.
             let outlined = result.clone();
             let bytes = tokio::task::spawn_blocking(move || {
                 demi_command_package_browser_chrome::page::probe::annotate(bytes, &outlined)

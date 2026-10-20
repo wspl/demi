@@ -58,11 +58,9 @@ export interface ConversationFiles {
    */
   home?: string | null
   /**
-   * The Host's files a message's images load from: each image shows the
-   * version of its file the page keeps, which the Host's watch keeps current
-   * (`plugin-pages.md` § What the service keeps), so it changes when the file
-   * does. Absent while the Host is not known, and a Host image then shows its
-   * alt text.
+   * The Host's files a message's images load from: each image shows the version of its file the
+   * page keeps, which the Host's watch keeps current, so it changes when the file does. Absent
+   * while the Host is not known, and a Host image then shows its alt text.
    */
   contents?: FileContents
   /**

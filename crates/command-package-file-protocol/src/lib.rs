@@ -1,5 +1,4 @@
-//! The `demi.file` package's contract (`crates-and-packages.md`
-//! § command-package-file-protocol): the arguments of its `file.*` operations. Paths are
+//! The `demi.file` package's contract: the arguments of its `file.*` operations. Paths are
 //! relative to the invocation's working directory; the handler resolves and
 //! checks them. It holds types and their checks only; the operations live in
 //! `demi-file`.
