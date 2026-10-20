@@ -98,6 +98,52 @@ test('an error after streamed thinking is retried, and the thinking is unwound',
   expect(provider.consumedTurns).toBe(2)
 })
 
+test('a tool call requested by a failed attempt is dropped unrun and the attempt retried', async () => {
+  let toolCalls = 0
+  const provider = new StubProvider([
+    [events.toolCall('tool-1', 'noop', {}), events.error('busy', 'overloaded')],
+    [events.text('recovered'), events.response()],
+  ])
+  const runtime = createRuntime({
+    tools: () => [
+      {
+        name: 'noop',
+        description: 'does nothing',
+        inputSchema: { type: 'object' },
+        invoke: () => {
+          toolCalls += 1
+          return { output: [{ type: 'text', text: 'ran' }] }
+        },
+      },
+    ],
+  })
+  const session = createSession(provider, runtime, undefined, undefined, { retry: fastRetry })
+
+  await session.send(text('hello'))
+
+  expect(toolCalls).toBe(0)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+  expect(provider.consumedTurns).toBe(2)
+})
+
+test('a terminal failure leaves no unanswered tool call for later requests', async () => {
+  let laterItems = ''
+  const provider = new StubProvider([
+    [events.text('partial'), events.toolCall('tool-1', 'noop', {}), events.error('dropped', 'overloaded')],
+    (request) => {
+      laterItems = JSON.stringify(request.items)
+      return [events.text('next answer'), events.response()]
+    },
+  ])
+  const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })
+
+  await expect(session.send(text('hello'))).rejects.toThrow('dropped')
+  expect(session.transcript().blocks.some((block) => block.type === 'tool_call')).toBe(false)
+
+  await session.send(text('again'))
+  expect(laterItems).not.toContain('tool-1')
+})
+
 test('errors after streamed text are not retried (no duplicate output)', async () => {
   const provider = new StubProvider([[events.text('partial'), events.error('dropped', 'rate_limit')]])
   const session = createSession(provider, createRuntime(), undefined, undefined, { retry: fastRetry })

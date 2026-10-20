@@ -180,6 +180,10 @@ export class ProviderTurnLoop<State> {
             ...event,
             diagnostics,
           }
+          // Tools run only after a response completes, so a call this attempt
+          // requested has not run and never will: drop it. Kept, it would be replayed
+          // without a result, which providers reject on every later request.
+          if (this.host.transcript.removeDanglingToolCalls().length > 0) await this.host.commitTranscript()
           // Retry only if this attempt left nothing behind that anyone can have
           // acted on: the resume point has to reach back past where it started.
           // Otherwise the failure is terminal here and `resume` continues from the
