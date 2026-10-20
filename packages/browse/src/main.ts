@@ -1,10 +1,12 @@
-// `bun browse` (browse.md § A call): hands a script, read from standard
-// input or from the file named, to the slot's tool server, starting the
-// server when none answers, and prints what the call prints. `up`, `down`
-// and `stop` are the helpers of the same names as a script of one line;
-// `help` answers here, without a server. It is a Bun program, so it may import
-// Node built-ins, and no other package imports it; it reads a conversation's
-// state through `web`'s generated schemas.
+// `bun browse` (browse.md § A call): hands a script, read from standard input or
+// from the file named, to the slot's tool server, starting the server when none
+// answers, and prints what the call prints.
+//
+// - `up`, `down` and `stop` are the helpers of the same names as a script of one
+//   line; `help` answers here, without a server.
+// - It is a Bun program, so it may import Node built-ins, and no other package
+//   imports it.
+// - It reads a conversation's state through `web`'s generated schemas.
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs'
 import net from 'node:net'
 import { join } from 'node:path'

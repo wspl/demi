@@ -1,9 +1,11 @@
 // `bun run web:dev`: generates the contracts, then runs the product's Vite dev
-// server under Node with the arguments given. The dev server forwards the page's WebSockets to the backend,
-// which Vite cannot do under Bun: Bun's `node:http` client never reports the
-// backend's 101 as an upgrade (Bun 1.3.11). Every `node` a `bun run` script
-// starts is Bun itself here (bunfig.toml's `[run] bun = true` puts a `node` of
-// Bun first on PATH), so this takes the first `node` on PATH that is not Bun.
+// server under Node with the arguments given.
+//
+// The dev server forwards the page's WebSockets to the backend, which Vite
+// cannot do under Bun: Bun's `node:http` client never reports the backend's 101
+// as an upgrade (Bun 1.3.11). Every `node` a `bun run` script starts is Bun
+// itself here (bunfig.toml's `[run] bun = true` puts a `node` of Bun first on
+// PATH), so this takes the first `node` on PATH that is not Bun.
 import { realpathSync } from 'node:fs'
 import { delimiter, join, resolve } from 'node:path'
 import { runSteps } from './run-steps'

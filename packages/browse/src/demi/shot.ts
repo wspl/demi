@@ -1,17 +1,21 @@
 // `demi.shot(name, { page, element, region, pad, zoom, full, now })`: saves
 // a PNG of the page at its real size and pixel ratio and answers its path,
-// which the call's report lists. The page is the slot's, or `page`, such as
-// one of `demi.webkit()`, or the one `element` is on. `element` (a
-// Playwright locator) clips to an element, `region` to an area in CSS
-// pixels, `pad` widens either, and `zoom` renders the area magnified rather
-// than enlarging its pixels, without changing the page's own pixel ratio.
-// It waits first, up to two seconds, for the page's transitions and finite
-// animations to end, such as a dialog that is still fading in, so the
-// picture shows where the page settles; `now` takes it at once.
+// which the call's report lists.
+//
+// - The page is the slot's, or `page`, such as one of `demi.webkit()`, or
+//   the one `element` is on.
+// - `element` (a Playwright locator) clips to an element, `region` to an
+//   area in CSS pixels, and `pad` widens either.
+// - `zoom` renders the area magnified rather than enlarging its pixels,
+//   without changing the page's own pixel ratio.
+// - `now` takes the picture at once. Otherwise it waits first, up to two
+//   seconds, for the page's transitions and finite animations to end, such
+//   as a dialog that is still fading in, so the picture shows where the
+//   page settles.
 //
 // Playwright's own screenshots go through a session of their own, which
 // drops the pixel ratio the tool emulates on its session with the slot's
-// page, so the browser's `capture` takes the slot's page. Any other page,
+// page. So the browser's `capture` takes the slot's page. Any other page,
 // such as WebKit's, whose context Playwright made with the slot's screen,
 // is taken by Playwright, which has no zoom.
 import { writeFileSync } from 'node:fs'
@@ -85,7 +89,7 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
 
 /**
  * Waits up to two seconds for the page's finite animations and transitions
- * to end, those the next frames start included: a change the script just
+ * to end, those the next frames start included. A change the script just
  * made, such as a click that opens a drawer, starts its transition only
  * when the page draws again (Vue's Transition, two frames later), and an
  * animation that ends may start another. A hidden page draws no frame and

@@ -56,10 +56,13 @@ import { fixtureSearch, searchConversations } from '../fixtures/search'
  * without a scrim. This is the acceptance page for dialogs: the Settings page
  * shows where they open from, the Errors page shows their failed phases.
  *
- * Every control answers as the product's would. Cancel, Close and Done close
- * the dialog and its frame's Open brings it back; a step inside the dialog
- * moves it; a step the product takes with a Host or another page says so in a
- * neutral toast, and the dialog closes where the product's would.
+ * Every control answers as the product's would:
+ *
+ * - Cancel, Close and Done close the dialog, and its frame's Open brings it
+ *   back.
+ * - A step inside the dialog moves it.
+ * - A step the product takes with a Host or another page says so in a neutral
+ *   toast, and the dialog closes where the product's would.
  */
 const { view } = useGalleryView()
 

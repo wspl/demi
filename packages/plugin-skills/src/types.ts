@@ -38,9 +38,12 @@ export interface SettingsSkillDraft {
 }
 
 /**
- * How adding a source ended: added, which closes the dialog; refused for its
- * input, which the dialog says under the field, keeping what was typed; or
- * failed for another reason, which the host has already reported.
+ * How adding a source ended, as one of:
+ *
+ * - Added, which closes the dialog.
+ * - Refused for its input, which the dialog says under the field, keeping what
+ *   was typed.
+ * - Failed for another reason, which the host has already reported.
  */
 export type AddSourceAnswer =
   | { kind: 'added' }

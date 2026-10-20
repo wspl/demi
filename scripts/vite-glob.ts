@@ -1,10 +1,13 @@
-// Vite's eager `import.meta.glob` for `bun test`, which Bun lacks: a call
-// with `eager: true` and `import: 'default'` becomes one static import per
-// matching file, keyed by its path as Vite keys it ('./logos/openai.svg'),
-// so a test loads the same modules a build does. A file's URL in a test is
-// its path, as Bun answers a static import of an asset. A lazy call is left
-// as it is, and a module that makes one is mocked where a test reaches it
-// (`packages/web-ui/src/__tests__/vue-components.ts`).
+// Vite's eager `import.meta.glob` for `bun test`, which Bun lacks.
+//
+// - A call with `eager: true` and `import: 'default'` becomes one static
+//   import per matching file, keyed by its path as Vite keys it
+//   ('./logos/openai.svg'), so a test loads the same modules a build does.
+// - A file's URL in a test is its path, as Bun answers a static import of
+//   an asset.
+// - A lazy call is left as it is, and a module that makes one is mocked
+//   where a test reaches it
+//   (`packages/web-ui/src/__tests__/vue-components.ts`).
 import { plugin } from 'bun'
 import { dirname } from 'node:path'
 

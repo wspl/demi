@@ -1,20 +1,30 @@
 /**
- * The `browser` page's panel session: what a tab keeps, the conversation
- * browser's tab list, which the plugin's conversation state brings, the
- * requests that move a bound tab and the user's latest one on each, the
- * panel's size, each browser tab as a view last reported it, and the one view
- * a page keeps while a `browser` tab is shown and the page is visible. Which
- * browser tab a panel tab shows is the plugin's work on the backend; the
+ * The `browser` page's panel session. It holds:
+ *
+ * - what a tab keeps;
+ * - the conversation browser's tab list, which the plugin's conversation state
+ *   brings;
+ * - the requests that move a bound tab, and the user's latest one on each;
+ * - the panel's size;
+ * - each browser tab as a view last reported it;
+ * - the one view a page keeps while a `browser` tab is shown and the page is
+ *   visible.
+ *
+ * Which browser tab a panel tab shows is the plugin's work on the backend; the
  * session never opens, closes or adds a tab.
  *
- * Why: the browser has a tab only once its tab list names it, since a panel
- * tab may name one the browser lost; a request shows its loading before it
- * leaves the page and ends only on a tab list numbered after it (the Host's
- * numbers only grow), whatever order answer and lists arrive in; the view stays
- * open while a shown tab opens, so the Host learns the panel's size before it
- * creates the tab; a page that cannot decode H.264 opens no view, since it
- * would lower the picture for every viewer with missing acknowledgements and
- * decide the tab's size with blind clicks.
+ * Why it is built so:
+ *
+ * - The browser has a tab only once its tab list names it, since a panel tab
+ *   may name one the browser lost.
+ * - A request shows its loading before it leaves the page and ends only on a
+ *   tab list numbered after it (the Host's numbers only grow), whatever order
+ *   answer and lists arrive in.
+ * - The view stays open while a shown tab opens, so the Host learns the panel's
+ *   size before it creates the tab.
+ * - A page that cannot decode H.264 opens no view, since it would lower the
+ *   picture for every viewer with missing acknowledgements and decide the tab's
+ *   size with blind clicks.
  */
 import { clientPlatform } from '@demicodes/utils'
 import { useDocumentVisibility, useDebounceFn } from '@vueuse/core'
@@ -84,10 +94,10 @@ export type TabFailure = NonNullable<BrowserTabData['failure']>
 
 /**
  * What every reason the page can be told means to the user, in the Writing
- * page's words rather than the Host's error text: the browser's own codes, the view's capture notices, the
- * conversation's host access's refusals and the plugin call route's own. The
- * catalogue's `reasons` hold a sentence for each, so a reason without one
- * does not build.
+ * page's words rather than the Host's error text: the browser's own codes, the
+ * view's capture notices, the conversation's host access's refusals and the
+ * plugin call route's own. The catalogue's `reasons` hold a sentence for each,
+ * so a reason without one does not build.
  */
 export function reasonSentence(reason: PanelReason): SentenceText {
   return t(`reasons.${reason}`)
@@ -122,10 +132,10 @@ function tabsFailureSentence(failure: TabsFailure): SentenceText {
 }
 
 /**
- * A request that failed, keeping what it failed for. Its `message` is worded
- * as it is read, from the failure, so a language chosen while it shows
- * rewords it, as a `ShownError` does. A request never fails for the page's
- * connection: the shell's call waits for the backend (`packages/web-ui/src/plugins/page.ts`).
+ * A request that failed, keeping what it failed for. Its `message` is worded as
+ * it is read, from the failure, so a language chosen while it shows rewords it,
+ * as a `ShownError` does. A request never fails for the page's connection: the
+ * shell's call waits for the backend (`packages/web-ui/src/plugins/page.ts`).
  */
 export class BrowserTabsError extends Error {
   /** The backend's or the browser's reason; null for a failure that carries none. */
@@ -138,16 +148,16 @@ export class BrowserTabsError extends Error {
     Object.defineProperty(this, 'message', { get: () => tabsFailureSentence(this.failure), configurable: true })
   }
 
-  /** A failure for `reason`. */
   static of(reason: PanelReason): BrowserTabsError {
     return new BrowserTabsError({ reason })
   }
 }
 
 /**
- * The conversation browser's tab list and tab methods and its user stream, as the plugin's page context supplies
- * them. Every request rejects with a `BrowserTabsError`, except one the
- * panel session dropped as it ended, which rejects with the abort.
+ * The conversation browser's tab list and tab methods and its user stream, as
+ * the plugin's page context supplies them. Every request rejects with a
+ * `BrowserTabsError`, except one the panel session dropped as it ended, which
+ * rejects with the abort.
  */
 export interface BrowserTabsApi {
   /** The tab list, as the plugin's conversation state follows it. */
@@ -182,9 +192,8 @@ const FINAL_REASONS: ReadonlySet<PanelReason | null> = new Set<PanelReason>(['co
 export type PictureSupport = 'checking' | 'supported' | 'unsupported'
 
 /**
- * What Demi does for a panel tab before the browser has its tab:
- * reads what the Host is
- * doing, starts the Cloud, starts the browser on the Host, or has the
+ * What Demi does for a panel tab before the browser has its tab: reads what the
+ * Host is doing, starts the Cloud, starts the browser on the Host, or has the
  * browser open the tab.
  */
 export type StartingPhase = 'connecting' | 'cloud' | 'browser' | 'page'
@@ -202,9 +211,9 @@ export interface BrowserTabsOptions {
 }
 
 /**
- * The user's latest request on a browser tab: sent and not answered yet, or answered with the number of
- * the last tab list before it started, which only a list numbered higher
- * outdates. A refused request leaves none.
+ * The user's latest request on a browser tab: sent and not answered yet, or
+ * answered with the number of the last tab list before it started, which only a
+ * list numbered higher outdates. A refused request leaves none.
  */
 type TabRequest =
   | { status: 'asked' }
@@ -228,12 +237,11 @@ const pageVisibility = useDocumentVisibility()
 const PANEL_SETTLE_MS = 100
 
 /**
- * One conversation's browser, for one page, made by the page's panel
- * session in its effect scope: the tab list, each browser tab as a view last
+ * One conversation's browser, for one page, made by the page's panel session in
+ * its effect scope. It holds the tab list, each browser tab as a view last
  * reported it, the panel the shown tab is sized by, and the view, open only
- * while a `browser` tab's content is shown and the page is visible.
- * It alone tells the view which tab to
- * watch.
+ * while a `browser` tab's content is shown and the page is visible. It alone
+ * tells the view which tab to watch.
  */
 export class BrowserTabsController {
   /** The last list the plugin's state gave; null before the first. */
@@ -326,18 +334,21 @@ export class BrowserTabsController {
 
   /**
    * Whether the panel tab bound to `tab`, asking for `url`, shows its page
-   * loading. A request of the
-   * user's loads from the moment it is made until a tab list numbered higher
-   * than the one its answer names says otherwise, whichever reaches the page
-   * first: on a far backend the browser may start loading well after the
-   * answer, and a list numbered no higher describes the page as it was.
-   * Otherwise the page loads while the browser last said it does: in a view,
-   * or, for a tab not shown, in the plugin's tab list. A shown tab no view
-   * reported yet is one whose browser tab is still opening, and it loads
-   * while it asks for an address; one not shown that the list lacks too was
-   * lost with the browser, and waits, not loading, until it is shown. A tab
-   * shown again keeps what the browser last said, so a page that had loaded
-   * shows no loading.
+   * loading.
+   *
+   * - A request of the user's loads from the moment it is made until a tab list
+   *   numbered higher than the one its answer names says otherwise, whichever
+   *   reaches the page first. On a far backend the browser may start loading
+   *   well after the answer, and a list numbered no higher describes the page
+   *   as it was.
+   * - Otherwise the page loads while the browser last said it does: in a view,
+   *   or, for a tab not shown, in the plugin's tab list.
+   * - A shown tab no view reported yet is one whose browser tab is still
+   *   opening, and it loads while it asks for an address.
+   * - One not shown that the list lacks too was lost with the browser, and
+   *   waits, not loading, until it is shown.
+   * - A tab shown again keeps what the browser last said, so a page that had
+   *   loaded shows no loading.
    */
   loading(tab: string | undefined, url: string): boolean {
     if (this.requested(tab)) {
@@ -371,13 +382,18 @@ export class BrowserTabsController {
 
   /**
    * The title of the page the panel tab with `data` shows, as the browser
-   * reports it: as a view last reported it, else as the plugin last listed
-   * it, the moment the browser names it, as a web browser's tab takes its
-   * page's title in the background too. None without a browser tab, for a
-   * page without a title, or while the browser still reports the page a
-   * request of the user's leaves: until a list after the request, and while
-   * the browser loads from an address other than the one the tab asks for,
-   * as it does until the new page commits.
+   * reports it: as a view last reported it, else as the plugin last listed it,
+   * the moment the browser names it, as a web browser's tab takes its page's
+   * title in the background too.
+   *
+   * None when:
+   *
+   * - the tab has no browser tab;
+   * - the page has no title;
+   * - the browser still reports the page a request of the user's leaves: until
+   *   a list after the request, and while the browser loads from an address
+   *   other than the one the tab asks for, as it does until the new page
+   *   commits.
    */
   title(data: BrowserTabData): string | null {
     if (data.tab === undefined || data.closed || data.failure || this.requested(data.tab)) {
@@ -407,14 +423,16 @@ export class BrowserTabsController {
   }
 
   /**
-   * Whether the panel tab `panelTab`, with `data`, shows its page loading:
-   * the one state its strip's spinner, its Stop and its progress line show.
-   * It loads while its browser
-   * tab opens, the first time or again, and otherwise as its browser tab
-   * does; and a shown tab that has no picture yet loads until its first
-   * picture, unless none can come. A tab that could not open, or whose
-   * browser tab the browser lost and no one opened again yet, does not, nor
-   * does a blank one, which loads nothing.
+   * Whether the panel tab `panelTab`, with `data`, shows its page loading: the
+   * one state its strip's spinner, its Stop and its progress line show.
+   *
+   * - It loads while its browser tab opens, the first time or again, and
+   *   otherwise as its browser tab does.
+   * - A shown tab that has no picture yet loads until its first picture, unless
+   *   none can come.
+   * - A tab that could not open, or whose browser tab the browser lost and no
+   *   one opened again yet, does not load, nor does a blank one, which loads
+   *   nothing.
    */
   busy(panelTab: string, data: BrowserTabData): boolean {
     const blank = this.blank(data)
@@ -433,9 +451,9 @@ export class BrowserTabsController {
   /**
    * Whether the panel tab with `data` is blank: its address is the blank
    * page's, as after its user stopped it before the browser had it, and no
-   * request of the user's is under way on its browser tab. It loads nothing,
-   * so it shows a blank page, not what Demi waits for; only the browser's own
-   * word that its page loads shows it loading.
+   * request of the user's is under way on its browser tab. It loads nothing, so
+   * it shows a blank page, not what Demi waits for; only the browser's own word
+   * that its page loads shows it loading.
    */
   private blank(data: BrowserTabData): boolean {
     return data.url === BLANK_URL && !this.requested(data.tab)
@@ -455,16 +473,20 @@ export class BrowserTabsController {
 
   /**
    * What Demi does for the panel tab `panelTab`, with `data`, before the
-   * browser has its tab: while
-   * it opens, the first time or again, while it waits to, and while the
-   * browser's tab list does not name the browser tab its data names, which
-   * the browser may have lost, as after a restart. The Cloud starting comes
-   * first, which the product state says; then connecting, while neither a
-   * view nor the plugin's list has said what the conversation's browser
-   * holds; then the browser starting, while it has no tabs; then the browser
-   * opening the tab. Null once the list names the tab, for a tab that could
-   * not open and was not retried, and for a blank tab,
-   * which waits for nothing the user asked for.
+   * browser has its tab: while it opens, the first time or again, while it
+   * waits to, and while the browser's tab list does not name the browser tab
+   * its data names, which the browser may have lost, as after a restart.
+   *
+   * The phases, in order:
+   *
+   * 1. The Cloud starting, which the product state says.
+   * 2. Connecting, while neither a view nor the plugin's list has said what the
+   *    conversation's browser holds.
+   * 3. The browser starting, while it has no tabs.
+   * 4. The browser opening the tab.
+   *
+   * Null once the list names the tab, for a tab that could not open and was not
+   * retried, and for a blank tab, which waits for nothing the user asked for.
    */
   startingPhase(panelTab: string, data: BrowserTabData): StartingPhase | null {
     if (this.blank(data)) {
@@ -573,12 +595,12 @@ export class BrowserTabsController {
   }
 
   /**
-   * Runs a request of the user's on `tab`. The latest one on the tab is the
-   * one its loading follows; a refusal ends it at once, and the caller
-   * reports it. A tab the browser no longer has was lost with the browser,
-   * as when Demi restarted: nothing says so, and the plugin is asked to read
-   * the list, which marks the panel tab lost, so it opens again on its
-   * address, at once while it is shown, as a browser reloads a discarded tab.
+   * Runs a request of the user's on `tab`. The latest one on the tab is the one
+   * its loading follows; a refusal ends it at once, and the caller reports it.
+   * A tab the browser no longer has was lost with the browser, as when Demi
+   * restarted: nothing says so, and the plugin is asked to read the list, which
+   * marks the panel tab lost, so it opens again on its address, at once while
+   * it is shown, as a browser reloads a discarded tab.
    */
   private async request(tab: string, run: () => Promise<number>): Promise<void> {
     const asked: TabRequest = { status: 'asked' }
@@ -620,13 +642,15 @@ export class BrowserTabsController {
 
   /**
    * A shown content watches its tab on the page's one view, opening the view
-   * when there is none; one shown before the browser has its tab watches
-   * nothing, and the view tells the Host the panel's size meanwhile. A view
-   * waiting to reconnect connects at once for a tab it did not show, as a tab
-   * that just got its browser tab: the view's end may have been only that
-   * there was no browser yet. A hidden page
-   * opens none until it is shown, and a web browser that cannot show the
-   * pictures none at all.
+   * when there is none.
+   *
+   * - One shown before the browser has its tab watches nothing, and the view
+   *   tells the Host the panel's size meanwhile.
+   * - A view waiting to reconnect connects at once for a tab it did not show,
+   *   as a tab that just got its browser tab: the view's end may have been only
+   *   that there was no browser yet.
+   * - A hidden page opens no view until it is shown, and a web browser that
+   *   cannot show the pictures opens none at all.
    */
   show(panelTab: string, tab: string | null): void {
     const another = this.shownTab.value !== tab
@@ -720,12 +744,11 @@ export class BrowserTabsController {
   }
 
   /**
-   * A tab a page opened appears in the strip at once, as in any browser:
-   * the plugin adds it when
-   * the browser tells it the tabs changed. One that the page the user
-   * watches opened right after the user's click or key there is the user's,
-   * and is selected, as a browser selects the tab a click opens; one a page
-   * opened by itself is only added.
+   * A tab a page opened appears in the strip at once, as in any browser: the
+   * plugin adds it when the browser tells it the tabs changed. One that the
+   * page the user watches opened right after the user's click or key there is
+   * the user's, and is selected, as a browser selects the tab a click opens.
+   * One a page opened by itself is only added.
    */
   private pageOpened(tabs: readonly LiveTab[]): void {
     const heard = this.heard

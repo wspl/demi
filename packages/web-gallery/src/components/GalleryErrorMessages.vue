@@ -20,20 +20,24 @@ import GallerySpecimen from './GallerySpecimen.vue'
 /**
  * Failures that live in the conversation, pinned. Every one is an ErrorNotice
  * in the transcript flow, rendered through the product's own block renderer so
- * the padding and rhythm are the product's. None carries a button: Resume
- * and Retry sit in the dock above the composer, which each specimen of an
- * undelivered message shows under its list.
+ * the padding and rhythm are the product's.
  *
- * Nothing in or under the composer: a fork that failed, an edit the server
- * refused and a file that could not be read are toasts, and a file whose
- * upload failed keeps its capsule with Retry. A sent message whose upload
- * failed is undelivered, in the transcript flow, where it was sent.
+ * No failure carries a button: Resume and Retry sit in the dock above the
+ * composer, which each specimen of an undelivered message shows under its list.
  *
- * Each record is named by its normalized code, which is also its id, and
- * runs on a subscription; a record given `onKey`, its name, ran on an API
- * key entry, whose `auth_expired` names its key, never a sign-in. Each
- * carries the `http` record a provider stores: the status, the response's
- * headers, and the body, the vendor's part of `message`.
+ * Nothing sits in or under the composer:
+ *
+ * - A fork that failed, an edit the server refused and a file that could not be
+ *   read are toasts.
+ * - A file whose upload failed keeps its capsule with Retry.
+ * - A sent message whose upload failed is undelivered, in the transcript flow,
+ *   where it was sent.
+ *
+ * Each record is named by its normalized code, which is also its id, and runs
+ * on a subscription. A record given `onKey`, its name, ran on an API key entry,
+ * whose `auth_expired` names its key, never a sign-in. Each carries the `http`
+ * record a provider stores: the status, the response's headers, and the body,
+ * the vendor's part of `message`.
  */
 function errorRecord(
   code: string,

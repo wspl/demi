@@ -45,12 +45,15 @@ export interface WebSocketLike {
 }
 
 /**
- * The conversation socket as a transport: each message is JSON text, one
- * frame or an array of the frames the backend had ready at once, as a
- * turn's end, which are handed over in order within the message's event, so
- * the page applies them as one change. A message that is not JSON text is a
- * peer that does not speak the protocol, and the transport closes rather than
- * skipping it.
+ * The conversation socket as a transport.
+ *
+ * Each message is JSON text: one frame, or an array of the frames the backend
+ * had ready at once, as a turn's end. The frames of one message are handed
+ * over in order within the message's event, so the page applies them as one
+ * change.
+ *
+ * A message that is not JSON text is a peer that does not speak the protocol,
+ * and the transport closes rather than skipping it.
  */
 export function createWebSocketTransport(socket: WebSocketLike): ConversationClientTransport {
   const frameHandlers = new Set<(frame: unknown) => void>()

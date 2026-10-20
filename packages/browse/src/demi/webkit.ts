@@ -1,11 +1,15 @@
-// `demi.webkit()`: a page of Playwright's WebKit, the engine of Safari, for
-// what a check must see in Safari's engine as well as in the slot's
-// Chromium, such as the order of an input method's events (`demi.ime`). It
-// is signed in as the slot's browser is, has its screen, theme, locale and
-// time zone (`demi.emulate`), so `demi.shot` pictures it as it pictures
-// `page`, its `goto` takes an address relative to the slot's web app as
-// `page`'s does, and it lasts for the call: the call closes its browser
-// when it ends.
+// `demi.webkit()`: a page of Playwright's WebKit, the engine of Safari, for what a
+// check must see in Safari's engine as well as in the slot's Chromium, such as the
+// order of an input method's events (`demi.ime`).
+//
+// The page behaves like the slot's `page`:
+//
+// - It is signed in as the slot's browser is.
+// - It has the slot's screen, theme, locale and time zone (`demi.emulate`), so
+//   `demi.shot` pictures it as it pictures `page`.
+// - Its `goto` takes an address relative to the slot's web app as `page`'s does.
+//
+// It lasts for the call: the call closes its browser when it ends.
 import { existsSync } from 'node:fs'
 import { webkit, type Page } from 'playwright'
 import { install } from '../browser'

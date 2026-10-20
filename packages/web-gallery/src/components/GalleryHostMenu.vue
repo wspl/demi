@@ -10,10 +10,15 @@ import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /**
- * A conversation's host menu acting on the specimen's own conversation as
- * the product's header does: a conversation with messages asks before it moves, one whose agent works asks to stop it
- * first, a new one moves at once, one in a project opens the chosen device's directory picker, which the gallery says in
- * a toast, and Detach takes the device from Attached.
+ * A conversation's host menu acting on the specimen's own conversation as the
+ * product's header does:
+ *
+ * - A conversation with messages asks before it moves.
+ * - One whose agent works asks to stop it first.
+ * - A new one moves at once.
+ * - One in a project opens the chosen device's directory picker, which the
+ *   gallery says in a toast.
+ * - Detach takes the device from Attached.
  */
 const props = defineProps<{
   devices: HostDeviceOption[]

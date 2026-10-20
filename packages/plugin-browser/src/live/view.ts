@@ -1,8 +1,9 @@
 /**
  * Where a watched tab's picture sits in the panel, and what the viewer's
- * pointer means in the tab, by the generation of
- * the picture shown. A Web picture stands unscaled at the panel's top-left
- * corner; Mobile and Custom keep their size, scaled to fit and centred.
+ * pointer means in the tab, by the generation of the picture shown.
+ *
+ * - A Web picture stands unscaled at the panel's top-left corner.
+ * - Mobile and Custom keep their size, scaled to fit and centered.
  *
  * Chrome encodes an odd side at the nearest even size, so a Web picture is
  * scaled by less than a pixel then. The picture is placed, and input mapped
@@ -15,9 +16,9 @@ import type { LiveStream } from './session'
 import { t } from '../locales/text'
 
 /**
- * A blank page, as Chrome paints an empty one in the color scheme the
- * browser runs in, which is the user's:
- * white, or #121212 in the dark scheme, so the first picture does not flash.
+ * A blank page, as Chrome paints an empty one in the color scheme the browser
+ * runs in, which is the user's: white, or #121212 in the dark scheme, so the
+ * first picture does not flash.
  */
 export const BLANK_PAGE = 'bg-white [[data-theme=dark]_&]:bg-[#121212]'
 
@@ -54,11 +55,12 @@ export function pictureExtent(stream: LiveStream): PanelSize {
 }
 
 /**
- * Where a picture of `stream` sits in the panel. A Web picture stands at its
- * own CSS size from the top-left corner, never scaled: the panel cuts it
- * while it shrinks, and shows white beside it while it grows, until a
- * picture at the new size arrives. Mobile and Custom keep their size, scaled
- * down to fit and centred.
+ * Where a picture of `stream` sits in the panel.
+ *
+ * - A Web picture stands at its own CSS size from the top-left corner, never
+ *   scaled: the panel cuts it while it shrinks, and shows white beside it while
+ *   it grows, until a picture at the new size arrives.
+ * - Mobile and Custom keep their size, scaled down to fit and centered.
  */
 export function placePicture(stream: LiveStream, panel: PanelSize): Placement {
   const extent = pictureExtent(stream)
@@ -105,10 +107,9 @@ export function tabPoint(
 const CURSOR_KEYWORD = /^[a-z][a-z-]*$/
 
 /**
- * The cursor the page shows at `point` of the tab:
- * the last region over the point decides; where none does, or one leaves
- * the cursor to the browser, the observer's resolution at the pointer
- * holds.
+ * The cursor the page shows at `point` of the tab: the last region over the
+ * point decides. Where none does, or one leaves the cursor to the browser, the
+ * observer's resolution at the pointer holds.
  */
 export function cursorAt(point: { x: number; y: number }, regions: readonly CursorRegion[], resolved: string): string {
   const region = regions.findLast((candidate) =>

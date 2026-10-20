@@ -1,9 +1,11 @@
 /**
- * Orders operations by the things they change: the operations on one thing
- * run one at a time, in the order they were added, and a failed one does not
- * stop the next; operations on different things run side by side. An
- * operation on several things waits for the earlier operations on each of
- * them, and the later operations on any of them wait for it.
+ * Orders operations by the things they change:
+ *
+ * - The operations on one thing run one at a time, in the order they were
+ *   added, and a failed one does not stop the next.
+ * - Operations on different things run side by side.
+ * - An operation on several things waits for the earlier operations on each
+ *   of them, and the later operations on any of them wait for it.
  */
 export class SerialQueue {
   /** The end of the last operation added on each thing, while it runs or waits. */
@@ -53,7 +55,7 @@ export function deferred<T = void>(): Deferred<T> {
 
 /**
  * Resolves after `ms` milliseconds. With `signal`, resolves as soon as the
- * signal aborts instead, and the timer is cleared — for a `Promise.race`
+ * signal aborts instead, and the timer is cleared, for a `Promise.race`
  * whose loser must not keep the process alive.
  */
 export function delay(ms: number, signal?: AbortSignal): Promise<void> {

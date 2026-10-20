@@ -1,11 +1,17 @@
-// What a call prints after its script's output (browse.md § A call): the
-// screenshots it wrote, then where the page stands, so the agent rarely
-// needs another call only to see it: the page's address and title, a modal
-// dialog, menu or popover that covers it, the focused element, and the
-// console errors and failed requests since the call began. Playwright names
-// the layer as its accessibility snapshot does, by role and name. The
-// focused element is named as the browser's own accessibility tree has it,
-// which also knows an editable element with no role of its own.
+// What a call prints after its script's output (browse.md § A call): the screenshots it
+// wrote, then where the page stands, so the agent rarely needs another call only to see
+// it.
+//
+// The page's standing is:
+//
+// - the page's address and title;
+// - a modal dialog, menu or popover that covers it;
+// - the focused element;
+// - the console errors and failed requests since the call began.
+//
+// Playwright names the layer as its accessibility snapshot does, by role and name. The
+// focused element is named as the browser's own accessibility tree has it, which also
+// knows an editable element with no role of its own.
 import type { CDPSession, Locator, Page } from 'playwright'
 import type { Shot } from './tool'
 
@@ -38,7 +44,6 @@ const LINE = 300
 /** How long reading an element's accessible name may take. */
 const READ_MS = 2_000
 
-/** The footer's lines. */
 export function composeFooter(report: CallReport): string[] {
   const lines: string[] = []
   const pathWidth = Math.max(0, ...report.shots.map((shot) => shot.path.length))

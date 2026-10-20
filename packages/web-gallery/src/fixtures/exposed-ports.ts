@@ -41,10 +41,13 @@ const ports = ref<SettingsExposedPort[]>([row('mac', 8188, 'ComfyUI'), row('mac'
 
 /**
  * The gallery's exposed ports and what each control does to them, as the
- * backend would: Expose Port with a port exposes it, which is done too when
- * it is exposed already, and without one adds a row with the port missing;
- * a port another row of the device exposes is refused in the backend's
- * words, and Remove drops the row.
+ * backend would:
+ *
+ * - Expose Port with a port exposes it, which is done too when it is exposed
+ *   already.
+ * - Expose Port without a port adds a row with the port missing.
+ * - A port another row of the device exposes is refused in the backend's words.
+ * - Remove drops the row.
  */
 export function useGalleryExposedPorts() {
   function isExposed(deviceId: string, port: number): boolean {

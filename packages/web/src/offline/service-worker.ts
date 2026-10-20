@@ -9,26 +9,26 @@ import {
 } from './notifications'
 
 /**
- * The page's one service worker, served from the root so that its scope is
- * the whole origin. It has three jobs:
+ * The page's one service worker, served from the root so that its scope is the
+ * whole origin. It has three jobs:
  *
- * - The direct channel's raw requests (`packages/web/src/direct/raw-bridge.ts`): a `GET` of a conversation's raw file route,
- *   which an image, a video, a PDF or a download makes, goes to the page
- *   that made it, which answers it over its direct channel when it has one
- *   to the conversation's device, or sends it to the network.
- * - Opening offline : a navigation of the app goes to the network first and, only
- *   when the network fails, is answered with the page of the build that
- *   last ran; that build's hashed files are kept as its pages fetch them
- *   and answered from the cache. One build is kept.
- * - Push notifications: it shows every push
- *   the backend sends, worded from the words the page left it, since a
- *   browser shows one of its own for a push that shows none, or ends the
- *   subscription, and one whose words cannot be read still shows; a click
- *   on one opens its conversation, in a page of the product that is open,
- *   never a share's, or a new one.
+ * - The direct channel's raw requests
+ *   (`packages/web/src/direct/raw-bridge.ts`): a `GET` of a conversation's raw
+ *   file route, which an image, a video, a PDF or a download makes, goes to the
+ *   page that made it. The page answers it over its direct channel when it has
+ *   one to the conversation's device, or sends it to the network.
+ * - Opening offline: a navigation of the app goes to the network first and,
+ *   only when the network fails, is answered with the page of the build that
+ *   last ran. That build's hashed files are kept as its pages fetch them and
+ *   answered from the cache. One build is kept.
+ * - Push notifications: it shows every push the backend sends, worded from the
+ *   words the page left it, since a browser shows one of its own for a push
+ *   that shows none, or ends the subscription. One whose words cannot be read
+ *   still shows. A click on one opens its conversation, in a page of the
+ *   product that is open, never a share's, or a new one.
  *
- * It answers nothing else from a cache: not `build.json`, the API, the
- * sockets or a share's page. It imports only what needs no page.
+ * It answers nothing else from a cache: not `build.json`, the API, the sockets
+ * or a share's page. It imports only what needs no page.
  */
 
 declare const self: ServiceWorkerGlobalScope

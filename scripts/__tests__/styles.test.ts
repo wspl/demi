@@ -1,8 +1,7 @@
-// The product's and the gallery's style sheets generate the utility classes
-// the plugin packages use: Tailwind writes only the classes it finds in the
-// sources a sheet names, so a plugin's component whose package the sheet does
-// not scan shows unstyled, as the live view's hidden text field did with its
-// caret showing over the picture. The check compiles each sheet with the
+// The product's and the gallery's style sheets generate the utility classes the plugin packages
+// use. Tailwind writes only the classes it finds in the sources a sheet names, so a plugin's
+// component whose package the sheet does not scan shows unstyled, as the live view's hidden text
+// field did with its caret showing over the picture. The check compiles each sheet with the
 // Tailwind its Vite plugin runs, as a build does.
 import { expect, test } from 'bun:test'
 import { readFileSync, readdirSync, realpathSync } from 'node:fs'

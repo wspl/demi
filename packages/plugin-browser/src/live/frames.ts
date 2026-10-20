@@ -1,7 +1,7 @@
 /**
- * The browser's frames on the page's side: the live view's frames, read by the SDK's reader, with control
- * messages in the browser's protocol, and the bytes of files the viewer
- * chose.
+ * The browser's frames on the page's side: the live view's frames, read by the
+ * SDK's reader, with control messages in the browser's protocol, and the bytes
+ * of files the viewer chose.
  */
 import { liveModuleMessageSchema, type LiveModuleMessage, type LiveViewerMessage } from '../generated/plugin'
 import { LIVE_FILE_FRAME, LIVE_FILE_HEADER_BYTES } from '../generated/plugin'
@@ -38,9 +38,8 @@ export class LiveFrameReader {
   private readonly raw = new RawFrameReader()
 
   /**
-   * The frames `chunk` completes. A frame the protocol refuses throws:
-   * it is the module's defect, and
-   * the view it came on ends.
+   * The frames `chunk` completes. A frame the protocol refuses throws: it is
+   * the module's defect, and the view it came on ends.
    */
   read(chunk: Uint8Array): LiveFrame[] {
     return this.raw.read(chunk).map((frame) =>

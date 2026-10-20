@@ -19,17 +19,21 @@ import { useProduct } from './product'
 /**
  * Notifications: push notifications, which the browser's push service brings to
  * the page's service worker whether or not a page is open. This browser's
- * settings live in its storage; while they are on and the browser allows them,
- * the page keeps the browser subscribed for its session, with the events it
- * chose, tells the backend on its synchronization channel which conversation it
- * shows, focused and visible, so that conversation is not notified to this
- * browser, and leaves the service worker the words it says notifications in. A
- * click on a notification opens its conversation.
+ * settings live in its storage. While they are on and the browser allows them,
+ * the page:
+ *
+ * - Keeps the browser subscribed for its session, with the events it chose.
+ * - Tells the backend on its synchronization channel which conversation it
+ *   shows, focused and visible, so that conversation is not notified to this
+ *   browser.
+ * - Leaves the service worker the words it says notifications in.
+ *
+ * A click on a notification opens its conversation.
  *
  * A browser's subscription serves one session: signing out unsubscribes the
  * browser, and a session that finds it subscribed by another makes a new
- * subscription before it sends one, so nothing queued for the account
- * signed out before shows after another signs in.
+ * subscription before it sends one, so nothing queued for the account signed
+ * out before shows after another signs in.
  */
 
 const settingsSchema = z.object({

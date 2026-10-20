@@ -1,11 +1,15 @@
-// `demi.turn({ timeout })`: waits until the open conversation no longer
-// runs, as the page and the backend both tell it. The page counts a turn
-// from the send of the message that starts it: its composer offers Stop and its
-// transcript ends in Requesting while the message is on its way, before the backend has
-// it. The backend counts a conversation running while its tree works without the user,
-// so this also waits for the subagents and background jobs the turn started.
-// `demi.message` waits only for the turn its message starts, which the root's latest
-// ended turn names once it ends.
+// `demi.turn({ timeout })`: waits until the open conversation no longer runs,
+// as the page and the backend both tell it.
+//
+// - The page counts a turn from the send of the message that starts it: its
+//   composer offers Stop and its transcript ends in Requesting while the
+//   message is on its way, before the backend has it.
+// - The backend counts a conversation running while its tree works without the
+//   user, so this also waits for the subagents and background jobs the turn
+//   started.
+//
+// `demi.message` waits only for the turn its message starts, which the root's
+// latest ended turn names once it ends.
 import type { Page } from 'playwright'
 import { conversationsSchema, type TurnOutcome } from '@demicodes/web/src/api/generated/web-api'
 import type { Slot } from '../slot'
@@ -55,11 +59,12 @@ function running(status: string): boolean {
 
 /**
  * Asks the backend about the conversation `id` until `ended` holds for its
- * summary, and answers the summary then; `what` names what is waited for
- * when it does not come within `timeoutMs`. `check` runs before each look
- * at the backend: it reads from the page what `ended` needs besides the
- * summary, or throws to end the wait, as when the page shows the turn can
- * never come.
+ * summary, and answers the summary then.
+ *
+ * - `what` names what is waited for when it does not come within `timeoutMs`.
+ * - `check` runs before each look at the backend. It reads from the page what
+ *   `ended` needs besides the summary, or throws to end the wait, as when the
+ *   page shows the turn can never come.
  */
 export async function waitSummary(
   slot: Slot,
@@ -93,11 +98,13 @@ export async function conversationAddress(page: Page): Promise<void> {
 }
 
 /**
- * What the page shows of a turn that runs or is about to: the composer's
- * Stop, which stays from the send of the message that starts the turn to
- * its end, or the transcript's Requesting or Connecting row, which also
- * stands for a recovery the backend has not taken up yet; null when it
- * shows neither.
+ * What the page shows of a turn that runs or is about to, or null when it shows
+ * neither:
+ *
+ * - the composer's Stop, which stays from the send of the message that starts
+ *   the turn to its end;
+ * - the transcript's Requesting or Connecting row, which also stands for a
+ *   recovery the backend has not taken up yet.
  */
 export async function pageActivity(page: Page): Promise<string | null> {
   // The composer's own Stop, not the one of the agent's browser address bar,

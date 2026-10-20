@@ -6,9 +6,9 @@ import { panelRect, type Placement } from './view'
 
 /**
  * The watched page's native form controls, as the viewer's own controls over
- * the picture: a select, a date, a time, a
- * colour, a suggestion field or a file input opens the viewer's own picker,
- * and the choice goes back to the control the viewer saw.
+ * the picture. A select, a date, a time, a color, a suggestion field or a file
+ * input opens the viewer's own picker, and the choice goes back to the control
+ * the viewer saw.
  */
 const props = defineProps<{
   session: LiveSession

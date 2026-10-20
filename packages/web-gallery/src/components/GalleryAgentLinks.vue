@@ -12,10 +12,11 @@ const props = withDefaults(defineProps<{ markdown?: string; narrow?: boolean }>(
 
 /**
  * A reply that links the conversation's agents: running, finished, failed,
- * stopped, the main agent, and a number the conversation does not have. A
- * click opens the Agents window over the reply on that agent's tab, and
- * leaves it as it is when it shows that tab; Stop in the window stops the
- * agent here, and its link's mark follows.
+ * stopped, the main agent, and a number the conversation does not have.
+ *
+ * - A click opens the Agents window over the reply on that agent's tab,
+ *   and leaves it as it is when it shows that tab.
+ * - Stop in the window stops the agent here, and its link's mark follows.
  */
 const agents = reactive(gallerySubagents())
 const createdAt = new Date(Date.now() - 60_000).toISOString()

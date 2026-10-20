@@ -1,11 +1,13 @@
 // `demi.timeline(action, [0, 100, 1500], { region, name })`: runs the
 // action, such as a click, and saves the picture the page showed at each of
 // those milliseconds after it, for the moments between an action and its
-// result; answers their paths. A screenshot takes about 100 ms of its own at
-// the page's pixel ratio, too long for such moments, so the browser streams
-// every frame it paints while the action runs (the DevTools protocol's
-// screencast, at CSS pixels), and each moment gets the frame on screen then.
-// `region` keeps an area of each frame, in CSS pixels.
+// result; answers their paths. `region` keeps an area of each frame, in CSS
+// pixels.
+//
+// A screenshot takes about 100 ms of its own at the page's pixel ratio, too
+// long for such moments. So the browser streams every frame it paints while
+// the action runs (the DevTools protocol's screencast, at CSS pixels), and
+// each moment gets the frame on screen then.
 import { writeFileSync } from 'node:fs'
 import { screenOf } from '../emulation'
 import { cropPng, pngSize, shotPath, type Clip } from '../shots'

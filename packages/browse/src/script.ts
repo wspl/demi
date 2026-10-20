@@ -1,10 +1,13 @@
 // A call's script (browse.md § A call): the agent's JavaScript, run as the
-// body of an async function in which the scope's names are defined. The
-// script becomes a module of its own in the slot's folder, its first line
-// on the module's first line after the function's head, so the module's
-// line numbers are the script's: a failure's stack, or a syntax error's
-// position, names the script's line without any arithmetic. Bun transpiles
-// the module as TypeScript, so a script may also annotate types.
+// body of an async function in which the scope's names are defined.
+//
+// The script becomes a module of its own in the slot's folder, its first line
+// on the module's first line after the function's head. The module's line
+// numbers are therefore the script's: a failure's stack, or a syntax error's
+// position, names the script's line without any arithmetic.
+//
+// Bun transpiles the module as TypeScript, so a script may also annotate
+// types.
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -61,7 +64,6 @@ export class Script {
     return frame ? Number(frame[1]) : null
   }
 
-  /** The text of the script's line `line`. */
   text(line: number): string {
     return this.source.split('\n')[line - 1]?.trim() ?? ''
   }

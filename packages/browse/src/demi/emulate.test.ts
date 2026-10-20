@@ -1,10 +1,11 @@
 // Playwright's own emulation calls in a script, `setViewportSize` and
-// `emulateMedia`, on the slot's page and on a page the script opens, run as
-// the tool's server runs a call against pages the test serves, in a
-// temporary slot: about 2 s, the browser's start. Playwright sets them
-// through a session of its own, which the tool's session, holding the
-// slot's emulation, overrode again at the next load; only the real browser
-// shows which of the two a page gets.
+// `emulateMedia`, on the slot's page and on a page the script opens. They run as
+// the tool's server runs a call, against pages the test serves, in a temporary
+// slot: about 2 s, the browser's start.
+//
+// Playwright sets them through a session of its own, which the tool's session,
+// holding the slot's emulation, overrode again at the next load. Only the real
+// browser shows which of the two a page gets.
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -1,8 +1,9 @@
-// A browser that stops answering (browse.md § What `demi` adds): while a
-// call runs, the browser is asked a question of its own every so often,
-// which it answers at once unless its process hangs. A script waits on the
-// browser in ways no timeout of Playwright's covers (a key press, a
-// protocol command, an evaluation), so whatever the script waits for, the
+// A browser that stops answering (browse.md § What `demi` adds): while a call runs,
+// the browser is asked a question of its own every so often, which it answers at once
+// unless its process hangs.
+//
+// A script waits on the browser in ways no timeout of Playwright's covers (a key
+// press, a protocol command, an evaluation). So whatever the script waits for, the
 // call stops waiting once the browser leaves that question unanswered.
 import type { Browser } from './browser'
 

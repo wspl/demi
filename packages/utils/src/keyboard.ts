@@ -1,9 +1,10 @@
 /**
  * Whether a key belongs to an input method's composition: the Enter that
  * commits a Chinese or Japanese candidate, the Escape that drops it, a dead
- * key's accent. Chrome marks such a key `isComposing`; Safari ends the
- * composition before the committing key's `keydown`, which it marks only
- * with key code 229.
+ * key's accent.
+ *
+ * Chrome marks such a key `isComposing`. Safari ends the composition before
+ * the committing key's `keydown`, which it marks only with key code 229.
  */
 export function composingKey(event: { key: string; keyCode: number; isComposing: boolean }): boolean {
   return event.isComposing || event.keyCode === 229 || event.key === 'Dead'
@@ -11,7 +12,9 @@ export function composingKey(event: { key: string; keyCode: number; isComposing:
 
 /**
  * Keeps a composition's key to the field it is typed in; true when it kept
- * it. Every text field calls it first for each `keydown`: TextInput and
+ * it.
+ *
+ * Every text field calls it first for each `keydown`: TextInput and
  * TextArea in the capture phase on their frame, a menu's filter on its row,
  * and the message editor before its keymap. No handler on the field or
  * around it sees the key, so a candidate's Enter submits nothing and its

@@ -1,9 +1,11 @@
-// `demi.frames(probe)`: runs `probe`, a function of the page's, at every
-// frame the page draws from now on, and `stop()` answers what it read in
-// each, with when. For what a single frame shows that a picture cannot
-// prove, such as a list that never draws a frame shorter than the one before
-// or a row that keeps its key. The probe runs in the page's animation-frame
-// callback, before the frame is painted, on the document that frame paints.
+// `demi.frames(probe)`: runs `probe`, a function of the page's, at every frame
+// the page draws from now on, and `stop()` answers what it read in each, with
+// when.
+//
+// It serves what a single frame shows that a picture cannot prove, such as a list
+// that never draws a frame shorter than the one before or a row that keeps its
+// key. The probe runs in the page's animation-frame callback, before the frame is
+// painted, on the document that frame paints.
 import { Failure, type Tool } from '../tool'
 
 /** What the probe read in a frame, at the frame's time in the page's milliseconds since the recording began. */

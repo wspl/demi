@@ -1,12 +1,15 @@
-// `demi.up(...servers)` (browse.md § What `demi` adds): starts what it names
-// on the slot's ports, the backend and the web app when it names nothing,
-// waits until each answers, and signs the browser in with the development
-// account once the web app is up, unless its session is still good, keeping
-// the page it shows. The web app needs the backend, so naming it starts the
-// backend too. Each server leads a process group the slot's state records
-// for `demi.down`. The backend keeps its data in the slot's folder, so it
-// comes back with the account and the conversations it had until
-// `demi.down({ wipe: true })`.
+// `demi.up(...servers)` (browse.md § What `demi` adds): starts the servers it
+// names on the slot's ports, waits until each answers, and signs the browser in
+// with the development account once the web app is up.
+//
+// With no server named, it starts the backend and the web app. The web app needs
+// the backend, so naming the web app starts the backend too. The sign-in is
+// skipped while the browser's session is still good, and the page the browser
+// shows is kept.
+//
+// Each server leads a process group the slot's state records for `demi.down`. The
+// backend keeps its data in the slot's folder, so it comes back with the account
+// and the conversations it had until `demi.down({ wipe: true })`.
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { identitySchema } from '@demicodes/web/src/api/generated/web-api'
@@ -37,11 +40,11 @@ const ACCOUNT = /^\s*Account: (\S+), password (.+)$/m
 /** What `demi.up` takes besides the servers' names. */
 export interface UpOptions {
   /**
-   * The host name of the backend's public URL, such as `localhost`, for a
-   * check of passkeys: browsers make none for the IP address the backend
-   * has by default, and the page must then be opened at that name too
-   * (`http://localhost:<the slot's network port>`). It applies when the
-   * backend starts; one already up keeps its own.
+   * The host name of the backend's public URL, such as `localhost`, for a check of
+   * passkeys: browsers make none for the IP address the backend has by default.
+   * The page must then be opened at that name too (`http://localhost:<the slot's
+   * network port>`). It applies when the backend starts; one already up keeps its
+   * own.
    */
   publicHost?: string
   /**
@@ -184,11 +187,14 @@ function signedOutPage(path: string): boolean {
 }
 
 /**
- * Signs the browser in with the development account when the backend does
- * not know its session, as the sign-in form does, and keeps the page it
- * shows: a page of the web app stays, the sign-in page goes on to the page
- * it was opened for, and a page elsewhere opens the web app. Answers what
- * it did, such as `signed in as developer@example.test`.
+ * Signs the browser in with the development account when the backend does not know
+ * its session, as the sign-in form does, and keeps the page it shows:
+ *
+ * - A page of the web app stays.
+ * - The sign-in page goes on to the page it was opened for.
+ * - A page elsewhere opens the web app.
+ *
+ * Answers what it did, such as `signed in as developer@example.test`.
  */
 async function signIn(tool: Tool, account: { email: string, password: string | null }): Promise<string> {
   await tool.network()

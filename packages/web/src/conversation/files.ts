@@ -72,11 +72,15 @@ export function conversationHostSource(
 }
 
 /**
- * A conversation's files (`packages/web-ui/src/files/file-cache.ts`): the Host's tree and contents
- * while its device and directory are known, the working tree's changes, and a request's changes
- * from the transcripts the page holds. What it reads it keeps with the Host's other files, each
- * entry subscribed on the conversation's file watch while it is kept, and a change of one on screen
- * reads it again (`packages/web-ui/src/files/file-cache.ts`).
+ * A conversation's files (`packages/web-ui/src/files/file-cache.ts`):
+ *
+ * - The Host's tree and contents while its device and directory are known.
+ * - The working tree's changes.
+ * - A request's changes, from the transcripts the page holds.
+ *
+ * What it reads it keeps with the Host's other files, each entry subscribed on
+ * the conversation's file watch while it is kept, and a change of one on screen
+ * reads it again.
  */
 export function conversationFiles(conversationId: string): ConversationFileService {
   const known = services.get(conversationId)

@@ -9,12 +9,17 @@ import { dialogTitle, keyAnswer } from './dialogs'
 import { t } from '../locales/text'
 
 /**
- * A dialog the watched page opened. It shows over the picture without blocking the page: the agent
- * may answer it first, and then it goes away on its own. As in a browser, it
- * is titled with the page's host, takes the keyboard, a prompt in its
- * field, and answers Enter with its default button, OK or Leave, and Escape
- * with Cancel. The product's buttons take no focus of their own, so the
- * dialog holds it for them.
+ * A dialog the watched page opened. It shows over the picture without blocking
+ * the page: the agent may answer it first, and then it goes away on its own.
+ *
+ * As in a browser, the dialog:
+ *
+ * - is titled with the page's host;
+ * - takes the keyboard, a prompt in its field;
+ * - answers Enter with its default button, OK or Leave, and Escape with Cancel.
+ *
+ * The product's buttons take no focus of their own, so the dialog holds it for
+ * them.
  */
 const props = defineProps<{
   dialog: LiveDialog

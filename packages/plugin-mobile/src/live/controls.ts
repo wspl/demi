@@ -1,10 +1,10 @@
 /**
- * The device toolbar's controls (`packages/plugin-mobile/src/index.ts`), in their
- * order: each the page method it calls and that method's parameters, which
- * run the operation of the `demi mobile` command that does the same, so
- * Rotate Left is `demi mobile rotate <m> left` and Lock is
- * `demi mobile key <m> lock`. The toolbar is drawn from this table and the
- * controller runs its calls.
+ * The device toolbar's controls (`packages/plugin-mobile/src/index.ts`), in
+ * their order: each the page method it calls and that method's parameters.
+ * They run the operation of the `demi mobile` command that does the same, so
+ * Rotate Left is `demi mobile rotate <m> left` and Lock is `demi mobile key
+ * <m> lock`. The toolbar is drawn from this table and the controller runs its
+ * calls.
  */
 import type { Component } from 'vue'
 import { ArrowLeft, Camera, Circle, House, Lock, RotateCcw, RotateCw, Square, SunMoon, Volume1, Volume2 } from '@lucide/vue'

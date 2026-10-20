@@ -7,13 +7,16 @@ export interface TextArrival {
 }
 
 /**
- * A block as the page holds it: whole, as the stream and a whole read send
- * it, or `light`, as a page of the transcript sends it, without what only
- * its open row shows. A text or thinking block the stream brings keeps when each piece
- * of its text arrived, `arrivals`, so a row that shows it fades each piece from then,
- * even a row that mounts later; a block read whole has none, and a replaced block loses
- * them. A block whose place on the path holds other versions keeps where it stands among
- * them, `versions`.
+ * A block as the page holds it: whole, as the stream and a whole read send it,
+ * or `light`, as a page of the transcript sends it, without what only its open
+ * row shows.
+ *
+ * - A text or thinking block the stream brings keeps when each piece of its text
+ *   arrived, `arrivals`, so a row that shows it fades each piece from then, even
+ *   a row that mounts later. A block read whole has none, and a replaced block
+ *   loses them.
+ * - A block whose place on the path holds other versions keeps where it stands
+ *   among them, `versions`.
  */
 export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[]; versions?: Versions }
 
@@ -61,10 +64,11 @@ export interface HeldTranscript<B extends Held = HeldBlock> {
 /**
  * A transcript as the page holds it, frozen: it is replaced at each change,
  * never changed in place, so whoever holds it follows the one reference.
- * A frozen object is also one a reactive store keeps as it is rather than
- * behind a proxy (Vue makes no proxy of an object that cannot be extended),
- * so reading a long transcript at each streamed piece costs plain reads, not
- * a tracked read of every field.
+ *
+ * A frozen object is also one a reactive store keeps as it is rather than behind
+ * a proxy (Vue makes no proxy of an object that cannot be extended). Reading a
+ * long transcript at each streamed piece then costs plain reads, not a tracked
+ * read of every field.
  */
 export function heldTranscript<B extends Held>(length: number, windows: readonly TranscriptWindow<B>[]): HeldTranscript<B> {
   return Object.freeze({ length, windows })
@@ -111,11 +115,14 @@ export function heldEdge(held: HeldTranscript): { from: number; edge: string } |
 
 /**
  * `windows` with `incoming` among them, joined with each window it meets.
- * Where the two hold the same index, `prefer` says whose block stays: the
- * held one when a page arrives, since the stream's is newer; the incoming
- * one for a reset, which is the stream's. An empty incoming window joins
- * only for the stream, whose end the page holds even when nothing is there
- * yet.
+ *
+ * Where the two hold the same index, `prefer` says whose block stays:
+ *
+ * - The held one when a page arrives, since the stream's is newer.
+ * - The incoming one for a reset, which is the stream's.
+ *
+ * An empty incoming window joins only for the stream, whose end the page holds
+ * even when nothing is there yet.
  */
 function joined<B extends Held>(
   windows: readonly TranscriptWindow<B>[],
@@ -227,13 +234,16 @@ function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], leng
 }
 
 /**
- * The one transcript patch applier (`crates/xtask/src/contracts/mod.rs`):
- * `held` with `patches` applied in order. A patch changes the blocks the
- * page holds; one at a block it does not hold changes nothing it shows,
- * and an `add` or a `truncate` moves the indices after it either way. A
- * block a patch touches is replaced, never changed in place, so snapshots
- * can share blocks. Text an `add` or an `append_text` brings is marked as
- * arrived at `receivedAt`.
+ * The one transcript patch applier (`crates/xtask/src/contracts/mod.rs`): `held`
+ * with `patches` applied in order.
+ *
+ * - A patch changes the blocks the page holds. One at a block it does not hold
+ *   changes nothing it shows, and an `add` or a `truncate` moves the indices
+ *   after it either way.
+ * - A block a patch touches is replaced, never changed in place, so snapshots
+ *   can share blocks.
+ * - Text an `add` or an `append_text` brings is marked as arrived at
+ *   `receivedAt`.
  */
 export function applyTranscriptPatches(
   held: HeldTranscript,

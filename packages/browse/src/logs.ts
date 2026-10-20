@@ -1,11 +1,13 @@
-// What the page logged, requested, and sent or received on its sockets
-// since the tool attached to the browser (browse.md § What `demi` adds), kept
-// in the server so that `demi.log` finds what happened before anyone asked. A page that
-// reaches a runner over a direct channel (`crates/runner-direct/src/lib.rs`) runs its file
-// operations and its file watch on data channels, which no network event
-// shows: a script in the page tells the console about them, and they are
-// kept with the requests and the sockets. A server
-// that ends for changed code leaves them in the slot's folder for the next
+// What the page logged, requested, and sent or received on its sockets since the tool
+// attached to the browser (browse.md § What `demi` adds), kept in the server so that
+// `demi.log` finds what happened before anyone asked.
+//
+// A page that reaches a runner over a direct channel (`crates/runner-direct/src/lib.rs`)
+// runs its file operations and its file watch on data channels, which no network event
+// shows. A script in the page tells the console about them, and they are kept with the
+// requests and the sockets.
+//
+// A server that ends for changed code leaves the logs in the slot's folder for the next
 // one, which attaches to the same browser and goes on from them.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { BrowserContext, Page, Request, WebSocket } from 'playwright'
@@ -39,10 +41,13 @@ const DIRECT_MARK = '[browse direct]'
 
 /**
  * A network entry of a request that failed or was answered with an error:
- * `GET 404 …` or `GET FAILED …` over HTTP, and on a direct channel any
- * answer but `ok` or `answered`, such as `direct list forbidden …`. A
- * request the page itself abandoned (`net::ERR_ABORTED`), as a navigation or
- * a cancelled fetch does, did not go wrong.
+ *
+ * - `GET 404 …` or `GET FAILED …` over HTTP.
+ * - On a direct channel, any answer but `ok` or `answered`, such as `direct list
+ *   forbidden …`.
+ *
+ * A request the page itself abandoned (`net::ERR_ABORTED`), as a navigation or a
+ * cancelled fetch does, did not go wrong.
  */
 const FAILED_REQUEST = /^(?:\S+ FAILED \S+ (?!net::ERR_ABORTED$)|\S+ [45]\d\d |direct \S+ (?!ok |answered )\S+)/
 
@@ -198,13 +203,15 @@ export class Logs {
 }
 
 /**
- * Runs in the page, so it uses nothing outside itself: tells the console,
- * after `mark`, about each data channel the page opens to a runner
- * (`crates/runner-protocol/src/direct.rs`). The runner's answer
- * goes with the requests, as `direct <op> <ok or error code> <path> <ms>
- * ms`; a watch's messages after its header and answer, such as `paths` and
- * `changed`, go with the sockets, as the relay's watch socket's do. A file's
- * text or bytes are not logged. Installed once per page.
+ * Runs in the page, so it uses nothing outside itself: tells the console, after `mark`,
+ * about each data channel the page opens to a runner
+ * (`crates/runner-protocol/src/direct.rs`). Installed once per page.
+ *
+ * - The runner's answer goes with the requests, as `direct <op> <ok or error code> <path>
+ *   <ms> ms`.
+ * - A watch's messages after its header and answer, such as `paths` and `changed`, go
+ *   with the sockets, as the relay's watch socket's do.
+ * - A file's text or bytes are not logged.
  */
 export function recordDirectChannels(mark: string): void {
   const prototype = globalThis.RTCPeerConnection?.prototype

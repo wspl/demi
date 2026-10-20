@@ -1,6 +1,6 @@
-// The `changes` plugin's page (`packages/plugin-sdk/src/index.ts`): the pinned `change` kind,
-// the Change view, which opens the `edit` intent of the file pills and the
-// `commit` intent of commit links.
+// The `changes` plugin's page (`packages/plugin-sdk/src/index.ts`): the pinned
+// `change` kind and the Change view. The view opens the `edit` intent of the
+// file pills and the `commit` intent of commit links.
 import { defineComponent, h } from 'vue'
 import { FileDiff } from '@lucide/vue'
 import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'

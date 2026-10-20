@@ -10,12 +10,17 @@ const BrowserTabMark = defineComponent({
 })
 
 /**
- * A tab is named by its page's title: as the browser reports it, so a tab
- * opened in the background takes its title as soon as its page has one, as
- * in any browser; else as the address bar last showed it, which the tab
- * keeps, so the strip names it while nothing reports it; until it has one,
- * by its address. A tab its user sent elsewhere is named after where it
- * goes at once, never after the page it leaves.
+ * A tab is named by its page's title, in this order:
+ *
+ * 1. The title as the browser reports it, so a tab opened in the
+ *    background takes its title as soon as its page has one, as in any
+ *    browser.
+ * 2. Else the title as the address bar last showed it, which the tab
+ *    keeps, so the strip names it while nothing reports it.
+ * 3. Until it has one, its address.
+ *
+ * A tab its user sent elsewhere is named after where it goes at once,
+ * never after the page it leaves.
  */
 function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): string {
   const title = session.title(data) ?? data.title
@@ -27,9 +32,8 @@ function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): 
 }
 
 /**
- * The `browser` tab kind. Its
- * content reaches the conversation's browser through the page's panel
- * session; the panel sees only this declaration.
+ * The `browser` tab kind. Its content reaches the conversation's browser
+ * through the page's panel session; the panel sees only this declaration.
  */
 export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = {
   kind: 'browser',

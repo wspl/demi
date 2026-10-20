@@ -9,12 +9,15 @@ import { demoModel, shellView, withEnd } from '../fixtures/blocks'
 
 /**
  * A command that outlives its call, from start to the answer its end wakes
- * (`crates/agent-session/src/reports.rs`): the call returns while the suite runs
- * and the turn ends; a report of progress wakes the model without a row of
- * its own; the end shows as a notice where it arrived, which starts the
- * next turn, Requesting under it until the answer comes. The notice's title
- * brings the call that started the command into view. Each pause of the
- * real run, 30 seconds between reports, is a moment here.
+ * (`crates/agent-session/src/reports.rs`):
+ *
+ * 1. The call returns while the suite runs, and the turn ends.
+ * 2. A report of progress wakes the model without a row of its own.
+ * 3. The end shows as a notice where it arrived, which starts the next turn,
+ *    Requesting under it until the answer comes.
+ *
+ * The notice's title brings the call that started the command into view. Each pause
+ * of the real run, 30 seconds between reports, is a moment here.
  */
 const STEP_MS = 1_600
 const blocks = ref<Block[]>([])

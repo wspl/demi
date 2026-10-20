@@ -1,12 +1,17 @@
-// The slot's tool server (browse.md § One browser per slot): it attaches
-// to the slot's browser, holds the slot's network and `keep` between calls,
-// and runs each call it receives on its socket in `.cache/browse/`. When the
-// tool's code changes it ends and leaves the browser, the network's
-// conditions, the page's logs and `keep` for the next server, with the new
-// code, to go on from; it does the same when a script runs into its time
-// limit, since only the end of the process stops a script. It ends with the
-// browser on `demi.stop()` or `demi.down()`, or after 30 minutes without a
-// call; the next call starts it again, and so one that crashed.
+// The slot's tool server (browse.md § One browser per slot): it attaches to
+// the slot's browser, holds the slot's network and `keep` between calls, and
+// runs each call it receives on its socket in `.cache/browse/`.
+//
+// The server ends in one of two ways:
+//
+// - It leaves the browser, the network's conditions, the page's logs and
+//   `keep` for the next server, which goes on from them with the new code.
+//   It does this when the tool's code changes, and when a script runs into
+//   its time limit, since only the end of the process stops a script.
+// - It ends with the browser on `demi.stop()` or `demi.down()`, or after 30
+//   minutes without a call.
+//
+// The next call starts the server again, also after a crash.
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, unlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import net from 'node:net'
@@ -91,7 +96,6 @@ function newestCode(): number {
   return newest
 }
 
-/** Whether a server answers on `path`. */
 function answers(path: string): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = net.connect(path)

@@ -3,11 +3,13 @@ import type { SettingsSubagentProfile } from '@demicodes/web-ui/settings/types'
 import type { LimitValue } from '@demicodes/web-ui/ui/limit-field'
 
 /**
- * A user's profiles, one of each kind the section shows: on another
- * provider's model with instructions of its own and no spawning, inheriting the
- * parent, unavailable because its model no longer offers its effort, with
- * a Context of its own, and
- * disabled with its model gone as well.
+ * A user's profiles, one of each kind the section shows:
+ *
+ * - On another provider's model with instructions of its own and no spawning.
+ * - Inheriting the parent.
+ * - Unavailable because its model no longer offers its effort.
+ * - With a Context of its own.
+ * - Disabled with its model gone as well.
  */
 export function demoSubagentProfiles(): SettingsSubagentProfile[] {
   return [

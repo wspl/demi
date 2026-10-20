@@ -1,20 +1,21 @@
 /**
  * The page's peer of a direct channel (`crates/runner-direct/src/lib.rs`): an
- * `RTCPeerConnection` with the STUN servers the backend names,
- * whose offer goes at once; its candidates follow as the browser finds them,
- * the public one once a STUN server answers, and the runner's come the
- * other way. Each attempt records what it saw, for the device's page. Each
- * operation opens a data channel of its own, reliable and ordered but a live
- * view's `video`, which is unordered; its first message is the header, the
+ * `RTCPeerConnection` with the STUN servers the backend names, whose offer goes
+ * at once. Its candidates follow as the browser finds them, the public one once
+ * a STUN server answers, and the runner's come the other way. Each attempt
+ * records what it saw, for the device's page.
+ *
+ * Each operation opens a data channel of its own, reliable and ordered but a
+ * live view's `video`, which is unordered. Its first message is the header, the
  * runner's first the answer. The page waits up to 10 seconds for the
  * connection, as the runner does for its end.
  *
  * A data channel has no traffic of its own when nothing happens, so each
- * long-lived operation keeps the heartbeat it has on the relay (the live
- * view's module, the file watch), which the page treats as it treats the
- * relay's sockets. WebRTC's own consent checks end a peer whose other end is
- * gone within about 30 seconds; the page sets the choice to `relay` as soon
- * as the connection state is `failed` or `closed`.
+ * long-lived operation keeps the heartbeat it has on the relay (the live view's
+ * module, the file watch), which the page treats as it treats the relay's
+ * sockets. WebRTC's own consent checks end a peer whose other end is gone
+ * within about 30 seconds; the page sets the choice to `relay` as soon as the
+ * connection state is `failed` or `closed`.
  */
 import { z } from 'zod'
 import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_PROBE_LABEL, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'

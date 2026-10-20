@@ -17,13 +17,19 @@ function isFile(root: MemoryDirectory, path: string): boolean {
 
 /**
  * Where a gallery transcript's messages find the files they name, as a
- * conversation's do: images at the workspace's paths load from `source`,
- * attachments from the gallery's blobs, and a file a click opens goes to
- * `open`, and a commit a link names to `openCommit`. The Host's answer about a reply's inline code paths is the
- * gallery's: the files of its demo workspace, answered at once. A file link's Show in Files goes to
- * `showInFiles`, which outside a panel says what the product would do, and a commit link's Copy Commit
- * Hash reads the gallery's one repository. An attachment block's card opens its file through
- * `openAttachment`, which outside a panel says what the product would do.
+ * conversation's do:
+ *
+ * - Images at the workspace's paths load from `source`.
+ * - Attachments load from the gallery's blobs.
+ * - A file a click opens goes to `open`, and a commit a link names to
+ *   `openCommit`.
+ * - The Host's answer about a reply's inline code paths is the gallery's: the
+ *   files of its demo workspace, answered at once.
+ * - A file link's Show in Files goes to `showInFiles`, which outside a panel
+ *   says what the product would do.
+ * - A commit link's Copy Commit Hash reads the gallery's one repository.
+ * - An attachment block's card opens its file through `openAttachment`, which
+ *   outside a panel says what the product would do.
  */
 export function galleryConversationFiles(
   source: MemoryFileSource,

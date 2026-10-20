@@ -1,10 +1,11 @@
 // How a call reports the error its script stopped at (browse.md § A call,
 // Failures): the script's line and its text, then what went wrong, trimmed
-// to what the agent needs to fix the script. Playwright's own message says
-// what it looked for and found: its strict mode lists every element a
-// locator matched, and its call log names what covers an element an action
-// waited for; the call log's retries and scrolling are left out. The tool's
-// own stack frames are never shown.
+// to what the agent needs to fix the script.
+//
+// Playwright's own message says what it looked for and found: its strict
+// mode lists every element a locator matched, and its call log names what
+// covers an element an action waited for. The call log's retries and
+// scrolling are left out. The tool's own stack frames are never shown.
 import { stripVTControlCharacters } from 'node:util'
 import { buildMessageOf } from './script'
 import { Failure } from './tool'

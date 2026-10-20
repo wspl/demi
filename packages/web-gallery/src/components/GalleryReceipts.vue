@@ -15,12 +15,14 @@ const agentContext = useAgentContext()
 
 /**
  * Receipt specimens over the gallery's children, as a session holds them:
- * a click on an agent's name opens the Agents window over them on that
- * agent's tab, a finished one as Completed picks it, at the block the
- * receipt came from, as the product's session does; the main agent's name
- * says what the product would show in the main transcript. A message's
- * link to an agent opens the window on its tab, and leaves it as it is when
- * it shows that tab, as the product's session does.
+ *
+ * - A click on an agent's name opens the Agents window over them on that
+ *   agent's tab, a finished one as Completed picks it, at the block the
+ *   receipt came from, as the product's session does.
+ * - The main agent's name says what the product would show in the main
+ *   transcript.
+ * - A message's link to an agent opens the window on its tab, and leaves it
+ *   as it is when it shows that tab, as the product's session does.
  */
 const props = defineProps<{ agents: readonly SubagentRecord[] }>()
 const emit = defineEmits<{

@@ -1,6 +1,7 @@
-// The `browser` plugin's page (`packages/plugin-sdk/src/index.ts`): its `browser` work panel kind
-// with the live view, its panel session, and the types of its state, parameters, results and
-// stream, generated from the plugin's manifest.
+// The `browser` plugin's page (`packages/plugin-sdk/src/index.ts`): its
+// `browser` work panel kind with the live view, its panel session, and the
+// types of its state, parameters, results and stream, generated from the
+// plugin's manifest.
 import { definePage } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
 import { browserTabKind } from './live/kind'

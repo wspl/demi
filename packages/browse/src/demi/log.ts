@@ -1,9 +1,10 @@
 // `demi.log.console()`, `.network()` and `.sockets()` (browse.md § What
-// `demi` adds): what the page logged, requested, or sent and received on its
-// sockets and direct channels since the last `demi.log.mark(name)`, or since
-// the tool attached to the browser with `{ all: true }`, one line each.
-// `network` leaves out the dev server's modules, styles and fonts unless
-// `{ modules: true }`.
+// `demi` adds): answer what the page logged, requested, or sent and received
+// on its sockets and direct channels, one line each.
+//
+// The log runs from the last `demi.log.mark(name)`, or from the tool's
+// attachment to the browser with `{ all: true }`. `network` leaves out the
+// dev server's modules, styles and fonts unless `{ modules: true }`.
 import type { LogKind } from '../logs'
 import { Failure, type Tool } from '../tool'
 

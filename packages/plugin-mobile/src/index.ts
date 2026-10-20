@@ -1,10 +1,10 @@
-// The `mobile` plugin's page (`packages/plugin-sdk/src/index.ts`): its `mobile` work panel kind,
-// a device's live view, its panel
-// session, and the types of its state, parameters, results and stream,
-// generated from the plugin's manifest.
+// The `mobile` plugin's page (`packages/plugin-sdk/src/index.ts`): its `mobile`
+// work panel kind (a device's live view), its panel session, and the types of
+// its state, parameters, results and stream, generated from the plugin's
+// manifest.
 //
-// The view is the browser's live view with a different source: its pictures
-// and its control are shared (`crates/live-view`, `@demicodes/plugin-sdk`), and
+// The view is the browser's live view with a different source. Its pictures and
+// its control are shared (`crates/live-view`, `@demicodes/plugin-sdk`), and
 // only what a source alone has stays here, the simulator's frame and buttons.
 // The toolbar's controls each run the operation of the command that does the
 // same and wait for nothing, the picture being the answer.

@@ -80,11 +80,15 @@ function fixed<T>(read: () => { value: T | undefined; answer: KeptAnswer }): Sho
 }
 
 /**
- * The gallery workspace's repository: `main`, checked out, with 64 commits,
- * so the list loads a second page as it scrolls; `feat/cart`, three commits
- * on top of main's tenth; `docs/guide`, older; and a commit no branch holds,
- * as a rebase leaves one. `commit` adds a commit to the branch checked out,
- * as one made in a terminal would, and the list follows.
+ * The gallery workspace's repository holds:
+ *
+ * - `main`, checked out, with 64 commits, so the list loads a second page as it scrolls.
+ * - `feat/cart`, three commits on top of main's tenth.
+ * - `docs/guide`, older.
+ * - A commit no branch holds, as a rebase leaves one.
+ *
+ * `commit` adds a commit to the branch checked out, as one made in a terminal would, and
+ * the list follows.
  */
 export function galleryHistory() {
   const now = Date.now()

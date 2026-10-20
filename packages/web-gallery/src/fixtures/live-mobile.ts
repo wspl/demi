@@ -1,11 +1,15 @@
 /**
  * The conversation's simulators without a Host
- * (`packages/plugin-mobile/src/index.ts`): the gallery's plugin, which gives
- * each device the agent opens its
- * `mobile` tab and closes a device whose tab is closed, as the backend's
- * does, and a live view that draws a device's screen in the frame the view draws,
- * encodes it as the helper would and speaks the `mobile` protocol, so the
- * panel's tabs, controls, touches and the agent's activity show here.
+ * (`packages/plugin-mobile/src/index.ts`).
+ *
+ * It has two parts:
+ *
+ * - The gallery's plugin, which gives each device the agent opens its `mobile`
+ *   tab and closes a device whose tab is closed, as the backend's does.
+ * - A live view that draws a device's screen in the frame the view draws,
+ *   encodes it as the helper would and speaks the `mobile` protocol.
+ *
+ * The panel's tabs, controls, touches and the agent's activity show here.
  */
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveActivity, type ViewerInput } from '@demicodes/protocol'
 import {

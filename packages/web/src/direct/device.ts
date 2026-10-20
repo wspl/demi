@@ -1,16 +1,25 @@
 /**
- * The page's choice of path to one paired device (`packages/web/src/direct/index.ts`): `direct` while its peer is connected and the
- * device's route takes it, under Automatic only while the direct path is
- * not the slower one, `relay` otherwise. Every operation starts on the relay at once and chooses as it
- * starts; nothing waits for the direct channel. While the choice is `relay`
- * the page tries again: at once for each reason it is given (the browser's
- * local network permission changed, the page came back online, the
- * device's runner or the signaling socket connected again), and otherwise
- * after 1, 2 and 5 minutes and then every 10. One attempt runs at a time.
- * A browser that blocks local network access gets no attempt until the
- * permission changes, and a device whose route is Relay Only gets none, and
- * loses its peer, until the route allows one again. Each attempt leaves what
- * it saw for the device's page.
+ * The page's choice of path to one paired device
+ * (`packages/web/src/direct/index.ts`):
+ *
+ * - `direct` while its peer is connected and the device's route takes it, under
+ *   Automatic only while the direct path is not the slower one.
+ * - `relay` otherwise.
+ *
+ * Every operation starts on the relay at once and chooses as it starts; nothing
+ * waits for the direct channel.
+ *
+ * While the choice is `relay` the page tries again:
+ *
+ * - At once for each reason it is given: the browser's local network permission
+ *   changed, the page came back online, the device's runner or the signaling
+ *   socket connected again.
+ * - Otherwise after 1, 2 and 5 minutes and then every 10.
+ *
+ * One attempt runs at a time. A browser that blocks local network access gets
+ * no attempt until the permission changes. A device whose route is Relay Only
+ * gets none, and loses its peer, until the route allows one again. Each attempt
+ * leaves what it saw for the device's page.
  */
 import type { DeviceRoute, DirectAttempt } from '@demicodes/web-ui/devices/direct'
 import { AttemptFailed, type DirectPeer } from './peer'

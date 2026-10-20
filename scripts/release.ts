@@ -1,49 +1,68 @@
 /**
  * Publishes every public workspace package whose version is not yet on the
- * registry. Replaces `changeset publish`, which shells out to `npm publish`
- * and ships `workspace:^` literals verbatim (npm does not understand the
- * workspace protocol — the 0.3.0 release shipped broken tarballs this way).
+ * registry.
  *
- * Pipeline per package: strip development export conditions and put the
- * root LICENSE beside the manifest → `bun pm pack` (rewrites workspace
- * ranges from the lockfile) → validate the packed manifest →
- * `bun publish <tarball>`. The root LICENSE is the one copy of the Apache
- * License in the repository; a package carries it only in its tarball. The
- * web app keeps a LICENSE of its own that names the Demi License, and
- * copying never replaces one a package holds.
+ * It replaces `changeset publish`, which shells out to `npm publish` and ships
+ * `workspace:^` literals verbatim. npm does not understand the workspace
+ * protocol; the 0.3.0 release shipped broken tarballs this way.
+ *
+ * Usage: `bun run release [--dry-run]`. Auth: a registry token from $NPM_TOKEN
+ * (Bun auto-loads .env) or an already configured .npmrc.
+ *
+ * Pipeline per package:
+ *
+ * 1. Strip development export conditions and put the root LICENSE beside the
+ *    manifest.
+ * 2. `bun pm pack`, which rewrites workspace ranges from the lockfile.
+ * 3. Validate the packed manifest.
+ * 4. `bun publish <tarball>`.
+ *
+ * The root LICENSE is the one copy of the Apache License in the repository; a
+ * package carries it only in its tarball. The web app keeps a LICENSE of its
+ * own that names the Demi License, and copying never replaces one a package
+ * holds.
  *
  * Three failure modes are guarded against:
- *  - workspace protocol leaking into the tarball (the npm-publish bug);
- *  - bun rewriting against a stale lockfile (bun resolves workspace versions
- *    from bun.lock, and `bun install` does not refresh it after a version-only
- *    bump — so the lockfile is regenerated up front, and the validator then
- *    asserts every internal dep matches the live workspace version);
- *  - exports pointing at files the tarball does not ship (the 0.3.1 bug:
- *    `development` conditions referenced ./src in dist-only packages, which
- *    dev-mode bundlers like Vite resolve by default — the condition is
- *    stripped at pack time and every packed export target is verified to
- *    exist in the tarball).
  *
- * Auth: a registry token from $NPM_TOKEN (Bun auto-loads .env) or an already
- * configured .npmrc. Usage: bun run release [--dry-run]
+ * - Workspace protocol leaking into the tarball (the npm-publish bug).
+ * - bun rewriting against a stale lockfile. bun resolves workspace versions
+ *   from bun.lock, and `bun install` does not refresh it after a version-only
+ *   bump. So the lockfile is regenerated up front, and the validator then
+ *   asserts every internal dep matches the live workspace version.
+ * - Exports pointing at files the tarball does not ship (the 0.3.1 bug).
+ *   `development` conditions referenced ./src in dist-only packages, which
+ *   dev-mode bundlers like Vite resolve by default. The condition is stripped
+ *   at pack time, and every packed export target is verified to exist in the
+ *   tarball.
  *
- * Versions. The TypeScript packages share one version: .changeset/config.json
- * puts the three published packages (`@demicodes/protocol`,
+ * Versions:
+ *
+ * The TypeScript packages share one version. .changeset/config.json puts the
+ * three published packages (`@demicodes/protocol`,
  * `@demicodes/conversation-client`, `@demicodes/utils`) and the private
  * `@demicodes/web`, `@demicodes/web-gallery` and `@demicodes/web-ui` in one
- * fixed group, so any release-worthy change bumps the group together and a
+ * fixed group. Any release-worthy change bumps the group together, so a
  * consumer who installs the same version of each gets packages released
- * together. Every changeset declares the semantic impact of its change;
+ * together. Every changeset declares the semantic impact of its change.
  * Changesets selects the highest bump for the group and applies it to every
  * package, so manifests, changelogs, tarballs and Git tags show one group
- * version. `@demicodes/protocol` has no hand-written source: a change to a Rust
- * contract type the generator emits changes it, so that change's changeset names
- * it. This command publishes each public package whose shared version is absent
- * from the registry: it refreshes the lockfile, generates the contract
- * TypeScript from the Rust crates, builds the packages, validates the packed
- * dependency ranges and export targets, publishes the tarballs, and creates one
- * package tag per artifact. A package's tag names the package, so it never
- * collides with the `v<workspace version>` tag the release workflow creates.
+ * version. `@demicodes/protocol` has no hand-written source: a change to a
+ * Rust contract type the generator emits changes it, so that change's
+ * changeset names it.
+ *
+ * This command publishes each public package whose shared version is absent
+ * from the registry. It:
+ *
+ * 1. Refreshes the lockfile.
+ * 2. Generates the contract TypeScript from the Rust crates.
+ * 3. Builds the packages.
+ * 4. Validates the packed dependency ranges and export targets.
+ * 5. Publishes the tarballs.
+ * 6. Creates one package tag per artifact.
+ *
+ * A package's tag names the package, so it never collides with the
+ * `v<workspace version>` tag the release workflow creates.
+ *
  * The Rust workspace version (`[workspace.package]` in Cargo.toml, which every
  * crate inherits) and this group's version change independently: a release of
  * one does not bump the other.
@@ -100,7 +119,7 @@ async function publishedVersions(name: string): Promise<Set<string>> {
  * Recursively drops the `development` condition from an exports map. The
  * condition points at TypeScript source for in-repo workspace resolution
  * (tests run with `--conditions development`), but most tarballs ship dist
- * only — leaving it in sends dev-mode bundlers (Vite enables the development
+ * only. Leaving it in sends dev-mode bundlers (Vite enables the development
  * condition by default) to files that do not exist in the published package.
  */
 function stripDevelopmentConditions(node: unknown): unknown {

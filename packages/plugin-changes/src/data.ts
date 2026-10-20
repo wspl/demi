@@ -10,11 +10,17 @@ import {
 } from '@demicodes/plugin-sdk'
 
 /**
- * What the Change view shows (`crates/agent-store/src/changes.rs`, `packages/web-ui/src/files/history.ts`): its mode; in Commits, the item selected, the
- * repository's uncommitted changes or one of its commits, and the file of
- * it shown; the request, file and edit it holds in Conversation; and what
- * Back and Forward return to. A request is named, never copied: the view
- * reads it from the transcript as it is now.
+ * What the Change view shows (`crates/agent-store/src/changes.rs`,
+ * `packages/web-ui/src/files/history.ts`):
+ *
+ * - Its mode.
+ * - In Commits, the item selected (the repository's uncommitted changes or one
+ *   of its commits) and the file of it shown.
+ * - In Conversation, the request, file and edit it holds.
+ * - What Back and Forward return to.
+ *
+ * A request is named, never copied: the view reads it from the transcript as it
+ * is now.
  */
 const changeStepSchema = z.object({
   mode: z.enum(['commits', 'conversation']),
@@ -49,10 +55,13 @@ export function firstChangeData(): ChangeData {
 }
 
 /**
- * The file the view shows. Conversation paths come from the request's
- * selection; in Commits, a commit's from the file held, its first while it
- * holds none, which the view picks; and the uncommitted changes', while it
- * holds none or one no longer listed, the first listed file.
+ * The file the view shows:
+ *
+ * - Conversation paths come from the request's selection.
+ * - In Commits, a commit's file is the file held, or its first while it holds
+ *   none, which the view picks.
+ * - The uncommitted changes' file is the file held, or the first listed file
+ *   while it holds none or one no longer listed.
  */
 export function changePath(data: ChangeStep, mode: ChangeMode = data.mode, files?: readonly ChangeFile[]): string | null {
   if (mode === 'conversation') {

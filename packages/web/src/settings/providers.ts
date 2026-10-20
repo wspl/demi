@@ -746,15 +746,18 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * The sign-in the dialog shows (`crates/backend-providers/src/vault/logins.rs`):
-   * one this page started, whose `id` is null until the start answers, the
-   * one a busy start named, or a running one the vault announced, as after
-   * a reload. The vault announces each change of it on the channel, which
-   * the dialog follows; `failure` is why this page could not start or
-   * answer it, `pasted` the code this page pasted last, `sending` until
-   * the sign-in answers the number it gave it, `seen` whether the channel
-   * has listed it, and `done` the account it added, as listed when the
-   * page learned it completed.
+   * The sign-in the dialog shows
+   * (`crates/backend-providers/src/vault/logins.rs`): one this page started,
+   * whose `id` is null until the start answers, the one a busy start named, or a
+   * running one the vault announced, as after a reload. The vault announces each
+   * change of it on the channel, which the dialog follows.
+   *
+   * - `failure` is why this page could not start or answer it.
+   * - `pasted` is the code this page pasted last.
+   * - `sending` stays until the sign-in answers the number it gave it.
+   * - `seen` is whether the channel has listed it.
+   * - `done` is the account it added, as listed when the page learned it
+   *   completed.
    */
   const opened = ref<{
     provider: ProductProvider

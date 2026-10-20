@@ -580,14 +580,16 @@ class GalleryBrowserView {
 }
 
 /**
- * The gallery's conversation browser, as the Host runs it:
- * its tabs and the operations the plugin runs on them, and the live view's
- * stream over the same tabs, without a Host. Operations take a moment, as a
- * Host does, and a page it loads takes a while longer, so the page's loading
- * shows. It starts with the agent's and the user's tab unless a specimen
- * supplies its own list, such as an empty one for a panel whose strip starts
- * empty. Without `capture`, the Host cannot capture its tabs, so a view shows no picture and
- * says why.
+ * The gallery's conversation browser, as the Host runs it: its tabs and the
+ * operations the plugin runs on them, and the live view's stream over the same
+ * tabs, without a Host.
+ *
+ * - Operations take a moment, as a Host does, and a page it loads takes a while
+ *   longer, so the page's loading shows.
+ * - It starts with the agent's and the user's tab unless a specimen supplies
+ *   its own list, such as an empty one for a panel whose strip starts empty.
+ * - Without `capture`, the Host cannot capture its tabs, so a view shows no
+ *   picture and says why.
  */
 export interface GalleryBrowser {
   /** The tab list, as the plugin's conversation state last brought it. */
@@ -630,12 +632,16 @@ export interface GalleryBrowser {
 }
 
 /**
- * The gallery's conversation browser. `held` keeps every opening in one
- * phase before the browser has its tab, for a specimen that shows it, until
- * `finish`: Connecting… while the page has read neither the plugin's tab
- * list nor a view's state, Starting Cloud… on a Cloud that starts, Starting
- * the browser… on a Host whose browser has no tabs yet, or Opening the
- * page….
+ * The gallery's conversation browser. `held` keeps every opening in one phase
+ * before the browser has its tab, for a specimen that shows it, until `finish`.
+ *
+ * The phase is one of:
+ *
+ * - Connecting… while the page has read neither the plugin's tab list nor a
+ *   view's state.
+ * - Starting Cloud… on a Cloud that starts.
+ * - Starting the browser… on a Host whose browser has no tabs yet.
+ * - Opening the page….
  */
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),

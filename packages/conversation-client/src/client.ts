@@ -30,8 +30,8 @@ export interface HeldEdge {
 }
 
 /**
- * A frame the backend or the session refused: the code the page words it
- * by and the values that text needs, with the refusal in English as the
+ * A frame the backend or the session refused. It carries the code the page words
+ * the refusal by, the values that text needs, the refusal in English as the
  * message, and the request ID of the socket that refused it, which a `rejected`
  * frame carries.
  */
@@ -103,10 +103,13 @@ const CONFIRMATION_MS = 30_000
 type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 
 /**
- * A wait for the action a frame starts. `sent` until the session takes the
- * action: a send is `queued` while it waits behind another action, and
- * `running` once its message is written; any other action is `running` once
- * the session leaves `idle` after it was sent.
+ * A wait for the action a frame starts. It is `sent` until the session takes the
+ * action. Then:
+ *
+ * - A send is `queued` while it waits behind another action, and `running` once
+ *   its message is written.
+ * - Any other action is `running` once the session leaves `idle` after it was
+ *   sent.
  */
 interface ActionWaiter {
   command: ActionCommand
@@ -137,14 +140,17 @@ type TranscriptState =
 type Decision<T> = { resolve: T } | { reject: Error } | undefined
 
 /**
- * The web app's client of the conversation socket's frame protocol. It
- * validates every frame it receives with the generated schemas and drops the
- * connection when one does not match, keeps the patch revisions, the phase,
- * the queue and the pending steers, and tells its listeners what the
- * transcript frames bring, which the page applies to the parts of the
- * transcript it holds with the one patch applier. Of the transcript it keeps
- * only which messages and steers it has seen written, which its waits settle
- * on.
+ * The web app's client of the conversation socket's frame protocol.
+ *
+ * It does four things:
+ *
+ * - Validates every frame it receives with the generated schemas, and drops the
+ *   connection when one does not match.
+ * - Keeps the patch revisions, the phase, the queue and the pending steers.
+ * - Tells its listeners what the transcript frames bring, which the page applies
+ *   to the parts of the transcript it holds with the one patch applier.
+ * - Keeps, of the transcript, only which messages and steers it has seen written,
+ *   which its waits settle on.
  */
 export class ConversationClient {
   private readonly transport: ConversationClientTransport
@@ -236,12 +242,17 @@ export class ConversationClient {
   }
 
   /**
-   * Sends the message saved for later `id` the way the composer chose, as the message
-   * `turnId`, the page's id for this send; resolves once the session holds it: in the
-   * transcript or the queue, or accepted as a steer, at once when it does already. A
-   * steer the session refuses rejects with `SteerRejectedError`, a message the list no
-   * longer holds, which no send took as `turnId`, with `SavedGoneError`, and any other
-   * refusal of the backend's with `RefusedError`; the wait has no deadline of its own.
+   * Sends the message saved for later `id` the way the composer chose, as the
+   * message `turnId`, the page's id for this send. Resolves once the session holds
+   * it: in the transcript or the queue, or accepted as a steer, at once when it
+   * does already. The wait has no deadline of its own.
+   *
+   * It rejects with:
+   *
+   * - `SteerRejectedError` for a steer the session refuses.
+   * - `SavedGoneError` for a message the list no longer holds, which no send took
+   *   as `turnId`.
+   * - `RefusedError` for any other refusal of the backend's.
    */
   sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<void> {
     if (this.writtenTurns.has(turnId) || this.queue.some((message) => message.id === turnId)) {
@@ -895,7 +906,6 @@ export class ConversationClient {
     this.sendFrame({ type: 'sync_transcript', ...held })
   }
 
-  /** Notes the messages and steers `blocks` write. */
   private noteWritten(blocks: readonly Block[]): void {
     for (const block of blocks) {
       if (block.type === 'user') {

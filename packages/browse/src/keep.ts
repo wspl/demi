@@ -1,10 +1,13 @@
-// `keep` (browse.md § A call): an object whose properties a script sets for
-// a later call. The server holds it between calls; when the tool's code
-// changes, or a call runs into its time limit, the server that ends leaves
-// it in the slot's folder for the next one, as the browser's pages stay. A
-// value goes as the structured clone algorithm copies it, so a Map or a Date
-// comes back as it was, and a function or a Playwright object, which only
-// the process that made it can use, does not.
+// `keep` (browse.md § A call): an object whose properties a script sets for a
+// later call.
+//
+// The server holds it between calls. When the tool's code changes, or a call runs
+// into its time limit, the server that ends leaves it in the slot's folder for the
+// next one, as the browser's pages stay.
+//
+// A value goes as the structured clone algorithm copies it, so a Map or a Date
+// comes back as it was. A function or a Playwright object does not, since only the
+// process that made it can use it.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { deserialize, serialize } from 'node:v8'
 import { z } from 'zod'
