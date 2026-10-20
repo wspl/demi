@@ -1,18 +1,24 @@
-//! What a job runs beside its shell work, which every part of the job shares: its
-//! background tasks, by the ids `$!` names them by, and the process groups each part
-//! started, which a signal to that part reaches.
+//! What a job runs beside its shell work, which every part of the job shares:
+//! its background tasks, by the ids `$!` names them by, and the process groups
+//! each part started, which a signal to that part reaches.
 //!
-//! A script that starts a dev server with `(cd app && bun run dev) &`, then `kill
-//! $server; wait $server`, must stop the subshell and everything it started, `bun`
-//! and the backend it runs included, and get `143`; in bash the same `kill` signals
-//! only the subshell's process and the dev server runs on, holding its port. A
-//! background task runs in the runner, so no operating-system process stands for it:
-//! `$!` names it with an id no process ID takes ([`FIRST_TASK`]), and `kill`, `wait`
-//! and `jobs -p` take it wherever bash takes a process ID. `kill` on a task's id
-//! stops its shell work at its next step and sends `SIGTERM` to every process group
-//! it started (`KILL` kills them and the rest of its work). `disown` and `nohup`
-//! keep a task in its job, since the runner leaves no process that no command stands
-//! for: a server meant to outlive a script runs as a command of its own.
+//! A script that starts a dev server with `(cd app && bun run dev) &`, then
+//! `kill $server; wait $server`, must stop the subshell and everything it
+//! started, `bun` and the backend it runs included, and get `143`. In bash the
+//! same `kill` signals only the subshell's process and the dev server runs on,
+//! holding its port.
+//!
+//! A background task runs in the runner, so no operating-system process stands
+//! for it:
+//!
+//! - `$!` names it with an id no process ID takes ([`FIRST_TASK`]), and `kill`,
+//!   `wait` and `jobs -p` take it wherever bash takes a process ID.
+//! - `kill` on a task's id stops its shell work at its next step and sends
+//!   `SIGTERM` to every process group it started (`KILL` kills them and the
+//!   rest of its work).
+//! - `disown` and `nohup` keep a task in its job, since the runner leaves no
+//!   process that no command stands for. A server meant to outlive a script
+//!   runs as a command of its own.
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
@@ -280,13 +286,16 @@ impl Work {
             .map(|&(_, status)| Process::Ended(status))
     }
 
-    /// Sends `signal` to `part` of the job as a `kill` sends it to a task
-    ///: `KILL` ends its shell
-    /// work and kills its processes; a signal that ends a process ends its
-    /// shell work at its next step and reaches every process group it
-    /// started, whose processes then end in their own time; any other only
-    /// reaches the groups. `leaders` sends it to each group's leader alone,
-    /// as `timeout --foreground` does.
+    /// Sends `signal` to `part` of the job as a `kill` sends it to a task:
+    ///
+    /// - `KILL` ends its shell work and kills its processes.
+    /// - A signal that ends a process ends its shell work at its next step and
+    ///   reaches every process group it started, whose processes then end in
+    ///   their own time.
+    /// - Any other signal only reaches the groups.
+    ///
+    /// `leaders` sends the signal to each group's leader alone, as `timeout
+    /// --foreground` does.
     #[cfg(unix)]
     pub(crate) fn signal(&self, part: &Arc<Stop>, signal: i32, leaders: bool) -> io::Result<()> {
         if signal == libc::SIGKILL && !leaders {
@@ -323,12 +332,15 @@ impl Work {
         failure.map_or(Ok(()), Err)
     }
 
-    /// The job's processes that a stop of job `job` signals one by one,
-    /// outside its process groups, which take its signals as groups
-    /// (`process::job_strays`): those that carry its id, those of `known`
-    /// that still run, and the descendants of those and of the groups'
-    /// members. It reads the process table, so it runs off the runtime's
-    /// threads.
+    /// The job's processes that a stop of job `job` signals one by one, outside
+    /// its process groups, which take its signals as groups
+    /// (`process::job_strays`):
+    ///
+    /// - those that carry its id;
+    /// - those of `known` that still run;
+    /// - the descendants of those and of the groups' members.
+    ///
+    /// It reads the process table, so it runs off the runtime's threads.
     #[cfg(unix)]
     pub(crate) fn strays(&self, job: &str, known: &[Stray]) -> Vec<Stray> {
         let grouped: std::collections::HashSet<i32> = self

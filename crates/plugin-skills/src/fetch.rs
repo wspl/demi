@@ -1,8 +1,11 @@
-//! A source's fetch: a shallow fetch of the repository's default branch
-//! into a temporary directory, which stops as soon as it has received 64
-//! MiB, and the skills of the commit it pins; and the check of the commit
-//! that branch points to now. Both block, so they run on the blocking
-//! pool.
+//! A source's fetch and the check of its commit.
+//!
+//! - The fetch is a shallow fetch of the repository's default branch into a
+//!   temporary directory. It stops as soon as it has received 64 MiB, and
+//!   returns the skills of the commit it pins.
+//! - The check finds the commit that branch points to now.
+//!
+//! Both block, so they run on the blocking pool.
 
 use std::collections::BTreeSet;
 use std::num::NonZeroU32;

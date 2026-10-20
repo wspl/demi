@@ -1,37 +1,44 @@
 //! Starting with the computer: the installation's registration with the service
-//! manager the system offers its user (a LaunchAgent, a systemd user unit, a
-//! scheduled task or the `Run` value on Windows, none needing administrator
-//! rights), which starts the runner at the user's login and again after a crash, so a
-//! paired device is back online by itself after a restart. The files the managers
-//! read are written directly and the managers are asked through their own commands,
-//! since none offers its user a library interface.
+//! manager the system offers its user.
 //!
-//! - Every runner of an installer's installation makes sure of the registration as
-//!   it starts, so a person who deleted it has it back at the next start. It runs
-//!   the installation's launcher, never a release's binary, so it outlives every
-//!   update.
-//! - Exit status decides a restart: a runner exits 0 when nothing would come of
+//! The managers are a LaunchAgent, a systemd user unit, a scheduled task or the
+//! `Run` value on Windows, none needing administrator rights. The manager
+//! starts the runner at the user's login and again after a crash, so a paired
+//! device is back online by itself after a restart.
+//!
+//! The files the managers read are written directly and the managers are asked
+//! through their own commands, since none offers its user a library interface.
+//!
+//! - Every runner of an installer's installation makes sure of the registration
+//!   as it starts, so a person who deleted it has it back at the next start. It
+//!   runs the installation's launcher, never a release's binary, so it outlives
+//!   every update.
+//! - Exit status decides a restart. A runner exits 0 when nothing would come of
 //!   starting it again (stopped, drained, removed, its device no longer paired,
-//!   another runner holding the lock, a state no start can change) and non-zero only
-//!   on a failure a new start may cure, so a revoked device or a second copy never
-//!   loops.
-//! - The manager's runner is the one that runs: a runner the manager did not start
-//!   hands over once its registration works (it releases the lock, asks the manager
-//!   to start the installation's runner, exits 0), so a runner is supervised from the
-//!   first minute after an install or an update. The manager names its own with
-//!   `DEMI_SUPERVISED`, so it never hands over.
-//! - Removal removes the registration last, so the manager never starts a runner
-//!   that is gone. Where none can be made (Linux without a systemd user manager, a
-//!   Windows that refuses both, lingering the system refuses), the runner goes on and
-//!   says so in its log and hello (`AutostartUnavailable`), so the user learns before
-//!   a restart that the device will not come back.
+//!   another runner holding the lock, a state no start can change), and
+//!   non-zero only on a failure a new start may cure. A revoked device or a
+//!   second copy therefore never loops.
+//! - The manager's runner is the one that runs. A runner the manager did not
+//!   start hands over once its registration works (it releases the lock, asks
+//!   the manager to start the installation's runner, exits 0), so a runner is
+//!   supervised from the first minute after an install or an update. The
+//!   manager names its own with `DEMI_SUPERVISED`, so it never hands over.
+//! - Removal removes the registration last, so the manager never starts a
+//!   runner that is gone.
+//! - Where no registration can be made (Linux without a systemd user manager, a
+//!   Windows that refuses both, lingering the system refuses), the runner goes
+//!   on and says so in its log and hello (`AutostartUnavailable`), so the user
+//!   learns before a restart that the device will not come back.
 //!
-//! On macOS a grant of the protected folders is remembered per designated
-//! requirement, so the release workflow signs the runner with Demi's own
-//! certificate, the same in every release (`sh.demi.runner`); an ad hoc signature
-//! names the build's hash, and the system would ask again after every update. The
-//! certificate is self-signed and not for Gatekeeper, which never checks a runner
-//! that curl downloaded.
+//! # Signing on macOS
+//!
+//! A grant of the protected folders is remembered per designated requirement,
+//! so the release workflow signs the runner with Demi's own certificate, the
+//! same in every release (`sh.demi.runner`). An ad hoc signature names the
+//! build's hash, and the system would ask again after every update.
+//!
+//! The certificate is self-signed and not for Gatekeeper, which never checks a
+//! runner that curl downloaded.
 
 use std::{
     io,
@@ -323,13 +330,16 @@ fn unit(launcher: &str, home: &str, directory: &str) -> String {
     )
 }
 
-/// The task: at the user's logon, with the user's limited rights, hidden;
-/// started again a minute after a failure, the shortest the Task Scheduler
-/// takes; a start while an instance runs waits for it to end, so the
-/// manager's runner a successor hands over to starts once the task's
-/// earlier instance, ending, let go; never stopped for its running time, a
-/// battery or idleness; at normal priority, where a task's default is below
-/// it.
+/// The Windows task:
+///
+/// - It starts at the user's logon, with the user's limited rights, hidden.
+/// - It starts again a minute after a failure, the shortest the Task Scheduler
+///   takes.
+/// - A start while an instance runs waits for it to end, so the manager's
+///   runner a successor hands over to starts once the task's earlier instance,
+///   ending, let go.
+/// - It is never stopped for its running time, a battery or idleness.
+/// - It runs at normal priority, where a task's default is below it.
 #[cfg(windows)]
 fn task(user: &str, description: &str, arguments: &str, home: &str) -> String {
     format!(

@@ -1,17 +1,29 @@
-//! The verified artifact cache: a `file` as one file per digest, published
-//! only once its size and SHA-256 match what the runner was given, and an
-//! `archive` (a zip or `.tar.zst`, told apart by its first bytes) unpacked
-//! into a directory per digest with a receipt; both reused unread from then
-//! on. Beside each entry a record names its line (the package and the name,
-//! the versions of one thing) and version, so the cache answers which
-//! artifacts of a line it has and removes a line's older ones once a newer
-//! one is installed, except those a running service holds: a Host keeps one
-//! Claude Code CLI, one Chrome and one executable of each package, however
-//! often each is updated, beside what still runs. An install reports how its
-//! download goes, at each tenth of the artifact's size and as it unpacks an
-//! archive, to whoever follows it. Concurrent installs of one digest in this
-//! process share one download, which lives while any of them waits for it;
-//! runners that share the cache publish one copy of each artifact.
+//! The verified artifact cache: an artifact is published into the cache only
+//! once its size and SHA-256 match what the runner was given, and is reused
+//! unread from then on.
+//!
+//! An entry is one of two kinds:
+//!
+//! - A `file`: one file per digest.
+//! - An `archive` (a zip or `.tar.zst`, told apart by its first bytes):
+//!   unpacked into a directory per digest, with a receipt.
+//!
+//! Beside each entry a record names its line and version. A line is the package
+//! and the name, the versions of one thing. The records let the cache answer
+//! which artifacts of a line it has, and remove a line's older ones once a
+//! newer one is installed, except those a running service holds. A Host
+//! therefore keeps one Claude Code CLI, one Chrome and one executable of each
+//! package, however often each is updated, beside what still runs.
+//!
+//! An install behaves as follows:
+//!
+//! - It reports how its download goes to whoever follows it, at each tenth of
+//!   the artifact's size and as it unpacks an archive.
+//! - Concurrent installs of one digest in this process share one download,
+//!   which lives while any of them waits for it.
+//! - Runners that share the cache publish one copy of each artifact.
+//!
+//! # Trust
 //!
 //! Every download checks the size and SHA-256 the runner was given over its
 //! authenticated connection, so no URL's scheme or host changes what runs, and
@@ -20,22 +32,32 @@
 //! Only publication writes the cache, so an entry is verified once, as it is
 //! published, and a later use does not read it again: hashing it per service
 //! start would read the whole executable. A damaged entry fails the install
-//! rather than being repaired. The image's copy lies outside the runner's
-//! private cache, so it is checked as a download is, once per runner process,
-//! and never relied on: a copy that does not match is logged and passed over,
-//! since the backend locates every artifact it grants, so a damaged image
-//! costs a download, not a command. The runner does not ask what kind of Host
-//! it runs on; a directory that does not exist (every paired device) is
-//! silently no copy.
+//! rather than being repaired.
 //!
-//! The cache is `artifacts/` in a paired device's installation state; a
-//! Cloud's is on its home image, which stops, wakes and resets keep, so a
-//! download made once stays until a newer one replaces it. Runners of one
-//! user may share a directory: publication under a digest, and of an archive
-//! under a lock beside it, lets two installs of one artifact each download it
-//! but publish one copy; each removes only what its own services do not hold,
-//! so runners of different releases that share a cache can remove each
-//! other's older versions, which they then download again.
+//! # The image's copy
+//!
+//! The image's copy lies outside the runner's private cache. It is checked as a
+//! download is, once per runner process, and never relied on:
+//!
+//! - A copy that does not match is logged and passed over. The backend locates
+//!   every artifact it grants, so a damaged image costs a download, not a
+//!   command.
+//! - The runner does not ask what kind of Host it runs on. A directory that
+//!   does not exist (every paired device) is silently no copy.
+//!
+//! # Location and sharing
+//!
+//! The cache is `artifacts/` in a paired device's installation state. A Cloud's
+//! is on its home image, which stops, wakes and resets keep, so a download made
+//! once stays until a newer one replaces it.
+//!
+//! Runners of one user may share a directory:
+//!
+//! - Publication under a digest, and of an archive under a lock beside it, lets
+//!   two installs of one artifact each download it but publish one copy.
+//! - Each install removes only what its own services do not hold. Runners of
+//!   different releases that share a cache can therefore remove each other's
+//!   older versions, which they then download again.
 
 use std::{
     collections::HashMap,
@@ -181,10 +203,11 @@ impl Reported {
     }
 }
 
-/// Locates a shared download's artifact by the resolver of the first
-/// caller still waiting: the one
-/// that started the download may have left by the time an expired URL or a
-/// retry asks again, and a caller that leaves while its resolver answers
+/// Locates a shared download's artifact by the resolver of the first caller
+/// still waiting.
+///
+/// The caller that started the download may have left by the time an expired
+/// URL or a retry asks again. A caller that leaves while its resolver answers
 /// hands the question to the next.
 struct Waiting(Arc<Mutex<Callers>>);
 
@@ -379,15 +402,17 @@ impl ArtifactCache {
         &self.holds
     }
 
-    /// The path of `wanted`'s file or of its archive's entry: the cached
-    /// one, else the image's copy that matches it, else one downloaded into
-    /// the cache. Once it is there, the cache records it in its line and
-    /// removes the line's other artifacts that no running service holds. A
-    /// cached entry whose metadata shows damage fails the install. A
-    /// download reports to `progress` at each tenth of the artifact's size,
-    /// and an archive once more as it is unpacked. Concurrent installs of
-    /// one digest share one download, located by the resolver of the
-    /// install that started it.
+    /// The path of `wanted`'s file or of its archive's entry: the cached one,
+    /// else the image's copy that matches it, else one downloaded into the
+    /// cache.
+    ///
+    /// - Once the artifact is there, the cache records it in its line and
+    ///   removes the line's other artifacts that no running service holds.
+    /// - A cached entry whose metadata shows damage fails the install.
+    /// - A download reports to `progress` at each tenth of the artifact's size,
+    ///   and an archive once more as it is unpacked.
+    /// - Concurrent installs of one digest share one download, located by the
+    ///   resolver of the install that started it.
     pub async fn install(
         self: &Arc<Self>,
         wanted: &Wanted<'_>,
@@ -553,16 +578,18 @@ impl ArtifactCache {
         .await
     }
 
-    /// Waits for the install of `sha256` in progress, or starts it with
-    /// `start` when none is: concurrent callers share one download per
-    /// digest. The install
-    /// lives while any caller waits for it: one caller's cancellation only
-    /// leaves it, and the last one's drops it, which cancels the token it
-    /// was started with and so removes what it staged. It locates the
-    /// artifact by the resolver of a caller still waiting. A caller that
-    /// joins reports where the install already is, then what it reports
-    /// later. The caller joins before its first await, so a caller polled
-    /// once shares the install.
+    /// Waits for the install of `sha256` in progress, or starts it with `start`
+    /// when none is, so concurrent callers share one download per digest.
+    ///
+    /// The install lives while any caller waits for it: one caller's
+    /// cancellation only leaves it, and the last one's drops it, which cancels
+    /// the token it was started with and so removes what it staged.
+    ///
+    /// - It locates the artifact by the resolver of a caller still waiting.
+    /// - A caller that joins reports where the install already is, then what it
+    ///   reports later.
+    /// - The caller joins before its first await, so a caller polled once
+    ///   shares the install.
     async fn shared(
         &self,
         sha256: &str,
@@ -783,11 +810,12 @@ impl ArtifactCache {
         self.root.join(format!("{sha256}{LINE}"))
     }
 
-    /// The image's `copy`, when it matches. The process checks each copy
-    /// once, the first time it needs it: one that matched is used unread
-    /// from then on, and one that did not is written to the Host log and
-    /// passed over. A check that was cancelled or ran out of open files
-    /// decides nothing.
+    /// The image's `copy`, when it matches.
+    ///
+    /// The process checks each copy once, the first time it needs it. One that
+    /// matched is used unread from then on, and one that did not is written to
+    /// the Host log and passed over. A check that was cancelled or ran out of
+    /// open files decides nothing.
     async fn preinstalled(
         &self,
         copy: ImageCopy<'_>,
@@ -867,12 +895,14 @@ impl ArtifactCache {
         }
     }
 
-    /// Writes the verified bytes of `artifact`, from where the backend says
-    /// it is, into `output`, reporting to `progress` each time they pass
-    /// another tenth of its size. A URL's bytes arrive as they are served,
-    /// in their content coding, into a staging file beside the cache that
-    /// keeps them across broken connections and attempts, and are decoded
-    /// and checked once complete; bytes that fail the check are removed.
+    /// Writes the verified bytes of `artifact`, from where the backend says it
+    /// is, into `output`, reporting to `progress` each time they pass another
+    /// tenth of its size.
+    ///
+    /// A URL's bytes arrive as they are served, in their content coding, into a
+    /// staging file beside the cache. The staging file keeps them across broken
+    /// connections and attempts. The bytes are decoded and checked once
+    /// complete, and bytes that fail the check are removed.
     async fn fetch(
         &self,
         line: &Line,
@@ -1033,10 +1063,11 @@ fn digest_of(artifact: &PackageArtifact) -> Digest {
     }
 }
 
-/// The cached file at `destination`, when there is one. The entry was
-/// verified as it was published, and only publication writes the cache, so
-/// a hit is not read again: every service start would otherwise hash the
-/// whole executable. Damage its metadata shows fails the install; it is not
+/// The cached file at `destination`, when there is one.
+///
+/// The entry was verified as it was published, and only publication writes the
+/// cache, so a hit is not read again: every service start would otherwise hash
+/// the whole executable. Damage its metadata shows fails the install; it is not
 /// repaired.
 async fn cached(
     destination: &Path,

@@ -1,24 +1,31 @@
 //! Bounded edit snapshots shared by a runner and its native command services:
-//! the recorder behind the list of files a shell job created or modified,
-//! which the conversation shows under the call and as diffs on request.
+//! the recorder behind the list of files a shell job created or modified, which
+//! the conversation shows under the call and as diffs on request.
 //!
-//! The runner learns what changed from the commands themselves as they run,
-//! not from the filesystem afterwards: every in-process file write (brush
+//! # What the recorder sees
+//!
+//! The runner learns what changed from the commands themselves as they run, not
+//! from the filesystem afterwards. Every in-process file write (brush
 //! redirections, the embedded utilities, the native `file` commands) passes
-//! through a layer that takes notes. Watching the filesystem or diffing the
-//! working tree around a call cannot say which call made a change, misses
-//! edits outside the repository and blurs concurrent calls. External programs
-//! (git, python, node) stay outside; their edits still show in the working
-//! tree view, unattributed. The recorder lives here because the runner and the
-//! native services both link this crate, so both record through the same file
-//! interface; its context and journal are types of the command wire, never
-//! another message stream or a byte on a command's stdout.
+//! through a layer that takes notes.
 //!
-//! The recorder takes the before and after contents around each actual
-//! mutation (a write-capable open, a write to an opened file, a whole-file
-//! write, publishing a temporary file over a destination) and saves the after
-//! contents before releasing the operation, never rereading the workspace at
-//! job exit. So two jobs that write one file stay apart:
+//! - Watching the filesystem or diffing the working tree around a call cannot
+//!   say which call made a change, misses edits outside the repository and
+//!   blurs concurrent calls.
+//! - External programs (git, python, node) stay outside. Their edits still show
+//!   in the working tree view, unattributed.
+//! - The recorder lives here because the runner and the native services both
+//!   link this crate, so both record through the same file interface. Its
+//!   context and journal are types of the command wire, never another message
+//!   stream or a byte on a command's stdout.
+//!
+//! # Segments
+//!
+//! The recorder takes the before and after contents around each actual mutation
+//! (a write-capable open, a write to an opened file, a whole-file write,
+//! publishing a temporary file over a destination). It saves the after contents
+//! before releasing the operation, never rereading the workspace at job exit.
+//! So two jobs that write one file stay apart:
 //!
 //! ```text
 //!              x=0, y=0
@@ -27,27 +34,33 @@
 //! A writes     x=2, y=1     A edit 2: x=1 -> x=2
 //! ```
 //!
-//! Successive writes to a file combine only when the earlier saved after
-//! contents equal the next before contents, so a combined segment never
-//! holds anyone else's change; otherwise a new segment starts, and a
-//! combined segment that returns to its original bytes disappears. A segment
-//! without contents cannot establish continuity: the file then keeps only
-//! metadata rather than a stale or misleading diff.
+//! - Successive writes to a file combine only when the earlier saved after
+//!   contents equal the next before contents, so a combined segment never holds
+//!   anyone else's change. Otherwise a new segment starts.
+//! - A combined segment that returns to its original bytes disappears.
+//! - A segment without contents cannot establish continuity: the file then
+//!   keeps only metadata rather than a stale or misleading diff.
+//!
+//! # Locking and failure
 //!
 //! One OS lock covers capture, mutation and publication, shared by every
-//! participating writer of a runner installation. It is held for one file
-//! operation, never while a command waits for input, another command or a
-//! background task, and is released with the lock file on return, unwinding or
-//! process death. Pipes, devices and directories do not enter the recorder.
-//! Writers that do not participate take no lock, so tracking guarantees
-//! coordination among the participants, not isolation from other
-//! applications. A recording failure never changes the command's result: it is
-//! logged.
+//! participating writer of a runner installation.
 //!
-//! Binary contents are never retained, whatever their size, because copies
-//! of images and media would fill the blob store for little use; a segment
-//! without contents says `binary` when that is why, so the view can tell a
-//! picture from a text file over the size limit.
+//! - It is held for one file operation, never while a command waits for input,
+//!   another command or a background task.
+//! - It is released with the lock file on return, unwinding or process death.
+//! - Pipes, devices and directories do not enter the recorder.
+//! - Writers that do not participate take no lock, so tracking guarantees
+//!   coordination among the participants, not isolation from other
+//!   applications.
+//! - A recording failure never changes the command's result: it is logged.
+//!
+//! # Binary contents
+//!
+//! Binary contents are never retained, whatever their size, because copies of
+//! images and media would fill the blob store for little use. A segment without
+//! contents says `binary` when that is why, so the view can tell a picture from
+//! a text file over the size limit.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -103,14 +116,17 @@ impl Recorder {
         result
     }
 
-    /// Records the rename of `from` to `to` that runs while the returned
-    /// guard lives. A file at `to` is replaced: an edit of it with both
-    /// sides, as any whole-file write. Otherwise the rename moves `from`,
-    /// which carries what this job recorded under the old name, or within
-    /// it, to the new name once it happened; a move of a file the job did not
-    /// change records no edit. Either way the
-    /// rename itself is listed, for a request's earlier calls' edits
-    /// (`crates/agent-store/src/changes.rs`).
+    /// Records the rename of `from` to `to` that runs while the returned guard
+    /// lives.
+    ///
+    /// - A file at `to` is replaced: that is an edit of it with both sides, as
+    ///   any whole-file write.
+    /// - Otherwise the rename moves `from`, which carries what this job
+    ///   recorded under the old name, or within it, to the new name once it
+    ///   happened. A move of a file the job did not change records no edit.
+    ///
+    /// Either way the rename itself is listed, for a request's earlier calls'
+    /// edits (`crates/agent-store/src/changes.rs`).
     pub fn rename(&self, from: &Path, to: &Path) -> Renaming {
         let to = normalize(to);
         let replacing = if fs::metadata(&to).is_ok_and(|metadata| metadata.is_file()) {
@@ -129,13 +145,16 @@ impl Recorder {
         }
     }
 
-    /// Records the removal of `path`, a file or a folder with all in it,
-    /// that runs while the returned guard lives: once it is gone, the
-    /// removal is listed, but of a file the job itself created, which was
-    /// neither there before nor is after, and what this job recorded at or
-    /// within it goes, so a file made again there starts anew
-    /// (`crates/command-protocol/src/edits.rs`). Nothing is locked meanwhile, so a prompt or a large
-    /// folder blocks no other job's writes.
+    /// Records the removal of `path`, a file or a folder with all in it, that
+    /// runs while the returned guard lives.
+    ///
+    /// Once it is gone, the removal is listed. A file the job itself created,
+    /// which was neither there before nor is after, is not listed. What this
+    /// job recorded at or within `path` goes, so a file made again there starts
+    /// anew (`crates/command-protocol/src/edits.rs`).
+    ///
+    /// Nothing is locked meanwhile, so a prompt or a large folder blocks no
+    /// other job's writes.
     pub fn remove(&self, path: &Path) -> Removing {
         Removing {
             recorder: self.clone(),

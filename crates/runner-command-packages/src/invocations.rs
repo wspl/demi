@@ -1,8 +1,11 @@
-//! The artifacts a service's program asks for (`crates/command-protocol/src/artifacts.rs`): each install names the invocation it serves, which
-//! the runner started for one job or one stream and registered here with
-//! that work's resolver, so the backend locates the artifact for that work.
-//! An install held by a running service is not removed with its line's
-//! older artifacts while the service lives.
+//! The artifacts a service's program asks for
+//! (`crates/command-protocol/src/artifacts.rs`).
+//!
+//! Each install names the invocation it serves, which the runner started for
+//! one job or one stream and registered here with that work's resolver, so the
+//! backend locates the artifact for that work. An install held by a running
+//! service is not removed with its line's older artifacts while the service
+//! lives.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};

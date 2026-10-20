@@ -1,12 +1,14 @@
 //! What a plugin declares once, when the backend starts: fixed for the life of
-//! the process, while what varies by user, conversation or time arrives
-//! through requests.
+//! the process, while what varies by user, conversation or time arrives through
+//! requests.
 //!
-//! A manifest is a value its crate builds in code, not a file beside the
-//! crate, because it refers to what only code holds: its schemas are derived
-//! from the Rust types the plugin uses, and a page's contributions are its
-//! Vue components. A file would restate both as text, and nothing would check
-//! that the text still matched them. A plugin declares only what it uses.
+//! A manifest is a value its crate builds in code, not a file beside the crate,
+//! because it refers to what only code holds: its schemas are derived from the
+//! Rust types the plugin uses, and a page's contributions are its Vue
+//! components. A file would restate both as text, and nothing would check that
+//! the text still matched them.
+//!
+//! A plugin declares only what it uses.
 
 use std::fmt;
 
@@ -100,12 +102,13 @@ pub struct Manifest {
     /// Its command groups and roots (`crates/backend-plugins/src/commands.rs`).
     #[serde(default)]
     pub commands: Vec<Commands>,
-    /// Whether it is a context source, asked before each provider request
-    /// of a node while its user has it on. A plugin adds nothing to the
-    /// system prompt but the index entries of its command groups: the prompt
-    /// is rendered once, so what the model must learn beyond them, or what
-    /// differs by user or conversation or changes while one lives, reaches it
-    /// as a `context` block.
+    /// Whether the plugin is a context source, asked before each provider
+    /// request of a node while its user has it on.
+    ///
+    /// A plugin adds nothing to the system prompt but the index entries of its
+    /// command groups: the prompt is rendered once. What the model must learn
+    /// beyond them, or what differs by user or conversation or changes while
+    /// one lives, reaches it as a `context` block.
     #[serde(default)]
     pub context: bool,
     /// Whether it searches each conversation's project directory

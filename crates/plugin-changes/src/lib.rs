@@ -1,16 +1,20 @@
-//! The `changes` plugin: its identity and its page
-//! package, and nothing else. Its page, `@demicodes/plugin-changes`, shows
-//! the work panel's Change view over the product's edit tracking and file
-//! routes (`crates/xtask/src/contracts/registry.rs`).
+//! The `changes` plugin: its identity and its page package, and nothing else.
+//!
+//! Its page, `@demicodes/plugin-changes`, shows the work panel's Change view
+//! over the product's edit tracking and file routes
+//! (`crates/xtask/src/contracts/registry.rs`).
 //!
 //! Edit tracking has this one consumer: the conversation's view of what the
 //! agent changed (the file pills under a shell call and the Change view they
-//! open). The model never receives it. The working tree view answers a
-//! different question, what is uncommitted in the whole directory; the two
-//! share the file entry shape and the diff view and nothing else. Every list
-//! of changed files and every line count is computed once by the backend when
-//! it stores a call's block, so the page derives nothing and reads a copy only
-//! to draw a diff. With the plugin off, a pill is no control.
+//! open). The model never receives it.
+//!
+//! The working tree view answers a different question, what is uncommitted in
+//! the whole directory. The two share the file entry shape and the diff view
+//! and nothing else.
+//!
+//! Every list of changed files and every line count is computed once by the
+//! backend when it stores a call's block, so the page derives nothing and reads
+//! a copy only to draw a diff. With the plugin off, a pill is no control.
 
 use std::rc::Rc;
 

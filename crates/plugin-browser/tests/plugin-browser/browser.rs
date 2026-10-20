@@ -115,12 +115,15 @@ fn no_json_result_names_the_tab_list_number() {
     }
 }
 
-/// A reference is the locator models use most and outputs print as
-/// `[ref=e3]`, so it is also the positional after the tab; `key` takes its
-/// key positionally, after an optional reference; `check` checks unless
-/// `--value=false`. Before, `click t1
-/// e27` and `key t1 Escape` failed as unexpected positionals, and a flag
-/// took the next token as its value, so `open --show <url>` lost its URL.
+/// A reference is the locator models use most and outputs print as `[ref=e3]`,
+/// so it is also the positional after the tab.
+///
+/// - `key` takes its key positionally, after an optional reference.
+/// - `check` checks unless `--value=false`.
+///
+/// Before, `click t1 e27` and `key t1 Escape` failed as unexpected positionals,
+/// and a flag took the next token as its value, so `open --show <url>` lost its
+/// URL.
 #[test]
 fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally() {
     let root = roots(Browser::new().manifest()).remove(0);
@@ -170,12 +173,13 @@ fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally()
     );
 }
 
-/// `eval` takes a short expression as its last positional, as models write
-/// it, or statements from stdin; the token after the tab is the ref when it
-/// reads as one. Before,
-/// `eval t1 'getComputedStyle(…)'` failed as a ref that does not match
-/// "^e[1-9][0-9]{0,14}$", and a model read the regular expression to learn
-/// what it had done wrong.
+/// `eval` takes a short expression as its last positional, as models write it,
+/// or statements from stdin. The token after the tab is the ref when it reads
+/// as one.
+///
+/// Before, `eval t1 'getComputedStyle(…)'` failed as a ref that does not match
+/// "^e[1-9][0-9]{0,14}$", and a model read the regular expression to learn what
+/// it had done wrong.
 #[test]
 fn eval_takes_its_expression_as_the_last_positional_or_from_stdin() {
     let root = roots(Browser::new().manifest()).remove(0);

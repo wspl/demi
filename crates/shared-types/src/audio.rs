@@ -1,10 +1,11 @@
 //! What an audio file holds, read from its header: the one reader of a
-//! generated audio file's format and length, which `demi audio` checks the
-//! file with and the usage ledger takes its seconds from
-//! (`crates/backend-database/src/usage.rs`). The file is probed and read
-//! packet by packet, never decoded, behind the `audio` feature; the
-//! shape of raw PCM, which a vendor may send instead of a file, is read by
-//! every crate that hands audio on.
+//! generated audio file's format and length.
+//!
+//! `demi audio` checks the file with it, and the usage ledger takes its seconds
+//! from it (`crates/backend-database/src/usage.rs`). The file is probed and
+//! read packet by packet, never decoded, behind the `audio` feature. The shape
+//! of raw PCM, which a vendor may send instead of a file, is read by every
+//! crate that hands audio on.
 
 #[cfg(feature = "audio")]
 use std::io::Cursor;
@@ -178,13 +179,17 @@ impl Pcm {
         Ok(Self { sample_rate, channels, bits })
     }
 
-    /// The PCM a media type such as `audio/L16;rate=24000;channels=2`
-    /// states, read as its vendor sends it: `audio/L16` (RFC 2586) and
-    /// `audio/pcm` are 16-bit, at the `rate` the type must state, of the
-    /// `channels` it states or one, RFC 2586's default; none for another
-    /// type, a file's. A type that states no rate, or a parameter that does
-    /// not read, fails rather than being guessed. Google's `audio/L16` is
-    /// little-endian, as its examples write it straight into a WAV file.
+    /// The PCM a media type such as `audio/L16;rate=24000;channels=2` states,
+    /// read as its vendor sends it.
+    ///
+    /// - `audio/L16` (RFC 2586) and `audio/pcm` are 16-bit, at the `rate` the
+    ///   type must state, of the `channels` it states or one, RFC 2586's
+    ///   default.
+    /// - Another type, a file's, gives none.
+    /// - A type that states no rate, or a parameter that does not read, fails
+    ///   rather than being guessed.
+    /// - Google's `audio/L16` is little-endian, as its examples write it
+    ///   straight into a WAV file.
     pub fn of_media_type(media_type: &str) -> Result<Option<Self>, BadPcm> {
         let mut parts = media_type.split(';').map(str::trim);
         let essence = parts.next().unwrap_or_default();

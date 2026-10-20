@@ -1,14 +1,19 @@
-//! The file types the product previews, by extension. The backend serves a file
-//! under the media type this table gives it and shows in place only the types
-//! marked so; the page picks its viewer from the same table, generated into
-//! `@demicodes/protocol`, so the two always agree.
+//! The file types the product previews, by extension.
 //!
-//! A file is told by its extension, not its content, for three reasons: the page
-//! must choose an element before any byte arrives, since a `<video>` fetches its
-//! own URL; the type served must match the viewer chosen; and the user's browser
-//! must not guess a type on its own (`nosniff`). Every type a model reads natively
-//! is in the table and shown in place: one that was not would download, and a
-//! player would play it only where the browser guessed its format.
+//! The backend serves a file under the media type this table gives it and shows
+//! in place only the types marked so. The page picks its viewer from the same
+//! table, generated into `@demicodes/protocol`, so the two always agree.
+//!
+//! A file is told by its extension, not its content, for three reasons:
+//!
+//! - The page must choose an element before any byte arrives, since a `<video>`
+//!   fetches its own URL.
+//! - The type served must match the viewer chosen.
+//! - The user's browser must not guess a type on its own (`nosniff`).
+//!
+//! Every type a model reads natively is in the table and shown in place: one
+//! that was not would download, and a player would play it only where the
+//! browser guessed its format.
 
 use schemars::JsonSchema;
 use serde::Serialize;

@@ -1,9 +1,14 @@
-//! What `demi image` does: reads the call's prompt and, for an edit, its
-//! images from the Host the command runs on; asks the Providers service
-//! for one image; decodes it whole and writes it to stdout in the format
-//! asked for, PNG by default; and says on stderr what came back, with a
-//! warning for each option the result did not honour. A failure is told in
-//! the design's words.
+//! What `demi image` does:
+//!
+//! 1. It reads the call's prompt and, for an edit, its images from the Host the
+//!    command runs on.
+//! 2. It asks the Providers service for one image.
+//! 3. It decodes the image whole and writes it to stdout in the format asked
+//!    for, PNG by default.
+//! 4. It says on stderr what came back, with a warning for each option the
+//!    result did not honour.
+//!
+//! A failure is told in the design's words.
 
 use std::io::Cursor;
 

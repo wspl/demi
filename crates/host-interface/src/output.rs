@@ -1,8 +1,9 @@
-//! A command's whole output (`crates/agent-server/src/server/shell_output.rs`): each read of
-//! its stdout and stderr with its stream, in the order the runner read them,
-//! and where the Host's kept output left bytes out. The backend stores it
-//! when the command ends; `demi shell output` and the result that reports
-//! the end read it as lines of text ([`OutputText`]).
+//! A command's whole output (`crates/agent-server/src/server/shell_output.rs`):
+//! each read of its stdout and stderr with its stream, in the order the runner
+//! read them, and where the Host's kept output left bytes out.
+//!
+//! The backend stores it when the command ends. `demi shell output` and the
+//! result that reports the end read it as lines of text ([`OutputText`]).
 
 use bytes::{Bytes, BytesMut};
 use demi_command_protocol::is_binary;
@@ -232,13 +233,19 @@ impl Seen {
     };
 }
 
-/// A whole output as lines of text (`crates/agent-server/src/server/shell_output.rs`): the
-/// kept bytes of the streams read, in the order the runner read them, as
-/// `--raw` prints them, and the notes that stand for bytes they do not hold:
-/// where the kept output left bytes out, and at the end the bytes the backend
-/// misses. Lines are numbered as the bytes are, so `grep -n` on `--raw` gives
-/// the numbers a page shows; a note has no number, and a line that bytes were
-/// left out of shows in two parts around the note, both with its number.
+/// A whole output as lines of text
+/// (`crates/agent-server/src/server/shell_output.rs`).
+///
+/// The lines are:
+///
+/// - the kept bytes of the streams read, in the order the runner read them, as
+///   `--raw` prints them;
+/// - the notes that stand for bytes they do not hold: where the kept output
+///   left bytes out, and at the end the bytes the backend misses.
+///
+/// Lines are numbered as the bytes are, so `grep -n` on `--raw` gives the
+/// numbers a page shows. A note has no number, and a line that bytes were left
+/// out of shows in two parts around the note, both with its number.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputText {
     /// The number of the first line: 1 for a whole output.

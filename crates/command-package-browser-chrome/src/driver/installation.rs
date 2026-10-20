@@ -1,22 +1,30 @@
 //! The pinned Chrome for Testing release, and on Linux the Chrome runtime it
-//! starts with: `install` asks the runner to install each archive from its URL
-//! over the artifacts stream, following how the downloads go, and every other
-//! command starts Chrome only from an installation the runner already holds.
-//! Nothing here downloads anything itself.
+//! starts with.
+//!
+//! `install` asks the runner to install each archive from its URL over the
+//! artifacts stream, following how the downloads go. Every other command starts
+//! Chrome only from an installation the runner already holds. Nothing here
+//! downloads anything itself.
 //!
 //! The installation is shared by every conversation and service of the runner
 //! and goes through the runner's artifact cache, so it needs no root. Demi
 //! keeps one version; the cache removes the older one when a release pins a
 //! newer.
 //!
+//! # The Chrome runtime
+//!
 //! The Chrome runtime exists because a minimal Host (the Cloud image) lacks the
-//! libraries and fonts Chrome needs; shipping them means no package manager and
-//! no root, only glibc 2.28 or newer, and a Host below it fails the
-//! installation saying what it has and needs. Chrome finds the runtime through
-//! its own environment alone (`launch`): set for the runner or a shell, its
-//! libraries would load into the Host's own programs. The runtime is built and
-//! published by `wspl/demi-chrome-runtime`, whose releases carry the licenses
-//! and the source packages the libraries' LGPL and MPL terms require.
+//! libraries and fonts Chrome needs.
+//!
+//! - Shipping the libraries means no package manager and no root, only glibc
+//!   2.28 or newer. A Host below it fails the installation saying what it has
+//!   and needs.
+//! - Chrome finds the runtime through its own environment alone (`launch`). Set
+//!   for the runner or a shell, its libraries would load into the Host's own
+//!   programs.
+//! - The runtime is built and published by `wspl/demi-chrome-runtime`, whose
+//!   releases carry the licenses and the source packages the libraries' LGPL
+//!   and MPL terms require.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

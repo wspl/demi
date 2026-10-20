@@ -1,10 +1,13 @@
-//! A peer's server-reflexive candidates (`crates/runner-direct/src/lib.rs`): the runner asks each STUN server the backend names, from each
-//! of the peer's sockets that can reach it, for the address the internet
-//! sees that socket at, and offers each new one to the page. A socket on
-//! `127.0.0.1` asks only a server on loopback, as a test's is, and a socket
-//! on the local network only a server off it. A request goes again after
-//! 0.5, 1 and 2 seconds without an answer, then the socket gives up on that
-//! server; the peer goes on with what it has.
+//! A peer's server-reflexive candidates (`crates/runner-direct/src/lib.rs`).
+//!
+//! The runner asks each STUN server the backend names, from each of the peer's
+//! sockets that can reach it, for the address the internet sees that socket at,
+//! and offers each new one to the page.
+//!
+//! - A socket on `127.0.0.1` asks only a server on loopback, as a test's is. A
+//!   socket on the local network asks only a server off it.
+//! - A request goes again after 0.5, 1 and 2 seconds without an answer, then
+//!   the socket gives up on that server. The peer goes on with what it has.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

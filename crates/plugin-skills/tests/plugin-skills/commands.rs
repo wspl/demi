@@ -1,6 +1,7 @@
 //! `demi skills` through the loopback, as the backend's dispatch hands a
-//! command to the plugin once the conversation has the grant: each acts as
-//! the page's method does and fails as it would, and prints what changed.
+//! command to the plugin once the conversation has the grant: each acts as the
+//! page's method does, fails as it would, and prints what changed.
+//!
 //! Without the grant no command reaches the plugin, which the backend's
 //! permission scenarios cover.
 

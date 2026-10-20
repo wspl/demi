@@ -1,14 +1,19 @@
-//! A connection's direct channels (`crates/runner-direct/src/lib.rs`): a page reaches the runner
-//! without the backend in the middle, over WebRTC data channels the backend
-//! introduces and authorizes. The runner carries out each channel's operation as it
-//! carries out the backend's request for the same thing (`demi_runner_host`), with
-//! the same functions, limits, atomic writes and file watches, and opens a `stream`
-//! as a `service_open`, with a `user` caller in the conversation the header names.
-//! It tells the backend each stream's opening (`direct_stream`), before the stream
-//! asks the backend for its artifacts as a stream the backend opened does, and its
-//! closing: the backend counts an open stream as the conversation's activity, so a
-//! live view watched only over the direct channel keeps the conversation from its
-//! idle release. Every peer closes when the connection to the backend ends.
+//! A connection's direct channels (`crates/runner-direct/src/lib.rs`): a page
+//! reaches the runner without the backend in the middle, over WebRTC data
+//! channels the backend introduces and authorizes.
+//!
+//! The runner carries out each channel's operation as it carries out the
+//! backend's request for the same thing (`demi_runner_host`), with the same
+//! functions, limits, atomic writes and file watches. It opens a `stream` as a
+//! `service_open`, with a `user` caller in the conversation the header names.
+//!
+//! It tells the backend each stream's opening (`direct_stream`), before the
+//! stream asks the backend for its artifacts as a stream the backend opened
+//! does, and its closing. The backend counts an open stream as the
+//! conversation's activity, so a live view watched only over the direct channel
+//! keeps the conversation from its idle release.
+//!
+//! Every peer closes when the connection to the backend ends.
 
 use std::{
     collections::HashMap,

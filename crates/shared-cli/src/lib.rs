@@ -1,32 +1,46 @@
-//! What every program's command line shares: a variable under the program's prefix that none of its
-//! settings reads stops startup, so a misspelt setting is never ignored. The
-//! backend and the machine manager read one configuration file
-//! (`crates/backend/src/config/mod.rs`): the manager checks the names under its
-//! own prefix, and the backend every other `DEMI_*` name. And the panic hook
-//! every program installs at start (`crates/xtask/src/native/build.rs`). And,
-//! on a musl target, the memory allocator of the programs that run on a Host
-//! (`crates/xtask/src/native/build.rs`). And raising a program's soft limit on
-//! open files, which the runner and the backend do as they start
-//! (`crates/runner/src/main.rs`, `crates/backend/src/backend.rs`).
+//! What every program's command line shares:
 //!
-//! It parses no program's settings, which each program's clap command does.
+//! - A variable under the program's prefix that none of its settings reads
+//!   stops startup, so a misspelt setting is never ignored. The backend and the
+//!   machine manager read one configuration file
+//!   (`crates/backend/src/config/mod.rs`): the manager checks the names under
+//!   its own prefix, and the backend every other `DEMI_*` name.
+//! - The panic hook every program installs at start
+//!   (`crates/xtask/src/native/build.rs`).
+//! - On a musl target, the memory allocator of the programs that run on a Host
+//!   (`crates/xtask/src/native/build.rs`).
+//! - Raising a program's soft limit on open files, which the runner and the
+//!   backend do as they start (`crates/runner/src/main.rs`,
+//!   `crates/backend/src/backend.rs`).
+//!
+//! The crate parses no program's settings, which each program's clap command
+//! does.
 
 use std::{ffi::OsString, io::Write as _};
 
+/// The memory allocator of the programs that run on a Host.
+///
 /// musl's own allocator unmaps and maps memory around small allocations and
-/// serializes threads on one lock, which costs most inside gVisor, where
-/// each system call is expensive, about fifteen times a plain kernel's.
-/// Measured on a gVisor Cloud, mimalloc cut the sandbox kernel's CPU by 20 to
-/// 50% where the runner allocates most (command output, file transfer, many
-/// small commands) and their wall time with it (five runs of
-/// `seq 1 3000000`: 1.45 s to 1.10 s; a 50 MiB download: 0.36 s to 0.16 s),
-/// and halved it for a WebRTC transfer; the runner's resident size grew from
-/// about 47 MB to 85 MB in gVisor's accounting, the sandbox's memory by 1 to
-/// 2 MB. The runner and the command programs turn on `host-allocator`. The
-/// server's programs keep musl's allocator: on a plain kernel mimalloc saved
-/// about a tenth of the backend's CPU on streamed replies but held 35 MB more
-/// idle and about 150 MB more at its peak, a poor trade on a small server. A
-/// program uses this allocator only if it links this crate's object, which
+/// serializes threads on one lock. That costs most inside gVisor, where each
+/// system call is expensive, about fifteen times a plain kernel's.
+///
+/// Measured on a gVisor Cloud, mimalloc:
+///
+/// - cut the sandbox kernel's CPU by 20 to 50% where the runner allocates most
+///   (command output, file transfer, many small commands), and their wall time
+///   with it (five runs of `seq 1 3000000`: 1.45 s to 1.10 s; a 50 MiB
+///   download: 0.36 s to 0.16 s);
+/// - halved it for a WebRTC transfer;
+/// - grew the runner's resident size from about 47 MB to 85 MB in gVisor's
+///   accounting, the sandbox's memory by 1 to 2 MB.
+///
+/// The runner and the command programs turn on `host-allocator`.
+///
+/// The server's programs keep musl's allocator: on a plain kernel mimalloc
+/// saved about a tenth of the backend's CPU on streamed replies but held 35 MB
+/// more idle and about 150 MB more at its peak, a poor trade on a small server.
+///
+/// A program uses this allocator only if it links this crate's object, which
 /// calling `install_panic_hook` ensures.
 #[cfg(all(target_env = "musl", feature = "host-allocator"))]
 #[global_allocator]
@@ -83,12 +97,15 @@ pub fn raise_open_file_limit() -> std::io::Result<OpenFileLimit> {
 }
 
 /// Makes every panic of this process write its message, its location and a
-/// backtrace to standard error, which the program's log keeps, before
-/// anything else happens to it: a panic that ends the process, such as one
-/// inside a destructor, which Rust turns into an abort, leaves that
-/// evidence behind; a contained one leaves it beside what contained it.
-/// The backtrace is taken whatever `RUST_BACKTRACE` says, since a program
-/// in the background is started without it.
+/// backtrace to standard error, which the program's log keeps, before anything
+/// else happens to it.
+///
+/// A panic that ends the process, such as one inside a destructor, which Rust
+/// turns into an abort, leaves that evidence behind. A contained one leaves it
+/// beside what contained it.
+///
+/// The backtrace is taken whatever `RUST_BACKTRACE` says, since a program in
+/// the background is started without it.
 pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
         let thread = std::thread::current();

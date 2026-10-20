@@ -1,10 +1,12 @@
 //! A running emulator's gRPC interface
-//! (`crates/command-package-mobile/src/android/mod.rs`): where its
-//! discovery file says it listens, authenticated as the emulator asks. An
-//! emulator started with JWT authentication, the default, takes a token
-//! signed by a key whose public half the client puts into the emulator's
-//! key directory; one started with `-grpc-use-token` takes the token its
-//! discovery file names.
+//! (`crates/command-package-mobile/src/android/mod.rs`): where its discovery
+//! file says it listens, authenticated as the emulator asks.
+//!
+//! - An emulator started with JWT authentication, the default, takes a token
+//!   signed by a key whose public half the client puts into the emulator's key
+//!   directory.
+//! - One started with `-grpc-use-token` takes the token its discovery file
+//!   names.
 
 use std::{
     path::{Path, PathBuf},

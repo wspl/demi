@@ -1,17 +1,17 @@
-//! A data channel's reader and writer, the one flow control every channel
-//! of a peer uses, a page's file operation's and a forwarded TCP
-//! connection's alike (`crates/runner-protocol/src/direct.rs`).
+//! A data channel's reader and writer, with the one flow control every channel
+//! of a peer uses, a page's file operation's and a forwarded TCP connection's
+//! alike (`crates/runner-protocol/src/direct.rs`).
 //!
-//! What goes out: the channel takes its producer's next message only while
-//! its queue holds less than [`QUEUE_BYTES`], or a live view's `video`
-//! channel less than [`VIDEO_QUEUE_BYTES`], so a reader paces what it
-//! reads. A credited channel, a forwarded connection's, also sends a binary
-//! message only within the window the other side granted, which starts at
-//! [`QUEUE_BYTES`] and grows by each `{ grant }` it receives.
+//! Outgoing: the channel takes its producer's next message only while its queue
+//! holds less than [`QUEUE_BYTES`], or a live view's `video` channel less than
+//! [`VIDEO_QUEUE_BYTES`], so a reader paces what it reads. A credited channel,
+//! a forwarded connection's, also sends a binary message only within the window
+//! the other side granted. The window starts at [`QUEUE_BYTES`] and grows by
+//! each `{ grant }` it receives.
 //!
-//! What comes in goes to the channel's consumer as it arrives; a credited
-//! channel grants the other side what its consumer took, once the consumer
-//! says it took it, so nothing piles up in the runner.
+//! Incoming: what comes in goes to the channel's consumer as it arrives. A
+//! credited channel grants the other side what its consumer took, once the
+//! consumer says it took it, so nothing piles up in the runner.
 
 use bytes::Bytes;
 use demi_runner_protocol::direct::QUEUE_BYTES;

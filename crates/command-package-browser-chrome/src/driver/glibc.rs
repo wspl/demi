@@ -1,8 +1,8 @@
 //! The Host's glibc version, which the Chrome runtime needs at 2.28 or newer.
-//! This program is a static musl
-//! executable with no glibc of its own to ask, so it reads the version from
-//! the glibc dynamic loader that Chrome's executable names as its
-//! interpreter.
+//!
+//! This program is a static musl executable with no glibc of its own to ask, so
+//! it reads the version from the glibc dynamic loader that Chrome's executable
+//! names as its interpreter.
 
 use std::fmt;
 use std::io;

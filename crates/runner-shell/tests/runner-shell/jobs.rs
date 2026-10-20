@@ -87,14 +87,18 @@ pub(crate) async fn output_until(job: &mut Job, read: &mut String, text: &str) {
     .unwrap_or_else(|_| panic!("no {text:?} in {read:?}"));
 }
 
-/// `TERM` stops a job's shell work and reaches every program it started,
-/// which then ends in its own time: a program that traps `TERM` prints and
-/// exits, and its output reaches the job's. A program that ignores `TERM`
-/// keeps the job running until `KILL` ends it. Before, `TERM` killed every
-/// program at once, so no trap ran. About 0.5 s: the jobs are login shells,
-/// which start together. Each program is in `wait` when `TERM` comes, which
-/// runs its trap at once; a shell that is still starting its `sleep` would
-/// run the trap only after it.
+/// `TERM` stops a job's shell work and reaches every program it started, which
+/// then ends in its own time.
+///
+/// - A program that traps `TERM` prints and exits, and its output reaches the
+///   job's.
+/// - A program that ignores `TERM` keeps the job running until `KILL` ends it.
+///
+/// Before, `TERM` killed every program at once, so no trap ran.
+///
+/// Cost: about 0.5 s. The jobs are login shells, which start together. Each
+/// program is in `wait` when `TERM` comes, which runs its trap at once; a shell
+/// that is still starting its `sleep` would run the trap only after it.
 #[cfg(unix)]
 #[tokio::test]
 async fn term_lets_a_jobs_programs_end_and_kill_ends_what_ignores_it() {
@@ -320,16 +324,20 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
     futures_util::future::join_all(scripts).await;
 }
 
-/// A killed job ends 1 s after `KILL` even when one of its utilities sits
-/// in a system call no cancellation reaches, here `cat`'s `open()` of a
-/// FIFO no writer opens, as macOS holds an `open()` while it asks the user
-/// for access to another app's data: it reports `SIGKILL` and names the
-/// utility it left, which ends at its next check once the call returns.
-/// Before, the job waited for `cat` for as long as the call lasted, and a
-/// stop of its command never answered. About 1 s, nearly all of it the
-/// second the job waits after `KILL`. The job runs on a shell
-/// runtime of its own, which the test shuts down without waiting, so a
-/// `cat` that keeps the job running fails the test instead of holding it.
+/// A killed job ends 1 s after `KILL` even when one of its utilities sits in a
+/// system call no cancellation reaches, here `cat`'s `open()` of a FIFO no
+/// writer opens. macOS holds an `open()` while it asks the user for access to
+/// another app's data.
+///
+/// The job reports `SIGKILL` and names the utility it left, which ends at its
+/// next check once the call returns. Before, the job waited for `cat` for as
+/// long as the call lasted, and a stop of its command never answered.
+///
+/// The job runs on a shell runtime of its own, which the test shuts down
+/// without waiting, so a `cat` that keeps the job running fails the test
+/// instead of holding it.
+///
+/// Cost: about 1 s, nearly all of it the second the job waits after `KILL`.
 #[cfg(unix)]
 #[tokio::test]
 async fn kill_ends_a_job_whose_utility_a_system_call_holds() {

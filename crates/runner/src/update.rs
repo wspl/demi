@@ -1,25 +1,38 @@
 //! A paired device's runner replacing itself with the runner release of its
-//! backend: it puts the backend's executable in the installation's `releases/` as
-//! the installers do, under their lock, names it in `release-id`, and starts it in
-//! its own place once the registration has ended. The new runner cannot take the
-//! jobs over, so the old one stops them first; the backend learns of them from the
-//! new runner's hello as lost to the update.
+//! backend.
 //!
-//! The runner downloads ahead: while the old release still serves, an upgrade tells
-//! the backend which release comes next, and the backend sends each connected paired
-//! device's runner `prefetch`, so the device stays online and, once the server
-//! switches, finds the executable in place and is back within seconds. Without it a
-//! device on a slow link (a server reaching the backend at 7 KB/s) downloaded after
-//! the switch, showed offline for minutes and broke off its first download. A failed
-//! prefetch is harmless, since the update downloads what is missing. Every download
-//! of a runner executable, ahead or in an update, is Demi's one download
-//! (`demi_shared_artifacts`), staged in `releases/.download-<release>/` and resumed.
+//! It puts the backend's executable in the installation's `releases/` as the
+//! installers do, under their lock, names it in `release-id`, and starts it in
+//! its own place once the registration has ended. The new runner cannot take
+//! the jobs over, so the old one stops them first; the backend learns of them
+//! from the new runner's hello as lost to the update.
 //!
-//! A failed update leaves the runner on its release and is retried at its next
-//! connection attempt; a 409 without an executable (no runner for the target) is
-//! logged and retried, since a later release may have one. A managed guest's runner
-//! never updates itself: a 409 for it means the backend and the machine manager run
-//! different releases, so it exits naming both and the Cloud's boot fails.
+//! # Downloading ahead
+//!
+//! The runner downloads ahead. While the old release still serves, an upgrade
+//! tells the backend which release comes next, and the backend sends each
+//! connected paired device's runner `prefetch`. The device stays online and,
+//! once the server switches, finds the executable in place and is back within
+//! seconds.
+//!
+//! Without it a device on a slow link (a server reaching the backend at 7 KB/s)
+//! downloaded after the switch, showed offline for minutes and broke off its
+//! first download.
+//!
+//! - A failed prefetch is harmless, since the update downloads what is missing.
+//! - Every download of a runner executable, ahead or in an update, is Demi's
+//!   one download (`demi_shared_artifacts`), staged in
+//!   `releases/.download-<release>/` and resumed.
+//!
+//! # Failures
+//!
+//! - A failed update leaves the runner on its release and is retried at its
+//!   next connection attempt.
+//! - A 409 without an executable (no runner for the target) is logged and
+//!   retried, since a later release may have one.
+//! - A managed guest's runner never updates itself: a 409 for it means the
+//!   backend and the machine manager run different releases, so it exits naming
+//!   both and the Cloud's boot fails.
 
 use std::{
     ffi::OsString,
@@ -145,12 +158,14 @@ impl Installed {
         })
     }
 
-    /// The executable of `release` in place in `releases/<release>/`,
-    /// checked against `expected`: the one there, or one downloaded from
-    /// `backend` as its compressed copy (`crates/backend-http/src/install.rs`). The download keeps its bytes in
-    /// `releases/.download-<release>/` across attempts and resumes from
-    /// them; it is decompressed and checked once complete, and bytes that
-    /// fail the check are removed. The caller holds the install lock.
+    /// The executable of `release` in place in `releases/<release>/`, checked
+    /// against `expected`: the one there, or one downloaded from `backend` as
+    /// its compressed copy (`crates/backend-http/src/install.rs`).
+    ///
+    /// The download keeps its bytes in `releases/.download-<release>/` across
+    /// attempts and resumes from them. It is decompressed and checked once
+    /// complete, and bytes that fail the check are removed. The caller holds
+    /// the install lock.
     async fn place(
         &self,
         backend: &BackendUrl,

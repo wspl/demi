@@ -677,12 +677,14 @@ async fn modes_follow_the_viewer_and_the_agent() {
     .await;
 }
 
-/// The view resolves the page's cursor locally:
-/// the observer of every frame, a cross-site frame in its own process
-/// included, reports where each cursor applies, placed in tab CSS pixels; a
-/// shadow root's elements count; a cursor list counts by its last keyword;
-/// what a scrolled container hides is left out; and a new document resolves
-/// its cursor at the still pointer.
+/// The view resolves the page's cursor locally. The observer of every frame, a
+/// cross-site frame in its own process included, reports where each cursor
+/// applies, placed in tab CSS pixels.
+///
+/// - A shadow root's elements count.
+/// - A cursor list counts by its last keyword.
+/// - What a scrolled container hides is left out.
+/// - A new document resolves its cursor at the still pointer.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
@@ -964,13 +966,17 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
     .await;
 }
 
-/// The user closes a tab whose page is still loading, the only tab and one
-/// beside another. About 13 s here: closing the only tab stops Chrome and the
-/// next open starts another, 2.2 s a round in the container, where init
-/// reaps Chrome's detached helper about once a second, so that round repeats
-/// three times; it cannot race, since the registry seals the browser instead
-/// of closing the page. A close beside another tab asks Chrome to close the
-/// loading page, the race this test guards, and costs 0.2 s a round.
+/// The user closes a tab whose page is still loading: the only tab, and one
+/// beside another.
+///
+/// The test takes about 13 s here.
+///
+/// - Closing the only tab stops Chrome and the next open starts another, 2.2 s
+///   a round in the container, where init reaps Chrome's detached helper about
+///   once a second, so that round repeats three times. It cannot race, since
+///   the registry seals the browser instead of closing the page.
+/// - A close beside another tab asks Chrome to close the loading page, the race
+///   this test guards, and costs 0.2 s a round.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_user_can_immediately_close_the_first_loading_tab() {
@@ -1278,13 +1284,15 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
     .await;
 }
 
-/// A panel that changes size while the watched tab loads an address that
-/// does not answer leaves the tab at its size until the navigation ends:
+/// A panel that changes size while the watched tab loads an address that does
+/// not answer leaves the tab at its size until the navigation ends.
+///
 /// Chrome holds the page's commands meanwhile but resizes its window at once,
-/// so the capture letterboxed the page in black, and the hub, waiting for the
-/// page, left every viewer's request, a reloaded page's view included,
-/// unanswered until Chrome gave up on the held command 30 s later.
-/// About 2 s.
+/// so the capture letterboxed the page in black. The hub, waiting for the page,
+/// left every viewer's request, a reloaded page's view included, unanswered
+/// until Chrome gave up on the held command 30 s later.
+///
+/// Cost: about 2 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view_answers() {
@@ -1341,14 +1349,16 @@ async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view
     .await;
 }
 
-/// Mobile chosen while the watched tab loads an address that does not
-/// answer applies once the navigation ends, though the page that chose it
-/// was reloaded meanwhile, and the view answers its viewers meanwhile: the
-/// hub put the tab in the mode at once, waiting for the page Chrome holds,
+/// Mobile chosen while the watched tab loads an address that does not answer
+/// applies once the navigation ends, though the page that chose it was reloaded
+/// meanwhile. The view answers its viewers meanwhile.
+///
+/// The hub put the tab in the mode at once, waiting for the page Chrome holds,
 /// and answered no viewer, the reloaded page's view included, until the
-/// navigation ended. The reloaded page's view
-/// shows the tab first as a phone, never in the mode it is about to leave.
-/// About 7 s.
+/// navigation ended. The reloaded page's view shows the tab first as a phone,
+/// never in the mode it is about to leave.
+///
+/// Cost: about 7 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_view_answers() {
@@ -1444,12 +1454,14 @@ async fn a_tab_the_user_opens_starts_at_the_viewers_panel_size() {
     .await;
 }
 
-/// A viewer that watches a tab whose address does not answer sees its
-/// blank page at the panel's size at once, and the view answers it
-/// meanwhile: the view waited for the tab's observer, whose commands
-/// Chrome holds until the navigation commits, so no picture came until the
-/// address answered or the navigation gave up.
-/// About 1.3 s.
+/// A viewer that watches a tab whose address does not answer sees its blank
+/// page at the panel's size at once, and the view answers it meanwhile.
+///
+/// Before, the view waited for the tab's observer, whose commands Chrome holds
+/// until the navigation commits, so no picture came until the address answered
+/// or the navigation gave up.
+///
+/// Cost: about 1.3 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_tab_whose_address_does_not_answer_shows_its_pictures_meanwhile() {
@@ -2043,12 +2055,17 @@ async fn a_capture_extension_that_stops_running_is_recreated_and_the_pages_stay(
     .await;
 }
 
-/// The browser renders in the color scheme the starting invocation carries,
-/// the user's, whatever the Host's appearance: pages match its
-/// `prefers-color-scheme`, and an empty page's picture has the color Chrome
-/// paints that scheme's, #121212 or white, which the view's blank page has
-/// too. A browser per scheme, since one keeps
-/// the scheme it started with; about 3 s here.
+/// The browser renders in the color scheme the starting invocation carries, the
+/// user's, whatever the Host's appearance.
+///
+/// - Pages match its `prefers-color-scheme`.
+/// - An empty page's picture has the color Chrome paints that scheme's, #121212
+///   or white, which the view's blank page has too.
+///
+/// The test starts a browser per scheme, since one keeps the scheme it started
+/// with.
+///
+/// Cost: about 3 s here.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_browser_renders_in_the_users_color_scheme() {

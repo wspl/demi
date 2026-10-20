@@ -1,21 +1,21 @@
 //! The peers between this runner and the runners at the other end of its
-//! forwards, one per pair
-//! of runners, and the path each connection takes as it opens:
+//! forwards, one per pair of runners, and the path each connection takes as it
+//! opens:
 //!
 //! - The first connection of any forward between a pair has the backend
-//!   introduce the two runners, this one offering, and goes through the
-//!   relay itself, since nothing waits for the peer.
-//! - While the peer is connected, a connection goes direct as a data
-//!   channel of it, up to [`MAX_CHANNELS`]; more go through the relay.
-//! - The peer closes [`PEER_IDLE`] after the last connection between the
-//!   pair ended.
+//!   introduce the two runners, this one offering, and goes through the relay
+//!   itself, since nothing waits for the peer.
+//! - While the peer is connected, a connection goes direct as a data channel of
+//!   it, up to [`MAX_CHANNELS`]; more go through the relay.
+//! - The peer closes [`PEER_IDLE`] after the last connection between the pair
+//!   ended.
 //! - A peer that did not connect, or failed, sends the pair's connections
-//!   through the relay, and while the pair carries connections a new peer
-//!   is tried after [`RETRY_WAITS`], 1, 2 and 5 minutes and then every 10,
-//!   or at once when the other runner connects again; with no connection
-//!   left, the next one tries.
-//! - A pair whose runners may not talk directly, a Cloud's or one whose
-//!   route is Relay Only, always takes the relay.
+//!   through the relay. While the pair carries connections, a new peer is tried
+//!   after [`RETRY_WAITS`] (1, 2 and 5 minutes and then every 10), or at once
+//!   when the other runner connects again. With no connection left, the next
+//!   one tries.
+//! - A pair whose runners may not talk directly, a Cloud's or one whose route
+//!   is Relay Only, always takes the relay.
 
 use std::collections::HashMap;
 use std::sync::Arc;

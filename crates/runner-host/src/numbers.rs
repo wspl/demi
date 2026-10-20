@@ -1,12 +1,15 @@
-//! The runner's numbers (`crates/runner-host/src/subscriptions.rs`): one count of the
-//! file system events the process received, which only grows, and the
-//! epoch that names this run of the process. Every event takes the next
-//! number as a watch receives it; every read takes the count before it
-//! reads. So a change made after a read began has a higher number than the
-//! read, and an event the read already saw has one no higher.
+//! The runner's numbers (`crates/runner-host/src/subscriptions.rs`): one count
+//! of the file system events the process received, which only grows, and the
+//! epoch that names this run of the process.
 //!
-//! The count is the process's, not a connection's: the backend's reads and
-//! a direct channel's compare with the same subscriptions.
+//! - Every event takes the next number as a watch receives it.
+//! - Every read takes the count before it reads.
+//!
+//! So a change made after a read began has a higher number than the read, and
+//! an event the read already saw has one no higher.
+//!
+//! The count is the process's, not a connection's: the backend's reads and a
+//! direct channel's compare with the same subscriptions.
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};

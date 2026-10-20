@@ -1,19 +1,28 @@
-//! In-process uutils adapters; algorithms remain in the contextual upstream crates.
-//! The utilities run in the runner, from uutils and the GNU-compatible tools
-//! vendored beside it ([`UTILITIES`]), so their writes pass through the job's scope
-//! and edit tracking records them; a Host's own programs of these names stay where
-//! the system keeps them. Options, output, messages and exit statuses are GNU's, in
-//! English, on every Host, and every path is resolved against the job's directory,
-//! never the runner's own.
+//! In-process uutils adapters; algorithms remain in the contextual upstream
+//! crates.
 //!
-//! A utility that starts a program (`find -exec`, `xargs`, `env`, `timeout`) runs a
-//! bare name that is one of these utilities in the runner ([`named`]), as the shell
-//! would, and a path such as `/usr/bin/sed` runs that program. On Windows `/dev/null`
-//! and `/dev/zero` are devices for operands too, as in Git Bash, except for the
-//! utilities that read the operand's kind first, which refuse them since Windows
-//! tells nothing of its null device's kind. Only a utility's open of a file and start
-//! of a program wait out a lack of open files; making every utility wait would change
-//! most of them, and the raised limit makes running out rare.
+//! The utilities run in the runner, from uutils and the GNU-compatible tools
+//! vendored beside it ([`UTILITIES`]), so their writes pass through the job's
+//! scope and edit tracking records them. A Host's own programs of these names
+//! stay where the system keeps them.
+//!
+//! Options, output, messages and exit statuses are GNU's, in English, on every
+//! Host, and every path is resolved against the job's directory, never the
+//! runner's own.
+//!
+//! A utility that starts a program (`find -exec`, `xargs`, `env`, `timeout`):
+//!
+//! - runs a bare name that is one of these utilities in the runner ([`named`]),
+//!   as the shell would;
+//! - runs the program at a path such as `/usr/bin/sed`.
+//!
+//! On Windows `/dev/null` and `/dev/zero` are devices for operands too, as in
+//! Git Bash. The exception is the utilities that read the operand's kind first,
+//! which refuse them since Windows tells nothing of its null device's kind.
+//!
+//! Only a utility's open of a file and start of a program wait out a lack of
+//! open files. Making every utility wait would change most of them, and the
+//! raised limit makes running out rare.
 
 #[cfg(windows)]
 mod windows;

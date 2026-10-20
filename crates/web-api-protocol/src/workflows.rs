@@ -1,9 +1,10 @@
 //! A conversation's Workflow menu
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`):
-//! `GET /conversations/:id/workflows` lists the workflows of its working
-//! directory with what the page watches to hear of a change, and
-//! `GET /devices/:id/workflows?directory=` those of a new conversation's
-//! directory before its first message.
+//!
+//! - `GET /conversations/:id/workflows` lists the workflows of its working
+//!   directory with what the page watches to hear of a change.
+//! - `GET /devices/:id/workflows?directory=` lists those of a new
+//!   conversation's directory before its first message.
 
 use demi_runner_protocol::files::SubscriptionKind;
 use schemars::JsonSchema;

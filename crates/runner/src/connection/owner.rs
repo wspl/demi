@@ -1,9 +1,10 @@
 //! The connection's owner: it reads each message and routes it, and it owns
-//! what lasts as long as the connection. The jobs outlive it: it serves what
-//! the registration keeps while it lasts ([`Kept`]). Every branch of its
-//! loop returns without waiting for the work it started, apart from the wait
-//! for room in the backend's outbound queue, which the transport drains on
-//! its own.
+//! what lasts as long as the connection.
+//!
+//! The jobs outlive it: it serves what the registration keeps while it lasts
+//! ([`Kept`]). Every branch of its loop returns without waiting for the work it
+//! started, apart from the wait for room in the backend's outbound queue, which
+//! the transport drains on its own.
 
 use std::{
     collections::{BTreeMap, BTreeSet},

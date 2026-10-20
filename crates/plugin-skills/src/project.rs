@@ -1,16 +1,20 @@
 //! Project skills: the skills a project carries in `.agents/skills` and
 //! `.claude/skills` of its directory, and nowhere else, found through Host
-//! reads that never wake the Host. Each round of the search reads every path
-//! it needs in one request. The backend keeps the result and searches again
-//! when what the search names to watch changes: the two skills directories,
-//! whether they exist yet or not, and each skill's `SKILL.md`.
+//! reads that never wake the Host.
 //!
-//! Project skills are always available: they come with the project, their
-//! files stay where they are, and the catalog names each `SKILL.md` at its own
-//! path. Demi does not check them first: the user chose the directory, and the
-//! agent runs its code in any case. Only these two directories of the
-//! project's own directory are read, never one above it, a subagent's own
-//! working directory, the user's home or another agent's configuration.
+//! Each round of the search reads every path it needs in one request. The
+//! backend keeps the result and searches again when what the search names to
+//! watch changes: the two skills directories, whether they exist yet or not,
+//! and each skill's `SKILL.md`.
+//!
+//! Project skills are always available: they come with the project, their files
+//! stay where they are, and the catalog names each `SKILL.md` at its own path.
+//! Demi does not check them first: the user chose the directory, and the agent
+//! runs its code in any case.
+//!
+//! Only these two directories of the project's own directory are read, never
+//! one above it, a subagent's own working directory, the user's home or another
+//! agent's configuration.
 
 use demi_host_interface::HostPaths;
 use demi_plugin_interface::{
@@ -44,14 +48,21 @@ pub(crate) struct ProjectSkill {
 }
 
 /// The project skills of `directory`, one per name, `.agents/skills` over
-/// `.claude/skills`, with what tells of a change to them: every directory
-/// the search listed, the two skills directories whether they exist or not,
-/// and every `SKILL.md` it looked for below them, found, missing or not a
-/// skill, so a manifest created in an empty skill directory, a skill added
-/// to a group or a manifest repaired is seen. A skill's own directory is
-/// not listed, so a file added beside its `SKILL.md` changes nothing. What is not a
-/// skill, has warnings or is shadowed is logged. `paths` is how the Host
-/// writes its paths, which every path the search reads is built in.
+/// `.claude/skills`, with what tells of a change to them.
+///
+/// What tells of a change is:
+///
+/// - every directory the search listed, the two skills directories whether they
+///   exist or not;
+/// - every `SKILL.md` it looked for below them, found, missing or not a skill,
+///   so a manifest created in an empty skill directory, a skill added to a
+///   group or a manifest repaired is seen.
+///
+/// A skill's own directory is not listed, so a file added beside its `SKILL.md`
+/// changes nothing. What is not a skill, has warnings or is shadowed is logged.
+///
+/// `paths` is how the Host writes its paths, which every path the search reads
+/// is built in.
 pub(crate) async fn search(
     port: &PluginPort,
     paths: HostPaths,

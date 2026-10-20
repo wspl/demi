@@ -1,27 +1,39 @@
-//! File contents: a file's bytes travel through a pipe, never in a message, the way
-//! command IO does. A pipe that fails, because its reader went away or the
-//! connection closed, ends the transfer and closes the file.
+//! File contents: a file's bytes travel through a pipe, never in a message, the
+//! way command IO does.
 //!
-//! A read replies once the file is open and positioned, before its first byte, so a
-//! file that cannot be opened is an error reply and never an empty stream. A write
-//! goes to a temporary file beside the destination (`.demi-partial-`, from
-//! `demi_shared_artifacts`'s publication, as a file command's is) and is renamed into
-//! place only when the pipe ends cleanly, so a failed or cancelled pipe leaves the
-//! destination as it was; one left behind by a crash is safe to delete, and a write
-//! still running when it goes fails instead of replacing the file.
+//! A pipe that fails, because its reader went away or the connection closed,
+//! ends the transfer and closes the file.
 //!
-//! Every pipe end named to the runner is reported with `pipe_done`, including one a
-//! refused request never used. A runner that stops reading before the end because
-//! nothing reads it any more (a job ended or closed its input) reports success, so
-//! the backend ends the pipe for its writer as a whole one and the writer stops
-//! without a message, as a local writer does whose reader left: `… | demi host shell
-//! --host x 'read l; echo $l'` prints the far command's line and status alone.
+//! # Reads and writes
+//!
+//! - A read replies once the file is open and positioned, before its first
+//!   byte, so a file that cannot be opened is an error reply and never an empty
+//!   stream.
+//! - A write goes to a temporary file beside the destination (`.demi-partial-`,
+//!   from `demi_shared_artifacts`'s publication, as a file command's is) and is
+//!   renamed into place only when the pipe ends cleanly. A failed or cancelled
+//!   pipe leaves the destination as it was. A file left behind by a crash is
+//!   safe to delete, and a write still running when it goes fails instead of
+//!   replacing the file.
+//!
+//! # Reporting a pipe's end
+//!
+//! Every pipe end named to the runner is reported with `pipe_done`, including
+//! one a refused request never used.
+//!
+//! A runner that stops reading before the end because nothing reads it any more
+//! (a job ended or closed its input) reports success. The backend then ends the
+//! pipe for its writer as a whole one, and the writer stops without a message,
+//! as a local writer does whose reader left: `… | demi host shell --host x
+//! 'read l; echo $l'` prints the far command's line and status alone.
+//!
+//! # Deadline
 //!
 //! A write's reply comes within 60 seconds of its last byte leaving the backend
-//! (`reply_after_input` in `demi_backend_remote_host`). A session file's last bytes
-//! once stayed queued where gVisor left them and the write waited all night; the
-//! deadline turns such a stall into one failed start and a retry. The pipe itself
-//! keeps no deadline.
+//! (`reply_after_input` in `demi_backend_remote_host`). A session file's last
+//! bytes once stayed queued where gVisor left them and the write waited all
+//! night; the deadline turns such a stall into one failed start and a retry.
+//! The pipe itself keeps no deadline.
 
 use std::{
     io::{self, SeekFrom},
@@ -466,10 +478,11 @@ pub struct OpenedRead {
 pub type FileBody = std::pin::Pin<Box<dyn futures_util::Stream<Item = io::Result<Bytes>> + Send>>;
 
 /// Opens the range of a file a read names, the backend's `fs_readFile` or a
-/// direct channel's `read` and `text`: the
-/// regular file at `target` positioned at `offset`, `length` bytes of it or
-/// to its end, with its metadata and version; a read that names the
-/// version the file still has gets no bytes.
+/// direct channel's `read` and `text`.
+///
+/// It returns the regular file at `target` positioned at `offset`, `length`
+/// bytes of it or to its end, with its metadata and version. A read that names
+/// the version the file still has gets no bytes.
 pub async fn open_read(
     target: io::Result<PathBuf>,
     offset: u64,
@@ -739,13 +752,17 @@ fn chunks(
 }
 
 /// Writes a file the way every write of a page's does, the backend's
-/// `fs_writeFile` or a direct channel's `write`: `body`, once it opens, streams into a file staged beside
-/// `target`, making the directories above it that are missing, and the file
-/// is published there when the body ends cleanly, as `exists` says when the
-/// path is taken; any failure removes the staged file and leaves `target`
-/// as it was. Answers the name of the file written, or, for a write that
-/// takes another name, of the file of the same bytes found under one of the
-/// names it tries, which is then not written again.
+/// `fs_writeFile` or a direct channel's `write`.
+///
+/// - `body`, once it opens, streams into a file staged beside `target`, making
+///   the directories above it that are missing.
+/// - The file is published there when the body ends cleanly, as `exists` says
+///   when the path is taken.
+/// - Any failure removes the staged file and leaves `target` as it was.
+///
+/// It answers the name of the file written. For a write that takes another
+/// name, it answers the file of the same bytes found under one of the names it
+/// tries, which is then not written again.
 pub async fn write_file<B>(
     body: impl std::future::Future<Output = io::Result<B>>,
     target: &Path,

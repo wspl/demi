@@ -100,14 +100,20 @@ pub struct PackageCall {
     pub kind: CallKind,
 }
 
-/// Demi's side of a plugin's port, in memory: an rpc transport, the
-/// plugin's values and the blobs they name, the user's blobs, the plugin's
-/// Host directories, the files of the conversation's primary Host, the
-/// package calls a test answers, how often the plugin marked its state
-/// as changed, the conversation's work panel, the plugin's secrets, the
-/// outbound requests a test answers, the user's sign-in, and the media
-/// models, images, videos, audio and voices of the user's provider entries
-/// a test answers.
+/// Demi's side of a plugin's port, in memory.
+///
+/// It holds:
+///
+/// - an rpc transport;
+/// - the plugin's values and the blobs they name, and the user's blobs;
+/// - the plugin's Host directories, and the files of the conversation's primary
+///   Host;
+/// - the package calls a test answers, and how often the plugin marked its
+///   state as changed;
+/// - the conversation's work panel, and the plugin's secrets;
+/// - the outbound requests a test answers, and the user's sign-in;
+/// - the media models, images, videos, audio and voices of the user's provider
+///   entries a test answers.
 pub struct TestDemi {
     /// The plugin whose port this is, which names its directories' paths.
     pub plugin: RefCell<PluginId>,

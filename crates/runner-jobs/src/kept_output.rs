@@ -1,12 +1,17 @@
 //! A job's kept output: every read of its stdout and stderr, in the order the
-//! runner read them, one record per read in the wire's encoding, which the backend
-//! decodes with the wire's types. The bound counts the records' bytes, so it bounds
-//! the disk exactly: up to `JOB_KEPT_BYTES` every read is kept; beyond that the
-//! first half stays whole in `head`, the last half in segments of 1 MiB of which
-//! the oldest goes as new reads come, and one record between them counts the bytes
-//! left out. A job that prints without end, such as `yes`, therefore holds at most
-//! 16 MiB of the device's disk. `job_read` streams a snapshot, while the job runs
-//! and after.
+//! runner read them, one record per read in the wire's encoding, which the
+//! backend decodes with the wire's types.
+//!
+//! The bound counts the records' bytes, so it bounds the disk exactly:
+//!
+//! - Up to `JOB_KEPT_BYTES` every read is kept.
+//! - Beyond that the first half stays whole in `head`, and the last half in
+//!   segments of 1 MiB, of which the oldest goes as new reads come.
+//! - One record between them counts the bytes left out.
+//!
+//! A job that prints without end, such as `yes`, therefore holds at most 16 MiB
+//! of the device's disk. `job_read` streams a snapshot, while the job runs and
+//! after.
 
 use std::{
     collections::VecDeque,

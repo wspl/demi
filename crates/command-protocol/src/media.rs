@@ -8,12 +8,15 @@ use serde::{Deserialize, Serialize};
 /// The largest medium a command returns.
 pub const MAX_MEDIUM_BYTES: u64 = 16 * 1024 * 1024;
 
-/// The media type `bytes` begin with, from their magic numbers, or `None`
-/// for anything but the image, video and document types a model reads
-/// (`crates/shared-types/src/model.rs`). Fewer than 12 bytes are never
-/// recognized. An ISO media file (`ftyp`) is QuickTime for the brand `qt  `,
-/// M4V for a brand starting `M4V`, and MP4 otherwise; an EBML header is
-/// WebM, the Matroska format a model reads; `%PDF-` begins a PDF.
+/// The media type `bytes` begin with, from their magic numbers, or `None` for
+/// anything but the image, video and document types a model reads
+/// (`crates/shared-types/src/model.rs`).
+///
+/// - Fewer than 12 bytes are never recognized.
+/// - An ISO media file (`ftyp`) is QuickTime for the brand `qt  `, M4V for a
+///   brand starting `M4V`, and MP4 otherwise.
+/// - An EBML header is WebM, the Matroska format a model reads.
+/// - `%PDF-` begins a PDF.
 pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
     if bytes.len() < 12 {
         return None;
@@ -49,12 +52,15 @@ pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
 /// git reads them.
 const BINARY_NUL_BYTES: usize = 8 * 1024;
 
-/// Whether `bytes` are binary (`crates/command-package-file/src/files.rs`):
-/// their first 8 KiB hold a NUL byte, as git and GNU diff decide, or they
-/// begin as a media type [`sniff_media_type`] recognizes. Any other bytes are
-/// text, and a byte that is not UTF-8 shows as U+FFFD. It is the one rule for
-/// a job's stdout, edit tracking's copies and line counts, and the first
-/// bytes of a longer file answer it as the whole file would.
+/// Whether `bytes` are binary (`crates/command-package-file/src/files.rs`).
+///
+/// Bytes are binary when their first 8 KiB hold a NUL byte, as git and GNU diff
+/// decide, or they begin as a media type [`sniff_media_type`] recognizes. Any
+/// other bytes are text, and a byte that is not UTF-8 shows as U+FFFD.
+///
+/// It is the one rule for a job's stdout, edit tracking's copies and line
+/// counts, and the first bytes of a longer file answer it as the whole file
+/// would.
 pub fn is_binary(bytes: &[u8]) -> bool {
     bytes[..bytes.len().min(BINARY_NUL_BYTES)].contains(&0) || sniff_media_type(bytes).is_some()
 }

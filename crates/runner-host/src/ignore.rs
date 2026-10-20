@@ -1,9 +1,11 @@
-//! What git ignores in a watched tree (`crates/runner-host/src/subscriptions.rs`): the
-//! rules of the repository the tree lies in, with a cache of the folders it
-//! ignores whole, so a path under `target/` costs one lookup of `target`.
-//! A watch's thread asks it of each path it receives; an ignored path
-//! changes no `worktree` subscription and is not among the working tree's
-//! changed paths.
+//! What git ignores in a watched tree
+//! (`crates/runner-host/src/subscriptions.rs`): the rules of the repository the
+//! tree lies in, with a cache of the folders it ignores whole, so a path under
+//! `target/` costs one lookup of `target`.
+//!
+//! A watch's thread asks it of each path it receives. An ignored path changes
+//! no `worktree` subscription and is not among the working tree's changed
+//! paths.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -69,11 +71,13 @@ impl IgnoreFilter {
         })
     }
 
-    /// Whether git ignores each of the canonical `paths`, each with whether
-    /// it is a folder when the caller knows: untracked, and matched by an
-    /// exclude rule of its own or of a folder above it. A path in the
-    /// repository's git directory or outside its work tree is not ignored.
-    /// A changed rules file among them makes the cache start over first.
+    /// Whether git ignores each of the canonical `paths`, each with whether it
+    /// is a folder when the caller knows.
+    ///
+    /// A path is ignored when it is untracked and matched by an exclude rule of
+    /// its own or of a folder above it. A path in the repository's git
+    /// directory or outside its work tree is not ignored. A changed rules file
+    /// among the paths makes the cache start over first.
     pub(crate) fn ignored(&mut self, paths: &[(&Path, Option<bool>)]) -> Vec<bool> {
         if paths.iter().any(|(path, _)| self.rules_file(path))
             || self.folders.ignored.len() + self.folders.kept.len() > CACHED_FOLDERS

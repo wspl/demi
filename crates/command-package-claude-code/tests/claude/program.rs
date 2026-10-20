@@ -1,12 +1,14 @@
 #![cfg(unix)]
 //! The `demi-claude-code` program at its boundary
-//! (`crates/command-package-claude-code/src/lib.rs`): the command service it
-//! serves on its standard input and
-//! output, as a runner starts it, answers each invocation with one document
-//! and says a failure in its completion too. Its artifacts stream is
-//! answered as a runner answers it.
-//! As an integration test of the package, it also makes `cargo test` build
-//! the program, which the backend's scenarios start.
+//! (`crates/command-package-claude-code/src/lib.rs`).
+//!
+//! The program serves the command service on its standard input and output, as
+//! a runner starts it. It answers each invocation with one document and says a
+//! failure in its completion too. Its artifacts stream is answered as a runner
+//! answers it.
+//!
+//! As an integration test of the package, it also makes `cargo test` build the
+//! program, which the backend's scenarios start.
 
 use bytes::Bytes;
 use demi_command_protocol::{

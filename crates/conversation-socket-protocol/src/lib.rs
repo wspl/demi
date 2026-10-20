@@ -1,13 +1,17 @@
-//! The conversation WebSocket's frames: what the web app sends ([`ClientFrame`])
-//! and what the backend answers ([`ServerFrame`]), with transcript patches
-//! and versions. It holds types and their checks; the session logic and the
-//! socket live elsewhere, and no frame carries file bytes.
+//! The conversation WebSocket's frames: what the web app sends
+//! ([`ClientFrame`]) and what the backend answers ([`ServerFrame`]), with
+//! transcript patches and versions.
+//!
+//! The crate holds types and their checks; the session logic and the socket
+//! live elsewhere, and no frame carries file bytes.
 //!
 //! Client frames are strict: an unknown field is refused. Server frames are
 //! tolerant, so a page accepts fields it does not know.
 //!
-//! The open handshake, for a page that holds blocks up to `from` and asks the
-//! stream for those from there on:
+//! # The open handshake
+//!
+//! A page that holds blocks up to `from` asks the stream for those from there
+//! on:
 //!
 //! ```text
 //! client                          server
@@ -22,14 +26,19 @@
 //! ```
 //!
 //! The handshake is one step: nothing happens to the session between `opened`
-//! and its last frame, so the snapshot frames agree with each other. Each
-//! `transcript_patch` carries the revision one past the previous frame's: a
-//! client applies a patch whose revision is one past its own, ignores one
-//! whose revision is not greater, and asks for a fresh transcript with
-//! `sync_transcript` when it sees a gap. A response that asks for no tool
-//! holds the frames of its turn's end until the turn goes on or the
-//! conversation goes idle after its closing save, so the last patch and
-//! `phase: idle` go together; the hold waits for that save, never for a timer.
+//! and its last frame, so the snapshot frames agree with each other.
+//!
+//! # Patches
+//!
+//! - Each `transcript_patch` carries the revision one past the previous
+//!   frame's.
+//! - A client applies a patch whose revision is one past its own, ignores one
+//!   whose revision is not greater, and asks for a fresh transcript with
+//!   `sync_transcript` when it sees a gap.
+//! - A response that asks for no tool holds the frames of its turn's end until
+//!   the turn goes on or the conversation goes idle after its closing save, so
+//!   the last patch and `phase: idle` go together. The hold waits for that
+//!   save, never for a timer.
 //!
 //! The agent resolves the files a client frame's content refers to through the
 //! backend (`agent-server`'s `ContentResolver`) before the session sees the

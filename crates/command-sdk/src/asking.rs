@@ -1,10 +1,14 @@
-//! A stream the runner opens into a service and answers the service's
-//! requests on, at both ends (`crates/command-protocol/src/numbers.rs`, `crates/command-protocol/src/artifacts.rs`). The service writes each request as one standard
-//! output record with an id of its own, unique among its requests in flight;
-//! the runner sends each answer back as one input chunk when the service
-//! pulls. Before its outcome, a request may be answered with how far it has
-//! come, as an install's download is. The numbers stream and the artifacts
-//! stream are two kinds of it.
+//! A stream the runner opens into a service and answers the service's requests
+//! on, at both ends (`crates/command-protocol/src/numbers.rs`,
+//! `crates/command-protocol/src/artifacts.rs`). The numbers stream and the
+//! artifacts stream are two kinds of it.
+//!
+//! - The service writes each request as one standard output record with an id
+//!   of its own, unique among its requests in flight.
+//! - The runner sends each answer back as one input chunk when the service
+//!   pulls.
+//! - Before its outcome, a request may be answered with how far it has come, as
+//!   an install's download is.
 
 use std::{
     collections::{HashMap, VecDeque},

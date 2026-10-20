@@ -1,11 +1,16 @@
-//! The port's Providers service:
-//! the media models of one kind of the user's provider entries with what
-//! the catalog states of each and the entries that offer it, one image
-//! made through an entry's account or key, one video's job, asked for and
-//! then followed to its video, and one audio file with the voices a speech
-//! model speaks in. The backend chooses the entry and the
-//! account, rotates them, renews their sign-in, runs the job and records
-//! the call in the usage ledger; no token or key reaches the plugin.
+//! The port's Providers service.
+//!
+//! The service offers:
+//!
+//! - the media models of one kind of the user's provider entries, with what the
+//!   catalog states of each and the entries that offer it;
+//! - one image made through an entry's account or key;
+//! - one video's job, asked for and then followed to its video;
+//! - one audio file, with the voices a speech model speaks in.
+//!
+//! The backend chooses the entry and the account, rotates them, renews their
+//! sign-in, runs the job and records the call in the usage ledger. No token or
+//! key reaches the plugin.
 
 pub use demi_shared_types::VideoResolution;
 use demi_shared_types::{AudioKind, B64Bytes, Cost, Timestamp, VendorTrace};

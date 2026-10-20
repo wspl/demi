@@ -1,13 +1,14 @@
-//! A tab's icon: what its page
-//! names, or its site's `/favicon.ico`, drawn 32 pixels square on the Host
-//! each time the main frame stops loading, as a web browser's tab shows the
-//! site's icon. Each change counts as a change of what the browser shows, so
-//! the tab list carries it.
+//! A tab's icon: what its page names, or its site's `/favicon.ico`, drawn 32
+//! pixels square on the Host each time the main frame stops loading, as a web
+//! browser's tab shows the site's icon.
+//!
+//! Each change counts as a change of what the browser shows, so the tab list
+//! carries it.
 //!
 //! The browser loads the icon for the Host, outside the page's document, as a
-//! web browser's own icon request is: an icon the page's document loaded
-//! would show among the page's resources, in its asset inventory and its
-//! resource timing, though the page never asked for it.
+//! web browser's own icon request is. An icon the page's document loaded would
+//! show among the page's resources, in its asset inventory and its resource
+//! timing, though the page never asked for it.
 
 use std::io::Cursor;
 use std::time::Duration;

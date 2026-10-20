@@ -286,12 +286,16 @@ pub(crate) fn symbolic_link(path: &Path) -> io::Result<wire::SymbolicLink> {
     })
 }
 
-/// What a link leads to, from the metadata found by following it, as
-/// whether it is a file and whether a directory. A failure to follow it is
-/// never a failure of the listing it is part of (`crates/runner-host/src/lib.rs`): nothing there, a name on the way that does not exist or is
-/// no directory, is a missing target; any other failure, a directory on the
-/// way that may not be searched, a loop of links, a failing disk, is an
-/// unreadable one with the system's reason.
+/// What a link leads to, from the metadata found by following it, as whether it
+/// is a file and whether a directory.
+///
+/// A failure to follow it is never a failure of the listing it is part of
+/// (`crates/runner-host/src/lib.rs`):
+///
+/// - Nothing there, a name on the way that does not exist or is no directory,
+///   is a missing target.
+/// - Any other failure, a directory on the way that may not be searched, a loop
+///   of links, a failing disk, is an unreadable one with the system's reason.
 pub(crate) fn link_target(followed: io::Result<(bool, bool)>) -> wire::LinkTarget {
     match followed {
         Ok((true, _)) => wire::LinkTarget::File,

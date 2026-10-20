@@ -1,22 +1,32 @@
-//! The device environment: the user's login environment, which the runner reads at
-//! its start from the account's login shell, run as an interactive login shell as VS
-//! Code resolves a shell's environment. A service manager gives the runner a small
-//! environment (on macOS the user's `PATH`, Homebrew's, nvm's, lives in zsh's
-//! files, which a job's login shell never reads), so the environment comes from the
-//! user's shell, not from whoever started the runner, the same after a restart as
-//! from a terminal. A shell that fails or takes over 10 s leaves the runner's own,
-//! and the log says so.
+//! The device environment: the user's login environment, which the runner reads
+//! at its start from the account's login shell, run as an interactive login
+//! shell as VS Code resolves a shell's environment.
+//!
+//! A service manager gives the runner a small environment. On macOS the user's
+//! `PATH`, Homebrew's, nvm's, lives in zsh's files, which a job's login shell
+//! never reads. So the environment comes from the user's shell, not from
+//! whoever started the runner, the same after a restart as from a terminal.
+//!
+//! A shell that fails or takes over 10 s leaves the runner's own, and the log
+//! says so.
+//!
+//! # What is removed and added
 //!
 //! `DEMI_*` names and, on Windows, the `=C:`-style per-drive entries are taken
-//! away: the first configure the runner or belong to whatever started it, and none
-//! is meant for the programs it starts (a job that reads `DEMI_RELEASE_ID` to
-//! choose a release would otherwise read the runner's); cmd keeps the second and no
-//! program may be given them back. The same environment reaches jobs, raw processes
-//! and resident services, and runner-owned variables (the endpoint, the context
-//! handle, `DEMI_HOME`, the alias directory on `PATH`) override caller values. On
-//! macOS the `LANG` Terminal sets and no profile does is completed ([`complete`])
-//! from the user's language with UTF-8, since `ls` and `git` print a non-ASCII file
-//! name as question marks without it.
+//! away:
+//!
+//! - The `DEMI_*` names configure the runner or belong to whatever started it,
+//!   and none is meant for the programs it starts. A job that reads
+//!   `DEMI_RELEASE_ID` to choose a release would otherwise read the runner's.
+//! - cmd keeps the per-drive entries, and no program may be given them back.
+//!
+//! The same environment reaches jobs, raw processes and resident services.
+//! Runner-owned variables (the endpoint, the context handle, `DEMI_HOME`, the
+//! alias directory on `PATH`) override caller values.
+//!
+//! On macOS the `LANG` Terminal sets and no profile does is completed
+//! ([`complete`]) from the user's language with UTF-8, since `ls` and `git`
+//! print a non-ASCII file name as question marks without it.
 
 use std::collections::BTreeMap;
 

@@ -1,9 +1,10 @@
 //! The video plugin through the JSON loopback over an in-memory Demi, which
-//! answers its file reads and its video's job: the lines a job's states
-//! are told in, the MP4 checked before a byte reaches stdout, the summary
-//! and its warnings, the frames read from the conversation's Host, and the
-//! words a failure is told in. The whole path through the backend is the
-//! backend's `videos` scenarios'.
+//! answers its file reads and its video's job.
+//!
+//! The tests cover the lines a job's states are told in, the MP4 checked before
+//! a byte reaches stdout, the summary and its warnings, the frames read from
+//! the conversation's Host, and the words a failure is told in. The whole path
+//! through the backend is the backend's `videos` scenarios'.
 
 mod support;
 
@@ -42,10 +43,13 @@ fn made(bytes: &[u8]) -> Result<VideoStep, PortRefusal> {
 
 /// The job is named at once, each change of its state is a line, and the
 /// checked MP4 goes to stdout with a line that says what came back.
-/// Planted defects this catches: the job named only once it ends, which
-/// leaves the agent no id of a paid job if the call is stopped; a state
-/// that is not told; the length read from the vendor's word rather than
-/// the file.
+///
+/// Planted defects this catches:
+///
+/// - the job named only once it ends, which leaves the agent no id of a paid
+///   job if the call is stopped;
+/// - a state that is not told;
+/// - the length read from the vendor's word rather than the file.
 #[test]
 fn the_job_is_named_at_once_its_states_told_and_the_video_summed_up() {
     local(async {
@@ -74,12 +78,14 @@ fn the_job_is_named_at_once_its_states_told_and_the_video_summed_up() {
     });
 }
 
-/// Each option the shape took no field for is a warning, then each the
-/// result does not honour; one that matches, the 16:9 of 64×36, is not.
-/// An option not sent is told once, with what the result shows of it.
-/// Planted defects this catches: an unsent option left untold, so the
-/// agent believes the seed was used; a mismatch told as a failure, which
-/// would throw away a paid video.
+/// Each option the shape took no field for is a warning, then each the result
+/// does not honour. One that matches, the 16:9 of 64×36, is not. An option not
+/// sent is told once, with what the result shows of it.
+///
+/// Planted defects this catches:
+///
+/// - an unsent option left untold, so the agent believes the seed was used;
+/// - a mismatch told as a failure, which would throw away a paid video.
 #[test]
 fn what_the_shape_does_not_take_and_the_result_does_not_honour_are_warnings() {
     local(async {
@@ -116,13 +122,16 @@ fn what_the_shape_does_not_take_and_the_result_does_not_honour_are_warnings() {
     });
 }
 
-/// `--resolution` takes any height or count of thousands across a vendor
-/// names, as MiniMax's `768P` and `2K`, and sends it as read; one the
-/// result does not honour is a warning in `--resolution`'s words, and a
-/// value of neither form is refused before anything is asked.
-/// Planted defects this catches: a closed list of resolutions, which
-/// refuses MiniMax's; a `2k` result never checked; a malformed value
-/// passed to the plugin.
+/// `--resolution` takes any height or count of thousands across a vendor names,
+/// as MiniMax's `768P` and `2K`, and sends it as read. One the result does not
+/// honour is a warning in `--resolution`'s words, and a value of neither form
+/// is refused before anything is asked.
+///
+/// Planted defects this catches:
+///
+/// - a closed list of resolutions, which refuses MiniMax's;
+/// - a `2k` result never checked;
+/// - a malformed value passed to the plugin.
 // Two calls against a scripted Providers service and one parse: milliseconds.
 #[test]
 fn a_resolution_is_any_height_or_thousands_across() {
@@ -166,12 +175,15 @@ fn a_file_that_is_not_an_mp4_fails_and_writes_nothing() {
     });
 }
 
-/// The frames and references are read from the conversation's Host beside
-/// the shell, in their places; a last frame without a first, or sound
-/// asked both ways, fails before anything is asked.
-/// Planted defects this catches: a reference sent as the last frame when
-/// no last frame is given; a call with a last frame alone sent, which
-/// every vendor refuses after the ask is paid for on some.
+/// The frames and references are read from the conversation's Host beside the
+/// shell, in their places. A last frame without a first, or sound asked both
+/// ways, fails before anything is asked.
+///
+/// Planted defects this catches:
+///
+/// - a reference sent as the last frame when no last frame is given;
+/// - a call with a last frame alone sent, which every vendor refuses after the
+///   ask is paid for on some.
 #[test]
 fn frames_and_references_are_read_from_the_host_and_a_lone_last_frame_is_refused() {
     local(async {

@@ -1,14 +1,24 @@
-//! Waiting out a lack of open files. A process keeps the limit the system gives it,
-//! and every pipe, local command connection and open file holds one while it lasts,
-//! so an operation that finds none left waits and tries again, since another will
-//! close, instead of failing: in the runner pipes, connections, filesystem and
-//! working-tree requests, process and job starts, and everything a job's shell opens
-//! (pipes, redirections, here-documents, the copies it makes for subshells), a job's
-//! wait ending when the job is cancelled. Nothing tells the process when one closes,
-//! so attempts are spaced at most a tenth of a second apart ([`Backoff`]). Running
-//! out is never an answer about something else either: a working-tree request does
-//! not report a directory as outside a repository because it could not open the
-//! repository's files.
+//! Waiting out a lack of open files.
+//!
+//! A process keeps the limit the system gives it, and every pipe, local command
+//! connection and open file holds one while it lasts. So an operation that
+//! finds none left waits and tries again, since another will close, instead of
+//! failing. A job's wait ends when the job is cancelled.
+//!
+//! In the runner this covers:
+//!
+//! - pipes and connections;
+//! - filesystem and working-tree requests;
+//! - process and job starts;
+//! - everything a job's shell opens (pipes, redirections, here-documents, the
+//!   copies it makes for subshells).
+//!
+//! Nothing tells the process when one closes, so attempts are spaced at most a
+//! tenth of a second apart ([`Backoff`]).
+//!
+//! Running out is never an answer about something else either: a working-tree
+//! request does not report a directory as outside a repository because it could
+//! not open the repository's files.
 
 use std::{error::Error, future::Future, io, time::Duration};
 

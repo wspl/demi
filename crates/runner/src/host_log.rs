@@ -1,22 +1,34 @@
-//! The Host's log: one bounded log of diagnostics per Host, kept in two files so
-//! the older can be replaced when the newer fills. Without it a resident service
-//! that fails on a Cloud and writes why to its standard error leaves nothing, and
-//! the page only sees a view that never learns its tabs.
+//! The Host's log: one bounded log of diagnostics per Host, kept in two files
+//! so the older can be replaced when the newer fills.
 //!
-//! Every part of the runner writes `tracing` events (the source and the conversation
-//! as fields); the log is a layer that writes them as lines, so no module holds a
-//! handle to the files, and a resident service's standard error enters the same way.
-//! Writing never holds up the work it describes: the layer queues each line, one
-//! writer thread owns the files, a line the queue has no room for is dropped and
-//! counted, and the writer answers reads between two lines, so a read holds every
-//! line queued before it and never races a write. A paired device keeps it in `log/`
-//! of its installation state; a managed guest's state is temporary, so it keeps it in
-//! `/var/log/demi` on the system layer, which outlives a stop.
+//! Without it a resident service that fails on a Cloud and writes why to its
+//! standard error leaves nothing, and the page only sees a view that never
+//! learns its tabs.
+//!
+//! # How lines get in
+//!
+//! Every part of the runner writes `tracing` events (the source and the
+//! conversation as fields). The log is a layer that writes them as lines, so no
+//! module holds a handle to the files, and a resident service's standard error
+//! enters the same way.
+//!
+//! Writing never holds up the work it describes:
+//!
+//! - The layer queues each line, and one writer thread owns the files.
+//! - A line the queue has no room for is dropped and counted.
+//! - The writer answers reads between two lines, so a read holds every line
+//!   queued before it and never races a write.
+//!
+//! A paired device keeps the log in `log/` of its installation state. A managed
+//! guest's state is temporary, so it keeps it in `/var/log/demi` on the system
+//! layer, which outlives a stop.
+//!
+//! # What goes in
 //!
 //! What a source writes is diagnostics: what it tried and why it failed. Page
-//! content, typed text, cookies, tokens and file contents never go to the log. A
-//! failure the user's page is waiting on is also told to the page; the log is where
-//! the cause is found, never the only place a failure is told.
+//! content, typed text, cookies, tokens and file contents never go to the log.
+//! A failure the user's page is waiting on is also told to the page; the log is
+//! where the cause is found, never the only place a failure is told.
 
 use std::{
     fmt::{self, Write as _},

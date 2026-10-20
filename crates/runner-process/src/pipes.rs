@@ -1,8 +1,12 @@
-//! The pipe endpoints that carry file contents and output to the backend's
-//! pipe routes, and the report of a pipe's outcome (`crates/runner-protocol/src/wire/pipe_frames.rs`). A content pipe from the runner is a `PUT` body; a stream pipe,
-//! whose bytes must arrive as they are written, goes over a WebSocket at the
-//! same path, since a TLS edge in front of the backend may hold a request's
-//! body until it ends (`crates/runner-protocol/src/wire/pipe_frames.rs`).
+//! The pipe endpoints that carry file contents and output to the backend's pipe
+//! routes, and the report of a pipe's outcome
+//! (`crates/runner-protocol/src/wire/pipe_frames.rs`).
+//!
+//! - A content pipe from the runner is a `PUT` body.
+//! - A stream pipe, whose bytes must arrive as they are written, goes over a
+//!   WebSocket at the same path, since a TLS edge in front of the backend may
+//!   hold a request's body until it ends
+//!   (`crates/runner-protocol/src/wire/pipe_frames.rs`).
 
 use bytes::Bytes;
 use crate::backend::Backend;
@@ -165,11 +169,14 @@ impl PipeClient {
         }
     }
 
-    /// Sends `body` as a stream pipe: each chunk in binary messages as it
-    /// comes, its end as the close frame, and its failure as a close frame
-    /// with the error. The backend's close frame ends the pipe early: a
-    /// normal one when its sink stopped taking bytes, another when the pipe
-    /// failed. Once the body ended, the backend's close answers the runner's.
+    /// Sends `body` as a stream pipe.
+    ///
+    /// - Each chunk goes in binary messages as it comes.
+    /// - The end goes as the close frame, and a failure as a close frame with
+    ///   the error.
+    /// - The backend's close frame ends the pipe early: a normal one when its
+    ///   sink stopped taking bytes, another when the pipe failed.
+    /// - Once the body ended, the backend's close answers the runner's.
     pub async fn stream<S>(&self, path: &str, body: S, cancel: &CancellationToken) -> io::Result<()>
     where
         S: Stream<Item = io::Result<Bytes>> + Send + 'static,
@@ -293,12 +300,14 @@ impl PipeClient {
         }
     }
 
-    /// Downloads the file the backend offers as `offer` into `staging`,
-    /// resumed after a break or a stall (`crates/shared-artifacts/src/download.rs`),
+    /// Downloads the file the backend offers as `offer` into `staging`, resumed
+    /// after a break or a stall (`crates/shared-artifacts/src/download.rs`),
     /// then writes its bytes, checked against the offer's size and SHA-256,
-    /// into `output`. The staging file is removed either way: a later call
-    /// is given a new offer. `progress` hears how many bytes the staging
-    /// file holds after each piece. The error names the cause beneath.
+    /// into `output`.
+    ///
+    /// The staging file is removed either way: a later call is given a new
+    /// offer. `progress` hears how many bytes the staging file holds after each
+    /// piece. The error names the cause beneath.
     pub async fn download(
         &self,
         offer: &wire::FileOffer,
@@ -505,10 +514,12 @@ fn socket_error(error: tungstenite::Error) -> io::Error {
 }
 
 /// The backend's refusal of a pipe request, with status `status` and words
-/// `body`, as an IO error. A 409 says why the pipe cannot go on, such as
-/// `build-box is offline: …`, which the command reports as its own error, so
-/// its words stand alone (`crates/host-interface/src/rpc.rs`); another status
-/// is a fault of the request, named with the status.
+/// `body`, as an IO error.
+///
+/// - A 409 says why the pipe cannot go on, such as `build-box is offline: …`,
+///   which the command reports as its own error, so its words stand alone
+///   (`crates/host-interface/src/rpc.rs`).
+/// - Another status is a fault of the request, named with the status.
 fn refused(status: reqwest::StatusCode, body: &[u8]) -> io::Error {
     let words = String::from_utf8_lossy(body);
     if status == reqwest::StatusCode::CONFLICT {

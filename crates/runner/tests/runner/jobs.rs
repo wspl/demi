@@ -279,13 +279,15 @@ async fn a_start_that_arrives_twice_runs_the_job_once() {
     .unwrap();
 }
 
-/// A connection loss stops nothing, however long it lasts; only the
-/// backend's refusal of the runner, as for a revoked device, stops its jobs
-/// (`crates/runner/src/connection/kept.rs`). The runner's attempts to connect again
-/// while it stays away mark the time that passes, so the test waits for
-/// them, not for time. About seven seconds: a login shell starts, the
-/// runner tries twice in vain and is back within two, and the refused
-/// runner takes about five to end.
+/// A connection loss stops nothing, however long it lasts. Only the backend's
+/// refusal of the runner, as for a revoked device, stops its jobs
+/// (`crates/runner/src/connection/kept.rs`).
+///
+/// The runner's attempts to connect again while it stays away mark the time
+/// that passes, so the test waits for them, not for time.
+///
+/// Cost: about seven seconds. A login shell starts, the runner tries twice in
+/// vain and is back within two, and the refused runner takes about five to end.
 #[tokio::test]
 async fn a_job_runs_on_through_a_connection_loss_until_the_backend_refuses_the_runner() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -344,14 +346,19 @@ const STRAY_DIRECTORY: &str = "DEMI_TEST_STRAY_DIRECTORY";
 #[cfg(unix)]
 const STRAY_CHILD: &str = "DEMI_TEST_STRAY_CHILD";
 
-/// A program the stop tests run in a job, not a test of its own. Started
-/// with `STRAY_DIRECTORY` set, it starts itself again and ends once its
-/// child has left its group, which the runner kills when its leader ends,
-/// so the child is an orphan; the child calls `setsid`, which takes it out of the
-/// job's process groups, writes its process id to `pid` in that directory,
-/// records each `TERM` it takes in `took-term`, and runs on. This test
-/// binary is no Apple program, so macOS shows its environment, where the
-/// stop finds it.
+/// A program the stop tests run in a job, not a test of its own.
+///
+/// Started with `STRAY_DIRECTORY` set, it starts itself again and ends once its
+/// child has left its group, which the runner kills when its leader ends, so
+/// the child is an orphan. The child:
+///
+/// - calls `setsid`, which takes it out of the job's process groups;
+/// - writes its process ID to `pid` in that directory;
+/// - records each `TERM` it takes in `took-term`;
+/// - runs on.
+///
+/// This test binary is no Apple program, so macOS shows its environment, where
+/// the stop finds it.
 #[cfg(unix)]
 #[test]
 #[ignore = "a program the stop tests run in a job"]
@@ -427,12 +434,15 @@ async fn stop_reaches_the_program_that_left(host: &mut Host, job: &str) {
     assert!(!running(&pid), "process {pid} survived the stop");
 }
 
-/// A stop reaches a program that left the job's process groups and whose
-/// parent has ended, as a daemon's does, by the job's id in its environment
-/// (`crates/runner-shell/src/job.rs`). The program holds the job's
-/// output, so the job runs until `KILL`. Before, neither signal reached it,
-/// and it ran on after the job had been reported killed. About a second: a
-/// login shell starts.
+/// A stop reaches a program that left the job's process groups and whose parent
+/// has ended, as a daemon's does, by the job's id in its environment
+/// (`crates/runner-shell/src/job.rs`). The program holds the job's output, so
+/// the job runs until `KILL`.
+///
+/// Before, neither signal reached it, and it ran on after the job had been
+/// reported killed.
+///
+/// Cost: about a second, since a login shell starts.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_stop_reaches_an_orphan_that_left_the_jobs_groups_by_its_environment() {

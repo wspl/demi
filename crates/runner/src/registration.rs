@@ -1,19 +1,23 @@
 //! One registration: the installation state and its lock, the device token, the
-//! local command endpoint, the service registry and the reconnect loop. Each
-//! backend connection in turn is served by its own owner
+//! local command endpoint, the service registry and the reconnect loop.
+//!
+//! Each backend connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
 //!
-//! Each registration has its own credentials, artifact cache, local endpoint and
-//! selected runner release, keyed by the normalized backend URL under an OS lock,
-//! so separate registrations share no authorization context (`DEMI_ARTIFACTS` can
-//! name a cache they share).
+//! Each registration has its own credentials, artifact cache, local endpoint
+//! and selected runner release, keyed by the normalized backend URL under an OS
+//! lock, so separate registrations share no authorization context
+//! (`DEMI_ARTIFACTS` can name a cache they share).
 //!
-//! A lost connection is retried after 250 ms, doubling up to 10 s; a connection
-//! that went online starts that over when it ends, so a Host that was online for
-//! hours reconnects at once after a drop rather than after the wait an earlier
-//! outage grew to. The Host log keeps one line per distinct failure while it
-//! repeats, and one again after a connection that went online, so each drop leaves
-//! its reason before the next *online* line.
+//! # Reconnecting
+//!
+//! - A lost connection is retried after 250 ms, doubling up to 10 s.
+//! - A connection that went online starts that over when it ends, so a Host
+//!   that was online for hours reconnects at once after a drop rather than
+//!   after the wait an earlier outage grew to.
+//! - The Host log keeps one line per distinct failure while it repeats, and one
+//!   again after a connection that went online, so each drop leaves its reason
+//!   before the next *online* line.
 
 use crate::autostart::Supervision;
 use crate::connection::{self, Connected, End, Kept, Registered, Transport};

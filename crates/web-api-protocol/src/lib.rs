@@ -1,20 +1,22 @@
 //! The web app's REST contract: every request and response body the backend
 //! serves, the error body with the one list of its codes, and the identifier
-//! and text types those bodies use. The backend decodes each request into its
-//! type and serializes each response from its type. The data the web app, the
-//! agent and the backend share, such as times, comes from `core`.
+//! and text types those bodies use.
 //!
-//! A type the backend receives refuses unknown fields; a type only the
-//! web app receives accepts them (`crates/xtask/src/contracts/mod.rs`).
-//! A response carries the fields its type declares and nothing more: what the
-//! backend keeps for itself in a stored record, such as a conversation's owner
-//! or its message counts, never reaches the web app.
+//! The backend decodes each request into its type and serializes each response
+//! from its type. The data the web app, the agent and the backend share, such
+//! as times, comes from `core`.
 //!
-//! It reuses the runner's working-tree change types and platform, and the
-//! command locale, rather than declaring them again. A Host log line is its own
-//! type: the runner wire carries its time as integer milliseconds and the web
-//! app receives an RFC 3339 time. The crate holds no route handling and no
-//! domain logic.
+//! - A type the backend receives refuses unknown fields. A type only the web
+//!   app receives accepts them (`crates/xtask/src/contracts/mod.rs`).
+//! - A response carries the fields its type declares and nothing more: what the
+//!   backend keeps for itself in a stored record, such as a conversation's
+//!   owner or its message counts, never reaches the web app.
+//! - The crate reuses the runner's working-tree change types and platform, and
+//!   the command locale, rather than declaring them again.
+//! - A Host log line is its own type: the runner wire carries its time as
+//!   integer milliseconds and the web app receives an RFC 3339 time.
+//!
+//! The crate holds no route handling and no domain logic.
 
 pub mod attachments;
 pub mod auth;

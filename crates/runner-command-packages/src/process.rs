@@ -1,8 +1,10 @@
-//! One resident service process (`crates/runner-command-packages/src/lib.rs`): the runner starts the executable, speaks HTTP/2 to it over its
-//! standard input and output, relays its numbers and messages streams, drains its standard
-//! error into the Host log, and reaps it. One owner task holds the process
-//! from its start to its end and returns how it ended, with the end of its
-//! standard error.
+//! One resident service process (`crates/runner-command-packages/src/lib.rs`).
+//!
+//! The runner starts the executable, speaks HTTP/2 to it over its standard
+//! input and output, relays its numbers and messages streams, drains its
+//! standard error into the Host log, and reaps it. One owner task holds the
+//! process from its start to its end and returns how it ended, with the end of
+//! its standard error.
 
 use std::{
     collections::BTreeMap, future::Future, path::Path, process::Stdio, sync::Arc, time::Duration,

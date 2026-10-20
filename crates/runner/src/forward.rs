@@ -1,18 +1,19 @@
-//! The user's port forwards on this runner (`crates/backend-user-shard/src/shard/port_forwards.rs`), for as
-//! long as its connection to the backend lasts: the backend tells it every
-//! forward it is an end of as the connection begins and whenever one
-//! changes. As a forward's Listen On it listens on `127.0.0.1` only,
-//! announces whether it listens and its connections on each path as they
-//! change, and carries each connection direct, as a channel of the pair's
-//! peer, or through the relay, as a pair of pipes; as a Connect To it opens
-//! the connection to the forward's address for each connection the other
-//! runner's channel or the backend's pipes bring.
+//! The user's port forwards on this runner
+//! (`crates/backend-user-shard/src/shard/port_forwards.rs`), for as long as its
+//! connection to the backend lasts: the backend tells it every forward it is an
+//! end of as the connection begins and whenever one changes.
+//!
+//! - As a forward's Listen On, the runner listens on `127.0.0.1` only,
+//!   announces whether it listens and its connections on each path as they
+//!   change, and carries each connection direct, as a channel of the pair's
+//!   peer, or through the relay, as a pair of pipes.
+//! - As a Connect To, it opens the connection to the forward's address for each
+//!   connection the other runner's channel or the backend's pipes bring.
 //!
 //! Each forward this runner is an end of has a generation: what ends its
-//! listener and every connection it carries, here and on the other runner.
-//! A forward turned off, removed, or changed where it listens or connects
-//! ends its generation; its open connections end, and new ones follow the
-//! change.
+//! listener and every connection it carries, here and on the other runner. A
+//! forward turned off, removed, or changed where it listens or connects ends
+//! its generation. Its open connections end, and new ones follow the change.
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;

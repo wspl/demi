@@ -1,10 +1,15 @@
-//! A registration (`crates/runner/src/connection/mod.rs`): the runner says
-//! its protocol, logs its start, runs a job whose declared command is a
-//! builtin of its shell, answers `status` while it runs, and on `drain`
-//! ends its connection with a close frame and releases the installation.
-//! Its removal (`crates/runner/src/removal.rs`): a revoked
-//! runner removes its installation, a refused one keeps it, and `uninstall`
-//! asks the backend to revoke the device and removes the installation.
+//! A registration (`crates/runner/src/connection/mod.rs`):
+//!
+//! - The runner says its protocol, logs its start, runs a job whose declared
+//!   command is a builtin of its shell, and answers `status` while it runs.
+//! - On `drain` it ends its connection with a close frame and releases the
+//!   installation.
+//!
+//! Its removal (`crates/runner/src/removal.rs`):
+//!
+//! - A revoked runner removes its installation, and a refused one keeps it.
+//! - `uninstall` asks the backend to revoke the device and removes the
+//!   installation.
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -143,12 +148,14 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
     .unwrap();
 }
 
-/// A connection that was online and then drops without a close, as a
-/// network that goes away does, is retried after the first delay however
-/// long the backend stayed away before it, and its error reaches the Host
-/// log each time, though it is the same error as the failures before
-/// (`crates/runner/src/host_log.rs`). About 5 s: four failed connections grow the
-/// delay to 4 s before the runner goes online.
+/// A connection that was online and then drops without a close, as a network
+/// that goes away does, is retried after the first delay however long the
+/// backend stayed away before it. Its error reaches the Host log each time,
+/// though it is the same error as the failures before
+/// (`crates/runner/src/host_log.rs`).
+///
+/// Cost: about 5 s, since four failed connections grow the delay to 4 s before
+/// the runner goes online.
 #[tokio::test]
 async fn an_online_connection_that_fails_starts_its_retries_and_its_log_over() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -427,12 +434,15 @@ async fn uninstall_keeps_a_home_and_its_parent_and_removes_only_the_runners_file
     .unwrap();
 }
 
-/// `start` starts the installation's runner in the background, which
-/// appends to the installation's log itself: what an earlier runner wrote
-/// stays, here a pairing code that has expired since, and `start` reads
-/// the log from where it ended, so it reports what this runner says, that it
-/// cannot connect. A log that has passed 10 MiB becomes `runner.log.1`,
-/// replacing the one before, and the runner starts a new one (`crates/runner/src/console.rs`).
+/// `start` starts the installation's runner in the background, which appends to
+/// the installation's log itself.
+///
+/// - What an earlier runner wrote stays, here a pairing code that has expired
+///   since.
+/// - `start` reads the log from where it ended, so it reports what this runner
+///   says, that it cannot connect.
+/// - A log that has passed 10 MiB becomes `runner.log.1`, replacing the one
+///   before, and the runner starts a new one (`crates/runner/src/console.rs`).
 // Under a second: the runner starts twice, its backend's port refusing it
 // each time, and the test writes a log of 10 MiB.
 #[tokio::test]
@@ -481,12 +491,13 @@ async fn start_appends_to_the_log_reads_it_from_where_it_ended_and_starts_it_aga
     .unwrap();
 }
 
-/// A runner started with `--log` in a terminal's foreground, as the leader
-/// of its process group and of the terminal's session, as a shell with job
-/// control or a terminal window starts a program, cannot make a session of
-/// its own; it starts again in one and this process ends. So the
-/// terminal's Ctrl-C reaches no runner, and the runner has no controlling
-/// terminal (`crates/runner/src/console.rs`). Skipped
+/// A runner started with `--log` in a terminal's foreground, as the leader of
+/// its process group and of the terminal's session, as a shell with job control
+/// or a terminal window starts a program, cannot make a session of its own. It
+/// starts again in one and this process ends.
+///
+/// So the terminal's Ctrl-C reaches no runner, and the runner has no
+/// controlling terminal (`crates/runner/src/console.rs`). The test is skipped
 /// where the system gives no pseudo-terminal.
 // Under a second: the runner starts twice, its backend's port refusing it.
 #[cfg(unix)]

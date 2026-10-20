@@ -1,8 +1,9 @@
 //! Argv parsing: selecting a command in a tree and reading its input from the
-//! command line. clap parses
-//! argv with a command built from the selected node's declaration, and
-//! reports a usage error in its own words; the `jsonschema` validator checks
-//! what clap cannot express and reports in the same shape.
+//! command line.
+//!
+//! clap parses argv with a command built from the selected node's declaration,
+//! and reports a usage error in its own words. The `jsonschema` validator
+//! checks what clap cannot express and reports in the same shape.
 
 use clap::{
     Arg, ArgAction, ArgMatches, ColorChoice, Command,
@@ -31,9 +32,12 @@ impl From<clap::Error> for UsageError {
 }
 
 /// clap's rendering of an error, which spreads it over paragraphs, on two
-/// lines, so that `head -3` or `tail -3` keeps the error: the error, its
-/// continuation lines (the missing arguments, the possible values) and each
-/// `tip:` joined into the first, and the usage with `; more with --help`.
+/// lines, so that `head -3` or `tail -3` keeps the error.
+///
+/// - The error, its continuation lines (the missing arguments, the possible
+///   values) and each `tip:` are joined into the first line.
+/// - The second line is the usage with `; more with --help`.
+///
 /// clap offers no formatter that keeps its words but not its layout, so the
 /// layout of its `RichFormatter` is read back.
 fn two_lines(rendered: &str) -> String {
@@ -306,12 +310,18 @@ impl<B> Leaf<B> {
             .into()
     }
 
-    /// The clap command of this leaf, named `path`: its positionals in
-    /// order, a trailing array taking every token left, but the one the
-    /// command line `passed_over`, which keeps only its option form; its
-    /// options, a boolean one a flag that takes `=false`; its rest field
-    /// after `--`; and `--json` when it declares JSON output. Each value
-    /// converts to the JSON its field's schema declares.
+    /// The clap command of this leaf, named `path`.
+    ///
+    /// It has:
+    ///
+    /// - its positionals in order, a trailing array taking every token left,
+    ///   but the one the command line `passed_over`, which keeps only its
+    ///   option form;
+    /// - its options, a boolean one a flag that takes `=false`;
+    /// - its rest field after `--`;
+    /// - `--json` when it declares JSON output.
+    ///
+    /// Each value converts to the JSON its field's schema declares.
     fn command(&self, path: &str, passed_over: Option<&str>) -> Command {
         let mut command = base(path, self.usage(path)).allow_missing_positional(self.missing_positional());
         if self.json_output().is_some() {
@@ -397,14 +407,18 @@ impl<B> Leaf<B> {
         command
     }
 
-    /// The command line clap reads: the same tokens, but a value option
-    /// whose value begins with a single `-`, such as `--dy -300`, joined
-    /// into `--dy=-300`. clap takes such a value only with
-    /// `allow_hyphen_values`, which also takes a following `--option` as the
-    /// value, where a value beginning with `--` must be written
-    /// `--name=value`. A `true` or `false` after a boolean flag is refused
-    /// rather than taken as the next positional. It also names the
-    /// positional tokens and the options the line gives.
+    /// The command line clap reads, with the positional tokens and the options
+    /// the line gives named.
+    ///
+    /// It is the same tokens, with these changes:
+    ///
+    /// - A value option whose value begins with a single `-`, such as `--dy
+    ///   -300`, is joined into `--dy=-300`. clap takes such a value only with
+    ///   `allow_hyphen_values`, which also takes a following `--option` as the
+    ///   value, where a value beginning with `--` must be written
+    ///   `--name=value`.
+    /// - A `true` or `false` after a boolean flag is refused rather than taken
+    ///   as the next positional.
     fn prepared(&self, path: &str, argv: &[String]) -> Result<Line, clap::Error> {
         let mut line = Line {
             tokens: Vec::with_capacity(argv.len()),
@@ -486,12 +500,13 @@ impl<B> Leaf<B> {
         (!jsonschema::is_valid(schema, &Value::String(token.clone()))).then_some(before.as_str())
     }
 
-    /// A clap error as the caller reads it: with Demi's tip for an option
-    /// that names a body read from stdin, a positional or the rest field,
-    /// with the pointer to the options in place of clap's tip to pass an
-    /// unknown option as a value after `--`, which only a leaf with a rest
-    /// field takes, and with the command's usage line, which some of clap's
-    /// errors leave out.
+    /// A clap error as the caller reads it, with three changes:
+    ///
+    /// - Demi's tip for an option that names a body read from stdin, a
+    ///   positional or the rest field, with the pointer to the options in place
+    ///   of clap's tip to pass an unknown option as a value after `--`, which
+    ///   only a leaf with a rest field takes.
+    /// - The command's usage line, which some of clap's errors leave out.
     fn refusal(&self, path: &str, mut error: clap::Error) -> Error {
         if error.kind() == ErrorKind::UnknownArgument
             && let Some(ContextValue::String(argument)) = error.get(ContextKind::InvalidArg)

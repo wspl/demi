@@ -1,12 +1,14 @@
 //! The screen's rounded corners as Android draws them into its pictures
-//! (`crates/command-package-mobile/src/live.rs`): SystemUI paints a drawable over each
-//! corner of the panel, `rounded_corner_top` at the top two and
-//! `rounded_corner_bottom` at the bottom two, each drawn for the top left
-//! and mirrored into its place, and none at all where the display reports
-//! no corner radius. The shape is read from the drawable, a vector path,
-//! in the APK the device resolves it to; when it cannot be, it is the
-//! circle of the reported radius, and where that is unknown too, a square
-//! corner.
+//! (`crates/command-package-mobile/src/live.rs`).
+//!
+//! SystemUI paints a drawable over each corner of the panel:
+//! `rounded_corner_top` at the top two and `rounded_corner_bottom` at the
+//! bottom two, each drawn for the top left and mirrored into its place, and
+//! none at all where the display reports no corner radius.
+//!
+//! The shape is read from the drawable, a vector path, in the APK the device
+//! resolves it to. When it cannot be, it is the circle of the reported radius,
+//! and where that is unknown too, a square corner.
 
 use std::{collections::BTreeMap, f64::consts::FRAC_PI_2, time::Duration};
 

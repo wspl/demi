@@ -1,9 +1,11 @@
 //! The iOS helper `demi-mobile` carries
-//! (`crates/command-package-mobile/src/ios/mod.rs`): a tar archive
-//! compressed with zstd, holding `demi-ios-sim`, the libraries it links,
-//! the guest bridge and idb's license notice, which the build embeds and
-//! this unpacks on first use into `<installation>/mobile/<sha256>/`, checked
-//! against the digest the build recorded.
+//! (`crates/command-package-mobile/src/ios/mod.rs`): a tar archive compressed
+//! with zstd, holding `demi-ios-sim`, the libraries it links, the guest bridge
+//! and idb's license notice.
+//!
+//! The build embeds the archive. This module unpacks it on first use into
+//! `<installation>/mobile/<sha256>/`, checked against the digest the build
+//! recorded.
 
 use std::path::PathBuf;
 

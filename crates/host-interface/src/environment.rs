@@ -1,8 +1,12 @@
 //! The shell-environment contract behind the `shell` tool: a node's commands on
-//! one Host, each a job of its own that starts in the node's working directory
-//! there, the model's status view of each (`crates/agent-tools/src/result.rs`),
-//! and the pages' view of each, which the environment reports to the node's
-//! feed (`crates/agent-server/src/server/tree/live.rs`).
+//! one Host.
+//!
+//! - Each command is a job of its own that starts in the node's working
+//!   directory there.
+//! - The environment keeps the model's status view of each
+//!   (`crates/agent-tools/src/result.rs`).
+//! - It reports the pages' view of each to the node's feed
+//!   (`crates/agent-server/src/server/tree/live.rs`).
 
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 

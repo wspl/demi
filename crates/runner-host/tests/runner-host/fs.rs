@@ -157,11 +157,13 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
     assert_eq!(error["code"], "ENOENT");
 }
 
-/// A listing names each symbolic link's target as written and what is
-/// there after every link on the way: nothing there is `missing`, and a
-/// target that cannot be reached, behind a directory closed to the user or
-/// round a loop of links, is `unreadable` with the system's reason; neither
-/// fails the listing (`crates/runner-host/src/lib.rs`).
+/// A listing names each symbolic link's target as written and what is there
+/// after every link on the way (`crates/runner-host/src/lib.rs`).
+///
+/// - Nothing there is `missing`.
+/// - A target that cannot be reached, behind a directory closed to the user or
+///   round a loop of links, is `unreadable` with the system's reason.
+/// - Neither fails the listing.
 // Cost: a temporary directory; a few milliseconds.
 #[cfg(unix)]
 #[tokio::test]

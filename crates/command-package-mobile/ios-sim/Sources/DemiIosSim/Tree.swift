@@ -1,9 +1,12 @@
-// `inspect`'s tree: the accessibility read of the frontmost application,
-// alerts and the keyboard included, with the content of the web views it
-// holds found by a grid of hit-tests. A bar the read lists without
-// children, as iOS 26 lists its toolbars, is filled the same way. Safari's
-// page the read cannot reach; there the guest bridge reads it, and its web
-// content takes the place of the page area (`crates/command-package-mobile/src/ios/mod.rs`).
+// `inspect`'s tree: the accessibility read of the frontmost application, alerts
+// and the keyboard included, with the content of the web views it holds found
+// by a grid of hit-tests.
+//
+// - A bar the read lists without children, as iOS 26 lists its toolbars, is
+//   filled the same way.
+// - Safari's page the read cannot reach. There the guest bridge reads it, and
+//   its web content takes the place of the page area
+//   (`crates/command-package-mobile/src/ios/mod.rs`).
 
 import FBControlCore
 import FBSimulatorAX
@@ -124,19 +127,23 @@ struct Tree {
   /// about six times as fast as one at a time.
   static let concurrent = 16
 
-  /// Gives each bar the read lists without children the elements a
-  /// hit-test finds in it. iOS 26 lists its toolbars so, Settings' search
-  /// field and its buttons included, which a hit-test finds; idb's own grid
-  /// keeps only another process's elements, such as a web view's. A bar is
-  /// a group at least twice as wide as it is tall, within the application's
-  /// frame; a larger group without children, such as Calendar's day, would
-  /// take seconds and is left as it is. Every point of a bar's grid is
-  /// tested, one within an element of the tree too: a toolbar floats over
-  /// the rows that scroll under it, and an element found may hold another,
-  /// such as a field's Clear button. An element is adopted once, and not
-  /// when the tree has it already, the found elements' own subtrees
-  /// included; it becomes the bar's child in reading order, top to bottom,
-  /// left to right.
+  /// Gives each bar the read lists without children the elements a hit-test
+  /// finds in it.
+  ///
+  /// iOS 26 lists its toolbars so, Settings' search field and its buttons
+  /// included, which a hit-test finds. idb's own grid keeps only another
+  /// process's elements, such as a web view's.
+  ///
+  /// - A bar is a group at least twice as wide as it is tall, within the
+  ///   application's frame. A larger group without children, such as Calendar's
+  ///   day, would take seconds and is left as it is.
+  /// - Every point of a bar's grid is tested, one within an element of the tree
+  ///   too: a toolbar floats over the rows that scroll under it, and an element
+  ///   found may hold another, such as a field's Clear button.
+  /// - An element is adopted once, and not when the tree has it already, the
+  ///   found elements' own subtrees included.
+  /// - It becomes the bar's child in reading order, top to bottom, left to
+  ///   right.
   static func fillChildless(
     _ elements: [Node], hitTest: @escaping @Sendable (CGPoint) async throws -> Node?
   ) async throws {

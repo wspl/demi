@@ -1,8 +1,9 @@
 //! A subscription account's quota snapshot
 //! (`crates/provider-common/src/quota.rs`): the vendor's latest report of how
-//! much of the account's plan is
-//! used. The backend stores it with the account, without the vendor's
-//! payload, and reads it back, so it refuses unknown fields.
+//! much of the account's plan is used.
+//!
+//! The backend stores it with the account, without the vendor's payload, and
+//! reads it back, so it refuses unknown fields.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -1,22 +1,27 @@
-//! Command packages: the descriptor that identifies a release, the
-//! artifact of each target, and where a runner fetches an artifact.
+//! Command packages: the descriptor that identifies a release, the artifact of
+//! each target, and where a runner fetches an artifact.
 //!
-//! A command declaration names a package and an operation; the backend's
-//! startup catalog maps each package to one release descriptor; a job's
+//! A command declaration names a package and an operation. The backend's
+//! startup catalog maps each package to one release descriptor, and a job's
 //! manifest pins that descriptor's hash and the operation. The pin is what
 //! keeps a later release or download URL from changing what an existing job
-//! executes. The catalog is fixed for the backend's lifetime (a new release
-//! takes effect when it restarts) and refuses duplicate ids, incomplete
-//! packages and unknown operations when it is built; declarations never
-//! import a compiled-in descriptor.
+//! executes.
 //!
-//! A descriptor's identity is the hash of its canonical JSON (RFC 8785).
-//! Where its executables are stored, and the object keys and URLs that
-//! locate them, take no part in it. A package declares its operations once,
-//! as the operation list its contract crate exports, so the descriptor, the
-//! service's own `GET /v1/info` and the handler's routing cannot list
-//! different sets. The runner validates descriptors and references itself
-//! and never repairs arguments or falls back to another version.
+//! The catalog is fixed for the backend's lifetime (a new release takes effect
+//! when it restarts). It refuses duplicate ids, incomplete packages and unknown
+//! operations when it is built. Declarations never import a compiled-in
+//! descriptor.
+//!
+//! A descriptor's identity is the hash of its canonical JSON (RFC 8785). Where
+//! its executables are stored, and the object keys and URLs that locate them,
+//! take no part in it.
+//!
+//! A package declares its operations once, as the operation list its contract
+//! crate exports, so the descriptor, the service's own `GET /v1/info` and the
+//! handler's routing cannot list different sets.
+//!
+//! The runner validates descriptors and references itself and never repairs
+//! arguments or falls back to another version.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -29,15 +34,20 @@ use super::ProtocolError;
 /// The native command protocol version a descriptor declares.
 pub const VERSION: u64 = 1;
 
-/// The targets a published release carries. A published version supplies the
-/// same operations on all of them, so a job can pick its Host without meeting
-/// a platform-specific gap. Completeness is a rule of the published release,
-/// not of a descriptor or the object store: packaging writes all six unless
-/// told otherwise and the release workflow publishes only that, while a
-/// developer's release carries just the targets of the Hosts in use, and the
-/// backend serves any nonempty set the same way. A Host whose target a
-/// release lacks fails the command with a catalog mismatch and cannot install
-/// its runner from that release; nothing falls back to another target.
+/// The targets a published release carries.
+///
+/// A published version supplies the same operations on all of them, so a job
+/// can pick its Host without meeting a platform-specific gap. Completeness is a
+/// rule of the published release, not of a descriptor or the object store:
+///
+/// - Packaging writes all six unless told otherwise, and the release workflow
+///   publishes only that.
+/// - A developer's release carries just the targets of the Hosts in use, and
+///   the backend serves any nonempty set the same way.
+///
+/// A Host whose target a release lacks fails the command with a catalog
+/// mismatch and cannot install its runner from that release. Nothing falls back
+/// to another target.
 pub const TARGETS: &[&str] = &[
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
@@ -112,11 +122,14 @@ impl PackageDescriptor {
 }
 
 /// A URL the runner downloads an artifact from, valid until `expires_at`
-/// (milliseconds since the Unix epoch) when set. It is an HTTP or HTTPS URL
-/// without credentials: object storage answers with a signed HTTPS URL, and a
-/// local store with a URL on the backend itself. The scheme cannot
-/// change what runs, because the runner checks the download against the size
-/// and SHA-256 its pinned descriptor declares (`crates/runner-command-packages/src/cache.rs`).
+/// (milliseconds since the Unix epoch) when set.
+///
+/// It is an HTTP or HTTPS URL without credentials: object storage answers with
+/// a signed HTTPS URL, and a local store with a URL on the backend itself.
+///
+/// The scheme cannot change what runs, because the runner checks the download
+/// against the size and SHA-256 its pinned descriptor declares
+/// (`crates/runner-command-packages/src/cache.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactUrl {

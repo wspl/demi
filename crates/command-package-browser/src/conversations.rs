@@ -1,8 +1,10 @@
-//! The conversations' browsers. One owner task finds each invocation's
-//! conversation browser and forgets it after the conversation's release; each
-//! conversation browser is an owner task of its own, so one conversation's slow
-//! start or retirement never holds up another's commands, and the runner's
-//! `status` is answered from the published state without waiting for either.
+//! The conversations' browsers.
+//!
+//! One owner task finds each invocation's conversation browser and forgets it
+//! after the conversation's release. Each conversation browser is an owner task
+//! of its own, so one conversation's slow start or retirement never holds up
+//! another's commands, and the runner's `status` is answered from the published
+//! state without waiting for either.
 //!
 //! ```text
 //! Service
@@ -22,16 +24,18 @@
 //! retirement joins all of them before it removes the profile: no browser work
 //! outlives its environment.
 //!
+//! # Lifetime
+//!
 //! - The browser ends on exactly two signals it sees itself: the last tab
 //!   closing and the conversation release. It has no idle timer and no notion
-//!   of agent activity; the backend decides when to release, and an open tab, a
+//!   of agent activity. The backend decides when to release, and an open tab, a
 //!   loading page or a running download never postpones it.
 //! - Retirement invalidates tabs, references and debugging handles together. A
-//!   release cancels the commands that run (`cancelled`) before it retires; a
+//!   release cancels the commands that run (`cancelled`) before it retires. A
 //!   command still running when another closes the last tab fails with
 //!   `browser_lost`. Nothing is restored: the next `open` starts fresh.
 //! - A failed cleanup keeps another environment from starting over the
-//!   unresolved owner; after a completed one the next `open` may start a fresh
+//!   unresolved owner. After a completed one the next `open` may start a fresh
 //!   browser.
 //! - A service shutdown retires all its browsers at once, so it takes as long
 //!   as the slowest. A service that ends first leaves them to the sweep in

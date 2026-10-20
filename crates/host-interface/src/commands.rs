@@ -225,12 +225,13 @@ impl CommandSet {
         render_index(groups)
     }
 
-    /// Runs the `rpc` leaf `invocation.path` names. The arguments arrived as
-    /// JSON and are validated as they are: no text is converted, so `"7"`
-    /// for a number is a usage error. The leaf's permission is not checked
-    /// here: the backend's dispatch checks it between [`CommandSet::check`]
-    /// and the handler. A usage error is told in clap's shape
-    /// ([`CommandSet::tell`]).
+    /// Runs the `rpc` leaf `invocation.path` names.
+    ///
+    /// - The arguments arrived as JSON and are validated as they are: no text
+    ///   is converted, so `"7"` for a number is a usage error.
+    /// - The leaf's permission is not checked here: the backend's dispatch
+    ///   checks it between [`CommandSet::check`] and the handler.
+    /// - A usage error is told in clap's shape ([`CommandSet::tell`]).
     pub async fn dispatch(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
         let path = invocation.path.clone();
         self.run(invocation, port).await.map_err(|error| self.tell(&path, error))

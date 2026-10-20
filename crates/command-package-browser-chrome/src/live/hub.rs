@@ -3,7 +3,7 @@
 //!
 //! One owner task per environment keeps all of it and lays out the screen and
 //! the watched tabs' viewports itself, so layouts never overlap and a burst of
-//! changes costs one layout. Viewers reach it through their membership; a
+//! changes costs one layout. Viewers reach it through their membership. A
 //! membership's end is noticed without a message, so dropping one always
 //! leaves.
 //!
@@ -553,11 +553,13 @@ impl Owner {
                 .send_if_modified(|current| current.replace(opening) != Some(opening));
         }
         // A tab whose navigation is under way takes no command until its
-        // document commits: Chrome holds its page's commands meanwhile, and
-        // the hub, which waits for them, would hold every viewer's request
-        // with them (`PageLoad::Navigating`). One that has the size its
-        // panel gives it already needs none; another keeps its size until
-        // then, and its picture stays as it was.
+        // document commits.
+        //
+        // Chrome holds its page's commands meanwhile, and the hub, which waits
+        // for them, would hold every viewer's request with them
+        // (`PageLoad::Navigating`). One that has the size its panel gives it
+        // already needs none; another keeps its size until then, and its
+        // picture stays as it was.
         let (navigating, tabs): (Vec<_>, Vec<_>) = tabs
             .into_iter()
             .partition(|(tab, _)| tab.navigating() && !tab.ended().is_cancelled());

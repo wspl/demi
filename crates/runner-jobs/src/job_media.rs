@@ -1,13 +1,16 @@
-//! A job's media: the images, videos and PDF documents `demi file view` hands to the
-//! job, whatever its stdout is, kept in `media/<n>` of the job's directory, numbered
-//! from 1 in arrival order, within [`JOB_MEDIA`] media and [`JOB_MEDIA_BYTES`]; one
-//! beyond the bounds is read to its end and dropped, and its line says it was not
-//! kept. Each medium's line goes into the job's output as it arrives, and the
-//! command that returned it ends only once the line is written ([`Arrival`]), so
-//! nothing the job prints afterwards overtakes it. A kept medium is announced as
-//! `job_medium` once written, so the backend knows each medium even when the
-//! connection is lost before the job ends; every `job_medium` of a job precedes its
-//! `job_exit`.
+//! A job's media: the images, videos and PDF documents `demi file view` hands
+//! to the job, whatever its stdout is.
+//!
+//! - They are kept in `media/<n>` of the job's directory, numbered from 1 in
+//!   arrival order, within [`JOB_MEDIA`] media and [`JOB_MEDIA_BYTES`]. A
+//!   medium beyond the bounds is read to its end and dropped, and its line says
+//!   it was not kept.
+//! - Each medium's line goes into the job's output as it arrives. The command
+//!   that returned it ends only once the line is written ([`Arrival`]), so
+//!   nothing the job prints afterwards overtakes it.
+//! - A kept medium is announced as `job_medium` once written, so the backend
+//!   knows each medium even when the connection is lost before the job ends.
+//!   Every `job_medium` of a job precedes its `job_exit`.
 
 use std::{
     io,
@@ -30,11 +33,12 @@ pub const JOB_MEDIA: u32 = 32;
 /// The most bytes of media a job keeps.
 pub const JOB_MEDIA_BYTES: u64 = 64 * 1024 * 1024;
 
-/// A medium as it reaches the job's output: its line, then the
-/// `job_medium` that announces it when the job keeps it. `written` is
-/// answered once its line is in the job's output: the command that returned
-/// the medium ends only then, so nothing the job prints after the command
-/// overtakes the line.
+/// A medium as it reaches the job's output: its line, then the `job_medium`
+/// that announces it when the job keeps it.
+///
+/// `written` is answered once its line is in the job's output. The command that
+/// returned the medium ends only then, so nothing the job prints after the
+/// command overtakes the line.
 pub struct Arrival {
     pub line: String,
     pub medium: Option<wire::Frame>,
@@ -75,11 +79,12 @@ impl JobMedia {
         }
     }
 
-    /// Takes `bytes`, a checked medium that `facts` describe, as the job's
-    /// next medium: within the job's bounds it writes it to its file, and
-    /// its line, from the facts, and the announcement of one it keeps, which
-    /// carries them on, go to the job's output. It returns once the line is
-    /// in the job's output.
+    /// Takes `bytes`, a checked medium that `facts` describe, as the job's next
+    /// medium.
+    ///
+    /// Within the job's bounds it writes the medium to its file. Its line, from
+    /// the facts, and the announcement of one it keeps, which carries them on,
+    /// go to the job's output. It returns once the line is in the job's output.
     pub async fn keep(&self, facts: MediumFacts, bytes: Bytes) -> io::Result<()> {
         let size = bytes.len() as u64;
         let (number, kept) = {

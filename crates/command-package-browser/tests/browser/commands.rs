@@ -459,12 +459,16 @@ async fn serve(
     (client, vec![server, driver])
 }
 
-/// `demi browser install` reports its downloads in its own output:
-/// on Linux, Chrome's, then the Chrome
-/// runtime's two archives as one download, with a line for each report of
-/// the runner's that passes a tenth of their total and one as the last is
-/// unpacked, then where the browser is. In JSON, the output is the one
-/// document.
+/// `demi browser install` reports its downloads in its own output, in this
+/// order:
+///
+/// 1. On Linux, Chrome's download, then the Chrome runtime's two archives as
+///    one download.
+/// 2. A line for each report of the runner's that passes a tenth of their
+///    total, and one as the last is unpacked.
+/// 3. Where the browser is.
+///
+/// In JSON, the output is the one document.
 // Cost: about 0.1 s; the service runs in this process and no Chrome starts.
 #[tokio::test]
 async fn install_reports_its_downloads_in_its_output() {

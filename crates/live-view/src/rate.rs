@@ -1,22 +1,28 @@
-//! What a viewer's path takes: the target bit rate from the delay-based
-//! estimate of Google Congestion Control, fed with each chunk's send time and
-//! the page's receive time; the window of bytes that may be unacknowledged, the
-//! target times the least round trip of the last ten seconds plus 60 ms; and
-//! the frame rate and resolution the target affords a picture of the panel's
-//! size.
+//! What a viewer's path takes, computed from the page's feedback:
+//!
+//! - The target bit rate comes from the delay-based estimate of Google
+//!   Congestion Control, fed with each chunk's send time and the page's receive
+//!   time.
+//! - The window of bytes that may be unacknowledged is the target times the
+//!   least round trip of the last ten seconds plus 60 ms.
+//! - The frame rate and resolution are those the target affords a picture of
+//!   the panel's size.
+//!
+//! # Rules
 //!
 //! - Neither path says when a chunk was sent again, and such a chunk comes back
-//!   seconds late, so the least of ten seconds drops the sample once a clean
-//!   one arrives; for the first ten seconds the round trip counts at most 300
+//!   seconds late. So the least of ten seconds drops the sample once a clean
+//!   one arrives. For the first ten seconds the round trip counts at most 300
 //!   ms.
 //! - There are no padding probes: the pictures keep the path busy. A rising
-//!   delay lowers the rate; a loss whose retransmission only delays a chunk
+//!   delay lowers the rate. A loss whose retransmission only delays a chunk
 //!   does not.
-//! - Below what a picture needs the sender lowers the frame rate first, then
-//!   the resolution. Viewers of a source share its encoding, so the slowest
-//!   decides; a blocked page or stall is a pause, not congestion. The only
-//!   ceiling is the codec level's 240 Mbps, past which the encoder refuses to
-//!   start.
+//! - Below what a picture needs, the sender lowers the frame rate first, then
+//!   the resolution.
+//! - Viewers of a source share its encoding, so the slowest decides. A blocked
+//!   page or stall is a pause, not congestion.
+//! - The only ceiling is the codec level's 240 Mbps, past which the encoder
+//!   refuses to start.
 //! - Watching costs Host CPU, which this adaptation does not measure.
 
 use std::{
@@ -432,12 +438,15 @@ mod tests {
         assert_eq!(rate.round_trip(), Some(Duration::from_millis(200)));
     }
 
-    /// The first chunk of a lossy path came back two seconds late, as a
-    /// resent one does: in the view's first ten seconds the window counts
-    /// 300 ms of round trip, not two seconds. Past them a steady long path,
-    /// 450 ms, keeps its window whole. Planted defects this catches: the
-    /// window taking the late sample whole; a cap that stays and starves a
-    /// long path.
+    /// The first chunk of a lossy path came back two seconds late, as a resent
+    /// one does. In the view's first ten seconds the window counts 300 ms of
+    /// round trip, not two seconds. Past them a steady long path, 450 ms, keeps
+    /// its window whole.
+    ///
+    /// Planted defects this catches:
+    ///
+    /// - the window taking the late sample whole;
+    /// - a cap that stays and starves a long path.
     #[test]
     fn the_window_counts_at_most_300_ms_early_in_a_view_and_a_long_path_whole_after() {
         let origin = Instant::now();

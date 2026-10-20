@@ -1,8 +1,14 @@
-//! The `demi.mobile` package's contract: the arguments and results of its
-//! `mobile.*` operations, their failures, the message the package sends its
-//! plugin, and the live view's protocol for a simulator. It holds types and
-//! their checks only; the operations, the drivers and their IO live in
-//! `demi-mobile`.
+//! The `demi.mobile` package's contract.
+//!
+//! The crate holds:
+//!
+//! - the arguments and results of the `mobile.*` operations, and their
+//!   failures;
+//! - the message the package sends its plugin;
+//! - the live view's protocol for a simulator.
+//!
+//! It holds types and their checks only; the operations, the drivers and their
+//! IO live in `demi-mobile`.
 
 #[macro_use]
 extern crate demi_shared_types;

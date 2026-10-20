@@ -28,13 +28,14 @@ fn panics_holding_an_exploding_value() {
     panic!("the first panic");
 }
 
-/// A program that panics in a destructor while it unwinds is aborted, and
-/// it leaves on standard error the first panic's message, its location and
-/// a backtrace through the function that panicked, before what the
-/// destructor's panic says, and without `RUST_BACKTRACE`, which a program in
-/// the background is started without. Rust's own hook prints a backtrace
-/// for the destructor's panic only, which shows where the abort happened
-/// rather than what caused it.
+/// A program that panics in a destructor while it unwinds is aborted. It leaves
+/// on standard error the first panic's message, its location and a backtrace
+/// through the function that panicked, before what the destructor's panic says,
+/// and without `RUST_BACKTRACE`, which a program in the background is started
+/// without.
+///
+/// Rust's own hook prints a backtrace for the destructor's panic only, which
+/// shows where the abort happened rather than what caused it.
 // Some milliseconds: the test starts this binary a second time.
 #[test]
 fn a_panic_that_aborts_leaves_its_message_location_and_backtrace_on_standard_error() {

@@ -1,25 +1,34 @@
 //! The runner release record (`crates/xtask/src/native/package.rs`): one
-//! release of `demi-runner`, the wire and command protocol versions it
-//! speaks, and the executable of each target it carries. A runner release
-//! directory's `manifest.json` holds it, and a Cloud image manifest embeds it
-//! to name its runner. Beside it, a server release's own record,
-//! `release.json`, which says where the release's files are, and the name of
-//! each file (`crates/xtask/src/server_release.rs`). And the release check
-//! before a runner's socket opens, the one part of the connection every
-//! release keeps, and the backend's management socket, which an upgrade's
-//! next release asks (`crates/server/src/main.rs`).
+//! release of `demi-runner`, the wire and command protocol versions it speaks,
+//! and the executable of each target it carries.
 //!
-//! A runner always runs the runner release of the backend it serves, so before its
-//! socket opens the backend compares the release in `RELEASE_HEADER` with its
-//! current runner release (the one `runners/` names) and answers any other with 409
-//! and a [`RunnerUpdate`]: its release and, when it has one for the runner's target
-//! (`TARGET_HEADER`), the executable's size and SHA-256. A backend without runner
-//! releases, as in development, checks none. The check comes before the socket
-//! opens because the runner wire changes from release to release: a runner of an
-//! earlier release could not read a refusal written in a later one. The headers
-//! (`TOKEN_HEADER` names the device a 409 sends to an update) and the 409 body are
-//! therefore the one part of the connection every release keeps: fields may be
-//! added to them, never changed or removed.
+//! The record appears in these places:
+//!
+//! - A runner release directory's `manifest.json` holds it.
+//! - A Cloud image manifest embeds it to name its runner.
+//! - Beside it, a server release's own record, `release.json`, says where the
+//!   release's files are and the name of each file
+//!   (`crates/xtask/src/server_release.rs`).
+//! - The release check before a runner's socket opens, and the backend's
+//!   management socket, which an upgrade's next release asks
+//!   (`crates/server/src/main.rs`), are the one part of the connection every
+//!   release keeps.
+//!
+//! # The release check
+//!
+//! A runner always runs the runner release of the backend it serves. Before its
+//! socket opens, the backend compares the release in `RELEASE_HEADER` with its
+//! current runner release (the one `runners/` names). It answers any other with
+//! 409 and a [`RunnerUpdate`]: its release and, when it has one for the
+//! runner's target (`TARGET_HEADER`), the executable's size and SHA-256. A
+//! backend without runner releases, as in development, checks none.
+//!
+//! The check comes before the socket opens because the runner wire changes from
+//! release to release: a runner of an earlier release could not read a refusal
+//! written in a later one. The headers (`TOKEN_HEADER` names the device a 409
+//! sends to an update) and the 409 body are therefore the one part of the
+//! connection every release keeps: fields may be added to them, never changed
+//! or removed.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -247,15 +256,17 @@ impl RunnerUpdate {
 pub const MANAGE_SOCKET_ENV: &str = "DEMI_BACKEND_MANAGE_SOCKET";
 pub const MANAGE_SOCKET: &str = "/run/demi-backend-manage/manage.sock";
 
-/// The management socket's one request, a line of JSON: the runner release
-/// the next server release installs, and that release's root, whose
-/// `runners/` holds its record and whose `release.json` says where its
-/// executables are. The backend has its connected paired devices' runners
-/// download it ahead and answers a [`PrefetchProgress`] line each time
-/// one of them moves on, until none is downloading. The request is written
-/// by the next release's `demi-server` and read by the running release's
-/// backend, so fields may be added but never changed or removed, and a
-/// reader ignores the fields it does not know.
+/// The management socket's one request, a line of JSON: the runner release the
+/// next server release installs, and that release's root, whose `runners/`
+/// holds its record and whose `release.json` says where its executables are.
+///
+/// The backend has its connected paired devices' runners download the release
+/// ahead and answers a [`PrefetchProgress`] line each time one of them moves
+/// on, until none is downloading.
+///
+/// The request is written by the next release's `demi-server` and read by the
+/// running release's backend, so fields may be added but never changed or
+/// removed, and a reader ignores the fields it does not know.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 pub struct PrefetchRequest {
     #[garde(custom(digest))]

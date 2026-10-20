@@ -1,6 +1,6 @@
-//! The `demi.mobile` package: the Host's simulators for the conversations
-//! that open them, as a resident command service, with a driver per
-//! platform behind one interface (`crates/command-package-mobile/src/driver.rs`).
+//! The `demi.mobile` package: the Host's simulators for the conversations that
+//! open them, as a resident command service, with a driver per platform behind
+//! one interface (`crates/command-package-mobile/src/driver.rs`).
 //!
 //! The agent runs the user's iOS or Android app in a simulator on a paired
 //! device and operates it as a person would, while the user watches and
@@ -16,23 +16,29 @@
 //!                                                              u2.jar over adb
 //! ```
 //!
-//! Demi does what touches the screen, the input and who controls them, each
-//! the one operation behind both the panel's control and its command, so the
-//! agent can do what the user can and the other way round. Everything else,
-//! building, installing, launching an app, logs, locale, permissions and
-//! creating or deleting simulators, is left to the tools the agent already
-//! knows (`xcodebuild`, `xcrun simctl`, `avdmanager`, `emulator`, `adb`).
+//! # What Demi does
 //!
-//! Only simulators are supported: an iPhone takes no input without a signed
-//! XCTest runner on it, and a phone holds a person's real accounts. Only paired
-//! devices run them, since a Cloud has neither Xcode nor the hardware
-//! virtualization the Android Emulator needs. Xcode and the Android SDK are the
-//! user's; Demi's own helpers, the iOS one and the Android one, ship with the
-//! runner.
+//! Demi does what touches the screen, the input and who controls them, each the
+//! one operation behind both the panel's control and its command, so the agent
+//! can do what the user can and the other way round.
 //!
-//! It is a program of its own: it hosts no runner connection, defines no part
-//! of the agent's command tree, stores no conversation, and is never linked
-//! into the runner.
+//! Everything else is left to the tools the agent already knows (`xcodebuild`,
+//! `xcrun simctl`, `avdmanager`, `emulator`, `adb`): building, installing,
+//! launching an app, logs, locale, permissions, and creating or deleting
+//! simulators.
+//!
+//! # What is supported
+//!
+//! - Only simulators are supported: an iPhone takes no input without a signed
+//!   XCTest runner on it, and a phone holds a person's real accounts.
+//! - Only paired devices run them, since a Cloud has neither Xcode nor the
+//!   hardware virtualization the Android Emulator needs.
+//! - Xcode and the Android SDK are the user's. Demi's own helpers, the iOS one
+//!   and the Android one, ship with the runner.
+//!
+//! The package is a program of its own: it hosts no runner connection, defines
+//! no part of the agent's command tree, stores no conversation, and is never
+//! linked into the runner.
 
 pub mod android;
 mod booted;

@@ -1,11 +1,13 @@
-//! One invocation driven to its completion (`crates/command-protocol/src/lib.rs`): each input pull of the service is answered with one chunk from
-//! the caller's source, and the service's records are sorted into standard
-//! output, standard error and the one completion.
+//! One invocation driven to its completion
+//! (`crates/command-protocol/src/lib.rs`): each input pull of the service is
+//! answered with one chunk from the caller's source, and the service's records
+//! are sorted into standard output, standard error and the one completion.
 //!
-//! For example, a command client reads its terminal only when the service
-//! asks for input, and writes what comes back to its own standard output and
-//! error, while a user stream reads the page's pipe and uploads to another.
-//! Both are an [`Exchange`] with their own [`InputSource`] and [`OutputSink`].
+//! For example, a command client reads its terminal only when the service asks
+//! for input, and writes what comes back to its own standard output and error.
+//! A user stream reads the page's pipe and uploads to another. Both are an
+//! [`Exchange`] with their own [`InputSource`] and [`OutputSink`].
+//!
 //! A medium the service returns reaches the sink whole.
 
 use std::future::Future;

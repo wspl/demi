@@ -1,8 +1,10 @@
-//! Host requests through a connection's owner: filesystem work and kills stay
-//! available while a job runs, jobs and raw processes get the environment
-//! `crates/runner/src/environment.rs` gives them, the device's without the
-//! runner's own names, and a job's directory lasts
-//! until the backend has what it needs of the job.
+//! Host requests through a connection's owner:
+//!
+//! - Filesystem work and kills stay available while a job runs.
+//! - Jobs and raw processes get the environment
+//!   `crates/runner/src/environment.rs` gives them: the device's, without the
+//!   runner's own names.
+//! - A job's directory lasts until the backend has what it needs of the job.
 
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 

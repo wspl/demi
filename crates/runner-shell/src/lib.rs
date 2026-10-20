@@ -1,15 +1,22 @@
-//! The embedded brush shell and the standard utilities, which run in the runner's
-//! process: a fresh shell per job, the builtins that act on a process, the declared
-//! commands' builtins (which hand each invocation to the handler the job supplies)
-//! and the job shell contract's implementation.
+//! The embedded brush shell and the standard utilities, which run in the
+//! runner's process.
 //!
-//! A shell job owns its working directory, environment, IO and asynchronous work,
-//! and carries the command context the backend built for it (the runner never
-//! derives that from the job's environment). Brush runs inside the runner on a
-//! runtime of its own, apart from the control thread, and every in-process file
-//! write passes through the job's scope, which reports what the job created or
-//! modified when it exits (edit tracking). Cancelling job A releases its work and
-//! preserves the runner and job B:
+//! The crate holds:
+//!
+//! - a fresh shell per job;
+//! - the builtins that act on a process;
+//! - the declared commands' builtins, which hand each invocation to the handler
+//!   the job supplies;
+//! - the job shell contract's implementation.
+//!
+//! A shell job owns its working directory, environment, IO and asynchronous
+//! work, and carries the command context the backend built for it (the runner
+//! never derives that from the job's environment). Brush runs inside the runner
+//! on a runtime of its own, apart from the control thread. Every in-process
+//! file write passes through the job's scope, which reports what the job
+//! created or modified when it exits (edit tracking).
+//!
+//! Cancelling job A releases its work and preserves the runner and job B:
 //!
 //! ```text
 //! Runner process
@@ -23,20 +30,29 @@
 //! +--------------------------------------------------+
 //! ```
 //!
-//! The runner sets no `TMPDIR` for a job: it is the device environment's. A
-//! temporary directory of the job's own would break dev servers: macOS limits a Unix
-//! socket's path to 104 bytes, which a path under the job root exceeds, and a daemon
-//! the job started would outlive the directory. A job's `HOME` is the request's,
-//! else the device environment's, else the home the runner reports, so that a runner
-//! a service manager starts without `HOME` still has its jobs read `~/.profile`,
-//! where brush with `$HOME` unset would look for `/.local/bin/env`.
+//! # Environment
 //!
-//! Standard utilities behave as GNU's on every Host, macOS included, so a script
-//! written on a Linux Cloud runs on a Mac unchanged, and a model that writes a BSD
-//! form (`sed -i ''`) gets GNU's error for it, which names the problem and is the
-//! one models know best. On Windows a job takes drive paths as Windows writes them
-//! (`C:/Users/…`), never the Git Bash `/c/…` form, which would name `/c` at the root
-//! of the current drive.
+//! - The runner sets no `TMPDIR` for a job: it is the device environment's. A
+//!   temporary directory of the job's own would break dev servers. macOS limits
+//!   a Unix socket's path to 104 bytes, which a path under the job root
+//!   exceeds, and a daemon the job started would outlive the directory.
+//! - A job's `HOME` is the request's, else the device environment's, else the
+//!   home the runner reports. A runner a service manager starts without `HOME`
+//!   still has its jobs read `~/.profile`, where brush with `$HOME` unset would
+//!   look for `/.local/bin/env`.
+//!
+//! # Utilities
+//!
+//! Standard utilities behave as GNU's on every Host, macOS included. A script
+//! written on a Linux Cloud runs on a Mac unchanged, and a model that writes a
+//! BSD form (`sed -i ''`) gets GNU's error for it, which names the problem and
+//! is the one models know best.
+//!
+//! On Windows a job takes drive paths as Windows writes them (`C:/Users/…`),
+//! never the Git Bash `/c/…` form, which would name `/c` at the root of the
+//! current drive.
+//!
+//! # Boundaries
 //!
 //! The crate knows no jobs, execution contexts, services or connection: a
 //! declared command reaches the dispatcher only through the `command-sdk`
@@ -63,10 +79,11 @@ use std::{collections::BTreeSet, io};
 
 /// The runner's own environment as a shell of this platform reads it: on
 /// Windows the well-known names in their POSIX spelling, such as `Path` as
-/// `PATH`, which brush does for the environment it inherits. A job's shell
-/// does not inherit the runner's environment but is given one built from
-/// this, so without it a job on Windows would find `PATH` holding only the
-/// alias directory and run no program of the device.
+/// `PATH`, which brush does for the environment it inherits.
+///
+/// A job's shell does not inherit the runner's environment but is given one
+/// built from this. Without it a job on Windows would find `PATH` holding only
+/// the alias directory and run no program of the device.
 pub fn host_environment() -> impl Iterator<Item = (String, String)> {
     brush_core::sys::env::get_host_env_vars()
 }

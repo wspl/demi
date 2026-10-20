@@ -131,11 +131,12 @@ fn repository() -> (tempfile::TempDir, PathBuf) {
     (dir, root)
 }
 
-/// A file's subscription changes when its file is written, replaced by a
-/// rename as an editor saves, removed and made again, and not when a file
-/// beside it changes. Outside a working tree it is watched alone, on macOS
-/// with a kqueue watched again under its name each time a rename replaces
-/// the file.
+/// A file's subscription changes when its file is written, replaced by a rename
+/// as an editor saves, removed and made again, and not when a file beside it
+/// changes.
+///
+/// Outside a working tree the file is watched alone, on macOS with a kqueue
+/// watched again under its name each time a rename replaces the file.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_file_subscription_follows_its_file_through_writes_renames_over_it_and_removal() {
     tokio::time::timeout(GUARD, async {
@@ -291,12 +292,13 @@ async fn a_folder_that_becomes_a_repository_is_followed_as_one() {
 }
 
 /// A build that writes 20,000 files under the ignored `target/` changes no
-/// working tree subscription and costs the working tree's changes no walk
-/// of the whole tree, while a subscription of a log under `target/`, as a
-/// page shows one, changes as any other (`crates/runner-host/src/subscriptions.rs`).
-/// `target/` comes after the tree's watch started, so the watch hears the
-/// build and judges each path by git's rules. Costs 20,000 small writes,
-/// about a second.
+/// working tree subscription and costs the working tree's changes no walk of
+/// the whole tree, while a subscription of a log under `target/`, as a page
+/// shows one, changes as any other (`crates/runner-host/src/subscriptions.rs`).
+///
+/// `target/` comes after the tree's watch started, so the watch hears the build
+/// and judges each path by git's rules. Cost: 20,000 small writes, about a
+/// second.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_build_under_an_ignored_folder_changes_nothing_but_what_is_subscribed_inside_it() {
     tokio::time::timeout(GUARD, async {
@@ -365,12 +367,13 @@ async fn a_subscription_inside_a_folder_the_tree_leaves_out_has_a_watch_of_its_o
     .unwrap();
 }
 
-/// Every read answers the Host's number taken before it read, and every
-/// change the number of the event that made it, one count for the whole
-/// process: a change after a read always has a higher number than the
-/// read, and a read after the change has one no lower, so the page can tell
-/// from the numbers alone whether what it holds is current, inside a
-/// working tree's watch and outside it.
+/// Every read answers the Host's number taken before it read, and every change
+/// the number of the event that made it, one count for the whole process.
+///
+/// A change after a read always has a higher number than the read, and a read
+/// after the change has one no lower, so the page can tell from the numbers
+/// alone whether what it holds is current, inside a working tree's watch and
+/// outside it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_change_after_a_read_is_numbered_above_it_and_a_read_after_it_is_not_below_it() {
     tokio::time::timeout(GUARD, async {
@@ -401,13 +404,17 @@ async fn a_change_after_a_read_is_numbered_above_it_and_a_read_after_it_is_not_b
     .unwrap();
 }
 
-/// Events the platform says it dropped change the subscriptions they
-/// concern and no others: a folder FSEvents asks to rescan changes what
-/// lies under it and the working tree, unless git ignores the folder; a
-/// drop of a stream's own changes every subscription on that stream and
-/// none on another, so a drop outside the working tree reads nothing inside
-/// it. Nothing can make FSEvents drop events, so the test speaks for it
-/// through the way its events take.
+/// Events the platform says it dropped change the subscriptions they concern
+/// and no others.
+///
+/// - A folder FSEvents asks to rescan changes what lies under it and the
+///   working tree, unless git ignores the folder.
+/// - A drop of a stream's own changes every subscription on that stream and
+///   none on another, so a drop outside the working tree reads nothing inside
+///   it.
+///
+/// Nothing can make FSEvents drop events, so the test speaks for it through the
+/// way its events take.
 #[cfg(target_os = "macos")]
 #[tokio::test(flavor = "multi_thread")]
 async fn lost_events_change_only_the_subscriptions_they_concern() {

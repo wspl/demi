@@ -1183,12 +1183,16 @@ async fn catalog_queries_patterns_pagination_and_read_only_elements() {
     }).await;
 }
 
-/// Eval: a script of statements runs as one block and
-/// returns its last value, with or without a target, in a frame too;
-/// `undefined` reads as `JSON.stringify` reads it; a value JSON cannot hold
-/// names its place; and nothing waits. Before, a `const` was a syntax
-/// error, an `undefined` in an array failed as a driver error with a Rust
-/// dump, and a Promise looked like any side effect.
+/// Eval:
+///
+/// - A script of statements runs as one block and returns its last value, with
+///   or without a target, in a frame too.
+/// - `undefined` reads as `JSON.stringify` reads it.
+/// - A value JSON cannot hold names its place.
+/// - Nothing waits.
+///
+/// Before, a `const` was a syntax error, an `undefined` in an array failed as a
+/// driver error with a Rust dump, and a Promise looked like any side effect.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
 async fn eval_runs_statements_and_returns_what_json_holds() {

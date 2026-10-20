@@ -1,51 +1,68 @@
-//! The data the web app, the agent and the backend share: transcript blocks, user and tool
-//! content, models and their selection, token usage, tool views, agent
-//! messages, the session's phase, queue and pending steers, provider failure
-//! facts, what the product shows of a provider entry (its model catalog, wire
-//! format, authentication and runtime states, accounts and quota snapshots), the
-//! file-type table, model media sniffing, the JSON forms of bytes and times,
-//! and the wall clock. It holds types, their checks and pure lookups; no IO.
+//! The data the web app, the agent and the backend share.
 //!
-//! It holds no concrete provider name, catalog source name (the catalog
-//! carries portable facts only, never a label such as `codex-backend`,
-//! `models.dev` or `cache`), shell runtime or Host detail, user-interface
-//! concept, transport URL or backend identifier.
+//! The crate holds types, their checks and pure lookups; no IO. The data
+//! covers:
 //!
-//! Every message and stored document that crosses a process boundary is
-//! defined once, as a Rust type of a contract crate: its JSON Schema, the web
-//! app's TypeScript type and its Zod validator are derived from it by
-//! `xtask contracts`. A second declaration of the same shape, in Rust or in
-//! TypeScript, is a defect even while the two agree. Every type here follows
-//! one serde convention, which the generated validators refuse the same
-//! values by:
+//! - transcript blocks, user and tool content, tool views, and agent messages;
+//! - models and their selection, and token usage;
+//! - the session's phase, queue and pending steers;
+//! - provider failure facts, and what the product shows of a provider entry
+//!   (its model catalog, wire format, authentication and runtime states,
+//!   accounts and quota snapshots);
+//! - the file-type table, and model media sniffing;
+//! - the JSON forms of bytes and times, and the wall clock.
+//!
+//! It holds no concrete provider name, catalog source name (the catalog carries
+//! portable facts only, never a label such as `codex-backend`, `models.dev` or
+//! `cache`), shell runtime or Host detail, user-interface concept, transport
+//! URL or backend identifier.
+//!
+//! # One definition of each shape
+//!
+//! Every message and stored document that crosses a process boundary is defined
+//! once, as a Rust type of a contract crate. Its JSON Schema, the web app's
+//! TypeScript type and its Zod validator are derived from it by `xtask
+//! contracts`. A second declaration of the same shape, in Rust or in
+//! TypeScript, is a defect even while the two agree.
+//!
+//! # Serde convention
+//!
+//! Every type here follows one serde convention, which the generated validators
+//! refuse the same values by:
 //!
 //! - Fields are camelCase. Enums are internally tagged, by `type` (`op` for
 //!   transcript patches, `status` for nested outcomes, `kind` for views).
-//! - An optional field is omitted when absent and refuses `null`; a nullable
+//! - An optional field is omitted when absent and refuses `null`. A nullable
 //!   field is always written, as `null` when empty, and refuses absence.
 //! - A time is an RFC 3339 string in UTC with exactly three fractional digits
 //!   ([`Timestamp`]), so the text of two times orders as the times do.
 //! - An integer the web app reads is bounded to JavaScript's safe range in the
-//!   Rust type too (`range(max = MAX_SAFE_INTEGER)`), so an end that decodes
-//!   it refuses what the web app cannot hold; generation fails for a field
-//!   without the bound. On a type only the backend sends nothing in Rust
-//!   checks the attribute: it states the bound the web app's schema checks.
-//! - A string bound counts Unicode scalar values (garde's `chars` mode) so
-//!   both ends give one limit: Zod and JSON Schema count code points, while
-//!   garde's default counts bytes and JavaScript's `length` UTF-16 units.
+//!   Rust type too (`range(max = MAX_SAFE_INTEGER)`), so an end that decodes it
+//!   refuses what the web app cannot hold. Generation fails for a field without
+//!   the bound. On a type only the backend sends nothing in Rust checks the
+//!   attribute: it states the bound the web app's schema checks.
+//! - A string bound counts Unicode scalar values (garde's `chars` mode) so both
+//!   ends give one limit. Zod and JSON Schema count code points, while garde's
+//!   default counts bytes and JavaScript's `length` UTF-16 units.
 //! - A type the backend receives, from the web app or from its own storage,
-//!   refuses unknown fields; a type only the web app receives accepts them
+//!   refuses unknown fields. A type only the web app receives accepts them
 //!   (`crates/xtask/src/contracts/mod.rs`).
 //!
+//! # Decoding
+//!
 //! A value from outside the process is decoded once, at its boundary, by
-//! [`decode`] or the boundary's own decode function: serde into the type,
-//! with closed sets as enums and identities as newtypes that cannot hold an
-//! invalid value, then garde for bounds, lengths and patterns. A value is
-//! valid because a decode function checked it, never because it has a type;
-//! corrupt data is refused, never repaired or defaulted. Fixed contracts are
-//! checked by their types and garde, never by a round trip through JSON
-//! Schema, which belongs to the values whose schema is data: a command's
-//! arguments and a plugin's page call parameters.
+//! [`decode`] or the boundary's own decode function:
+//!
+//! 1. serde decodes it into the type, with closed sets as enums and identities
+//!    as newtypes that cannot hold an invalid value;
+//! 2. garde checks bounds, lengths and patterns.
+//!
+//! A value is valid because a decode function checked it, never because it has
+//! a type. Corrupt data is refused, never repaired or defaulted.
+//!
+//! Fixed contracts are checked by their types and garde, never by a round trip
+//! through JSON Schema. That belongs to the values whose schema is data: a
+//! command's arguments and a plugin's page call parameters.
 
 mod account;
 mod agent_message;

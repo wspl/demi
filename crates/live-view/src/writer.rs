@@ -1,7 +1,9 @@
 //! What a viewer's page receives: control messages before video chunks, and a
-//! heartbeat whenever nothing else was sent for 250 ms. The viewer's delivery
-//! hands chunks on at their paced times, within its window, so video waits here
-//! only behind control messages and the path's own backpressure.
+//! heartbeat whenever nothing else was sent for 250 ms.
+//!
+//! The viewer's delivery hands chunks on at their paced times, within its
+//! window, so video waits here only behind control messages and the path's own
+//! backpressure.
 //!
 //! After one second without a byte the page shows the stream as stalled and
 //! discards input rather than queueing it: a Cloud pausing for a checkpoint

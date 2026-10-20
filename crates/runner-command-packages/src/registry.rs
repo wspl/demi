@@ -1,40 +1,44 @@
-//! The service registry. One
-//! owner task keeps a registration's resident services by artifact digest,
-//! counts the leases on each, and decides when a service ends. A lease holder
-//! tells the registry when it takes its lease; the registry sees the lease
-//! end when its holder drops it, and nobody waits for the decision: the
+//! The service registry: one owner task keeps a registration's resident
+//! services by artifact digest, counts the leases on each, and decides when a
+//! service ends.
+//!
+//! A lease holder tells the registry when it takes its lease. The registry sees
+//! the lease end when its holder drops it. Nobody waits for the decision: the
 //! connection's message handling never blocks on it.
 //!
 //! A service stays while anything leases it:
+//!
 //! - a live execution context whose pinned manifest names its artifact;
 //! - an open user stream running in it;
 //! - a start in progress, for a call waiting until the service is ready;
 //! - the connection's installed manifests, so consecutive jobs reuse the
 //!   service: for each package, the release the latest installed manifest
-//!   naming it names (an older release keeps none, so after the startup
-//!   catalog moves a package, the old service ends with its last job);
+//!   naming it names (an older release keeps none, so after the startup catalog
+//!   moves a package, the old service ends with its last job);
 //! - the release the connection's user streams bound last, one per package,
 //!   until the connection ends or a stream binds another release.
 //!
-//! A service whose leases all ended is asked which conversations it holds. An
-//! answer counts only when no lease came or went and no release ended while
-//! it was on its way, since the service answers from what it holds at that
-//! moment: a check that follows one release can be answered while a second
-//! release still runs, and trusting it would keep a service that holds
-//! nothing. A check that fails or takes over 5 seconds keeps the service and
-//! is logged: a service that cannot say what it holds is not one that holds
-//! nothing, and stopping it would end every conversation it serves.
+//! A service whose leases all ended is asked which conversations it holds:
 //!
-//! Against its leases a service is retired only as faulty: it exits, breaks
-//! the protocol, fails a conversation release, or keeps a handler past the
+//! - An answer counts only when no lease came or went and no release ended
+//!   while it was on its way. The service answers from what it holds at that
+//!   moment: a check that follows one release can be answered while a second
+//!   release still runs, and trusting it would keep a service that holds
+//!   nothing.
+//! - A check that fails or takes over 5 seconds keeps the service and is
+//!   logged. A service that cannot say what it holds is not one that holds
+//!   nothing, and stopping it would end every conversation it serves.
+//!
+//! Against its leases a service is retired only as faulty: it exits, breaks the
+//! protocol, fails a conversation release, or keeps a handler past the
 //! cancellation grace. Losing the backend connection stops every service.
 //!
-//! For example, a job whose manifest names `demi.browser` holds a lease on
-//! its artifact while the job runs, and the installed manifest holds another.
-//! When the connection installs a manifest with a newer `demi.browser`, the
-//! old artifact's last lease ends when its last job does. The registry then
-//! asks the old service which conversations it holds: it stops a service that
-//! holds none, and keeps one that holds some or cannot say.
+//! For example, a job whose manifest names `demi.browser` holds a lease on its
+//! artifact while the job runs, and the installed manifest holds another. When
+//! the connection installs a manifest with a newer `demi.browser`, the old
+//! artifact's last lease ends when its last job does. The registry then asks
+//! the old service which conversations it holds: it stops a service that holds
+//! none, and keeps one that holds some or cannot say.
 
 use std::{
     collections::{BTreeMap, HashMap},

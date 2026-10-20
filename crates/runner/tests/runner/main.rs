@@ -1,8 +1,10 @@
-//! The runner's tests: each drives the built `demi-runner` as a backend
-//! does, over its runner socket, in one process. Each test binary costs a
-//! link and, when it is new, a first-launch check, so the tests live here.
-//! Only the open-file test keeps a binary of its own (`tests/open_files.rs`):
-//! it lowers the process's open-file limit and holds every descriptor left.
+//! The runner's tests: each drives the built `demi-runner` as a backend does,
+//! over its runner socket, in one process.
+//!
+//! Each test binary costs a link and, when it is new, a first-launch check, so
+//! the tests live here. Only the open-file test keeps a binary of its own
+//! (`tests/open_files.rs`): it lowers the process's open-file limit and holds
+//! every descriptor left.
 
 mod autostart;
 mod connection;

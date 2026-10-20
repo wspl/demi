@@ -104,12 +104,13 @@ pub trait Operations: Send + Sync + 'static {
     fn watch(&self, scope: Scope, requests: mpsc::UnboundedReceiver<FileWatchRequest>) -> WatchStream;
     /// Opens a user stream: its output bytes, once it opened.
     fn stream(&self, scope: Scope, request: StreamRequest) -> Answer<ByteStream>;
-    /// A `stream` channel of `conversation` opened the user stream `name`:
-    /// the runner gives the stream an id and tells the backend, which then
-    /// knows it as a stream of that name it opened, before the stream asks
-    /// it for anything; it tells it again when the activity is dropped, as
-    /// the channel's end drops it on every path: the stream's end, the
-    /// page's, the peer's close and the runner's.
+    /// A `stream` channel of `conversation` opened the user stream `name`.
+    ///
+    /// The runner gives the stream an id and tells the backend, which then
+    /// knows it as a stream of that name it opened, before the stream asks it
+    /// for anything. The runner tells it again when the activity is dropped, as
+    /// the channel's end drops it on every path: the stream's end, the page's,
+    /// the peer's close and the runner's.
     fn stream_activity(&self, conversation: &str, name: &str) -> BoxFuture<'static, StreamActivity>;
     /// A connection of forward `forward` that the runner of device `from`
     /// opened over its peer (`crates/runner-direct/src/pairs.rs`): the runner's connection to the forward's address, as

@@ -267,14 +267,15 @@ pub enum PageAt {
     Around(usize),
 }
 
-/// The blocks of the page `at` among `requests`, as a range of indices:
-/// whole requests from the one `at` names, adding requests while the page
-/// stays within [`PAGE_BYTES`]; at least one request. `size` gives a
-/// request's bytes, or none when they are more than the room it is given,
-/// what the page has left, so a reader can stop reading a request that
-/// cannot fit; the first request has unbounded room. `Around` adds the
-/// request after, then the one before, in turn. An index past the
-/// requests' ends answers an empty page there.
+/// The blocks of the page `at` among `requests`, as a range of indices.
+///
+/// - The page holds whole requests from the one `at` names, adding requests
+///   while the page stays within [`PAGE_BYTES`]; at least one request.
+/// - `size` gives a request's bytes, or none when they are more than the room
+///   it is given (what the page has left), so a reader can stop reading a
+///   request that cannot fit. The first request has unbounded room.
+/// - `Around` adds the request after, then the one before, in turn.
+/// - An index past the requests' ends answers an empty page there.
 pub fn page(
     requests: &[Range<usize>],
     at: PageAt,
@@ -337,15 +338,17 @@ pub fn latest_page_start(blocks: &[Block]) -> usize {
     latest_page_start_within(blocks, true)
 }
 
-/// The start of the latest page among `blocks`, the transcript's from
-/// its start when `whole`, else a window of it that a session holds,
-/// which starts inside the request before its first `user` block: the
+/// The start of the latest page among `blocks`: the transcript's from its start
+/// when `whole`, else a window of it that a session holds.
+///
+/// A window starts inside the request before its first `user` block. The
 /// window's blocks before that block, the end of that request, count as a
-/// request of their own, and the page reaches no further back than the
-/// window, so that no block before it is read to size the page. For
-/// example, a window from a boundary at 23,000 whose first message is at
-/// 23,600 starts its latest page at 23,600 when that request fills the
-/// page, and never at the earlier request's start.
+/// request of their own, and the page reaches no further back than the window,
+/// so that no block before it is read to size the page.
+///
+/// For example, a window from a boundary at 23,000 whose first message is at
+/// 23,600 starts its latest page at 23,600 when that request fills the page,
+/// and never at the earlier request's start.
 pub fn latest_page_start_within(blocks: &[Block], whole: bool) -> usize {
     let users: Vec<usize> = blocks
         .iter()

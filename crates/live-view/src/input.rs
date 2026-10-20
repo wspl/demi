@@ -1,7 +1,8 @@
-//! A viewer's input, delivered to the source it
-//! watches in the order it arrives, beside the agent's own input. Keys,
-//! buttons and fingers held down are this viewer's own: its end, a change of
-//! what it watches, or a release it asks for lets go of only them. The
+//! A viewer's input, delivered to the source it watches in the order it
+//! arrives, beside the agent's own input.
+//!
+//! Keys, buttons and fingers held down are this viewer's own: its end, a change
+//! of what it watches, or a release it asks for lets go of only them. The
 //! source decides what the input means and what letting go of it takes.
 
 use std::{

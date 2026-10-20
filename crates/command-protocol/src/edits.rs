@@ -1,15 +1,19 @@
-//! The runner-owned file interface through which a native command reports
-//! the files it edited, and the journal a job's recorder keeps.
+//! The runner-owned file interface through which a native command reports the
+//! files it edited, and the journal a job's recorder keeps.
 //!
 //! At the job's end, once all its work has stopped, the runner reads the
-//! journal into the report: a file is `Added` when it did not exist before
-//! the job first changed it and `Modified` otherwise, and a path absent at
-//! the end, an edit whose before and after bytes are identical, and a patch
-//! that rolled back completely are omitted. Only creations and modifications
-//! are reported, because the conversation shows what the model wrote, not the
-//! state of the directory; renames and removals are listed apart as
-//! [`PathChange`]s, so a request can follow a file across its calls. The
-//! journal and the copies share the job directory's lifetime: they go once
+//! journal into the report:
+//!
+//! - A file is `Added` when it did not exist before the job first changed it,
+//!   and `Modified` otherwise.
+//! - A path absent at the end, an edit whose before and after bytes are
+//!   identical, and a patch that rolled back completely are omitted.
+//! - Only creations and modifications are reported, because the conversation
+//!   shows what the model wrote, not the state of the directory.
+//! - Renames and removals are listed apart as [`PathChange`]s, so a request can
+//!   follow a file across its calls.
+//!
+//! The journal and the copies share the job directory's lifetime: they go once
 //! the backend has read the job's end.
 
 use serde::{Deserialize, Serialize};

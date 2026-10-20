@@ -1,15 +1,16 @@
-//! The `audio` plugin: the
-//! `demi audio` group, which asks the port's Providers service for one
-//! file of speech, music or a sound effect, wraps a vendor's raw PCM as
-//! WAV, checks the file it reads, writes it to stdout, and says what came
-//! back and what the call could not send; and lists a speech model's
-//! voices and the audio models.
+//! The `audio` plugin: the `demi audio` group.
 //!
-//! Raw PCM is wrapped as WAV only with the rate, channels and sample size
-//! its vendor states, each read and checked where the answer is decoded; one
-//! it states wrongly or not at all fails the call, never guessed. Making a
-//! voice, a clone or a designed one, is not a Demi command: each vendor asks
-//! for the speaker's consent its own way, on its own site.
+//! The group asks the port's Providers service for one file of speech, music or
+//! a sound effect, wraps a vendor's raw PCM as WAV, checks the file it reads,
+//! writes it to stdout, and says what came back and what the call could not
+//! send. It also lists a speech model's voices and the audio models.
+//!
+//! Raw PCM is wrapped as WAV only with the rate, channels and sample size its
+//! vendor states, each read and checked where the answer is decoded. One it
+//! states wrongly or not at all fails the call, never guessed.
+//!
+//! Making a voice, a clone or a designed one, is not a Demi command: each
+//! vendor asks for the speaker's consent its own way, on its own site.
 
 mod audio;
 mod commands;

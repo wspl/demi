@@ -123,12 +123,13 @@ fn css_size(clip: &Viewport) -> (u32, u32) {
 }
 
 /// The PNG `png`, captured at device pixels, scaled to `size` CSS pixels.
-/// At a whole ratio, such as 2 or 3, each CSS pixel is the average of the
-/// device pixels it covers, as sharp as the page drawn at ratio 1 and four
-/// times as fast as a Catmull-Rom filter; at any other ratio, such as 1.25,
-/// that average would weigh a glyph's columns unevenly, so Catmull-Rom,
-/// which keeps text's edges sharp where a triangle filter blurs them,
-/// scales it.
+///
+/// - At a whole ratio, such as 2 or 3, each CSS pixel is the average of the
+///   device pixels it covers, as sharp as the page drawn at ratio 1 and four
+///   times as fast as a Catmull-Rom filter.
+/// - At any other ratio, such as 1.25, that average would weigh a glyph's
+///   columns unevenly, so Catmull-Rom scales it. It keeps text's edges sharp
+///   where a triangle filter blurs them.
 fn to_css_pixels(png: &[u8], (width, height): (u32, u32)) -> Result<Vec<u8>> {
     let captured = image::load_from_memory_with_format(png, image::ImageFormat::Png)
         .map_err(|error| BrowserError::InvalidResult(error.to_string()))?

@@ -1,12 +1,18 @@
-//! Android Studio's device art (`crates/command-package-mobile/src/live.rs`): for each
-//! device, such as `pixel_10`, a folder in Android Studio's installation
-//! holding the frame's image, the screen's mask and a `layout` in the
-//! emulator's skin format that places the screen in the frame. It is drawn
-//! as Android Studio's emulator window draws it (`SkinDefinition` in its
-//! `adt-ui`): the frame's image around the screen and never over it, the
-//! mask over the screen's corners, the device's buttons, the whole turned
-//! with the picture. Demi reads the art from the Host's installation and
-//! carries none.
+//! Android Studio's device art (`crates/command-package-mobile/src/live.rs`).
+//!
+//! For each device, such as `pixel_10`, a folder in Android Studio's
+//! installation holds the frame's image, the screen's mask and a `layout` in
+//! the emulator's skin format that places the screen in the frame.
+//!
+//! The art is drawn as Android Studio's emulator window draws it
+//! (`SkinDefinition` in its `adt-ui`):
+//!
+//! - the frame's image around the screen and never over it;
+//! - the mask over the screen's corners;
+//! - the device's buttons;
+//! - the whole turned with the picture.
+//!
+//! Demi reads the art from the Host's installation and carries none.
 
 use std::{
     cmp::Reverse,

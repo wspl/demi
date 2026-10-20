@@ -272,13 +272,17 @@ async fn ulimit_limits_the_jobs_own_processes_only() {
 }
 
 /// A job's `time` reports the processor time of the processes its pipeline
-/// started, with the children they waited for, and none of the runner's: a
-/// process that another part of the job started and that ends during the
-/// pipeline counts as nothing, and a pipeline that ran a builtin or standard
-/// utility says that its work is not counted. Before, `time` reported the
-/// whole runner's time and that of every child it reaped meanwhile, the
-/// background loop's here. About 0.8 s: each counted loop must take
-/// measurable time.
+/// started, with the children they waited for, and none of the runner's.
+///
+/// - A process that another part of the job started and that ends during the
+///   pipeline counts as nothing.
+/// - A pipeline that ran a builtin or standard utility says that its work is
+///   not counted.
+///
+/// Before, `time` reported the whole runner's time and that of every child it
+/// reaped meanwhile, the background loop's here.
+///
+/// Cost: about 0.8 s, since each counted loop must take measurable time.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn time_reports_the_processes_its_pipeline_started_and_none_of_the_runners() {
@@ -340,12 +344,14 @@ async fn umask_masks_the_jobs_own_processes_and_files_only() {
     assert_eq!(output, format!("{runner}{runner}"));
 }
 
-/// On Windows the builtins that act on a process and `timeout` are the
-/// job's, never a program of the same name: `umask` keeps and shows the
-/// shell's mask, which nothing applies, and `ulimit` shows every limit as
-/// `unlimited` and refuses to set one. Before, `ulimit`, `umask` and
-/// `suspend` were not found, and `kill` and `timeout` were the Host's
-/// programs.
+/// On Windows the builtins that act on a process and `timeout` are the job's,
+/// never a program of the same name.
+///
+/// - `umask` keeps and shows the shell's mask, which nothing applies.
+/// - `ulimit` shows every limit as `unlimited` and refuses to set one.
+///
+/// Before, `ulimit`, `umask` and `suspend` were not found, and `kill` and
+/// `timeout` were the Host's programs.
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn process_builtins_are_the_jobs_own_on_windows() {

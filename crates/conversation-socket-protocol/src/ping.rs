@@ -1,8 +1,9 @@
-//! The page's question whether a socket is still alive, which every page
-//! socket of the backend takes beside its own messages: the synchronization
-//! channel, the conversation socket, the file watch and a device's signaling
-//! socket. The backend answers each at once with its protocol's `pong` carrying
-//! the same id.
+//! The page's question whether a socket is still alive, which every page socket
+//! of the backend takes beside its own messages.
+//!
+//! The sockets are the synchronization channel, the conversation socket, the
+//! file watch and a device's signaling socket. The backend answers each at once
+//! with its protocol's `pong` carrying the same id.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

@@ -143,12 +143,14 @@ pub enum Inbound {
         )]
         signal: Option<Signal>,
     },
-    /// One job: `bash -c script` in `cwd` with exactly `env`; a `cwd` that
-    /// does not exist fails it before its script runs. Its declared
-    /// commands receive `context` and may show the model the media types
-    /// `viewable` names, none for a job whose media reach no model, as one
-    /// `demi host shell` runs; `stdin` and `stdout` attach the job's fd 0 and
-    /// fd 1 to pipes whose other ends are elsewhere.
+    /// One job: `bash -c script` in `cwd` with exactly `env`. A `cwd` that does
+    /// not exist fails it before its script runs.
+    ///
+    /// - Its declared commands receive `context` and may show the model the
+    ///   media types `viewable` names, none for a job whose media reach no
+    ///   model, as one `demi host shell` runs.
+    /// - `stdin` and `stdout` attach the job's fd 0 and fd 1 to pipes whose
+    ///   other ends are elsewhere.
     JobStart {
         job_id: String,
         #[serde(
@@ -405,11 +407,12 @@ pub enum Inbound {
         exists: WriteExists,
         input: PipeRef,
     },
-    /// Fill the file with the bytes the backend offers at `source`, which
-    /// the runner downloads as every file Demi downloads
-    /// (`crates/shared-artifacts/src/download.rs`): resumed after a break or a stall,
-    /// with no overall deadline, and checked against the offer's size and
-    /// SHA-256 before the file is put in place as `fs_writeFile` puts it.
+    /// Fill the file with the bytes the backend offers at `source`.
+    ///
+    /// The runner downloads them as every file Demi downloads
+    /// (`crates/shared-artifacts/src/download.rs`): resumed after a break or a
+    /// stall, with no overall deadline, and checked against the offer's size
+    /// and SHA-256 before the file is put in place as `fs_writeFile` puts it.
     /// The answer names the file it wrote, or the cause of the failure.
     #[serde(rename = "fs_downloadFile")]
     FsDownloadFile {
@@ -424,13 +427,15 @@ pub enum Inbound {
         exists: WriteExists,
         source: FileOffer,
     },
-    /// Writes the directory `path` whole (`crates/runner-host/src/lib.rs`):
-    /// `files` lists its files, each by its path inside it, with `/`
-    /// between the parts, and its mode, and `input` carries their contents
-    /// in that order, each after its length as [`FileRead`] describes. The
-    /// runner writes them into a temporary directory beside `path`, gives
-    /// every directory in it `directory_mode`, and renames it into place;
-    /// a directory at `path` already is complete, and is kept.
+    /// Writes the directory `path` whole (`crates/runner-host/src/lib.rs`).
+    ///
+    /// - `files` lists its files, each by its path inside it, with `/` between
+    ///   the parts, and its mode.
+    /// - `input` carries their contents in that order, each after its length as
+    ///   [`FileRead`] describes.
+    /// - The runner writes them into a temporary directory beside `path`, gives
+    ///   every directory in it `directory_mode`, and renames it into place.
+    /// - A directory at `path` already is complete, and is kept.
     #[serde(rename = "fs_writeDirectory")]
     FsWriteDirectory {
         id: String,
@@ -1277,9 +1282,10 @@ pub enum Outbound {
         message: String,
     },
     /// A direct channel's `stream` of `conversation`, named by the id the
-    /// runner gave it, of the user stream `name` its header asked for,
-    /// opened, or closed (`crates/runner-protocol/src/direct.rs`):
-    /// the backend knows each open one as a stream of that name it opened,
+    /// runner gave it, of the user stream `name` its header asked for, opened,
+    /// or closed (`crates/runner-protocol/src/direct.rs`).
+    ///
+    /// The backend knows each open one as a stream of that name it opened,
     /// counts it as the conversation's activity and answers its artifact
     /// requests.
     DirectStream {

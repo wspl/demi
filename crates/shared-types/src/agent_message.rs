@@ -1,18 +1,23 @@
-//! Input one agent of a tree sends another: an explicit message, or a child's
-//! completion receipt; the user's decision on a permission request, which
-//! reaches the agent that asked the same way; the user's move of the
-//! conversation, which the user tells the root of; and Demi's notice that a
-//! move the agent asked for failed
-//! (`crates/backend-host-access/src/transition.rs`).
+//! Input one agent of a tree sends another.
+//!
+//! The input is one of:
+//!
+//! - an explicit message, or a child's completion receipt;
+//! - the user's decision on a permission request, which reaches the agent that
+//!   asked the same way;
+//! - the user's move of the conversation, which the user tells the root of;
+//! - Demi's notice that a move the agent asked for failed
+//!   (`crates/backend-host-access/src/transition.rs`).
 //!
 //! It is structured input, neither a human message nor the receiving agent's
 //! output. The supervisor supplies the sender from the invoking node, so a
 //! model cannot impersonate another sender by writing an identifier into the
-//! body, and the source is data that neither replay nor the web app parses out
-//! of a text prefix. A completion's ID names the child and the round, so it
-//! identifies exactly one round of one child. Editing and Fork are not offered
-//! on a receipt, and compaction keeps what it tells as context, never as a
-//! human instruction.
+//! body. The source is data that neither replay nor the web app parses out of a
+//! text prefix.
+//!
+//! A completion's ID names the child and the round, so it identifies exactly
+//! one round of one child. Editing and Fork are not offered on a receipt, and
+//! compaction keeps what it tells as context, never as a human instruction.
 
 use std::{fmt, str::FromStr};
 

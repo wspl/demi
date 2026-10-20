@@ -181,10 +181,11 @@ pub trait ArtifactResolver: Send + Sync + 'static {
 }
 
 /// Where a service's requests to the backend go: its conversation numbers
-/// (`crates/command-protocol/src/numbers.rs`) and its messages to its
-/// plugin (§ Messages to the plugin). It is the backend connection the
-/// service started under, which a lost connection ends together with the
-/// service.
+/// (`crates/command-protocol/src/numbers.rs`) and its messages to its plugin (§
+/// Messages to the plugin).
+///
+/// It is the backend connection the service started under, which a lost
+/// connection ends together with the service.
 pub trait ServiceBackend: Send + Sync + 'static {
     /// The first of `count` numbers of `conversation`'s `sequence`, or why
     /// the backend gave none.

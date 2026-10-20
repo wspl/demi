@@ -1,8 +1,9 @@
-//! The simulators' live view protocol: what
-//! the page and `demi-mobile` say to each other over the `mobile` user
-//! stream about the conversation's devices, beside the live view's own
-//! frames, pictures and input (`live-view-protocol`). The page and the
-//! service ship in the same release; there is no version.
+//! The simulators' live view protocol: what the page and `demi-mobile` say to
+//! each other over the `mobile` user stream about the conversation's devices,
+//! beside the live view's own frames, pictures and input
+//! (`live-view-protocol`).
+//!
+//! The page and the service ship in the same release; there is no version.
 
 use demi_shared_types::Nullable;
 use schemars::JsonSchema;

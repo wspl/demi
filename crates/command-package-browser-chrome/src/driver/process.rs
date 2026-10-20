@@ -3,12 +3,16 @@
 //!
 //! Chrome starts in a process group of its own with a private marker naming its
 //! environment. Helpers such as Crashpad can detach into another session, so
-//! retirement finds them by the marker as well as the group; the marker is read
+//! retirement finds them by the marker as well as the group. The marker is read
 //! only from processes inside the Chrome installation, never from every process
-//! on the Host. A failed launch, an owner's cancellation and a failed graceful
-//! close use the same termination path. On Linux the kernel also ends Chrome
-//! when the service ends, which follows the thread that started it, so Chrome
-//! starts from a thread that lives as long as the service.
+//! on the Host.
+//!
+//! A failed launch, an owner's cancellation and a failed graceful close use the
+//! same termination path.
+//!
+//! On Linux the kernel also ends Chrome when the service ends, which follows
+//! the thread that started it. Chrome therefore starts from a thread that lives
+//! as long as the service.
 
 use std::{io, path::Path};
 
@@ -24,24 +28,26 @@ use crate::driver::operation::Result;
 #[cfg(unix)]
 const PROFILE_ENV: &str = "DEMI_BROWSER_PROFILE";
 
-/// The variable Chrome takes its temporary directory from, where it makes
-/// the directory of its process-singleton socket. Linux Chrome reads
-/// `TMPDIR` (Chromium 153's `base/files/file_util_posix.cc`, `GetTempDir`).
-/// macOS Chrome reads `MAC_CHROMIUM_TMPDIR` instead, and without it asks the
-/// system (`NSTemporaryDirectory()`; Chromium 153's
-/// `base/files/file_util_apple.mm`, `GetTempDir`).
+/// The variable Chrome takes its temporary directory from, where it makes the
+/// directory of its process-singleton socket.
+///
+/// - Linux Chrome reads `TMPDIR` (Chromium 153's
+///   `base/files/file_util_posix.cc`, `GetTempDir`).
+/// - macOS Chrome reads `MAC_CHROMIUM_TMPDIR` instead, and without it asks the
+///   system (`NSTemporaryDirectory()`; Chromium 153's
+///   `base/files/file_util_apple.mm`, `GetTempDir`).
 #[cfg(target_os = "macos")]
 const TEMPORARY_ENV: &str = "MAC_CHROMIUM_TMPDIR";
 #[cfg(all(unix, not(target_os = "macos")))]
 const TEMPORARY_ENV: &str = "TMPDIR";
 
-/// The variable Linux Chrome takes its default user data directory from,
-/// where it keeps its crash reports whatever `--user-data-dir` says
-/// (Chromium 153's `chrome/common/chrome_paths.cc`, `DIR_CRASH_DUMPS`).
-/// Without it Chrome takes `$XDG_CONFIG_HOME`, or else the user's
-/// `~/.config` (`chrome/common/chrome_paths_linux.cc`,
-/// `GetDefaultUserDataDirectory`); it is Chrome's own variable, which no
-/// other library in its process reads.
+/// The variable Linux Chrome takes its default user data directory from, where
+/// it keeps its crash reports whatever `--user-data-dir` says (Chromium 153's
+/// `chrome/common/chrome_paths.cc`, `DIR_CRASH_DUMPS`).
+///
+/// Without it Chrome takes `$XDG_CONFIG_HOME`, or else the user's `~/.config`
+/// (`chrome/common/chrome_paths_linux.cc`, `GetDefaultUserDataDirectory`). It
+/// is Chrome's own variable, which no other library in its process reads.
 #[cfg(target_os = "linux")]
 const CONFIG_ENV: &str = "CHROME_CONFIG_HOME";
 

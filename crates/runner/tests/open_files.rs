@@ -1,12 +1,17 @@
 #![cfg(all(unix, feature = "test-fixtures"))]
-//! With no open file left, each of these waits until one closes, then
-//! finishes (`crates/runner/src/main.rs`): pipes, filesystem and working-tree
-//! requests, file transfers, process and job starts, a running job's
-//! pipelines, redirections and utilities, native service starts and local
-//! command connections; a cancelled job stops waiting. Last, the
-//! runner raises its open-file limit, and what it starts gets the one it was
-//! started with. One test in its own binary: it changes the process's
-//! open-file limit and holds every remaining descriptor.
+//! With no open file left, each of these waits until one closes, then finishes
+//! (`crates/runner/src/main.rs`):
+//!
+//! - pipes, filesystem and working-tree requests, and file transfers;
+//! - process and job starts, and a running job's pipelines, redirections and
+//!   utilities;
+//! - native service starts and local command connections.
+//!
+//! A cancelled job stops waiting. Last, the runner raises its open-file limit,
+//! and what it starts gets the one it was started with.
+//!
+//! This is one test in its own binary: it changes the process's open-file limit
+//! and holds every remaining descriptor.
 
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,

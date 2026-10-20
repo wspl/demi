@@ -130,11 +130,13 @@ impl ProviderModel {
     }
 
     /// The thinking setting that the thinking effort `effort` of a
-    /// conversation's model settings makes on this model: an effort the model lists becomes its
-    /// thinking setting at that effort, with the default summary;
-    /// [`THINKING_OFF`] turns thinking off when the model can; none is the
-    /// first effort the model lists, and no setting only on a model that
-    /// lists none.
+    /// conversation's model settings makes on this model:
+    ///
+    /// - An effort the model lists becomes its thinking setting at that effort,
+    ///   with the default summary.
+    /// - [`THINKING_OFF`] turns thinking off when the model can.
+    /// - None is the first effort the model lists, and no setting only on a
+    ///   model that lists none.
     pub fn thinking_for(
         &self,
         effort: Option<&str>,

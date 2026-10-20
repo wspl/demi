@@ -1,6 +1,7 @@
-//! How a Host writes its paths (`crates/runner-shell/src/lib.rs`): the backend
-//! builds paths on a Host, such as where an attachment is saved, with the
-//! separator of the system the Host's runner reports, so a Windows Host
+//! How a Host writes its paths (`crates/runner-shell/src/lib.rs`).
+//!
+//! The backend builds paths on a Host, such as where an attachment is saved,
+//! with the separator of the system the Host's runner reports. A Windows Host
 //! shows `C:\Users\alex\.demi\attachments\…`, never `C:\Users\alex/.demi/…`.
 //! Every path the backend joins, splits or walks up on a Host goes through
 //! here.
@@ -67,12 +68,16 @@ impl HostPaths {
             .into_string()
     }
 
-    /// `path` read against `directory` as the Host's own path join reads
-    /// it, without taking out `.` and `..`, so the Host, which follows
-    /// links first, decides where they lead: an absolute path as it is; on
-    /// Windows a rooted one, `\rules\review.yaml`, on `directory`'s drive,
-    /// and a drive-relative one, `C:foo`, as it is, for the Host to read
-    /// against that drive's directory; otherwise joined to `directory`.
+    /// `path` read against `directory` as the Host's own path join reads it,
+    /// without taking out `.` and `..`, so the Host, which follows links first,
+    /// decides where they lead.
+    ///
+    /// - An absolute path stays as it is.
+    /// - On Windows a rooted path, `\rules\review.yaml`, is on `directory`'s
+    ///   drive.
+    /// - On Windows a drive-relative path, `C:foo`, stays as it is, for the
+    ///   Host to read against that drive's directory.
+    /// - Any other path is joined to `directory`.
     pub fn beside(self, directory: &str, path: &str) -> String {
         match self {
             Self::Posix if path.starts_with('/') => path.to_owned(),
@@ -173,13 +178,17 @@ pub fn relative_to(directory: &str, path: &str) -> Option<String> {
     Some(if relative.is_empty() { ".".to_owned() } else { relative })
 }
 
-/// Whether `path` is `directory` or inside it, judged by their parts
-/// after `.` and `..` are taken out, without following a link
-/// (`crates/agent-store/src/changes.rs`). Both are read in
-/// the spelling `directory` has: a Windows one, by its drive or share,
-/// takes `\` and `/` as separators and compares its parts as Windows
-/// does, ignoring case; a Posix one compares them exactly, a `\` part of a
-/// name. A relative `path` is read under `directory`.
+/// Whether `path` is `directory` or inside it, judged by their parts after `.`
+/// and `..` are taken out, without following a link
+/// (`crates/agent-store/src/changes.rs`).
+///
+/// Both are read in the spelling `directory` has:
+///
+/// - A Windows one, by its drive or share, takes `\` and `/` as separators and
+///   compares its parts as Windows does, ignoring case.
+/// - A Posix one compares them exactly, a `\` part of a name.
+///
+/// A relative `path` is read under `directory`.
 pub fn is_inside(directory: &str, path: &str) -> bool {
     use typed_path::{Utf8Component, Utf8TypedPath};
     match Utf8TypedPath::derive(directory) {

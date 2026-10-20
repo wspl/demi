@@ -1,8 +1,9 @@
-//! A job's kept output (`crates/runner-jobs/src/kept_output.rs`): every read of its
-//! stdout and stderr, in the order the runner read them, one MessagePack
-//! record after another, within [`JOB_KEPT_BYTES`]. The runner writes it
-//! while the job runs and `job_read` streams it; the backend decodes it here,
-//! where it enters, and stores it in the same records.
+//! A job's kept output (`crates/runner-jobs/src/kept_output.rs`): every read of
+//! its stdout and stderr, in the order the runner read them, one MessagePack
+//! record after another, within [`JOB_KEPT_BYTES`].
+//!
+//! The runner writes it while the job runs and `job_read` streams it. The
+//! backend decodes it here, where it enters, and stores it in the same records.
 
 use serde::{Deserialize, Serialize};
 

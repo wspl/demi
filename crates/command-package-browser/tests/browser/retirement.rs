@@ -84,18 +84,24 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
     assert!(!profile.exists());
 }
 
+/// Chrome keeps its directories apart whatever the service's home and temporary
+/// directory are.
+///
 /// The service's own temporary directory can be long: a Mac's is about 49
-/// characters, and a user can set any. The profile, which can grow large,
-/// goes there, while Chrome's temporary directory, where it makes its
-/// process-singleton socket, stays in the short, fixed runtime base, so the
-/// socket's path keeps within its limit and Chrome starts. Under this directory of at least 90 characters the
-/// socket's path would take at least 155 bytes, past Linux's 107. Retirement
-/// leaves nothing in that directory, and Chrome writes nothing of its own in
-/// the service's home but the user's certificate database: its crash
-/// reports go with the profile. About 5 s: the service's `TMPDIR` and home
-/// differ from this test process's only when the service runs as a program
-/// of its own; starting Chrome and opening a tab take 2 s, and retiring it
-/// 1.5 s.
+/// characters, and a user can set any. The profile, which can grow large, goes
+/// there. Chrome's temporary directory, where it makes its process-singleton
+/// socket, stays in the short, fixed runtime base, so the socket's path keeps
+/// within its limit and Chrome starts. Under this directory of at least 90
+/// characters the socket's path would take at least 155 bytes, past Linux's
+/// 107.
+///
+/// Retirement leaves nothing in that directory. Chrome writes nothing of its
+/// own in the service's home but the user's certificate database: its crash
+/// reports go with the profile.
+///
+/// Cost: about 5 s. The service's `TMPDIR` and home differ from this test
+/// process's only when the service runs as a program of its own. Starting
+/// Chrome and opening a tab take 2 s, and retiring it 1.5 s.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; starts the service program with its own home and a long TMPDIR"]
 async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_temporary_directory() {
@@ -203,12 +209,14 @@ async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
 }
 
 /// A service that is killed leaves its profile and a download saved without
-/// `--output` behind; the next service of the same user removes them as it
-/// starts. The next service sweeps beside
-/// serving and gives the sweep up when serving ends, and the sweep asks the
-/// runner where Chrome is installed, so the test waits, while the service
-/// serves, for the directories to go. About 6 s: two service programs, one
-/// Chrome.
+/// `--output` behind. The next service of the same user removes them as it
+/// starts.
+///
+/// The next service sweeps beside serving and gives the sweep up when serving
+/// ends. The sweep asks the runner where Chrome is installed, so the test
+/// waits, while the service serves, for the directories to go.
+///
+/// Cost: about 6 s, two service programs and one Chrome.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; kills the service program and sweeps what it left"]
 async fn the_next_service_sweeps_a_killed_services_browser_and_downloads() {

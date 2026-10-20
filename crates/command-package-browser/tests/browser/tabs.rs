@@ -93,11 +93,14 @@ async fn an_action_names_the_tabs_it_opened() {
     .await;
 }
 
-/// A tab number the backend does not give fails only the step that needed
-/// it: the `open` answers why, a popup is closed, and the environment keeps
-/// its tabs; the next step draws again.
+/// A tab number the backend does not give fails only the step that needed it:
+/// the `open` answers why, a popup is closed, and the environment keeps its
+/// tabs. The next step draws again.
+///
 /// Here the backend gives the first draw's eight numbers, then fails twice,
-/// then gives numbers from 101. About 12 s on a small Linux VM, as long as
+/// then gives numbers from 101.
+///
+/// Cost: about 12 s on a small Linux VM, as long as
 /// `an_action_names_the_tabs_it_opened` there: most of it starts Chrome.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
