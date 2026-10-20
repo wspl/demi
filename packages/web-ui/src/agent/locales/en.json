@@ -8,6 +8,7 @@
     "sent": "Sent",
     "writeFirst": "Write a comment first.",
     "title": "Comments",
+    "sendNow": "Send Now",
     "pictureFailed": "Could Not Comment on the Picture"
   },
   "ask": {
@@ -93,6 +94,7 @@
       "showMore": "Show More",
       "showLess": "Show Less",
       "sendsNext": "Sends at the agent’s next step",
+      "sendNow": "Send Now",
       "recall": "Recall",
       "recalled": "Message Recalled",
       "notDelivered": "This message was not delivered.",

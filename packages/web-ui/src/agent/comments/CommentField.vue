@@ -5,7 +5,6 @@ import Button from '../../ui/Button.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { otherWayKeys } from '../send-way'
 import { t } from '../locales/text'
-import { t as shared } from '../../locales/text'
 
 /**
  * The box a new comment is written in under its words or its picture, as
@@ -94,7 +93,7 @@ function onKeydown(event: KeyboardEvent): void {
           @mousedown.prevent
           @click="done('sendNow')"
         >
-          {{ shared('sendWay.steer') }}
+          {{ t('comments.sendNow') }}
         </Button>
       </Tooltip>
       <Button

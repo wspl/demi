@@ -206,7 +206,7 @@ const menu: ContextMenuDeclaration = {
   entries: () => {
     if (props.pending) {
       return [[
-        { label: shared('sendWay.steer'), run: () => emit('sendNow') },
+        { label: t('transcript.user.sendNow'), run: () => emit('sendNow') },
         { label: t('transcript.user.recall'), run: () => emit('recall') },
       ]]
     }
@@ -396,7 +396,7 @@ useResizeObserver(bodyRef, measure)
         so.
       -->
       <span v-if="pending === 'steer'" class="mr-1">{{ t('transcript.user.sendsNext') }}</span>
-      <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">{{ shared('sendWay.steer') }}</Button>
+      <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">{{ t('transcript.user.sendNow') }}</Button>
       <Button size="xs" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
     </div>
   </div>

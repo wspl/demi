@@ -8,6 +8,7 @@
     "sent": "보냄",
     "writeFirst": "먼저 댓글을 입력하세요.",
     "title": "댓글",
+    "sendNow": "지금 보내기",
     "pictureFailed": "이미지에 댓글을 달 수 없음"
   },
   "ask": {
@@ -93,6 +94,7 @@
       "showMore": "더 보기",
       "showLess": "간략히 보기",
       "sendsNext": "에이전트의 다음 단계에서 보내집니다",
+      "sendNow": "지금 보내기",
       "recall": "회수",
       "recalled": "메시지 회수됨",
       "notDelivered": "이 메시지를 전달하지 못했습니다.",

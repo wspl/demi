@@ -8,6 +8,7 @@
     "sent": "已傳送",
     "writeFirst": "請先輸入註解。",
     "title": "註解",
+    "sendNow": "立即傳送",
     "pictureFailed": "無法評論圖片"
   },
   "ask": {
@@ -93,6 +94,7 @@
       "showMore": "顯示較多",
       "showLess": "顯示較少",
       "sendsNext": "將在智慧體的下一步傳送",
+      "sendNow": "立即傳送",
       "recall": "收回",
       "recalled": "訊息已收回",
       "notDelivered": "此訊息未能送達。",
