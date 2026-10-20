@@ -35,21 +35,21 @@ Demi 是一個自架的 AI 智慧體，在任何瀏覽器中都能使用。隨�
 
 ## 快速開始
 
-你需要：
+你需要以下條件：
 
-- 一台有 root 權限的 Linux 伺服器，系統為以下之一（[詳細說明](docs/delivery/installation.md#distributions)）：
+- 一台有 root 權限的 Linux 伺服器，系統為以下之一（[支援的發行版](docs/delivery/installation.md#distributions)）：
   - Ubuntu 22.04 以上、Debian 12 以上
   - Fedora、RHEL 10、Rocky Linux、AlmaLinux
   - Arch Linux
-- 一個網域名稱，並在伺服器前端提供 HTTPS（[設定方式](docs/delivery/installation.md#https)）。
+- 一個網域名稱，並在伺服器前端提供 HTTPS（[HTTPS 設定方式](docs/delivery/installation.md#https)）。
 
-然後在伺服器上執行：
+然後在伺服器上執行以下指令：
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-安裝程式會問幾個問題，然後完成安裝。接下來：
+安裝程式會問幾個問題，然後完成安裝。安裝完成後：
 
 1. 立即開啟你的網域，建立管理員帳號。
 2. 前往 **Settings › Providers**，用訂閱帳號登入或新增 API 金鑰。
@@ -59,6 +59,8 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 所有選項（包括免互動安裝）請參閱[安裝指南](docs/delivery/installation.md)，升級方式請參閱[升級說明](docs/delivery/upgrades.md)。
 
 ## 主要特色
+
+Demi 的特色分為四組。
 
 ### 聊天、辦事、寫程式
 
@@ -99,7 +101,9 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 
 ## 建立在 Shell 上的智慧體
 
-Demi 既是智慧體的介面，也是智慧體本身。它不包裝 Claude Code 或 Codex，而是由自己的執行階段驅動所有模型；用 Claude 或 ChatGPT 訂閱登入時，只使用訂閱中的模型。
+Demi 既是智慧體的介面，也是智慧體本身。
+
+它不包裝 Claude Code 或 Codex，而是由自己的執行階段驅動所有模型；用 Claude 或 ChatGPT 訂閱登入時，只使用訂閱中的模型。
 
 大多數智慧體會給模型一長串工具，Demi 只給一個：Shell。瀏覽器、其他機器、子智慧體等所有能力，都是這個 Shell 裡的 `demi` 指令：
 
@@ -108,6 +112,8 @@ demi browser open http://localhost:5173 && demi browser screenshot t1 | demi fil
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
+
+這種設計有以下好處：
 
 - **可組合**：指令之間可以用管線和 `&&` 串接，通常需要多次工具呼叫的事，一步就能完成。
 - **提示精簡**：每組指令在提示中只佔一行，模型需要時再讀 `--help`。能力再多，也不會讓每次請求變得臃腫。
@@ -119,6 +125,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 > **規劃中**：Demi 的智慧體執行階段將以獨立的 TypeScript 函式庫提供，你可以不依賴 Demi 應用程式，直接在它之上打造自己的智慧體。
 
 ## 架構
+
+下圖顯示各部分如何連接：
 
 ```text
   Browsers (computer, phone, tablet)
@@ -138,6 +146,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   └────────────────┘  └──────────────────────────────┘
 ```
 
+這種架構有以下特點：
+
 - **伺服器執行智慧體，執行器負責工作**：對話、智慧體和設定都在伺服器上。每台機器上的輕量執行器只負責檔案、指令和瀏覽器操作。執行器主動連線到伺服器，在 NAT 和防火牆後也能正常運作。
 - **同一個執行器**：雲端沙箱和你的電腦執行同一個執行器，所有功能在每台機器上都能使用。
 - **節省頻寬**：大量輸出和檔案保留在產生它們的機器上，只在你開啟時才載入。
@@ -151,15 +161,24 @@ Demi 與 Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code �
 
 ## 文件
 
-- [設計文件](docs/README.md)：Demi 各部分的運作原理。
-- [參與貢獻](CONTRIBUTING.md)：開發環境、檢查項目，以及如何新增模型供應商。
-- [安全性](SECURITY.md)：漏洞回報方式與資料儲存說明。
+- [設計文件](docs/README.md)：Demi 各部分的運作原理
+- [參與貢獻](CONTRIBUTING.md)：開發環境、檢查項目，以及如何新增模型供應商
+- [安全性](SECURITY.md)：漏洞回報方式與資料儲存說明
 
 以上文件均為英文。
 
 ## 授權條款
 
-Demi 的大部分程式碼以 [Apache License 2.0](LICENSE) 發布，包括智慧體執行階段、模型供應商、安裝在你機器上的執行器、指令、外掛及其 SDK、UI 元件庫及其展示庫、各類協定和文件，可用於任何用途。
+Demi 的大部分程式碼以 [Apache License 2.0](LICENSE) 發布，以下部分可用於任何用途：
+
+- 智慧體執行階段
+- 模型供應商
+- 安裝在你機器上的執行器
+- 指令
+- 外掛及其 SDK
+- UI 元件庫及其展示庫
+- 各類協定
+- 文件
 
 伺服器和網頁應用程式（`crates/backend*`、`crates/server`、`crates/machine-manager` 和 `packages/web`）以 [Demi License](LICENSE-DEMI) 發布，即在 Apache License 2.0 的基礎上附加以下條件：
 

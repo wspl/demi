@@ -39,23 +39,23 @@ across your own machines, and tasks keep running when you close the tab.
 
 ## Quick start
 
-You need:
+You need the following:
 
 - A Linux server you have root on, running one of these
-  ([details](docs/delivery/installation.md#distributions)):
+  ([supported distributions](docs/delivery/installation.md#distributions)):
   - Ubuntu 22.04 or later, Debian 12 or later
   - Fedora, RHEL 10, Rocky Linux, AlmaLinux
   - Arch Linux
 - A domain name, served over HTTPS in front of the server
-  ([how](docs/delivery/installation.md#https)).
+  ([HTTPS setup](docs/delivery/installation.md#https)).
 
-Then run on the server:
+Then run this command on the server:
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-The installer asks a few questions and sets Demi up. Then:
+The installer asks a few questions and sets Demi up. After it finishes:
 
 1. Open your domain right away and create the admin account.
 2. Go to **Settings › Providers** and sign in with a subscription or add an
@@ -69,6 +69,8 @@ including installing without questions, and [upgrades](docs/delivery/upgrades.md
 for moving to a new release.
 
 ## Key features
+
+Demi's features fall into four groups.
 
 ### Chat, work and code
 
@@ -87,9 +89,9 @@ for moving to a new release.
 
 - **Works in any browser**: Desktop, tablet or phone, with nothing to install.
 - **Always on**: Tasks keep running on the server after you close the tab.
-- **One place for every conversation**: Conversations are stored on the
-  server, not scattered across the machines the agent worked on. Start on your
-  laptop and continue on your phone, live.
+- **One place for every conversation**: The server stores conversations
+  instead of scattering them across the machines the agent worked on. Start on
+  your laptop and continue on your phone, live.
 - **QR code and passkey sign-in**: Scan a code to sign in on your phone, or use
   Touch ID, Face ID or Windows Hello.
 - **Private cloud sandbox**: Every user gets their own Linux sandbox on your
@@ -113,8 +115,8 @@ for moving to a new release.
   of work. Keep workflows in a project's `.demi/workflows/`, pick one in the
   message box, and share them with your team through the repository.
 - **Skills**: Install skills to teach Demi new tasks.
-- **Secure credentials**: API keys and passwords are requested through a secure
-  form and never appear in the conversation.
+- **Secure credentials**: Demi requests API keys and passwords through a
+  secure form, and they never appear in the conversation.
 
 ### Models and teams
 
@@ -133,9 +135,10 @@ for moving to a new release.
 
 ## An agent built on a shell
 
-Demi is both the app and the agent. It doesn't wrap Claude Code or
-Codex: its own runtime drives every model, and a Claude or ChatGPT
-subscription is used only for the model.
+Demi is both the app and the agent.
+
+It doesn't wrap Claude Code or Codex. Its own runtime drives every model, and a
+Claude or ChatGPT subscription serves only the model.
 
 Most agents give the model a long list of tools. Demi gives it one: a
 shell. Everything else, from the browser to other machines to subagents, is a
@@ -146,6 +149,8 @@ demi browser open http://localhost:5173 && demi browser screenshot t1 | demi fil
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
+
+The design has these benefits:
 
 - **Composable**: Commands chain with pipes and `&&`, so the agent does in one
   step what usually takes several tool calls.
@@ -163,10 +168,12 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   conversation.
 
 > [!NOTE]
-> **Planned**: the Demi agent runtime as a standalone TypeScript library, so you can
-> build your own agents on it without the Demi app.
+> **Planned**: the Demi agent runtime as a standalone TypeScript library, so
+> you can build your own agents on it without the Demi app.
 
 ## Architecture
+
+The following diagram shows how the parts connect:
 
 ```text
   Browsers (computer, phone, tablet)
@@ -186,10 +193,12 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   └────────────────┘  └──────────────────────────────┘
 ```
 
+The design has these properties:
+
 - **The server runs the agent, runners do the work**: Conversations, agents
   and settings live on the server. A small runner on each machine only handles
-  files, commands and the browser. It connects out to the
-  server, so it works behind NAT and firewalls.
+  files, commands and the browser. It connects out to the server, so it works
+  behind NAT and firewalls.
 - **One runner everywhere**: The cloud sandbox and your computers run the same
   runner, so every feature works on every machine.
 - **Light on bandwidth**: Large outputs and files stay on the machine that made
@@ -207,21 +216,29 @@ herdr and T3 Code, feature by feature: [Demi compared](docs/comparison.md).
 
 ## Documentation
 
-- [Design docs](docs/README.md): how every part of Demi works.
+- [Design docs](docs/README.md): how every part of Demi works
 - [Contributing](CONTRIBUTING.md): development setup, checks, and adding a
-  provider.
-- [Security](SECURITY.md): reporting vulnerabilities and where data is stored.
+  provider
+- [Security](SECURITY.md): reporting vulnerabilities and where data is stored
 
 ## License
 
-Most of Demi is released under the [Apache License 2.0](LICENSE): the agent
-runtime, the model providers, the runner you install on your machines, the
-commands, the plugins and their SDK, the UI component library and its
-gallery, the protocols and the docs. Use them for anything.
+Most of Demi is released under the [Apache License 2.0](LICENSE). Use these
+parts for anything:
+
+- The agent runtime.
+- The model providers.
+- The runner you install on your machines.
+- The commands.
+- The plugins and their SDK.
+- The UI component library and its gallery.
+- The protocols.
+- The docs.
 
 The server and the web app (`crates/backend*`, `crates/server`,
-`crates/machine-manager` and `packages/web`) are released under the [Demi License](LICENSE-DEMI),
-which is the Apache License 2.0 with additional conditions:
+`crates/machine-manager` and `packages/web`) are released under the
+[Demi License](LICENSE-DEMI), which is the Apache License 2.0 with additional
+conditions:
 
 - **Free to use**: Use, modify and run them, including at your company for
   your own team.

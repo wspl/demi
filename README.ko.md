@@ -37,11 +37,11 @@ Demi는 어느 브라우저에서나 사용할 수 있는 셀프 호스팅 AI �
 
 필요한 것:
 
-- root 권한이 있는 Linux 서버. 운영체제는 다음 중 하나여야 합니다([자세히](docs/delivery/installation.md#distributions)):
+- root 권한이 있는 Linux 서버. 운영체제는 다음 중 하나여야 합니다([지원 배포판](docs/delivery/installation.md#distributions)):
   - Ubuntu 22.04 이상, Debian 12 이상
   - Fedora, RHEL 10, Rocky Linux, AlmaLinux
   - Arch Linux
-- 도메인 이름과, 서버 앞단에서 제공하는 HTTPS([설정 방법](docs/delivery/installation.md#https)).
+- 도메인 이름과, 서버 앞단에서 제공하는 HTTPS([HTTPS 설정 방법](docs/delivery/installation.md#https)).
 
 서버에서 다음 명령을 실행합니다:
 
@@ -49,7 +49,7 @@ Demi는 어느 브라우저에서나 사용할 수 있는 셀프 호스팅 AI �
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-설치 프로그램이 몇 가지를 물어본 뒤 Demi를 설정합니다. 그다음:
+설치 프로그램이 몇 가지를 물어본 뒤 Demi를 설정합니다. 설치가 끝나면:
 
 1. 바로 도메인을 열고 관리자 계정을 만듭니다.
 2. **Settings › Providers**에서 구독 계정으로 로그인하거나 API 키를 추가합니다.
@@ -59,6 +59,8 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 질문 없이 설치하는 방법을 포함한 모든 옵션은 [설치 가이드](docs/delivery/installation.md)를, 새 릴리스로 옮기는 방법은 [업그레이드](docs/delivery/upgrades.md)를 참고하세요.
 
 ## 주요 기능
+
+Demi의 기능은 네 가지 그룹으로 나뉩니다.
 
 ### 채팅, 업무, 코딩
 
@@ -99,7 +101,9 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 
 ## 셸 위에 만든 에이전트
 
-Demi는 앱이자 에이전트 그 자체입니다. Claude Code나 Codex를 감싸지 않고, 자체 런타임이 모든 모델을 구동합니다. Claude나 ChatGPT 구독은 모델을 사용하는 데에만 쓰입니다.
+Demi는 앱이자 에이전트 그 자체입니다.
+
+Claude Code나 Codex를 감싸지 않고, 자체 런타임이 모든 모델을 구동합니다. Claude나 ChatGPT 구독은 모델을 사용하는 데에만 쓰입니다.
 
 대부분의 에이전트는 모델에 긴 도구 목록을 주지만, Demi는 셸 하나만 줍니다. 브라우저, 다른 컴퓨터, 하위 에이전트 등 나머지는 모두 그 셸 안의 `demi` 명령입니다:
 
@@ -108,6 +112,8 @@ demi browser open http://localhost:5173 && demi browser screenshot t1 | demi fil
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
+
+이 설계에는 다음과 같은 장점이 있습니다:
 
 - **조합 가능**: 명령을 파이프와 `&&`로 이어 붙일 수 있어, 보통 여러 번의 도구 호출이 필요한 일을 한 번에 처리합니다.
 - **간결한 프롬프트**: 모델에는 명령 그룹마다 한 줄만 보이고, 필요할 때 `--help`를 읽습니다. 기능이 늘어나도 요청이 비대해지지 않습니다.
@@ -119,6 +125,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 > **계획**: Demi 에이전트 런타임을 독립된 TypeScript 라이브러리로 제공해, Demi 앱 없이도 그 위에 자신만의 에이전트를 만들 수 있게 할 예정입니다.
 
 ## 아키텍처
+
+다음 그림은 각 부분이 어떻게 연결되는지 보여 줍니다:
 
 ```text
   Browsers (computer, phone, tablet)
@@ -138,6 +146,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   └────────────────┘  └──────────────────────────────┘
 ```
 
+이 구조에는 다음과 같은 특징이 있습니다:
+
 - **에이전트는 서버에서, 작업은 러너가**: 대화, 에이전트, 설정은 서버에 있습니다. 각 컴퓨터의 작은 러너는 파일, 명령, 브라우저만 다룹니다. 러너가 서버로 먼저 연결하므로 NAT나 방화벽 뒤에서도 동작합니다.
 - **어디서나 같은 러너**: 클라우드 샌드박스와 내 컴퓨터가 같은 러너를 실행하므로, 모든 기능을 어느 컴퓨터에서나 쓸 수 있습니다.
 - **대역폭 절약**: 큰 출력과 파일은 그것을 만든 컴퓨터에 남습니다. 브라우저는 열 때에만 불러옵니다.
@@ -151,15 +161,24 @@ Pi, DeepSeek Harness, OpenHands, opencode, Orca, herdr, T3 Code와 Demi의 기�
 
 ## 문서
 
-- [설계 문서](docs/README.md): Demi의 각 부분이 동작하는 방식.
-- [기여하기](CONTRIBUTING.md): 개발 환경, 검사, 모델 제공자 추가 방법.
-- [보안](SECURITY.md): 취약점 신고 방법과 데이터 저장 위치.
+- [설계 문서](docs/README.md): Demi의 각 부분이 동작하는 방식
+- [기여하기](CONTRIBUTING.md): 개발 환경, 검사, 모델 제공자 추가 방법
+- [보안](SECURITY.md): 취약점 신고 방법과 데이터 저장 위치
 
 이 문서들은 영문으로 작성되어 있습니다.
 
 ## 라이선스
 
-Demi의 대부분은 [Apache License 2.0](LICENSE)으로 공개되며, 어떤 용도로든 사용할 수 있습니다. 여기에는 에이전트 런타임, 모델 제공자, 내 컴퓨터에 설치하는 러너, 명령, 플러그인과 그 SDK, UI 컴포넌트 라이브러리와 그 갤러리, 프로토콜, 문서가 포함됩니다.
+Demi의 대부분은 [Apache License 2.0](LICENSE)으로 공개되며, 어떤 용도로든 사용할 수 있습니다. 여기에는 다음이 포함됩니다:
+
+- 에이전트 런타임
+- 모델 제공자
+- 내 컴퓨터에 설치하는 러너
+- 명령
+- 플러그인과 그 SDK
+- UI 컴포넌트 라이브러리와 그 갤러리
+- 프로토콜
+- 문서
 
 서버와 웹 앱(`crates/backend*`, `crates/server`, `crates/machine-manager`, `packages/web`)은 [Demi License](LICENSE-DEMI)로 공개됩니다. 이는 Apache License 2.0에 다음 조건을 더한 것입니다:
 

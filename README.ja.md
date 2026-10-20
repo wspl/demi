@@ -37,11 +37,11 @@ Demi は、どのブラウザからでも使えるセルフホスト型の AI �
 
 必要なもの:
 
-- root 権限のある Linux サーバー。OS は次のいずれか（[詳細](docs/delivery/installation.md#distributions)）:
+- root 権限のある Linux サーバー。OS は次のいずれか（[対応ディストリビューション](docs/delivery/installation.md#distributions)）:
   - Ubuntu 22.04 以降、Debian 12 以降
   - Fedora、RHEL 10、Rocky Linux、AlmaLinux
   - Arch Linux
-- ドメイン名と、サーバーの前段で提供する HTTPS（[設定方法](docs/delivery/installation.md#https)）。
+- ドメイン名と、サーバーの前段で提供する HTTPS（[HTTPS の設定方法](docs/delivery/installation.md#https)）。
 
 サーバーで次のコマンドを実行します:
 
@@ -49,7 +49,7 @@ Demi は、どのブラウザからでも使えるセルフホスト型の AI �
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-インストーラーがいくつか質問し、Demi をセットアップします。続いて:
+インストーラーがいくつか質問し、Demi をセットアップします。インストール完了後:
 
 1. すぐにドメインを開き、管理者アカウントを作成します。
 2. **Settings › Providers** で、サブスクリプションのアカウントでサインインするか、API キーを追加します。
@@ -59,6 +59,8 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 質問なしでのインストールを含むすべてのオプションは[インストールガイド](docs/delivery/installation.md)を、新しいリリースへの移行は[アップグレード](docs/delivery/upgrades.md)を参照してください。
 
 ## 主な機能
+
+Demi の機能は 4 つのグループに分かれます。
 
 ### チャット、仕事、コーディング
 
@@ -99,7 +101,9 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 
 ## シェルの上に築いたエージェント
 
-Demi はアプリであり、エージェントそのものでもあります。Claude Code や Codex をラップするのではなく、独自のランタイムがすべてのモデルを動かします。Claude や ChatGPT のサブスクリプションは、モデルの利用にだけ使います。
+Demi はアプリであり、エージェントそのものでもあります。
+
+Claude Code や Codex をラップするのではなく、独自のランタイムがすべてのモデルを動かします。Claude や ChatGPT のサブスクリプションは、モデルの利用にだけ使います。
 
 多くのエージェントはモデルに長いツールの一覧を渡しますが、Demi が渡すのはシェルひとつだけです。ブラウザ、他のマシン、サブエージェントなど、それ以外の機能はすべてシェルの中の `demi` コマンドです:
 
@@ -108,6 +112,8 @@ demi browser open http://localhost:5173 && demi browser screenshot t1 | demi fil
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
+
+この設計には次の利点があります:
 
 - **組み合わせ自在**：コマンドはパイプや `&&` でつなげられるので、通常なら何回ものツール呼び出しが必要な作業を 1 ステップで行えます。
 - **簡潔なプロンプト**：モデルに見えるのはコマンドグループごとに 1 行だけで、必要なときに `--help` を読みます。機能が増えても、リクエストは肥大化しません。
@@ -119,6 +125,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 > **予定**：Demi のエージェントランタイムを単独の TypeScript ライブラリとして提供し、Demi アプリなしで独自のエージェントを構築できるようにします。
 
 ## アーキテクチャ
+
+次の図は、各部分のつながりを示します:
 
 ```text
   Browsers (computer, phone, tablet)
@@ -138,6 +146,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   └────────────────┘  └──────────────────────────────┘
 ```
 
+この構成には次の特長があります:
+
 - **エージェントはサーバーで、作業はランナーで**：会話、エージェント、設定はサーバーにあります。各マシンの小さなランナーは、ファイル、コマンド、ブラウザだけを扱います。ランナーからサーバーへ接続するので、NAT やファイアウォールの内側でも動作します。
 - **どこでも同じランナー**：クラウドのサンドボックスもあなたのコンピューターも同じランナーを実行するので、すべての機能がどのマシンでも使えます。
 - **帯域を節約**：大きな出力やファイルは、それを生成したマシンに残ります。ブラウザは開いたときにだけ読み込みます。
@@ -151,15 +161,24 @@ Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code と Demi �
 
 ## ドキュメント
 
-- [設計ドキュメント](docs/README.md)：Demi の各部分の仕組み。
-- [コントリビューション](CONTRIBUTING.md)：開発環境、チェック、プロバイダーの追加方法。
-- [セキュリティ](SECURITY.md)：脆弱性の報告方法と、データの保存場所。
+- [設計ドキュメント](docs/README.md)：Demi の各部分の仕組み
+- [コントリビューション](CONTRIBUTING.md)：開発環境、チェック、プロバイダーの追加方法
+- [セキュリティ](SECURITY.md)：脆弱性の報告方法と、データの保存場所
 
 これらのドキュメントは英語です。
 
 ## ライセンス
 
-Demi の大部分は [Apache License 2.0](LICENSE) で公開されており、どのような用途にも使えます。対象は、エージェントのランタイム、モデルプロバイダー、あなたのマシンにインストールするランナー、コマンド、プラグインとその SDK、UI コンポーネントライブラリとそのギャラリー、プロトコル、ドキュメントです。
+Demi の大部分は [Apache License 2.0](LICENSE) で公開されており、どのような用途にも使えます。対象は次のとおりです:
+
+- エージェントのランタイム
+- モデルプロバイダー
+- あなたのマシンにインストールするランナー
+- コマンド
+- プラグインとその SDK
+- UI コンポーネントライブラリとそのギャラリー
+- プロトコル
+- ドキュメント
 
 サーバーと Web アプリ（`crates/backend*`、`crates/server`、`crates/machine-manager`、`packages/web`）は [Demi License](LICENSE-DEMI) で公開されています。これは Apache License 2.0 に次の条件を加えたものです:
 
