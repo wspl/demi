@@ -102,11 +102,12 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_
     let notes = create_workspace(&backend, &master, device).await;
     let body = json!({ "kind": "device", "deviceId": laptop.id(), "path": format!("{home}/site"), "name": "site" });
     create_workspace(&backend, &master, body).await;
-    assert_eq!(workspace_names(&backend, &master).await, ["notes", "site"]);
+    // A new project is listed first.
+    assert_eq!(workspace_names(&backend, &master).await, ["site", "notes"]);
     // The product state carries them, in the same order.
     let state = backend.sync(&master).await.snapshot().await;
-    assert_eq!(state.workspaces[0].id.as_str(), notes);
-    assert_eq!(state.workspaces[0].path.as_str(), directory);
+    assert_eq!(state.workspaces[1].id.as_str(), notes);
+    assert_eq!(state.workspaces[1].path.as_str(), directory);
 
     // A directory is one project, whatever its spelling on its Host, which
     // a second creation answers with; the device's home is none, reached
@@ -202,7 +203,8 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_
         assert_eq!(changed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&changed.body));
     }
     let state = backend.sync(&master).await.snapshot().await;
-    let listed = serde_json::to_value(&state.workspaces[0]).unwrap();
+    let listed = state.workspaces.iter().find(|workspace| workspace.id.as_str() == notes).unwrap();
+    let listed = serde_json::to_value(listed).unwrap();
     assert_eq!(
         (&listed["name"], &listed["lastModel"], &listed["lastWorkflow"]),
         (&json!("journal"), &model, &review)
@@ -508,19 +510,19 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
         (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
     );
 
-    // Workspaces keep their order too: a new one appends.
+    // Workspaces keep their order too: a new one comes first.
     let site = create_workspace(
         &backend,
         &master,
         json!({ "kind": "device", "deviceId": laptop.id(), "path": format!("{home}/site"), "name": "site" }),
     )
     .await;
-    assert_eq!(workspace_names(&backend, &master).await, ["notes", "site"]);
+    assert_eq!(workspace_names(&backend, &master).await, ["site", "notes"]);
     assert_eq!(
-        reorder(&backend, &master, "workspace", &site, Some(&notes)).await,
+        reorder(&backend, &master, "workspace", &notes, Some(&site)).await,
         StatusCode::NO_CONTENT
     );
-    assert_eq!(workspace_names(&backend, &master).await, ["site", "notes"]);
+    assert_eq!(workspace_names(&backend, &master).await, ["notes", "site"]);
     let gone = uuid::Uuid::new_v4().to_string();
     let refused = backend
         .post(
@@ -551,6 +553,6 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
         .map(|conversation| conversation["id"].as_str().unwrap())
         .collect();
     assert_eq!(order, [b.as_str(), c.as_str()]);
-    assert_eq!(workspace_names(&backend, &master).await, ["site", "notes"]);
+    assert_eq!(workspace_names(&backend, &master).await, ["notes", "site"]);
     backend.close().await;
 }
