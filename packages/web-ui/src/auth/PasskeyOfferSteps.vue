@@ -18,28 +18,42 @@ import { useOpening } from '../ui/operations'
  * alone (`PasskeyOffer`) or after the password a first sign-in chose
  * (`ChoosePasswordWizard`). Each opening starts over.
  *
- * The offer to add a passkey, *Use a passkey next time?* with Add Passkey and
- * Not Now: a one-step wizard, which a host opens once on a browser after a
- * sign-in that has just proved the user: a handoff code's, a password chosen at
- * the first sign-in. It is a wizard of one step so the flows that end in it
- * hold it as one: Choose Your Password goes on into it in the same dialog, and
- * on a phone it is the whole screen.
+ * The offer, *Use a passkey next time?* with Add Passkey and Not Now, is a
+ * one-step wizard. A host opens it once on a browser after a sign-in that has
+ * just proved the user: a handoff code's, or a password chosen at the first
+ * sign-in. It is a wizard of one step so that the flows that end in it hold it
+ * as one: Choose Your Password goes on into it in the same dialog, and on a
+ * phone it is the whole screen.
  *
- * Add Passkey asks the host to add one without the password, which a sign-in
- * of the last five minutes has already proved; once those have passed the
- * host answers it needs the password, and the step asks for it. A password
- * manager that holds a passkey of the account says so, in the step
- * *Passkey Ready*: not a failure. A dismissed browser prompt leaves the step as
- * it was, for another try; a failure is said in the step. Not Now, Escape and
- * the scrim leave it.
+ * Add Passkey asks the host to add one without the password, which a sign-in of
+ * the last five minutes has already proved. Once those minutes have passed, the
+ * host answers that it needs the password, and the step asks for it.
  *
- * `answered` is emitted once, when Add Passkey or a way out is first used,
- * for the host to remember that the browser was asked; `close` when the
- * wizard is done. The sentence under the title names how this device unlocks,
- * from the browser's system (`device-unlock.ts`): Face ID or Touch ID on an
- * iPhone or iPad, Touch ID on a Mac, Windows Hello, an Android's fingerprint,
- * face or screen lock, else the screen lock; the symbol is a key on every
- * device. The browser's own prompt then names its method.
+ * What the step does with each outcome:
+ *
+ * - A password manager that holds a passkey of the account says so, in the step
+ *   *Passkey Ready*. That is not a failure.
+ * - A dismissed browser prompt leaves the step as it was, for another try.
+ * - A failure is said in the step.
+ * - Not Now, Escape and the scrim leave the offer.
+ *
+ * Events:
+ *
+ * - `answered` is emitted once, when Add Passkey or a way out is first used, for
+ *   the host to remember that the browser was asked.
+ * - `close` is emitted when the wizard is done.
+ *
+ * The sentence under the title names how this device unlocks, from the
+ * browser's system (`device-unlock.ts`):
+ *
+ * - Face ID or Touch ID on an iPhone or iPad.
+ * - Touch ID on a Mac.
+ * - Windows Hello.
+ * - An Android's fingerprint, face or screen lock.
+ * - Otherwise the screen lock.
+ *
+ * The symbol is a key on every device. The browser's own prompt then names its
+ * method.
  */
 const props = defineProps<{
   /** Whether the wizard is open: each opening starts over, as a new browser's would. */

@@ -43,11 +43,11 @@ export type SearchView =
   | { kind: 'failed'; query: string; detail: string }
 
 /**
- * The search window's query and what it shows: the recent conversations
- * while the field is empty, and the results of what it holds once typing
- * pauses. A newer query abandons the one in flight, so a late answer never
- * replaces the results of what the field holds now; while one runs, the
- * rows shown last stay.
+ * The search window's query and what it shows: the recent conversations while the
+ * field is empty, and the results of what it holds once typing pauses.
+ *
+ * A newer query abandons the one in flight, so a late answer never replaces the
+ * results of what the field holds now. While one runs, the rows shown last stay.
  */
 export function useConversationSearch(source: () => SearchSource, recent: () => SearchRow[]) {
   const query = ref('')

@@ -50,9 +50,10 @@ export type AutomationTrigger =
   | { kind: 'url' }
 
 /**
- * Where an automation's runs work: a new conversation each run, on a Host
- * and in a project on it or none; or an existing conversation, which has
- * its own place.
+ * Where an automation's runs work. It is one of:
+ *
+ * - a new conversation each run, on a Host and in a project on it or none, or
+ * - an existing conversation, which has its own place.
  */
 export type AutomationTarget =
   | { kind: 'new'; hostId: string; projectId: string | null }

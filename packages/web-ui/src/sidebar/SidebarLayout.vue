@@ -16,39 +16,44 @@ import { sidebarDrawerKey } from './sidebar-drawer'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
 
 /**
- * The app frame: the sidebar, the main pane, and the work panel (aside) on
- * the right, with a divider sizing each side pane. The sidebar keeps a px
- * width; the aside keeps a share of the width it splits with the main pane,
- * so a window resize scales the two together and leaves the sidebar alone.
- * The host keeps both sizes (v-model) and hears `resizeEnd` /
- * `asideResizeEnd` when one has settled, which is the moment to persist it.
- * The aside is only there while `asideOpen` is true and the host gave the slot.
+ * The app frame: the sidebar, the main pane, and the work panel (aside) on the
+ * right, with a divider sizing each side pane.
  *
- * Each of the three panes is a region (`data-region`, `ui/region.ts`): a
- * menu opened from a trigger in it grows toward its inside.
+ * Sizes:
  *
- * The work panel and its divider keep the session's windows open
- * (`KEEPS_WINDOWS`, `ui/window-stack.ts`): only a press in the sidebar or
- * the main pane closes one, so a subagent's changes can be read in the
- * panel beside its Agents window.
+ * - The sidebar keeps a px width. The aside keeps a share of the width it splits
+ *   with the main pane, so a window resize scales the two together and leaves the
+ *   sidebar alone.
+ * - The host keeps both sizes (v-model) and hears `resizeEnd` / `asideResizeEnd`
+ *   when one has settled, which is the moment to persist it.
+ * - The aside is only there while `asideOpen` is true and the host gave the slot.
  *
- * On a phone (`ui/phone.ts`) one pane shows at a time. The sidebar is a
- * drawer from the left, 85% of the screen and at most 320 px, over a scrim
- * that a tap closes it by, as do a swipe left on it, Escape and Back; a
- * swipe right from the screen's left edge (`SCREEN_EDGE_PX`) opens it,
- * following the finger in as the closing swipe follows it out; the
- * work panel opens full screen over the conversation, sliding in from the
- * right, and a swipe right from that edge takes it back, as do its back
- * button and Back (`useBackClose`): while it is open the edge is its swipe,
- * not the drawer's. Every swipe follows the finger and settles by one rule
- * (`finger-drag.ts`). Opening one closes the other. The frame shows
- * one top bar there: a page with its own puts the sidebar's button in it
- * (`useSidebarDrawer`), and the frame's own, the button and `label`, shows
- * only while none does.
+ * Each of the three panes is a region (`data-region`, `ui/region.ts`): a menu
+ * opened from a trigger in it grows toward its inside.
  *
- * The main pane stacks what it holds within itself (`isolate`): a page's
- * own layers, such as the conversation's dock over its transcript, stay
- * under the drawer and its scrim, whatever their z-index.
+ * The work panel and its divider keep the session's windows open (`KEEPS_WINDOWS`,
+ * `ui/window-stack.ts`): only a press in the sidebar or the main pane closes one,
+ * so a subagent's changes can be read in the panel beside its Agents window.
+ *
+ * On a phone (`ui/phone.ts`) one pane shows at a time:
+ *
+ * - The sidebar is a drawer from the left, 85% of the screen and at most 320 px,
+ *   over a scrim. A tap on the scrim closes it, as do a swipe left on it, Escape
+ *   and Back. A swipe right from the screen's left edge (`SCREEN_EDGE_PX`) opens
+ *   it, following the finger in as the closing swipe follows it out.
+ * - The work panel opens full screen over the conversation, sliding in from the
+ *   right. A swipe right from that edge takes it back, as do its back button and
+ *   Back (`useBackClose`). While it is open the edge is its swipe, not the
+ *   drawer's.
+ * - Every swipe follows the finger and settles by one rule (`finger-drag.ts`).
+ * - Opening one closes the other.
+ * - The frame shows one top bar there: a page with its own puts the sidebar's
+ *   button in it (`useSidebarDrawer`), and the frame's own, the button and
+ *   `label`, shows only while none does.
+ *
+ * The main pane stacks what it holds within itself (`isolate`): a page's own
+ * layers, such as the conversation's dock over its transcript, stay under the
+ * drawer and its scrim, whatever their z-index.
  */
 withDefaults(defineProps<{ label?: string }>(), { label: 'demi' })
 const emit = defineEmits<{
@@ -125,10 +130,11 @@ function drawerWidth(): number {
 }
 
 /**
- * How far a swipe has pulled the drawer left of its place, in px; null at
- * rest. A swipe that closes it leaves it here, so the drawer and the scrim
- * go on closing from where they stand, until the drawer has left; one that
- * opens it from the edge starts it here a whole width away.
+ * How far a swipe has pulled the drawer left of its place, in px; null at rest.
+ *
+ * - A swipe that closes it leaves it here, so the drawer and the scrim go on closing
+ *   from where they stand, until the drawer has left.
+ * - One that opens it from the edge starts it here a whole width away.
  */
 const drawerPull = ref<number | null>(null)
 /** Whether a finger holds the drawer now, which then follows it without easing. */
@@ -220,10 +226,11 @@ onBeforeUnmount(() => {
 })
 
 /**
- * Which drag a finger put down at `x` belongs to. On a phone the screen's
- * left edge is one drag's at a time: over the full-screen panel it takes the
- * panel back, and over the conversation, with the drawer closed, it draws
- * the drawer in.
+ * Which drag a finger put down at `x` belongs to. On a phone the screen's left edge
+ * is one drag's at a time:
+ *
+ * - Over the full-screen panel, it takes the panel back.
+ * - Over the conversation, with the drawer closed, it draws the drawer in.
  */
 function edgeOwner(x: number): 'panel' | 'drawer' | null {
   if (!phone.value || open.value || x > SCREEN_EDGE_PX)
@@ -247,10 +254,11 @@ function frameTouchStart(event: TouchEvent): void {
 
 /**
  * The touch pointer the panel's edge swipe owns, from its press to its lift.
- * A browser sends a finger's pointer events before its touch events, and
- * what the panel shows may act on them, as a live browser tab presses,
- * moves and types into its page: they stop here, on their way down, so the
- * panel sees none of a touch that is the swipe's, whether it drags or not.
+ *
+ * A browser sends a finger's pointer events before its touch events, and what the
+ * panel shows may act on them, as a live browser tab presses, moves and types into
+ * its page. They stop here, on their way down, so the panel sees none of a touch
+ * that is the swipe's, whether it drags or not.
  */
 let edgePointer: number | null = null
 function claimEdgePointer(event: PointerEvent): void {

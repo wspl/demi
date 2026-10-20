@@ -4,10 +4,12 @@ import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
- * What of a profile's model settings the catalog the page holds no longer
- * offers (`crates/agent-server/src/server/tree/profiles.rs`): its provider entry, its
- * model, its effort or its tier; null while the profile is available, or
- * inherits its parent's model. The page derives it and never stores it.
+ * What of a profile's model settings the catalog the page holds no longer offers
+ * (`crates/agent-server/src/server/tree/profiles.rs`): its provider entry, its
+ * model, its effort or its tier.
+ *
+ * It is null while the profile is available, or inherits its parent's model. The
+ * page derives it and never stores it.
  */
 export function profileMissing(
   model: ModelSettings | null,
@@ -52,10 +54,12 @@ export function profileModelLabel(
 const PROFILE_NAME_MAX = 40
 
 /**
- * What breaks the profile name rule in `name`, said as the fix, while it is
- * typed: 1 to 40 lowercase letters, digits and hyphens, starting with a
- * letter, and not `default`, which the inherit profile has. Null for a name
- * that keeps the rule, and for an empty one, which only cannot be saved yet.
+ * What breaks the profile name rule in `name`, said as the fix, while it is typed.
+ * The rule is 1 to 40 lowercase letters, digits and hyphens, starting with a letter,
+ * and not `default`, which the inherit profile has.
+ *
+ * Null for a name that keeps the rule, and for an empty one, which only cannot be
+ * saved yet.
  */
 export function profileNameProblem(name: string): SentenceText | null {
   if (name === '') {

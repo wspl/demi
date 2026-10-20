@@ -5,10 +5,11 @@ import { provideStacking } from '../overlay/stacking'
 import type { OverlayLayerOf } from './context-menu'
 
 /**
- * Where the page's context menu stands: on the dialog or sheet it opened
- * in, as a menu opened from a control in it does, a nested layer above it
- * that Escape closes first and that leaves it open; on the page itself,
- * given no layer, as any menu does.
+ * Where the page's context menu stands.
+ *
+ * - On the dialog or sheet it opened in, as a menu opened from a control in it
+ *   does: a nested layer above it that Escape closes first and that leaves it open.
+ * - On the page itself, given no layer, as any menu does.
  */
 const props = defineProps<{
   layer: OverlayLayerOf | null

@@ -23,11 +23,12 @@ export interface CommitLogView {
 
 /**
  * The commits of `branch` (HEAD's for null) from `source`, while the calling
- * component lives: the newest page first, and each further page the list
- * asks for, each a kept entry the host keeps current. A page names the
- * commit it continues after, so when a commit or a rewrite changes the end
- * of one page, the pages after it no longer follow and are let go; the list
- * asks for them again as it scrolls.
+ * component lives: the newest page first, and each further page the list asks
+ * for, each a kept entry the host keeps current.
+ *
+ * A page names the commit it continues after. So when a commit or a rewrite
+ * changes the end of one page, the pages after it no longer follow and are let
+ * go; the list asks for them again as it scrolls.
  */
 export function useCommitLog(
   source: () => CommitHistorySource | null,

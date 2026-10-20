@@ -5,10 +5,11 @@
  * Arabic in code. No font of the code stack has Arabic letters, so the browser
  * borrows them from a fixed-pitch font, on macOS Courier New: it draws each
  * letter one cell wide and stretches every join across the cell, so a word
- * reads as letters spaced apart. This face, first in the stack and only for
- * Arabic, gives Arabic a proportional font that joins it as a sentence does;
- * every other character keeps the code font. A machine without these fonts
- * skips the face.
+ * reads as letters spaced apart.
+ *
+ * This face, first in the stack and only for Arabic, gives Arabic a proportional
+ * font that joins it as a sentence does. Every other character keeps the code
+ * font. A machine without these fonts skips the face.
  */
 @font-face {
   font-family: "Code Arabic";
@@ -17,10 +18,9 @@
 }
 
 /*
- * Each language's own system font draws its Han characters, which look
- * different in Chinese, Japanese and Korean: the document's `lang`, which
- * follows the page's language, picks the stack, the Latin letters staying the
- * system's.
+ * Each language's own system font draws its Han characters, which look different
+ * in Chinese, Japanese and Korean. The document's `lang`, which follows the page's
+ * language, picks the stack, the Latin letters staying the system's.
  */
 :root:lang(zh-Hans) {
   --font-sans: ui-sans-serif, system-ui, "PingFang SC", "Noto Sans CJK SC", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -161,16 +161,18 @@
   --text-setting-small: 12px;
 }
 
-/* The phone's metrics: every control
-   is drawn at a finger's size, read from these, as iOS's own apps draw
-   theirs; the gallery's Phone section lists them. A toolbar or action
-   button is 40 with a 20 px icon (`ICON_PX` in `ui/icon-metrics.ts` holds the
-   icons' sizes, `useIconPx` the phone's), an answer's actions 36 with 18,
-   a small one 28 with 16; rows and fields are 44, a tab 36 so that it
-   floats in its 44 px bar as a desktop's does, a chip 32, a
-   file-change pill 28 with 13 px text, a segment 36; text that names a control or a row is 15, a Settings
-   label 17. The large icon button stays 32, the size the sidebar's rows
-   already draw on a phone. */
+/* The phone's metrics: every control is drawn at a finger's size, read from
+   these, as iOS's own apps draw theirs; the gallery's Phone section lists them.
+
+   - A toolbar or action button is 40 with a 20 px icon (`ICON_PX` in
+     `ui/icon-metrics.ts` holds the icons' sizes, `useIconPx` the phone's).
+   - An answer's actions are 36 with 18, a small one 28 with 16.
+   - Rows and fields are 44.
+   - A tab is 36, so that it floats in its 44 px bar as a desktop's does.
+   - A chip is 32, a file-change pill 28 with 13 px text, a segment 36.
+   - Text that names a control or a row is 15, a Settings label 17.
+   - The large icon button stays 32, the size the sidebar's rows already draw on
+     a phone. */
 @variant phone {
   :root {
     --agent-chrome: 15px;
@@ -404,14 +406,19 @@
   --active-step-l: -0.045;
 }
 
-/* Interface text keeps the platform's own smoothing, as the system's own
-   controls draw theirs; reading text (`.markdown-body`) is antialiased, and
-   so is all of a transcript, whose rows sit between its paragraphs and drew
-   heavier than them with the platform's smoothing.
-   The page is the app's: it fills the window and never scrolls, only the
-   scrollers inside it do; the body narrows it to what an on-screen keyboard
-   leaves visible (below). This rule is the one place that says so: a
-   product's own stylesheet that repeats it after this file undoes that. */
+/* Text smoothing and the page's size.
+
+   - Interface text keeps the platform's own smoothing, as the system's own
+     controls draw theirs.
+   - Reading text (`.markdown-body`) is antialiased, and so is all of a
+     transcript, whose rows sit between its paragraphs and drew heavier than them
+     with the platform's smoothing.
+   - The page is the app's: it fills the window and never scrolls, only the
+     scrollers inside it do. The body narrows it to what an on-screen keyboard
+     leaves visible (below).
+
+   This rule is the one place that says so: a product's own stylesheet that
+   repeats it after this file undoes that. */
 html,
 body,
 #app {
@@ -448,14 +455,17 @@ html {
   --safe-bottom: 0px;
 }
 
-/* The page is exactly the visible area, the on-screen keyboard's part left
-   out (`phone-page.ts`), at every width: an iPhone turned sideways shows the
-   desktop layout and its keyboard still never hides the composer. The body
-   is that area: it stands where the visual viewport stands, as tall, and is
-   the containing block of every fixed layer (layout containment), so the
-   work panel, the sheets and the dialogs teleported to it end at the
-   keyboard as the app does. Where no keyboard covers the page, as on a
-   desktop, the area is the window and nothing moves. */
+/* The page is exactly the visible area, the on-screen keyboard's part left out
+   (`phone-page.ts`), at every width: an iPhone turned sideways shows the desktop
+   layout and its keyboard still never hides the composer.
+
+   The body is that area: it stands where the visual viewport stands, as tall, and
+   is the containing block of every fixed layer (layout containment), so the work
+   panel, the sheets and the dialogs teleported to it end at the keyboard as the
+   app does.
+
+   Where no keyboard covers the page, as on a desktop, the area is the window and
+   nothing moves. */
 body {
   position: fixed;
   inset-inline: 0;
@@ -478,13 +488,15 @@ body {
   }
 }
 
-/* No finger zooms the page: every element pans and nothing else, not only
-   the root. WebKit starts a scroller's touch actions over at `auto`
-   (StyleAdjuster's computeUsedTouchAction), so a root's `pan-x pan-y` alone
-   leaves a pinch or a double tap on the transcript, a tab strip or any list
-   free to zoom the page, which then stays zoomed: Safari keeps the scale and
-   the page cannot set it back. In the base layer, so a control that takes
-   the touch itself (`touch-none`, a sheet's grabber) keeps its own. */
+/* No finger zooms the page: every element pans and nothing else, not only the root.
+
+   WebKit starts a scroller's touch actions over at `auto` (StyleAdjuster's
+   computeUsedTouchAction), so a root's `pan-x pan-y` alone leaves a pinch or a
+   double tap on the transcript, a tab strip or any list free to zoom the page,
+   which then stays zoomed: Safari keeps the scale and the page cannot set it back.
+
+   This is in the base layer, so a control that takes the touch itself
+   (`touch-none`, a sheet's grabber) keeps its own. */
 @layer base {
   * {
     @variant phone {
@@ -534,12 +546,14 @@ button,
   cursor: default;
 }
 
-/* On a phone a control is pressed, not read: a long press on one selects no
-   text and brings up no callout, while a message's text stays selectable.
-   A control drawn at the phone's size is its own target (`data-drawn-target`,
-   such as a toolbar's 40 px button or an answer's 36 px actions 8 px apart),
-   so neighbours never share one; a smaller control's hit area reaches past
-   its edges to 44 × 44 px, where nothing else of it draws. */
+/* On a phone a control is pressed, not read: a long press on one selects no text
+   and brings up no callout, while a message's text stays selectable.
+
+   - A control drawn at the phone's size is its own target (`data-drawn-target`,
+     such as a toolbar's 40 px button or an answer's 36 px actions 8 px apart), so
+     neighbours never share one.
+   - A smaller control's hit area reaches past its edges to 44 × 44 px, where
+     nothing else of it draws. */
 @variant phone {
   @layer base {
     :where(button, [role="button"], [role="checkbox"], [role="switch"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"]) {
@@ -575,32 +589,44 @@ svg.lucide {
   background: repeating-conic-gradient(var(--line) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
 }
 
-/* Control fills. A control's fill is opaque: the surface it sits on mixed with the fill's
-   tint, so nothing under the control shows through it, and a hovered control on a selected
-   row is the row's fill one step on, never two translucent layers over each other.
-   --surface-current is the color a control sits on. The root and every surface (a surface
-   utility below, a floating layer, a primitive with a fill of its own such as a tab) set it,
-   and an element inherits it from the nearest one. A theme gives each fill as the color
-   and amount mixed into that surface (--hover-mix: white 6%), an opaque color at 100% where
-   the fill does not depend on the surface. A fill also names the color it paints,
-   --fill-color, as surfaces do: an element that sits on a filled row (the row's end controls,
-   a status dot's ring) takes it from there, the controls through an on-fill slot. Translucency
-   is for scrims, shadows and edges only.
-   Hover and pressed show in the fill, one rule for everything that responds to the pointer:
-   the hovered fill is the resting fill one hover step on (bg-hover), the pressed fill one
-   step further (bg-active), toward the overlay color: in light about 3 (Ink) to 3.5 (Warm)
-   points of OKLCH lightness and 4.5 to 5.5 pressed, in dark about 4 to 6 and 5 to 7.5, less
-   on the lighter surface of a menu. A row or a ghost control rests on its surface, so it
-   steps from the surface; an action menu's item hovers with the pressed fill. A control
-   drawn with a border or hairline (a button, a chip, a file pill, a choice card) rests on a
-   fill of its own, its --rest-fill, and steps from that, so its hover reads on every
-   surface, a white button on a white card included.
-   Its edge may strengthen with the fill, but an edge never carries hover alone. --rest-fill
-   belongs to the element that sets it, never inherited, so a row inside a control still steps
-   from its own surface. The accent fill takes a light-theme row's steps in lightness itself,
-   about 3 points hovered and 4 pressed (--hover-step-l, --active-step-l), in dark too, where
-   a larger lift would leave its white text too faint: mixing black or white into a saturated
-   mid-tone moves it about half as far as it moves a near-white or near-black fill. */
+/* Control fills.
+
+   A control's fill is opaque: the surface it sits on mixed with the fill's tint,
+   so nothing under the control shows through it, and a hovered control on a
+   selected row is the row's fill one step on, never two translucent layers over
+   each other. Translucency is for scrims, shadows and edges only.
+
+   --surface-current is the color a control sits on. The root and every surface (a
+   surface utility below, a floating layer, a primitive with a fill of its own such
+   as a tab) set it, and an element inherits it from the nearest one.
+
+   A theme gives each fill as the color and amount mixed into that surface
+   (--hover-mix: white 6%), an opaque color at 100% where the fill does not depend
+   on the surface. A fill also names the color it paints, --fill-color, as
+   surfaces do: an element that sits on a filled row (the row's end controls, a
+   status dot's ring) takes it from there, the controls through an on-fill slot.
+
+   Hover and pressed show in the fill, one rule for everything that responds to
+   the pointer:
+
+   - The hovered fill is the resting fill one hover step on (bg-hover), the
+     pressed fill one step further (bg-active), toward the overlay color: in light
+     about 3 (Ink) to 3.5 (Warm) points of OKLCH lightness and 4.5 to 5.5 pressed,
+     in dark about 4 to 6 and 5 to 7.5, less on the lighter surface of a menu.
+   - A row or a ghost control rests on its surface, so it steps from the surface.
+     An action menu's item hovers with the pressed fill.
+   - A control drawn with a border or hairline (a button, a chip, a file pill, a
+     choice card) rests on a fill of its own, its --rest-fill, and steps from
+     that, so its hover reads on every surface, a white button on a white card
+     included. Its edge may strengthen with the fill, but an edge never carries
+     hover alone.
+   - --rest-fill belongs to the element that sets it, never inherited, so a row
+     inside a control still steps from its own surface.
+   - The accent fill takes a light-theme row's steps in lightness itself, about 3
+     points hovered and 4 pressed (--hover-step-l, --active-step-l), in dark too,
+     where a larger lift would leave its white text too faint: mixing black or
+     white into a saturated mid-tone moves it about half as far as it moves a
+     near-white or near-black fill. */
 :root {
   /* A file pill's edge: a button's, except in light, below. */
   --shadow-pill: var(--shadow-btn);
@@ -664,12 +690,14 @@ html[data-theme="light"] .file-pill {
   --fill-color: var(--surface-dialog);
 }
 
-/* A word longer than a line, which fills each line to the box's edge and breaks
-   at any character, never earlier at a hyphen. Only a single word takes it: text
-   with spaces in it would break in the middle of its words (`redir` / `ected`)
-   instead of moving them to the next line, so it wraps as a browser's text does
-   (command output: `pre-wrap` and `overflow-wrap: anywhere`; a command: CodeText,
-   which gives this to its words longer than a line only). */
+/* A word longer than a line, which fills each line to the box's edge and breaks at
+   any character, never earlier at a hyphen.
+
+   Only a single word takes it: text with spaces in it would break in the middle of
+   its words (`redir` / `ected`) instead of moving them to the next line, so it
+   wraps as a browser's text does (command output: `pre-wrap` and
+   `overflow-wrap: anywhere`; a command: CodeText, which gives this to its words
+   longer than a line only). */
 @utility long-word-wrap {
   white-space: pre-wrap;
   line-break: anywhere;
@@ -807,21 +835,32 @@ html[data-theme="light"] .file-pill {
   }
 }
 
-/* Floating layers. A layer that floats over another is lighter than what it sits on, as
-   macOS dark menus are: a submenu over a menu over a dialog over the page, each a step up,
-   so no two layers that touch share a fill. A floating surface's fill is surface-float
-   mixed toward white by one --elevation-step for each layer under it; --elevation is the
-   surface's own count, 1 over the page, set by useLayerElevation
-   (overlay/layerElevation.ts). A dialog counts as a layer, so a menu opened in it steps
-   above the dialog's float cards, but keeps its surface-dialog fill: its scrim already
-   sets it apart from whatever is beneath, a dialog included.
-   A layer's edge: in dark mode a 1px light ring at 12% inside the surface, which reads the
-   same over the page, a dialog or a menu because it sits on the layer's own fill; in light
-   mode a 0.5px dark hairline outside it; in both a soft drop that falls away below; never
-   a dark band around the surface. The inner ring (--shadow-overlay-ring) is drawn by
-   ::after above the content, so a rail, a card or a row scrolled under the edge cannot
-   cover it; the hairline and the drop are the box shadow (--shadow-overlay; --shadow-2xl
-   for dialogs, which carry overlay-dialog).
+/* Floating layers.
+
+   A layer that floats over another is lighter than what it sits on, as macOS dark
+   menus are: a submenu over a menu over a dialog over the page, each a step up, so
+   no two layers that touch share a fill.
+
+   - A floating surface's fill is surface-float mixed toward white by one
+     --elevation-step for each layer under it. --elevation is the surface's own
+     count, 1 over the page, set by useLayerElevation (overlay/layerElevation.ts).
+   - A dialog counts as a layer, so a menu opened in it steps above the dialog's
+     float cards, but keeps its surface-dialog fill: its scrim already sets it
+     apart from whatever is beneath, a dialog included.
+
+   A layer's edge:
+
+   - In dark mode, a 1px light ring at 12% inside the surface, which reads the
+     same over the page, a dialog or a menu because it sits on the layer's own
+     fill.
+   - In light mode, a 0.5px dark hairline outside it.
+   - In both, a soft drop that falls away below; never a dark band around the
+     surface.
+   - The inner ring (--shadow-overlay-ring) is drawn by ::after above the content,
+     so a rail, a card or a row scrolled under the edge cannot cover it. The
+     hairline and the drop are the box shadow (--shadow-overlay; --shadow-2xl for
+     dialogs, which carry overlay-dialog).
+
    Composer stays on surface-raised; menus must not. */
 .overlay-shell {
   --surface-current: color-mix(
@@ -935,12 +974,16 @@ html[data-theme="light"] .file-pill {
   margin-top: 1px;
 }
 
-/* Menu columns. The list is one grid — icon gutter, label, value, suffix — and every row
-   that sits directly on it (or in a group on it) is a subgrid, so labels start on one
-   line and values, shortcuts, checks and submenu arrows end on another, the way native
-   menus measure all items at once. Column spacing lives on the cells so absent cells add
-   no width. A row anywhere else — the header slot, a wrapper, a virtualised list — lays
-   out its own four columns, so it never falls apart; it only loses alignment with rows
+/* Menu columns.
+
+   The list is one grid — icon gutter, label, value, suffix — and every row that
+   sits directly on it (or in a group on it) is a subgrid, so labels start on one
+   line and values, shortcuts, checks and submenu arrows end on another, the way
+   native menus measure all items at once. Column spacing lives on the cells so
+   absent cells add no width.
+
+   A row anywhere else — the header slot, a wrapper, a virtualised list — lays out
+   its own four columns, so it never falls apart; it only loses alignment with rows
    on the shared grid. */
 .overlay-menu-scroll {
   display: grid;
@@ -1084,14 +1127,16 @@ html[data-theme="light"] .file-pill {
   border-radius: var(--composer-shell-radius);
 }
 
-/* The row under the box: the model, then the context, at its right edge. On a
-   narrow phone the model's chip alone gives way, its name cut short, so the
-   row's other controls stay whole and nothing leaves the screen. It
-   stands one inset under the box, inside the 12px the dock keeps around the
-   composer. The row's controls are chips with their own padding, so its ends
-   are the box's edges: the first control's mark stands under the attach
-   control's left edge, and the context ring's, which is centred in its chip,
-   under the send button's right edge. */
+/* The row under the box: the model, then the context, at its right edge.
+
+   - On a narrow phone the model's chip alone gives way, its name cut short, so
+     the row's other controls stay whole and nothing leaves the screen.
+   - It stands one inset under the box, inside the 12px the dock keeps around the
+     composer.
+   - The row's controls are chips with their own padding, so its ends are the box's
+     edges: the first control's mark stands under the attach control's left edge,
+     and the context ring's, which is centred in its chip, under the send button's
+     right edge. */
 .composer-below {
   display: flex;
   align-items: center;
@@ -1172,11 +1217,12 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * Comments on a reply's words, painted through the CSS Custom Highlight API so
- * the reply's DOM stays as it rendered: a yellow tint with a solid yellow
- * underline, deeper while its card is open, and dimmer once the comment is
- * sent. The comment mark in the margin and the composer's pill take the same
- * yellow.
+ * Comments on a reply's words, painted through the CSS Custom Highlight API so the
+ * reply's DOM stays as it rendered.
+ *
+ * - A yellow tint with a solid yellow underline, deeper while its card is open, and
+ *   dimmer once the comment is sent.
+ * - The comment mark in the margin and the composer's pill take the same yellow.
  */
 :root,
 [data-theme="dark"] {
@@ -1238,11 +1284,14 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * Side questions on a reply's words: the asked words in a purple tint with a
- * purple underline, deeper under the pointer; the folded card's question mark
- * in the margin takes the same purple, as does the card's header icon. The card
- * itself has no purple: it stands on the page's background with the line
- * color's border.
+ * Side questions on a reply's words:
+ *
+ * - The asked words take a purple tint with a purple underline, deeper under the
+ *   pointer.
+ * - The folded card's question mark in the margin takes the same purple, as does
+ *   the card's header icon.
+ * - The card itself has no purple: it stands on the page's background with the line
+ *   color's border.
  */
 :root,
 [data-theme="dark"] {
@@ -1282,10 +1331,10 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * A picture a comment or a side question stands on is outlined in its color,
- * around the picture, as its words would be tinted: yellow, dimmer once sent
- * and deeper while its card is open, or purple, deeper under the pointer; the
- * box's in the selection's blue.
+ * A picture a comment or a side question stands on is outlined in its color, around
+ * the picture, as its words would be tinted: yellow, dimmer once sent and deeper
+ * while its card is open, or purple, deeper under the pointer. The box's outline is
+ * in the selection's blue.
  */
 .picture-outline {
   border-radius: 4px;
@@ -1376,13 +1425,15 @@ html[data-theme="light"] .file-pill {
   margin-inline-start: calc(var(--composer-attach-gap) - 0.25rem);
 }
 
-/* One line: the text runs on sideways, its capsules sit on the line. The
-   line is as tall as in the open shell, centred in the chip's height by
-   padding, so the editor still takes a tap anywhere in that height: a
-   capsule fits its line (`.message-capsule-line`), so it keeps one size
-   when the shell opens. Were the line the chip's height, the capsule would
-   change size with the shell, and iOS Safari does not always update it: it
-   kept a capsule sized for a phone's 40px chip on the open shell's 24px line. */
+/* One line: the text runs on sideways, its capsules sit on the line.
+
+   The line is as tall as in the open shell, centred in the chip's height by
+   padding, so the editor still takes a tap anywhere in that height. A capsule fits
+   its line (`.message-capsule-line`), so it keeps one size when the shell opens.
+
+   Were the line the chip's height, the capsule would change size with the shell,
+   and iOS Safari does not always update it: it kept a capsule sized for a phone's
+   40px chip on the open shell's 24px line. */
 .composer-shell-capsule .composer-editor .message-editor {
   width: 100%;
 }
@@ -1475,10 +1526,11 @@ html[data-theme="light"] .file-pill {
 
 /* The scrollbar of every scroller (`ui/scrollbars.ts`): no track, a thumb 6px
    thick, 2px from the edges, in the overlay hue, stronger under the pointer and
-   while dragged. It never takes room. No rule sets the standard scrollbar
-   properties globally: setting them makes Chrome trade the system's overlay
-   bars for classic ones that take room. Only a scroller meant to have no bar at
-   all hides its native one. */
+   while dragged. It never takes room.
+
+   No rule sets the standard scrollbar properties globally: setting them makes
+   Chrome trade the system's overlay bars for classic ones that take room. Only a
+   scroller meant to have no bar at all hides its native one. */
 .os-theme-demi {
   --os-size: 10px;
   --os-padding-perpendicular: 2px;
@@ -1493,10 +1545,12 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * The band of light over a row still working (`ui/Shimmer.vue`): a copy of
- * the row in the strongest text color, which brightens it on a dark surface
- * and darkens it on a light one, shown only through a band that sweeps from
- * before the row's start to past its end.
+ * The band of light over a row still working (`ui/Shimmer.vue`): a copy of the row
+ * in the strongest text color, which brightens it on a dark surface and darkens it
+ * on a light one.
+ *
+ * It shows only through a band that sweeps from before the row's start to past its
+ * end.
  */
 .shimmer-band {
   position: absolute;
@@ -1534,13 +1588,18 @@ html[data-theme="light"] .file-pill {
   }
 }
 
-/* What a find or a link opened, a settings row, a block of the transcript or a line of a file, marked
-   once (`ui/found-highlight.ts`): the accent's faint fill over
-   it as a hovered row's fill covers a row, with a row's rounded corners, fading out. An element wider
-   than the column its content stands in, as a transcript row is, says how far in the column starts
-   with --found-inset-x. The fill is translucent and drawn over the element rather than behind it, so a
-   row with a fill of its own, as a user's message has, shows it too, and its text reads through it.
-   In the components layer, so an element's own position utility wins over the relative one here. */
+/* What a find or a link opened, a settings row, a block of the transcript or a line
+   of a file, marked once (`ui/found-highlight.ts`).
+
+   - The accent's faint fill covers it as a hovered row's fill covers a row, with a
+     row's rounded corners, fading out.
+   - An element wider than the column its content stands in, as a transcript row is,
+     says how far in the column starts with --found-inset-x.
+   - The fill is translucent and drawn over the element rather than behind it, so a
+     row with a fill of its own, as a user's message has, shows it too, and its text
+     reads through it.
+   - It is in the components layer, so an element's own position utility wins over
+     the relative one here. */
 @layer components {
   .found-highlight {
     position: relative;
@@ -1593,17 +1652,21 @@ html[data-theme="light"] .file-pill {
   }
 }
 
-/* Reading text: a reply in the transcript and a Markdown file shown as a
-   document set the same blocks the same way, so a reply reads as a page does,
-   in Claude Code's proportions. Every space between blocks is a multiple of
-   one gap, three quarters of the text's size: one between paragraphs, quotes
-   and code; two after a list, a table or a rule, which closes a run; a
-   heading three to two above it and one under it, so it holds to what it
-   heads. Headings stay near the text's size, 1.5 to 1 times it, as a reply's
-   do, not a page's. The gap is fixed where the text starts, so a heading's larger em
-   does not stretch it. A body of smaller secondary text, such as thinking, or
-   a message being typed, sets a tighter gap with a utility, so the default
-   sits in a layer below the utilities. */
+/* Reading text: a reply in the transcript and a Markdown file shown as a document
+   set the same blocks the same way, so a reply reads as a page does, in Claude
+   Code's proportions.
+
+   - Every space between blocks is a multiple of one gap, three quarters of the
+     text's size: one between paragraphs, quotes and code, and two after a list, a
+     table or a rule, which closes a run.
+   - A heading is three to two above it and one under it, so it holds to what it
+     heads. Headings stay near the text's size, 1.5 to 1 times it, as a reply's
+     do, not a page's.
+   - The gap is fixed where the text starts, so a heading's larger em does not
+     stretch it.
+   - A body of smaller secondary text, such as thinking, or a message being typed,
+     sets a tighter gap with a utility, so the default sits in a layer below the
+     utilities. */
 @property --markdown-block-gap {
   syntax: "<length>";
   inherits: true;
@@ -1704,11 +1767,11 @@ html[data-theme="light"] .file-pill {
 }
 
 /* A link in running text draws no ring: a ring would box a word in a sentence.
-   Focused from the keyboard, it takes its pointed-at look instead (the rules
-   above and below), as a link does in a browser's reading view
-  . A link around a picture or a
-   video is a tile, not text, and keeps the ring. `demi.focusRings` reads a
-   text link's look as its indicator. */
+   Focused from the keyboard, it takes its pointed-at look instead (the rules above
+   and below), as a link does in a browser's reading view.
+
+   A link around a picture or a video is a tile, not text, and keeps the ring.
+   `demi.focusRings` reads a text link's look as its indicator. */
 :is(.markdown-body a:not(:has(> :is(img, video))), .agent-link):focus-visible {
   outline: none;
 }
@@ -1729,15 +1792,17 @@ html[data-theme="light"] .file-pill {
   padding-inline-end: 0;
 }
 
-/* A link to an agent opens a window rather than a page, so it acts as a
-   button, but it flows as words do: a long
-   name wraps at the line's end, its first line starting where the text before
-   it ends, and the hover fill, its rounded ends and its space (`icon-link`) and
-   the underline follow each line it spans. It reads as part of the sentence, as
-   a mention in Slack or Linear does: the prose's color at medium weight over a
-   dotted underline in the faintest text color, and the hover fill behind the
-   mark and the text. The dot on the mark is cut out of the fill the link sits
-   on, the message's surface or the hovered fill. */
+/* A link to an agent opens a window rather than a page, so it acts as a button,
+   but it flows as words do.
+
+   - A long name wraps at the line's end, its first line starting where the text
+     before it ends, and the hover fill, its rounded ends and its space
+     (`icon-link`) and the underline follow each line it spans.
+   - It reads as part of the sentence, as a mention in Slack or Linear does: the
+     prose's color at medium weight over a dotted underline in the faintest text
+     color, and the hover fill behind the mark and the text.
+   - The dot on the mark is cut out of the fill the link sits on, the message's
+     surface or the hovered fill. */
 .agent-link {
   --fill-color: var(--surface-current);
   -webkit-box-decoration-break: clone;
@@ -1755,22 +1820,24 @@ html[data-theme="light"] .file-pill {
   @apply bg-hover;
 }
 
-/* The focus ring: what the keyboard's focus shows on any control, and only
-   that (`:focus-visible`): a click leaves none. It is the rule for every element, so a control a primitive makes
-   focusable and one built by hand look alike; a control that draws its own
-   state instead says `outline-none`. `.focus-ring-shown` draws the same ring on
-   the active row of a list that holds the focus by `aria-activedescendant`,
-   where the focus itself cannot be: never for a selection, which has its own
-   selected look.
+/* The focus ring: what the keyboard's focus shows on any control, and only that
+   (`:focus-visible`): a click leaves none.
 
-   A ring is 2px wide, 1px off its control, so it reaches 3px past it. A box
-   that clips (overflow other than visible, `contain: paint`) cuts what reaches
-   past its padding box, and a control at its edge, or a scroller leaving a
-   focused control flush with its end, loses part of its ring. So inside such
-   a box the ring is drawn inside its control (`--focus-ring-offset`, which
-   the descendants inherit): every `overflow` utility sets it, and a box that
-   clips by its own CSS carries `.focus-ring-inset`. The gallery's Primitives
-   page shows both; `bun browse` finds the rest (`demi.focusRings`). */
+   - It is the rule for every element, so a control a primitive makes focusable
+     and one built by hand look alike. A control that draws its own state instead
+     says `outline-none`.
+   - `.focus-ring-shown` draws the same ring on the active row of a list that
+     holds the focus by `aria-activedescendant`, where the focus itself cannot be:
+     never for a selection, which has its own selected look.
+
+   A ring is 2px wide, 1px off its control, so it reaches 3px past it. A box that
+   clips (overflow other than visible, `contain: paint`) cuts what reaches past its
+   padding box, and a control at its edge, or a scroller leaving a focused control
+   flush with its end, loses part of its ring. So inside such a box the ring is
+   drawn inside its control (`--focus-ring-offset`, which the descendants inherit):
+   every `overflow` utility sets it, and a box that clips by its own CSS carries
+   `.focus-ring-inset`. The gallery's Primitives page shows both; `bun browse`
+   finds the rest (`demi.focusRings`). */
 @layer base {
   :focus-visible {
     outline: 2px solid var(--line-focus);
@@ -1878,12 +1945,12 @@ html[data-theme="light"] .file-pill {
   line-height: 1.6;
 }
 
-/* A message's code block: its pre, and its Copy at the top-right corner, which
-   stays there as the code scrolls sideways, shown while the block is pointed
-   at (below). Copy keeps the distance to the
-   top and the right edge that centering puts it at in a one-line block,
-   (one line of code + its padding - the control) / 2, as CopyCode's does: a
-   longer block grows downward and leaves it where it was. */
+/* A message's code block: its pre, and its Copy at the top-right corner, which stays
+   there as the code scrolls sideways, shown while the block is pointed at (below).
+
+   Copy keeps the distance to the top and the right edge that centering puts it at in
+   a one-line block, (one line of code + its padding - the control) / 2, as
+   CopyCode's does. A longer block grows downward and leaves it where it was. */
 .markdown-body .code-block {
   --code-block-pad-y: 0.75em;
   /* The pre's code line: 1.6 lines of its 0.85em text. */
@@ -2076,13 +2143,14 @@ html[data-theme="light"] .file-pill {
   overflow-y: hidden;
 }
 
-/* A table spans at least the text's width, with rules between its rows only,
-   inside a square frame. A wider one keeps its natural
-   width and scrolls: each column is at least 6rem and a cell at most 24em,
-   where a long cell wraps at a readable measure rather than squeezing to its
-   minimum. While the reply streams its columns hold their widths
-   (`is-streaming`), so they do not jump as rows arrive; once it ends they fit
-   their content. */
+/* A table spans at least the text's width, with rules between its rows only, inside
+   a square frame.
+
+   - A wider one keeps its natural width and scrolls: each column is at least 6rem
+     and a cell at most 24em, where a long cell wraps at a readable measure rather
+     than squeezing to its minimum.
+   - While the reply streams its columns hold their widths (`is-streaming`), so they
+     do not jump as rows arrive. Once it ends they fit their content. */
 .markdown-body table {
   width: max-content;
   min-width: 100%;
@@ -2264,11 +2332,12 @@ html[data-theme="light"] .file-pill {
 }
 
 /* A message's image has an edge of its own, the theme's faint line over its
-   outermost pixel (an inset outline, as the thumbnails of `RowPicture` have),
-   so a screenshot with a white or a dark background does not melt into the
-   page. The renderer puts every image of a message in one of the blocks
-   above, whatever its size, and an image in code is text, so none needs
-   leaving out; the outline adds nothing to the box. */
+   outermost pixel (an inset outline, as the thumbnails of `RowPicture` have), so a
+   screenshot with a white or a dark background does not melt into the page.
+
+   The renderer puts every image of a message in one of the blocks above, whatever
+   its size, and an image in code is text, so none needs leaving out. The outline
+   adds nothing to the box. */
 .markdown-body :where(.media-lone, .media-run) img {
   outline: 1px solid var(--line);
   outline-offset: -1px;
@@ -2340,16 +2409,18 @@ html[data-theme="light"] .file-pill {
   margin-block-start: -4px;
 }
 
-/* A capsule never makes its line taller and never reaches into the next
-   line, at every text size, in a sent message as in the composer: its box,
-   border and thumbnail included, is the line's height less 2 px, hung from
-   the line's top 1 px down, so 1 px stays clear above and below it and it is
-   centred on the line, which centres the text's ascent and descent. Centred
-   on the x-height instead, as `vertical-align: middle` does, it would sit
-   about 0.09em lower in this typeface and reach past the line's bottom.
-   `1lh` is read on the wrapper, which takes the line's font and line height;
-   the pill inside fills it, its name a step smaller than the text (14 px
-   beside the default 15). */
+/* A capsule never makes its line taller and never reaches into the next line, at
+   every text size, in a sent message as in the composer.
+
+   Its box, border and thumbnail included, is the line's height less 2 px, hung
+   from the line's top 1 px down, so 1 px stays clear above and below it and it is
+   centred on the line, which centres the text's ascent and descent. Centred on
+   the x-height instead, as `vertical-align: middle` does, it would sit about
+   0.09em lower in this typeface and reach past the line's bottom.
+
+   `1lh` is read on the wrapper, which takes the line's font and line height. The
+   pill inside fills it, its name a step smaller than the text (14 px beside the
+   default 15). */
 .message-capsule-line {
   height: calc(1lh - 2px);
   margin-top: 1px;
@@ -2539,11 +2610,13 @@ html[data-theme="light"] .file-pill {
 }
 
 /* On a phone a long press on what declares a context menu opens it
-   (`ui/context-menu.ts`), so there it selects no text and brings up no
-   callout. A message's text is the exception (`data-context-text`): its
-   long press selects words with the system's handles, and the selection's
-   toolbar stands under them. A text field keeps the system's. Unlayered, so
-   it wins over a `select-text` utility. */
+   (`ui/context-menu.ts`), so there it selects no text and brings up no callout.
+
+   - A message's text is the exception (`data-context-text`): its long press selects
+     words with the system's handles, and the selection's toolbar stands under them.
+   - A text field keeps the system's.
+
+   This rule is unlayered, so it wins over a `select-text` utility. */
 @variant phone {
   [data-context-menu]:not([data-context-text]),
   [data-context-menu]:not([data-context-text]) :not(input, textarea, [contenteditable="true"], [contenteditable="true"] *) {

@@ -89,21 +89,33 @@ import { formatTokens } from '../ui/token-count'
 import type { TitleText } from '../ui/ui-text'
 
 /**
- * Providers: a rail of providers beside the selected one. Every supported
- * subscription is always listed and manages its accounts; an API key is added from
- * the rail. A vendor entry shows its vendor's endpoint as plain text and lists the
- * vendor's catalog; a compatible API sets its protocol, its endpoint and, when its
- * server takes one, its key, and lists only the models the user adds. Adding
- * creates the entry at once, selected, on the page
- * every entry has, and what it still lacks is a plain wait, the rail's yellow dot,
- * an empty field and the words *No models yet*; red marks a failure only. Add Model
- * adds the model it is given at once and opens it in Edit Model, the dialog every
- * model of the list opens (`crates/backend-user-shard/src/provider_settings.rs`). Removing
- * an entry, an account or a model asks first. Field edits land on the entry itself;
- * everything that needs the host is emitted. A subscription with several accounts
- * offers its rotation and orders its accounts by dragging; adding its second account
- * and choosing In Order or Balanced first warn, once, that several personal
- * subscriptions may be against the vendor's terms (`crates/backend-providers/src/llm/rotation.rs`).
+ * Providers: a rail of providers beside the selected one.
+ *
+ * What the rail lists:
+ *
+ * - Every supported subscription is always listed and manages its accounts. An
+ *   API key is added from the rail.
+ * - A vendor entry shows its vendor's endpoint as plain text and lists the
+ *   vendor's catalog.
+ * - A compatible API sets its protocol, its endpoint and, when its server takes
+ *   one, its key, and lists only the models the user adds.
+ *
+ * Adding and editing:
+ *
+ * - Adding creates the entry at once, selected, on the page every entry has. What
+ *   it still lacks is a plain wait: the rail's yellow dot, an empty field and the
+ *   words *No models yet*. Red marks a failure only.
+ * - Add Model adds the model it is given at once and opens it in Edit Model, the
+ *   dialog every model of the list opens
+ *   (`crates/backend-user-shard/src/provider_settings.rs`).
+ * - Removing an entry, an account or a model asks first.
+ * - Field edits land on the entry itself. Everything that needs the host is
+ *   emitted.
+ *
+ * A subscription with several accounts offers its rotation and orders its
+ * accounts by dragging. Adding its second account and choosing In Order or
+ * Balanced first warn, once, that several personal subscriptions may be against
+ * the vendor's terms (`crates/backend-providers/src/llm/rotation.rs`).
  */
 /** Each rotation's mark: the one by hand, the one down the list, the one weighed by room. */
 const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, balanced: Scale }
@@ -246,11 +258,15 @@ watch(
 )
 
 /**
- * Rail dots say what needs attention, for every kind of provider alike: none
- * while it works, the sidebar's needs-you yellow while it is not set up (no
- * account, no key, no model), the warning yellow while it is signed out, red
- * when it failed or cannot be reached. A working provider is the normal case
- * and carries no mark.
+ * Rail dots say what needs attention, for every kind of provider alike:
+ *
+ * - None while it works.
+ * - The sidebar's needs-you yellow while it is not set up (no account, no key, no
+ *   model).
+ * - The warning yellow while it is signed out.
+ * - Red when it failed or cannot be reached.
+ *
+ * A working provider is the normal case and carries no mark.
  */
 const providerBadge = {
   ready: undefined,
@@ -413,10 +429,9 @@ function chooseRotation(provider: SettingsProviderEntry, rotation: SettingsRotat
 }
 
 /**
- * The list's order, which generated media follow: a row is dragged within
- * its own group, as Finder's sidebar rows are, or moved one place with
- * Option and the arrow keys, and the host receives every stored entry's new
- * place.
+ * The list's order, which generated media follow. A row is dragged within its own
+ * group, as Finder's sidebar rows are, or moved one place with Option and the arrow
+ * keys, and the host receives every stored entry's new place.
  */
 const subscriptionList = ref<HTMLElement>()
 const keyList = ref<HTMLElement>()
@@ -634,10 +649,12 @@ function addedModels(p: SettingsProviderEntry, kind: SettingsMediaKind): Setting
 }
 
 /**
- * The model dialog: Edit Model for a model of the entry's own list, or a
- * catalog model's facts. A host that does not keep it leaves it to the
- * model's local value, which holds what it is given as it is, so each editor
- * is made reactive: closing it is a change of the object.
+ * The model dialog: Edit Model for a model of the entry's own list, or a catalog
+ * model's facts.
+ *
+ * A host that does not keep it leaves it to the model's local value, which holds what
+ * it is given as it is, so each editor is made reactive: closing it is a change of the
+ * object.
  */
 const modelEditor = defineModel<SettingsModelEditor | null>('modelEditor', {
   default: null,

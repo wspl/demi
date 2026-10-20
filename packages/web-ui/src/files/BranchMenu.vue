@@ -10,11 +10,15 @@ import { t } from './locales/text'
 
 /**
  * The branch the commit list shows, in the Change view's toolbar
- * (`packages/web-ui/src/files/history.ts`): its name, the checked-out one's at
- * first and `HEAD (3f2a9c1)` while HEAD is detached, and a menu of the
- * local branches, most recently committed first, the checked-out one marked
- * and the one shown checked. Choosing one changes only what the list shows:
- * nothing is checked out. Null is the checked-out branch, or HEAD.
+ * (`packages/web-ui/src/files/history.ts`).
+ *
+ * - The button shows the branch's name: the checked-out one's at first, and
+ *   `HEAD (3f2a9c1)` while HEAD is detached.
+ * - Its menu lists the local branches, most recently committed first, with the
+ *   checked-out one marked and the one shown checked.
+ * - Choosing one changes only what the list shows; nothing is checked out.
+ *
+ * Null is the checked-out branch, or HEAD.
  */
 const props = defineProps<{
   branches: BranchList | undefined

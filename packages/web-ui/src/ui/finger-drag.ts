@@ -1,24 +1,27 @@
 import { dragCloses, dragVelocity } from './drag-close'
 
 /**
- * A finger dragging a side pane sideways on a phone, the one owner of how
- * such a drag goes: the sidebar's drawer swiped closed, drawn in from the
- * screen's left edge, and the work panel swiped back from that edge
- * (SidebarLayout).
+ * A finger dragging a side pane sideways on a phone, the one owner of how such a
+ * drag goes: the sidebar's drawer swiped closed, drawn in from the screen's left
+ * edge, and the work panel swiped back from that edge (SidebarLayout).
  *
- * The finger's first clear move decides what the touch is: one mostly the
- * drag's way takes the pane, which then follows the finger from where it
- * first touched; any other leaves the touch to scroll what is under it. At
- * the lift the pane settles by the sheets' and drawers' rule (`dragCloses`):
- * past 30% of its size, or with a flick still moving, it goes on the way it
- * was dragged; a shorter pull, or one held still before the lift, springs
- * back. A second finger or the system taking the touch springs it back too:
- * only a lift lets it go. A lift that ends a drag clicks nothing.
+ * The finger's first clear move decides what the touch is. One mostly the drag's
+ * way takes the pane, which then follows the finger from where it first touched.
+ * Any other leaves the touch to scroll what is under it.
+ *
+ * At the lift the pane settles by the sheets' and drawers' rule (`dragCloses`):
+ *
+ * - Past 30% of its size, or with a flick still moving, it goes on the way it was
+ *   dragged.
+ * - A shorter pull, or one held still before the lift, springs back.
+ * - A second finger or the system taking the touch springs it back too: only a
+ *   lift lets it go.
+ * - A lift that ends a drag clicks nothing.
  *
  * Its moves are heard on what the finger touched, where a touch's events go
- * however far it moves and even once that element has left the page, and
- * only while it lasts: a listener that may stop a move from scrolling makes
- * every scroll wait for it.
+ * however far it moves and even once that element has left the page, and only
+ * while it lasts: a listener that may stop a move from scrolling makes every
+ * scroll wait for it.
  */
 export interface FingerDrag {
   /** A finger down on the pane, or at the edge it is drawn from: the drag follows it until its lift. */

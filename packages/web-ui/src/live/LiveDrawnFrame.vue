@@ -3,14 +3,17 @@ import { computed } from 'vue'
 import { drawnFrame, type FrameBox, type FrameButton, type ScreenCorners } from './drawn-frame'
 
 /**
- * A device's frame drawn by the view (`packages/plugin-mobile/src/index.ts`), in the
- * colors of the frames Xcode installs, which are the same in the light and
- * the dark appearance: a black body around its screen, an even bezel
- * concentric with the screen's corners, a dark grey metal band along its
- * outside with a lit edge, which keeps the body's outline visible on a dark
- * background, and its buttons as short bars of the band's grey, a shade
- * lighter at their ends. It lies under the screen's picture, and the
- * screen's input passes through it.
+ * A device's frame drawn by the view (`packages/plugin-mobile/src/index.ts`), in
+ * the colors of the frames Xcode installs, which are the same in the light and
+ * the dark appearance.
+ *
+ * - A black body around its screen, with an even bezel concentric with the
+ *   screen's corners.
+ * - A dark grey metal band along its outside with a lit edge, which keeps the
+ *   body's outline visible on a dark background.
+ * - Its buttons as short bars of the band's grey, a shade lighter at their ends.
+ *
+ * It lies under the screen's picture, and the screen's input passes through it.
  */
 const props = defineProps<{
   /** The screen's box in the area, in CSS pixels. */

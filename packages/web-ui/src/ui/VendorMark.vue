@@ -2,16 +2,18 @@
 import { computed } from 'vue'
 
 /**
- * A vendor's mark: a monochrome SVG (models.dev's logos, for one) painted
- * through a mask, so it takes the ink around it. A mark identifies its
- * vendor, as an account's logo does in macOS Settings, so on a tile it takes
- * the text's full ink; the initial a vendor without a mark shows is a
- * stand-in and stays muted. `row` is the bare mark at a menu row's
- * brand-mark size, 16 px, in the row's own ink (`vendorGlyph`); `sm` and
- * `md` sit on a tile.
+ * A vendor's mark: a monochrome SVG (models.dev's logos, for one) painted through
+ * a mask, so it takes the ink around it.
  *
- * It is decorative: every place that draws it names the vendor beside it,
- * so it is hidden from assistive technology rather than read twice.
+ * - A mark identifies its vendor, as an account's logo does in macOS Settings, so
+ *   on a tile it takes the text's full ink.
+ * - The initial a vendor without a mark shows is a stand-in and stays muted.
+ * - `row` is the bare mark at a menu row's brand-mark size, 16 px, in the row's
+ *   own ink (`vendorGlyph`).
+ * - `sm` and `md` sit on a tile.
+ *
+ * It is decorative: every place that draws it names the vendor beside it, so it is
+ * hidden from assistive technology rather than read twice.
  */
 const props = withDefaults(defineProps<{
   label: string

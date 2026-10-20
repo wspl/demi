@@ -34,10 +34,11 @@ function minSize(page: PageSize): PageSize {
 }
 
 /**
- * The box a window takes on `page`: at least 320 × 240 and no larger than
- * the page, with its title bar wholly on the page; the rest of it may hang
- * below the page's bottom edge. A page that shrinks moves and shrinks the
- * window with it.
+ * The box a window takes on `page`: at least 320 × 240 and no larger than the page,
+ * with its title bar wholly on the page. The rest of it may hang below the page's
+ * bottom edge.
+ *
+ * A page that shrinks moves and shrinks the window with it.
  */
 export function clampWindowRect(rect: WindowRect, page: PageSize): WindowRect {
   const min = minSize(page)
@@ -57,10 +58,11 @@ export function moveWindowRect(start: WindowRect, dx: number, dy: number, page: 
 }
 
 /**
- * The box an edge's or a corner's drag reaches: the edges it holds follow
- * the pointer and the opposite ones stay where they were, as a desktop
- * window's do. An edge stops at the page's border and where the window
- * would get smaller than its minimum.
+ * The box an edge's or a corner's drag reaches: the edges it holds follow the pointer
+ * and the opposite ones stay where they were, as a desktop window's do.
+ *
+ * An edge stops at the page's border and where the window would get smaller than its
+ * minimum.
  */
 export function resizeWindowRect(
   start: WindowRect,
@@ -92,13 +94,15 @@ export interface PagePoint {
 }
 
 /**
- * The size a window opens at to show content of `content` device pixels
- * under its title bar, on a display of `pixelRatio` device pixels per page
- * pixel: the content at its actual size (one of its pixels on one device
- * pixel), scaled down, keeping its proportions, to fit at most 60% of the
- * page's width and 70% of its height; never smaller than the minimum, where
- * tiny content sits centred and is never enlarged. Content of unknown size
- * takes the whole allowance.
+ * The size a window opens at to show content of `content` device pixels under its
+ * title bar, on a display of `pixelRatio` device pixels per page pixel.
+ *
+ * - The content shows at its actual size (one of its pixels on one device pixel),
+ *   scaled down, keeping its proportions, to fit at most 60% of the page's width
+ *   and 70% of its height.
+ * - The window is never smaller than the minimum, where tiny content sits centred
+ *   and is never enlarged.
+ * - Content of unknown size takes the whole allowance.
  */
 export function windowSizeFor(content: PixelSize | null, pixelRatio: number, page: PageSize): PageSize {
   const room = { width: page.width * 0.6, height: page.height * 0.7 - WINDOW_TITLE_BAR_PX }

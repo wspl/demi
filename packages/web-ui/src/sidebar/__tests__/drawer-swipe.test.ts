@@ -1,14 +1,20 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A finger on the phone's drawer: a leftward swipe drags the drawer from where
-// the finger first touched, a lift past 30% of its width or with a flick still
-// moving closes it from where it stands, a pull held still before the lift
-// springs back, and a second finger or the system taking the touch springs it
-// back too; a finger never reorders the list. The drawer is SidebarLayout on a
-// page of happy-dom 390 px wide, touched by touch events whose times the test
-// gives; happy-dom lays nothing out, so the drawer is given its 320 px width. A
-// few ms, besides the start of the page every happy-dom test pays.
+// A finger on the phone's drawer:
+//
+// - A leftward swipe drags the drawer from where the finger first touched.
+// - A lift past 30% of its width, or with a flick still moving, closes it from
+//   where it stands.
+// - A pull held still before the lift springs back.
+// - A second finger, or the system taking the touch, springs it back too.
+// - A finger never reorders the list.
+//
+// The drawer is SidebarLayout on a page of happy-dom 390 px wide, touched by touch
+// events whose times the test gives. Happy-dom lays nothing out, so the drawer is
+// given its 320 px width.
+//
+// Cost: a few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 390, height: 844 })
 await import('../../__tests__/vue-components')

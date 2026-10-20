@@ -37,10 +37,11 @@ const props = withDefaults(defineProps<{
   icon?: Component
   label?: TitleText
   /**
-   * What the label stands for, after it on the same line and baseline,
-   * smaller and in the secondary color, as a field's (InlineDetail): what
-   * Automatic resolves to, in brackets, or an entry's account. The row
-   * keeps its height; the detail truncates first, the label only once the
+   * What the label stands for, after it on the same line and baseline, smaller and in
+   * the secondary color, as a field's (InlineDetail): what Automatic resolves to, in
+   * brackets, or an entry's account.
+   *
+   * The row keeps its height; the detail truncates first, the label only once the
    * detail is gone.
    */
   detail?: InlineDetailText
@@ -83,10 +84,12 @@ const props = withDefaults(defineProps<{
    */
   onSelect?: Action
   /**
-   * The operation choosing the row starts (`operations.ts`): while it runs,
-   * the row, drawn again in a menu opened again, shows the spinner in its
-   * icon's place, or in a choice's check gutter, and choosing it starts
-   * nothing; another of its group is not choosable meanwhile.
+   * The operation choosing the row starts (`operations.ts`). While it runs:
+   *
+   * - The row, drawn again in a menu opened again, shows the spinner in its icon's
+   *   place, or in a choice's check gutter.
+   * - Choosing it starts nothing.
+   * - Another of its group is not choosable meanwhile.
    */
   operation?: Operation
 }>(), {

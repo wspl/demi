@@ -3,11 +3,12 @@ import CopyButton from './CopyButton.vue'
 import { t } from './locales/text'
 
 /**
- * The request an error came from, in secondary text under the error:
- * *Request ID: req_…* and a Copy button, so the user can paste the ID into a
- * message to whoever runs the server, who finds the request's lines in the
- * server log by it (`crates/backend-http/src/request_id.rs`). Its color is
- * the place's secondary text, which the caller gives.
+ * The request an error came from, in secondary text under the error: *Request ID:
+ * req_…* and a Copy button.
+ *
+ * The user can paste the ID into a message to whoever runs the server, who finds the
+ * request's lines in the server log by it (`crates/backend-http/src/request_id.rs`).
+ * Its color is the place's secondary text, which the caller gives.
  */
 defineProps<{
   requestId: string

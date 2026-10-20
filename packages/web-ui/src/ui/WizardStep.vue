@@ -3,14 +3,15 @@ import type { Component } from 'vue'
 import type { HeadlineText, SentenceText } from './ui-text'
 
 /**
- * One step of a `Wizard`: what it asks as a headline and a sentence, the body
- * that answers it, and the step's actions at the foot. On a computer the
- * dialog is a headline and a sentence at the leading edge with the actions
- * at the trailing edge, the default one last. On a phone the step is the
- * whole screen as iOS's setup screens are: a large symbol centred in the
- * upper third, the title and the sentence centred under it, and the actions
- * at the bottom, a finger tall and as wide as the screen, the default one
- * first. The symbol shows only there.
+ * One step of a `Wizard`: what it asks as a headline and a sentence, the body that
+ * answers it, and the step's actions at the foot.
+ *
+ * - On a computer the dialog is a headline and a sentence at the leading edge with
+ *   the actions at the trailing edge, the default one last.
+ * - On a phone the step is the whole screen as iOS's setup screens are: a large
+ *   symbol centred in the upper third, the title and the sentence centred under
+ *   it, and the actions at the bottom, a finger tall and as wide as the screen,
+ *   the default one first. The symbol shows only there.
  */
 defineProps<{
   title: HeadlineText

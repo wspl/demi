@@ -5,11 +5,15 @@ import type { SettingsModelMatch, SettingsModelSearch } from './types'
 export const MODEL_SEARCH_DELAY_MS = 150
 
 /**
- * The matches for what the Add Model dialog's field holds. Typing asks again
- * after a pause; a search still on its way when the text changes is aborted
- * and its answer never shown, so the list is always the latest text's. An
- * empty text has no matches. The text the field starts with is searched at once. A failed search leaves the list empty and says so
- * in `failed`, since *Custom* still works.
+ * The matches for what the Add Model dialog's field holds.
+ *
+ * - Typing asks again after a pause.
+ * - A search still on its way when the text changes is aborted and its answer never
+ *   shown, so the list is always the latest text's.
+ * - An empty text has no matches.
+ * - The text the field starts with is searched at once.
+ * - A failed search leaves the list empty and says so in `failed`, since *Custom*
+ *   still works.
  */
 export function useModelSearch(
   query: Ref<string>,

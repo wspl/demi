@@ -9,10 +9,11 @@ export const TOAST_Z = 55
 const stackingKey: InjectionKey<() => number> = Symbol('stacking')
 
 /**
- * Where a floating surface that opens here stands: one above the layer it
- * opens from, so a menu in a dialog stacked over another dialog shows over
- * both, and a submenu over its menu. Whatever opens from inside the surface
- * stands above it in turn.
+ * Where a floating surface that opens here stands: one above the layer it opens
+ * from, so a menu in a dialog stacked over another dialog shows over both, and a
+ * submenu over its menu.
+ *
+ * Whatever opens from inside the surface stands above it in turn.
  */
 export function stackAbove(): () => number {
   const z = showAbove()
@@ -21,11 +22,13 @@ export function stackAbove(): () => number {
 }
 
 /**
- * Where a surface that only shows stands (a tooltip, a hover card): above the
- * layer it shows over, a hint inside a dialog above the dialog and a hint on
- * a menu's row above the menu. Unlike `stackAbove`, it raises nothing inside
- * itself, since nothing opens from a hint, though a tip's trigger sits in its
- * component and may open a layer of its own.
+ * Where a surface that only shows stands (a tooltip, a hover card): above the layer
+ * it shows over, a hint inside a dialog above the dialog and a hint on a menu's row
+ * above the menu.
+ *
+ * Unlike `stackAbove`, it raises nothing inside itself, since nothing opens from a
+ * hint, though a tip's trigger sits in its component and may open a layer of its
+ * own.
  */
 export function showAbove(): () => number {
   const below = inject(stackingKey, () => LAYER_Z - 1)

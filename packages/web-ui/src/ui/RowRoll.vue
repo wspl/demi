@@ -4,12 +4,14 @@ import { CHROME_ROLL_EASING, CHROME_ROLL_MS } from './chrome-roll'
 
 /**
  * A row of a list that rolls what it shows over what it showed when its face
- * changes, at any height: the old face moves up and out as the new one comes
- * up from under it into its place, the roll a step makes over the one before
+ * changes, at any height: the old face moves up and out as the new one comes up
+ * from under it into its place, the roll a step makes over the one before
  * (`ChromeRoll`, whose 28px face keeps its icon standing while only the label
- * rolls). A row that takes another's place rolls over it this way: Stopped
- * into Requesting, Requesting into the step it waited for or the answer. A row
- * mounted with its face does not roll.
+ * rolls).
+ *
+ * A row that takes another's place rolls over it this way: Stopped into
+ * Requesting, Requesting into the step it waited for or the answer. A row mounted
+ * with its face does not roll.
  */
 const props = defineProps<{
   /** When this changes, the row rolls. */

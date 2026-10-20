@@ -27,13 +27,15 @@ const props = withDefaults(defineProps<{
   /** Paint the focus ring without holding focus, for a catalog specimen. */
   showFocus?: boolean
   /**
-   * Masked, with a built-in eye to reveal it. `password` is an account
-   * password only (sign-in, setup, change password): a real `type=password`
-   * field that browsers and password managers fill and save, so the caller
-   * also sets `autocomplete` (`current-password`, `new-password`). `secret` is
-   * every other secret (an API key, a token, a credential's value): a text
-   * field drawn as dots that browsers and password managers leave alone, so a
-   * saved login is never offered for it nor taken from it.
+   * Masked, with a built-in eye to reveal it. Two kinds:
+   *
+   * - `password` is an account password only (sign-in, setup, change password): a
+   *   real `type=password` field that browsers and password managers fill and
+   *   save, so the caller also sets `autocomplete` (`current-password`,
+   *   `new-password`).
+   * - `secret` is every other secret (an API key, a token, a credential's value):
+   *   a text field drawn as dots that browsers and password managers leave alone,
+   *   so a saved login is never offered for it nor taken from it.
    */
   masked?: Masked
   /**
@@ -47,9 +49,10 @@ const props = withDefaults(defineProps<{
    */
   trim?: boolean
   /**
-   * The value is literal text, not prose: a path, an address, a key, a code
-   * or an identifier. The browser neither marks its spelling nor corrects or
-   * capitalizes it, as macOS's Terminal and a browser's address bar do not.
+   * The value is literal text, not prose: a path, an address, a key, a code or an
+   * identifier. The browser neither marks its spelling nor corrects or capitalizes it,
+   * as macOS's Terminal and a browser's address bar do not.
+   *
    * A `masked` or `trim` field is literal too.
    */
   literal?: boolean

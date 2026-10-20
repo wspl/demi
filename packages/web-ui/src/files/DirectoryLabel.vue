@@ -3,15 +3,18 @@ import { computed } from 'vue'
 import { directoryParts } from './paths'
 
 /**
- * A directory as a row of a list reads: its own name first, in the row's
- * text, and where it is after it, smaller and grey at the row's end, so
- * `demi` in `~/Projects` and `demi` in `~/Work` differ at a glance. The home
- * is `~` and the root `/`, with no location. A row that does not fit gives
- * up the location, from its left so the folder next to the name is the last
- * to go, before it cuts the name. The row carries the whole path as its tip.
- * `name` stands in for the directory's own name where a place has a label of
- * its own, such as Home. A narrow list, such as the file browser's rail, shows
- * the location only on the rows whose names collide.
+ * A directory as a row of a list reads: its own name first, in the row's text,
+ * and where it is after it, smaller and grey at the row's end, so `demi` in
+ * `~/Projects` and `demi` in `~/Work` differ at a glance.
+ *
+ * - The home is `~` and the root `/`, with no location.
+ * - A row that does not fit gives up the location before it cuts the name,
+ *   from the location's left, so the folder next to the name is the last to go.
+ * - The row carries the whole path as its tip.
+ * - `name` stands in for the directory's own name where a place has a label of
+ *   its own, such as Home.
+ * - A narrow list, such as the file browser's rail, shows the location only on
+ *   the rows whose names collide.
  */
 const props = defineProps<{
   path: string

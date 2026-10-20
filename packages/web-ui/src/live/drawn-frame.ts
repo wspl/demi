@@ -1,12 +1,16 @@
 /**
  * A device drawn as a black silhouette around its screen
  * (`packages/plugin-mobile/src/index.ts`), in the look of the frames Xcode
- * installs: the frame a
- * view draws itself when the device's own is not installed. Its body runs
- * an even bezel around the screen, its outer corners concentric with the
- * screen's, a metal band with a lit edge along its outside, and each button
- * is a short bar standing out of the side it is on. The screen's own shape, the same corners, clips its picture. Sizes
- * are CSS pixels of the view.
+ * installs: the frame a view draws itself when the device's own is not
+ * installed.
+ *
+ * - Its body runs an even bezel around the screen, its outer corners concentric
+ *   with the screen's.
+ * - A metal band with a lit edge runs along its outside.
+ * - Each button is a short bar standing out of the side it is on.
+ * - The screen's own shape, the same corners, clips its picture.
+ *
+ * Sizes are CSS pixels of the view.
  */
 
 /** The bezel's width, as a share of the screen's shorter side. */
@@ -50,10 +54,9 @@ export interface CornerPoint {
 }
 
 /**
- * One corner of the screen, drawn as if it were the top left one: a quarter
- * circle, square at a radius of 0, or the screen's edge across the corner
- * through `points`, from where it leaves the upright edge to where it meets
- * the level one.
+ * One corner of the screen, drawn as if it were the top left one: a quarter circle,
+ * square at a radius of 0, or the screen's edge across the corner through `points`,
+ * from where it leaves the upright edge to where it meets the level one.
  */
 export type ScreenCorner =
   | { kind: 'round'; radius: number }

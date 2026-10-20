@@ -88,10 +88,9 @@ function collectSelections(state: EditorState, mapLine: (line: number) => number
 }
 
 /**
- * The editor's scrollbars: OverlayScrollbars' on its scroller, as every
- * scroller of the app has (`ui/scrollbars.ts`), placed in the editor's box,
- * over the ruler of marks for the selection, the find bar's matches and a
- * diff's changes.
+ * The editor's scrollbars: OverlayScrollbars' on its scroller, as every scroller
+ * of the app has (`ui/scrollbars.ts`), placed in the editor's box, over the ruler
+ * of marks for the selection, the find bar's matches and a diff's changes.
  */
 class CustomScrollbarPlugin implements PluginValue {
   private readonly ruler: ScrollbarRuler

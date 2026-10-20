@@ -1,12 +1,14 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A finger pulling a phone's sheet down by its grabber: the sheet follows the
-// finger from where it first touched, and a second finger or the system taking
-// the touch springs it back, since only a lift closes it. The sheet is
-// Sheet.vue on a page of happy-dom, touched by touch events; happy-dom lays
-// nothing out, so the sheet is given its 400 px height. A few ms, besides the
-// start of the page every happy-dom test pays.
+// A finger pulling a phone's sheet down by its grabber: the sheet follows the finger
+// from where it first touched, and a second finger or the system taking the touch
+// springs it back, since only a lift closes it.
+//
+// The sheet is Sheet.vue on a page of happy-dom, touched by touch events. happy-dom
+// lays nothing out, so the sheet is given its 400 px height.
+//
+// Cost: a few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 390, height: 844 })
 await import('../../__tests__/vue-components')

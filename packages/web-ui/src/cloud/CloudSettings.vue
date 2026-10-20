@@ -29,10 +29,11 @@ const open = ref(false)
 const submitted = ref(false)
 const operationId = ref('')
 /**
- * Whether the Cloud's latest reset is the one this dialog asked for. Until
- * the status names it, the phase and failure there belong to an earlier
- * reset: after one that ended ready, a new confirmation would otherwise read
- * "Cloud is ready." while its own request is still pending.
+ * Whether the Cloud's latest reset is the one this dialog asked for.
+ *
+ * Until the status names it, the phase and failure there belong to an earlier reset.
+ * After one that ended ready, a new confirmation would otherwise read "Cloud is
+ * ready." while its own request is still pending.
  */
 const own = computed(() => submitted.value && props.cloud.operationId === operationId.value)
 const phase = computed(() => (own.value ? props.cloud.phase : null))

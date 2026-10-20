@@ -1,13 +1,19 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// The browser tab carries the sidebar's news: the title counts the
-// conversations whose dot is red, yellow or green, one count of one kind or of
-// all as to do; the icon wears the most urgent dot; an installed app's badge
-// carries the number; the conversation open in a page in front counts nothing;
-// coming forward clears it all, and the badge follows the page that came
-// forward last. The page is happy-dom's, whose focus and visibility the test
-// turns. A few ms each, besides the start of the page.
+// The browser tab carries the sidebar's news:
+//
+// - The title counts the conversations whose dot is red, yellow or green, one count
+//   of one kind or of all as to do.
+// - The icon wears the most urgent dot.
+// - An installed app's badge carries the number.
+// - The conversation open in a page in front counts nothing.
+// - Coming forward clears it all, and the badge follows the page that came forward
+//   last.
+//
+// The page is happy-dom's, whose focus and visibility the test turns.
+//
+// Cost: a few ms each, besides the start of the page.
 
 GlobalRegistrator.register({ url: 'https://demi.test/chat' })
 const { nextTick, ref } = await import('vue')

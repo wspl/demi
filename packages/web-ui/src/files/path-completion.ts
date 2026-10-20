@@ -1,7 +1,10 @@
 /**
- * Completion for a field that takes a Host path: the text before the caret
- * names a directory and a query, the directory's entries that match the query
- * become a menu, and accepting one writes its name in place of the query.
+ * Completion for a field that takes a Host path.
+ *
+ * 1. The text before the caret names a directory and a query.
+ * 2. The directory's entries that match the query become a menu.
+ * 3. Accepting one writes its name in place of the query.
+ *
  * Gallery: Files › Address Bar, and the New Project dialog's Directory.
  */
 import { computed, ref, watch, type ComputedRef } from 'vue'
@@ -38,10 +41,11 @@ export interface Completion {
 }
 
 /**
- * The spot the caret stands at in `text`. The text before the caret splits at
- * its last slash: up to and including it is the directory, the rest the
- * query. A leading `~/` is `home`; a relative directory starts from `base`,
- * and without a base it offers nothing.
+ * The spot the caret stands at in `text`. The text before the caret splits at its
+ * last slash: up to and including it is the directory, the rest the query.
+ *
+ * A leading `~/` is `home`. A relative directory starts from `base`, and without a
+ * base it offers nothing.
  */
 export function completionSpot(
   text: string,
@@ -59,10 +63,12 @@ export function completionSpot(
 }
 
 /**
- * The entries a query offers, best first. The match is fuzzy and ignores
- * case: `abc` finds `a_b_c.txt`. Equal matches put directories first, then
- * names in the file browser's order. A dot entry shows only to a query that
- * starts with a dot, and a `directory` field offers no files.
+ * The entries a query offers, best first.
+ *
+ * - The match is fuzzy and ignores case: `abc` finds `a_b_c.txt`.
+ * - Equal matches put directories first, then names in the file browser's order.
+ * - A dot entry shows only to a query that starts with a dot.
+ * - A `directory` field offers no files.
  */
 export function rankCompletions(
   entries: readonly FileBrowserEntry[],
@@ -121,11 +127,11 @@ export type PathCompletionKey =
   | { kind: 'accept'; edit: PathEdit; entry: FileBrowserEntry }
 
 /**
- * The menu of a path field, following its caret. The directory the caret
- * stands in shows its listing as the source keeps it, so a directory listed
- * a moment ago, by this field or any view, offers its entries at once, and
- * filtering is local. A directory that fails to list, or a query that
- * matches nothing, shows no menu.
+ * The menu of a path field, following its caret. The directory the caret stands in
+ * shows its listing as the source keeps it, so a directory listed a moment ago, by
+ * this field or any view, offers its entries at once, and filtering is local.
+ *
+ * A directory that fails to list, or a query that matches nothing, shows no menu.
  */
 export function usePathCompletion(options: PathCompletionOptions) {
   const spot = ref<CompletionSpot | null>(null)
@@ -178,12 +184,18 @@ export function usePathCompletion(options: PathCompletionOptions) {
   }
 
   /**
-   * A key pressed in the field. While the menu shows, a row is always
-   * selected, the first when it opens or its rows change: the arrows move
-   * the selection, Tab accepts the selected row, and Escape puts the menu
-   * away. Every other key, Return among them, is the field's, and every key
-   * while no menu shows, so Return submits what the field holds and Tab
-   * then moves the focus as it does anywhere.
+   * A key pressed in the field.
+   *
+   * While the menu shows, a row is always selected, the first when it opens or
+   * its rows change:
+   *
+   * - The arrows move the selection.
+   * - Tab accepts the selected row.
+   * - Escape puts the menu away.
+   *
+   * Every other key, Return among them, is the field's, and so is every key
+   * while no menu shows: Return submits what the field holds and Tab then moves
+   * the focus as it does anywhere.
    */
   function keydown(key: string, text: string, caret: number): PathCompletionKey {
     if (!isOpen.value)
@@ -211,12 +223,14 @@ export function usePathCompletion(options: PathCompletionOptions) {
 
 /**
  * Whether the directory `text` names exists, as the listing the field's menu
- * shows with the caret at the text's end tells, so the field and what reads
- * this share one listing: `/Users/alex/Projects/shop/` exists when its own
- * listing reads, and `/Users/alex/Projects/shop` when `/Users/alex/Projects`
- * lists a folder `demi`. A listing that finds its directory gone says no.
- * Null while it is not known: the listing is on its way or failed for
- * another reason, or the text is not a path the field completes.
+ * shows with the caret at the text's end tells, so the field and what reads this
+ * share one listing: `/Users/alex/Projects/shop/` exists when its own listing
+ * reads, and `/Users/alex/Projects/shop` when `/Users/alex/Projects` lists a
+ * folder `demi`.
+ *
+ * A listing that finds its directory gone says no. Null while it is not known:
+ * the listing is on its way or failed for another reason, or the text is not a
+ * path the field completes.
  */
 export function useDirectoryExistence(options: Pick<PathCompletionOptions, 'source' | 'base'> & { text: () => string }): ComputedRef<boolean | null> {
   const spot = computed(() => {

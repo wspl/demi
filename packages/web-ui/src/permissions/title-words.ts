@@ -7,11 +7,12 @@ import { fillText } from '@demicodes/utils'
  */
 
 /**
- * What the titles of the requests' cards say in the page's language, each
- * value left as `{action}`, `{host}` or `{name}`, with the action of each
- * category by its catalogue key, its id with `_` for `.`: what a card's
- * title is worded from, and what the page hands its service worker, which
- * words a request's notification while no page runs.
+ * What the titles of the requests' cards say in the page's language, each value left
+ * as `{action}`, `{host}` or `{name}`, with the action of each category by its
+ * catalogue key, its id with `_` for `.`.
+ *
+ * It is what a card's title is worded from, and what the page hands its service
+ * worker, which words a request's notification while no page runs.
  */
 export interface RequestTitleWords {
   allow: string

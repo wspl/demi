@@ -1,8 +1,10 @@
 /**
- * One notation for keyboard shortcuts, shared by the recorder that writes it and
- * the app that listens for it: modifiers in the fixed order ⌃ ⌥ ⇧ ⌘, then one key
- * cap (`⇧⌘O`, `⏎`, `⌥←`). Letters and digits come from the physical key, so ⇧
- * never turns `k` into `K` twice or `,` into `<`.
+ * One notation for keyboard shortcuts, shared by the recorder that writes it and the
+ * app that listens for it: modifiers in the fixed order ⌃ ⌥ ⇧ ⌘, then one key cap
+ * (`⇧⌘O`, `⏎`, `⌥←`).
+ *
+ * Letters and digits come from the physical key, so ⇧ never turns `k` into `K` twice
+ * or `,` into `<`.
  */
 const SPECIAL: Record<string, string> = {
   Enter: '⏎',

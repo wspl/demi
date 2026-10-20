@@ -7,10 +7,13 @@ import { t } from './locales/text'
 import { shortcutKeyCap, shortcutModifiers } from './shortcut'
 
 /**
- * A shortcut shown as key caps, with a Change button that records a new one in
- * place. While recording the button stays pressed and the caps show whatever is
- * held right now; a key pressed with its modifiers commits, Escape, losing focus
- * or clicking Change again cancels. Nothing else changes shape.
+ * A shortcut shown as key caps, with a Change button that records a new one in place.
+ *
+ * - While recording, the button stays pressed and the caps show whatever is held
+ *   right now.
+ * - A key pressed with its modifiers commits. Escape, losing focus or clicking
+ *   Change again cancels.
+ * - Nothing else changes shape.
  */
 const props = defineProps<{
   modelValue: string

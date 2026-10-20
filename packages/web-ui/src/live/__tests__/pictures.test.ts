@@ -2,10 +2,11 @@ import { afterEach, expect, test } from 'bun:test'
 import { CanvasPictures } from '../pictures'
 
 /**
- * WebCodecs as a web browser has it, for what the page relies on: a chunk
- * keeps its timestamp as a whole number of microseconds (WebIDL's
- * `long long`), and the decoder's picture carries the chunk's. Bun has no
- * WebCodecs.
+ * WebCodecs as a web browser has it, for what the page relies on: a chunk keeps its
+ * timestamp as a whole number of microseconds (WebIDL's `long long`), and the
+ * decoder's picture carries the chunk's.
+ *
+ * Bun has no WebCodecs.
  */
 const globals = ['VideoDecoder', 'EncodedVideoChunk', 'requestAnimationFrame'] as const
 
@@ -45,10 +46,14 @@ afterEach(() => {
 })
 
 /**
- * A picture whose timestamp is a fraction of a microsecond, as a
- * simulator's capture clock gives, is painted. Planted defect this catches: the page finding the
- * decoded picture by the timestamp it sent rather than the one the chunk
- * kept, which drops every such picture. Microseconds.
+ * A picture whose timestamp is a fraction of a microsecond, as a simulator's
+ * capture clock gives, is painted.
+ *
+ * Planted defect this catches: the page finding the decoded picture by the
+ * timestamp it sent rather than the one the chunk kept, which drops every such
+ * picture.
+ *
+ * Unit: microseconds.
  */
 test('a picture with a fractional timestamp is painted', () => {
   stubWebCodecs()

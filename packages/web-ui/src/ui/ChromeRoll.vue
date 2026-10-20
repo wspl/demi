@@ -113,11 +113,12 @@ onBeforeUnmount(clearRollTimer)
 const root = ref<HTMLElement>()
 
 /**
- * How wide the face is when nothing cuts it: its width now and what each
- * text cut at its end hides. A copy of the face, the outgoing face of a roll
- * or a shimmer's band, is inert and does not count. For a row that lays out
- * more after the face, such as its pictures, and gives the face only the
- * width it needs.
+ * How wide the face is when nothing cuts it: its width now and what each text cut at
+ * its end hides.
+ *
+ * A copy of the face, the outgoing face of a roll or a shimmer's band, is inert and
+ * does not count. It serves a row that lays out more after the face, such as its
+ * pictures, and gives the face only the width it needs.
  */
 function naturalWidth(): number {
   const element = root.value

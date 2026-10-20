@@ -1,12 +1,14 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// Back closes the topmost layer on a phone before it leaves the page: a dialog
-// or menu of the overlay store, then the drawer, then the page goes back. The
-// layers are the frame (SidebarLayout) and components wired as Dialog and
-// Popover wire theirs (`useOverlay`), on a happy-dom page 390 px wide; the
-// browser's traversal is a task of its own, as a browser queues it. A few ms,
-// besides the start of the page every happy-dom test pays.
+// Back closes the topmost layer on a phone before it leaves the page: a dialog or
+// menu of the overlay store, then the drawer, then the page goes back.
+//
+// The layers are the frame (SidebarLayout) and components wired as Dialog and
+// Popover wire theirs (`useOverlay`), on a happy-dom page 390 px wide. The
+// browser's traversal is a task of its own, as a browser queues it.
+//
+// Cost: a few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 390, height: 844 })
 await import('../../__tests__/vue-components')

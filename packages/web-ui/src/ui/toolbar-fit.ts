@@ -1,8 +1,9 @@
 /**
- * How many of a toolbar's actions, from its start, show in `room` pixels,
- * each `widths[i]` wide with what precedes it in its group, `gap` apart;
- * the rest go into the More menu, `more` wide, at the end. All show when
- * all fit; otherwise as many as fit beside More, at least none.
+ * How many of a toolbar's actions, from its start, show in `room` pixels, each
+ * `widths[i]` wide with what precedes it in its group, `gap` apart. The rest go into
+ * the More menu, `more` wide, at the end.
+ *
+ * All show when all fit; otherwise as many as fit beside More, at least none.
  */
 export function fittingActions(widths: readonly number[], gap: number, room: number, more: number): number {
   const span = (count: number) => {

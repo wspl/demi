@@ -7,9 +7,10 @@ import { useShowing } from './showing'
 import type { FileContents } from './types'
 
 /**
- * The card of a file the view does not show, with what `contents` can say
- * about it and Download; without `contents`, its name alone. A file its
- * source is too large to serve says so and offers no Download. The facts
+ * The card of a file the view does not show, with what `contents` can say about it
+ * and Download; without `contents`, its name alone.
+ *
+ * A file its source is too large to serve says so and offers no Download. The facts
  * follow the file as its source keeps it.
  */
 const props = defineProps<{

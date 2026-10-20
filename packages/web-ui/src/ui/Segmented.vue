@@ -11,23 +11,33 @@ import type { SentenceText, TitleText } from './ui-text'
 
 /**
  * One of a few exclusive choices, all visible. Segments share one width so the
- * thumb is a single element that slides to the chosen one instead of re-appearing.
- * That width fits the longest label, and a settings row that drops the
- * control under its label stretches it (`data-field`, except with `iconOnly`
- * whose segments stay square): the segments then share the row's width, each
- * label whole. In a container narrower than that, as a narrow work panel's
- * toolbar, the segments narrow together, as macOS's do, each label cut short
- * with an ellipsis and whole in its tooltip, down to its first few characters
- * (3em); in a container narrower still, as on a phone with many segments, they
- * scroll inside their own box instead of squeezing their labels into each
- * other, and the chosen one scrolls into view. Icon segments never narrow;
- * they only scroll.
- * With `iconOnly`, each segment shows its icon alone and its label as the
- * tooltip and the accessible name, and is square: as wide as it is tall, the
- * icon in its centre.
- * Two options are one toggle: a click anywhere on the control, the chosen
- * segment and the frame around and between the segments included, switches
- * to the other. With three or more, a click chooses the clicked segment.
+ * thumb is a single element that slides to the chosen one instead of
+ * re-appearing.
+ *
+ * Width:
+ *
+ * - That width fits the longest label, and a settings row that drops the control
+ *   under its label stretches it (`data-field`, except with `iconOnly` whose
+ *   segments stay square): the segments then share the row's width, each label
+ *   whole.
+ * - In a container narrower than that, as a narrow work panel's toolbar, the
+ *   segments narrow together, as macOS's do, each label cut short with an
+ *   ellipsis and whole in its tooltip, down to its first few characters (3em).
+ * - In a container narrower still, as on a phone with many segments, they scroll
+ *   inside their own box instead of squeezing their labels into each other, and
+ *   the chosen one scrolls into view.
+ * - Icon segments never narrow; they only scroll.
+ *
+ * With `iconOnly`, each segment shows its icon alone and its label as the tooltip
+ * and the accessible name, and is square: as wide as it is tall, the icon in its
+ * centre.
+ *
+ * Choosing:
+ *
+ * - Two options are one toggle: a click anywhere on the control, the chosen
+ *   segment and the frame around and between the segments included, switches to
+ *   the other.
+ * - With three or more, a click chooses the clicked segment.
  */
 export interface SegmentedOption<T extends string> {
   value: T

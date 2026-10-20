@@ -24,10 +24,12 @@ export function uploadItemName(item: UploadItem): string {
 }
 
 /**
- * What an upload does about what its path holds already: `add` expects
- * nothing there, and a file it finds stops it; `overwrite` writes over files
- * of the same names, a folder going into the folder there; `replace` deletes
- * what is there first.
+ * What an upload does about what its path holds already:
+ *
+ * - `add` expects nothing there, and a file it finds stops it.
+ * - `overwrite` writes over files of the same names, a folder going into the
+ *   folder there.
+ * - `replace` deletes what is there first.
  */
 export type UploadPlacement = 'add' | 'overwrite' | 'replace'
 
@@ -48,10 +50,12 @@ export interface UploadClash {
 export type ClashAnswer = 'replace' | 'merge' | 'skip'
 
 /**
- * How an item whose name its directory has goes in, given the answer; null
- * for Skip. Replace writes a file over a file in place and deletes anything
- * else first. Merge takes a folder into the folder there and a file over the
- * file there; only where a folder meets a file does it delete first.
+ * How an item whose name its directory has goes in, given the answer; null for
+ * Skip.
+ *
+ * - Replace writes a file over a file in place and deletes anything else first.
+ * - Merge takes a folder into the folder there and a file over the file there.
+ *   Only where a folder meets a file does it delete first.
  */
 export function clashPlacement(answer: ClashAnswer, isDirectory: boolean, takenByDirectory: boolean): UploadPlacement | null {
   if (answer === 'skip')
@@ -80,9 +84,11 @@ export interface UploadFailure extends ShownError {
 
 /**
  * Where one upload is: waiting its turn, on its way, landed, or stopped by
- * failures. On its way, `sent` counts the bytes of its files that have gone,
- * and `rate` is how many a second it has moved over the last few seconds,
- * null until it has moved long enough to tell.
+ * failures.
+ *
+ * On its way, `sent` counts the bytes of its files that have gone, and `rate` is
+ * how many a second it has moved over the last few seconds, null until it has
+ * moved long enough to tell.
  */
 export type FileUploadState =
   | { phase: 'waiting' }
@@ -134,15 +140,20 @@ interface Run {
 }
 
 /**
- * A source's uploads, in the order they were asked for. Up to
- * `UPLOADS_AT_ONCE` steps run at once, taken in that order: a large file
- * does not hold the ones behind it, and a folder's files go several at a
- * time. An upload that replaces something deletes it before anything else
- * of it starts. A file of a folder that fails is noted and the folder goes
- * on; a folder that cannot be made, or what it replaces deleted, stops it.
- * A finished upload stays listed until it is dismissed or cleared; a
- * cancelled one goes at once. What each answer changed, the source's write
- * marks, so the views that show it read it again (`keptSource`).
+ * A source's uploads, in the order they were asked for.
+ *
+ * - Up to `UPLOADS_AT_ONCE` steps run at once, taken in that order: a large
+ *   file does not hold the ones behind it, and a folder's files go several at
+ *   a time.
+ * - An upload that replaces something deletes it before anything else of it
+ *   starts.
+ * - A file of a folder that fails is noted and the folder goes on. A folder
+ *   that cannot be made, or what it replaces deleted, stops it.
+ * - A finished upload stays listed until it is dismissed or cleared. A
+ *   cancelled one goes at once.
+ *
+ * What each answer changed, the source's write marks, so the views that show it
+ * read it again (`keptSource`).
  */
 export class FileUploads {
   readonly items: FileUpload[] = reactive([])

@@ -1,11 +1,17 @@
 /**
  * A live view's stream on the page, whatever its source
- * (`packages/plugin-mobile/src/index.ts`): it opens the plugin's user
- * stream, reads its frames, watches its silence and its stalls, joins the
- * pictures' chunks and acknowledges each with when it arrived, hands the frames of the generation the view shows to a
- * decoder in sequence, asks for a key frame after one it could not decode,
- * and opens a view that ended
- * again after the page's reconnect waits. What a source's view says over it is its own: the session that uses a link
+ * (`packages/plugin-mobile/src/index.ts`).
+ *
+ * The link:
+ *
+ * - opens the plugin's user stream and reads its frames,
+ * - watches its silence and its stalls,
+ * - joins the pictures' chunks and acknowledges each with when it arrived,
+ * - hands the frames of the generation the view shows to a decoder in sequence,
+ * - asks for a key frame after one it could not decode, and
+ * - opens a view that ended again after the page's reconnect waits.
+ *
+ * What a source's view says over it is its own: the session that uses a link
  * reads its messages and sends its own.
  */
 import type { OpenUserStream, StreamBytes, UserStream } from '../plugins/streams'
@@ -269,10 +275,11 @@ export class LiveLink<F, S extends LivePictureStream> {
   }
 
   /**
-   * A picture's chunk: acknowledged with when it arrived, whatever its
-   * generation, so the Host's window frees; its frame is shown once it is
-   * whole and its turn came, when it is of the generation the view shows.
-   * Answers whether it was of that generation.
+   * A picture's chunk: acknowledged with when it arrived, whatever its generation,
+   * so the Host's window frees.
+   *
+   * Its frame is shown once it is whole and its turn came, when it is of the
+   * generation the view shows. Answers whether it was of that generation.
    */
   show(chunk: LiveVideoChunk): boolean {
     this.acknowledge({ generation: chunk.generation, sequence: chunk.sequence, chunk: chunk.chunk, received: this.received })

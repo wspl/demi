@@ -30,14 +30,15 @@ export interface WorkToStop {
 }
 
 /**
- * What a conversation still runs, as the page shows it; none once its agent,
- * its subagents and its commands have all ended. A command counts as work
- * because its job holds the conversation's file gate until its runner says it
- * ended, and the backend moves no conversation while it is held
- * (`crates/backend-host-access/src/transition.rs`). None either while
- * the backend says the agent only waits for the conversation's offline
- * device, `onlyWaitsForHost`: a move fails the commands that wait, which
- * never ran, and lets the agent go on on the new Host.
+ * What a conversation still runs, as the page shows it; none once its agent, its
+ * subagents and its commands have all ended.
+ *
+ * - A command counts as work because its job holds the conversation's file gate
+ *   until its runner says it ended, and the backend moves no conversation while
+ *   it is held (`crates/backend-host-access/src/transition.rs`).
+ * - It is none either while the backend says the agent only waits for the
+ *   conversation's offline device, `onlyWaitsForHost`: a move fails the commands
+ *   that wait, which never ran, and lets the agent go on on the new Host.
  */
 export function workToStop(conversation: {
   phase: ConversationState['phase']
@@ -99,11 +100,13 @@ export interface MoveQuestion {
 }
 
 /**
- * The question before a conversation that has messages moves, or whose
- * agent works: `ask` opens `MoveConversationDialog` and answers whether the
- * conversation moved, once the user cancelled or `carryOut` finished the move
- * the user chose, told to the agent or not. The question stays once answered,
- * so the dialog leaves showing it.
+ * The question before a conversation that has messages moves, or whose agent
+ * works.
+ *
+ * `ask` opens `MoveConversationDialog` and answers whether the conversation moved,
+ * once the user cancelled or `carryOut` finished the move the user chose, told to
+ * the agent or not. The question stays once answered, so the dialog leaves showing
+ * it.
  */
 export function useMoveQuestion() {
   const question = ref<MoveQuestion | null>(null)

@@ -30,10 +30,13 @@ import {
 } from './port-forwards'
 
 /**
- * A port forward's page (`crates/runner-protocol/src/forward.rs`): its
- * state, why it goes through the relay when a direct path failed, and every
- * field, each saved as it is committed; Connect To shows as missing until
- * a Host is chosen, and Remove Forward asks first.
+ * A port forward's page (`crates/runner-protocol/src/forward.rs`). It shows:
+ *
+ * - its state,
+ * - why it goes through the relay when a direct path failed, and
+ * - every field, each saved as it is committed.
+ *
+ * Connect To shows as missing until a Host is chosen, and Remove Forward asks first.
  */
 const props = defineProps<{
   forward: SettingsPortForward

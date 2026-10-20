@@ -62,10 +62,12 @@ export function fileIconName(
 }
 
 /**
- * The glyph a folder earns by where it sits rather than what it is called: the root
- * wears its operating system's folder (`folder-linux`, `folder-macos`,
- * `folder-windows`), the home directory `folder-home`. Anywhere else, `undefined`
- * and the name decides.
+ * The glyph a folder earns by where it sits rather than what it is called.
+ *
+ * - The root wears its operating system's folder (`folder-linux`,
+ *   `folder-macos`, `folder-windows`).
+ * - The home directory wears `folder-home`.
+ * - Anywhere else, the result is `undefined` and the name decides.
  */
 export function landmarkIcon(
   path: string,

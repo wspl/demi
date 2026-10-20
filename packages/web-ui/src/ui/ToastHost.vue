@@ -5,11 +5,13 @@ import { APP_BAR_PX } from './app-bar'
 import { provideStacking, TOAST_Z } from '../overlay/stacking'
 
 /**
- * The toasts stand in the top-right corner, below the bar atop the page, as
- * macOS places its notifications: never over the composer or the actions at
- * the bottom of a pane. The newest stands nearest the corner. On a phone they
- * span the screen under the top bar, 12 px in from each side, as iOS's
- * banners do.
+ * The toasts stand in the top-right corner, below the bar atop the page, as macOS
+ * places its notifications: never over the composer or the actions at the bottom of
+ * a pane.
+ *
+ * - The newest stands nearest the corner.
+ * - On a phone they span the screen under the top bar, 12 px in from each side, as
+ *   iOS's banners do.
  */
 const props = withDefaults(defineProps<{
   /** How far down the page's top bars reach, in px: the toasts stand below them. */

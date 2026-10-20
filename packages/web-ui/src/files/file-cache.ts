@@ -1,39 +1,50 @@
 /**
- * What a page keeps of one Host's files: listings, texts, descriptions, the changes list and each
- * changed file's sides, each the last answer read, by the absolute path on
- * the Host. Every entry kept holds the subscriptions it depends on, carried
- * by the watch of the view that brought it, until it leaves the cache; only
- * what a view shows on screen is read.
+ * What a page keeps of one Host's files: listings, texts, descriptions, the
+ * changes list and each changed file's sides, each the last answer read, by the
+ * absolute path on the Host.
+ *
+ * Every entry kept holds the subscriptions it depends on, carried by the watch
+ * of the view that brought it, until it leaves the cache. Only what a view shows
+ * on screen is read.
  *
  * Whether an entry is current is worked out each time from numbers, never
- * stored: its answer's number against each subscription's `since`, the
- * `at` of its last change, its epoch and its lease. A view that shows an
- * entry that is not current shows what is kept at once and reads it again
- * in the background; a change of an entry on screen reads it again, a
- * folder's listing and a changes list at most once a second; a change of
- * one off screen is only noted. An entry holds no way to read it: each view
- * reads through its own route, and a read nobody asked for goes through the
- * route of the view that came on screen last. Reads of one entry share one
- * request. At most `budget` of text and `MAX_ENTRIES` entries stay, the
- * entries shown longest ago leaving first.
+ * stored: its answer's number against each subscription's `since`, the `at` of
+ * its last change, its epoch and its lease.
+ *
+ * - A view that shows an entry that is not current shows what is kept at once
+ *   and reads it again in the background.
+ * - A change of an entry on screen reads it again, a folder's listing and a
+ *   changes list at most once a second.
+ * - A change of one off screen is only noted.
+ *
+ * Reading:
+ *
+ * - An entry holds no way to read it: each view reads through its own route, and
+ *   a read nobody asked for goes through the route of the view that came on
+ *   screen last.
+ * - Reads of one entry share one request.
+ * - At most `budget` of text and `MAX_ENTRIES` entries stay, the entries shown
+ *   longest ago leaving first.
  *
  * The cache follows the Host's own file system as VS Code, JetBrains IDEs and
- * Zed follow a remote workspace: the Host says when a subscription's subject
- * changed and pushes no content, so a change says only that the answer kept
- * may be out of date, and an answer read is the Host's whole truth. Nothing is
- * read on a timer.
+ * Zed follow a remote workspace. The Host says when a subscription's subject
+ * changed and pushes no content, so a change says only that the answer kept may
+ * be out of date, and an answer read is the Host's whole truth. Nothing is read
+ * on a timer.
  *
- * Every answer is a result: a text, a binary file, one too large to read as
- * text and one that is gone each carry their version and number, and a view
- * draws each as itself. Only a read that could not be made, a Host out of
- * reach or a refusal, is a failure.
+ * Every answer is a result: a text, a binary file, one too large to read as text
+ * and one that is gone each carry their version and number, and a view draws
+ * each as itself. Only a read that could not be made, a Host out of reach or a
+ * refusal, is a failure.
  *
- * No update remounts or resets a view. A view is keyed by what the user
- * chose, such as the mode, the file or the edit, never by the version of its
- * content; an update that changes nothing it shows changes nothing on screen,
- * and one that changes its content replaces it in place with its scroll kept.
- * A loading state shows only for another choice of the user's or a Reload,
- * and never replaces content already shown.
+ * No update remounts or resets a view:
+ *
+ * - A view is keyed by what the user chose, such as the mode, the file or the
+ *   edit, never by the version of its content.
+ * - An update that changes nothing it shows changes nothing on screen, and one
+ *   that changes its content replaces it in place with its scroll kept.
+ * - A loading state shows only for another choice of the user's or a Reload, and
+ *   never replaces content already shown.
  */
 import { errorMessage, requestIdOf } from '../infra/errors'
 import { reactive, shallowRef } from 'vue'
@@ -54,12 +65,14 @@ export const KEPT_TEXT = 64 * 1024 * 1024
 export const MAX_ENTRIES = 4096
 
 /**
- * The least time between two reads of a folder's listing or a working
- * tree's changes list that changes ask for, in milliseconds: a log appended
- * many times a second updates its size once a second, as Finder does, and a
- * build that writes files all the time lists the repository's changes once
- * a second, as an editor's source control view refreshes, rather than after
- * every batch of changes, each a status over the whole repository.
+ * The least time between two reads of a folder's listing or a working tree's
+ * changes list that changes ask for, in milliseconds.
+ *
+ * - A log appended many times a second updates its size once a second, as
+ *   Finder does.
+ * - A build that writes files all the time lists the repository's changes once a
+ *   second, as an editor's source control view refreshes, rather than after
+ *   every batch of changes, each a status over the whole repository.
  */
 export const SUMMARY_REREAD_MS = 1000
 
@@ -69,12 +82,15 @@ export function goneMessage(): string {
 }
 
 /**
- * What an entry is, which decides what it subscribes to: a file's text or description its `file`, a
- * listing its folder's names or details, the changes list its working tree,
- * a changed file's sides its `file` and its repository's `head`, and its
- * committed contents the `head` alone; an `answer` of the backend that
- * reads several files, such as a project's workflows, what its last answer
- * names (`KeptSpec.subjects`).
+ * What an entry is, which decides what it subscribes to:
+ *
+ * - A file's text or description: its `file`.
+ * - A listing: its folder's names or details.
+ * - The changes list: its working tree.
+ * - A changed file's sides: its `file` and its repository's `head`; its
+ *   committed contents the `head` alone.
+ * - An `answer` of the backend that reads several files, such as a project's
+ *   workflows: what its last answer names (`KeptSpec.subjects`).
  */
 export type KeptKind = 'listing' | 'text' | 'description' | 'changes' | 'sides' | 'committed' | 'answer'
 
@@ -93,9 +109,10 @@ export interface ShownEntry<T> {
   readonly answer: KeptAnswer | null
   /**
    * Why the last read could not be made, a Host out of reach or a refusal.
-   * Without an answer it is what the view shows, as a first read would;
-   * beside one the view keeps the answer and says quietly that it could not
-   * refresh.
+   *
+   * - Without an answer, it is what the view shows, as a first read would.
+   * - Beside one, the view keeps the answer and says quietly that it could not
+   *   refresh.
    */
   readonly failure: FileBrowserFailure | null
   /** A read is on its way: the first, which a view shows as loading, or a check, which it does not. */
@@ -121,10 +138,12 @@ export function failureShown(entry: ShownEntry<unknown> | null | undefined): Fil
 export interface Showing<T> {
   readonly entry: ShownEntry<T>
   /**
-   * Reads the entry again now, as Retry and Refresh do, or joins the read on
-   * its way. It settles when that read ends, whatever it answered, so a
-   * region's Retry stops loading even when the answer is the one it showed
-   * before, such as a file that is still not there (`RegionStatus`).
+   * Reads the entry again now, as Retry and Refresh do, or joins the read on its
+   * way.
+   *
+   * It settles when that read ends, whatever it answered, so a region's Retry
+   * stops loading even when the answer is the one it showed before, such as a file
+   * that is still not there (`RegionStatus`).
    */
   retry(): Promise<void>
   /** The view no longer shows it; a second release does nothing. */
@@ -165,11 +184,12 @@ export interface KeptSpec<T> {
   /** For a listing: the view shows its entries' sizes and times, so it follows them too. */
   details?: boolean
   /**
-   * Reads it; `held` is the version kept, which a read may answer unchanged
-   * with. `after` is the highest number the entry's live watch started at,
-   * null while none is live: a source that keeps answers of its own, as the
-   * backend keeps the workflows, answers one read at that number or later,
-   * since one read before it is stale to the page however current it is.
+   * Reads it; `held` is the version kept, which a read may answer unchanged with.
+   *
+   * `after` is the highest number the entry's live watch started at, null while
+   * none is live. A source that keeps answers of its own, as the backend keeps the
+   * workflows, answers one read at that number or later, since one read before it
+   * is stale to the page however current it is.
    */
   read(held: string | null, after: ReadAt | null): Promise<Read<T>>
   /** The characters of text it holds. */
@@ -200,10 +220,13 @@ interface Holder<T> {
 }
 
 /**
- * Whether a kept answer holds now: `current`; `stale` when the numbers say
- * it changed after the read; `restarted` when the answer and the watch are
- * of different runs of the runner, which one more read settles once both
- * are of the same; or `unknown` when no watch says.
+ * Whether a kept answer holds now:
+ *
+ * - `current`.
+ * - `stale`: the numbers say it changed after the read.
+ * - `restarted`: the answer and the watch are of different runs of the runner,
+ *   which one more read settles once both are of the same.
+ * - `unknown`: no watch says.
  */
 type Freshness = 'current' | 'stale' | 'restarted' | 'unknown'
 
@@ -234,12 +257,14 @@ function subjectKey({ kind, path }: Subject): string {
 }
 
 /**
- * One kept answer, shared by every view of its Host and path: data alone,
- * what was read, its number and the subscriptions it holds, never a way to
- * read it. Each view reads it through its own route, as a conversation's
- * views through the conversation's and a device's folder dialog through the
- * device's (`crates/backend-host-access/src/lib.rs`), and every view
- * sees what one of them read.
+ * One kept answer, shared by every view of its Host and path: data alone, never
+ * a way to read it.
+ *
+ * It holds what was read, its number and the subscriptions it holds. Each view
+ * reads it through its own route, as a conversation's views through the
+ * conversation's and a device's folder dialog through the device's
+ * (`crates/backend-host-access/src/lib.rs`), and every view sees what one of
+ * them read.
  */
 class Entry<T> {
   readonly spec: Omit<KeptSpec<T>, 'read' | 'watch' | 'details'>
@@ -310,10 +335,11 @@ class Entry<T> {
   }
 
   /**
-   * The number a read must be taken at or after to hold against its live
-   * watch: the highest `since` of the subscriptions the Host watches now;
-   * null while none is, or while they are of different runs, whose numbers
-   * compare with nothing.
+   * The number a read must be taken at or after to hold against its live watch:
+   * the highest `since` of the subscriptions the Host watches now.
+   *
+   * It is null while none is watched, or while they are of different runs, whose
+   * numbers compare with nothing.
    */
   readAfter(now: number): ReadAt | null {
     let after: ReadAt | null = null
@@ -350,12 +376,15 @@ class Entry<T> {
   }
 
   /**
-   * Whether its answer holds now: current when every subscription it holds is live within its
-   * lease as the page counts it, of the answer's epoch, started at or before
-   * the answer's number and changed last at or before it; stale when the
-   * subscriptions are live but the numbers say a change came after the
-   * read; restarted when they are live in another run than the answer's;
-   * unknown otherwise, which no change will settle.
+   * Whether its answer holds now. It is one of:
+   *
+   * - current: every subscription it holds is live within its lease as the page
+   *   counts it, of the answer's epoch, started at or before the answer's number
+   *   and changed last at or before it.
+   * - stale: the subscriptions are live but the numbers say a change came after
+   *   the read.
+   * - restarted: the subscriptions are live in another run than the answer's.
+   * - unknown: any other case, which no change will settle.
    */
   freshness(now: number): Freshness {
     if (this.spec.immutable && this.state.answer === 'value')
@@ -399,10 +428,12 @@ export class HostFiles implements WatchListener {
   }
 
   /**
-   * Has `entry` hold the subscriptions it depends on now: a listing that a
-   * view of sizes and times holds follows its details, else what it
-   * followed. A subscription not watched where it is, such as after its
-   * watch closed, moves to the watch of the view that came last.
+   * Has `entry` hold the subscriptions it depends on now.
+   *
+   * - A listing that a view of sizes and times holds follows its details, else
+   *   what it followed.
+   * - A subscription not watched where it is, such as after its watch closed,
+   *   moves to the watch of the view that came last.
    */
   private subscribe(entry: Entry<unknown>, given: WatchChannel | null): void {
     if (entry.spec.kind === 'listing' && entry.holders.size > 0)
@@ -450,10 +481,11 @@ export class HostFiles implements WatchListener {
   }
 
   /**
-   * Reads `entry` through `read`, or joins the read on its way, whatever
-   * route that one took: what it answers is the Host's. An answer that
-   * the numbers already show changed reads once more for the views that
-   * show it.
+   * Reads `entry` through `read`, or joins the read on its way, whatever route
+   * that one took: what it answers is the Host's.
+   *
+   * An answer that the numbers already show changed reads once more for the views
+   * that show it.
    */
   private read<T>(entry: Entry<T>, read: ReadEntry<T>): Promise<void> {
     if (entry.reading)
@@ -520,11 +552,11 @@ export class HostFiles implements WatchListener {
   }
 
   /**
-   * Reads again an entry a view shows, for a change that named it: at once,
-   * but a folder's listing or a changes list at most once a second. A change
-   * within a second of its last read waits for that second to end and is
-   * then read with any that came meanwhile, so the last change is never
-   * dropped.
+   * Reads again an entry a view shows, for a change that named it: at once, but a
+   * folder's listing or a changes list at most once a second.
+   *
+   * A change within a second of its last read waits for that second to end and is
+   * then read with any that came meanwhile, so the last change is never dropped.
    */
   private reread(entry: Entry<unknown>): void {
     if (entry.spec.kind !== 'listing' && entry.spec.kind !== 'changes') {
@@ -648,9 +680,10 @@ export class HostFiles implements WatchListener {
   }
 
   /**
-   * Edits what is kept of the entry `spec` names, as the page's own write
-   * tells it, without a read: an upload's new file in its folder's listing.
-   * Nothing kept, nothing to edit; whether it is current stays as it was,
+   * Edits what is kept of the entry `spec` names, as the page's own write tells it,
+   * without a read: an upload's new file in its folder's listing.
+   *
+   * Nothing kept, nothing to edit. Whether the entry is current stays as it was,
    * since the Host's watch reports the write too.
    */
   amend<T>(spec: KeptSpec<T>, edit: (value: T) => T): void {
@@ -693,13 +726,18 @@ export class HostFiles implements WatchListener {
   }
 
   /**
-   * The Host said something of `subscriptions`: each entry on screen that
-   * depends on one and whose answer the numbers now show changed is read
-   * again, at once but a listing and a changes list at most once a second,
-   * and so is one whose read failed, as a history read outside a repository
-   * does until `git init` makes one there, and one read at no number once
-   * its watch is live. An entry off screen is only noted, by the numbers
-   * its subscriptions now hold, and read when it comes on screen.
+   * The Host said something of `subscriptions`.
+   *
+   * Each entry on screen that depends on one is read again, at once but a listing
+   * and a changes list at most once a second, when one of these holds:
+   *
+   * - The numbers now show its answer changed.
+   * - Its read failed, as a history read outside a repository does until
+   *   `git init` makes one there.
+   * - It was read at no number and its watch is now live.
+   *
+   * An entry off screen is only noted, by the numbers its subscriptions now hold,
+   * and read when it comes on screen.
    */
   heard(subscriptions: readonly Subscription[]): void {
     const heard = new Set(subscriptions)

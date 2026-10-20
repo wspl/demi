@@ -1,14 +1,18 @@
 import { z } from 'zod'
 
 /**
- * The languages Demi speaks and how the page chooses one. The page alone resolves
- * System, and reports the language it resolved with the browser's other facts in the
- * `locale` preference, so the backend's emails read that instead of resolving it
- * again. It starts in the language it last showed, kept in the browser's storage, so
- * a user whose choice differs from the browser's sees no other language before the
- * preferences arrive. The document's `lang` follows the choice, so each language's own
- * font draws its characters: one Han character looks different in Chinese, Japanese
- * and Korean.
+ * The languages Demi speaks and how the page chooses one.
+ *
+ * The page alone resolves System, and reports the language it resolved with the
+ * browser's other facts in the `locale` preference, so the backend's emails read
+ * that instead of resolving it again.
+ *
+ * It starts in the language it last showed, kept in the browser's storage, so a
+ * user whose choice differs from the browser's sees no other language before the
+ * preferences arrive.
+ *
+ * The document's `lang` follows the choice, so each language's own font draws its
+ * characters: one Han character looks different in Chinese, Japanese and Korean.
  */
 
 export const LANGUAGES = ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const
@@ -32,10 +36,13 @@ export const LANGUAGE_NAMES: Readonly<Record<Language, string>> = {
 const TRADITIONAL_REGIONS = new Set(['TW', 'HK', 'MO'])
 
 /**
- * The language Demi speaks for the BCP 47 tag `tag`, if any: Traditional
- * Chinese for `zh-Hant` and the Chinese of Taiwan, Hong Kong and Macao,
- * Simplified for any other `zh`; a script the tag names wins over its
- * region. A tag that is not one speaks none.
+ * The language Demi speaks for the BCP 47 tag `tag`, if any:
+ *
+ * - Traditional Chinese for `zh-Hant` and the Chinese of Taiwan, Hong Kong and
+ *   Macao.
+ * - Simplified for any other `zh`.
+ * - A script the tag names wins over its region.
+ * - A tag that is not one speaks none.
  */
 function spokenFor(tag: string): Language | null {
   let locale: Intl.Locale

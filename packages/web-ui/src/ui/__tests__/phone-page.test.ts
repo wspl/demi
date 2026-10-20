@@ -2,13 +2,15 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 import { installPhonePage } from '../phone-page'
 
-// The phone's page under the on-screen keyboard: Safari on iOS keeps the page
-// its full height under the keyboard and scrolls it to show the focused field,
-// so the app follows the visual viewport itself. happy-dom lays nothing out:
-// the page's height, its width's switch and the visual viewport are given here
-// as Safari reports them on an iPhone 17, 714 px tall, 377 px of it visible
-// with the keyboard open. A few ms, besides the start of the page every
-// happy-dom test pays.
+// The phone's page under the on-screen keyboard: Safari on iOS keeps the page its
+// full height under the keyboard and scrolls it to show the focused field, so the app
+// follows the visual viewport itself.
+//
+// happy-dom lays nothing out: the page's height, its width's switch and the visual
+// viewport are given here as Safari reports them on an iPhone 17, 714 px tall, 377 px
+// of it visible with the keyboard open.
+//
+// Cost: a few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 

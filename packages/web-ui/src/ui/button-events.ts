@@ -20,10 +20,12 @@ export function blockUnavailableButtonEvent(
 const spaceDown = new WeakSet<EventTarget>()
 
 /**
- * Return and Space press the button-like element that has the focus, as they
- * press a native button: Return as it goes down, Space as it comes up (and
- * the page does not scroll as it goes down). Bind it to both `keydown` and
- * `keyup`. An element that is `aria-disabled` is not pressed.
+ * Return and Space press the button-like element that has the focus, as they press a
+ * native button: Return as it goes down, Space as it comes up (and the page does not
+ * scroll as it goes down).
+ *
+ * Bind it to both `keydown` and `keyup`. An element that is `aria-disabled` is not
+ * pressed.
  */
 export function pressOnKey(event: KeyboardEvent): void {
   const target = event.currentTarget

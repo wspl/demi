@@ -35,14 +35,18 @@ import {
 } from './workspace'
 
 /**
- * A new project for a conversation to work in. The form branches on where it
- * lives: on the Cloud the workspace is managed and only needs a name; on a
- * device it is a directory there, and takes the directory's name. The folder
- * browser is a page of the same dialog, opened by Browse…. Every opening
- * starts from a clean form on the user's last choice of kind and device,
- * the Cloud the first time; the host remembers it from `choose`. Moving a
- * conversation between existing projects is the conversation header's menus, not
- * this dialog.
+ * A new project for a conversation to work in.
+ *
+ * The form branches on where it lives. On the Cloud the workspace is managed and
+ * only needs a name. On a device it is a directory there, and takes the
+ * directory's name. The folder browser is a page of the same dialog, opened by
+ * Browse…
+ *
+ * Every opening starts from a clean form on the user's last choice of kind and
+ * device, the Cloud the first time; the host remembers it from `choose`.
+ *
+ * Moving a conversation between existing projects is the conversation header's
+ * menus, not this dialog.
  */
 const props = defineProps<{
   isOpen: boolean

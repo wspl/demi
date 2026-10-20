@@ -2,12 +2,15 @@
 import { computed } from 'vue'
 
 /**
- * A status dot: a device online or offline, a conversation running, a file
- * added. It stands in the flow wherever it is placed; `CornerDot` puts it on
- * an icon's corner. No tone keeps the dot in the layout at zero opacity, so a
- * status can fade in and out. `ring` draws it hollow, a settled mark that
- * holds the dot's place; `breathing` is the one look of a running thing, in
- * the sidebar row, the tabs, the status bar and the chips alike.
+ * A status dot: a device online or offline, a conversation running, a file added.
+ * It stands in the flow wherever it is placed; `CornerDot` puts it on an icon's
+ * corner.
+ *
+ * - No tone keeps the dot in the layout at zero opacity, so a status can fade in
+ *   and out.
+ * - `ring` draws it hollow, a settled mark that holds the dot's place.
+ * - `breathing` is the one look of a running thing, in the sidebar row, the tabs,
+ *   the status bar and the chips alike.
  */
 export type StatusDotTone = 'accent' | 'success' | 'warning' | 'danger' | 'muted' | 'attention'
 

@@ -10,14 +10,18 @@ import type { TreeRow } from './tree'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
- * One row of a `Tree`, in the tree or pinned in its sticky stack: a chevron
- * for a directory, the file icon, the name. A tree dresses its rows through
- * the slots: `mark` sits on the icon's corner, `name` replaces the plain
- * name, `trailing` ends the row, kept off the scrollbar. A `tooltip` covers
- * the whole row. A hidden entry's icon and name are faded. A row whose menu
- * is open keeps its hover look until the menu closes. The row the tree's
- * keyboard is on (`cursor`) wears the focus ring while the tree has focus,
- * and `highlight` marks letters of its name, as a type-select query's prefix.
+ * One row of a `Tree`, in the tree or pinned in its sticky stack: a chevron for a
+ * directory, the file icon, the name.
+ *
+ * - A tree dresses its rows through the slots: `mark` sits on the icon's corner,
+ *   `name` replaces the plain name, and `trailing` ends the row, kept off the
+ *   scrollbar.
+ * - A `tooltip` covers the whole row.
+ * - A hidden entry's icon and name are faded.
+ * - A row whose menu is open keeps its hover look until the menu closes.
+ * - The row the tree's keyboard is on (`cursor`) wears the focus ring while the
+ *   tree has focus.
+ * - `highlight` marks letters of its name, as a type-select query's prefix.
  */
 defineProps<{
   row: TreeRow

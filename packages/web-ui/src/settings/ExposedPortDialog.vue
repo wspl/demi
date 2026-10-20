@@ -16,11 +16,12 @@ import SettingsRow from './SettingsRow.vue'
 import { exposedPortProblem, type ExposedPortChange, type SettingsExposedPort } from './exposed-ports'
 
 /**
- * An exposed port's fields, the one editor a new row and an existing one
- * open (create first, then edit): the port, shown as missing until it is
- * entered, its label, and the address it is reached at. Each field is saved
- * as it is committed; a refusal shows under its field, which keeps the
- * value to correct.
+ * An exposed port's fields, the one editor a new row and an existing one open
+ * (create first, then edit): the port, shown as missing until it is entered, its
+ * label, and the address it is reached at.
+ *
+ * Each field is saved as it is committed. A refusal shows under its field, which
+ * keeps the value to correct.
  */
 const props = defineProps<{
   isOpen: boolean

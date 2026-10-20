@@ -10,14 +10,21 @@ import { deviceStatusLabel } from '@demicodes/web-ui/devices/state'
 import type { SidebarDevice } from './types'
 
 /**
- * Where a row's work runs, as the row's end shows it: a conversation's and a project's row end in
- * this one mark, in the same box, so the devices line up down both groups. A device is its mark
- * (`DeviceIcon`), the plain computer without a dot once it is removed; its tip and its accessible label
- * are the same text, "MacBook Pro · Online" or "Removed device". A project on the Cloud shows the Cloud's
- * glyph in the same box. The mark stays while the pointer is over the row, so the row's buttons stand to
- * its left. It is a mark, not a button: its box is as wide as its glyph, so it stands 6px from its
- * neighbours as the row's other marks do (32px on a phone, as they are), and it rests in their grey, the
- * ghost button's resting `text-fg-muted`, so it matches the row's buttons beside it.
+ * Where a row's work runs, as the row's end shows it: a conversation's and a
+ * project's row end in this one mark, in the same box, so the devices line up
+ * down both groups.
+ *
+ * - A device is its mark (`DeviceIcon`), the plain computer without a dot once it
+ *   is removed. Its tip and its accessible label are the same text, "MacBook
+ *   Pro · Online" or "Removed device".
+ * - A project on the Cloud shows the Cloud's glyph in the same box.
+ * - The mark stays while the pointer is over the row, so the row's buttons stand
+ *   to its left.
+ *
+ * It is a mark, not a button. Its box is as wide as its glyph, so it stands 6px
+ * from its neighbours as the row's other marks do (32px on a phone, as they are),
+ * and it rests in their grey, the ghost button's resting `text-fg-muted`, so it
+ * matches the row's buttons beside it.
  */
 const props = defineProps<{
   host: SidebarDevice | { kind: 'cloud' }

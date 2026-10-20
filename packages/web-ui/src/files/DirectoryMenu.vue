@@ -12,11 +12,12 @@ import { t } from './locales/text'
 import { useShowing } from './showing'
 
 /**
- * One directory as a menu: its entries, directories first, each directory
- * opening its own entries as a submenu, so a breadcrumb can offer the
- * files beside the one shown and everything under them. Choosing a file
- * reports it; a directory only unfolds. The listing shows while the menu
- * does, as the source keeps it.
+ * One directory as a menu: its entries, directories first, each directory opening
+ * its own entries as a submenu, so a breadcrumb can offer the files beside the one
+ * shown and everything under them.
+ *
+ * Choosing a file reports it; a directory only unfolds. The listing shows while the
+ * menu does, as the source keeps it.
  */
 const props = defineProps<{
   source: Pick<FileBrowserSource, 'showListing'>

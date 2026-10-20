@@ -9,20 +9,24 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
 import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigation'
 /**
  * One settings section: a title, an optional line under it, then groups.
- * While a level inside it is open on a narrow dialog (a provider beside the
- * list of providers), that level is the page and its title, so this title
- * steps aside. A page a section opened, such as a device's beside the list
- * of devices, names the page it returns to in `back`: a back button above
- * its title says so, and on a narrow dialog the dialog's own navigation bar
- * goes back to it instead, as System Settings and iOS do.
  *
- * A page of one thing says its state in its header, never in rows: an
- * `icon` beside the title, a `status` line under it (a dot of `statusTone`
- * and a few words), and a `description` under them where the state needs
- * one, such as how to bring an offline device back. The icon is exactly as
- * tall as the title and status lines together and centred on them; the
- * description starts where the title starts. A row below is only a setting
- * or a fact.
+ * - While a level inside it is open on a narrow dialog (a provider beside the
+ *   list of providers), that level is the page and its title, so this title
+ *   steps aside.
+ * - A page a section opened, such as a device's beside the list of devices,
+ *   names the page it returns to in `back`. A back button above its title says
+ *   so, and on a narrow dialog the dialog's own navigation bar goes back to it
+ *   instead, as System Settings and iOS do.
+ *
+ * A page of one thing says its state in its header, never in rows:
+ *
+ * - An `icon` beside the title. It is exactly as tall as the title and status
+ *   lines together and centred on them.
+ * - A `status` line under the title: a dot of `statusTone` and a few words.
+ * - A `description` under them where the state needs one, such as how to bring
+ *   an offline device back. It starts where the title starts.
+ *
+ * A row below is only a setting or a fact.
  */
 const props = defineProps<{
   title: TitleText

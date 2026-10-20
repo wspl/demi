@@ -27,10 +27,12 @@ export interface ToolbarAction {
 }
 
 /**
- * A panel's toolbar: what leads it, such as a name, in the `leading` slot,
- * then its actions. The actions that do not fit the bar's width go, from
- * its end, into a More menu (») at the end, as a macOS window's toolbar
- * puts them; the leading content takes what room the actions leave.
+ * A panel's toolbar: what leads it, such as a name, in the `leading` slot, then its
+ * actions.
+ *
+ * The actions that do not fit the bar's width go, from its end, into a More menu (»)
+ * at the end, as a macOS window's toolbar puts them. The leading content takes what
+ * room the actions leave.
  */
 const props = defineProps<{
   actions: readonly ToolbarAction[]

@@ -30,14 +30,15 @@ import { t } from './locales/text'
 
 /**
  * A menu: `items` it lays out itself, filterable and virtual when asked, or
- * MenuItems in its slot. It takes the keyboard when it opens, unless it is a
- * submenu, `autofocus` is off, or it is pinned open in a catalog host
- * (`useAutofocus`). Without a filter field, typing a name moves
- * to the first row that starts with it (`useTypeSelect`), and Enter chooses
- * the row the keys moved to. In a menu of slot rows the keys go as in a macOS
- * menu: Up and Down Arrow move between rows, Right Arrow or Return on a row
- * with a submenu opens it with the keys in it, and Left Arrow or Escape there
- * closes it and gives the keys back.
+ * MenuItems in its slot.
+ *
+ * - It takes the keyboard when it opens, unless it is a submenu, `autofocus` is
+ *   off, or it is pinned open in a catalog host (`useAutofocus`).
+ * - Without a filter field, typing a name moves to the first row that starts with
+ *   it (`useTypeSelect`), and Enter chooses the row the keys moved to.
+ * - In a menu of slot rows the keys go as in a macOS menu: Up and Down Arrow move
+ *   between rows, Right Arrow or Return on a row with a submenu opens it with the
+ *   keys in it, and Left Arrow or Escape there closes it and gives the keys back.
  */
 const props = withDefaults(defineProps<{
   items?: T[]

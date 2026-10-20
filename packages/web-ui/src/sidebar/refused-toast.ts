@@ -18,10 +18,11 @@ export type RefusedAction = 'archive' | 'restore' | 'pin' | 'unpin' | 'delete' |
 const NAME_MAX_CHARS = 20
 
 /**
- * A conversation's title as a refusal quotes it: whole when short, else cut
- * at a word with one ellipsis at the end, as the Writing page cuts a name.
- * The backticks a title written as Markdown marks code with, and its closing
- * period, go, so the quote holds only the name.
+ * A conversation's title as a refusal quotes it: whole when short, else cut at a
+ * word with one ellipsis at the end, as the Writing page cuts a name.
+ *
+ * The backticks a title written as Markdown marks code with, and its closing period,
+ * go, so the quote holds only the name.
  */
 function quotedName(title: string): string {
   let name = title.replaceAll('`', '').trim()
@@ -40,11 +41,13 @@ function sentence(reason: string): SentenceText {
 }
 
 /**
- * What a refusal toast says when the backend refused to `action` the
- * conversations `refusals` lists, one entry each (`action` an id:
- * archive, restore, pin, unpin, delete or move): for one, a headline naming it and its
- * reasons as sentences; for several, a headline with their count and each
- * one's name and reasons on a line of its own.
+ * What a refusal toast says when the backend refused to `action` the conversations
+ * `refusals` lists, one entry each (`action` an id: archive, restore, pin, unpin,
+ * delete or move):
+ *
+ * - For one, a headline naming it and its reasons as sentences.
+ * - For several, a headline with their count and each one's name and reasons on a
+ *   line of its own.
  */
 export function refusedText(action: RefusedAction, refusals: readonly Refusal[]): { title: HeadlineText; message: SentenceText } {
   const said = (refusal: Refusal) => refusal.reasons.map(sentence).join(' ')

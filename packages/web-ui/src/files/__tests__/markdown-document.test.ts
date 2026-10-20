@@ -2,13 +2,18 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import type { EffectScope } from 'vue'
 
-// An image in a Markdown document shows its file as it is now: README.md names `shots/login.png`, the file is
-// overwritten while the document is open, and the image shows the new picture in place, learned from the Host's
-// watch, without the document rendering again. The web browser keeps the picture it decoded for an address for as
-// long as the page lives, so the new version must be a new address. Played against a simulated Host's watch on a
-// page of happy-dom, which cannot render the Markdown itself (its sanitizer drops the document's structure): the
-// rendering is the one the document renderer gives for such an image, a path and no address. Cost: no I/O, fake
-// timers; a few milliseconds.
+// An image in a Markdown document shows its file as it is now: README.md names
+// `shots/login.png`, the file is overwritten while the document is open, and the
+// image shows the new picture in place, learned from the Host's watch, without the
+// document rendering again. The web browser keeps the picture it decoded for an
+// address for as long as the page lives, so the new version must be a new address.
+//
+// Played against a simulated Host's watch on a page of happy-dom, which cannot
+// render the Markdown itself (its sanitizer drops the document's structure): the
+// rendering is the one the document renderer gives for such an image, a path and no
+// address.
+//
+// Cost: no I/O, fake timers; a few milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 // After the page, since Vue and the components ask for its document and classes.

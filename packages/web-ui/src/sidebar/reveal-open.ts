@@ -1,11 +1,12 @@
 import { watch } from 'vue'
 
 /**
- * Keeps the open conversation's row in sight: once it is listed in a folded
- * project, as a project's new conversation is once its draft holds a
- * character or a file, or one opened from elsewhere is, that project
- * unfolds, as Finder reveals what it opens. It unfolds when the open
- * conversation or its project changes, so the user can fold the project
+ * Keeps the open conversation's row in sight, as Finder reveals what it opens.
+ *
+ * Once the open conversation is listed in a folded project, that project
+ * unfolds. That happens when a project's new conversation has a draft with a
+ * character or a file, and when one is opened from elsewhere. It unfolds when the
+ * open conversation or its project changes, so the user can fold the project
  * again while it stays open.
  */
 export function useRevealOpen(options: {

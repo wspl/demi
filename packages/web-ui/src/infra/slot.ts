@@ -8,10 +8,11 @@ export type Revisions = Readonly<Record<string, number>>
  */
 export interface SlotAnswer<V> {
   /**
-   * The value the answer leaves, made of the value read, when the answer
-   * tells the parts its change touches whole, as a product state's part is
-   * told. It is taken only when no read of those parts came since the write
-   * was sent, since that read may be newer.
+   * The value the answer leaves, made of the value read, when the answer tells the
+   * parts its change touches whole, as a product state's part is told.
+   *
+   * It is taken only when no read of those parts came since the write was sent,
+   * since that read may be newer.
    */
   value?: (read: V) => V
   /**
@@ -76,19 +77,21 @@ export class SlotChange<V, M = undefined> {
 /**
  * A piece of state the page reads from the backend: the value it last read, the
  * revision of each of its parts, and the changes the page made and has not seen
- * land. The page shows `shown`, the value read with those changes applied in
- * the order they were made. One mechanism serves every slot:
+ * land.
+ *
+ * The page shows `shown`, the value read with those changes applied in the order
+ * they were made. One mechanism serves every slot:
  *
  * - A change leaves when the page holds a read at or after the revisions its
- *   answer named; an answer without revisions that tells its parts whole is
- *   taken as their value when no read came since the write, else the change
- *   waits for a read of its parts asked for after the answer. An answer
- *   releases only its own change, never another.
- * - A change whose effect the value read already holds, such as the removal
- *   of an item the read no longer has, leaves once answered.
- * - A change whose write failed or was refused leaves at once; the page then
- *   shows what the backend has, and the slot's owner keeps what the user
- *   wrote in it.
+ *   answer named. An answer without revisions that tells its parts whole is
+ *   taken as their value when no read came since the write; otherwise the change
+ *   waits for a read of its parts asked for after the answer. An answer releases
+ *   only its own change, never another.
+ * - A change whose effect the value read already holds, such as the removal of
+ *   an item the read no longer has, leaves once answered.
+ * - A change whose write failed or was refused leaves at once. The page then
+ *   shows what the backend has, and the slot's owner keeps what the user wrote
+ *   in it.
  *
  * The writes of one thing go one at a time, in the order the user made them,
  * which their owner orders, such as with a `SerialQueue`.
@@ -158,10 +161,11 @@ export class Slot<V, M = undefined> {
   }
 
   /**
-   * Takes a read of the whole value, as a snapshot or a request answers. A
-   * read of no newer revision than the one held changes nothing. `since` is
-   * where the clock stood when the request for it went out; a read from the
-   * channel needs none. Answers whether it was taken.
+   * Takes a read of the whole value, as a snapshot or a request answers. A read of
+   * no newer revision than the one held changes nothing.
+   *
+   * `since` is where the clock stood when the request for it went out; a read from
+   * the channel needs none. Answers whether it was taken.
    */
   replace(value: V, options: { revisions?: Revisions; since?: number } = {}): boolean {
     const { revisions } = options
@@ -180,10 +184,11 @@ export class Slot<V, M = undefined> {
   }
 
   /**
-   * Takes a read of one part, as a message of the channel brings it:
-   * `update` makes the value of the one it replaces. Nothing is read before
-   * the whole, and a read of no newer revision than the one held changes
-   * nothing. Answers whether it was taken.
+   * Takes a read of one part, as a message of the channel brings it: `update` makes
+   * the value of the one it replaces. Nothing is read before the whole, and a read
+   * of no newer revision than the one held changes nothing.
+   *
+   * Answers whether it was taken.
    */
   receive(part: string, update: (read: V) => V, options: { revision?: number; since?: number } = {}): boolean {
     const read = this.read.value
@@ -202,10 +207,11 @@ export class Slot<V, M = undefined> {
   }
 
   /**
-   * Applies what a write's answer says of `parts`, for a write no change
-   * stands for, unless one of them was read since the write was sent `at`:
-   * that read may be newer, and if it is older, the value the write caused
-   * is still to come. Releases no change. Answers whether it applied.
+   * Applies what a write's answer says of `parts`, for a write no change stands
+   * for, unless one of them was read since the write was sent `at`. That read may
+   * be newer, and if it is older, the value the write caused is still to come.
+   *
+   * Releases no change. Answers whether it applied.
    */
   answered(parts: readonly string[], at: number, answer: SlotAnswer<V> & { value: (read: V) => V }): boolean {
     const read = this.read.value
@@ -336,10 +342,12 @@ export class Slot<V, M = undefined> {
   }
 
   /**
-   * The landed changes a read now holds leave: those whose revisions it
-   * reached; those without revisions of which `of` read a part, when the
-   * request for the read went out at `since`, after they landed; and those
-   * whose effect the value read already has.
+   * The landed changes a read now holds leave. Three kinds leave:
+   *
+   * - Those whose revisions it reached.
+   * - Those without revisions of which `of` read a part, when the request for the
+   *   read went out at `since`, after they landed.
+   * - Those whose effect the value read already has.
    */
   private release(of: (change: SlotChange<V, M>) => boolean, since: number): void {
     const read = this.read.value

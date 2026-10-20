@@ -36,13 +36,17 @@ export interface PreviewPlacement {
 }
 
 /**
- * Where a hover card goes: above its picture when the whole card fits there,
- * below it when it fits there instead, and otherwise on the side with more
- * room, its picture scaled down so the whole card fits that side, so it never
- * covers the picture it shows. `picture` is the picture's size in the card
- * (`previewBox`), `chrome` the height the card adds to it (its padding and
- * caption), and `room` the space between the picture and the page's top and
- * bottom edges; the card keeps `PREVIEW_GAP` to the picture and to the edge.
+ * Where a hover card goes, so it never covers the picture it shows:
+ *
+ * - Above its picture when the whole card fits there.
+ * - Below it when it fits there instead.
+ * - Otherwise on the side with more room, its picture scaled down so the whole
+ *   card fits that side.
+ *
+ * `picture` is the picture's size in the card (`previewBox`), `chrome` the height
+ * the card adds to it (its padding and caption), and `room` the space between the
+ * picture and the page's top and bottom edges. The card keeps `PREVIEW_GAP` to the
+ * picture and to the edge.
  */
 export function previewPlacement(
   picture: PixelSize,

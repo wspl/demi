@@ -1,11 +1,11 @@
 import { inject, onBeforeUnmount, onMounted, type InjectionKey } from 'vue'
 
 /**
- * The app frame's sidebar as a page inside it reaches it on a phone
- * (SidebarLayout): there the frame shows one top bar, and a page with a bar
- * of its own, such as the conversation's, puts the sidebar's button in it;
- * the frame's own bar, the button and the frame's label, shows only while
- * no page does.
+ * The app frame's sidebar as a page inside it reaches it on a phone (SidebarLayout).
+ *
+ * There the frame shows one top bar, and a page with a bar of its own, such as the
+ * conversation's, puts the sidebar's button in it. The frame's own bar, the button
+ * and the frame's label, shows only while no page does.
  */
 export interface SidebarDrawer {
   /** Opens the sidebar's drawer. */

@@ -8,10 +8,11 @@
 export const DRAG_START_PX = 4
 
 /**
- * Where a dragged item lands: its index among the others, the `move` index,
- * by how many of their centers its own center has passed. `centers` are the
- * items' centers in order, the dragged one at `from` included, and `center`
- * is the dragged item's center where the pointer holds it.
+ * Where a dragged item lands: its index among the others, the `move` index, by how
+ * many of their centers its own center has passed.
+ *
+ * `centers` are the items' centers in order, the dragged one at `from` included, and
+ * `center` is the dragged item's center where the pointer holds it.
  */
 export function dragTarget(centers: readonly number[], from: number, center: number): number {
   return centers.filter((other, index) => index !== from && other < center).length

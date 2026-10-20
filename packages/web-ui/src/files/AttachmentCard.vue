@@ -12,10 +12,12 @@ import { t } from './locales/text'
 
 /**
  * An attachment block's card: the file's icon, its name, its kind and size, and
- * Download at the right end. A click on the card asks to open the file (`open`)
- * where the page can open it (`openable`); only Download downloads. While the
- * page still asks for the attachment (`file` null), the card keeps its place,
- * empty.
+ * Download at the right end.
+ *
+ * - A click on the card asks to open the file (`open`) where the page can open it
+ *   (`openable`). Only Download downloads.
+ * - While the page still asks for the attachment (`file` null), the card keeps its
+ *   place, empty.
  */
 const props = defineProps<{
   file: { name: string; size: number; url: string } | null

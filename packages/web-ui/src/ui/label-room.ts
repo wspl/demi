@@ -36,10 +36,11 @@ export function compactLabels(
 }
 
 /**
- * Lets the controls under this component give up their labels for something
- * that needs the width more: a composer's editor, a header's title. `room` is
- * how much wider than its least the protected element is now, negative while
- * it is narrower. Labels go in descending `order` and return in ascending
+ * Lets the controls under this component give up their labels for something that
+ * needs the width more: a composer's editor, a header's title.
+ *
+ * `room` is how much wider than its least the protected element is now, negative
+ * while it is narrower. Labels go in descending `order` and return in ascending
  * order, each only when the protected element keeps its least width with it.
  */
 export function provideLabelRoom(room: () => number | undefined): void {

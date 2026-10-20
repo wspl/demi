@@ -37,11 +37,15 @@ function chunks(sequence: number, key: boolean, length: number): LiveVideoChunk[
 }
 
 /**
- * A direct path delivers chunks in any order: the page joins each frame
- * whole and hands frames on in sequence, a frame waiting for the one
- * before it, and a key frame for none. Planted defects this catches:
- * joining chunks in arrival order, handing a frame on before the one
- * before it, waiting before a key frame.
+ * A direct path delivers chunks in any order: the page joins each frame whole and
+ * hands frames on in sequence, a frame waiting for the one before it, and a key
+ * frame for none.
+ *
+ * Planted defects this catches:
+ *
+ * - Joining chunks in arrival order.
+ * - Handing a frame on before the one before it.
+ * - Waiting before a key frame.
  */
 test('chunks that come out of order make whole frames, handed on in sequence', () => {
   const first = chunks(1, true, 2 * LIVE_CHUNK_DATA_BYTES + 10)

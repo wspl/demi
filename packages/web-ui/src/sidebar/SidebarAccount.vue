@@ -17,10 +17,11 @@ import type { SidebarAccount } from './types';
 import { THIS_SESSION } from './session-target';
 
 /**
- * The signed-in user at the foot of the sidebar; the menu behind it holds
- * settings and sign-out. The row takes what its container leaves it, and a
- * name that does not fit beside the avatar ends in an ellipsis, the menu
- * still showing it.
+ * The signed-in user at the foot of the sidebar; the menu behind it holds settings
+ * and sign-out.
+ *
+ * The row takes what its container leaves it, and a name that does not fit beside the
+ * avatar ends in an ellipsis, the menu still showing it.
  */
 const props = defineProps<{
   account: SidebarAccount;

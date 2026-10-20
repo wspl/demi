@@ -1,16 +1,19 @@
 /**
- * A file watch that carries the subscriptions of what a page keeps of one
- * Host's files: a conversation's
- * watch, on the relay or its direct channel, or a device's folder dialog's. The
- * kept files (`HostFiles`) hand each subscription to the watch of the view that
- * brought it; the watch is open while it carries any, subscribes again to all
- * of them each time it opens, renews them in one message every 3 minutes, and
- * tells the kept files what the Host says of each.
+ * A file watch that carries the subscriptions of what a page keeps of one Host's
+ * files: a conversation's watch, on the relay or its direct channel, or a
+ * device's folder dialog's.
  *
- * Nothing here decides whether an entry is current: a subscription holds
- * what the Host said, its `since`, the `at` of its last change and when its
- * lease began as the page counts it, and the kept files compare those with
- * each answer's number.
+ * The kept files (`HostFiles`) hand each subscription to the watch of the view
+ * that brought it. The watch is open while it carries any, and it:
+ *
+ * - subscribes again to all of them each time it opens,
+ * - renews them in one message every 3 minutes, and
+ * - tells the kept files what the Host says of each.
+ *
+ * Nothing here decides whether an entry is current. A subscription holds what the
+ * Host said, its `since`, the `at` of its last change and when its lease began as
+ * the page counts it, and the kept files compare those with each answer's
+ * number.
  */
 import { shallowReactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'
@@ -63,10 +66,11 @@ export type WatchMessage =
 /** What one connection of a watch tells the watch. */
 export interface WatchLinkHandlers {
   /**
-   * It opened: what it says from now on counts. With `ping`, which sends
-   * the far end a ping it answers with `pong`, as the backend's relay does
-   * and a direct channel's runner does not, the page's return asks it
-   * whether it is alive.
+   * It opened: what it says from now on counts.
+   *
+   * With `ping`, which sends the far end a ping it answers with `pong`, as the
+   * backend's relay does and a direct channel's runner does not, the page's return
+   * asks it whether it is alive.
    */
   opened(ping?: (id: number) => void): void
   message(message: WatchMessage): void
@@ -140,10 +144,12 @@ interface SentRenewal {
 }
 
 /**
- * One watch of a Host. It connects while it carries a subscription, and
- * again after its reconnect waits when the connection ends, which ends
- * every subscription on it; a connection that brings nothing, not even a
- * heartbeat, for 75 seconds is broken.
+ * One watch of a Host. It connects while it carries a subscription, and again
+ * after its reconnect waits when the connection ends, which ends every
+ * subscription on it.
+ *
+ * A connection that brings nothing, not even a heartbeat, for 75 seconds is
+ * broken.
  */
 export class WatchChannel {
   private readonly carried = new Map<string, Subscription>()
@@ -213,10 +219,11 @@ export class WatchChannel {
   }
 
   /**
-   * The watch no longer serves its Host, as a conversation's after it moved
-   * to another: it lets go of everything it carries, which waits, unwatched,
-   * for a view whose watch serves the Host to take it, and closes. It
-   * carries again what it is given later.
+   * The watch no longer serves its Host, as a conversation's after it moved to
+   * another. It lets go of everything it carries, which waits, unwatched, for a
+   * view whose watch serves the Host to take it, and closes.
+   *
+   * It carries again what it is given later.
    */
   retire(): void {
     const subscriptions = [...this.carried.values()]

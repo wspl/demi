@@ -23,16 +23,20 @@ export interface RequestSides {
 
 /**
  * The two sides a request's diff shows, read by the blobs `copies` names
- * (`crates/agent-store/src/changes.rs`). `selection` names
- * what the user chose to see, such as a file's All Changes or one of its
- * edits, and null while nothing is chosen.
+ * (`crates/agent-store/src/changes.rs`).
  *
- * The transcript the selection comes from is derived anew with every frame
- * of a turn; only another pair of blobs is read. A new pair for the same
- * selection, as All Changes gets once the agent edits the file again,
- * replaces the sides shown when it arrives, without a loading state
- * between; another selection shows the read on its way. Reads end with the
- * calling scope.
+ * `selection` names what the user chose to see, such as a file's All Changes or
+ * one of its edits, and is null while nothing is chosen.
+ *
+ * The transcript the selection comes from is derived anew with every frame of a
+ * turn; only another pair of blobs is read.
+ *
+ * - A new pair for the same selection, as All Changes gets once the agent edits
+ *   the file again, replaces the sides shown when it arrives, without a loading
+ *   state between.
+ * - Another selection shows the read on its way.
+ *
+ * Reads end with the calling scope.
  */
 export function useRequestSides(
   selection: () => string | null,

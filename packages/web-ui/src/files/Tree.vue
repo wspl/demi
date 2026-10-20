@@ -23,30 +23,41 @@ import type { SentenceText } from '../ui/ui-text'
 import { vContextMenu, type ContextMenuValue } from '../ui/context-menu'
 
 /**
- * A tree of rows laid out by its host: a caption, then the rows, on the
- * editor's surface. A click on a row asks the host to activate it (fold a
- * directory, open a file). The caption stays pinned; under it pin the
- * directories the rows at the top sit in, each while its own row has
- * scrolled out above and its contents have not, so the way to what is in
- * view stays in sight and goes once the tree is past it. A pinned
- * directory acts as its row, and once it folds its row rests where the
- * pinned copy was. The rows are dressed through the slots `mark`, `name`
- * and `trailing`, given the row; `tooltip` covers a row with a hint;
- * `empty` fills the tree while it has no rows. Each row declares the
- * context menu the host gives it (`rowMenu`), and the tree's empty space
- * the one the host gives no row.
+ * A tree of rows laid out by its host: a caption, then the rows, on the editor's
+ * surface. A click on a row asks the host to activate it (fold a directory, open
+ * a file).
  *
- * Where a drag would drop (`dropTarget`) lights under a dashed line: a
- * directory row with the rows it holds, its pinned copies too, or the whole
- * tree. The host follows the drag itself and asks which row an event
- * happened in (`rowAt`).
+ * Pinning:
  *
- * The tree takes the keyboard, focused by Tab or by a click on a row. A
- * cursor marks the row the keys act on, starting at the selected row, else the first: Up,
- * Down, Home and End move it, Right unfolds a folded directory, Left folds
- * an unfolded one or goes to the directory a row is in, and Enter activates
- * its row as a click does. Typing a name moves the cursor to the first row
- * shown that starts with it (`useTypeSelect`), opening nothing.
+ * - The caption stays pinned.
+ * - Under it pin the directories the rows at the top sit in, each while its own
+ *   row has scrolled out above and its contents have not, so the way to what is
+ *   in view stays in sight and goes once the tree is past it.
+ * - A pinned directory acts as its row, and once it folds its row rests where
+ *   the pinned copy was.
+ *
+ * Slots and menus:
+ *
+ * - The rows are dressed through the slots `mark`, `name` and `trailing`, given
+ *   the row.
+ * - `tooltip` covers a row with a hint, and `empty` fills the tree while it has
+ *   no rows.
+ * - Each row declares the context menu the host gives it (`rowMenu`), and the
+ *   tree's empty space the one the host gives no row.
+ *
+ * Where a drag would drop (`dropTarget`) lights under a dashed line: a directory
+ * row with the rows it holds, its pinned copies too, or the whole tree. The host
+ * follows the drag itself and asks which row an event happened in (`rowAt`).
+ *
+ * Keyboard: the tree takes it, focused by Tab or by a click on a row. A cursor
+ * marks the row the keys act on, starting at the selected row, else the first.
+ *
+ * - Up, Down, Home and End move the cursor.
+ * - Right unfolds a folded directory. Left folds an unfolded one or goes to the
+ *   directory a row is in.
+ * - Enter activates its row as a click does.
+ * - Typing a name moves the cursor to the first row shown that starts with it
+ *   (`useTypeSelect`), opening nothing.
  */
 const props = defineProps<{
   rows: readonly R[]

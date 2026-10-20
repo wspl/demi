@@ -8,13 +8,20 @@ import type { DeviceMark } from './mark'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, type DeviceState } from './state'
 
 /**
- * A device's mark, the same wherever a device is drawn: its system's logo in the subtle icon color, at a brand mark's size, its
- * state's dot on the logo's top right, and under the dot the number that tells it from the user's other devices of the same
- * logo, when `mark` shows one (`shownMark`). A device since removed has no mark: the plain computer glyph, without a dot,
- * whatever state its caller still holds for it. The dot and the number are cut out of what is painted behind them by an outline
- * in that color (`--fill-color`), as `CornerPlus` is. Without `label` the dot names the state for assistive technology; with
- * it, the whole mark is named, as a mark that stands for the device does ("MacBook Pro · Online"); the logo and the number only
- * help the eye.
+ * A device's mark, the same wherever a device is drawn.
+ *
+ * - It is the device's system's logo in the subtle icon color, at a brand
+ *   mark's size, with the state's dot on the logo's top right.
+ * - Under the dot, when `mark` shows one (`shownMark`), is the number that tells
+ *   the device from the user's other devices of the same logo.
+ * - A device since removed has no mark: the plain computer glyph, without a dot,
+ *   whatever state its caller still holds for it.
+ * - The dot and the number are cut out of what is painted behind them by an
+ *   outline in that color (`--fill-color`), as `CornerPlus` is.
+ *
+ * Without `label`, the dot names the state for assistive technology. With it,
+ * the whole mark is named, as a mark that stands for the device does
+ * ("MacBook Pro · Online"). The logo and the number only help the eye.
  */
 const props = withDefaults(defineProps<{
   state: DeviceState | null

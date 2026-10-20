@@ -5,10 +5,12 @@ import TruncatedText from './TruncatedText.vue'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
- * A quiet line over a region whose content still shows, about that content:
- * a file view that could not refresh what it shows, or that shows files as
- * they were last read because the Host cannot watch them. It never replaces
- * the content, as `RegionStatus` does, and it offers at most one action.
+ * A quiet line over a region whose content still shows, about that content: a file
+ * view that could not refresh what it shows, or that shows files as they were last
+ * read because the Host cannot watch them.
+ *
+ * It never replaces the content, as `RegionStatus` does, and it offers at most one
+ * action.
  */
 defineProps<{
   /** The glyph before the sentence. */

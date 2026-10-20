@@ -5,9 +5,10 @@ import { t } from './locales/text'
 
 /**
  * A title edited where it stands, in the framed field every text input is.
- * It arrives focused with the title selected and shown from its start, and
- * ends once: Enter or leaving it submits the trimmed title, Escape cancels.
- * An empty or unchanged title cancels too, so a caller only hears a real rename.
+ *
+ * It arrives focused with the title selected and shown from its start, and ends once:
+ * Enter or leaving it submits the trimmed title, Escape cancels. An empty or
+ * unchanged title cancels too, so a caller only hears a real rename.
  */
 const props = defineProps<{
   title: string

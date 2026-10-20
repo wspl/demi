@@ -19,8 +19,7 @@ import type { VerificationHost } from '../auth/verification'
 /**
  * The small model the user chose in Settings › Agent
  * (`crates/backend-providers/src/llm/small_model.rs`): model settings without a
- * tier, since small requests use the
- * default one; none for Automatic.
+ * tier, since small requests use the default one. It is none for Automatic.
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
@@ -245,9 +244,11 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
 
 /**
  * Which account each agent of a subscription uses
- * (`crates/backend-providers/src/llm/rotation.rs`): the active one, the first
- * in the list that is not used up, or
- * the one with the most room.
+ * (`crates/backend-providers/src/llm/rotation.rs`):
+ *
+ * - the active one,
+ * - the first in the list that is not used up, or
+ * - the one with the most room.
  */
 export type SettingsRotation = 'manual' | 'in_order' | 'balanced'
 
@@ -298,11 +299,13 @@ export interface SettingsVendor {
 }
 
 /**
- * `setup` is an entry that is not complete yet
- * (`crates/backend-user-shard/src/provider_settings.rs`): a plain wait, never a
- * failure. `error` and
- * `unreachable` are failures, which a refused key, an endpoint that did not
- * answer or a catalog that could not be read cause.
+ * The status of an entry:
+ *
+ * - `setup`: the entry is not complete yet
+ *   (`crates/backend-user-shard/src/provider_settings.rs`). It is a plain wait, never
+ *   a failure.
+ * - `error` and `unreachable`: failures, which a refused key, an endpoint that did
+ *   not answer or a catalog that could not be read cause.
  */
 export type SettingsProviderState =
   'ready' | 'setup' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
@@ -371,16 +374,19 @@ export interface SettingsProviderEntry {
   /** The entry's vendor; null for a compatible API. */
   vendorId: string | null
   /**
-   * A compatible API (`packages/web-ui/src/settings/SettingsProvidersPage.vue`): its protocol,
-   * endpoint and optional key are the user's to set at any time, and its
-   * models are the ones the user adds. Any other API-key entry is a vendor's:
-   * its endpoint is shown, never edited. Fixed with the entry.
+   * A compatible API (`packages/web-ui/src/settings/SettingsProvidersPage.vue`): its
+   * protocol, endpoint and optional key are the user's to set at any time, and its
+   * models are the ones the user adds.
+   *
+   * Any other API-key entry is a vendor's: its endpoint is shown, never edited. Fixed
+   * with the entry.
    */
   compatible: boolean
   /**
-   * Whether it makes text: false for a vendor of media alone, such as
-   * ElevenLabs (`packages/web/src/state/catalog.ts`), whose page has no
-   * Models and whose key Test Connection checks through its media models.
+   * Whether it makes text. False for a vendor of media alone, such as ElevenLabs
+   * (`packages/web/src/state/catalog.ts`), whose page has no Models and whose key
+   * Test Connection checks through its media models.
+   *
    * Absent means it does.
    */
   makesText?: boolean
@@ -611,11 +617,14 @@ export interface SettingsPasskey {
 }
 
 /**
- * How adding a passkey with the account's password ended: added; refused for
- * the password, said under its field; the browser's prompt dismissed, which
- * says nothing; the browser's password manager holds a passkey of the
- * account already, which `message` says and which is no failure; or
- * failed, said under the dialog's fields.
+ * How adding a passkey with the account's password ended:
+ *
+ * - added;
+ * - refused for the password, said under its field;
+ * - the browser's prompt dismissed, which says nothing;
+ * - the browser's password manager holds a passkey of the account already, which
+ *   `message` says and which is no failure; or
+ * - failed, said under the dialog's fields.
  */
 export type PasskeyAddOutcome =
   | { kind: 'added' }
@@ -695,11 +704,13 @@ export interface SettingsNewUser {
 }
 
 /**
- * How adding an account ended: added, with the first password the server made
- * and the account's name; refused because an account has the address, said
- * under the dialog's email field; the administrator's own confirmation is
- * needed first (the dialog asks it and tries again); or failed, said under
- * its fields.
+ * How adding an account ended:
+ *
+ * - added, with the first password the server made and the account's name;
+ * - refused because an account has the address, said under the dialog's email field;
+ * - the administrator's own confirmation is needed first (the dialog asks it and
+ *   tries again); or
+ * - failed, said under its fields.
  */
 export type UserAddOutcome =
   | { kind: 'added'; id: string; nickname: string; password: string }

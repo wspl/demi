@@ -2,12 +2,15 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { expect, test } from 'bun:test'
 import { followThemeColor } from '../themeColor'
 
-// The status bar's band on an iPhone takes the page's `theme-color`, in Safari
-// and in the installed app: it was the base surface's gray over the white bar
-// of a conversation, two tones at the top of the screen. The page's tag follows
-// the surface at its top as the theme, the tone and the width change. The
-// tokens are given here as product-appearance.css sets them; happy-dom lays
-// nothing out. A few ms, besides the start of the page every happy-dom test pays.
+// The status bar's band on an iPhone takes the page's `theme-color`, in Safari and in
+// the installed app: it was the base surface's gray over the white bar of a
+// conversation, two tones at the top of the screen. The page's tag follows the
+// surface at its top as the theme, the tone and the width change.
+//
+// The tokens are given here as product-appearance.css sets them; happy-dom lays
+// nothing out.
+//
+// Cost: a few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 

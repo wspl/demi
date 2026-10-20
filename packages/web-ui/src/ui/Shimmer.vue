@@ -3,18 +3,21 @@ import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener } from '@vueuse/core'
 
 /**
- * A row of text that is still working: one band of light sweeps across the
- * whole row, however many parts of different colors it holds ("Command
- * finished:" and its title, a label and its detail), as Claude and Cursor
- * mark a step in progress. The row shows as it is; over it lies an inert
- * copy in the strongest text color, which a moving mask shows only where
- * the band is, so every part keeps its own color outside the band. The band
- * moves at one speed on any row, so a short label does not crawl and a long
- * one does not race. A row that stops working finishes the sweep under way
+ * A row of text that is still working: one band of light sweeps across the whole
+ * row, however many parts of different colors it holds ("Command finished:" and
+ * its title, a label and its detail), as Claude and Cursor mark a step in
+ * progress.
+ *
+ * The row shows as it is. Over it lies an inert copy in the strongest text color,
+ * which a moving mask shows only where the band is, so every part keeps its own
+ * color outside the band.
+ *
+ * The band moves at one speed on any row, so a short label does not crawl and a
+ * long one does not race. A row that stops working finishes the sweep under way
  * rather than cutting it: the band goes once it has crossed the row.
  *
- * The root is a flex row: the caller gives it its gap and alignment, and the
- * copy takes the same.
+ * The root is a flex row: the caller gives it its gap and alignment, and the copy
+ * takes the same.
  */
 const props = defineProps<{ active?: boolean }>()
 
@@ -26,10 +29,11 @@ const SPEED_PX_S = 140
 const MIN_SWEEP_MS = 1_600
 const MAX_SWEEP_MS = 2_600
 /**
- * The band's width, in the row's own font size: a word lit at once, with a
- * soft edge on each side, as Claude's Thinking reads; at 4em only a letter
- * or two was lit and the band read as a thin line, and at 8em a short row
- * such as Thinking lit whole and read as a pulse.
+ * The band's width, in the row's own font size: a word lit at once, with a soft edge
+ * on each side, as Claude's Thinking reads.
+ *
+ * At 4em only a letter or two was lit and the band read as a thin line. At 8em a
+ * short row such as Thinking lit whole and read as a pulse.
  */
 const BAND_EM = 6
 

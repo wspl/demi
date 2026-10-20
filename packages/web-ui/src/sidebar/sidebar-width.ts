@@ -8,11 +8,12 @@ export const SIDEBAR_WIDTH = {
 } as const
 
 /**
- * The work panel is sized as a share of the width it splits with the
- * conversation (the frame minus the sidebar), so resizing the window scales
- * both sides together while the sidebar keeps its px width. The px floors
- * keep either side usable: the panel never goes under `minWidth`, and it
- * leaves the conversation at least `mainMinWidth` while there is room for both.
+ * The work panel is sized as a share of the width it splits with the conversation
+ * (the frame minus the sidebar), so resizing the window scales both sides together
+ * while the sidebar keeps its px width.
+ *
+ * The px floors keep either side usable: the panel never goes under `minWidth`, and
+ * it leaves the conversation at least `mainMinWidth` while there is room for both.
  */
 export const ASIDE_SHARE = {
   default: 0.4,

@@ -95,11 +95,10 @@ function own(path: string, kind: EditedFile['kind'], n: number | null, extra: Pa
 const text = (id: string): Block => ({ type: 'text', id, createdAt, model, text: 'Done.' })
 
 /**
- * shell1 creates `notes.md` and edits `login.ts`; shell2 edits `login.ts`
- * again; shell3 writes a scratch file in `/tmp`; shell4 removes
- * `notes.md`, removes `old.css`, which was there before, and renames
- * `a.ts`, all in one run. The run's and the request's lists leave
- * `notes.md` out, as the backend stored them.
+ * shell1 creates `notes.md` and edits `login.ts`; shell2 edits `login.ts` again;
+ * shell3 writes a scratch file in `/tmp`; shell4 removes `notes.md`, removes
+ * `old.css`, which was there before, and renames `a.ts`, all in one run. The run's
+ * and the request's lists leave `notes.md` out, as the backend stored them.
  */
 const login = (calls: string[]) => listed('/w/login.ts', 'modified', calls.map((call, at) => edit(call, '/w/login.ts', at + 1)), [2, 1])
 const s1 = shellCall('s1', 's1', 'Write the notes', [own('/w/notes.md', 'added', 10), own('/w/login.ts', 'modified', 1)], {

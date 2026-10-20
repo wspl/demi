@@ -7,12 +7,14 @@ import type { RequestEditSelection } from '../files/request-changes'
  */
 export interface IntentPayloads {
   /**
-   * A file on the conversation's Host, by its absolute path, and the line to
-   * open it at, scrolled there and marked for a moment, when one is named; an
-   * empty path shows the directory's tree alone. `root` is the directory the
-   * view opens for, the working directory of the agent that named the file;
-   * absent, the conversation's. `tree`, as Show in Files asks, also shows the
-   * view's tree with the file selected and scrolled into view.
+   * A file on the conversation's Host, by its absolute path, and the line to open
+   * it at, scrolled there and marked for a moment, when one is named. An empty
+   * path shows the directory's tree alone.
+   *
+   * - `root` is the directory the view opens for, the working directory of the
+   *   agent that named the file. Absent, the conversation's.
+   * - `tree`, as Show in Files asks, also shows the view's tree with the file
+   *   selected and scrolled into view.
    */
   file: { path: string; line?: number; root?: string; tree?: true }
   /**
@@ -23,9 +25,10 @@ export interface IntentPayloads {
   /**
    * A commit of the repository a message's agent worked in, by its id or an
    * abbreviation of it, as a `commit:3f2a9c1` link names it
-   * (`packages/web-ui/src/files/history.ts`). `root` is the directory the view
-   * opens for, the working directory of the agent that wrote the link;
-   * absent, the conversation's.
+   * (`packages/web-ui/src/files/history.ts`).
+   *
+   * `root` is the directory the view opens for, the working directory of the agent
+   * that wrote the link; absent, the conversation's.
    */
   commit: { commit: string; root?: string }
   /**

@@ -50,13 +50,17 @@ function nextStop(panel: HTMLElement, stops: HTMLElement[], active: Element | nu
 
 /**
  * The focus of a dialog that owns the page, as WAI-ARIA's dialog pattern and
- * macOS sheets have it: when the panel shows, the focus moves into it (its
- * first field, else its default action, else the panel); while it is the top
- * layer, Tab and Shift+Tab go round inside it; when it closes, the focus goes
- * back to what had it when the dialog opened. On a phone a field waits for
- * a tap, and the panel takes the focus in its place. A close that put the focus
- * somewhere else on purpose keeps it there. A dialog pinned open in a catalog
- * host is not open here (the caller says so), and leaves the focus alone.
+ * macOS sheets have it.
+ *
+ * - When the panel shows, the focus moves into it: its first field, else its
+ *   default action, else the panel. On a phone a field waits for a tap, and the
+ *   panel takes the focus in its place.
+ * - While it is the top layer, Tab and Shift+Tab go round inside it.
+ * - When it closes, the focus goes back to what had it when the dialog opened. A
+ *   close that put the focus somewhere else on purpose keeps it there.
+ *
+ * A dialog pinned open in a catalog host is not open here (the caller says so),
+ * and leaves the focus alone.
  */
 export function useDialogFocus(options: {
   panel: Readonly<Ref<HTMLElement | undefined>>

@@ -15,11 +15,14 @@ export class ConversationSocketError extends Error {
 
 /**
  * Opens the conversation socket at `url` and answers its client. A socket
- * lifetime is a connection lifetime, never a server-task lifetime. Until the
- * socket opens, this owns it and a failure is an `ConversationSocketError`; once it
- * opens, the client's transport owns it, and its close or failure disconnects
- * the client with an `ConversationSocketError` too. So does a socket that brings
- * nothing, heartbeats included, for as long as the liveness rule allows.
+ * lifetime is a connection lifetime, never a server-task lifetime.
+ *
+ * - Until the socket opens, this owns it and a failure is a
+ *   `ConversationSocketError`.
+ * - Once it opens, the client's transport owns it, and its close or failure
+ *   disconnects the client with a `ConversationSocketError` too. So does a socket
+ *   that brings nothing, heartbeats included, for as long as the liveness rule
+ *   allows.
  */
 export function connectConversationClient(url: string, signal?: AbortSignal): Promise<ConversationClient> {
   return new Promise((resolve, reject) => {

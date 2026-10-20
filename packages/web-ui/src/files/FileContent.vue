@@ -25,25 +25,33 @@ import type { FileBrowserSource } from './types'
 
 /**
  * One file of a source as the File view shows it, under the bar that says what
- * it is and holds what can be done with it: text
- * read-only in the code editor, an image, a video, an audio file or a PDF in
- * the web browser's own viewer, Markdown rendered as a document, and a card for
- * a file the page cannot show. The bar offers Preview and Source for Markdown
- * and SVG, Copy of a text file's whole text, and Download; `label`, when given,
- * says what the file is in its place, as an attachment's preview names its file
- * and size.
+ * it is and holds what can be done with it.
  *
- * The File view puts it beside its tree, and an attachment's preview shows
- * it alone over the attachment's copy (`AttachmentView`). A link in a
- * Markdown document asks the host to open its file (`open`).
+ * What it shows:
  *
- * The file shows as its source keeps it: a file seen a moment ago shows at once, scrolled where it
- * was, and a new text replaces the old in place; a file that is not text
- * keeps its card while it is checked. A read that fails keeps what shows and
- * says so quietly, with Retry; a file the Host cannot watch has the view say
- * that it shows it as last read, with Refresh. A text file too large to read
- * whole shows its start, with a line saying how much of it shows and
- * Download.
+ * - Text, read-only in the code editor.
+ * - An image, a video, an audio file or a PDF in the web browser's own viewer.
+ * - Markdown rendered as a document.
+ * - A card for a file the page cannot show.
+ *
+ * The bar offers Preview and Source for Markdown and SVG, Copy of a text file's
+ * whole text, and Download. `label`, when given, says what the file is in its
+ * place, as an attachment's preview names its file and size.
+ *
+ * The File view puts it beside its tree, and an attachment's preview shows it
+ * alone over the attachment's copy (`AttachmentView`). A link in a Markdown
+ * document asks the host to open its file (`open`).
+ *
+ * The file shows as its source keeps it:
+ *
+ * - A file seen a moment ago shows at once, scrolled where it was, and a new
+ *   text replaces the old in place.
+ * - A file that is not text keeps its card while it is checked.
+ * - A read that fails keeps what shows and says so quietly, with Retry.
+ * - A file the Host cannot watch has the view say that it shows it as last read,
+ *   with Refresh.
+ * - A text file too large to read whole shows its start, with a line saying how
+ *   much of it shows and Download.
  */
 const props = withDefaults(defineProps<{
   source: FileBrowserSource
@@ -52,10 +60,10 @@ const props = withDefaults(defineProps<{
   /** The file, by absolute path. */
   path: string | null
   /**
-   * The line the file was opened at, 1-based, which the view scrolls to and
-   * marks for a moment as a search result is, in the file's text: Markdown
-   * and SVG show their source for it, as GitHub shows a file's plain text
-   * for a link to a line of it, until Preview is chosen.
+   * The line the file was opened at, 1-based, which the view scrolls to and marks
+   * for a moment as a search result is, in the file's text. Markdown and SVG show
+   * their source for it, as GitHub shows a file's plain text for a link to a line
+   * of it, until Preview is chosen.
    */
   line?: number | null
   /** The width at the end that a tree shown over the file covers: the bar's controls and the centred states stay beside it. */
@@ -108,11 +116,12 @@ type TextState =
 
 /**
  * The folder of the file shown, whose listing says whether the file is a
- * symbolic link whose target is gone or cannot be read: such a link says so
- * in the file's place from the listing, whatever the read of the file
- * answers. The listing and the file are asked for at once, so a file whose
- * folder is not kept yet costs no extra round trip; the tree's own listing,
- * kept, when the file was opened there.
+ * symbolic link whose target is gone or cannot be read. Such a link says so in
+ * the file's place from the listing, whatever the read of the file answers.
+ *
+ * The listing and the file are asked for at once, so a file whose folder is not
+ * kept yet costs no extra round trip. When the file was opened from the tree,
+ * the tree's own listing, kept, answers.
  */
 const folder = useShowing(
   () => props.source,
@@ -192,12 +201,17 @@ async function retryLink(): Promise<void> {
 }
 
 /**
- * What the region says while it shows no file: the editor on its way or
- * failed, none chosen, a read on its way, a link whose target is gone or
- * cannot be read, that nothing is at the path, or why the read failed.
- * Retry stands under the failures and loads again what said so, the
- * editor, the link's folder for a link, and the region loads until that
- * ends.
+ * What the region says while it shows no file:
+ *
+ * - The editor is on its way or failed.
+ * - None is chosen.
+ * - A read is on its way.
+ * - A link's target is gone or cannot be read.
+ * - Nothing is at the path.
+ * - The read failed, and why.
+ *
+ * Retry stands under the failures and loads again what said so: the editor, or
+ * the link's folder for a link. The region loads until that ends.
  */
 const placeholder = computed(() => {
   const current = state.value
@@ -276,12 +290,13 @@ const tooLargeToRender = computed(() => kind.value === 'markdown' &&
 const place = computed<DocumentPlace | null>(() => props.path === null ? null : { path: props.path, root: props.root })
 
 /**
- * A link opened, from a message, Back, the crumbs or the tree, is a link
- * used: its folder, when kept, is listed again, unless the tree has just done
- * so to open it, and the file is read again, at once, since neither the
- * folder's watch nor the file's sees its target come or go; so a link its
- * listing called missing whose target is back shows the file. A read on its way
- * is joined, not repeated.
+ * A link opened, from a message, Back, the crumbs or the tree, is a link used.
+ *
+ * Its folder, when kept, is listed again, unless the tree has just done so to
+ * open it. The file is read again at once, since neither the folder's watch nor
+ * the file's sees its target come or go. So a link whose listing called it
+ * missing, and whose target is back, shows the file. A read on its way is
+ * joined, not repeated.
  */
 function readOpenedLink(listFolder: boolean): void {
   if (props.path === null || listed.value?.link === undefined)

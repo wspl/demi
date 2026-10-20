@@ -21,12 +21,16 @@ export interface OverlayTarget {
   /** The element or selector the surface teleports to. */
   to: ComputedRef<HTMLElement | 'body'>
   /**
-   * Whether the surface may mount its teleport. A host's container element exists only
-   * once the host has mounted, after its content first renders; a teleport that went to
-   * `body` first and moved in then would move without its start anchor and put its
-   * content after its end anchor, and a dialog holding dialogs of its own would then
-   * close against anchors its own unmount removes. So a surface in a host waits for the
-   * container, and its teleport never changes target.
+   * Whether the surface may mount its teleport.
+   *
+   * A host's container element exists only once the host has mounted, after its
+   * content first renders. A teleport that went to `body` first and moved in then
+   * would move without its start anchor and put its content after its end anchor,
+   * and a dialog holding dialogs of its own would then close against anchors its
+   * own unmount removes.
+   *
+   * So a surface in a host waits for the container, and its teleport never
+   * changes target.
    */
   ready: ComputedRef<boolean>
 }

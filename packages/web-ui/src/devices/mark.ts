@@ -45,10 +45,12 @@ export interface DeviceMark {
 export type SystemLogo = DeviceLogo | 'android'
 
 /**
- * Each logo's path, in a 24 by 24 box: Material Design Icons (Pictogrammers, Apache-2.0), from
- * `@mdi/js`. The Android robot is reproduced or modified from work created and shared by Google
- * and used according to terms described in the Creative Commons 3.0 Attribution License
- * (`LICENSE-android-robot`).
+ * Each logo's path, in a 24 by 24 box: Material Design Icons (Pictogrammers,
+ * Apache-2.0), from `@mdi/js`.
+ *
+ * The Android robot is reproduced or modified from work created and shared by Google
+ * and used according to terms described in the Creative Commons 3.0 Attribution
+ * License (`LICENSE-android-robot`).
  */
 export const DEVICE_LOGO_PATH: Record<SystemLogo, string> = {
   apple: mdiApple,

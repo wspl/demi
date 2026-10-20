@@ -5,10 +5,13 @@ import { t } from './locales/text'
 import type { SidebarConversation } from './types'
 
 /**
- * The browser tab's news: the page's title counts the conversations whose
- * sidebar dot is red, yellow or green, the tab's icon wears a dot of the most
- * urgent of those colors, and an installed app's icon carries their number. All
- * of it follows the sidebar's dots, read from the same rows by the same rule.
+ * The browser tab's news. The page's title counts the conversations whose sidebar
+ * dot is red, yellow or green.
+ *
+ * - The tab's icon wears a dot of the most urgent of those colors.
+ * - An installed app's icon carries their number.
+ *
+ * All of it follows the sidebar's dots, read from the same rows by the same rule.
  */
 
 /** The product's name, as the tab says it. */
@@ -90,14 +93,16 @@ const FORWARD_CHANNEL = 'demi-tab-forward'
 
 /**
  * Keeps the page's title, its tab icon and an installed app's badge on the
- * sidebar's news as it changes; returns the release, which leaves the plain
- * icon and no badge.
+ * sidebar's news as it changes; returns the release, which leaves the plain icon
+ * and no badge.
  *
- * Coming back clears the reminder: when the page comes forward, visible and
- * focused, it counts nothing, and from then on only the conversations whose
- * dot lights after that moment, while the sidebar's dots stay until each
- * conversation is opened. The badge follows the page that came forward last,
- * which tells the user's other pages so on a broadcast channel.
+ * Coming back clears the reminder. When the page comes forward, visible and
+ * focused, it counts nothing, and from then on only the conversations whose dot
+ * lights after that moment, while the sidebar's dots stay until each conversation
+ * is opened.
+ *
+ * The badge follows the page that came forward last, which tells the user's other
+ * pages so on a broadcast channel.
  */
 export function followTabAttention(source: TabAttentionSource): () => void {
   const scope = effectScope(true)

@@ -28,9 +28,11 @@ import type { Action } from '../ui/operations'
 /**
  * Who you are here. The credential dialogs open from their rows; the host drives
  * their phases (the server checks the password and sends the code) and the page
- * reports what the user typed. The Passkeys group shows where the host offers
- * passkeys, and adds, renames and removes them through the host's functions;
- * Signed-In Browsers lists the account's sessions and signs others out.
+ * reports what the user typed.
+ *
+ * - The Passkeys group shows where the host offers passkeys, and adds, renames and
+ *   removes them through the host's functions.
+ * - Signed-In Browsers lists the account's sessions and signs others out.
  */
 const props = defineProps<{
   overlayStore: OverlayStore

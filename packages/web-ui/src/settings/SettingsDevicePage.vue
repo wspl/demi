@@ -52,17 +52,21 @@ import type { ExposedPortChange, SettingsExposedPort } from './exposed-ports'
 import type { SettingsDevice } from './types'
 
 /**
- * A device's own page (`packages/web-ui/src/devices/direct.ts`), which its
- * row in Devices opens. Its header names the device and its state, and an
- * offline device's header gives the command that starts its runner.
- * Connection is one group of rows, as macOS's Wi-Fi settings lay it out:
- * the route; P2P, while the device is online and its route allows a peer,
- * saying in a sentence how the P2P connection fares, with Try Again and
- * Details… for the last attempt's diagnostics; and the two paths' latency
- * from this browser's last measurement, with Measure. Device holds the
- * facts, with Rename…; Exposed Ports lists the ports Demi's own requests
- * may reach, the Cloud's as a device's; Revoke… ends the page. The Cloud's
- * page has no Connection.
+ * A device's own page (`packages/web-ui/src/devices/direct.ts`), which its row in
+ * Devices opens. Its header names the device and its state, and an offline
+ * device's header gives the command that starts its runner.
+ *
+ * - Connection is one group of rows, as macOS's Wi-Fi settings lay it out: the
+ *   route; P2P, while the device is online and its route allows a peer, saying
+ *   in a sentence how the P2P connection fares, with Try Again and Details… for
+ *   the last attempt's diagnostics; and the two paths' latency from this
+ *   browser's last measurement, with Measure.
+ * - Device holds the facts, with Rename…
+ * - Exposed Ports lists the ports Demi's own requests may reach, the Cloud's as a
+ *   device's.
+ * - Revoke… ends the page.
+ *
+ * The Cloud's page has no Connection.
  */
 const props = defineProps<{
   /** A paired device, or the Cloud with what its runner reported. */
@@ -123,10 +127,12 @@ const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
 /** How to start the runner again, which the header gives while the device is offline. */
 const offlineStart = computed(() => (device.value?.state === 'offline' ? (device.value.start ?? null) : null))
 /**
- * Why the device will not start its runner by itself after a restart,
- * which the header says whatever its state, so the user learns it before a
- * restart (`crates/runner/src/autostart.rs`): a plain sentence of
- * the cause, and the command that removes it, when one does.
+ * Why the device will not start its runner by itself after a restart
+ * (`crates/runner/src/autostart.rs`): a plain sentence of the cause, and the command
+ * that removes it, when one does.
+ *
+ * The header says it whatever the device's state, so the user learns it before a
+ * restart.
  */
 const noAutostart = computed(() => {
   const reason = device.value?.autostartUnavailable
@@ -134,10 +140,12 @@ const noAutostart = computed(() => {
 })
 
 /**
- * The Latency row's value while the device is online: the paths compared
- * from the last measurement, which stay shown while the next runs;
- * Measuring… until the first ends; and No answer after one the device
- * answered none of.
+ * The Latency row's value while the device is online:
+ *
+ * - The paths compared from the last measurement, which stay shown while the next
+ *   runs.
+ * - Measuring… until the first ends.
+ * - No answer after one the device answered none of.
  */
 const latency = computed<SentenceText | null>(() => {
   if (!direct.value || !online.value) {

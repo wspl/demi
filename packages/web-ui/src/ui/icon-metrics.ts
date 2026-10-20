@@ -4,12 +4,15 @@ import { usePhone } from './phone'
 /**
  * Live-measured icon sizes. Do not use Lucide defaults (16 / 24).
  *
- * Toolbar chips: 28/14 default, 32/16 large, 24/14 compact — icon is half the hit.
- * Checkbox box is 14. The tick is a 2px stroke in that box, not a Lucide toolbar icon.
- * Nav / activity rows: 14 in 28. Brand marks in those rows: 16.
- * Stroke stays `--icon-stroke-width: 1.75` (≈1px optical at 14 in a 24 viewBox).
- * The keys name the desktop's control each icon sits in; a phone draws the
- * same controls larger (`PHONE_ICON_PX`).
+ * - Toolbar chips: 28/14 default, 32/16 large, 24/14 compact — icon is half the
+ *   hit.
+ * - Checkbox box is 14. The tick is a 2px stroke in that box, not a Lucide toolbar
+ *   icon.
+ * - Nav / activity rows: 14 in 28. Brand marks in those rows: 16.
+ * - Stroke stays `--icon-stroke-width: 1.75` (≈1px optical at 14 in a 24 viewBox).
+ *
+ * The keys name the desktop's control each icon sits in; a phone draws the same
+ * controls larger (`PHONE_ICON_PX`).
  */
 export const ICON_PX = {
   in12: 10,
@@ -27,11 +30,13 @@ export const ICON_PX = {
 export type IconMetrics = { readonly [Key in keyof typeof ICON_PX]: number }
 
 /**
- * The same icons on a phone (`base.css`, the phone's metrics): the 28 px
- * control is a 40 px toolbar button there with a 20 px icon, the 24 px one
- * an answer's 36 px action with 18, the 20 px one 28 with 16; a 44 px row's
- * icon is 18 beside its 16–17 px text, a 32 px chip's 16. The 32 px control
- * keeps its size, and its icon.
+ * The same icons on a phone (`base.css`, the phone's metrics):
+ *
+ * - The 28 px control is a 40 px toolbar button there with a 20 px icon.
+ * - The 24 px one is an answer's 36 px action with 18.
+ * - The 20 px one is 28 with 16.
+ * - A 44 px row's icon is 18 beside its 16–17 px text, a 32 px chip's 16.
+ * - The 32 px control keeps its size, and its icon.
  */
 export const PHONE_ICON_PX: IconMetrics = {
   in12: 12,

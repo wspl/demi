@@ -7,16 +7,19 @@ import type { Action, Operation } from './operations'
 import type { HeadlineText, TitleText } from './ui-text'
 
 /**
- * The question before something the user set up goes, as macOS asks before
- * it deletes, or before a choice that can do harm, such as an Unlimited limit
- * (LimitField): the title asks it ("Remove “OpenAI API”?"), the body says
- * what happens, and `goes` names what goes with it, one line each. Cancel is the
- * safe answer, the default button, and closes; the action is the danger
- * button, which takes a click (Dialog). Nothing the user
- * set up disappears on one click. The action is the caller's `onConfirm`, which returns the promise
- * of its `operation`'s work: the danger button shows it while it runs, the dialog opened again
- * included, and the caller closes the dialog then if it is still this one's. Cancel closes it
- * meanwhile without stopping the work.
+ * The question before something the user set up goes, as macOS asks before it
+ * deletes, or before a choice that can do harm, such as an Unlimited limit
+ * (LimitField). Nothing the user set up disappears on one click.
+ *
+ * - The title asks it ("Remove “OpenAI API”?"), the body says what happens, and
+ *   `goes` names what goes with it, one line each.
+ * - Cancel is the safe answer, the default button, and closes.
+ * - The action is the danger button, which takes a click (Dialog).
+ *
+ * The action is the caller's `onConfirm`, which returns the promise of its
+ * `operation`'s work. The danger button shows it while it runs, the dialog opened
+ * again included, and the caller closes the dialog then if it is still this one's.
+ * Cancel closes it meanwhile without stopping the work.
  */
 defineProps<{
   isOpen: boolean

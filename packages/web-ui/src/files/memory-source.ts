@@ -1,18 +1,25 @@
 /**
- * A `FileBrowserSource` over an in-memory tree, for prototypes and gallery specimens.
- * Nothing here touches a real disk; a directory can be marked as failing to exercise
- * the file browser's error states, every read can carry a simulated latency, and a
- * source given an upload rate takes uploads at that rate, each landing as a
- * file of its size; without one it takes no uploads. Directories are made
- * and entries deleted at once.
+ * A `FileBrowserSource` over an in-memory tree, for prototypes and gallery
+ * specimens.
  *
- * The source keeps what it read as the product's does (`keptSource`), with
- * the subscriptions a simulated Host's watch answers (`SimulatedWatch`):
- * each read carries the simulated Host's number, so a file shown again
- * shows at once without a read, and a change made with `change` is
- * reported, so the views that show it read it again; a watch that is
- * unavailable says so for each subscription, as a Host that cannot watch
- * does.
+ * Nothing here touches a real disk.
+ *
+ * - A directory can be marked as failing to exercise the file browser's error
+ *   states.
+ * - Every read can carry a simulated latency.
+ * - A source given an upload rate takes uploads at that rate, each landing as a
+ *   file of its size; without one it takes no uploads.
+ * - Directories are made and entries deleted at once.
+ *
+ * The source keeps what it read as the product's does (`keptSource`), with the
+ * subscriptions a simulated Host's watch answers (`SimulatedWatch`):
+ *
+ * - Each read carries the simulated Host's number, so a file shown again shows
+ *   at once without a read.
+ * - A change made with `change` is reported, so the views that show it read it
+ *   again.
+ * - A watch that is unavailable says so for each subscription, as a Host that
+ *   cannot watch does.
  */
 import { previewMediaType, TEXT_FILE_BYTES } from '@demicodes/protocol'
 import { baseName, delay } from '@demicodes/utils'
@@ -89,12 +96,15 @@ function within(path: string, ancestor: string): boolean {
 
 /**
  * A Host's file watch as a page sees it, simulated over a memory tree, for
- * gallery specimens and tests (`crates/runner-host/src/subscriptions.rs`): it counts its
- * changes with one number, answers each subscription `live` from the number
- * now, or `unavailable`, reports a `change` to each subscription it
- * concerns with the change's number, acknowledges each renew, and sends a
- * heartbeat every 30 seconds, as the backend does. A read takes `readAt()`
- * before it reads, as the Host's does.
+ * gallery specimens and tests (`crates/runner-host/src/subscriptions.rs`).
+ *
+ * - It counts its changes with one number and answers each subscription `live`
+ *   from the number now, or `unavailable`.
+ * - It reports a `change` to each subscription it concerns with the change's
+ *   number, and acknowledges each renew.
+ * - It sends a heartbeat every 30 seconds, as the backend does.
+ *
+ * A read takes `readAt()` before it reads, as the Host's does.
  */
 export class SimulatedWatch {
   private number = 0

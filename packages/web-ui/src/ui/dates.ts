@@ -69,10 +69,11 @@ function relative(ms: number): string {
 }
 
 /**
- * A moment that has passed, in words against `now`: "3 minutes ago". One
- * `now` has not reached yet, as a reply the backend stamped within the
- * clock's last second or by a clock running slightly ahead, reads "a few
- * seconds ago" rather than "in a few seconds".
+ * A moment that has passed, in words against `now`: "3 minutes ago".
+ *
+ * One `now` has not reached yet, as a reply the backend stamped within the clock's
+ * last second or by a clock running slightly ahead, reads "a few seconds ago" rather
+ * than "in a few seconds".
  */
 export function formatPast(timestamp: string, now: Date | number): string {
   const past = Math.max(0, new Date(now).getTime() - new Date(timestamp).getTime())
@@ -111,10 +112,11 @@ export function formatAge(timestamp: string, now: Date | number): string {
 }
 
 /**
- * When something happened on a timeline, as a chart's tip says it: the
- * clock time, with the day when it is not `now`'s, and how long ago, to the
- * minute within a day and in words after it: "1:17 PM · 1h 27m ago",
- * "Sep 2, 1:17 PM · 3 days ago".
+ * When something happened on a timeline, as a chart's tip says it: the clock time,
+ * with the day when it is not `now`'s, and how long ago, to the minute within a day
+ * and in words after it.
+ *
+ * Examples: "1:17 PM · 1h 27m ago", "Sep 2, 1:17 PM · 3 days ago".
  */
 export function formatClockAgo(timestamp: string, now: Date | number): string {
   const moment = new Date(timestamp)
@@ -168,12 +170,13 @@ export function formatMoment(timestamp: string, now: Date = new Date()): string 
 }
 
 /**
- * A span of time in the interface's duration words, counted as a timer
- * counts: "42s", "2m 14s" (the seconds left out on the minute), "1h 5m"
- * (the minutes left out on the hour, the seconds never shown). Every unit is
- * floored, so a span reads as what has fully passed. The thinking label, the
- * command time tag, the agent status bar and the reset times all say their
- * spans with it.
+ * A span of time in the interface's duration words, counted as a timer counts:
+ * "42s", "2m 14s" (the seconds left out on the minute), "1h 5m" (the minutes left
+ * out on the hour, the seconds never shown).
+ *
+ * Every unit is floored, so a span reads as what has fully passed. The thinking
+ * label, the command time tag, the agent status bar and the reset times all say
+ * their spans with it.
  */
 export function formatSpan(ms: number): string {
   const seconds = Math.floor(Math.max(0, ms) / 1000)
@@ -193,15 +196,18 @@ export function formatSpan(ms: number): string {
 }
 
 /**
- * A moment to come, `timestamp`, after `verb`: when a failed request can
- * succeed again, as a failure's record says it and as the control that
- * resumes the turn then names it, or when a credential kept for a while is
- * removed. "Resets at 9:00 AM" or "Removed today at 6:00 PM" on `now`'s day,
- * "Resume Sat at 9:00 AM" within a week either way, then "Resets Oct 24 at 9:00
- * AM", with the year when it is not this one. The moment is rounded up to the
- * minute, so it never names a time before the moment: 7:03:55 PM is 7:04 PM.
- * `resetting` says it inside a sentence, as the line that says an agent moved
- * to another account does.
+ * A moment to come, `timestamp`, after `verb`: when a failed request can succeed
+ * again, as a failure's record says it and as the control that resumes the turn
+ * then names it, or when a credential kept for a while is removed.
+ *
+ * - On `now`'s day: "Resets at 9:00 AM" or "Removed today at 6:00 PM".
+ * - Within a week either way: "Resume Sat at 9:00 AM".
+ * - Beyond that: "Resets Oct 24 at 9:00 AM", with the year when it is not this
+ *   one.
+ *
+ * The moment is rounded up to the minute, so it never names a time before the
+ * moment: 7:03:55 PM is 7:04 PM. `resetting` says it inside a sentence, as the
+ * line that says an agent moved to another account does.
  */
 export function formatVerbAt(verb: 'Resets' | 'Resume' | 'resetting' | 'Removed', timestamp: string, now: Date): string {
   const moment = toMinute(new Date(timestamp), true)
@@ -216,16 +222,20 @@ export function formatVerbAt(verb: 'Resets' | 'Resume' | 'resetting' | 'Removed'
 }
 
 /**
- * When a usage window resets, as specifically as the user would say it,
- * counted from `now` in the user's time zone: "Resets now" once the clock has
- * passed it, "Resets in <1m"
- * within a minute, "Resets in 42m" within the hour, "Resets in 3h 42m"
- * within a day, the minutes left out on the hour, "Resets Sat 4:00 PM" from
- * 24 hours to under 7 days, then the day alone, "Resets Oct 24", with the
- * year when it is not this year's: "Resets Jan 3, 2027". The row is chosen
- * by the exact time left and the countdown counts it down like a timer, so
- * 59m 59s left reads "in 59m"; a moment named on the clock is its nearest
- * minute.
+ * When a usage window resets, as specifically as the user would say it, counted
+ * from `now` in the user's time zone:
+ *
+ * - Once the clock has passed it: "Resets now".
+ * - Within a minute: "Resets in <1m".
+ * - Within the hour: "Resets in 42m".
+ * - Within a day: "Resets in 3h 42m", the minutes left out on the hour.
+ * - From 24 hours to under 7 days: "Resets Sat 4:00 PM".
+ * - Beyond that, the day alone: "Resets Oct 24", with the year when it is not this
+ *   year's: "Resets Jan 3, 2027".
+ *
+ * The row is chosen by the exact time left, and the countdown counts it down like
+ * a timer, so 59m 59s left reads "in 59m". A moment named on the clock is its
+ * nearest minute.
  */
 export function formatReset(timestamp: string, now: Date): string {
   const left = new Date(timestamp).getTime() - now.getTime()

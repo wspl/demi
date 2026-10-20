@@ -12,11 +12,14 @@ import SettingsRow from './SettingsRow.vue'
 /**
  * Settings › Notifications: whether this browser notifies at all, by push, so
  * with every Demi page closed too, and what notifies, the agent's own
- * notifications among it. The setting belongs to the browser; turning it on
- * asks the browser for permission, and a refusal turns the switch back off and
- * says how to allow notifications again. Safari on an iPhone or iPad pushes
- * only to Demi added to the Home Screen: there turning it on shows how to add
- * it instead, and the row then says so with How to Add.
+ * notifications among it.
+ *
+ * - The setting belongs to the browser. Turning it on asks the browser for
+ *   permission, and a refusal turns the switch back off and says how to allow
+ *   notifications again.
+ * - Safari on an iPhone or iPad pushes only to Demi added to the Home Screen.
+ *   There, turning it on shows how to add it instead, and the row then says so
+ *   with How to Add.
  */
 const props = defineProps<{
   /**

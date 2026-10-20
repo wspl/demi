@@ -15,10 +15,12 @@ import { useCodeView } from '../useCodeView'
 
 /**
  * One file's text, read-only: syntax colors by the file's name, folding, and
- * Mod-f to find. A new text of the file replaces the old in place; another
- * file needs another editor, which can open where an earlier one of it was
- * scrolled to (`scrollTo`, from `left`), or at a line (`line`), scrolled
- * there and marked for a moment.
+ * Mod-f to find. A new text of the file replaces the old in place. Another file
+ * needs another editor.
+ *
+ * A new editor can open where an earlier one of the file was scrolled to
+ * (`scrollTo`, from `left`), or at a line (`line`), scrolled there and marked for
+ * a moment.
  */
 const props = defineProps<{
   /** The file's path, which selects its language. */

@@ -25,15 +25,16 @@ export const ROW_PICTURE: ThumbnailBounds = { height: 20, minWidth: 16, maxWidth
 
 /**
  * The box a thumbnail of a medium of `natural` size takes within `bounds`: as
- * tall as the bounds, as wide as its proportions make it within their widths. A
- * medium whose proportions fall outside that range fills the box and is cropped
- * (`object-fit: cover`), a tall one to its top and a wide one to its middle.
- * While its size is unknown, an image's box is the narrowest one and a video's
- * is 16:9, as most recordings are, until its first frame arrives.
+ * tall as the bounds, as wide as its proportions make it within their widths.
  *
- * Never enlarged: the box is never taller or wider than the medium itself,
- * so one smaller than the box keeps its own size where it is narrower or
- * shorter: a 16 × 16 icon stays 16 × 16.
+ * - A medium whose proportions fall outside that range fills the box and is
+ *   cropped (`object-fit: cover`), a tall one to its top and a wide one to its
+ *   middle.
+ * - While its size is unknown, an image's box is the narrowest one and a
+ *   video's is 16:9, as most recordings are, until its first frame arrives.
+ * - It is never enlarged: the box is never taller or wider than the medium
+ *   itself, so one smaller than the box keeps its own size where it is narrower
+ *   or shorter. A 16 × 16 icon stays 16 × 16.
  */
 export function thumbnailBox(natural: PixelSize | null, kind: ThumbnailKind, bounds: ThumbnailBounds): PixelSize {
   if (natural === null) {
@@ -56,9 +57,10 @@ export const TILE_HEIGHT = 240
 
 /**
  * The box a picture of a message fits in, lone or in a run: a third of `width`,
- * the width its pictures stand in, less the two gaps between three tiles, and
- * 240 pixels tall, so three tiles fill a line. A 760-pixel message's is 248 ×
- * 240.
+ * the width its pictures stand in, less the two gaps between three tiles, and 240
+ * pixels tall, so three tiles fill a line.
+ *
+ * A 760-pixel message's is 248 × 240.
  */
 export function tileFrame(width: number): PixelSize {
   return { width: Math.max(0, Math.floor((width - 2 * TILE_GAP) / 3)), height: TILE_HEIGHT }
@@ -68,13 +70,16 @@ export function tileFrame(width: number): PixelSize {
 const UNKNOWN_VIDEO: PixelSize = { width: 1600, height: 900 }
 
 /**
- * The box a message's picture of `natural` size takes, lone or in a run, in
- * a message whose pictures stand `width` pixels wide: scaled down with its
+ * The box a message's picture of `natural` size takes, lone or in a run, in a
+ * message whose pictures stand `width` pixels wide: scaled down with its
  * proportions kept to fit its tile's frame, never enlarged, never cropped.
- * In a 760-pixel message a 2560 × 1720 screenshot is 248 × 167, a
- * 1000 × 8000 page 30 × 240. A video whose size is unknown until its first
- * frame takes a 16:9 box as wide as the frame; an image whose size is
- * unknown has none (null) until its bytes give it one.
+ *
+ * In a 760-pixel message a 2560 × 1720 screenshot is 248 × 167, a 1000 × 8000
+ * page 30 × 240.
+ *
+ * A video whose size is unknown until its first frame takes a 16:9 box as wide
+ * as the frame. An image whose size is unknown has none (null) until its bytes
+ * give it one.
  */
 export function tileBox(natural: PixelSize | null, kind: ThumbnailKind, width: number): PixelSize | null {
   const frame = tileFrame(width)

@@ -7,11 +7,13 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
 
 /**
- * The page a phone's camera opens from a handoff code: it says it opens the
- * page while the host spends the code, then the host goes on to the page the
- * code opens, signed in to its account. A code that expired or was used says
- * so, with Sign In, which the host opens the sign-in page for; another failure
- * says what failed.
+ * The page a phone's camera opens from a handoff code. It says it opens the page
+ * while the host spends the code, then the host goes on to the page the code
+ * opens, signed in to its account.
+ *
+ * - A code that expired or was used says so, with Sign In, which the host opens
+ *   the sign-in page for.
+ * - Another failure says what failed.
  */
 export type HandoffPagePhase =
   | { kind: 'opening' }

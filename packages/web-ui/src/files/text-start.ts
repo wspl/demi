@@ -13,13 +13,17 @@ export function isBinary(bytes: Uint8Array): boolean {
 }
 
 /**
- * The text of a file's first bytes: a character the cut splits is left out, as
- * an editor that opens part of a large file shows whole characters, and any
- * other byte that is not UTF-8 shows as U+FFFD. Null when the bytes are binary
- * by the rule the text route refuses a file by
- * (`crates/command-package-file/src/files.rs`): a NUL byte in their first 8
- * KiB. The media types that rule also names have their own viewers, chosen by
- * the file's name before its text is read.
+ * The text of a file's first bytes.
+ *
+ * - A character the cut splits is left out, as an editor that opens part of a
+ *   large file shows whole characters.
+ * - Any other byte that is not UTF-8 shows as U+FFFD.
+ * - It is null when the bytes are binary by the rule the text route refuses a
+ *   file by (`crates/command-package-file/src/files.rs`): a NUL byte in their
+ *   first 8 KiB.
+ *
+ * The media types that rule also names have their own viewers, chosen by the
+ * file's name before its text is read.
  */
 export function decodeTextStart(bytes: Uint8Array): string | null {
   if (isBinary(bytes))
@@ -36,10 +40,11 @@ export type TextStart =
   | { phase: 'card' }
 
 /**
- * The first `TEXT_FILE_BYTES` of the text file at `path`, while `path` is
- * not null, read again when the file's version changes: a log that grows
- * shows its start anew, as its source reports the change. The read ends when
- * the path changes or the calling scope ends.
+ * The first `TEXT_FILE_BYTES` of the text file at `path`, while `path` is not
+ * null, read again when the file's version changes: a log that grows shows its
+ * start anew, as its source reports the change.
+ *
+ * The read ends when the path changes or the calling scope ends.
  */
 export function useTextStart(
   contents: () => FileContents | undefined,

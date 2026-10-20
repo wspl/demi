@@ -3,23 +3,25 @@ import { pageLanguage } from '../i18n/text'
 import { t } from './locales/text'
 
 /**
- * A usage window's name in the page's language, from its kind, its period
- * and its scope, the same for every vendor (`packages/web-ui/src/ui/dates.ts`):
- * *5-hour limit*, *Weekly Opus limit*, *Monthly credits*, *Usage
- * limit*. Settings, the context card and the account switch's line all name
- * a window through this.
+ * A usage window's name in the page's language, from its kind, its period and its
+ * scope, the same for every vendor (`packages/web-ui/src/ui/dates.ts`): *5-hour
+ * limit*, *Weekly Opus limit*, *Monthly credits*, *Usage limit*.
+ *
+ * Settings, the context card and the account switch's line all name a window through
+ * this.
  */
 export function windowName(name: QuotaWindowName): string {
   return named(name, (scope) => scope)
 }
 
 /**
- * The window's name inside a sentence, *reached its weekly Opus limit*:
- * in a language with capital letters it is lowercase but for the model it
- * is on, a proper name; in Chinese and Japanese, which put no spaces
- * between words, it has a space on a side that is a Latin letter or a
- * digit, so it sits by the Chinese or Japanese text around it as the
- * Writing page asks (*已达到 5 小时限额*).
+ * The window's name inside a sentence, *reached its weekly Opus limit*.
+ *
+ * - In a language with capital letters it is lowercase but for the model it is
+ *   on, a proper name.
+ * - In Chinese and Japanese, which put no spaces between words, it has a space on
+ *   a side that is a Latin letter or a digit, so it sits by the Chinese or
+ *   Japanese text around it as the Writing page asks (*已达到 5 小时限额*).
  */
 export function windowNameInSentence(name: QuotaWindowName): string {
   const script = new Intl.Locale(pageLanguage()).maximize().script

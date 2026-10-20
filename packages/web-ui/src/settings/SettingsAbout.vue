@@ -7,11 +7,11 @@ import SettingsRow from './SettingsRow.vue'
 import type { AcknowledgementsState } from './types'
 
 /**
- * Settings › About: the Demi version, and Acknowledgements, a page of its
- * own with a back button to About, as a row of System Settings opens one.
- * Acknowledgements shows the third-party notices of the release, the
- * licenses of the open-source software it includes
- * (`crates/xtask/src/notices.rs`).
+ * Settings › About: the Demi version, and Acknowledgements.
+ *
+ * Acknowledgements is a page of its own with a back button to About, as a row of
+ * System Settings opens one. It shows the third-party notices of the release, the
+ * licenses of the open-source software it includes (`crates/xtask/src/notices.rs`).
  */
 defineProps<{
   version: string

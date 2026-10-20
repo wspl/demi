@@ -1,8 +1,11 @@
 /**
- * The attributes that keep browsers and password managers from filling or
- * saving a field. `autocomplete="off"` is honored by Safari and Firefox and
- * ignored by Chrome's password manager for a login-looking field, so each
- * manager's own switch is set as well, from its documentation:
+ * The attributes that keep browsers and password managers from filling or saving
+ * a field.
+ *
+ * `autocomplete="off"` is honored by Safari and Firefox and ignored by Chrome's
+ * password manager for a login-looking field. So each manager's own switch is set
+ * as well, from its documentation:
+ *
  * - 1Password: `data-1p-ignore`
  *   (https://www.1password.dev/web/compatible-website-design).
  * - LastPass: `data-lpignore="true"`
@@ -21,11 +24,12 @@ export const NO_AUTOFILL = {
 } as const
 
 /**
- * What a field holds, for `TextInput`'s `masked` and `search`: an account
- * `password` (sign-in, setup, change password) is the only kind the browser
- * and its password manager may treat as a password; a `secret` (an API key, a
- * token, a credential's value) is any other secret; a filter or search box is
- * `search`.
+ * What a field holds, for `TextInput`'s `masked` and `search`:
+ *
+ * - `password`: an account password (sign-in, setup, change password), the only kind
+ *   the browser and its password manager may treat as a password.
+ * - `secret`: any other secret (an API key, a token, a credential's value).
+ * - `search`: a filter or search box.
  */
 export type Masked = 'password' | 'secret'
 
@@ -51,19 +55,26 @@ export function autofillAttrs(masked: Masked | undefined, search: boolean | unde
 }
 
 /**
- * The attributes of the hidden user name field a form that asks only for a
- * password (change password, add a passkey, confirm the password) carries:
- * the account's email as `autocomplete="username"`, so the password manager
- * knows whose password the field holds, fills the right one and updates that
- * login on a change. Chromium's guidance for password forms recommends it:
+ * The attributes of the hidden user name field that a form asking only for a
+ * password (change password, add a passkey, confirm the password) carries.
+ *
+ * The field holds the account's email as `autocomplete="username"`, so the
+ * password manager knows whose password the field holds, fills the right one and
+ * updates that login on a change. Chromium's guidance for password forms
+ * recommends it:
  * https://www.chromium.org/developers/design-documents/create-amazing-password-forms/
  * ("include a hidden username field in a change-password form"), as does
- * https://web.dev/articles/sign-in-form-best-practices#new-password. It is
- * hidden from the eye (a one-pixel box, transparent), from the keyboard
- * (`tabindex="-1"`, read-only) and from assistive technology (`aria-hidden`),
- * but not `display: none` or `type="hidden"`, which Chromium does not take
- * for a user name. Render it as `<input v-bind="hiddenUsername(email)">`
- * before the password field.
+ * https://web.dev/articles/sign-in-form-best-practices#new-password.
+ *
+ * It is hidden from:
+ *
+ * - the eye (a one-pixel box, transparent),
+ * - the keyboard (`tabindex="-1"`, read-only), and
+ * - assistive technology (`aria-hidden`).
+ *
+ * It is not `display: none` or `type="hidden"`, which Chromium does not take for a
+ * user name. Render it as `<input v-bind="hiddenUsername(email)">` before the
+ * password field.
  */
 export function hiddenUsername(email: string) {
   return {

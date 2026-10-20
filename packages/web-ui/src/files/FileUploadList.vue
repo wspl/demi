@@ -19,18 +19,26 @@ import { baseName } from '@demicodes/utils'
 
 /**
  * A source's uploads, and nothing while there are none; its host sets its
- * height, and the rows scroll inside it. Those on their way come first, then
- * those waiting, the failed ones, and the completed ones last, each group in
- * the order it was asked for. A folder is one row for everything in it.
+ * height, and the rows scroll inside it.
  *
- * A row is two lines, the name and one line of facts, and one on its way
- * adds a bar between them: how much has gone and how fast, and of a folder
- * how many of its files; a waiting one its size, a completed one a check, a
- * failed one a cross and why, or of a folder how many of its files failed. A
- * line that does not fit is cut, and its tooltip shows it whole; the name's
- * shows where the upload goes, and a folder's failures list in theirs.
- * Cancel stops an upload and drops it, Retry sends what failed again, and
- * Clear drops the finished ones, which can also be dismissed one by one.
+ * Order: those on their way come first, then those waiting, the failed ones, and
+ * the completed ones last, each group in the order it was asked for. A folder is
+ * one row for everything in it.
+ *
+ * A row is two lines, the name and one line of facts, and one on its way adds a
+ * bar between them:
+ *
+ * - On its way: how much has gone and how fast, and of a folder how many of its
+ *   files.
+ * - Waiting: its size.
+ * - Completed: a check.
+ * - Failed: a cross and why, or of a folder how many of its files failed.
+ *
+ * A line that does not fit is cut, and its tooltip shows it whole. The name's
+ * tooltip shows where the upload goes, and a folder's failures list in theirs.
+ *
+ * Cancel stops an upload and drops it, Retry sends what failed again, and Clear
+ * drops the finished ones, which can also be dismissed one by one.
  */
 const props = defineProps<{
   uploads: FileUploads

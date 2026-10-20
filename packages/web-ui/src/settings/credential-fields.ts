@@ -11,10 +11,11 @@ export const FIELDS_MAX = 10
 export const VALUE_MAX_BYTES = 64 * 1024
 
 /**
- * The name an agent reads a new field by, made from its label: lowercase
- * letters, digits, `_` and `-`, at most 32, different from every name in
- * `taken`. Anything else in the label becomes a hyphen; a label with
- * nothing to keep is `field`.
+ * The name an agent reads a new field by, made from its label: lowercase letters,
+ * digits, `_` and `-`, at most 32, different from every name in `taken`.
+ *
+ * Anything else in the label becomes a hyphen. A label with nothing to keep is
+ * `field`.
  */
 export function fieldNameFor(label: string, taken: Iterable<string>): string {
   const used = new Set(taken)

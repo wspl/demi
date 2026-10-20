@@ -23,15 +23,18 @@ import {
 import { formatTokens } from '../ui/token-count'
 
 /**
- * One model, in its own dialog: Edit Model, which every model of an entry's
- * own list opens, the one just added from Add Model included, or the facts
- * of a catalog's model to read. Its fields come in one order, the id, the
- * name, the context window, the output limit, the thinking efforts, the Fast
- * tier and the files it reads, and every one is editable, the id too
- * (`crates/backend-user-shard/src/provider_settings.rs`). An id another model of the
- * list has is refused here, before anything is sent. Save keeps the change,
- * Cancel drops it, Delete Model removes the model. Tool calling is not a
- * setting: a model without it cannot drive the agent, so it is never offered.
+ * One model, in its own dialog: Edit Model, which every model of an entry's own
+ * list opens, the one just added from Add Model included, or the facts of a
+ * catalog's model to read.
+ *
+ * - Its fields come in one order: the id, the name, the context window, the
+ *   output limit, the thinking efforts, the Fast tier and the files it reads.
+ *   Every one is editable, the id too
+ *   (`crates/backend-user-shard/src/provider_settings.rs`).
+ * - An id another model of the list has is refused here, before anything is sent.
+ * - Save keeps the change, Cancel drops it, Delete Model removes the model.
+ * - Tool calling is not a setting: a model without it cannot drive the agent, so
+ *   it is never offered.
  */
 const props = defineProps<{
   /** Saves the model; Save works until it settles. */

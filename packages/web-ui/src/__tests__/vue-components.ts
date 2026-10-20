@@ -4,11 +4,12 @@ import { shallowRef } from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 
 /**
- * Lets a test import a single-file component, as Vite's Vue plugin builds
- * it for the page: its script and template become one module, the template
- * inlined into its setup. Bun has no loader for `.vue` files of its own.
- * Styles are left out: a test of happy-dom lays nothing out, and a test in
- * Chromium builds its page with this plugin and the stylesheet Tailwind makes.
+ * Lets a test import a single-file component, as Vite's Vue plugin builds it for the
+ * page: its script and template become one module, the template inlined into its
+ * setup. Bun has no loader for `.vue` files of its own.
+ *
+ * Styles are left out: a test of happy-dom lays nothing out, and a test in Chromium
+ * builds its page with this plugin and the stylesheet Tailwind makes.
  */
 export const vueSingleFileComponents: BunPlugin = {
   name: 'vue single-file components',

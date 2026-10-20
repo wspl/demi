@@ -10,11 +10,13 @@ import { formatCount } from '../ui/numbers'
 import { t } from './locales/text'
 
 /**
- * How long one diff may take, in milliseconds, before the rest of it is
- * matched roughly. The merge package's own default instead gives up on any
- * stretch of more than 16,000 changed-or-not characters and calls all of it
- * changed, so a file of 25 KB with edits spread through it showed as wholly
- * replaced, and each read of a new version swung the whole view.
+ * How long one diff may take, in milliseconds, before the rest of it is matched
+ * roughly.
+ *
+ * The merge package's own default instead gives up on any stretch of more than
+ * 16,000 changed-or-not characters and calls all of it changed. So a file of 25 KB
+ * with edits spread through it showed as wholly replaced, and each read of a new
+ * version swung the whole view.
  */
 const DIFF_CONFIG: DiffConfig = { timeout: 500 }
 
@@ -31,21 +33,23 @@ function terminated(text: Text): Text {
 }
 
 /**
- * The changed stretches between `original` and `modified`, as git shows
- * them: by whole lines, each of which ends with its newline. A created file
- * is only added lines and a removed one only removed lines; neither side's
- * empty last line, which a text has after its final newline or when it is
- * empty, ever counts as a line. A line the text ends without a newline
- * differs from the same line with one, so when only one side has a final
- * newline, the other side's last line changed. Positions are the texts'
- * own; a chunk's `toA` or `toB` past its side's end marks a last line it
- * covers that has no newline after it, which the diff follows with "No
- * newline at end of file".
+ * The changed stretches between `original` and `modified`, as git shows them:
+ * by whole lines, each of which ends with its newline.
+ *
+ * - A created file is only added lines and a removed one only removed lines.
+ * - Neither side's empty last line, which a text has after its final newline or
+ *   when it is empty, ever counts as a line.
+ * - A line the text ends without a newline differs from the same line with one,
+ *   so when only one side has a final newline, the other side's last line
+ *   changed.
+ * - Positions are the texts' own. A chunk's `toA` or `toB` past its side's end
+ *   marks a last line it covers that has no newline after it, which the diff
+ *   follows with "No newline at end of file".
  *
  * The merge package's diff keeps a side's empty last line as a line, so a
- * created file without a final newline showed an empty removed line above
- * its first. Its diff runs here on the texts each given a final newline,
- * and this puts back the change of the final newline, which that hides.
+ * created file without a final newline showed an empty removed line above its
+ * first. Its diff runs here on the texts each given a final newline, and this
+ * puts back the change of the final newline, which that hides.
  */
 export function diffChunks(original: Text, modified: Text): readonly Chunk[] {
   const a = terminated(original)
@@ -54,12 +58,13 @@ export function diffChunks(original: Text, modified: Text): readonly Chunk[] {
   const openA = a !== original
   if (openA === (b !== modified))
     return chunks
-  // One side ends without a newline and the other with one: no line of the
-  // other side is the same as that side's last, which then changed. The
-  // last chunk takes it: the one that reaches both texts' ends, which every
-  // chunk after the last change does, or a new one there. What lies before
-  // a chunk is the same on both sides, line for line, so a line it takes in
-  // on one side it takes in on both.
+  // One side ends without a newline and the other with one: no line of the other
+  // side is the same as that side's last, which then changed. The last chunk takes
+  // it: the one that reaches both texts' ends, which every chunk after the last
+  // change does, or a new one there.
+  //
+  // What lies before a chunk is the same on both sides, line for line, so a line it
+  // takes in on one side it takes in on both.
   const last = chunks.at(-1)
   const ending = last && last.toA === a.length ? chunks.pop()! : new Chunk([], a.length, a.length, b.length, b.length)
   /** Where the side's last line starts. */
@@ -122,10 +127,12 @@ export function diffOf(state: EditorState): DiffState | null {
 let noNewlineTemplate: HTMLElement | null = null
 
 /**
- * The row after a last line without a newline: a muted icon and its words,
- * as GitHub shows it. CodeMirror builds a widget's element when it comes
- * into view and never says when it drops one, so the row holds no live
- * component: the icon renders once and every row is a copy.
+ * The row after a last line without a newline: a muted icon and its words, as
+ * GitHub shows it.
+ *
+ * CodeMirror builds a widget's element when it comes into view and never says when
+ * it drops one, so the row holds no live component: the icon renders once and
+ * every row is a copy.
  */
 function noNewlineRow(): HTMLElement {
   if (!noNewlineTemplate) {
@@ -416,19 +423,25 @@ const diffBaseTheme = EditorView.baseTheme({
 
 /**
  * A unified diff of the editor's text against `original`, by git's lines
- * (`diffChunks`): each removed stretch above what replaced it, a last line
- * without a newline followed by a row that says so, and the unchanged lines
- * between changes folded but for three around each, a stretch of four or
- * more into one row a click unfolds. New texts of either side replace the
- * old in place (`useCodeView`), and the folding follows the chunks they
- * make.
+ * (`diffChunks`).
  *
- * This is not the merge package's `unifiedMergeView`, which lacks two
- * things the diff needs: it takes no chunks from outside (its
- * `diffConfig.override` gives only character changes, which it widens to
- * lines itself, keeping an empty last line as a line), and it has no
- * marker for a last line without a newline. So this draws the chunks of
- * `diffChunks` itself, with the merge package's classes.
+ * - Each removed stretch is shown above what replaced it.
+ * - A last line without a newline is followed by a row that says so.
+ * - The unchanged lines between changes are folded but for three around each
+ *   change: a stretch of four or more becomes one row that a click unfolds.
+ * - New texts of either side replace the old in place (`useCodeView`), and the
+ *   folding follows the chunks they make.
+ *
+ * This is not the merge package's `unifiedMergeView`, which lacks two things the
+ * diff needs:
+ *
+ * - It takes no chunks from outside. Its `diffConfig.override` gives only
+ *   character changes, which it widens to lines itself, keeping an empty last
+ *   line as a line.
+ * - It has no marker for a last line without a newline.
+ *
+ * So this draws the chunks of `diffChunks` itself, with the merge package's
+ * classes.
  */
 export function unifiedDiff(original: string): Extension {
   return [

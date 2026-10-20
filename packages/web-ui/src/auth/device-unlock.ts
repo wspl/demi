@@ -3,10 +3,11 @@ import { inject, type InjectionKey } from 'vue'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
- * How the device the page runs on unlocks, as the passkey offer names it. Told
- * from the browser's system, as the backend names a signed-in browser
- * (`user_agent.rs`): the families, in the order that tells them apart, never
- * their versions.
+ * How the device the page runs on unlocks, as the passkey offer names it.
+ *
+ * It is told from the browser's system, as the backend names a signed-in browser
+ * (`user_agent.rs`): the families, in the order that tells them apart, never their
+ * versions.
  */
 export type DeviceSystem = 'ios' | 'mac' | 'windows' | 'android' | 'other'
 

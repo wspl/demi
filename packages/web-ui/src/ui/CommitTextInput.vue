@@ -7,24 +7,27 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps<{
   modelValue: string
   /**
-   * A secret is stored that the page never receives. The field stands filled
-   * with a mask in its place, selected when focused, so typing replaces it.
-   * Left as it was, it keeps what is stored; emptied and left, it commits ''
-   * to remove what is stored.
+   * A secret is stored that the page never receives. The field stands filled with a
+   * mask in its place, selected when focused, so typing replaces it.
+   *
+   * - Left as it was, it keeps what is stored.
+   * - Emptied and left, it commits '' to remove what is stored.
    */
   stored?: boolean
   /**
-   * What is wrong with a value, said as the fix ("Enter a name."), or null
-   * when it can be committed. A value that cannot is kept in the field, not
-   * reverted, and reported through `problem` until it is fixed or Escape
-   * gives the field back its committed value.
+   * What is wrong with a value, said as the fix ("Enter a name."), or null when it
+   * can be committed.
+   *
+   * A value that cannot is kept in the field, not reverted, and reported through
+   * `problem` until it is fixed or Escape gives the field back its committed value.
    */
   validate?: (value: string) => SentenceText | null
   /**
-   * Saves a committed value and answers why it was refused, said as the
-   * fix ("Port 18910 is already exposed."), or null once saved. A refused
-   * value stays in the field to correct, reported through `problem` as a
-   * value `validate` refuses is; without it, `commit` alone saves.
+   * Saves a committed value and answers why it was refused, said as the fix ("Port
+   * 18910 is already exposed."), or null once saved.
+   *
+   * A refused value stays in the field to correct, reported through `problem` as a
+   * value `validate` refuses is. Without it, `commit` alone saves.
    */
   save?: (value: string) => Promise<SentenceText | null>
 }>()

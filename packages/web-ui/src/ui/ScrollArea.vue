@@ -4,15 +4,15 @@ import { useOverlayScrollbars } from 'overlayscrollbars-vue'
 import { scrollbarsOptions, scrollbarsTarget, type ScrollAxis } from './scrollbars'
 
 /**
- * The app's scroller: its scrollbar floats over the content and takes no
- * room, so content keeps symmetric padding whether or not it overflows. The
- * bar shows while the pointer is over this scroller (not one around it),
- * while it scrolls and while its thumb is dragged (`scrollbars.ts`).
+ * The app's scroller: its scrollbar floats over the content and takes no room, so
+ * content keeps symmetric padding whether or not it overflows. The bar shows
+ * while the pointer is over this scroller (not one around it), while it scrolls
+ * and while its thumb is dragged (`scrollbars.ts`).
  *
- * The root is a flex item (`min-h-0`); the viewport inside it scrolls along
- * `axis` (vertically unless told otherwise) and clips the other axis. A focus
- * ring inside it is drawn inside its control, so content at the edges, or
- * scrolled flush to them, keeps it whole (`base.css`, § The focus ring).
+ * The root is a flex item (`min-h-0`); the viewport inside it scrolls along `axis`
+ * (vertically unless told otherwise) and clips the other axis. A focus ring
+ * inside it is drawn inside its control, so content at the edges, or scrolled
+ * flush to them, keeps it whole (`base.css`, § The focus ring).
  */
 const props = withDefaults(defineProps<{
   /** Classes for the scrolling viewport: padding, flex layout of the content. */
@@ -35,15 +35,20 @@ const [initialize] = useOverlayScrollbars({
 })
 
 // The bar is set up when the user first reaches the scroller, as the content
-// scrollers' (`useContentScrollers`): the pointer comes onto it, the focus
-// moves into it, or a wheel turns over it. A scroll the page makes, such as
-// placing a transcript where its reader left it, sets up nothing: as on
-// macOS, the page moving its content shows no scroller. A list mounts many
-// scrollers, most never touched, and setting one up costs layouts. Until
-// then the viewport scrolls natively with its native bar hidden, as
-// OverlayScrollbars leaves an element it is about to take over, and its
-// geometry is the same before and after, so a caller can read it as it
-// mounts.
+// scrollers' (`useContentScrollers`):
+//
+// - The pointer comes onto it.
+// - The focus moves into it.
+// - A wheel turns over it.
+//
+// A scroll the page makes, such as placing a transcript where its reader left it,
+// sets up nothing: as on macOS, the page moving its content shows no scroller. A
+// list mounts many scrollers, most never touched, and setting one up costs
+// layouts.
+//
+// Until then the viewport scrolls natively with its native bar hidden, as
+// OverlayScrollbars leaves an element it is about to take over, and its geometry
+// is the same before and after, so a caller can read it as it mounts.
 const started = ref(false)
 function start(): void {
   if (started.value || !viewport.value || !root.value)

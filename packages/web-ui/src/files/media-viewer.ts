@@ -36,11 +36,13 @@ export function mediumKey(medium: ShownMedium): string {
 }
 
 /**
- * Where the viewer loads `medium` from while it is `open`: its address, or
- * for a Host image the version of its file the page keeps, shown from the
- * kept files while the viewer is open, so it is the picture the message
- * shows and the file's next version replaces it in place. `gone` says a Host
- * image's file is not there. Closed, the last stays for the window's leave.
+ * Where the viewer loads `medium` from while it is `open`: its address, or for a
+ * Host image the version of its file the page keeps.
+ *
+ * A Host image shows from the kept files while the viewer is open, so it is the
+ * picture the message shows and the file's next version replaces it in place.
+ * `gone` says a Host image's file is not there. Closed, the last stays for the
+ * window's leave.
  */
 export function useMediumSource(
   medium: () => ShownMedium | null,
@@ -107,11 +109,12 @@ export interface ViewerPosition {
 
 /**
  * One viewer that shows a medium large, for the whole page: the medium it shows
- * now, or none, and where its window stands. The window takes its size from the
- * medium (`windowSizeFor`) and opens centred on the page, whether it is the
- * first medium or one shown while the window is open; a size the user dragged
- * lasts while that medium shows. A medium opened from a transcript is stepped
- * to the one before it or after it (`step`).
+ * now, or none, and where its window stands.
+ *
+ * The window takes its size from the medium (`windowSizeFor`) and opens centred
+ * on the page, whether it is the first medium or one shown while the window is
+ * open. A size the user dragged lasts while that medium shows. A medium opened
+ * from a transcript is stepped to the one before it or after it (`step`).
  */
 export interface MediaViewerState {
   shown: Readonly<ShallowRef<ShownMedium | null>>

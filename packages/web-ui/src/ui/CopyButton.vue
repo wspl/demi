@@ -8,10 +8,11 @@ import Tooltip from './Tooltip.vue'
 import type { SentenceText } from './ui-text'
 
 /**
- * The one Copy control: an icon button with its tip that puts text, or a
- * clipboard item of richer content, on the clipboard, turns to a check, a
- * tip and an accessible name that say Copied for a moment, and tells the
- * user when the clipboard refused (`useCopy`). Every Copy in the app is this.
+ * The one Copy control: an icon button with its tip that puts text, or a clipboard
+ * item of richer content, on the clipboard. Every Copy in the app is this.
+ *
+ * - It turns to a check, a tip and an accessible name that say Copied for a moment.
+ * - It tells the user when the clipboard refused (`useCopy`).
  */
 const props = withDefaults(defineProps<{
   /**

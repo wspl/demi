@@ -16,20 +16,27 @@ import { t } from './locales/text'
 
 /**
  * The changed files beside the diff as a tree, in both of the Change view's
- * modes, as VS Code's Source Control shows changes as a tree: the folders
- * that hold a changed file, folders first and names in order, a folder
- * whose only content is one folder joined with it into one row
- * (`src/web/app`), every folder open until it is folded (`changeTreeRows`).
- * A file ends its row with its line counts when they are known and, in
- * Uncommitted mode, the letter VS Code's Git marks it with, from git's
- * status of it (`GitStatusLetter`): U untracked, A added, M modified, D
- * deleted, R renamed, C copied, T type changed, ! in conflict. A deleted
- * file's name is struck through, and a renamed one's tooltip names where it
- * came from. The caption row names the workspace and, at its end, holds the
- * control that lists the changes again when the host offers one; it turns
- * while a list is on its way. A list cut short says so under its last row.
- * A click on a file selects it, as Enter does on the row the keyboard is
- * on; typing a name moves the keyboard to it (`Tree`).
+ * modes, as VS Code's Source Control shows changes as a tree.
+ *
+ * Rows:
+ *
+ * - The folders that hold a changed file, folders first and names in order.
+ * - A folder whose only content is one folder is joined with it into one row
+ *   (`src/web/app`).
+ * - Every folder is open until it is folded (`changeTreeRows`).
+ * - A file ends its row with its line counts when they are known and, in
+ *   Uncommitted mode, the letter VS Code's Git marks it with, from git's status
+ *   of it (`GitStatusLetter`): U untracked, A added, M modified, D deleted, R
+ *   renamed, C copied, T type changed, ! in conflict.
+ * - A deleted file's name is struck through, and a renamed one's tooltip names
+ *   where it came from.
+ *
+ * The caption row names the workspace and, at its end, holds the control that
+ * lists the changes again when the host offers one; it turns while a list is on
+ * its way. A list cut short says so under its last row.
+ *
+ * A click on a file selects it, as Enter does on the row the keyboard is on.
+ * Typing a name moves the keyboard to it (`Tree`).
  */
 const props = defineProps<{
   files: readonly ChangeTreeFile[]

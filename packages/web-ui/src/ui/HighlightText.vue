@@ -2,10 +2,12 @@
 import { computed } from 'vue'
 
 /**
- * Text with the parts a search matched marked: every occurrence of `query`,
- * case ignored, the characters at `indexes`, as a fuzzy match or a typed
- * prefix names them, or the pieces `ranges` names, as the backend's search
- * gives them.
+ * Text with the parts a search matched marked. The marks come from any of three
+ * sources:
+ *
+ * - every occurrence of `query`, case ignored,
+ * - the characters at `indexes`, as a fuzzy match or a typed prefix names them, or
+ * - the pieces `ranges` names, as the backend's search gives them.
  */
 const props = defineProps<{
   text: string

@@ -9,11 +9,14 @@ import type { UploadClash } from './file-uploads'
 import { t } from './locales/text'
 
 /**
- * The question before an upload writes over what a directory has: the
- * dropped or picked names it already has. Replace puts each in place of what
- * is there; Merge, offered once a folder meets a folder, adds a folder's
- * files to the folder there; Skip uploads only the others; closing uploads
- * nothing.
+ * The question before an upload writes over what a directory has: the dropped or
+ * picked names it already has. The answers:
+ *
+ * - Replace puts each in place of what is there.
+ * - Merge, offered once a folder meets a folder, adds a folder's files to the
+ *   folder there.
+ * - Skip uploads only the others.
+ * - Closing uploads nothing.
  */
 const props = defineProps<{
   isOpen: boolean

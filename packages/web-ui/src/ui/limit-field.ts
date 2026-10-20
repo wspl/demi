@@ -26,10 +26,12 @@ export interface LimitStep {
 }
 
 /**
- * The step `event` takes from `phase` while the value is `value`. Unlimited
- * is never committed without the dialog's confirmation; its Cancel, the
- * default answer, keeps the value. Either choice keeps the number: Limited
- * from Unlimited commits the number as it was, never an empty field.
+ * The step `event` takes from `phase` while the value is `value`.
+ *
+ * - Unlimited is never committed without the dialog's confirmation. Its Cancel, the
+ *   default answer, keeps the value.
+ * - Either choice keeps the number: Limited from Unlimited commits the number as it
+ *   was, never an empty field.
  */
 export function limitStep(value: LimitValue, phase: LimitPhase, event: LimitEvent): LimitStep {
   switch (event) {

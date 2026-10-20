@@ -16,10 +16,9 @@ export interface ReportErrorOptions {
 }
 
 /**
- * The report of a failure the page found itself, which the backend logs
- * under the report's own request ID
- * (`crates/backend-http/src/request_id.rs`): what failed and where,
- * never a value the page held.
+ * The report of a failure the page found itself, which the backend logs under the
+ * report's own request ID (`crates/backend-http/src/request_id.rs`): what failed
+ * and where, never a value the page held.
  */
 export interface PageErrorReport {
   title: string
@@ -46,10 +45,11 @@ export function reportPageErrorsWith(report: PageErrorReporter): () => void {
 }
 
 /**
- * The ID of the backend request `error` came from, which the page shows
- * with it: an answer's, or a refused frame's socket's. Null for a failure
- * the page found itself, and for an answer something in front of the
- * backend gave.
+ * The ID of the backend request `error` came from, which the page shows with it:
+ * an answer's, or a refused frame's socket's.
+ *
+ * It is null for a failure the page found itself, and for an answer something in
+ * front of the backend gave.
  */
 export function requestIdOf(error: unknown): string | null {
   return error instanceof Error && 'requestId' in error && typeof error.requestId === 'string'
@@ -58,10 +58,11 @@ export function requestIdOf(error: unknown): string | null {
 }
 
 /**
- * An error as the page shows it in a form or a row: its words, and the ID
- * of the request it came from, which goes beside them. The words are made
- * as they are read, from the failure the error keeps, so a language chosen
- * while it shows rewords it.
+ * An error as the page shows it in a form or a row: its words, and the ID of the
+ * request it came from, which goes beside them.
+ *
+ * The words are made as they are read, from the failure the error keeps, so a
+ * language chosen while it shows rewords it.
  */
 export interface ShownError {
   readonly message: SentenceText
@@ -69,10 +70,12 @@ export interface ShownError {
 }
 
 /**
- * Marks a failure the page found itself with the `code` its text is looked
- * up by, `errors.<code>`, and the `params` that text is filled with, as a
- * refusal of the backend carries them. The message stays English, for the
- * console and the report; what the page shows is the catalogue's.
+ * Marks a failure the page found itself with the `code` its text is looked up by,
+ * `errors.<code>`, and the `params` that text is filled with, as a refusal of the
+ * backend carries them.
+ *
+ * The message stays English, for the console and the report; what the page shows is
+ * the catalogue's.
  */
 export function coded<E extends Error>(error: E, code: string, params: Readonly<Record<string, string | number>> = {}): E {
   return Object.assign(error, { code, params })
@@ -84,11 +87,14 @@ export function errorCode(error: unknown): string | null {
 }
 
 /**
- * Marks `error` as a failure of the page's environment, not a defect: the
- * network that brought no answer, the browser's storage that refused, as
- * with a full quota, or a part of the page that did not load. `reportError`
- * tells of it as of any failure and reports it to no one. Marked where the failure comes
- * from, which alone knows what it is; answers `error`.
+ * Marks `error` as a failure of the page's environment, not a defect. Examples:
+ *
+ * - The network brought no answer.
+ * - The browser's storage refused, as with a full quota.
+ * - A part of the page did not load.
+ *
+ * `reportError` tells of it as of any failure and reports it to no one. Mark it
+ * where the failure comes from, which alone knows what it is. Answers `error`.
  */
 export function environmental<E>(error: E): E {
   if (error instanceof Error) {
@@ -100,9 +106,11 @@ export function environmental<E>(error: E): E {
 /**
  * How the browsers reject a dynamic import whose module did not download:
  * Chrome's, Firefox's and Safari's TypeError, and Vite's own when a chunk's
- * stylesheet did not load. A loader such as CodeMirror's language data
- * imports and builds in one promise, and the browsers give no other way to
- * tell a download that failed from a module that threw.
+ * stylesheet did not load.
+ *
+ * A loader such as CodeMirror's language data imports and builds in one promise,
+ * and the browsers give no other way to tell a download that failed from a module
+ * that threw.
  */
 const CHUNK_DOWNLOAD_FAILED = /dynamically imported module|Importing a module script failed|Unable to preload CSS/
 
@@ -121,11 +129,13 @@ function isEnvironmental(error: unknown): boolean {
 }
 
 /**
- * The catalogue's text for the code `code`, `errors.<code>`, filled with
- * `params` as the page writes each: a value whose name ends in `Bytes` as
- * a size, `{ limitBytes: 1048576 }` as *1.0 MB*, and a `count` choosing the
- * plural form; null for a code the catalogue has no text for, as a newer
- * backend may send.
+ * The catalogue's text for the code `code`, `errors.<code>`, filled with `params`
+ * as the page writes each.
+ *
+ * - A value whose name ends in `Bytes` is written as a size: `{ limitBytes:
+ *   1048576 }` as *1.0 MB*.
+ * - A `count` chooses the plural form.
+ * - A code the catalogue has no text for gives null, as a newer backend may send.
  */
 export function codeText(code: string, params: Readonly<Record<string, unknown>> = {}): SentenceText | null {
   const named = Object.fromEntries(Object.entries(params).map(([name, value]) => [
@@ -136,11 +146,13 @@ export function codeText(code: string, params: Readonly<Record<string, unknown>>
 }
 
 /**
- * What the page says of `error`, the one place a failure becomes words: a
- * refusal's catalogue text for its `code`, filled with its `params`
- * ([`codeText`]); for an answer that carries no code, as a proxy's, the text of
- * its HTTP status; its own `message` for a code the catalogue has no text for,
- * as a newer backend may send, and for any other failure.
+ * What the page says of `error`, the one place a failure becomes words:
+ *
+ * - A refusal: the catalogue text for its `code`, filled with its `params`
+ *   ([`codeText`]).
+ * - An answer that carries no code, as a proxy's: the text of its HTTP status.
+ * - A code the catalogue has no text for, as a newer backend may send, and any
+ *   other failure: its own `message`.
  */
 export function errorMessage(error: unknown): SentenceText {
   if (!(error instanceof Error)) {
@@ -188,12 +200,15 @@ function detailOf(error: unknown): string {
 }
 
 /**
- * `error` as the form the user filled shows it. A refusal whose `code` is
- * one of `corrections`' is one the user corrects there, such as a wrong
- * current password or an address already taken: it names no request, since
- * nothing about it needs tracing (`crates/backend-http/src/request_id.rs`),
- * and says the words `corrections` gives its code, or its own when that is
- * null. Any other failure names its request.
+ * `error` as the form the user filled shows it.
+ *
+ * A refusal whose `code` is one of `corrections`' is one the user corrects there,
+ * such as a wrong current password or an address already taken. It names no
+ * request, since nothing about it needs tracing
+ * (`crates/backend-http/src/request_id.rs`), and says the words `corrections`
+ * gives its code, or its own when that is null.
+ *
+ * Any other failure names its request.
  */
 export function formError(
   error: unknown,
@@ -207,10 +222,11 @@ export function formError(
 }
 
 /**
- * An address's query in a report's message: after the `?` of an absolute
- * URL or a path, up to the next space, quote or fragment. A failure's
- * message can quote the address it asked, whose query can carry a file's
- * path or a token; the report keeps the address's path alone.
+ * An address's query in a report's message: after the `?` of an absolute URL or a
+ * path, up to the next space, quote or fragment.
+ *
+ * A failure's message can quote the address it asked, whose query can carry a
+ * file's path or a token. The report keeps the address's path alone.
  */
 const QUERY = /((?:[a-z][a-z0-9+.-]*:\/\/|(?<![\w.])\/)[^\s?#"'`]*)\?[^\s#"'`]*/gi
 
@@ -242,11 +258,12 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
 }
 
 /**
- * Tells of a failure: on the console unless it was expected, and in a toast
- * when the user should see it, with the ID of the request it came from. A
- * defect no request names, one the page found itself, is reported to the
- * backend, and its toast shows the report's ID once the report is in; a
- * failure of the environment (`environmental`) is not.
+ * Tells of a failure: on the console unless it was expected, and in a toast when
+ * the user should see it, with the ID of the request it came from.
+ *
+ * A defect no request names, one the page found itself, is reported to the
+ * backend, and its toast shows the report's ID once the report is in. A failure of
+ * the environment (`environmental`) is not reported.
  */
 export function reportError(
   title: HeadlineText,

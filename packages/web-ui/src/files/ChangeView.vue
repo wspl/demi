@@ -55,24 +55,32 @@ import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import type { FileContents } from './types'
 
 /**
- * One file of the repository's uncommitted changes or of one of its
- * commits (`packages/web-ui/src/files/history.ts`), or one file of a request of
- * the conversation (§ What the conversation shows): its All Changes, from
- * before the request's first edit of it to after its last, or one of its
- * edits, which a control steps through. In Commits mode the sidebar is two
- * panes with a divider between them: above, the selected item's files as
- * one tree (`ChangeTree`); below, the commits of the branch the toolbar's
- * menu shows (`CommitList`), Uncommitted Changes first while that is the
- * branch checked out. In Conversation it is the request's files. The item,
- * the file, the edit, the branch and Back and Forward are the host's to
- * hold. An edit whose two sides were not kept, and a removed file whose
- * contents before it were not, say so where the diff would be. The sidebar
- * docks, hides and shows over the diff as its frame (`TreeFrame`) decides.
+ * One file of the repository's uncommitted changes or of one of its commits
+ * (`packages/web-ui/src/files/history.ts`), or one file of a request of the
+ * conversation (§ What the conversation shows): its All Changes, from before the
+ * request's first edit of it to after its last, or one of its edits, which a
+ * control steps through.
  *
- * Text shows as a diff. In Commits mode an image, a video, an audio file or
- * a PDF shows its two versions side by side, and a binary file without a
- * preview a card per side. Markdown and SVG offer Diff and Preview, which
- * renders both sides; the host keeps the choice.
+ * The sidebar:
+ *
+ * - In Commits mode it is two panes with a divider between them. Above is the
+ *   selected item's files as one tree (`ChangeTree`). Below are the commits of
+ *   the branch the toolbar's menu shows (`CommitList`), Uncommitted Changes
+ *   first while that is the branch checked out.
+ * - In Conversation it is the request's files.
+ * - It docks, hides and shows over the diff as its frame (`TreeFrame`) decides.
+ *
+ * The item, the file, the edit, the branch and Back and Forward are the host's
+ * to hold. An edit whose two sides were not kept, and a removed file whose
+ * contents before it were not, say so where the diff would be.
+ *
+ * What the view shows:
+ *
+ * - Text shows as a diff.
+ * - In Commits mode an image, a video, an audio file or a PDF shows its two
+ *   versions side by side, and a binary file without a preview a card per side.
+ * - Markdown and SVG offer Diff and Preview, which renders both sides; the host
+ *   keeps the choice.
  */
 const props = defineProps<{
   changes: ChangeSources
@@ -210,10 +218,12 @@ const allChanges = computed(() => requestFile.value !== null && offersAllChanges
 /** Where the shown edit stands among the file's edits; null for All Changes. */
 const editAt = computed(() => requestFile.value ? editIndex(requestFile.value, edit.value) : null)
 /**
- * Names what the diff shows as the user chose it: the mode, the file and,
- * in Conversation, its edit or All Changes. Only another choice is another
- * editor; new texts of the same one replace the old in place, the scroll
- * kept, as the agent's next edit gives All Changes a new end.
+ * Names what the diff shows as the user chose it: the mode, the file and, in
+ * Conversation, its edit or All Changes.
+ *
+ * Only another choice is another editor. New texts of the same one replace the
+ * old in place, the scroll kept, as the agent's next edit gives All Changes a new
+ * end.
  */
 const shownKey = computed(() => {
   const change = selectedChange.value
@@ -263,8 +273,8 @@ function chooseEdit(id: string, close: () => void): void {
 const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
 /**
  * The file the view shows, named over it as a diff's file header names it on
- * GitHub: its folder from the workspace, its name, and where a renamed file
- * came from: in Conversation, the name the shown diff starts under, when a
+ * GitHub: its folder from the workspace, its name, and where a renamed file came
+ * from. In Conversation, that is the name the shown diff starts under, when a
  * later call renamed the file.
  */
 const heading = computed(() => {
@@ -543,9 +553,9 @@ const region = computed(() => {
   }
 })
 /**
- * The header's line counts: a working-tree file's as git counts them, and in
- * Conversation those the request's latest call stored: All Changes', or the
- * shown edit's call's when the edit is its only one of the file; none
+ * The header's line counts. A working-tree file's are as git counts them. In
+ * Conversation they are those the request's latest call stored: All Changes', or
+ * the shown edit's call's when the edit is its only one of the file. None shows
  * where they were not kept.
  */
 const counts = computed(() => {

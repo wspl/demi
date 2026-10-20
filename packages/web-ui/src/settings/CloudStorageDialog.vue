@@ -14,10 +14,11 @@ import type { SettingsCloudStorage } from './types'
 import { CLOUD_GB_MAX, parseCloudGb } from './users'
 
 /**
- * Cloud Storage…: the size of an account's Cloud disks, System and Home, in
- * whole GB from 1 to 1024. The sizes take effect the next time the Cloud
- * starts, and a disk already larger keeps its size, which the dialog says.
- * Save waits for two sizes and a change.
+ * Cloud Storage…: the size of an account's Cloud disks, System and Home, in whole GB
+ * from 1 to 1024.
+ *
+ * The sizes take effect the next time the Cloud starts, and a disk already larger
+ * keeps its size, which the dialog says. Save waits for two sizes and a change.
  */
 const props = defineProps<{
   isOpen: boolean

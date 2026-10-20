@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * A new item's mark in the corner of an icon: a green plus inside its lower
- * right, as an editor's tree marks an added file. The parent is `relative`;
- * the plus is cut out of what is painted behind it by an outline in that
- * color (`--fill-color`), as `CornerDot`'s ring cuts the dot out.
+ * A new item's mark in the corner of an icon: a green plus inside its lower right,
+ * as an editor's tree marks an added file.
+ *
+ * The parent is `relative`; the plus is cut out of what is painted behind it by an
+ * outline in that color (`--fill-color`), as `CornerDot`'s ring cuts the dot out.
  */
 defineProps<{ label?: string }>()
 </script>

@@ -4,10 +4,11 @@ import { find, t } from './locales/text'
 import { categoryKey, requestTitleIn, type RequestTitleWords } from './title-words'
 
 /**
- * Conversation requests as the page shows them: a request an agent's command
- * raised and the user's answer to it, of one of three kinds, a permission, a
- * credential to save or a stored credential to allow. The host maps its data
- * to these.
+ * Conversation requests as the page shows them: a request an agent's command raised
+ * and the user's answer to it. A request is one of three kinds: a permission, a
+ * credential to save or a stored credential to allow.
+ *
+ * The host maps its data to these.
  */
 
 /** A permission category: its id, and its action and description while the user's command set declares it. */
@@ -84,10 +85,11 @@ export interface CredentialAnswer {
 
 /**
  * The page's words for the category `id`: Demi's own categories' from this
- * catalogue, a plugin's from the plugin's, under its id, which the category's
- * id starts with, as `skills.manage` is the `skills` plugin's. A catalogue key
- * holds no dot, so the id's dots are underscores there. Null for a category no
- * catalogue words, which shows the command set's English.
+ * catalogue, a plugin's from the plugin's, under its id, which the category's id
+ * starts with, as `skills.manage` is the `skills` plugin's.
+ *
+ * A catalogue key holds no dot, so the id's dots are underscores there. Null for a
+ * category no catalogue words, which shows the command set's English.
  */
 function categoryText(id: string, field: 'action' | 'description'): string | null {
   const key = categoryKey(id)
@@ -182,11 +184,15 @@ export function requestAction(request: Pick<PermissionRequestView, 'categories' 
 }
 
 /**
- * The requests left once the user decided `id`: an allow of a permission
- * request grants its category or its host and decides every permission
- * request of the same, a deny decides that one alone, and a credential or
- * an allowance is decided alone either way. Another pairing is left for the
- * backend's answer to decide, since the page does not know its code.
+ * The requests left once the user decided `id`:
+ *
+ * - An allow of a permission request grants its category or its host and decides
+ *   every permission request of the same.
+ * - A deny decides that one alone.
+ * - A credential or an allowance is decided alone either way.
+ *
+ * Another pairing is left for the backend's answer to decide, since the page does
+ * not know its code.
  */
 export function afterDecision(
   requests: readonly RequestView[],

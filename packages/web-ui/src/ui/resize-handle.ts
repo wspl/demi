@@ -37,9 +37,10 @@ export interface KeyResizeOptions extends ResizeBounds {
 
 /**
  * The size a key asks for, or null when the key is not one of the handle's.
- * The arrows along the axis move the edge the way a drag would: towards the
- * end grows a pane before the handle and shrinks one after it. Home and End
- * go to the bounds.
+ *
+ * - The arrows along the axis move the edge the way a drag would: towards the end
+ *   grows a pane before the handle and shrinks one after it.
+ * - Home and End go to the bounds.
  */
 export function sizeFromKey(
   key: string,

@@ -22,16 +22,20 @@ import {
 } from './password'
 
 /**
- * Choose Your Password and the passkey offer after it, one wizard: what an
- * account an administrator made or reset sees before anything else of the
- * product opens, on a computer one dialog at the centre over the page, on a
- * phone the whole screen. The password it was given is only a first one: the
- * first step asks for its own, typed twice, without the current one, and has no
- * close button, since it cannot be skipped; Sign Out is the one other way out.
- * When the host offers passkeys, the steps of the offer follow in the same
- * dialog, with Add Passkey and Not Now, which leave it. Length and the match
- * are checked here; the host's answer to the choice is `choose`'s outcome, a
- * failure said in the step.
+ * Choose Your Password and the passkey offer after it, as one wizard.
+ *
+ * It is what an account that an administrator made or reset sees before
+ * anything else of the product opens: on a computer one dialog at the centre
+ * over the page, on a phone the whole screen.
+ *
+ * - The password the account was given is only a first one. The first step asks
+ *   for its own, typed twice, without the current one.
+ * - That step has no close button, since it cannot be skipped. Sign Out is the
+ *   one other way out.
+ * - When the host offers passkeys, the steps of the offer follow in the same
+ *   dialog, with Add Passkey and Not Now, which leave it.
+ * - Length and the match are checked here. The host's answer to the choice is
+ *   `choose`'s outcome, and a failure is said in the step.
  */
 const props = defineProps<{
   isOpen: boolean
