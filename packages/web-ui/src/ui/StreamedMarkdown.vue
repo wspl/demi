@@ -200,11 +200,21 @@ function cardAttachment(place: HTMLElement): { id: string; attachment: MessageAt
   return { id, attachment: lookup?.state === 'found' ? lookup.attachment : null }
 }
 
-/** A card's click: the file opens in the work panel. */
-function openCard(place: HTMLElement): void {
+/**
+ * A card's click opens the file in the work panel: the file it was uploaded
+ * from, as it is now, while that file can be read, and its copy otherwise.
+ */
+async function openCard(place: HTMLElement): Promise<void> {
   const { id, attachment } = cardAttachment(place)
-  if (attachment)
-    files()?.openAttachment?.(id, attachment)
+  const shown = files()
+  if (!attachment || !shown)
+    return
+  // A question that fails is answered as a file that is not there: the copy opens.
+  const origin = shown.open && shown.attachmentOrigin ? await shown.attachmentOrigin(id, attachment).catch(() => null) : null
+  if (origin && shown.open)
+    shown.open({ path: origin, line: null })
+  else
+    shown.openAttachment?.(id, attachment)
 }
 
 function onMediumLoad(event: Event): void {
@@ -259,7 +269,7 @@ function onMediumLoad(event: Event): void {
     <AttachmentCard
       :file="cardAttachment(place).attachment"
       :openable="files()?.openAttachment !== undefined"
-      @open="openCard(place)"
+      @open="void openCard(place)"
     />
   </Teleport>
   <AgentLinkMark

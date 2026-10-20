@@ -21,12 +21,13 @@ use demi_backend_database::conversation_index::{ConversationRecord, Creation};
 use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
+use demi_host_interface::{FileKind, FileStat, HostFs};
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationBatch, ConversationPatch, CreatedConversation,
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest,
 };
-use demi_web_api_protocol::attachments::{ConversationAttachment, ConversationAttachmentQuery};
+use demi_web_api_protocol::attachments::{AttachmentSourceDto, ConversationAttachment, ConversationAttachmentQuery};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
@@ -159,6 +160,64 @@ pub(super) async fn attachment(
     Ok(Json(attachment_answer(row)))
 }
 
+/// `GET /conversations/:id/attachments/:attachment/file`: whether the file the
+/// attachment was uploaded from is there to open in its copy's place
+/// (`decisions/0003-attachment-opens-its-file.md`), asked once each time the
+/// page opens the attachment.
+///
+/// It answers 204 while the file is a regular file on the conversation's
+/// primary Host, and that Host is the device the attachment was uploaded
+/// from. It answers 404 `not_found` for an attachment the conversation does
+/// not have or that names no file, for a file that is not there, and while
+/// the conversation runs on another Host. It is a look, admitted as a user
+/// stream is (`look_at_host_on`): a stopped Cloud answers 409 `host_stopped`
+/// and is not woken, and an offline device answers as it does for any look.
+pub(super) async fn attachment_file(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, attachment)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let services = &state.services;
+    let record = owned(services, &user.id, &id).await?;
+    let no_file = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            format!("The file attachment {attachment} was uploaded from is not on the conversation's Host"),
+        )
+    };
+    let number: AttachmentNumber = attachment.parse().map_err(|_| no_file())?;
+    let source = services
+        .conversations
+        .read(&record.id, move |connection| conversation_attachments::read(connection, number))
+        .await
+        .map_err(ApiError::conversation_unreadable)?
+        .flatten()
+        .and_then(|row| row.source)
+        .ok_or_else(no_file)?;
+    let conversation = record.id;
+    let present = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, cancel| async move {
+            shard
+                .host_shard()
+                .look_at_host_on(&conversation, &source.host, &cancel, async |host| {
+                    matches!(
+                        host.host.stat(&source.path).await,
+                        Ok(FileStat { kind: FileKind::File, .. })
+                    )
+                })
+                .await
+                .map_err(ApiError::from)
+        })
+        .await??;
+    match present {
+        Some(true) => Ok(StatusCode::NO_CONTENT),
+        Some(false) | None => Err(no_file()),
+    }
+}
+
 /// An attachment's row as an attachment route answers it.
 pub(super) fn attachment_answer(row: AttachmentRow) -> ConversationAttachment {
     ConversationAttachment {
@@ -169,6 +228,10 @@ pub(super) fn attachment_answer(row: AttachmentRow) -> ConversationAttachment {
         width: row.pixels.map(|pixels| pixels.width),
         height: row.pixels.map(|pixels| pixels.height),
         blob: row.blob,
+        source: row.source.map(|source| AttachmentSourceDto {
+            host: source.host,
+            path: source.path,
+        }),
     }
 }
 

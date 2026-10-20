@@ -1,6 +1,7 @@
 {
   "kind": {
     "title": "文件",
-    "titleNamed": "文件：{name}"
+    "titleNamed": "文件：{name}",
+    "media": "媒体"
   }
 }

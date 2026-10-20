@@ -7,7 +7,9 @@
 //!   conversation as `a1`, `a2`, …. A file it cannot copy fails with its own
 //!   line while the others are stored.
 //! - The page reads an attachment by its number from the conversation's
-//!   database, and its bytes as a blob.
+//!   database, and its bytes as a blob, with the file it was copied from: the
+//!   device and the file's full path, which the page opens in the copy's
+//!   place while it can read it.
 //! - A job `demi host shell` runs on an attached Host uploads that Host's
 //!   files. A file whose blob the namespace holds already is not read again.
 //!
@@ -66,12 +68,19 @@ async fn download_writes_each_attachment_under_its_name_and_the_same_file_again_
     backend.close().await;
 }
 
-// Several seconds: a real device runs two shell jobs, and one file is 26 MiB,
+// Several seconds: a real device runs three shell jobs, and one file is 26 MiB,
 // which the upload refuses unread.
 //
-// Planted defect the large file catches: the Host hashes a file before it
-// looks at its size. The file may be written but not read, so a Host that
-// opens it to read fails with another reason.
+// Planted defects it catches:
+//
+// - The Host hashes a file before it looks at its size, which the large file
+//   catches. The file may be written but not read, so a Host that opens it to
+//   read fails with another reason.
+// - The record keeps the path as the command was given it, `../notes.md`,
+//   which names no file once the page reads it against another directory.
+// - The record keeps the path resolved by its text, which a symbolic link
+//   makes another file than the one read: `link/../report.md` read through
+//   the link is the `report.md` beside the link's target.
 #[tokio::test]
 async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_cannot() {
     let vendor = MockVendor::start().await;
@@ -79,7 +88,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
     create(&backend, &master, CONVERSATION).await;
-    let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    let (device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
     std::fs::create_dir_all(format!("{root}/out")).unwrap();
     std::fs::write(format!("{root}/out/login.png"), &*PNG).unwrap();
     std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
@@ -147,6 +156,18 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         ("notes.md", "text/markdown", 8)
     );
     assert_eq!((second.width, second.height), (None, None));
+    // Each keeps the file it was copied from: the device the command ran on,
+    // and the full path of the file read, as that Host writes it.
+    for (attachment, file) in [(&first, format!("{root}/out/login.png")), (&second, format!("{root}/notes.md"))] {
+        let source = attachment.source.as_ref().expect("an upload keeps its file");
+        assert_eq!(source.host.as_str(), device.id());
+        assert_eq!(
+            std::fs::canonicalize(&source.path).unwrap(),
+            std::fs::canonicalize(&file).unwrap(),
+            "{}",
+            source.path
+        );
+    }
     for missing in ["a3", "a0", "3", "a01"] {
         let answer = read(missing).await;
         assert_eq!(
@@ -177,6 +198,27 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         .get(&format!("/api/blobs/{}", first.blob), Some(&master))
         .await;
     assert_eq!(kept.body, *PNG);
+
+    // A path through a symbolic link is recorded as the file the Host read:
+    // `out/link` leads to `exports/subdir`, so `link/../report.md` is
+    // `exports/report.md`, and `out/report.md` is no file at all.
+    let exports = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(exports.path().join("subdir")).unwrap();
+    std::fs::write(exports.path().join("report.md"), "# Report\n").unwrap();
+    std::os::unix::fs::symlink(exports.path().join("subdir"), format!("{root}/out/link")).unwrap();
+    let linked = work
+        .turn(vec![
+            shell("t3", "cd out && demi attachment upload link/../report.md", 30_000),
+            say("linked"),
+        ])
+        .await;
+    assert_eq!(field(&linked.received[0], "exitCode"), "0", "{}", linked.received[0]);
+    let report: ConversationAttachment = read("a4").await.json();
+    let read_file = std::fs::canonicalize(exports.path().join("report.md")).unwrap();
+    assert_eq!(
+        report.source.map(|source| source.path),
+        Some(read_file.to_str().unwrap().to_owned())
+    );
     backend.close().await;
 }
 
@@ -417,5 +459,54 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
         }
         assert_eq!(answered, shown, "the replies of {node}");
     }
+    backend.close().await;
+}
+
+// About a second: a real device runs one shell job, and a second device takes
+// the conversation.
+//
+// Each time the page opens an attachment it asks whether the file it was
+// uploaded from is there (`GET .../attachments/:n/file`): yes while the
+// conversation's Host has it, no once it is gone, and no once the conversation
+// runs on another Host, though that Host reads the same path.
+//
+// Planted defects it catches: the check made on whatever Host the conversation
+// runs on, which finds the path on the second device, since the devices here
+// share one file system; and an attachment of no file that answers yes.
+#[tokio::test]
+async fn whether_an_attachments_file_is_there_is_asked_of_the_host_it_came_from() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    let uploaded = work
+        .turn(vec![shell("t1", "demi attachment upload notes.md", 30_000), say("uploaded")])
+        .await;
+    assert_eq!(field(&uploaded.received[0], "exitCode"), "0", "{}", uploaded.received[0]);
+    let check = async |number: &str| {
+        backend
+            .get(
+                &format!("/api/conversations/{CONVERSATION}/attachments/{number}/file"),
+                Some(&master),
+            )
+            .await
+    };
+    let no_file = (StatusCode::NOT_FOUND, ErrorCode::NotFound);
+    assert_eq!(check("a1").await.status, StatusCode::NO_CONTENT);
+    assert_eq!(check("a2").await.refusal(), no_file);
+
+    std::fs::remove_file(format!("{root}/notes.md")).unwrap();
+    assert_eq!(check("a1").await.refusal(), no_file);
+    std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
+    assert_eq!(check("a1").await.status, StatusCode::NO_CONTENT);
+
+    let beta = backend.pair(&master, "beta").await;
+    let on_beta = beta.runner.home_dir().to_owned();
+    switch(&backend, &master, CONVERSATION, &beta, &on_beta).await;
+    assert_eq!(check("a1").await.refusal(), no_file);
     backend.close().await;
 }

@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::ids::AttachmentId;
+use crate::ids::{AttachmentId, DeviceId};
 
 /// The most bytes an upload holds.
 pub const ATTACHMENT_MAX_BYTES: usize = 25 * 1024 * 1024;
@@ -117,4 +117,27 @@ pub struct ConversationAttachment {
     pub height: Option<u32>,
     /// The hash its bytes are served under, at `GET /blobs/:sha256`.
     pub blob: BlobRef,
+    /// The file the agent uploaded it from, which the page opens in the
+    /// copy's place while the conversation's Host is that device, online,
+    /// and has the file (`decisions/0003-attachment-opens-its-file.md`);
+    /// absent for a file the user sent, for an upload stored before uploads
+    /// kept it, and on a share.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "AttachmentSourceDto")]
+    pub source: Option<AttachmentSourceDto>,
+}
+
+/// The file of a Host an attachment was uploaded from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentSourceDto {
+    /// The device whose runner ran the upload.
+    pub host: DeviceId,
+    /// The file's full path, as that Host writes it, such as
+    /// `/Users/alex/shop/chart.png` or `C:\Users\alex\shop\chart.png`.
+    pub path: String,
 }

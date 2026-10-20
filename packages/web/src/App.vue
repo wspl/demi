@@ -74,7 +74,18 @@ watch(
   },
   { immediate: true },
 )
-const mediaViewer = provideMediaViewer()
+// A conversation's pictures and videos open in its work panel's Media tab,
+// and in the viewer's window while no page the user has on opens that tab.
+const mediaViewer = provideMediaViewer({
+  reveal: () => {
+    const conversationId = activeId.value
+    if (conversationId === null || !work.canOpen('media')) {
+      return false
+    }
+    work.openIn(conversationId, { intent: 'media', payload: {} })
+    return true
+  },
+})
 const session = useSession()
 const conversations = useConversations()
 const automations = useAutomations()
@@ -202,6 +213,9 @@ const activeId = computed(() =>
 const work = useWorkPanel()
 // Before its panel is read: what the panel held when the conversation came on screen decides what opens it on a phone.
 watch(activeId, (conversationId) => work.shown(conversationId), { immediate: true })
+// What the viewer shows is the open conversation's: another's Media tab
+// shows the medium it showed, found again in its own transcript.
+watch(activeId, () => mediaViewer.close())
 // The open conversation's tabs are read with its panel closed too, since the frame then mounts no
 // panel: a tab a kind asks to show opens it.
 watch(

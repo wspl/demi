@@ -247,8 +247,8 @@ function file(id: string): string {
 const block = (id: string) => `<attachment id="${id}" />`
 
 const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
-const imageTile = '<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"' + file('a1') + ' data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="login.png" data-width="480" data-height="300" /></a>'
-const videoTile = '<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4"' + file('a2') + ' data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="flow.mp4" data-width="1280" data-height="720"></video>' + mark + '</a>'
+const imageTile = '<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-attachment-id="a1"' + file('a1') + ' data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="login.png" data-width="480" data-height="300" /></a>'
+const videoTile = '<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-attachment-id="a2"' + file('a2') + ' data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="flow.mp4" data-width="1280" data-height="720"></video>' + mark + '</a>'
 const card = (id: string) => `<div class="attachment-block" data-attachment-card="${id}"></div>\n`
 
 test('an image block is a tile that a click shows large, and a video block its first frame that a click plays', () => {
@@ -256,7 +256,7 @@ test('an image block is a tile that a click shows large, and a video block its f
   expect(renderMarkdown(block('a2'), { files: withAttachments })).toBe(`<p class="media-lone">${videoTile}</p>\n`)
   // A record without a size leaves it to the first frame.
   expect(renderMarkdown('<attachment id="a6"/>', { files: withAttachments }))
-    .toBe(`<p class="media-lone"><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm"${file('a6')} data-keeps-windows class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="clip.webm"></video>${mark}</a></p>\n`)
+    .toBe(`<p class="media-lone"><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm" data-attachment-id="a6"${file('a6')} data-keeps-windows class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="clip.webm"></video>${mark}</a></p>\n`)
 })
 
 test('an audio block is its inline player, and any other file\'s block the place of its card', () => {
@@ -358,7 +358,7 @@ test('a lone image stands on a line of its own, even in a paragraph of words', (
 // line, showed it in the item's line at the message's full width.
 test('an image on the line after a list item’s words stands on its own line under them', () => {
   expect(renderMarkdown('- **Text** ... (this one is 17 px).\n  <attachment id="a48" />\n- Next', { files: withAttachments }))
-    .toBe(`<ul>\n<li><strong>Text</strong> ... (this one is 17 px).<p class="media-lone"><a href="/blobs/48?type=image%2Fpng" data-attachment-image="text.png"${file('a48')} data-keeps-windows><img src="/blobs/48?type=image%2Fpng" alt="text.png" data-width="2560" data-height="1720" /></a></p>\n</li>\n<li>Next</li>\n</ul>\n`)
+    .toBe(`<ul>\n<li><strong>Text</strong> ... (this one is 17 px).<p class="media-lone"><a href="/blobs/48?type=image%2Fpng" data-attachment-image="text.png" data-attachment-id="a48"${file('a48')} data-keeps-windows><img src="/blobs/48?type=image%2Fpng" alt="text.png" data-width="2560" data-height="1720" /></a></p>\n</li>\n<li>Next</li>\n</ul>\n`)
 })
 
 // The reply the user saw: a list item's words, then two screenshots one per
@@ -420,8 +420,8 @@ test('a message\'s pictures are its images that load and its attachment blocks t
   expect(messageMedia(markdown, withAttachments)).toEqual([
     { kind: 'image', file: { path: '/work/out/chart.png', contents }, name: 'chart' },
     { kind: 'image', src: 'https://example.com/l.png', name: 'logo' },
-    { kind: 'video', src: '/blobs/2?type=video%2Fmp4', name: 'flow.mp4', size: { width: 1280, height: 720 } },
-    { kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 } },
+    { kind: 'video', src: '/blobs/2?type=video%2Fmp4', name: 'flow.mp4', size: { width: 1280, height: 720 }, bytes: 8598311 },
+    { kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 }, bytes: 15822 },
   ])
 })
 

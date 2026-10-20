@@ -37,7 +37,7 @@ use demi_command_protocol::CommandCaller;
 use demi_host_interface::HostErrorKind;
 use demi_shared_gates::GateLease;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -272,6 +272,28 @@ impl dyn HostShard + '_ {
         let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
         let waits = Waits::until_ended(cancel, &access.open.ended);
         waits.wait(operation(&access.host)).await
+    }
+
+    /// Runs `operation`, a look of the user's at the conversation's primary
+    /// Host, only while that Host is `device`; none when the conversation runs
+    /// on another one, such as after a switch of its target, so the look never
+    /// reads the same path on another device.
+    ///
+    /// It is admitted as [`look_at_host`](Self::look_at_host) is: a stopped
+    /// Cloud is refused rather than woken.
+    pub async fn look_at_host_on<T>(
+        &self,
+        id: &ConversationId,
+        device: &DeviceId,
+        cancel: &CancellationToken,
+        operation: impl AsyncFnOnce(&ConversationHost) -> T,
+    ) -> Result<Option<T>, HostAccessError> {
+        let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
+        if access.device != *device {
+            return Ok(None);
+        }
+        let waits = Waits::until_ended(cancel, &access.open.ended);
+        waits.wait(operation(&access.host)).await.map(Some)
     }
 
     /// What the runner invokes for the user:

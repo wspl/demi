@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
-import type { AttachmentLookup } from '@demicodes/web-ui/markdown/types'
+import type { AttachmentLookup, MessageAttachment } from '@demicodes/web-ui/markdown/types'
 import { lookupAttachment } from '../api/attachments'
+import { apiRequest } from '../api/client'
 import { blobUrl } from '../api/uploads'
 import { useProduct } from '../state/product'
 
@@ -32,4 +33,39 @@ export function useMessageAttachments(
       ? undefined
       : (id, node) => lookupAttachment({ path: `/conversations/${encodeURIComponent(shown)}`, blobUrl }, id, () => latest.value, node ?? shown)
   })
+}
+
+/** The conversation's Host as an attachment's opening asks it. */
+export interface OpeningHost {
+  /** The conversation whose attachment opens. */
+  conversation: string
+  /** The device it runs on; null while it is not known. */
+  device: string | null
+  /** Whether the page knows it is online; a stopped Cloud is not. */
+  online: boolean
+}
+
+/**
+ * The Host path of the file attachment `id` was uploaded from, when opening it
+ * shows that file (`decisions/0003-attachment-opens-its-file.md`): its Host is
+ * the conversation's and online, and the backend, asked once for this opening,
+ * finds the file there. The backend asks the Host the conversation runs on
+ * then, only while it is the attachment's, and never wakes a stopped Cloud
+ * (`GET …/attachments/:id/file`). Any other answer, a failed one included,
+ * opens the copy. A Host the page knows offline, a stopped Cloud included, or
+ * another Host is not asked.
+ */
+export async function attachmentOrigin(id: string, { source }: MessageAttachment, host: OpeningHost): Promise<string | null> {
+  if (!source || source.host !== host.device || !host.online) {
+    return null
+  }
+  try {
+    // An unreachable backend is no reason to wait: the copy opens.
+    await apiRequest(`/conversations/${encodeURIComponent(host.conversation)}/attachments/${encodeURIComponent(id)}/file`, { waits: false })
+    return source.path
+  } catch {
+    // The file is not there, the Host is another or stopped, or the backend
+    // could not say: the copy opens.
+    return null
+  }
 }

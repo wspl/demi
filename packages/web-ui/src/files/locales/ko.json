@@ -219,5 +219,10 @@
     "play": "{name} 재생",
     "pause": "{name} 일시 정지",
     "seek": "{name} 재생 위치"
+  },
+  "media": {
+    "previous": "이전",
+    "next": "다음",
+    "none": "열린 사진이나 동영상이 없습니다."
   }
 }

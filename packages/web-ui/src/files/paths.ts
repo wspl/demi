@@ -82,6 +82,14 @@ export function relativePath(root: string, path: string): string {
   return same(target.slice(0, prefix.length), prefix) ? target.slice(prefix.length) : target
 }
 
+/**
+ * Whether `path` is absolute as a Host writes it: from `/`, or on Windows
+ * from a drive, `C:\` or `C:/`, or a share, `\\server\share`.
+ */
+export function isAbsoluteHostPath(path: string): boolean {
+  return path.startsWith('/') || isWindowsPath(path)
+}
+
 /** Whether `path` is written as a Windows path: from a drive, `C:\`, or a share, `\\server\share`. */
 function isWindowsPath(path: string): boolean {
   return /^[A-Za-z]:([\\/]|$)/.test(path) || path.startsWith('\\\\')

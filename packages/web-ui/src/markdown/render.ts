@@ -190,6 +190,32 @@ export const ATTACHMENT_FILE_ATTRIBUTE = 'data-attachment-file'
  */
 export const HOST_FILE_ATTRIBUTE = 'data-host-file'
 
+/**
+ * The attribute of an attachment's image or video that holds the attachment's
+ * number, which a click on it shows it by (`openMessageLink`).
+ */
+export const ATTACHMENT_ID_ATTRIBUTE = 'data-attachment-id'
+
+/**
+ * An attachment's image or video as the viewer shows it: its copy, which asks
+ * when it shows whether the file it was uploaded from opens in its place
+ * (`attachmentOrigin`); null for a file of another kind.
+ */
+export function attachmentMedium(id: string, attachment: MessageAttachment, files: MessageFiles | undefined): ShownMedium | null {
+  const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
+  if (!kind)
+    return null
+  const shown = { kind, name: attachment.name, size: declaredSize(attachment), bytes: attachment.size } as const
+  const contents = files?.contents
+  if (!files?.attachmentOrigin || !contents || !attachment.source)
+    return { ...shown, src: attachment.url }
+  const origin = async () => {
+    const path = await files.attachmentOrigin?.(id, attachment)
+    return path ? { path, contents } : null
+  }
+  return { ...shown, src: attachment.url, origin }
+}
+
 /** An attachment as Demi's own form of a copy holds a stored file. */
 function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
   return { type: 'stored', name: attachment.name, sha256: attachment.sha256, mediaType: attachment.mediaType }
@@ -201,12 +227,12 @@ function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
  * it does not close the viewer, which shows the medium in place of the one
  * it shows (`KEEPS_WINDOWS`).
  */
-function attachmentLink(attachment: MessageAttachment, attributes = ''): string {
+function attachmentLink(id: string, attachment: MessageAttachment, attributes = ''): string {
   const url = escapeHtml(attachment.url)
   const name = escapeHtml(attachment.name)
   const file = ` ${ATTACHMENT_FILE_ATTRIBUTE}="${escapeHtml(JSON.stringify(attachmentFile(attachment)))}"`
   const kind = attachment.mediaType.startsWith('video/') ? 'video' : 'image'
-  return `<a href="${url}" data-attachment-${kind}="${name}"${file} ${KEEPS_WINDOWS}${attributes}>`
+  return `<a href="${url}" data-attachment-${kind}="${name}" ${ATTACHMENT_ID_ATTRIBUTE}="${escapeHtml(id)}"${file} ${KEEPS_WINDOWS}${attributes}>`
 }
 
 /**
@@ -222,10 +248,10 @@ function sizeAttributes(size: PixelSize | null): string {
  * An attachment's video as its first frame with a play mark over it, which
  * a click opens in the viewer to play. It is a tile, as an image is.
  */
-function attachmentVideo(attachment: MessageAttachment): string {
+function attachmentVideo(id: string, attachment: MessageAttachment): string {
   const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${escapeHtml(attachment.name)}"${sizeAttributes(declaredSize(attachment))}></video>`
   const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
-  return `${attachmentLink(attachment, ' class="message-video"')}${video}${mark}</a>`
+  return `${attachmentLink(id, attachment, ' class="message-video"')}${video}${mark}</a>`
 }
 
 /**
@@ -270,11 +296,11 @@ function blockMedium(id: string): MessageAttachment | null {
  * An attachment's image or video as a tile, its record's size its box before
  * its bytes arrive, which a click opens large.
  */
-function attachmentTile(attachment: MessageAttachment): string {
+function attachmentTile(id: string, attachment: MessageAttachment): string {
   if (attachment.mediaType.startsWith('video/'))
-    return attachmentVideo(attachment)
+    return attachmentVideo(id, attachment)
   const image = `<img src="${escapeHtml(attachment.url)}" alt="${escapeHtml(attachment.name)}"${sizeAttributes(declaredSize(attachment))} />`
-  return `${attachmentLink(attachment)}${image}</a>`
+  return `${attachmentLink(id, attachment)}${image}</a>`
 }
 
 /**
@@ -290,7 +316,7 @@ function attachmentBlock(id: string, raw: string): string {
     case 'found': {
       const { attachment } = lookup
       if (/^(?:image|video)\//.test(attachment.mediaType))
-        return `<p class="media-lone">${attachmentTile(attachment)}</p>\n`
+        return `<p class="media-lone">${attachmentTile(id, attachment)}</p>\n`
       if (attachment.mediaType.startsWith('audio/'))
         return `<p>${attachmentAudio(attachment)}</p>\n`
       return `<div class="attachment-block" ${ATTACHMENT_CARD_ATTRIBUTE}="${id}"></div>\n`
@@ -591,7 +617,7 @@ agentMarked.use({
       const block = media.length === 1 ? 'media-lone' : 'media-run'
       const tiles = media.map((medium) => {
         const attachment = medium.type === ATTACHMENT_BLOCK ? blockMedium(medium.id) : null
-        return attachment ? attachmentTile(attachment) : this.parser.parseInline([medium])
+        return attachment && medium.type === ATTACHMENT_BLOCK ? attachmentTile(medium.id, attachment) : this.parser.parseInline([medium])
       })
       return `<p class="${block}">${tiles.join('')}</p>\n`
     },
@@ -633,10 +659,9 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
       const lookup = messageAttachment(files, token.id)
       if (lookup?.state !== 'found')
         return
-      const { attachment } = lookup
-      const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
-      if (kind)
-        media.push({ kind, src: attachment.url, name: attachment.name, size: declaredSize(attachment) })
+      const medium = attachmentMedium(token.id, lookup.attachment, files)
+      if (medium)
+        media.push(medium)
       return
     }
     if (token.type !== 'image' || linked.has(token))

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { firstFileData, goBack, goForward, showFile } from '../data'
+import { firstFileData, goBack, goForward, shownPath, showFile } from '../data'
 
 // Cost: pure, under a millisecond.
 
@@ -50,4 +50,16 @@ test('Back and Forward show each file under the directory it was opened with', (
   expect(goForward(first)).toMatchObject({ path: '/slots/2/notes.md', root: '/slots/2' })
   expect(goForward(goForward(first))).toMatchObject({ path: '/slots/3/notes.md', root: '/slots/3' })
   expect(goForward(goBack(other))).toEqual(other)
+})
+
+// An attachment of a Windows Host opens the file it was uploaded from by the
+// full path that Host wrote, as a file link names it. Planted defect: a path
+// counted as full only when it starts with `/`, which put a Windows one under
+// the view's directory.
+test('a full path as its Host writes it, a Windows one included, is that file; any other is read from the directory', () => {
+  expect(shownPath('C:\\Users\\alex\\shop', 'C:\\Users\\alex\\shop\\out\\chart.png')).toBe('C:\\Users\\alex\\shop\\out\\chart.png')
+  expect(shownPath('/work', 'D:/exports/chart.png')).toBe('D:/exports/chart.png')
+  expect(shownPath('/work', '\\\\server\\share\\chart.png')).toBe('\\\\server\\share\\chart.png')
+  expect(shownPath('/work', '/Users/alex/chart.png')).toBe('/Users/alex/chart.png')
+  expect(shownPath('/work', 'out/chart.png')).toBe('/work/out/chart.png')
 })

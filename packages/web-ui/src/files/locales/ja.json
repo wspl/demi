@@ -219,5 +219,10 @@
     "play": "{name} を再生",
     "pause": "{name} を一時停止",
     "seek": "{name} の再生位置"
+  },
+  "media": {
+    "previous": "前へ",
+    "next": "次へ",
+    "none": "開いている画像やビデオはありません。"
   }
 }

@@ -8,8 +8,8 @@ const mode = ref<'preview' | 'source'>('preview')
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { FileView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
-import { goBack, goForward, showFile, treeShown, type FileData } from './data'
+import { FileView, treeLayout, usePage } from '@demicodes/plugin-sdk'
+import { goBack, goForward, shownPath, showFile, treeShown, type FileData } from './data'
 import { t } from './locales/text'
 
 /**
@@ -27,10 +27,6 @@ const emit = defineEmits<{ update: [data: FileData] }>()
 
 const files = usePage().files(props.conversation)
 const workspace = computed(() => files.workspace)
-
-function absolute(root: string, path: string): string {
-  return path.startsWith('/') ? path : joinPath(root, path)
-}
 
 /** The directory the view was opened for, whose tree it shows: the conversation's unless a child's link opened it. */
 const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
@@ -61,7 +57,7 @@ watch([() => props.data.tree, view], ([tree, shown]) => {
     :source="workspace.source"
     :root="root"
     :root-name="data.root === undefined ? workspace.name : undefined"
-    :path="data.path ? absolute(root, data.path) : null"
+    :path="data.path ? shownPath(root, data.path) : null"
     :line="data.line ?? null"
     :can-back="data.back.length > 0"
     :can-forward="data.forward.length > 0"

@@ -1,24 +1,31 @@
-import type { AttachmentLookup } from '@demicodes/web-ui/markdown/types'
+import type { AttachmentLookup, AttachmentOrigin } from '@demicodes/web-ui/markdown/types'
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
+import { WORKSPACE_ROOT } from './workspace'
+
+/** The id of the Host the gallery's conversation runs on, which its agent's uploads record. */
+export const GALLERY_HOST = 'host-1'
 
 /**
  * The attachments the gallery's conversation holds, as `demi attachment
  * upload` numbered them (`crates/backend-host-access/src/attachment_commands.rs`), over the
- * gallery's blobs, each with its file's size.
+ * gallery's blobs, each with its file's size. The guide, the build, the demo
+ * and the chart were uploaded from the workspace's files, the chart from a
+ * version its file has changed since; the release notes from a file the
+ * workspace no longer has; the others before uploads recorded their file.
  */
-const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string }> = {
+const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string; source?: AttachmentOrigin }> = {
   a1: { name: 'login.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot },
   a2: { name: 'checkout.webm', mediaType: 'video/webm', size: 23336, blob: galleryBlobs.recording },
-  a3: { name: 'guide.pdf', mediaType: 'application/pdf', size: 734, blob: galleryBlobs.guide },
+  a3: { name: 'guide.pdf', mediaType: 'application/pdf', size: 734, blob: galleryBlobs.guide, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/docs/guide.pdf` } },
   a4: { name: 'dashboard-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage },
   a5: { name: 'timeline.png', mediaType: 'image/png', size: 5883, blob: galleryBlobs.timeline },
-  a6: { name: 'chart.png', mediaType: 'image/png', size: 16078, blob: galleryBlobs.chart },
-  a7: { name: 'demo.mp4', mediaType: 'video/mp4', size: 31814, blob: galleryBlobs.unsizedRecording },
+  a6: { name: 'chart.png', mediaType: 'image/png', size: 16078, blob: galleryBlobs.chart, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/photo.png` } },
+  a7: { name: 'demo.mp4', mediaType: 'video/mp4', size: 31814, blob: galleryBlobs.unsizedRecording, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/demo.mp4` } },
   a8: { name: 'settings-light.png', mediaType: 'image/png', size: 1745, blob: galleryBlobs.whiteScreen },
   a10: { name: 'settings-dark.png', mediaType: 'image/png', size: 1753, blob: galleryBlobs.darkScreen },
   a11: { name: 'welcome.mp3', mediaType: 'audio/mpeg', size: 16423, blob: galleryBlobs.voiceOver },
-  a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes },
-  a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive },
+  a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/release-notes.md` } },
+  a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/dist/app.zip` } },
 }
 
 /**
@@ -39,6 +46,7 @@ export function galleryAttachment(id: string): AttachmentLookup {
       size: held.size,
       sha256: held.blob,
       ...galleryBlobSize(held.blob),
+      ...(held.source ? { source: held.source } : {}),
     },
   }
 }
@@ -125,5 +133,22 @@ Written in a sentence, <attachment id="a3" /> is text, and so is [the guide](att
 
 The demo on its own:
 
+<attachment id="a7" />
+`
+
+/**
+ * The frame's last reply, which answers the user's screenshot with the run's
+ * pictures and recordings: with the transcript's own, they are the series the
+ * Media tab steps through. The chart was uploaded before its file changed.
+ */
+export const frameMediaMarkdown = `The run, step by step, with the chart before the fix:
+
+<attachment id="a6" />
+<attachment id="a2" />
+<attachment id="a1" />
+<attachment id="a4" />
+<attachment id="a5" />
+<attachment id="a8" />
+<attachment id="a10" />
 <attachment id="a7" />
 `

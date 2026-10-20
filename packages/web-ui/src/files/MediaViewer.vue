@@ -3,21 +3,22 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { createReusableTemplate, useMediaQuery } from '@vueuse/core'
 import Dialog from '../ui/Dialog.vue'
 import FloatingWindow from '../ui/FloatingWindow.vue'
-import RegionStatus from '../ui/RegionStatus.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { startPointerDrag } from '../ui/pointer-drag'
 import { isClick } from './image-zoom'
-import ImagePreview from './ImagePreview.vue'
-import MediaPreview from './MediaPreview.vue'
+import MediumStage from './MediumStage.vue'
 import { formatCount } from '../ui/numbers'
 import { formatZoom } from './image-zoom'
-import { mediumKey, useMediumSource, type MediaViewerState, type ShownMedium } from './media-viewer'
+import type { MediaViewerState, ShownMedium } from './media-viewer'
 import type { StepReach } from './swipe-step'
 import type { PixelSize } from './thumbnail'
 
 /**
- * The page's one media viewer: a small window over the page that the user moves,
- * resizes and closes, while the page stays usable.
+ * The media viewer's window, for a page without a work panel, such as a share,
+ * or whose panel has no Media tab, as with the file-browser plugin off: a small
+ * window over the page that the user moves, resizes and closes, while the page
+ * stays usable. Otherwise the page shows its media in the panel's Media tab
+ * (`MediaView`).
  *
  * - An image opens fitted to it, and zooms and moves as in an image viewer
  *   (`ImagePreview`).
@@ -47,27 +48,19 @@ const medium = shallowRef<ShownMedium | null>(null)
 const size = ref<PixelSize | null>(null)
 /** An image's zoom, which its preview reports; none for a video. */
 const zoom = ref<number | null>(null)
-const failed = ref(false)
 const floating = ref<InstanceType<typeof FloatingWindow>>()
-const open = computed(() => props.viewer.shown.value !== null)
-
-/** Where the medium loads from: its address, or a Host image's file at the version the page keeps, followed while the viewer is open. */
-const { src, gone } = useMediumSource(() => medium.value, () => open.value)
+// A medium the page shows in its work panel's Media tab is not the window's.
+const open = computed(() => props.viewer.shown.value !== null && !props.viewer.inPanel.value)
 
 watch(() => props.viewer.shown.value, (shown, previous) => {
-  if (!shown)
+  if (!shown || props.viewer.inPanel.value)
     return
   medium.value = shown
   size.value = shown.size ?? null
   zoom.value = null
-  failed.value = false
   // A medium shown in place of another moves the focus into the window again, from the thumbnail that showed it.
   if (previous)
     floating.value?.activate()
-})
-// A new version of the file is another picture, which may show where the last could not.
-watch(src, () => {
-  failed.value = false
 })
 
 /** What the title bar tells of the medium: its place among the transcript's, its pixel size and an image's zoom, *3 / 12 · 1280 × 720 · 50%*. */
@@ -157,35 +150,19 @@ function onSize(width: number, height: number): void {
 
 <template>
   <DefineMedium v-slot="{ flush, fullScreen }">
-    <template v-if="medium">
-      <RegionStatus v-if="failed || gone" class="h-full" status="failed" :label="`Could not show this ${medium.kind}.`" />
-      <ImagePreview
-        v-else-if="medium.kind === 'image' && src"
-        :key="mediumKey(medium)"
-        :src="src"
-        :name="medium.name"
-        :flush="flush"
-        :steps="fullScreen ? reach : undefined"
-        :from="arriving"
-        :dismissible="fullScreen"
-        @size="onSize"
-        @zoom="zoom = $event"
-        @failed="failed = true"
-        @step="onSwipe"
-        @dismiss="viewer.close()"
-      />
-      <MediaPreview
-        v-else-if="medium.kind === 'video'"
-        :key="mediumKey(medium)"
-        :src="src"
-        kind="video"
-        :name="medium.name"
-        autoplay
-        :flush="flush"
-        @size="onSize"
-        @failed="failed = true"
-      />
-    </template>
+    <MediumStage
+      v-if="medium"
+      :medium="medium"
+      :open="open"
+      :flush="flush"
+      :steps="fullScreen ? reach : undefined"
+      :from="arriving"
+      :dismissible="fullScreen"
+      @size="onSize"
+      @zoom="zoom = $event"
+      @step="onSwipe"
+      @dismiss="viewer.close()"
+    />
   </DefineMedium>
   <Dialog
     v-if="phone"

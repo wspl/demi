@@ -26,6 +26,19 @@ export interface MessageAttachment {
    */
   width?: number
   height?: number
+  /**
+   * The file it was uploaded from, when its upload recorded it: the id of
+   * the Host the upload ran on and the file's full path there. Absent for a
+   * file the user sent and for an attachment uploaded before uploads
+   * recorded it.
+   */
+  source?: AttachmentOrigin
+}
+
+/** The file of a Host an attachment was uploaded from. */
+export interface AttachmentOrigin {
+  host: string
+  path: string
 }
 
 /**
@@ -69,6 +82,12 @@ export interface ConversationFiles {
    */
   contents?: FileContents
   /**
+   * The device the conversation's Host is, which tells a file the user
+   * attached from it, read through `contents`, from one on another device;
+   * absent while it is not known.
+   */
+  device?: string
+  /**
    * Shows the file at a Host path, at its line when it names one, through
    * the `file` intent; absent while no plugin the user has on opens it, so a
    * link to a file shows as text and a Host image only shows. What the panel
@@ -106,6 +125,15 @@ export interface ConversationFiles {
    * only offers Download.
    */
   openAttachment?(id: string, attachment: MessageAttachment): void
+  /**
+   * The Host path of the file `attachment` was uploaded from when opening
+   * the attachment shows that file, as a link to it does: its Host is the
+   * conversation's and online, and the file is there, which the page asks
+   * the Host once for each opening. Null otherwise, and at once, with no
+   * request and no wake, while the Host is offline or its Cloud stopped; the
+   * attachment then opens its copy. Absent, every attachment opens its copy.
+   */
+  attachmentOrigin?(id: string, attachment: MessageAttachment): Promise<string | null>
   /**
    * Shows a commit a message links as `commit:3f2a9c1`, or as
    * `commit:src/v8@86229da` in the repository of that folder, in the Change

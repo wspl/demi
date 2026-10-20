@@ -86,10 +86,12 @@ import FileView from '@demicodes/web-ui/files/FileView.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides, QUOTED_CODE, SLOT_ROOT } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
-import { galleryConversationFiles, namedFilesMarkdown } from '../fixtures/message-files'
+import { galleryAttachmentOrigin, galleryConversationFiles, namedFilesMarkdown } from '../fixtures/message-files'
+import Switch from '@demicodes/web-ui/ui/Switch.vue'
+import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
-import { attachmentMarkdown, audioAttachmentMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
+import { attachmentMarkdown, audioAttachmentMarkdown, frameMediaMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
 import { useGalleryShares } from '../fixtures/sharing'
 import { useAgentContext } from '../agent-context'
@@ -699,20 +701,37 @@ function agentOpens(show: boolean) {
   productWould(show ? 'The Agent Opens a Page and Shows It' : 'The Agent Opens a Page to Check It')
   void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
 }
+/**
+ * Whether the conversation's Host is online, as the attachments specimen's
+ * switch simulates: an attachment opens the file it was uploaded from only
+ * while it is.
+ */
+const hostOnline = ref(true)
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
-const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line }) => {
-  // From the session page, which shows no panel, a click opens the frame's.
-  panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
-  view.value = 'panel'
-}, ({ commit, root }) => {
-  panelWork.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
-  view.value = 'panel'
-}, ({ path }) => {
-  panelWork.openIn({ intent: 'file', payload: { path, tree: true } })
-  view.value = 'panel'
-}, (id, { name, size, url }) => {
-  panelWork.openIn({ intent: 'attachment', payload: { id, name, size, url } })
-  view.value = 'panel'
+const sessionFiles = {
+  ...galleryConversationFiles(workspace.source, ({ path, line }) => {
+    // From the session page, which shows no panel, a click opens the frame's.
+    panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
+    view.value = 'panel'
+  }, ({ commit, root }) => {
+    panelWork.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
+    view.value = 'panel'
+  }, ({ path }) => {
+    panelWork.openIn({ intent: 'file', payload: { path, tree: true } })
+    view.value = 'panel'
+  }, (id, { name, size, url }) => {
+    panelWork.openIn({ intent: 'attachment', payload: { id, name, size, url } })
+    view.value = 'panel'
+  }),
+  attachmentOrigin: galleryAttachmentOrigin(workspace.source, () => hostOnline.value),
+}
+// The session's pictures and videos open in the Media tab of the frame's panel, as a conversation's do.
+provideMediaViewer({
+  reveal: () => {
+    panelWork.openIn({ intent: 'media', payload: {} })
+    view.value = 'panel'
+    return true
+  },
 })
 // The tabs specimen starts on an empty strip, which only the agent's tabs fill.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
@@ -931,7 +950,10 @@ const sessionFlow = useTurnFlow({
   id: 'gallery-session',
   title: 'Login test',
   cwd: workspace.root,
-  blocks: transcriptDemoBlocks(),
+  blocks: [
+    ...transcriptDemoBlocks(),
+    { type: 'text', id: 'assistant-media', createdAt: new Date(Date.now() - 500).toISOString(), model: demoModel, text: frameMediaMarkdown },
+  ],
   subagents: agents,
   terminals,
 })
@@ -2144,8 +2166,11 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, delivered as a block of its own: <attachment id=&quot;a3&quot; /> on a line of its own. An image, and a video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. A lone one stands on a line of its own 12px from the text above and below; images and videos whose blocks follow each other stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its name and pixel size under it; a phone shows none. A click shows an image large and plays a video in the viewer. Audio is its inline player. Any other file is a card, 360px wide at most, with the file tree’s icon, its name, and its kind and size: a click opens it in the work panel, previewed as the File view previews a file from the attachment’s copy, and only Download downloads; cards on consecutive lines stack. The tag in a sentence, and a link to attachment:a3, are text, and a number the conversation does not have, or one the reply’s agent did not upload, such as the user’s file or another agent’s, says so in the block’s place. In a list, a screenshot’s block on the line after an item’s words stands on its own line under them, and two stand side by side under them."
+        note="What the agent gave the user with demi attachment upload, delivered as a block of its own: <attachment id=&quot;a3&quot; /> on a line of its own. An image, and a video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. A lone one stands on a line of its own 12px from the text above and below; images and videos whose blocks follow each other stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its name and pixel size under it; a phone shows none. A click opens an image or a video in the Media tab of the frame’s work panel, beside the conversation: the bar names it, gives its place among the conversation’s pictures and videos, 3 / 12, between Previous and Next, and offers Download; the Left and Right Arrow keys step through them, a picture zooms with the wheel or a pinch, pans by dragging, and a double-click switches between fitting the panel and its own size, and a video plays in the web browser’s player. An attachment shows the file it was uploaded from while the Host is online and has the file, and its copy otherwise: the chart was uploaded before its file changed, so the switch shows the two. Audio is its inline player. Any other file is a card, 360px wide at most, with the file tree’s icon, its name, and its kind and size: a click opens it in the work panel: the file it was uploaded from, as it is now, in the File view, as a link to it opens, while its Host is the conversation’s, online, and has the file; otherwise the attachment’s copy, previewed as the File view previews a file. Only Download downloads. The switch simulates the Host going offline: the guide and the build then open their copies, the release notes, whose file is gone, always do; cards on consecutive lines stack. The tag in a sentence, and a link to attachment:a3, are text, and a number the conversation does not have, or one the reply’s agent did not upload, such as the user’s file or another agent’s, says so in the block’s place. In a list, a screenshot’s block on the line after an item’s words stands on its own line under them, and two stand side by side under them."
       >
+        <GallerySpecimen variant="the conversation’s Host, simulated for every specimen below" wide>
+          <Switch v-model="hostOnline" label="Host online" />
+        </GallerySpecimen>
         <GallerySpecimen variant="a lone image" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="loneImageMarkdown" />
         </GallerySpecimen>

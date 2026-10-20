@@ -1110,6 +1110,49 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
     backend.close().await;
 }
 
+// A few seconds: the Cloud boots once, runs one shell job, and idles.
+//
+// Whether the file an attachment was uploaded from is there is a look, which a
+// stopped Cloud refuses rather than wakes, so the page opens the copy and the
+// Cloud stays stopped. Planted defect it catches: the check admitted as a file
+// transfer is, which boots the stopped Cloud.
+#[tokio::test]
+async fn whether_an_attachments_file_is_there_never_wakes_a_stopped_cloud() {
+    let vendor = MockVendor::start().await;
+    let mut harness = Harness::new();
+    harness.lifecycle = idle_after(Duration::from_millis(400));
+    harness.cloud.sweep = Duration::from_millis(50);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
+    create(&backend, &master, FIRST).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
+    let script = "printf '# Notes\\n' > notes.md && demi attachment upload notes.md";
+    let uploaded = work
+        .turn(vec![shell("t1", script, 20_000), say("uploaded")])
+        .await;
+    assert!(uploaded.received[0].contains("a1"), "{}", uploaded.received[0]);
+    let check = format!("/api/conversations/{FIRST}/attachments/a1/file");
+    let present = backend.get(&check, Some(&master)).await;
+    assert_eq!(
+        present.status,
+        StatusCode::NO_CONTENT,
+        "{}",
+        String::from_utf8_lossy(&present.body)
+    );
+
+    until_status(&backend, &master, "the idle Cloud stops", |status| {
+        status.state == CloudState::Off
+    })
+    .await;
+    assert_eq!(
+        backend.get(&check, Some(&master)).await.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostStopped)
+    );
+    let device = the_cloud(&harness);
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+    backend.close().await;
+}
+
 // Several seconds: the Cloud boots before and after the backend's restart, and
 // installs the builtin package.
 #[tokio::test]

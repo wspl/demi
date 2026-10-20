@@ -1,6 +1,7 @@
 {
   "kind": {
     "title": "Files",
-    "titleNamed": "File: {name}"
+    "titleNamed": "File: {name}",
+    "media": "Media"
   }
 }

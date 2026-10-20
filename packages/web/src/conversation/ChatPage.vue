@@ -27,7 +27,7 @@ import { usePermissions } from './permissions'
 import { useSideQuestions } from './side-questions'
 import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
-import { useMessageAttachments } from './attachments'
+import { attachmentOrigin, useMessageAttachments } from './attachments'
 import { lookupCodeFiles } from '../api/code-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
@@ -244,9 +244,11 @@ const files = computed<ConversationFiles | undefined>(() => {
     return undefined
   }
   const contents = conversationFiles(current.id).workspace?.source.contents
+  const device = executionFor(current).deviceId
   return {
-    home: resources.deviceById(executionFor(current).deviceId)?.home ?? null,
+    home: resources.deviceById(device)?.home ?? null,
     ...(contents ? { contents } : {}),
+    ...(device ? { device } : {}),
     open: work.canOpen('file')
       ? ({ path, line, root }) => work.openIn(current.id, { intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
       : undefined,
@@ -265,6 +267,11 @@ const files = computed<ConversationFiles | undefined>(() => {
     },
     codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     ...(attachments.value ? { attachment: attachments.value } : {}),
+    attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
+      conversation: current.id,
+      device: executionFor(current).deviceId ?? null,
+      online: primaryHost.value?.state === 'online',
+    }),
     openAttachment: work.canOpen('attachment')
       ? (id, { name, size, url }) => work.openIn(current.id, { intent: 'attachment', payload: { id, name, size, url } })
       : undefined,

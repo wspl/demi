@@ -219,5 +219,10 @@
     "play": "Play {name}",
     "pause": "Pause {name}",
     "seek": "Position in {name}"
+  },
+  "media": {
+    "previous": "Previous",
+    "next": "Next",
+    "none": "No picture or video is open."
   }
 }

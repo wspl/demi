@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ShownError } from '../infra/errors'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onScopeDispose, ref, watch } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
 import type { PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
@@ -40,6 +40,7 @@ import { blockDirectories, blockMessageFiles } from './working-directory'
 import { useMessageFiles } from '../markdown/message-files'
 import { useMediaAddress } from './media-source'
 import { transcriptPictures } from './transcript-pictures'
+import { useMediaViewer } from '../files/media-viewer'
 import { versionPlaces, type VersionChoice } from './versions'
 import type { HeldBlock } from '@demicodes/conversation-client'
 import type { StepsNotSharedRow } from './pending-steers'
@@ -312,6 +313,10 @@ const pictures = computed(() => transcriptPictures(renderBlocks.value, {
   files: (blockId) => blockMessageFiles(conversationFiles(), directories.value?.get(blockId) ?? props.cwd ?? null, props.node ?? null),
   address: mediaAddress,
 }))
+// The conversation's own transcript offers its pictures to the page's viewer,
+// in which a Media tab restored after a reload finds the one it showed.
+if ((props.node ?? null) === null)
+  onScopeDispose(useMediaViewer().offer(() => pictures.value))
 provideTranscript({
   get node() {
     return props.node ?? null

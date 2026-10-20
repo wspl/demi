@@ -26,9 +26,32 @@ export type ShownMedium = {
   name: string
   /** Its pixel size, when its reference or its thumbnail knows it. */
   size?: PixelSize | null
+  /** Its size in bytes, when its reference knows it; a Host file's comes from the file. */
+  bytes?: number | null
   /** The transcript row it stands in, which tells apart the same picture standing in two rows (`transcriptRowOf`). */
   row?: string
-} & ({ src: string; file?: never } | { file: MediumFile; src?: never })
+} & (
+  | {
+    src: string
+    file?: never
+    /**
+     * An attachment's question of whether it opens the file it was uploaded
+     * from in place of its copy at `src`, asked when it shows
+     * (`attachmentMedium`): the file, or null for the copy.
+     */
+    origin?: () => Promise<MediumFile | null>
+  }
+  | { file: MediumFile; src?: never; origin?: never }
+)
+
+/**
+ * Where a medium stands in a conversation's series, as a tab that shows it
+ * keeps it across a reload: its key (`mediumKey`) and the row it stands in.
+ */
+export interface MediumPlace {
+  key: string
+  row?: string
+}
 
 /** What tells a medium from another: its address, or a Host image's file, whatever version shows. */
 export function mediumKey(medium: ShownMedium): string {
@@ -42,12 +65,13 @@ export function mediumKey(medium: ShownMedium): string {
  * A Host image shows from the kept files while the viewer is open, so it is the
  * picture the message shows and the file's next version replaces it in place.
  * `gone` says a Host image's file is not there. Closed, the last stays for the
- * window's leave.
+ * window's leave. `bytes` is the size of what shows: a Host image's file's, or
+ * the one its reference knows.
  */
 export function useMediumSource(
   medium: () => ShownMedium | null,
   open: () => boolean,
-): { src: Readonly<Ref<string>>; gone: Readonly<Ref<boolean>> } {
+): { src: Readonly<Ref<string>>; gone: Readonly<Ref<boolean>>; bytes: Readonly<Ref<number | null>> } {
   const file = useShowing(
     () => (open() ? medium()?.file?.contents : null),
     () => medium()?.file?.path,
@@ -55,9 +79,11 @@ export function useMediumSource(
   )
   const src = ref('')
   const gone = ref(false)
+  const bytes = ref<number | null>(null)
   watch(medium, (shown) => {
     src.value = shown?.src ?? ''
     gone.value = false
+    bytes.value = shown?.bytes ?? null
   }, { immediate: true })
   watch(() => {
     const shownFile = medium()?.file
@@ -66,11 +92,13 @@ export function useMediumSource(
     // Closed, or a medium that is no file: what shows stays.
     if (image === null)
       return
-    if (image.state === 'shown')
+    if (image.state === 'shown') {
       src.value = image.src
+      bytes.value = file.entry.value?.value?.size ?? bytes.value
+    }
     gone.value = image.state === 'none'
   }, { immediate: true })
-  return { src, gone }
+  return { src, gone, bytes }
 }
 
 /** The row of the transcript the element stands in, as a list marks its rows; none outside a transcript. */
@@ -130,19 +158,51 @@ export interface MediaViewerState {
   /** Shows the medium before (-1) or after (1) the one shown in its transcript; nothing at the first and the last. */
   step(direction: -1 | 1): void
   close(): void
+  /**
+   * Whether the medium shown is in the work panel's Media tab, which the
+   * page's `reveal` opened, rather than in the viewer's window.
+   */
+  inPanel: Readonly<ShallowRef<boolean>>
+  /**
+   * Offers `series`, the media of a conversation's own transcript, in which
+   * a restored Media tab finds the medium it showed (`restore`); the newest
+   * offer first. Returns the withdrawal, for the transcript's end.
+   */
+  offer(series: MediaSequence): () => void
+  /**
+   * Shows the medium at `place` of the offered series in the tab that asks,
+   * as it was shown before a reload; false while no series offered has it.
+   */
+  restore(place: MediumPlace): boolean
   /** The user moved or resized the window. */
   place(rect: WindowRect): void
   /** The medium shown has loaded at `size`: a window that opened without it takes it now. */
   measured(size: PixelSize): void
 }
 
+/**
+ * Where a viewer shows its media: in a window it draws over the page, or,
+ * with `reveal`, in the work panel's Media tab, which `reveal` opens and
+ * selects each time a medium is shown.
+ */
+export interface MediaViewerOptions {
+  /**
+   * Opens and selects the Media tab; false when no tab opens it, as with
+   * the file-browser plugin off, and the window shows the medium then.
+   */
+  reveal?(): boolean
+}
+
 /** The state of the viewer. `where` tells the page and the display's pixel ratio. */
-export function createMediaViewer(where: () => ViewerPlace): MediaViewerState {
+export function createMediaViewer(where: () => ViewerPlace, { reveal }: MediaViewerOptions = {}): MediaViewerState {
   const shown = shallowRef<ShownMedium | null>(null)
   const geometry = shallowRef<ViewerGeometry | null>(null)
   const sequence = shallowRef<MediaSequence | null>(null)
   /** Where the medium shown stood last, which tells the same medium apart where the transcript shows it twice. */
   const index = shallowRef(-1)
+  const inPanel = shallowRef(false)
+  /** The series the conversations' own transcripts offer, the newest last. */
+  const offered = shallowRef<readonly MediaSequence[]>([])
 
   /** The window for a medium of `size`, centred on the page. */
   function sized(size: PixelSize | null): WindowRect {
@@ -156,11 +216,15 @@ export function createMediaViewer(where: () => ViewerPlace): MediaViewerState {
    * not there.
    */
   function locate(media: readonly ShownMedium[], medium: ShownMedium, last: number): number {
-    const key = mediumKey(medium)
+    return locatePlace(media, { key: mediumKey(medium), ...(medium.row === undefined ? {} : { row: medium.row }) }, last)
+  }
+
+  /** `locate` by the medium's place. */
+  function locatePlace(media: readonly ShownMedium[], { key, row }: MediumPlace, last: number): number {
     const at = media[last]
     if (at && mediumKey(at) === key)
       return last
-    const inRow = medium.row === undefined ? -1 : media.findIndex((each) => mediumKey(each) === key && each.row === medium.row)
+    const inRow = row === undefined ? -1 : media.findIndex((each) => mediumKey(each) === key && each.row === row)
     return inRow >= 0 ? inRow : media.findIndex((each) => mediumKey(each) === key)
   }
 
@@ -189,8 +253,29 @@ export function createMediaViewer(where: () => ViewerPlace): MediaViewerState {
     shown,
     geometry,
     position,
+    inPanel,
     show(medium, among) {
       open(medium, among ?? null, among ? locate(among(), medium, -1) : -1)
+      inPanel.value = reveal?.() ?? false
+    },
+    offer(series) {
+      offered.value = [...offered.value, series]
+      return () => {
+        offered.value = offered.value.filter((each) => each !== series)
+      }
+    },
+    restore(place) {
+      for (const series of offered.value.toReversed()) {
+        const media = series()
+        const at = locatePlace(media, place, -1)
+        const medium = media[at]
+        if (medium) {
+          open(medium, series, at)
+          inPanel.value = true
+          return true
+        }
+      }
+      return false
     },
     step(direction) {
       const place = position.value
@@ -229,11 +314,13 @@ const mediaViewerKey: InjectionKey<MediaViewerState> = Symbol('media-viewer')
 
 /**
  * Gives the components below the page's one viewer, which `MediaViewer`
- * draws. A page provides it at its root, so the viewer stays open while the
- * transcript beneath it changes, even when the row that opened it goes.
+ * draws, or the work panel's Media tab (`MediaView`) when `options` reveal
+ * it. A page provides it at its root, or a conversation's page where it has
+ * a work panel, so the viewer stays open while the transcript beneath it
+ * changes, even when the row that opened it goes.
  */
-export function provideMediaViewer(): MediaViewerState {
-  const viewer = createMediaViewer(pagePlace)
+export function provideMediaViewer(options: MediaViewerOptions = {}): MediaViewerState {
+  const viewer = createMediaViewer(pagePlace, options)
   provide(mediaViewerKey, viewer)
   return viewer
 }

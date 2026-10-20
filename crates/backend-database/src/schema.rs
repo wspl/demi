@@ -1390,7 +1390,8 @@ CREATE TABLE plugin_oauth_clients (
 /// - the one `0.1.22-dev.20261015T134426Z` deployed, of format 9;
 /// - the one `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees
 ///   of rows. 0.1.22 shipped that one too, before a running command kept its
-///   turn, and 0.1.33 the one before a running command kept its call's script.
+///   turn, 0.1.33 the one before a running command kept its call's script, and
+///   0.1.36 the one before an attachment kept the file it was uploaded from.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1478,10 +1479,22 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.33.sql"),
             migration: Migration::Code(conversation_from_0_1_33),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.36.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_36),
+        },
     ],
 };
 
-/// From 0.1.33's conversation schema, which 0.1.33 shipped, to the current one: a
+/// From 0.1.36's conversation schema, which 0.1.35 shipped too, to the current
+/// one: an attachment the agent uploads keeps the Host and the path of the file
+/// it was uploaded from. One stored before keeps none, and opens its copy.
+const CONVERSATION_FROM_0_1_36: &str = "
+ALTER TABLE attachments ADD COLUMN source_host TEXT;
+ALTER TABLE attachments ADD COLUMN source_path TEXT CHECK ((source_path IS NULL) = (source_host IS NULL));
+";
+
+/// From 0.1.33's conversation schema, which 0.1.33 shipped, to 0.1.36's: a
 /// running command keeps its call's script beside its title, which the pages'
 /// view of it carries.
 ///
@@ -4574,18 +4587,23 @@ CREATE INDEX running_commands_of_node ON running_commands (node_id);
 -- `demi attachment upload` stored it, a side question's included, null for
 -- a file the user sent or uploaded themselves; only that agent's replies,
 -- and those of the agents forked from it, show it (`file-previews.md`
--- § Attachment blocks).
+-- § Attachment blocks). An upload also keeps the file it was uploaded from:
+-- the device the command ran on and the file's full path as that Host
+-- writes it, both null for a file the user sent and for an upload stored
+-- before uploads kept them.
 -- A row never changes; a Fork's seed copies the rows, and the blobs stay
 -- shared.
 CREATE TABLE attachments (
-  number     INTEGER PRIMARY KEY CHECK (number >= 1),
-  name       TEXT NOT NULL,
-  media_type TEXT NOT NULL,
-  size       INTEGER NOT NULL CHECK (size >= 0),
-  width      INTEGER CHECK (width >= 1),
-  height     INTEGER CHECK (height >= 1),
-  blob       TEXT NOT NULL,
-  node_id    TEXT,
+  number      INTEGER PRIMARY KEY CHECK (number >= 1),
+  name        TEXT NOT NULL,
+  media_type  TEXT NOT NULL,
+  size        INTEGER NOT NULL CHECK (size >= 0),
+  width       INTEGER CHECK (width >= 1),
+  height      INTEGER CHECK (height >= 1),
+  blob        TEXT NOT NULL,
+  node_id     TEXT,
+  source_host TEXT,
+  source_path TEXT CHECK ((source_path IS NULL) = (source_host IS NULL)),
   CHECK ((width IS NULL) = (height IS NULL))
 ) STRICT;
 ";

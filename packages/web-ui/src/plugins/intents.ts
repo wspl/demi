@@ -38,6 +38,13 @@ export interface IntentPayloads {
    */
   attachment: { id: string; name: string; size: number; url: string }
   /**
+   * The medium the conversation's media viewer shows now
+   * (`packages/web-ui/src/files/media-viewer.ts`), in the work panel's one
+   * Media tab, as opening a picture or a video of the conversation shows it.
+   * The viewer holds the medium and its series, so the request names nothing.
+   */
+  media: Record<string, never>
+  /**
    * A web page, in a new tab of the conversation's browser, as a link's
    * Open in Work Panel opens it.
    */

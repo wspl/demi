@@ -309,3 +309,31 @@ async fn an_attachments_tab_is_kept_until_the_user_closes_it() {
     assert_eq!(panel.ids().await, Vec::<String>::new());
     backend.close().await;
 }
+
+// A picture or a video of the conversation opens the work panel's Media tab, of the
+// file-browser plugin's `media` kind, which the backend keeps with the place of the
+// medium it shows, so a reload shows it again, and lets go of when the user closes
+// it.
+//
+// Planted defect this catches: the kind left undeclared, which refuses the tab, so
+// a picture's click opens nothing. One backend, a few requests.
+#[tokio::test]
+async fn a_media_tab_is_kept_with_its_place_until_the_user_closes_it() {
+    let (backend, master) = Harness::new().start_set_up().await;
+    let panel = Panel {
+        backend: &backend,
+        master: &master,
+        id: conversation(&backend, &master).await,
+    };
+    let tab = json!({
+        "id": "t1",
+        "kind": "media",
+        "data": { "key": "/api/blobs/5?type=image%2Fpng", "row": "b7" },
+    });
+    let created = panel.create(tab.clone()).await;
+    assert_eq!(created.json::<Value>(), json!({ "revision": 1, "changed": true }));
+    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab] }));
+    assert_eq!(revision(&panel.remove("t1").await), 2);
+    assert_eq!(panel.ids().await, Vec::<String>::new());
+    backend.close().await;
+}

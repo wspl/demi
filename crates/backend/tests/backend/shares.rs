@@ -374,6 +374,9 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     assert_eq!(named.status, StatusCode::OK, "{}", String::from_utf8_lossy(&named.body));
     let named: demi_web_api_protocol::attachments::ConversationAttachment = named.json();
     assert_eq!(named.name, "shown.png");
+    // A share shows the copy alone: where the file lies on the Host stays the
+    // owner's.
+    assert_eq!(named.source, None);
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
     missed(&public(&backend, &answer, "/attachments/a4", None).await, "an attachment that did not exist");

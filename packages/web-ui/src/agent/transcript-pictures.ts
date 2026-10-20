@@ -2,7 +2,8 @@ import type { ShownMedium } from '../files/media-viewer'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
 import { messageMedia } from '../markdown/render'
-import type { MessageFiles } from '../markdown/types'
+import type { ConversationFiles, MessageFiles } from '../markdown/types'
+import { previewKind } from '../files/preview'
 import { toolCallTitle } from './block-helpers'
 import { reportShown } from './command-reports'
 import { contentMessage, type MessageCapsule } from './message-editor/capsules'
@@ -52,7 +53,8 @@ function blockPictures(block: MessageListBlock, context: TranscriptPicturesConte
       // Each file stands at a mark between the text around it.
       return markdown.split(ATTACHMENT_MARK).flatMap((text, index) => {
         const capsule = capsules[index]
-        return [...messageMedia(text, files), ...(capsule ? capsuleMedia(capsule, context) : [])]
+        const medium = capsule ? capsuleMedium(capsule, context.address, files) : null
+        return [...messageMedia(text, files), ...(medium ? [medium] : [])]
       })
     }
     case 'text':
@@ -79,14 +81,34 @@ function toolPictures(media: readonly ToolMedium[], context: TranscriptPicturesC
 }
 
 /**
- * The picture or the video a user's attached file shows; none for a file of
- * another kind.
+ * The picture or the video a user's attached file shows, as the transcript's
+ * series holds it and its capsule opens it; null for a file of another kind.
+ *
+ * - A file the message holds, such as one sent from the computer, loads from
+ *   where `address` says its media source does, with the size in bytes the
+ *   message's reference to it carries.
+ * - A file of the conversation's Host the message names, such as one Attach
+ *   Remote File chose there, is that file, read through `files`, as a Host
+ *   image of a message is; its kind comes from its name. One on another
+ *   device shows nothing here, since `files` reads only the conversation's
+ *   Host.
  */
-function capsuleMedia(capsule: MessageCapsule, context: TranscriptPicturesContext): ShownMedium[] {
-  const { image, video, name } = capsule
+export function capsuleMedium(
+  capsule: MessageCapsule,
+  address: (source: MediaSource) => string,
+  files: ConversationFiles | undefined,
+): ShownMedium | null {
+  const { image, video, name, reference, path } = capsule
+  const contents = files?.contents
+  const onHost = reference?.type === 'device' ? reference.deviceId === files?.device : capsule.host === undefined
+  if (image === undefined && video === undefined && path !== undefined && contents && onHost) {
+    const kind = previewKind(path)
+    return kind === 'image' || kind === 'video' ? { kind, name, file: { path, contents } } : null
+  }
+  const bytes = reference && 'size' in reference ? reference.size ?? null : null
   if (image !== undefined)
-    return [{ kind: 'image', src: typeof image === 'string' ? image : context.address(image), name, size: typeof image === 'string' ? null : sourceSize(image) }]
+    return { kind: 'image', src: typeof image === 'string' ? image : address(image), name, size: typeof image === 'string' ? null : sourceSize(image), bytes }
   if (video !== undefined)
-    return [{ kind: 'video', src: context.address(video), name, size: sourceSize(video) }]
-  return []
+    return { kind: 'video', src: address(video), name, size: sourceSize(video), bytes }
+  return null
 }
