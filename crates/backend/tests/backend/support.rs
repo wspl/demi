@@ -745,8 +745,22 @@ impl Harness {
 
     /// The backend over this harness's data, in `mode`.
     pub async fn start_in_mode(&self, mode: InstanceMode) -> TestBackend {
-        self.launch(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), mode)
+        self.launch(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), mode, false)
             .await
+    }
+
+    /// The backend over this harness's data, with every migration of a
+    /// conversation's database held from before its start reads one, until
+    /// the hold is released or dropped: the start's own work, such as the
+    /// search index's catch-up, may be the first to migrate a database.
+    pub async fn start_with_migrations_held(
+        &self,
+    ) -> (TestBackend, demi_backend_database::conversations::MigrationHold) {
+        let backend = self
+            .launch(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), self.mode, true)
+            .await;
+        let hold = backend.backend.held_migrations();
+        (backend, hold)
     }
 
     /// A backend listening on `address`, such as the one an earlier start of the
@@ -757,10 +771,15 @@ impl Harness {
     /// take the port between the close and the start; one that needs only a stable
     /// URL sets `public_url` and starts on a port of its own.
     pub async fn start_at(&self, address: SocketAddr) -> TestBackend {
-        self.launch(address, self.mode).await
+        self.launch(address, self.mode, false).await
     }
 
-    async fn launch(&self, address: SocketAddr, mode: InstanceMode) -> TestBackend {
+    async fn launch(
+        &self,
+        address: SocketAddr,
+        mode: InstanceMode,
+        migrations_held: bool,
+    ) -> TestBackend {
         let machines = self
             .machines
             .clone()
@@ -786,6 +805,7 @@ impl Harness {
         config.object_counts = self.objects.clone();
         config.push_transport = self.push_transport.clone();
         config.master_account = self.master_account.clone();
+        config.migrations_held = migrations_held;
         assert!(
             self.release.is_none() || self.server_release.is_none(),
             "a harness loads a workspace package or a server release, not both"
@@ -1022,12 +1042,6 @@ impl TestBackend {
     /// the index's own turn for the user.
     pub async fn corrupt_search_index(&self, user: &demi_web_api_protocol::ids::UserId) {
         self.backend.corrupt_search_index(user).await;
-    }
-
-    /// Holds every migration of a conversation's database from now on,
-    /// until the hold is released or dropped.
-    pub fn hold_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
-        self.backend.hold_migrations()
     }
 
     /// Holds every runner's hello at `step` from now on, until the hold is

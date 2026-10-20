@@ -484,6 +484,11 @@ pub struct BackendConfig {
     /// Where push messages go instead of the internet's push services.
     #[cfg(feature = "testing")]
     pub push_transport: Option<std::sync::Arc<dyn demi_backend_accounts::push::PushTransport>>,
+    /// Holds the migrations of the conversations' databases from the moment
+    /// the stores open, before anything the start runs, such as the search
+    /// index's catch-up, reads one (`Backend::held_migrations`).
+    #[cfg(feature = "testing")]
+    pub migrations_held: bool,
 }
 
 impl BackendConfig {
@@ -545,6 +550,8 @@ impl BackendConfig {
             web_roots: Vec::new(),
             #[cfg(feature = "testing")]
             push_transport: None,
+            #[cfg(feature = "testing")]
+            migrations_held: false,
         }
     }
 }

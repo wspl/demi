@@ -213,13 +213,14 @@ async fn a_request_its_client_abandons_logs_its_line() {
         DatabaseKind::Conversation,
     );
     let log = ServerLogCapture::open(&harness);
-    let backend = harness.start().await;
-    let hold = backend.hold_migrations();
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
+    // The start's search catch-up migrates the database under the hold; the
+    // page's open and its summary read come meanwhile.
+    let (backend, hold) = harness.start_with_migrations_held().await;
     tokio::time::timeout(PATIENCE, hold.until_migrating(1))
         .await
-        .expect("opening the conversation migrates its database");
+        .expect("the start's search catch-up migrates the database");
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
 
     // The page's summary read waits for the migration; its client goes.
     let mut client = tokio::net::TcpStream::connect(backend.address()).await.unwrap();
