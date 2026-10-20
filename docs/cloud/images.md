@@ -5,50 +5,71 @@ init, the native runner and the command programs. It holds no browser and no
 guest kernel or virtual hardware configuration. The manager combines those
 files with each device's persistent storage.
 
-What a base holds and why is in `cloud-guest-image/rootfs/packages.txt` and
-`cloud-guest-image/rootfs/build.sh`; its manifest and what the manager relies
-on in a base are in `crates/machine-manager-protocol/src/image.rs`; how the
-manager imports one is in `crates/machine-manager/src/storage/base.rs`. [Cloud
-setup](setup.md) describes deployment, and the
-[build instructions](../../cloud-guest-image/README.md) assemble and publish a
-release on a matching Linux builder.
+Related reading:
 
-## Building
+- What a base holds and why: `cloud-guest-image/rootfs/packages.txt` and
+  `cloud-guest-image/rootfs/build.sh`.
+- A base's manifest, and what the manager relies on in a base:
+  `crates/machine-manager-protocol/src/image.rs`.
+- How the manager imports a base: `crates/machine-manager/src/storage/base.rs`.
+- Deployment: [Cloud setup](setup.md).
+- Assembling and publishing a release on a matching Linux builder: the
+  [build instructions](../../cloud-guest-image/README.md).
+
+## Image build
 
 An image release is the `image/` directory of a server release
-(`crates/xtask/src/server_release.rs`), built from that release's runner and
-command packages, whose programs for the image's target it takes from the
-release's files. A published release carries it as an asset of its own per
-architecture (`.github/workflows/release.yml`).
+(`crates/xtask/src/server_release.rs`). It is built from that release's runner
+and command packages, whose programs for the image's target it takes from the
+release's files. A published release carries the image release as an asset of
+its own per architecture (`.github/workflows/release.yml`).
 
 Build amd64 and arm64 separately. Native executable targets are
 `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, respectively.
+
 Assemble the Linux filesystem on a Linux builder of the image's architecture:
-for a published release, the release workflow's `ubuntu-26.04` and
-`ubuntu-26.04-arm` runners, which give a job root through passwordless `sudo`;
-for development, a Linux machine or VM of the developer's, with the targets of
-the Hosts in use packaged by `bun xtask native build` on the developer's
-machine. Do not confuse cross-compiling a Rust executable with validating the
-complete image on another architecture.
+
+- For a published release, the release workflow's `ubuntu-26.04` and
+  `ubuntu-26.04-arm` runners, which give a job root through passwordless
+  `sudo`.
+- For development, a Linux machine or VM of the developer's, with the targets
+  of the Hosts in use packaged by `bun xtask native build` on the developer's
+  machine.
+
+Do not confuse cross-compiling a Rust executable with validating the complete
+image on another architecture.
 
 ## Acceptance and local refresh
 
 Verify the full image on each supported architecture with the shipped runsc
-profile: init reaps orphans, jobs use UID 1000, sudo works, package installation
-works, and Chrome, once the agent has installed it and
-its libraries, retains its sandbox. Test shell/native
-commands and the conversation browser through the real managed runner
-connection.
+profile:
 
-When a runner or embedded command package changes, build the Cloud target,
-rebuild the image and restart the local manager with it; the Cloud's next wake
-runs the new programs, with no reset. Check the running runner's executable
-hash and command package identity after that wake and again after
-hibernate/wake and after a reset. After each, the first native command starts its service from the
-image's embedded executable, without a download. Do not hash PID 1
-as a proxy for the runner: PID 1 is init. Exercise the paired device in the same
-checkpoint. Rebuilding a native release alone does not refresh a Cloud, whose
-runner and embedded programs come from the image the manager is configured with.
+- Init reaps orphans.
+- Jobs use UID 1000.
+- sudo works.
+- Package installation works.
+- Chrome, after the agent has installed it and its libraries, retains its
+  sandbox.
+
+Test shell and native commands and the conversation browser through the real
+managed runner connection.
+
+When a runner or embedded command package changes:
+
+1. Build the Cloud target.
+2. Rebuild the image.
+3. Restart the local manager with the new image. The Cloud's next wake runs the
+   new programs, with no reset.
+4. Check the running runner's executable hash and command package identity
+   after that wake, again after hibernate and wake, and after a reset. After
+   each, the first native command starts its service from the image's embedded
+   executable, without a download.
+5. Exercise the paired device in the same checkpoint.
+
+Do not hash PID 1 as a proxy for the runner: PID 1 is init.
+
+Rebuilding a native release alone does not refresh a Cloud, whose runner and
+embedded programs come from the image the manager is configured with.
 
 Image acceptance is separate from the six-target native release. The latter
 also covers macOS and Windows paired devices; the Cloud base is Linux only.

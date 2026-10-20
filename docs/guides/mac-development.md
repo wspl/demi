@@ -1,13 +1,14 @@
 # Develop on a Mac with Lima
 
 This guide is optional. The standard development machine is Linux
-(`crates/xtask/src/dev/mod.rs`); nothing in
-the product or its checks needs a Mac. Use this guide only to develop on a Mac.
+(`crates/xtask/src/dev/mod.rs`); nothing in the product or its checks needs a
+Mac. Use this guide only to develop on a Mac.
 
 gVisor runs only on Linux, so on a Mac the machine manager and its Clouds run
 inside one Lima Linux VM with the Mac's own CPU architecture. systrap needs no
 nested virtualization. The backend, its data and the web application stay on
-the Mac, and the Mac is also a paired device:
+the Mac, and the Mac is also a paired device. The following diagram shows the
+layout:
 
 ```text
 Mac
@@ -25,8 +26,8 @@ Lima VM (Linux, the Mac's architecture)
 On an Apple silicon Mac, the Hosts in use are the Mac,
 `aarch64-apple-darwin`, and the Cloud guest, `aarch64-unknown-linux-musl`.
 Build those two targets with the Mac's own toolchain, cross tools and Apple
-SDK (`crates/xtask/src/native/build.rs`), and assemble
-a server release of them, which the backend on the Mac uses:
+SDK (`crates/xtask/src/native/build.rs`), and assemble a server release of
+them, which the backend on the Mac uses:
 
 ```sh
 bun xtask native build \
@@ -45,26 +46,34 @@ the VM, on the VM's Linux disk.
 
 Build the image inside the VM as the
 [guest image build](../../cloud-guest-image/README.md) describes, from the
-root above, prefixing the build command with
-`limactl shell demi-machine-manager --`. The VM sees the Mac's home directory
-at the same path. Its output is the `image/` of the manager's root on the
+server-release root that [Hosts in use](#hosts-in-use) builds, prefixing the
+build command with `limactl shell demi-machine-manager --`. The VM sees the
+Mac's home directory at the same path. Its output is the `image/` of the manager's root on the
 VM's Linux disk, such as `/opt/demi/dev-<build>/image`, never a shared Mac
 directory.
 
 ## Machine manager in Lima
 
 `crates/machine-manager/lima/demi-machine-manager.yaml` and
-`crates/machine-manager/scripts/lima-machines.sh` provision the Linux dependencies, a
-separate persistent data disk, the manager service, the network policy, and
-Unix socket forwarding. The VM runs the same privileged manager and runsc
-profile as a Linux execution host. `--release` names the manager's root in
-the VM, the one whose `image/` the image build wrote. The script copies the
-manager and `demi-server` built for the VM's architecture into that root's
-`bin/`, renaming each into place so that a running manager keeps its own file, puts the manager's
-unit in its `systemd/`, as a server release carries it, has `demi-server
-runtime` fetch the pinned gVisor into `/opt/demi/gvisor/`, writes the VM's
-configuration file with the public URL, the socket and the state directory,
-and installs the service from the root through `/opt/demi/current`.
+`crates/machine-manager/scripts/lima-machines.sh` provision the Linux
+dependencies, a separate persistent data disk, the manager service, the network
+policy, and Unix socket forwarding. The VM runs the same privileged manager and
+runsc profile as a Linux execution host.
+
+`--release` names the manager's root in the VM, the one whose `image/` the
+image build wrote. The script takes these steps:
+
+1. Copies the manager and `demi-server` built for the VM's architecture into
+   that root's `bin/`, renaming each into place so that a running manager keeps
+   its own file.
+2. Puts the manager's unit in the root's `systemd/`, as a server release
+   carries it.
+3. Has `demi-server runtime` fetch the pinned gVisor into `/opt/demi/gvisor/`.
+4. Writes the VM's configuration file with the public URL, the socket and the
+   state directory.
+5. Installs the service from the root through `/opt/demi/current`.
+
+The following commands build the two programs and run the script:
 
 ```sh
 bun xtask native build --package demi-machine-manager --package demi-server \
@@ -76,68 +85,95 @@ bash crates/machine-manager/scripts/lima-machines.sh \
   --public-url http://<the Mac's address>:3271
 ```
 
-`--public-url` is the backend's public URL. The Cloud guests reach the
-backend through its runner socket, which Lima forwards into the VM at
-`/run/demi-backend/runners.sock`
-(`crates/backend-http/src/lib.rs`), and name the
-URL only as the backend's origin. The Mac's own runner connects to the URL
-directly, so it names the Mac's address on its network, such as Wi-Fi's
-`192.168.75.36`. For Wi-Fi, this prints the address:
+`--public-url` is the backend's public URL:
+
+- The Cloud guests reach the backend through its runner socket, which Lima
+  forwards into the VM at `/run/demi-backend/runners.sock`
+  (`crates/backend-http/src/lib.rs`), and name the URL only as the backend's
+  origin.
+- The Mac's own runner connects to the URL directly, so it names the Mac's
+  address on its network, such as Wi-Fi's `192.168.75.36`.
+
+For Wi-Fi, this prints the address:
 
 ```sh
 ipconfig getifaddr en0
 ```
 
 The script prints the backend's three settings: the manager's forwarded
-socket, the runner socket Lima forwards into the VM, and the public URL. When
-the Mac joins another network, its address changes: run the
-script again with the new URL and restart the backend with it. The Clouds use
-the VM's own upstream resolver, the manager's default, unless `--dns
-<addresses>` names others. A proxy on the Mac that answers name lookups with
-its own addresses in `198.18.0.0/15`, as a proxy in fake-IP mode does, needs
-it: the manager's network policy refuses that range to the Clouds, so every
-name a Cloud looks up would be unreachable. `--dns 1.1.1.1` then gives the
-Clouds a resolver that answers with the real addresses.
+socket, the runner socket Lima forwards into the VM, and the public URL.
 
-The `crates/machine-manager/scripts/cloud-suite.sh` runs in the VM, as
-root, with programs built for it on the Mac: build the manager, `demi-server`
-and the backend's scenario test executable for the VM's Linux target with the
-Mac's cross tools, then run `cloud-suite.sh` in the VM with `--programs`
-naming the VM's release root, a whole server release (`commands/`,
-`runners/` and `release.json` beside `image/`), since the suite's backend
-publishes its command packages. The suite's manager and the installed one
-cannot run at once, since both own the same firewall table: stop the installed
-service for the run and start it again afterwards. The script refuses to start
-while a manager runs; the table a stopped manager leaves it replaces, and the
-installed manager makes its own again when it starts. The suite's manager has
-a state directory and a socket of its own, so the installed manager's Clouds
-stay as they were.
+### When the Mac's address changes
+
+When the Mac joins another network, its address changes. Run the script again
+with the new URL and restart the backend with it.
+
+### DNS
+
+The Clouds use the VM's own upstream resolver, the manager's default, unless
+`--dns <addresses>` names others.
+
+A proxy on the Mac that answers name lookups with its own addresses in
+`198.18.0.0/15`, as a proxy in fake-IP mode does, needs `--dns`. The manager's
+network policy refuses that range to the Clouds, so every name a Cloud looks up
+would be unreachable. `--dns 1.1.1.1` then gives the Clouds a resolver that
+answers with the real addresses.
+
+### The Cloud suite
+
+`crates/machine-manager/scripts/cloud-suite.sh` runs in the VM, as root, with
+programs built for it on the Mac:
+
+1. Build the manager, `demi-server` and the backend's scenario test executable
+   for the VM's Linux target with the Mac's cross tools.
+2. Run `cloud-suite.sh` in the VM with `--programs` naming the VM's release
+   root. That root is a whole server release (`commands/`, `runners/` and
+   `release.json` beside `image/`), because the suite's backend publishes its
+   command packages.
+
+The suite's manager and the installed one cannot run at once, because both own
+the same firewall table:
+
+- Stop the installed service for the run and start it again afterwards.
+- The script refuses to start while a manager runs.
+- The table a stopped manager leaves it replaces, and the installed manager
+  makes its own again when it starts.
+- The suite's manager has a state directory and a socket of its own, so the
+  installed manager's Clouds stay as they were.
+
+### Other options
 
 `--root <directory>` passes on to the installer, which then only writes the
-unit and the link beneath that directory inside the VM. The script prepares its default
-state directory on the Lima data disk; `--data` names another prepared Linux
-state directory.
+unit and the link beneath that directory inside the VM.
 
-Lima mounts the data disk late in the VM's boot, after systemd would start
-the manager, so the installed unit starts only once the disk is mounted, and
-the VM's provisioning starts it then; a manager started earlier would make its
+The script prepares its default state directory on the Lima data disk. `--data`
+names another prepared Linux state directory.
+
+### The data disk
+
+Lima mounts the data disk late in the VM's boot, after systemd would start the
+manager. So the installed unit starts only after the disk is mounted, and the
+VM's provisioning starts it then. A manager started earlier would make its
 state directory on the VM's own disk, under the mount point, where the mounted
-disk hides it. Lima finds the disk by its filesystem label, `lima-` and the
-disk's name, which ext4 keeps to 16 characters: a disk name longer than 11
-characters loses its label, and Lima formats the disk again at the next boot.
-An existing instance keeps the template it was created from; a change to the
+disk hides it.
+
+Lima finds the disk by its filesystem label, `lima-` and the disk's name, which
+ext4 keeps to 16 characters. A disk name longer than 11 characters loses its
+label, and Lima formats the disk again at the next boot.
+
+An existing instance keeps the template it was created from. A change to the
 template reaches it through `limactl edit`.
 
-Stopping or recreating the Lima instance preserves the data disk; deleting it
+Stopping or recreating the Lima instance preserves the data disk. Deleting it
 is a separate explicit action. Lima formats the data disk only while it is
 blank, and the scripts never reformat storage or reuse another deployment's
 state directory to make a start succeed.
 
 ## Backend on the Mac
 
-Follow the Development backend (`crates/xtask/src/dev/mod.rs`)
-steps with the root above, and start the backend with the three settings the
-script printed:
+Follow the Development backend steps (`crates/xtask/src/dev/mod.rs`) with the
+server-release root from [Hosts in use](#hosts-in-use), and start the backend
+with the three settings the script printed:
 
 ```sh
 DEMI_RELEASE=.cache/release-<build> \
@@ -153,8 +189,8 @@ connection by starting a Cloud through the backend.
 
 ## Machine manager tests
 
-The manager builds only for Linux, so on a Mac its tests are cross-built with
-cargo-zigbuild and run in the VM. The tests that need root run with
+The manager builds only for Linux, so on a Mac you cross-build its tests with
+cargo-zigbuild and run them in the VM. Run the tests that need root with
 `--include-ignored` under sudo:
 
 ```sh
@@ -166,13 +202,15 @@ limactl shell demi-machine-manager -- sudo <test executable> --include-ignored
 
 ## Limits of a Lima Cloud
 
+A Lima Cloud has these limits:
+
 - A Lima Cloud is not an acceptance environment: results on it do not certify
   a Linux execution host, and its performance says nothing about one.
-- A backend on the Mac cannot keep its runner socket's connections within
-  one sandbox read (`crates/backend-http/src/lib.rs`):
-  the sandbox reads the socket Lima forwards inside the VM. A large file
-  written to a Lima Cloud can then stall before its end. The Cloud suite
-  runs its backend inside the VM, where the workaround applies.
+- A backend on the Mac cannot keep its runner socket's connections within one
+  sandbox read (`crates/backend-http/src/lib.rs`): the sandbox reads the socket
+  Lima forwards inside the VM. A large file written to a Lima Cloud can then
+  stall before its end. The Cloud suite runs its backend inside the VM, where
+  the workaround applies.
 - Lima's `vz` VMs do not pass SME through, so the live view captures on Apple
   M4 and later. A VM that passes SME without SVE through cannot capture
   (`crates/command-package-browser-chrome/src/live.rs`).
