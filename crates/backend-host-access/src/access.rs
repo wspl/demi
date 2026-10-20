@@ -568,12 +568,18 @@ impl dyn HostShard + '_ {
             }
             let selected = self.select_host(&record.id, device, true).await?;
             let away = selected.device.kind == DeviceKind::User
-                && !self.devices().online(&selected.device.id);
+                && !self.devices().connected(&selected.device.id);
             if !waited_for_return && let Some(rest) = self.returning(&selected.device.id) {
                 // As for the Cloud below, the wait holds no file lease.
                 drop(files);
                 waited_for_return = true;
                 waits.wait(self.devices().returned(&selected.device.id, rest)).await?;
+                // A runner not back when the wait ends is away: the operation
+                // that waited for it fails, rather than waiting on for the
+                // device or its Cloud.
+                if !self.devices().connected(&selected.device.id) {
+                    return Err(self.away(&selected.device));
+                }
                 continue;
             }
             // An agent's job waits for its primary device however long it
@@ -675,11 +681,8 @@ impl dyn HostShard + '_ {
                 _ => break (files, selected),
             }
         };
-        if !self.devices().online(&selected.device.id) {
-            return Err(match selected.device.kind {
-                DeviceKind::Managed => Refusal::Stopped.into(),
-                DeviceKind::User => self.offline(&selected.device).into(),
-            });
+        if !self.devices().connected(&selected.device.id) {
+            return Err(self.away(&selected.device));
         }
         // A stream shows what the conversation's work left: it makes no
         // directory.
@@ -717,16 +720,24 @@ impl dyn HostShard + '_ {
         ))
     }
 
+    /// The refusal of an operation on `device`, whose runner is not
+    /// connected: a stopped Cloud, or a paired device's offline error.
+    fn away(&self, device: &DeviceRecord) -> HostAccessError {
+        match device.kind {
+            DeviceKind::Managed => Refusal::Stopped.into(),
+            DeviceKind::User => self.offline(device).into(),
+        }
+    }
+
     /// How long an operation on `device` waits for its runner first: the rest
-    /// of the grace after the backend started, when the last shutdown
-    /// disconnected the device and its runner is not back yet
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// of its wait while the device is returning, after its connection
+    /// dropped or the backend restarted (`crates/backend-runners/src/devices.rs`).
     ///
     /// The wait comes once per admission, before anything answers that the
     /// device is offline or the Cloud stopped. It holds no file lease, so a
     /// transition does not wait for it.
     fn returning(&self, device: &DeviceId) -> Option<std::time::Duration> {
-        self.devices().returning(device, self.clock().now().to_jiff())
+        self.devices().returning(device)
     }
 
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot

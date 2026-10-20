@@ -7,6 +7,21 @@
 //! connection answers its ping, and adopted once a silent one finished tearing
 //! down.
 //!
+//! A runner reconnects by itself, so a device whose connection dropped is
+//! returning for a while (`decisions/0011-a-runner-that-drops-is-awaited.md`):
+//! it counts as online in everything its owner's pages are told, and an
+//! operation that needs it waits for the runner, until the runner is back
+//! or the wait is over. The wait starts the moment the connection fails,
+//! before its cleanup ends it. Only an end the backend chose, a revocation or
+//! a disconnect of the device, leaves it offline at once. The runners hear
+//! only whether a peer's runner is connected, which the wait does not change.
+//!
+//! ```text
+//!  connection drops ──▶ returning (the runners' tuning; 30 s from a start)
+//!                         ├── runner back ──▶ online
+//!                         └── time is up  ──▶ offline, announced
+//! ```
+//!
 //! A Host handle is made here only for one of the ways to a Host
 //! (`crates/backend-host-access/src/lib.rs`):
 //!
@@ -53,36 +68,42 @@ const REVOKED_LOST: &str = "its device was revoked";
 /// Why the backend's shutdown ended a connection.
 const SHUTTING_DOWN: &str = "backend shutting down";
 
-/// How long after the backend starts an operation waits for the runner of a
-/// device the last shutdown disconnected (`crates/backend-remote-host/src/device_jobs.rs`).
+/// How long after the backend starts a device the last shutdown
+/// disconnected is returning (`crates/backend-remote-host/src/device_jobs.rs`).
 pub const RETURN_GRACE: Duration = Duration::from_secs(30);
 
 /// The devices whose connections the backend's last shutdown ended, whose
 /// runners connect again by themselves soon after the start, and until when
-/// an operation waits for them.
-#[derive(Debug, Default)]
+/// they are returning. A device leaves the set once its runner is back.
+#[derive(Debug)]
 pub struct Returning {
     /// A `std` mutex, never held across a wait: a Cloud the machine
     /// manager does not run is forgotten once the start learns it.
     devices: std::sync::Mutex<HashSet<DeviceId>>,
-    /// When the grace after the start ends.
-    until: jiff::Timestamp,
+    /// When the wait after the start ends.
+    until: Instant,
+}
+
+impl Default for Returning {
+    fn default() -> Self {
+        Self {
+            devices: std::sync::Mutex::default(),
+            until: Instant::now(),
+        }
+    }
 }
 
 impl Returning {
-    /// Takes what the last shutdown recorded, for the start at `started`.
-    pub async fn take(control: &ControlService, started: jiff::Timestamp) -> Result<Self, StorageError> {
+    /// Takes what the last shutdown recorded, for the start now.
+    pub async fn take(control: &ControlService) -> Result<Self, StorageError> {
         let devices: HashSet<DeviceId> = control
             .take_devices_ended_by_shutdown()
             .await?
             .into_iter()
             .collect();
-        let until = started
-            .checked_add(RETURN_GRACE)
-            .map_err(StorageError::Time)?;
         Ok(Self {
             devices: std::sync::Mutex::new(devices),
-            until,
+            until: Instant::now() + RETURN_GRACE,
         })
     }
 
@@ -96,8 +117,8 @@ impl Returning {
             .collect()
     }
 
-    /// Forgets `device`, whose runner does not come back by itself: its
-    /// Cloud does not run, as after an upgrade stopped it.
+    /// Forgets `device`, whose runner does not come back by itself, as a
+    /// Cloud that does not run after an upgrade stopped it, or is back.
     pub fn forget(&self, device: &DeviceId) {
         self.devices
             .lock()
@@ -105,31 +126,75 @@ impl Returning {
             .remove(device);
     }
 
-    /// The rest of the grace at `now` for `device`, when the last shutdown
-    /// ended its connection.
-    fn rest(&self, device: &DeviceId, now: jiff::Timestamp) -> Option<Duration> {
-        let returning = self
-            .devices
+    /// Until when `device` is returning, when the last shutdown ended its
+    /// connection and its runner is not back yet.
+    fn until(&self, device: &DeviceId) -> Option<Instant> {
+        self.devices
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .contains(device);
-        if !returning {
-            return None;
-        }
-        Duration::try_from(self.until.duration_since(now))
-            .ok()
-            .filter(|rest| !rest.is_zero())
+            .contains(device)
+            .then_some(self.until)
     }
 }
 
 /// The user's devices, each with its connection slot.
-#[derive(Default)]
 pub struct Devices {
     slots: RefCell<HashMap<DeviceId, Rc<DeviceSlot>>>,
     /// The number of the last download of a runner executable served.
     downloads: Cell<u64>,
     /// The devices the backend's last shutdown disconnected.
     returning: Arc<Returning>,
+    /// How long a device whose connection dropped is returning.
+    wait: Duration,
+    /// The owner's pages, which hear when a device stops returning.
+    marks: UserMarks,
+    /// How many operations wait for a returning device's runner now, which a
+    /// test waits on to know an operation is waiting.
+    #[cfg(feature = "testing")]
+    return_waits: watch::Sender<usize>,
+}
+
+/// One operation counted among those that wait for a returning device's
+/// runner, until it is dropped.
+#[cfg(feature = "testing")]
+struct ReturnWait<'a>(&'a watch::Sender<usize>);
+
+#[cfg(feature = "testing")]
+impl<'a> ReturnWait<'a> {
+    fn new(waits: &'a watch::Sender<usize>) -> Self {
+        waits.send_modify(|waits| *waits += 1);
+        Self(waits)
+    }
+}
+
+#[cfg(feature = "testing")]
+impl Drop for ReturnWait<'_> {
+    fn drop(&mut self) {
+        self.0.send_modify(|waits| *waits -= 1);
+    }
+}
+
+/// A device's wait for its runner: until `until`, whose end `_expiry`
+/// announces to the owner's pages; dropped, it stops.
+struct Return {
+    until: Instant,
+    _expiry: AbortOnDropHandle<()>,
+}
+
+impl Return {
+    /// A wait until `until`, whose end the device's pages hear of, since
+    /// the device then shows offline. The runners hear only of connections,
+    /// so the end tells them nothing.
+    fn new(until: Instant, marks: UserMarks) -> Self {
+        let expiry = tokio::spawn(async move {
+            tokio::time::sleep_until(until).await;
+            marks.mark(Part::Devices);
+        });
+        Self {
+            until,
+            _expiry: AbortOnDropHandle::new(expiry),
+        }
+    }
 }
 
 /// One device's connection, which its Hosts watch, and its jobs, which
@@ -140,6 +205,15 @@ struct DeviceSlot {
     /// Set once the device is revoked: the projects that went with it,
     /// which its runner hears of as its connection ends.
     revoked: RefCell<Option<Vec<String>>>,
+    /// Set while the backend ends the live connection itself, whose end
+    /// then leaves the device offline at once.
+    ended_by_backend: Cell<bool>,
+    /// The wait for the runner since the connection last failed, which a
+    /// new connection ends; a past `until` is a wait that is over.
+    returning: RefCell<Option<Return>>,
+    /// Starts the wait the moment the published connection fails, before
+    /// its cleanup ends it; dropped with the next publication.
+    failure: RefCell<Option<AbortOnDropHandle<()>>>,
     /// The update the device's runner was last sent to, until its next
     /// hello.
     updating: RefCell<Option<Updating>>,
@@ -203,11 +277,14 @@ impl Download {
 }
 
 impl DeviceSlot {
-    fn new() -> Rc<Self> {
+    fn new(returning: Option<Return>) -> Rc<Self> {
         Rc::new(Self {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
             jobs: DeviceJobs::default(),
             revoked: RefCell::new(None),
+            ended_by_backend: Cell::new(false),
+            returning: RefCell::new(returning),
+            failure: RefCell::new(None),
             updating: RefCell::new(None),
             download: Cell::new(None),
             installation: RefCell::new(None),
@@ -242,10 +319,35 @@ impl DeviceSlot {
             .await;
     }
 
+    /// The rest of the wait for the runner, while no connection serves the
+    /// device and the wait is not over; `wait` is a whole wait, which a
+    /// connection that just failed has before its watch starts it.
+    fn rest(&self, wait: Duration) -> Option<Duration> {
+        if self.live().is_some() {
+            return None;
+        }
+        if let Some(returning) = &*self.returning.borrow() {
+            let rest = returning.until.saturating_duration_since(Instant::now());
+            return Some(rest).filter(|rest| !rest.is_zero());
+        }
+        let failed = matches!(&*self.link.borrow(), DeviceLink::Online(_));
+        (failed && !self.ended_by_backend.get() && !wait.is_zero()).then_some(wait)
+    }
+
+    /// Starts the device's wait for its runner: `link`, still its
+    /// connection, failed, and the backend did not end it.
+    fn failed(&self, link: &Link, wait: Duration, marks: &UserMarks) {
+        let current = matches!(&*self.link.borrow(), DeviceLink::Online(current) if current == link);
+        if current && !self.ended_by_backend.get() && !wait.is_zero() && self.returning.borrow().is_none() {
+            *self.returning.borrow_mut() = Some(Return::new(Instant::now() + wait, marks.clone()));
+        }
+    }
+
     /// Marks the device offline once `link` ended, unless a newer connection
-    /// serves it already.
-    fn went_offline(&self, link: &Link, identity: HostIdentity) {
-        self.link.send_if_modified(|current| {
+    /// serves it already; unless the backend ended it, the device is
+    /// returning for `wait`, whose end `marks` announces.
+    fn went_offline(&self, link: &Link, identity: HostIdentity, wait: Duration, marks: &UserMarks) {
+        let ended = self.link.send_if_modified(|current| {
             let ended = matches!(current, DeviceLink::Online(current) if current == link);
             if ended {
                 *current = DeviceLink::Offline {
@@ -254,25 +356,65 @@ impl DeviceSlot {
             }
             ended
         });
+        if ended {
+            if self.ended_by_backend.replace(false) || wait.is_zero() {
+                self.returning.take();
+            } else if self.returning.borrow().is_none() {
+                *self.returning.borrow_mut() = Some(Return::new(Instant::now() + wait, marks.clone()));
+            }
+        }
+    }
+
+    /// Publishes `link` as the device's connection: a wait for the runner
+    /// is over, and the connection's failure starts the next one, for
+    /// `wait`, whose end `marks` announces.
+    fn publish(self: &Rc<Self>, link: &Link, wait: Duration, marks: &UserMarks) {
+        self.ended_by_backend.set(false);
+        self.returning.take();
+        self.link.send_replace(DeviceLink::Online(link.clone()));
+        let slot = Rc::downgrade(self);
+        let link = link.clone();
+        let marks = marks.clone();
+        let failure = tokio::task::spawn_local(async move {
+            link.ended().await;
+            if let Some(slot) = slot.upgrade() {
+                slot.failed(&link, wait, &marks);
+            }
+        });
+        *self.failure.borrow_mut() = Some(AbortOnDropHandle::new(failure));
     }
 }
 
 impl Devices {
-    /// The devices of a user, of whom `returning` names those the backend's
-    /// last shutdown disconnected.
-    pub fn new(returning: Arc<Returning>) -> Self {
+    /// The devices of a user, whose pages `marks` tells of them: of these,
+    /// `returning` names those the backend's last shutdown disconnected, and
+    /// one whose connection drops is returning for `wait`.
+    pub fn new(returning: Arc<Returning>, wait: Duration, marks: UserMarks) -> Self {
         Self {
             slots: RefCell::default(),
             downloads: Cell::new(0),
             returning,
+            wait,
+            marks,
+            #[cfg(feature = "testing")]
+            return_waits: watch::Sender::new(0),
         }
     }
 
+    /// The device's slot; a new one is returning when the last shutdown
+    /// ended the device's connection.
     fn slot(&self, device: &DeviceId) -> Rc<DeviceSlot> {
         self.slots
             .borrow_mut()
             .entry(device.clone())
-            .or_insert_with(DeviceSlot::new)
+            .or_insert_with(|| {
+                let returning = self
+                    .returning
+                    .until(device)
+                    .filter(|until| Instant::now() < *until)
+                    .map(|until| Return::new(until, self.marks.clone()));
+                DeviceSlot::new(returning)
+            })
             .clone()
     }
 
@@ -296,8 +438,15 @@ impl Devices {
             .collect()
     }
 
-    pub fn online(&self, device: &DeviceId) -> bool {
+    /// Whether the device's runner is connected now.
+    pub fn connected(&self, device: &DeviceId) -> bool {
         self.link(device).is_some()
+    }
+
+    /// Whether the device counts as online: its runner is connected, or it
+    /// is returning.
+    pub fn online(&self, device: &DeviceId) -> bool {
+        self.connected(device) || self.returning(device).is_some()
     }
 
     /// Whether the device's runner serves it now, replaces itself, or
@@ -416,23 +565,35 @@ impl Devices {
             .await;
     }
 
-    /// How long an operation that starts at `now` waits for `device`'s
-    /// runner (`crates/backend-remote-host/src/device_jobs.rs`): the
-    /// rest of the grace after the start, for a device the backend's last
-    /// shutdown disconnected whose runner is not back yet; none otherwise.
-    pub fn returning(&self, device: &DeviceId, now: jiff::Timestamp) -> Option<Duration> {
-        if self.online(device) {
-            return None;
-        }
-        self.returning.rest(device, now)
+    /// How long an operation that starts now waits for `device`'s runner:
+    /// the rest of its wait while it is returning; none otherwise.
+    pub fn returning(&self, device: &DeviceId) -> Option<Duration> {
+        self.slot(device).rest(self.wait)
     }
 
     /// Resolves once `device`'s runner is connected, or after `rest`, the
-    /// rest of the grace `returning` answered, whichever comes first.
+    /// rest of the wait `returning` answered, whichever comes first.
     pub async fn returned(&self, device: &DeviceId, rest: Duration) {
-        // A runner still not back after the grace: the operation answers as
+        #[cfg(feature = "testing")]
+        let _waiting = ReturnWait::new(&self.return_waits);
+        // A runner still not back after the wait: the operation answers as
         // it does for any device that is away.
         let _ = tokio::time::timeout(rest, self.until_online(device)).await;
+    }
+
+    /// Whether the device's runner is connected, once a returning device's
+    /// runner is back or its wait is over.
+    pub async fn reached(&self, device: &DeviceId) -> bool {
+        if let Some(rest) = self.returning(device) {
+            self.returned(device, rest).await;
+        }
+        self.connected(device)
+    }
+
+    /// How many operations wait for a returning device's runner now.
+    #[cfg(feature = "testing")]
+    pub fn return_waits(&self) -> watch::Receiver<usize> {
+        self.return_waits.subscribe()
     }
 
     /// Waits until no connection of the device is closing: a closing one
@@ -494,12 +655,14 @@ impl Devices {
     }
 
     /// Device access (`crates/backend-host-access/src/lib.rs`): the
-    /// device's Host for work that touches no conversation's files, only
-    /// while its runner is connected. It takes nothing and wakes nothing.
-    pub fn device_access(&self, device: &DeviceId) -> Option<RemoteHost> {
-        self.link(device)?;
-        let key = host_key(device, HostOwner::DeviceAccess, "/");
-        Some(self.host(device, key, "/".into(), Admission::Free))
+    /// device's Host for work that touches no conversation's files, while
+    /// its runner is connected, once a returning device's runner is back.
+    /// It takes nothing and wakes nothing.
+    pub async fn device_access(&self, device: &DeviceId) -> Option<RemoteHost> {
+        if !self.reached(device).await {
+            return None;
+        }
+        Some(device_access(device, &self.slot(device)))
     }
 
     /// Publishes a new connection of the device, which its Hosts may use at
@@ -517,7 +680,8 @@ impl Devices {
         let slot = self.slot(device);
         slot.installation.replace(reported.installation);
         slot.target.replace(reported.target);
-        slot.link.send_replace(DeviceLink::Online(link.clone()));
+        self.returning.forget(device);
+        slot.publish(&link, self.wait, &self.marks);
         tracing::info!(device = %device, "runner connected");
         Serving {
             slot,
@@ -526,6 +690,8 @@ impl Devices {
             link,
             driver,
             seen,
+            wait: self.wait,
+            marks: self.marks.clone(),
         }
     }
 
@@ -591,10 +757,23 @@ impl Devices {
             .collect())
     }
 
-    /// Ends the device's connection, whose runner then reconnects.
+    /// Ends the device's connection, whose runner then reconnects, and
+    /// leaves the device offline at once: a returning one stops returning.
     pub fn disconnect(&self, device: &DeviceId, reason: &str) {
-        if let Some(link) = self.link(device) {
+        let slot = self.slot(device);
+        // A connection still closing ends as the backend's too.
+        let connection = match &*slot.link.borrow() {
+            DeviceLink::Online(link) => Some(link.clone()),
+            DeviceLink::Offline { .. } => None,
+        };
+        let was_returning = slot.rest(self.wait).is_some();
+        if let Some(link) = connection {
+            slot.ended_by_backend.set(true);
             link.disconnect(reason);
+        }
+        if was_returning {
+            slot.returning.take();
+            self.marks.mark(Part::Devices);
         }
     }
 
@@ -617,7 +796,13 @@ impl Devices {
             .slots
             .borrow()
             .iter()
-            .filter_map(|(device, slot)| slot.live().map(|link| (device.clone(), link)))
+            .filter_map(|(device, slot)| {
+                let link = slot.live()?;
+                // No operation waits for a runner during the shutdown; the
+                // next start waits for it instead.
+                slot.ended_by_backend.set(true);
+                Some((device.clone(), link))
+            })
             .collect();
         for (_, link) in &links {
             link.disconnect(SHUTTING_DOWN);
@@ -640,6 +825,13 @@ pub struct Reported {
     pub target: Option<String>,
 }
 
+/// Device access (`crates/backend-host-access/src/lib.rs`) to `device`,
+/// whose slot is `slot`.
+fn device_access(device: &DeviceId, slot: &DeviceSlot) -> RemoteHost {
+    let key = host_key(device, HostOwner::DeviceAccess, "/");
+    RemoteHost::new(key, "/".into(), slot.link.subscribe(), slot.jobs.clone(), Admission::Free)
+}
+
 /// A bound connection, served over its socket by the task that adopted it.
 pub struct Serving {
     slot: Rc<DeviceSlot>,
@@ -648,9 +840,19 @@ pub struct Serving {
     link: Link,
     driver: LinkDriver,
     seen: DeviceRecorder,
+    /// How long the device is returning once the connection drops.
+    wait: Duration,
+    /// The owner's pages, which hear when the device stops returning.
+    marks: UserMarks,
 }
 
 impl Serving {
+    /// Device access (`crates/backend-host-access/src/lib.rs`) over the
+    /// device's connections, this one first.
+    pub fn device_access(&self) -> RemoteHost {
+        device_access(&self.device, &self.slot)
+    }
+
     /// The connection's driver without a socket, for a test that plays the
     /// runner over a transport of its own; the device stays online while
     /// the driver serves.
@@ -669,6 +871,8 @@ impl Serving {
             link,
             driver,
             seen,
+            wait,
+            marks,
         } = self;
         let (mut outgoing, incoming) = socket.split();
         let incoming = incoming.filter_map(|message| ready(socket_frame(message)));
@@ -715,7 +919,7 @@ impl Serving {
         }
         // The connection is over whether or not the close reaches the runner.
         let _ = outgoing.send(Message::Close(close_frame(&end))).await;
-        slot.went_offline(&link, identity);
+        slot.went_offline(&link, identity, wait, &marks);
         seen.touch(device).await;
     }
 }
@@ -830,9 +1034,198 @@ impl DeviceRecorder {
 mod tests {
     use std::time::Duration;
 
+    use demi_backend_page_sync::{Registration, SyncRegistry};
+    use demi_backend_remote_host::testing::{CommandPolicy, TestDevice, TestLink};
+    use demi_host_interface::CommandSet;
+
     use super::*;
 
     const WINDOW: Duration = Duration::from_secs(2 * 60);
+
+    /// How long a device whose connection dropped is returning here.
+    const WAIT: Duration = Duration::from_secs(10);
+
+    fn device_id() -> DeviceId {
+        DeviceId::try_from("6a50f29f-4ac3-4121-acac-b4200f48f915").unwrap()
+    }
+
+    /// A user's devices, of which `returning` names those the last shutdown
+    /// disconnected, and a watch of the user's pages.
+    fn devices(returning: Returning) -> (Devices, Registration) {
+        let registry = SyncRegistry::default();
+        let user = UserId::try_from("2b1f0c4e-5d6a-4b7c-8d9e-0f1a2b3c4d5e").unwrap();
+        let marks = registry.of(&user);
+        let watch = registry.watch(&user);
+        (Devices::new(Arc::new(returning), WAIT, marks), watch)
+    }
+
+    /// A connection of the device's runner, published as `bind` publishes
+    /// it.
+    fn connect(devices: &Devices, runner: &TestDevice, device: &DeviceId) -> TestLink {
+        let connection = runner.connect(None);
+        devices.slot(device).publish(connection.link(), WAIT, &devices.marks);
+        connection
+    }
+
+    /// Ends `connection` as its runner going away does, and as `serve` then
+    /// records it.
+    async fn drop_connection(devices: &Devices, device: &DeviceId, connection: TestLink) {
+        let link = connection.link().clone();
+        connection.close().await;
+        devices.slot(device).went_offline(&link, link.identity().clone(), WAIT, &devices.marks);
+    }
+
+    /// Ends `connection` after the backend ended it, as `serve` records it.
+    async fn ended(devices: &Devices, device: &DeviceId, connection: TestLink) {
+        let link = connection.link().clone();
+        connection.ended().await;
+        devices.slot(device).went_offline(&link, link.identity().clone(), WAIT, &devices.marks);
+    }
+
+    /// Whether the user's pages were told the devices changed since the
+    /// last look.
+    fn devices_marked(watch: &Registration) -> bool {
+        watch.take().parts.contains(&Part::Devices)
+    }
+
+    /// A connection that drops and comes back within the wait: the device
+    /// shows online throughout, its pages hear of no change once the wait
+    /// would have ended, and device access asked for meanwhile goes on over
+    /// the new connection.
+    #[tokio::test(flavor = "local", start_paused = true)]
+    async fn a_drop_the_runner_returns_from_shows_no_change_and_an_operation_meanwhile_goes_on() {
+        let (devices, watch) = devices(Returning::default());
+        let devices = Rc::new(devices);
+        let device = device_id();
+        let runner = TestDevice::new(CommandPolicy::new(CommandSet::new()));
+        let first = connect(&devices, &runner, &device);
+        drop_connection(&devices, &device, first).await;
+        assert_eq!(devices.state(&device), DeviceState::Online);
+        assert!(devices.online(&device) && !devices.connected(&device));
+        assert_eq!(devices.returning(&device), Some(WAIT));
+
+        let operation = tokio::task::spawn_local({
+            let devices = devices.clone();
+            let device = device.clone();
+            async move { devices.device_access(&device).await.is_some() }
+        });
+        tokio::task::yield_now().await;
+        assert!(!operation.is_finished(), "it waits for the runner");
+        let started = Instant::now();
+        let _second = connect(&devices, &runner, &device);
+        assert!(operation.await.unwrap(), "it goes on once the runner is back");
+        assert_eq!(Instant::now(), started, "with no wait beyond the runner's");
+
+        watch.take();
+        tokio::time::sleep(WAIT * 2).await;
+        assert!(!devices_marked(&watch));
+        assert_eq!(devices.state(&device), DeviceState::Online);
+    }
+
+    /// A connection that failed is waited for at once, before its cleanup
+    /// ends it and records the device offline: the device shows online, and
+    /// device access waits for the runner instead of answering offline.
+    #[tokio::test(flavor = "local", start_paused = true)]
+    async fn a_failed_connection_is_waited_for_before_its_cleanup_ends() {
+        let (devices, _watch) = devices(Returning::default());
+        let devices = Rc::new(devices);
+        let device = device_id();
+        let runner = TestDevice::new(CommandPolicy::new(CommandSet::new()));
+        let connection = connect(&devices, &runner, &device);
+        // The connection is torn down; `serve` has not recorded its end.
+        connection.close().await;
+        assert!(!devices.connected(&device));
+        assert_eq!(devices.state(&device), DeviceState::Online);
+        assert_eq!(devices.returning(&device), Some(WAIT));
+
+        let operation = tokio::task::spawn_local({
+            let devices = devices.clone();
+            let device = device.clone();
+            async move { devices.device_access(&device).await.is_some() }
+        });
+        tokio::task::yield_now().await;
+        assert!(!operation.is_finished(), "it waits for the runner");
+        let _back = connect(&devices, &runner, &device);
+        assert!(operation.await.unwrap());
+    }
+
+    /// A runner that does not come back: the device shows online until the
+    /// wait ends, then offline, which its pages hear of then, and the
+    /// operation that waited fails as on an offline device.
+    #[tokio::test(flavor = "local", start_paused = true)]
+    async fn a_drop_the_runner_does_not_return_from_is_offline_after_the_wait_and_the_waiting_operation_fails() {
+        let (devices, watch) = devices(Returning::default());
+        let devices = Rc::new(devices);
+        let device = device_id();
+        let runner = TestDevice::new(CommandPolicy::new(CommandSet::new()));
+        let connection = connect(&devices, &runner, &device);
+        drop_connection(&devices, &device, connection).await;
+        let dropped = Instant::now();
+        assert_eq!(devices.state(&device), DeviceState::Online);
+        watch.take();
+
+        let operation = tokio::task::spawn_local({
+            let devices = devices.clone();
+            let device = device.clone();
+            async move { devices.device_access(&device).await.is_some() }
+        });
+        tokio::task::yield_now().await;
+        assert!(!operation.is_finished(), "it waits for the runner");
+        watch.marked().await;
+        assert!(devices_marked(&watch));
+        assert_eq!(Instant::now() - dropped, WAIT);
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert_eq!(devices.returning(&device), None);
+        assert!(!operation.await.unwrap(), "it fails as offline");
+    }
+
+    /// A revocation and a disconnect of the device leave it offline at
+    /// once; a disconnect of a returning device ends its wait, which its
+    /// pages hear of.
+    #[tokio::test(flavor = "local", start_paused = true)]
+    async fn a_revocation_and_a_disconnect_are_offline_at_once() {
+        let (devices, watch) = devices(Returning::default());
+        let device = device_id();
+        let runner = TestDevice::new(CommandPolicy::new(CommandSet::new()));
+
+        let connection = connect(&devices, &runner, &device);
+        devices.disconnect(&device, "the account was disabled");
+        ended(&devices, &device, connection).await;
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert_eq!(devices.returning(&device), None);
+
+        let connection = connect(&devices, &runner, &device);
+        drop_connection(&devices, &device, connection).await;
+        assert_eq!(devices.state(&device), DeviceState::Online);
+        watch.take();
+        devices.disconnect(&device, "Cloud stopped");
+        assert!(devices_marked(&watch));
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+
+        let connection = connect(&devices, &runner, &device);
+        devices.revoke(&device, Vec::new());
+        ended(&devices, &device, connection).await;
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert_eq!(devices.returning(&device), None);
+    }
+
+    /// A device the last shutdown disconnected shows online for the wait
+    /// from the start, and offline once it ends, which its pages hear of.
+    #[tokio::test(flavor = "local", start_paused = true)]
+    async fn a_device_the_restart_disconnected_shows_online_during_its_wait() {
+        let device = device_id();
+        let started = Instant::now();
+        let (devices, watch) = devices(Returning {
+            devices: std::sync::Mutex::new(HashSet::from([device.clone()])),
+            until: started + RETURN_GRACE,
+        });
+        assert_eq!(devices.state(&device), DeviceState::Online);
+        assert_eq!(devices.returning(&device), Some(RETURN_GRACE));
+        watch.marked().await;
+        assert!(devices_marked(&watch));
+        assert_eq!(Instant::now() - started, RETURN_GRACE);
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+    }
 
     /// An update shown from now for the window, whose expiry does nothing.
     fn updating() -> Updating {
@@ -847,8 +1240,8 @@ mod tests {
     /// an update shows again (`crates/runner/src/update.rs`).
     #[tokio::test(start_paused = true)]
     async fn an_update_shows_from_its_first_409_while_its_download_moves() {
-        let devices = Devices::default();
-        let device = DeviceId::try_from("6a50f29f-4ac3-4121-acac-b4200f48f915").unwrap();
+        let (devices, _watch) = devices(Returning::default());
+        let device = device_id();
         let expiry = || AbortOnDropHandle::new(tokio::spawn(std::future::pending::<()>()));
         assert_eq!(devices.state(&device), DeviceState::Offline);
         assert!(devices.begin_update(&device, updating));

@@ -714,6 +714,18 @@ impl Backend {
             .expect("the user's shard serves while the backend runs")
     }
 
+    /// How many operations of `user` wait for a returning device's runner
+    /// now (`crates/backend-runners/src/devices.rs`).
+    #[cfg(feature = "testing")]
+    pub async fn return_waits(&self, user: &demi_web_api_protocol::ids::UserId) -> tokio::sync::watch::Receiver<usize> {
+        self.shards
+            .shards()
+            .of(user)
+            .call(move |shard, _| async move { demi_backend_host_access::HostShard::devices(&*shard).return_waits() })
+            .await
+            .expect("the user's shard serves while the backend runs")
+    }
+
     /// What `user`'s device `device` is subscribed to on its runner now, by
     /// every holder (`crates/runner-host/src/subscriptions.rs`).
     #[cfg(feature = "testing")]

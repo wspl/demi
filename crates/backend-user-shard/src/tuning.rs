@@ -125,6 +125,9 @@ pub struct RunnerTuning {
     /// runner to an update, or after the last byte of its download served,
     /// unless a hello comes first.
     pub updating: Duration,
+    /// How long a device whose connection dropped counts as online while
+    /// its runner reconnects (`crates/backend-runners/src/devices.rs`).
+    pub returning: Duration,
 }
 
 impl Default for RunnerTuning {
@@ -136,6 +139,7 @@ impl Default for RunnerTuning {
             ping: Some(demi_backend_remote_host::PING_INTERVAL),
             probe: Duration::from_secs(5),
             updating: Duration::from_secs(2 * 60),
+            returning: Duration::from_secs(10),
         }
     }
 }

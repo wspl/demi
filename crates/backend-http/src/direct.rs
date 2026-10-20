@@ -82,7 +82,7 @@ pub(super) async fn open(
         state
             .shards
             .of(&user.id)
-            .call(move |shard, _| async move { shard.devices().online(&device) })
+            .call(move |shard, _| async move { shard.devices().reached(&device).await })
             .await?
     };
     if !connected {

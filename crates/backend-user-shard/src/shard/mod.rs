@@ -204,7 +204,11 @@ impl Shard {
             http.clone(),
             rate_limit,
         );
-        let devices = Devices::new(services.returning.clone());
+        let devices = Devices::new(
+            services.returning.clone(),
+            services.runners.returning,
+            services.sync.of(&user),
+        );
         let project_files = ProjectFiles::new(&shard);
         Self {
             search: SearchIndexer::new(&services, &user),

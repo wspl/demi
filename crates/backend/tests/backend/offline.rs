@@ -14,6 +14,12 @@
 //!   it ends it.
 //! - A move away from an offline device leaves the commands still running
 //!   there to its runner, which reports their ends once it is back.
+//! - A device whose connection drops and comes back within its wait shows
+//!   online throughout, and what the work panel and the agent asked of it
+//!   meanwhile goes on once its runner is back
+//!   (`crates/backend-runners/src/devices.rs`). An agent's command that
+//!   waited through it fails as offline once the wait ends without the
+//!   runner, rather than waiting on for the device.
 //!
 //! The model is an Anthropic endpoint the test scripts; the devices are real
 //! runners.
@@ -27,8 +33,13 @@ use demi_shared_types::{CommandId, SessionPhase};
 use demi_web_api_protocol::conversations::ConversationStatus;
 
 use crate::conversations::{anthropic_at, create, summary};
-use crate::lifetime::{Network, until_requested};
+use crate::lifetime::{Network, dropped, until_requested};
+use crate::support::elapse;
+use demi_backend_user_shard::shard::ShardPlacement;
 use crate::support::{Harness, Paired, Session, TestBackend};
+use demi_backend_user_shard::holds::HelloStep;
+use demi_web_api_protocol::devices::DeviceState;
+use demi_web_api_protocol::state::SyncEvent;
 use crate::work::{Driven, resident, say, shell, switch};
 
 const FIRST: &str = "7e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a07";
@@ -348,5 +359,119 @@ async fn a_stop_of_a_command_waiting_for_its_device_ends_it_and_it_never_runs() 
     work.start(vec![shell("t2", "echo ran-$((1 + 1))", 10_000), say("done")]).await;
     until_requested(&vendor, "ran-2").await;
     assert!(!home.join("ran").exists(), "the stopped command never ran");
+    backend.close().await;
+}
+
+/// Every device list in `events` shows `device` online.
+fn shown_online(events: &[SyncEvent], device: &str) {
+    for event in events {
+        if let SyncEvent::Devices { devices } = event {
+            let shown = devices.iter().find(|shown| shown.id.as_str() == device).unwrap();
+            assert_eq!(shown.state, DeviceState::Online, "{shown:?}");
+        }
+    }
+}
+
+/// A connection that drops and whose runner comes back within the wait: the
+/// page is told the device is online at the drop and after, and the work
+/// panel's listing and the agent's command, asked for while the runner was
+/// away, go on once it is back, the model never told of an absence.
+// About two seconds: a real device pairs through a network the test cuts
+// and opens again.
+#[tokio::test]
+async fn a_drop_the_runner_returns_from_shows_no_offline_change_and_what_was_asked_meanwhile_goes_on() {
+    let vendor = MockVendor::start().await;
+    let mut harness = Harness::new();
+    // Longer than the test: the runner comes back first.
+    harness.runners.returning = Duration::from_secs(10 * 60);
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on(&backend, &master, &vendor, &alpha).await;
+    let mut page = backend.sync(&master).await;
+    let seen = |devices: &[demi_web_api_protocol::devices::DeviceDto]| {
+        devices.iter().find(|device| device.id.as_str() == alpha.id()).unwrap().last_seen_at
+    };
+    let connected = seen(&page.snapshot().await.devices);
+
+    // The backend records when it last saw the runner as the connection
+    // ends, which tells the page.
+    harness.clock.advance(jiff::SignedDuration::from_mins(1));
+    network.cut();
+    let dropped = page
+        .until(|event| matches!(event, SyncEvent::Devices { devices } if seen(devices) != connected))
+        .await;
+    shown_online(&dropped, alpha.id());
+
+    let away = match dropped.last() {
+        Some(SyncEvent::Devices { devices }) => seen(devices),
+        _ => unreachable!("the wait ended at a device list"),
+    };
+
+    // Asked for while the runner is away, whose hello is held once it is
+    // back; the backend records when it saw the runner again.
+    let hello = backend.hold_hellos(HelloStep::Bind);
+    harness.clock.advance(jiff::SignedDuration::from_mins(1));
+    let listed_at = std::cell::Cell::new(false);
+    let listing = async {
+        let listed = backend.get(&format!("/api/conversations/{FIRST}/fs"), Some(&master)).await;
+        listed_at.set(true);
+        listed
+    };
+    let returning = async {
+        let before = work
+            .start(vec![shell("t1", "echo hello", 60_000), say("done")])
+            .await;
+        network.open();
+        hello.until_arrived(1).await;
+        assert!(!listed_at.get(), "the listing waits for the runner");
+        hello.release();
+        before
+    };
+    let (listed, before) = tokio::join!(listing, returning);
+    assert_eq!(listed.status, reqwest::StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    until_root_idle(&mut work).await;
+    let ran = work.observe(before);
+    assert!(ran.received[0].contains("exitCode: 0") && ran.received[0].contains("hello"), "{}", ran.received[0]);
+    assert!(!ran.received[0].contains("offline"), "{}", ran.received[0]);
+    let back = page
+        .until(|event| matches!(event, SyncEvent::Devices { devices } if seen(devices) != away))
+        .await;
+    shown_online(&back, alpha.id());
+    assert!(backend.online(&master, alpha.id()).await);
+    backend.close().await;
+}
+
+/// An agent's command on its primary device, started while the device's
+/// runner is away after a drop, waits for it; when the wait ends without the
+/// runner, the command fails with the device's offline error, though a
+/// command started on a device already offline waits for it as long as it
+/// takes.
+// About two seconds: a real device pairs through a network the test cuts;
+// the wait passes on the paused clock of the shards, which run on the test's
+// thread.
+#[tokio::test(flavor = "local")]
+async fn a_command_that_waited_through_a_drop_fails_as_offline_when_the_wait_ends() {
+    let vendor = MockVendor::start().await;
+    let mut harness = Harness::new();
+    harness.shards = Some(ShardPlacement::Inline);
+    harness.runners.returning = Duration::from_secs(10);
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on(&backend, &master, &vendor, &alpha).await;
+    // A first turn has the backend keep what the conversation's context
+    // reads of the device, so the next one asks the model at once.
+    work.turn(vec![say("ready")]).await;
+    dropped(&harness, &backend, &master, &network, alpha.id()).await;
+
+    let before = work
+        .start(vec![shell("t1", "echo hello", 60_000), say("done")])
+        .await;
+    backend.until_waiting_for_return(&master, 1).await;
+    elapse(Duration::from_secs(11)).await;
+    until_root_idle(&mut work).await;
+    let failed = work.observe(before);
+    assert!(failed.received[0].contains("alpha is offline"), "{}", failed.received[0]);
     backend.close().await;
 }

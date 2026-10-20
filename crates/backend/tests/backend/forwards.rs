@@ -15,6 +15,8 @@
 //!   a removed Host takes its forwards.
 //! - A forward's state comes only from its Listen On, and a peer closes only
 //!   from its pair.
+//! - A runner hears its peer go when the peer's connection drops, while the
+//!   page still shows the peer online, and come back when it reconnects.
 //! - A forward from a Host to itself joins there and counts Direct.
 //! - `demi host forward add` and `remove` need Manage Port Forwards.
 //!
@@ -625,23 +627,49 @@ fn refused() -> demi_runner_protocol::direct::ChannelError {
     )
 }
 
-/// A paired device whose runner the test speaks for, from its hello on.
-async fn spoken_for(backend: &TestBackend, master: &Session, name: &str) -> (String, RawRunner) {
+/// A paired device whose runner the test speaks for, from its hello on, with
+/// the token it speaks with.
+async fn spoken_for(harness: &Harness, backend: &TestBackend, master: &Session, name: &str) -> (String, RawRunner, String) {
     let mut paired = backend.pair(master, name).await;
     let token = paired.token().await;
+    let before = backend.last_seen(master, paired.id()).await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(1));
     paired.runner.stop().await;
-    backend.until_online(master, paired.id(), false).await;
+    backend.until_seen_since(master, paired.id(), before).await;
+    let raw = speak(backend, &token).await;
+    backend.until_online(master, paired.id(), true).await;
+    (paired.id().to_owned(), raw, token)
+}
+
+/// A connection of the runner whose token is `token`, once its hello is
+/// answered.
+async fn speak(backend: &TestBackend, token: &str) -> RawRunner {
     let mut raw = RawRunner::connect(backend).await;
-    raw.send(&hello(wire::VERSION, Some(&token), None)).await;
+    raw.send(&hello(wire::VERSION, Some(token), None)).await;
     loop {
         match raw.next().await {
-            Some(Inbound::HelloOk { .. }) => break,
+            Some(Inbound::HelloOk { .. }) => return raw,
             Some(_) => {}
             None => panic!("the backend closed the socket"),
         }
     }
-    backend.until_online(master, paired.id(), true).await;
-    (paired.id().to_owned(), raw)
+}
+
+/// Whether the peer of forward `id` is there, as the next list of forwards
+/// the backend sends `raw` says; pings answered.
+async fn peer_online(raw: &mut RawRunner, id: &str) -> bool {
+    loop {
+        match raw.next().await {
+            Some(Inbound::Forwards { forwards, .. }) => {
+                if let Some(forward) = forwards.iter().find(|forward| forward.id == id) {
+                    return forward.peer_online;
+                }
+            }
+            Some(Inbound::Ping {}) => raw.send(&Outbound::Pong { jobs: 0 }).await,
+            Some(_) => {}
+            None => panic!("the backend closed the socket"),
+        }
+    }
 }
 
 /// What the backend sends `raw` until it answered a request sent now,
@@ -674,8 +702,8 @@ async fn a_forwards_state_comes_only_from_its_listen_on_and_a_peer_closes_only_f
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let listen = backend.pair(&master, "listen").await;
-    let (connect, mut connecting) = spoken_for(&backend, &master, "connect").await;
-    let (_outsider, mut outsider) = spoken_for(&backend, &master, "outsider").await;
+    let (connect, mut connecting, _) = spoken_for(&harness, &backend, &master, "connect").await;
+    let (_outsider, mut outsider, _) = spoken_for(&harness, &backend, &master, "outsider").await;
     let port = free_port();
     let mut sync = backend.sync(&master).await;
     let forward = create(
@@ -764,4 +792,44 @@ async fn a_forward_from_a_host_to_itself_joins_there_and_counts_direct() {
     drop(program);
     until_forward(&mut sync, &id, listening(0, 0)).await;
     drop(host);
+}
+
+/// The runners hear of their peers' connections, not of what the page shows:
+/// while a dropped peer is awaited the page shows it online, but the other
+/// end hears it gone, and hears it back once it reconnects, which has it try
+/// a direct peer again (`crates/runner/src/forward.rs`).
+// A second: two devices whose runners the test speaks for.
+#[tokio::test]
+async fn a_runner_hears_its_peer_go_when_its_connection_drops_and_come_back() {
+    let mut harness = Harness::new();
+    // Longer than the test: the peer comes back first.
+    harness.runners.returning = std::time::Duration::from_secs(10 * 60);
+    let (backend, master) = harness.start_set_up().await;
+    let (listen, mut listening, _) = spoken_for(&harness, &backend, &master, "listen").await;
+    let (connect, connecting, token) = spoken_for(&harness, &backend, &master, "connect").await;
+    let forward = create(
+        &backend,
+        &master,
+        json!({
+            "listenDevice": listen,
+            "listenPort": free_port(),
+            "connectDevice": connect,
+            "connectAddress": "127.0.0.1:9",
+        }),
+    )
+    .await;
+    let id = forward.id.as_str().to_owned();
+    assert!(peer_online(&mut listening, &id).await);
+
+    // The connection drops without a close.
+    let before = backend.last_seen(&master, &connect).await;
+    harness.clock.advance(jiff::SignedDuration::from_secs(1));
+    drop(connecting);
+    assert!(!peer_online(&mut listening, &id).await);
+    backend.until_seen_since(&master, &connect, before).await;
+    assert!(backend.online(&master, &connect).await, "the page still shows the peer online");
+
+    let _back = speak(&backend, &token).await;
+    assert!(peer_online(&mut listening, &id).await);
+    backend.close().await;
 }

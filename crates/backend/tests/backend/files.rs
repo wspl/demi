@@ -26,7 +26,8 @@ use futures_util::{StreamExt as _, stream};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::support::{Answer, Harness, Paired, Session, TestBackend, answer, eventually, pattern};
+use crate::support::{Answer, Harness, Paired, Session, TestBackend, answer, elapse, eventually, pattern};
+use demi_backend_user_shard::shard::ShardPlacement;
 
 const CONVERSATION: &str = "5a1d0c3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -1130,16 +1131,19 @@ impl OnDevice {
 /// A restart is not a device going away
 /// (`crates/backend-remote-host/src/device_jobs.rs`).
 ///
-/// For 30 seconds after the start, an operation for a device whose connection the
-/// shutdown ended waits for its runner instead of answering that the device is
-/// offline. After that it answers as for any device that is away.
+/// For 30 seconds after the start, a device whose connection the shutdown ended
+/// shows online, and an operation for it waits for its runner instead of
+/// answering that the device is offline. After that it is offline and answers
+/// as any device that is away (`crates/backend-runners/src/devices.rs`).
 ///
-/// Costs two restarts, a runner start and 300 ms of a bound on what must not
-/// happen.
-#[tokio::test]
+/// Costs two restarts and a runner start; the 30 seconds pass on the paused
+/// clock of the shards, which run on the test's thread.
+#[tokio::test(flavor = "local")]
 async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconnected_until_the_grace_ends()
 {
-    let device = OnDevice::start().await;
+    let mut harness = Harness::new();
+    harness.shards = Some(ShardPlacement::Inline);
+    let device = OnDevice::start_with(harness).await;
     std::fs::write(device.root.join("a.txt"), "kept").unwrap();
     let read = format!("/fs/file?{}", query(&[("path", &device.path("a.txt"))]));
 
@@ -1153,13 +1157,13 @@ async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconne
     {
         let path = format!("/api/conversations/{CONVERSATION}{read}");
         let mut request = std::pin::pin!(device.backend.response(Method::GET, &path, &device.master, &[], None));
-        // A bound on a negative: without the wait, the answer comes in milliseconds.
-        assert!(
-            tokio::time::timeout(Duration::from_millis(300), &mut request)
-                .await
-                .is_err(),
-            "the operation answered while the device's runner was coming back"
-        );
+        tokio::select! {
+            answered = &mut request => panic!(
+                "the operation answered while the device's runner was coming back: {:?}",
+                answered.status()
+            ),
+            () = device.backend.until_waiting_for_return(&device.master, 1) => {}
+        }
         binds.release();
         let answered = answer(request.await).await;
         assert_eq!(answered.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answered.body));
@@ -1167,7 +1171,9 @@ async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconne
 
     // Once the grace is over, a device still away is offline at once.
     let device = device.restart_without_runner().await;
-    device.harness.clock.advance(jiff::SignedDuration::from_secs(31));
+    assert!(device.backend.online(&device.master, device.paired.id()).await);
+    elapse(Duration::from_secs(31)).await;
+    assert!(!device.backend.online(&device.master, device.paired.id()).await);
     let refused = tokio::time::timeout(Duration::from_secs(10), device.get(&read))
         .await
         .expect("the operation waited after the grace");

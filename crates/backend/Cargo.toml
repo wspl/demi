@@ -33,6 +33,7 @@ testing = [
   "demi-backend-http/testing",
   "demi-backend-blobs/testing",
   "demi-backend-user-shard/testing",
+  "demi-backend-runners/testing",
   "demi-backend-database/testing",
   "demi-shared-gates/testing",
 ]

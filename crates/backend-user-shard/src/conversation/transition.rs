@@ -293,7 +293,7 @@ impl Shard {
             .device(device.clone())
             .await?
             .is_some_and(|device| device.kind == DeviceKind::User);
-        Ok((paired && !self.devices().online(device)).then(|| device.clone()))
+        Ok((paired && !self.devices().connected(device)).then(|| device.clone()))
     }
 
     /// Reserves the conversation's live tree while it does nothing by itself: no

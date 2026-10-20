@@ -100,9 +100,9 @@ pub(crate) enum Place {
 /// Why a target cannot run a run now.
 pub(crate) enum Unrunnable {
     Offline(String),
-    /// A paired device the backend's own restart disconnected, whose runner
-    /// is given the rest of the restart hold to come back
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// A paired device whose runner is given the rest of its wait to come
+    /// back, after its connection dropped or the backend restarted
+    /// (`crates/backend-runners/src/devices.rs`).
     Returning { device: DeviceId, rest: std::time::Duration },
     Gone(PauseReason),
 }
@@ -146,8 +146,7 @@ impl Shard {
         if let Some(device) = device
             && let Some(name) = self.offline_device(&device).await
         {
-            let now = self.services().clock.now().to_jiff();
-            return Err(match self.devices().returning(&device, now) {
+            return Err(match self.devices().returning(&device) {
                 Some(rest) => Unrunnable::Returning { device, rest },
                 None => Unrunnable::Offline(name),
             });
@@ -156,14 +155,13 @@ impl Shard {
     }
 
     /// Where `automation`'s target runs, as `place_of` answers, once a
-    /// device the restart disconnected is back or the restart hold is over.
+    /// returning device is back or its wait is over.
     pub(crate) async fn place_after_return(&self, automation: &StoredAutomation) -> Result<Place, Unrunnable> {
         match self.place_of(automation).await {
             Err(Unrunnable::Returning { device, rest }) => {
                 self.devices().returned(&device, rest).await;
                 match self.place_of(automation).await {
-                    // The hold is over by its own timer, which the clock
-                    // may not yet show: the device is offline.
+                    // The wait is over: the device is offline.
                     Err(Unrunnable::Returning { device, .. }) => Err(Unrunnable::Offline(
                         self.offline_device(&device).await.unwrap_or_else(|| device.to_string()),
                     )),
@@ -179,7 +177,7 @@ impl Shard {
     /// wakes.
     pub(crate) async fn offline_device(&self, device: &DeviceId) -> Option<String> {
         let record = self.services().control.device(device.clone()).await.ok().flatten()?;
-        (record.kind == DeviceKind::User && !self.devices().online(device)).then_some(record.name)
+        (record.kind == DeviceKind::User && !self.devices().connected(device)).then_some(record.name)
     }
 
     /// The automation's run whose message the conversation works for, with when
@@ -251,9 +249,9 @@ impl Shard {
         let shard = self.this();
         let automation = automation.clone();
         self.tasks().spawn_local(async move {
-            // A device the restart disconnected is waited for in this task,
-            // the run recorded already, so the scheduler goes on and never
-            // starts it twice; still away after the hold, it is skipped.
+            // A returning device is waited for in this task, the run
+            // recorded already, so the scheduler goes on and never starts it
+            // twice; still away after the wait, it is skipped.
             let place = match place {
                 Err(Unrunnable::Returning { .. }) => shard.place_after_return(&automation).await,
                 place => place,

@@ -6,7 +6,8 @@
 //!   answers the page's offer. The page's probes and candidates do not wait
 //!   behind that answer.
 //! - The socket's close closes the runner's peer.
-//! - The Cloud and an offline device are refused.
+//! - The Cloud and an offline device are refused; a device whose runner
+//!   dropped is waited for (`crates/backend-runners/src/devices.rs`).
 //! - A quiet socket hears a heartbeat, and the runner's connection ending
 //!   closes it.
 //! - A page in process opens the user's streams on the channel. One installs
@@ -32,6 +33,7 @@ use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use reqwest::StatusCode;
 use tokio_util::sync::CancellationToken;
 
+use crate::lifetime::{Network, dropped};
 use crate::runners::{RawRunner, hello};
 use crate::streams::{CONVERSATION, conversation};
 use crate::support::{EXTRA, Harness, Paired, Session, TestBackend};
@@ -601,5 +603,32 @@ async fn a_direct_watch_and_text_order_reads_and_changes_with_the_relays_numbers
         .await;
     let read_at = relay.headers.get("x-demi-read-at").unwrap().to_str().unwrap();
     assert!(read_at.starts_with(&format!("{epoch}.")), "{read_at}");
+    backend.close().await;
+}
+
+/// A device whose runner dropped shows online while the backend waits for the
+/// runner: its signaling upgrade waits too, rather than being refused as
+/// offline, and goes on once the runner is back.
+// About a second: a real device pairs through a network the test cuts and
+// opens again.
+#[tokio::test]
+async fn a_signaling_upgrade_while_the_runner_is_away_waits_for_it() {
+    let mut harness = Harness::new();
+    // Longer than the test: the runner comes back first.
+    harness.runners.returning = Duration::from_secs(10 * 60);
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let paired = backend.pair_through(&master, "alpha", &network.url).await;
+    dropped(&harness, &backend, &master, &network, paired.id()).await;
+
+    let upgrade = tokio_tungstenite::connect_async(signaling_request(&backend, &master, paired.id()));
+    let mut upgrade = std::pin::pin!(upgrade);
+    tokio::select! {
+        answered = &mut upgrade => panic!("answered while the runner was away: {:?}", answered.map(|_| ())),
+        () = backend.until_waiting_for_return(&master, 1) => {}
+    }
+    network.open();
+    let (socket, _) = upgrade.await.expect("the upgrade goes on once the runner is back");
+    drop(socket);
     backend.close().await;
 }

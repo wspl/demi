@@ -96,7 +96,7 @@ pub(super) async fn open_device(
     let opened = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.host_shard().open_device_watch(&device) })
+        .call(move |shard, _| async move { shard.host_shard().open_device_watch(&device).await })
         .await?;
     let tuning = state.services.pages;
     Ok(page_socket(upgrade, move |socket| async move {

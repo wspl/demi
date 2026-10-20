@@ -522,7 +522,7 @@ impl dyn CloudShard {
                 let mut phase = machine.phase();
                 match &*phase {
                     Phase::Resetting { .. } => return Ok(Ready::Resetting),
-                    Phase::Running(_) if self.devices().online(&machine.device.id) => {
+                    Phase::Running(_) if self.devices().connected(&machine.device.id) => {
                         return Ok(Ready::Running);
                     }
                     Phase::Running(_) => true,

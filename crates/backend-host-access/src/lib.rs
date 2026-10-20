@@ -48,9 +48,10 @@
 //! - Lifecycle access is the conversation release, which a stopped Cloud hears
 //!   after its next wake, and the release of a package's services for every
 //!   conversation, which a plugin turned off asks of each connected Host.
-//! - Device access is the owner's work on a device whose runner is connected: a
-//!   direct channel, the device log, browsing directories to choose a target, a
-//!   port forward's listener. It takes no file gate and checks no
+//! - Device access is the owner's work on a device whose runner is connected,
+//!   once a returning device's runner is back (`crates/backend-runners/src/devices.rs`):
+//!   a direct channel, the device log, browsing directories to choose a target,
+//!   a port forward's listener. It takes no file gate and checks no
 //!   conversation's binding, so a transition does not wait for it. It never
 //!   wakes a Cloud, since a log is read when its Host runs again and showing a
 //!   version is no reason to wake one.
