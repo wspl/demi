@@ -370,6 +370,16 @@ beforeEach(async () => {
     if (/^\/api\/conversations\/[^/]+\/cost$/.test(path)) {
       return Response.json(NO_COST)
     }
+    // An opening's other reads: a conversation with nothing in it yet.
+    if (/^\/api\/conversations\/[^/]+\/transcript$/.test(path)) {
+      return Response.json({ start: 0, length: 0, blocks: [], instructions: [], summaries: [] })
+    }
+    if (/^\/api\/conversations\/[^/]+\/subagents$/.test(path)) {
+      return Response.json({ subagents: [] })
+    }
+    if (/^\/api\/conversations\/[^/]+\/hosts$/.test(path)) {
+      return Response.json({ hosts: [] })
+    }
     const draft = /^\/api\/conversations\/([^/]+)\/draft(\/replaced)?$/.exec(path)
     if (draft) {
       return draftRoute(decodeURIComponent(draft[1]!), init?.method ?? 'GET', draft[2] !== undefined, body)
