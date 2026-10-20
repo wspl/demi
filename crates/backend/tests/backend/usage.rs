@@ -329,8 +329,8 @@ async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_n
 /// again receives the count with the handshake, which tells it of a row whose
 /// frame it missed.
 ///
-/// An entry whose models have no price leaves every price null and lists no
-/// agent.
+/// Each frame names the row's agent. An entry whose models have no price
+/// leaves every price null and lists no agent in the answer.
 ///
 /// Planted defect: no frame, which the socket waits for until the test's
 /// timeout.
@@ -361,14 +361,15 @@ async fn each_call_reaches_the_open_page_as_a_cost_frame_and_the_cost_sums_the_r
         if !frames.iter().any(cost_frame) {
             frames = socket.until(cost_frame).await;
         }
-        let Some(ServerFrame::Cost { rows, totals, agent, call }) = frames.into_iter().find(|frame| cost_frame(frame))
+        let Some(ServerFrame::Cost { rows, totals, agent, profile, call }) =
+            frames.into_iter().find(|frame| cost_frame(frame))
         else {
             unreachable!()
         };
         counts.push(rows);
         assert_eq!(
-            (totals.input_tokens, totals.cache_write_tokens, totals.output_tokens, totals.price.total, agent),
-            (input, write, 7, None, None)
+            (totals.input_tokens, totals.cache_write_tokens, totals.output_tokens, totals.price.total, agent, profile),
+            (input, write, 7, None, Some(0), None)
         );
         calls.push(call.expect("a turn call of the main conversation"));
     }
@@ -391,5 +392,61 @@ async fn each_call_reaches_the_open_page_as_a_cost_frame_and_the_cost_sums_the_r
     again.open().await;
     let opened = again.until(|frame| matches!(frame, ServerFrame::CostRows { .. })).await;
     assert_eq!(opened.last(), Some(&ServerFrame::CostRows { rows: 2 }));
+    backend.close().await;
+}
+
+/// A ledger row of the conversation `FIRST`, its agent's call of `purpose`,
+/// written directly, `order` milliseconds into the day.
+fn agent_row(harness: &Harness, agent: i64, purpose: &str, input: i64, order: i64) {
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO usage_ledger (id, user_id, conversation_id, agent, purpose, provider_id, model_id,
+               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, outcome, started_at, ended_at)
+             SELECT ?1, id, ?2, ?3, ?4, 'entry-a', 'model-1', ?5, 10, 2, 1, 'answered', ?6, ?6
+             FROM users WHERE email = 'master@example.test'",
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), FIRST, agent, purpose, input, 1_790_000_000_000_i64 + order],
+        )
+        .unwrap();
+}
+
+/// `GET /api/conversations/:id/cost?agent=` answers that agent's own cost:
+/// its rows' totals, its turn calls with a compaction of its own between
+/// them, and itself alone among the agents. Either answer counts every row
+/// of the conversation, which every `cost` frame continues
+/// (`crates/backend-database/src/usage.rs`).
+///
+/// Planted defects: the whole conversation's totals, or the main
+/// conversation's calls, for the agent.
+// A backend and five rows written directly: about a second.
+#[tokio::test]
+async fn the_cost_of_one_agent_holds_its_own_rows_and_calls() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    agent_row(&harness, 0, "turn", 1_000, 1);
+    agent_row(&harness, 1, "turn", 100, 2);
+    agent_row(&harness, 1, "compaction", 50, 3);
+    agent_row(&harness, 1, "turn", 200, 4);
+    agent_row(&harness, 2, "turn", 7, 5);
+    let cost = |query: &'static str| {
+        let backend = &backend;
+        let master = &master;
+        async move {
+            backend
+                .get(&format!("/api/conversations/{FIRST}/cost{query}"), Some(master))
+                .await
+                .json::<ConversationCost>()
+        }
+    };
+    let own = cost("?agent=1").await;
+    assert_eq!((own.rows, own.totals.input_tokens, own.totals.output_tokens), (5, 350, 30));
+    assert_eq!(
+        own.calls.iter().map(|call| (call.input_tokens, call.after_compaction)).collect::<Vec<_>>(),
+        [(100, false), (200, true)]
+    );
+    assert!(own.agents.is_empty(), "{:?}", own.agents);
+    let whole = cost("").await;
+    assert_eq!((whole.rows, whole.totals.input_tokens, whole.calls.len()), (5, 1_357, 1));
     backend.close().await;
 }

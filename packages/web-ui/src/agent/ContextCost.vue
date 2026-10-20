@@ -9,14 +9,13 @@ import { ICON_PX } from '../ui/icon-metrics'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import SectionRow from '../ui/SectionRow.vue'
 import { formatDollars } from '../ui/numbers'
-import { formatTokens } from '../ui/token-count'
 import CacheHitChart from './CacheHitChart.vue'
 import {
   type CostState,
   CHART_CALLS,
+  chartGroups,
   hitRate,
   profileRows,
-  recentCalls,
 } from './context-cost'
 import { t } from './locales/text'
 
@@ -26,10 +25,11 @@ import { t } from './locales/text'
  *
  * Closed, the section shows the equivalent API price and the main
  * conversation's cache hit rate side by side. Its caption is a disclosure of
- * its own. Opened, the section shows:
+ * its own. Opened, its caption holds the price, and the section shows:
  *
- * - the price by kind of token
- * - the share of the profiles the conversation's workflow offers
+ * - the price by kind of token, two by two
+ * - the share of the profiles the conversation's workflow offers, in two
+ *   columns
  * - the chart of the main conversation's recent cache hits
  *
  * A figure that cannot be computed is left out with its label. A read that
@@ -68,7 +68,7 @@ const price = computed(() => cost.value?.totals.price.total ?? null)
  * The main conversation's recent calls, which the rate counts and the chart
  * draws.
  */
-const recent = computed(() => recentCalls(cost.value?.calls ?? []))
+const recent = computed(() => chartGroups(cost.value?.calls ?? []))
 const rate = computed(() => (cost.value ? hitRate(recent.value.calls) : null))
 const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 0 })
 /**
@@ -85,13 +85,15 @@ const figures = computed(() => [
 const kinds = computed(() => {
   if (!cost.value)
     return []
-  const { totals } = cost.value
+  const { price: prices } = cost.value.totals
+  // Row by row: input and output, then the cache's write and read; a kind
+  // with no price is left out with its label.
   return [
-    { key: 'input', label: t('context.cost.kind.input'), tokens: totals.inputTokens, price: totals.price.input },
-    { key: 'cacheWrite', label: t('context.cost.kind.cacheWrite'), tokens: totals.cacheWriteTokens, price: totals.price.cacheWrite },
-    { key: 'cacheRead', label: t('context.cost.kind.cacheRead'), tokens: totals.cacheReadTokens, price: totals.price.cacheRead },
-    { key: 'output', label: t('context.cost.kind.output'), tokens: totals.outputTokens, price: totals.price.output },
-  ]
+    { key: 'input', label: t('context.cost.kind.input'), price: prices.input },
+    { key: 'output', label: t('context.cost.kind.output'), price: prices.output },
+    { key: 'cacheWrite', label: t('context.cost.kind.cacheWrite'), price: prices.cacheWrite },
+    { key: 'cacheRead', label: t('context.cost.kind.cacheRead'), price: prices.cacheRead },
+  ].flatMap(({ price, ...kind }) => (price === null ? [] : [{ ...kind, price }]))
 })
 
 const rows = computed(() => profileRows(cost.value?.agents ?? [], props.profiles ?? []))
@@ -116,6 +118,7 @@ function share(price: number): string {
     >
       <SectionRow class="text-caption font-medium text-fg-subtle">
         <span class="shrink-0">{{ t('context.cost.title') }}</span>
+        <span v-if="open && price !== null" class="ml-1.5 truncate tabular-nums text-fg-emphasis">{{ formatDollars(price) }}</span>
         <template #end>
           <FoldChevron :open="open" :size="ICON_PX.in20" />
         </template>
@@ -144,22 +147,17 @@ function share(price: number): string {
       </div>
     </Fold>
     <Fold v-if="cost" :open="open">
-      <div v-if="price !== null" class="flex min-h-6 items-center gap-3 px-3">
-        <span class="min-w-0 flex-1 truncate text-fg-body">{{ t('context.cost.price') }}</span>
-        <span class="whitespace-nowrap font-medium tabular-nums text-fg-emphasis">{{ formatDollars(price) }}</span>
-      </div>
-      <ul class="cost-rows px-3">
-        <li v-for="kind in kinds" :key="kind.key" class="cost-row">
-          <span class="min-w-0 truncate text-fg-body">{{ kind.label }}</span>
-          <span class="whitespace-nowrap text-right tabular-nums text-fg-subtle">{{ formatTokens(kind.tokens) }}</span>
-          <span class="whitespace-nowrap text-right tabular-nums text-fg-subtle">{{ kind.price === null ? '' : formatDollars(kind.price) }}</span>
+      <ul v-if="kinds.length" class="cost-columns px-3">
+        <li v-for="kind in kinds" :key="kind.key" class="flex min-h-6 items-center gap-2">
+          <span class="min-w-0 flex-1 truncate text-fg-body">{{ kind.label }}</span>
+          <span class="whitespace-nowrap tabular-nums text-fg-subtle">{{ formatDollars(kind.price) }}</span>
         </li>
       </ul>
       <template v-if="rows.length">
         <div class="cost-caption px-3">
           <span class="text-caption font-medium text-fg-subtle">{{ t('context.cost.profiles') }}</span>
         </div>
-        <ul class="px-3">
+        <ul class="cost-columns px-3">
           <li v-for="row in rows" :key="row.key" class="flex flex-col gap-[3px] pt-1 pb-[3px]">
             <div class="flex items-baseline gap-3">
               <span class="min-w-0 truncate text-fg-muted">{{ row.label }}</span>
@@ -179,7 +177,7 @@ function share(price: number): string {
           </span>
         </div>
         <div v-if="charted" class="px-3">
-          <CacheHitChart :calls="recent.calls" :before="recent.before" :pinned-tip="pinnedTip" />
+          <CacheHitChart :groups="recent.groups" :size="recent.size" :pinned-tip="pinnedTip" />
         </div>
       </template>
     </Fold>
@@ -207,22 +205,13 @@ function share(price: number): string {
 }
 
 /*
- * The kinds of token: their names, their tokens and their prices. Each figure's
- * column is as wide as its widest figure across the rows, so a price never
- * wraps and the figures line up.
+ * Two columns of cells, row by row, each its name with its figure at its end,
+ * as the kinds of token and the profiles stand.
  */
-.cost-rows {
+.cost-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  column-gap: 0.5rem;
-}
-
-.cost-row {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
-  align-items: center;
-  min-height: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 1rem;
 }
 
 .cost-caption {

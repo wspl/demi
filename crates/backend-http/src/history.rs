@@ -24,7 +24,7 @@ use demi_web_api_protocol::conversations::{
     CommandCall, NodeQuery, Subagents, TranscriptPage, TranscriptQuery, WholeBlock,
 };
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::usage::ConversationCost;
+use demi_web_api_protocol::usage::{ConversationCost, CostQuery};
 
 use super::AppState;
 use super::conversations::owned;
@@ -197,12 +197,13 @@ pub(super) async fn subagents(
 }
 
 /// `GET /conversations/:id/cost`: the conversation's cost from its ledger
-/// rows, its subagents named as its database holds them
+/// rows, or one agent's own, its subagents named as its database holds them
 /// (`crates/backend-database/src/usage.rs`).
 pub(super) async fn cost(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    QueryParams(query): QueryParams<CostQuery>,
 ) -> Result<Json<ConversationCost>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
@@ -212,7 +213,7 @@ pub(super) async fn cost(
         .await
         .map_err(ApiError::conversation_unreadable)?
         .unwrap_or_default();
-    let cost = services.control.conversation_cost(record.id.clone(), labels).await?;
+    let cost = services.control.conversation_cost(record.id.clone(), labels, query.agent).await?;
     Ok(Json(cost))
 }
 

@@ -132,10 +132,12 @@ pub struct CostAddition {
     /// or missed one before it.
     pub rows: u64,
     pub totals: CostTotals,
-    /// The row's agent with the row's price; none for a row of no agent or
-    /// without a price.
-    pub agent: Option<AgentCost>,
-    /// The row as a turn call of the main conversation; none for any other.
+    /// The row's agent; none for a row of no agent, as a title's.
+    pub agent: Option<u64>,
+    /// The profile the row's subagent was started with; none for none and
+    /// for the main conversation.
+    pub profile: Option<String>,
+    /// The row as a turn call of its agent; none for any other row.
     pub call: Option<CostCall>,
 }
 
@@ -291,23 +293,31 @@ impl ControlService {
     }
 
     /// The conversation's cost from its ledger rows, its agents named by
-    /// `labels`.
+    /// `labels`: the whole conversation's with the main conversation's turn
+    /// calls, or with `agent` that agent's own, its rows and its turn calls.
+    /// Either counts every row of the conversation, which every `cost` frame
+    /// continues.
     pub async fn conversation_cost(
         &self,
         conversation: ConversationId,
         labels: Vec<AgentLabel>,
+        agent: Option<u64>,
     ) -> Result<ConversationCost, StorageError> {
         let rows = self.call(move |connection, _| cost_rows(connection, &conversation)).await?;
-        let calls = turn_calls(&rows);
+        let calls = turn_calls(&rows, agent.unwrap_or(0));
+        let own: Vec<&CostRow> = rows
+            .iter()
+            .filter(|row| agent.is_none_or(|agent| row.agent == Some(agent)))
+            .collect();
         let mut prices: BTreeMap<u64, f64> = BTreeMap::new();
-        for row in &rows {
+        for row in own.iter().copied() {
             if let (Some(agent), Some(price)) = (row.agent, row.price()) {
                 *prices.entry(agent).or_default() += price;
             }
         }
         Ok(ConversationCost {
             rows: rows.len() as u64,
-            totals: totals_of(&rows),
+            totals: totals_of(own.iter().copied()),
             agents: prices
                 .into_iter()
                 .map(|(agent, price)| agent_cost(agent, price, &labels))
@@ -343,17 +353,16 @@ impl ControlService {
         let Some(row) = rows.iter().find(|row| row.id == id) else {
             return Ok(None);
         };
-        let agent = row
-            .agent
-            .zip(row.price())
-            .map(|(agent, price)| agent_cost(agent, price, &labels));
-        let call = turn_calls(&rows)
-            .into_iter()
-            .find_map(|(call_id, call)| (call_id == id).then_some(call));
+        let call = row.agent.and_then(|agent| {
+            turn_calls(&rows, agent)
+                .into_iter()
+                .find_map(|(call_id, call)| (call_id == id).then_some(call))
+        });
         Ok(Some(CostAddition {
             rows: decode("usage_ledger", "rowid", u64::try_from(written))?,
-            totals: totals_of(std::slice::from_ref(row)),
-            agent,
+            totals: totals_of([row]),
+            agent: row.agent,
+            profile: row.agent.and_then(|agent| profile_of(agent, &labels)),
             call,
         }))
     }
@@ -489,9 +498,9 @@ impl CostRow {
         self.parts.map(|parts| parts.total()).or(self.usd)
     }
 
-    /// The main conversation's call of a turn, with counts.
-    fn main_turn(&self) -> Option<TokenUsage> {
-        (self.agent == Some(0) && self.purpose.as_deref() == Some("turn"))
+    /// The call of a turn of `agent`, with counts.
+    fn turn_of(&self, agent: u64) -> Option<TokenUsage> {
+        (self.agent == Some(agent) && self.purpose.as_deref() == Some("turn"))
             .then_some(self.usage)
             .flatten()
     }
@@ -592,7 +601,7 @@ fn corrupt(column: &'static str, problem: &'static str) -> StorageError {
 
 /// The token and price totals of `rows`; a count the vendor did not report
 /// adds nothing, and a price is null when no row has one.
-fn totals_of(rows: &[CostRow]) -> CostTotals {
+fn totals_of<'a>(rows: impl IntoIterator<Item = &'a CostRow>) -> CostTotals {
     let mut totals = CostTotals::default();
     let add = |sum: &mut Option<f64>, value: Option<f64>| {
         if let Some(value) = value {
@@ -616,35 +625,44 @@ fn totals_of(rows: &[CostRow]) -> CostTotals {
 }
 
 fn agent_cost(agent: u64, price: f64, labels: &[AgentLabel]) -> AgentCost {
-    let label = labels.iter().find(|label| label.number == agent);
     AgentCost {
         agent,
-        profile: label.and_then(|label| label.profile.clone()).filter(|_| agent != 0),
+        profile: profile_of(agent, labels),
         price,
     }
 }
 
-/// The main conversation's turn calls among `rows`, each with its row's id,
-/// whether it follows a compaction and why it missed the cache.
+/// The profile the subagent `agent` was started with, as `labels` name it;
+/// none for the main conversation.
+fn profile_of(agent: u64, labels: &[AgentLabel]) -> Option<String> {
+    labels
+        .iter()
+        .find(|label| label.number == agent)
+        .and_then(|label| label.profile.clone())
+        .filter(|_| agent != 0)
+}
+
+/// The turn calls of `agent` among `rows`, each with its row's id, whether
+/// it follows a compaction of that agent and why it missed the cache.
 ///
 /// A call missed when it wrote again more than [`MISS_SHARE`] of its prompt and at
 /// least [`MISS_TOKENS`], except the first call and the first after a compaction,
 /// which start a new prompt.
-fn turn_calls(rows: &[CostRow]) -> Vec<(String, CostCall)> {
+fn turn_calls(rows: &[CostRow], agent: u64) -> Vec<(String, CostCall)> {
     let mut calls = Vec::new();
     let mut previous: Option<&CostRow> = None;
     let mut compacted = false;
     // Whether each model's latest write was kept for an hour.
     let mut hour_writes: HashMap<&str, bool> = HashMap::new();
     for row in rows {
-        if row.agent == Some(0)
+        if row.agent == Some(agent)
             && row.purpose.as_deref() == Some("compaction")
             && row.outcome.as_deref() == Some("answered")
         {
             compacted = true;
             continue;
         }
-        let Some(usage) = row.main_turn() else {
+        let Some(usage) = row.turn_of(agent) else {
             continue;
         };
         let written = usage.input_tokens + usage.cache_write_tokens;
@@ -862,7 +880,7 @@ mod tests {
         write(&control, &user, calls).await;
 
         let cost = control
-            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), Vec::new())
+            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), Vec::new(), None)
             .await
             .unwrap();
         let read: Vec<(bool, Option<CacheMiss>)> =
@@ -951,7 +969,7 @@ mod tests {
             AgentLabel { number: 3, profile: None },
         ];
         let cost = control
-            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), labels)
+            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), labels.clone(), None)
             .await
             .unwrap();
         let totals = cost.totals;
@@ -974,6 +992,15 @@ mod tests {
         );
         assert_eq!(cost.calls.len(), 1);
         assert_eq!(cost.calls[0].price, Some(1.0));
+
+        // One agent's own: its rows alone, its turn call, every row counted.
+        let own = control
+            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), labels, Some(1))
+            .await
+            .unwrap();
+        assert_eq!((own.rows, own.totals.input_tokens, own.totals.price.total), (6, 10, Some(10.0)));
+        assert_eq!(own.agents, [AgentCost { agent: 1, profile: Some("research".into()), price: 10.0 }]);
+        assert_eq!(own.calls.iter().map(|call| call.price).collect::<Vec<_>>(), [Some(10.0)]);
         control.close().await.unwrap();
     }
 }

@@ -63,6 +63,7 @@ impl Shard {
                 rows: addition.rows,
                 totals: addition.totals,
                 agent: addition.agent,
+                profile: addition.profile,
                 call: addition.call,
             });
         }

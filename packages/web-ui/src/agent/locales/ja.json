@@ -345,13 +345,13 @@
       "hitRate": "キャッシュヒット率",
       "loadFailed": "コストを読み込めませんでした。",
       "kind": {
-        "input": "キャッシュなしの入力",
+        "input": "入力",
         "cacheWrite": "キャッシュ書き込み",
         "cacheRead": "キャッシュ読み取り",
-        "output": "出力トークン"
+        "output": "出力"
       },
       "profiles": "プロファイル",
-      "mainConversation": "メインの会話",
+      "mainConversation": "メイン",
       "request": "リクエスト #{number}",
       "firstRequest": "最初のリクエスト",
       "afterCompaction": "圧縮後",

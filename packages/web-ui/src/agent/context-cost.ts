@@ -6,7 +6,9 @@ import { t } from './locales/text'
  * A conversation's cost as the context card shows it
  * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the backend's `GET
  * /conversations/:id/cost`, which the page reads with the conversation as it
- * opens and to which it adds each `cost` frame while the conversation is open.
+ * opens and to which it adds each `cost` frame while the conversation is open;
+ * or one subagent's own, `?agent=` its number, which the page reads as it
+ * opens the subagent's window.
  */
 export interface ConversationCostView {
   /** The number of the conversation's ledger rows the cost includes. */
@@ -47,7 +49,10 @@ export interface CostAddition {
   /** The number of the conversation's ledger rows up to the frame's own. */
   rows: number
   totals: CostTotals
-  agent: AgentCost | null
+  /** The row's agent; null for a row of none. Its price is the totals'. */
+  agent: number | null
+  profile: string | null
+  /** The row as a turn call of its agent. */
   call: CostCall | null
 }
 
@@ -68,9 +73,13 @@ function addPrices(a: CostPrice, b: CostPrice): CostPrice {
 
 /**
  * `cost` with the row `addition` adds: its totals, its agent's price and its
- * call.
+ * call. The cost of the agent `of` adds only a row of that agent, and counts
+ * any other; the conversation's, `of` null, adds every row and the main
+ * conversation's calls.
  */
-export function addCost(cost: ConversationCostView, addition: CostAddition): ConversationCostView {
+export function addCost(cost: ConversationCostView, addition: CostAddition, of: number | null = null): ConversationCostView {
+  if (of !== null && addition.agent !== of)
+    return { ...cost, rows: addition.rows }
   const totals: CostTotals = {
     inputTokens: cost.totals.inputTokens + addition.totals.inputTokens,
     cacheWriteTokens: cost.totals.cacheWriteTokens + addition.totals.cacheWriteTokens,
@@ -78,7 +87,10 @@ export function addCost(cost: ConversationCostView, addition: CostAddition): Con
     outputTokens: cost.totals.outputTokens + addition.totals.outputTokens,
     price: addPrices(cost.totals.price, addition.totals.price),
   }
-  const added = addition.agent
+  const price = addition.totals.price.total
+  const added: AgentCost | null = addition.agent === null || price === null
+    ? null
+    : { agent: addition.agent, profile: addition.profile, price }
   const agents = added === null
     ? cost.agents
     : cost.agents.some((agent) => agent.agent === added.agent)
@@ -88,7 +100,7 @@ export function addCost(cost: ConversationCostView, addition: CostAddition): Con
     rows: addition.rows,
     totals,
     agents,
-    calls: addition.call === null ? cost.calls : [...cost.calls, addition.call],
+    calls: addition.call === null || addition.agent !== (of ?? 0) ? cost.calls : [...cost.calls, addition.call],
   }
 }
 
@@ -136,20 +148,38 @@ export function hitRate(calls: readonly CostCall[]): number | null {
  */
 export const CHART_CALLS = 4
 
-/**
- * The most recent turn calls the chart draws, and the cache hit rate counts. A
- * long conversation's whole run would crowd the plot past reading, and what a
- * user checks is whether the cache serves the conversation now.
- */
-export const RECENT_CALLS = 50
+/** The most recent turn calls the chart can draw, and the cache hit rate count. */
+export const CHART_WINDOW = 400
 
 /**
- * The main conversation's last `RECENT_CALLS` turn calls, and how many came
- * before them, so each keeps its number in the conversation.
+ * The points the chart draws at most: past them a point stands for several
+ * calls, so a long conversation's line stays readable.
  */
-export function recentCalls(calls: readonly CostCall[]): { calls: readonly CostCall[], before: number } {
-  const before = Math.max(0, calls.length - RECENT_CALLS)
-  return { calls: calls.slice(before), before }
+export const CHART_POINTS = 40
+
+/** Consecutive turn calls the chart draws as one point. */
+export interface CallGroup {
+  /** The number of its first call in the conversation, from 1. */
+  first: number
+  calls: readonly CostCall[]
+}
+
+/**
+ * The main conversation's turn calls as the chart draws them: groups of `size`
+ * calls counted from call 1, the most recent `CHART_POINTS` of them, and the
+ * calls they hold, which the cache hit rate counts.
+ *
+ * The groups keep their place in the conversation and the window starts at a
+ * group's first call, so a new call changes only the last group, never the
+ * calls of another point.
+ */
+export function chartGroups(calls: readonly CostCall[]): { size: number, groups: CallGroup[], calls: readonly CostCall[] } {
+  const size = Math.max(1, Math.ceil(Math.min(calls.length, CHART_WINDOW) / CHART_POINTS))
+  const start = Math.max(0, Math.ceil(calls.length / size) - CHART_POINTS) * size
+  const groups: CallGroup[] = []
+  for (let index = start; index < calls.length; index += size)
+    groups.push({ first: index + 1, calls: calls.slice(index, index + size) })
+  return { size, groups, calls: calls.slice(start) }
 }
 
 /**
@@ -172,9 +202,13 @@ export interface ProfileRow {
   price: number
 }
 
+/** The profiles the Profiles part shows at most, those that cost the most. */
+export const PROFILE_ROWS = 5
+
 /**
  * The Profiles part's rows: the main conversation first, for scale, then the
- * sum of each enabled profile's subagents, largest first. A subagent started
+ * sum of each enabled profile's subagents, the `PROFILE_ROWS` largest, largest
+ * first. A profile beyond them has no row. A subagent started
  * with no profile, or with one not in `enabled` (since disabled or deleted),
  * has no row. With no profile row there is no part, and no row.
  */
@@ -190,5 +224,6 @@ export function profileRows(agents: readonly AgentCost[], enabled: readonly stri
   const profiles = [...sums]
     .map(([profile, price]) => ({ key: `profile:${profile}`, label: profile, price }))
     .sort((a, b) => b.price - a.price)
+    .slice(0, PROFILE_ROWS)
   return [...(main ? [{ key: 'main', label: t('context.cost.mainConversation'), price: main.price }] : []), ...profiles]
 }

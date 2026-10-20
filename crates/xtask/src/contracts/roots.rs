@@ -74,6 +74,9 @@ pub fn protocol() -> Vec<Root> {
         sends::<frames::ClientFrame>(),
         // Every page socket takes it.
         sends::<frames::PagePing>(),
+        // An agent's price in a cost read, which web-ui's cost view holds
+        // and no frame carries (`packages/web-ui/src/agent/context-cost.ts`).
+        receives::<frames::AgentCost>(),
         receives::<core::Block>(),
         receives::<core::ProviderModelList>(),
         receives::<core::AuthState>(),

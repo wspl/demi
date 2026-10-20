@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{AgentCost, BlockVersions, ClientFrameKind, CostCall, CostTotals, TranscriptPatch, TranscriptVersion};
+use crate::{BlockVersions, ClientFrameKind, CostCall, CostTotals, TranscriptPatch, TranscriptVersion};
 
 /// What the providers read out of the error blocks a frame carries, by block
 /// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
@@ -128,10 +128,11 @@ pub enum ServerFrame {
         usage: Option<ContextUsage>,
     },
     /// What a new usage ledger row of the conversation adds to its cost
-    /// (`crates/backend-database/src/usage.rs`): to the totals, to its agent's
-    /// price when it has one, and the call itself when it is a turn call
-    /// of the main conversation. A page that holds the cost adds it; any
-    /// other ignores it.
+    /// (`crates/backend-database/src/usage.rs`): to the totals, to its
+    /// agent's price when it has one, and the call itself when it is a turn
+    /// call of its agent. A page that holds the conversation's cost adds it,
+    /// one that holds an agent's own adds a frame of that agent and counts
+    /// every other, and any other page ignores it.
     Cost {
         /// The number of the conversation's ledger rows up to this one: the
         /// page adds the frame when it holds one fewer, drops it when it
@@ -141,10 +142,18 @@ pub enum ServerFrame {
         rows: u64,
         #[garde(dive)]
         totals: CostTotals,
+        /// The row's agent; null for a row of no agent, as a title's. Its
+        /// price is the totals'.
         #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<AgentCost>")]
-        #[garde(dive)]
-        agent: Option<AgentCost>,
+        #[schemars(with = "Nullable<u64>")]
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        agent: Option<u64>,
+        /// The profile the row's subagent was started with; null for none
+        /// and for the main conversation.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<String>")]
+        #[garde(skip)]
+        profile: Option<String>,
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<CostCall>")]
         #[garde(dive)]

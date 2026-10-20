@@ -45,6 +45,7 @@ import type { MessageForkHandler } from './message-fork'
 import { useShare, type ExistingShare, type ShareService } from './sharing'
 import ShareDialog from './ShareDialog.vue'
 import type { UsageLimits } from './context-usage'
+import type { CostState } from './context-cost'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
@@ -181,6 +182,11 @@ const props = withDefaults(defineProps<{
    * context card in the Agents window shows. Absent, it shows none.
    */
   usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
+  /**
+   * The own cost of a child the Agents window shows, which its context card
+   * shows; null while its first read is on its way. Absent, it shows none.
+   */
+  subagentCost?: (id: string) => CostState | null
   /**
    * What each provider entry holds, which a failure's record names, as *The
    * provider refused the API key*. Absent, records read their code's words.
@@ -343,6 +349,8 @@ const emit = defineEmits<{
    * context.
    */
   compactSubagent: [id: string]
+  /** Retry in a child's context card, after the read of its cost failed. */
+  retrySubagentCost: [id: string]
   /**
    * A child's context card asks for the usage limits of the account it runs on,
    * `account` of its entry `providerId`, again.
@@ -1018,7 +1026,9 @@ watch(
             @read="(id) => emit('readSubagent', id)"
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
+            :agent-cost="subagentCost"
             @compact-agent="(id) => emit('compactSubagent', id)"
+            @retry-agent-cost="(id) => emit('retrySubagentCost', id)"
             @refresh-limits="(providerId, account, automatic) => emit('refreshLimits', providerId, account, automatic)"
             @open-instruction="(entry) => emit('openInstruction', entry)"
           />

@@ -147,6 +147,13 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * (`packages/web-ui/src/agent/context-cost.ts`).
    */
   cost: CostState | null
+  /**
+   * The own cost of each child whose window the page shows, by the child's
+   * id, read as the window opens and kept with each `cost` frame of the
+   * child, or the failure of its read; a child the page shows and holds none
+   * of is being read.
+   */
+  subagentCosts: Record<string, CostState>
 }
 
 export interface Device extends DeviceReport {

@@ -345,10 +345,10 @@
       "hitRate": "缓存命中率",
       "loadFailed": "无法加载费用。",
       "kind": {
-        "input": "未缓存输入",
+        "input": "输入",
         "cacheWrite": "缓存写入",
         "cacheRead": "缓存读取",
-        "output": "输出 Token"
+        "output": "输出"
       },
       "profiles": "配置",
       "mainConversation": "主对话",

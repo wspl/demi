@@ -374,6 +374,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"
+    :subagent-cost="(id) => conversation!.subagentCosts[id] ?? null"
+    @retry-subagent-cost="store.retryCost(conversation!, $event)"
     @refresh-limits="card.refreshLimits"
     @open-instruction="card.openInstruction"
     :automations="wakers"
