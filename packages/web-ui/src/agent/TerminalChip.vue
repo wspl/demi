@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { SquareTerminal } from '@lucide/vue'
+import { useIconPx } from '../ui/icon-metrics'
 import SessionDockChip from './SessionDockChip.vue'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { runningChipLabel, runningTerminals, type TerminalRecord } from './terminals'
@@ -13,6 +15,7 @@ const emit = defineEmits<{
   open: []
 }>()
 
+const icons = useIconPx()
 const running = computed(() => runningTerminals(props.terminals))
 </script>
 
@@ -29,6 +32,7 @@ const running = computed(() => runningTerminals(props.terminals))
     aria-haspopup="dialog"
     @click="emit('open')"
   >
+    <SquareTerminal :size="icons.chip" />
     {{ runningChipLabel(running.length) }}
   </SessionDockChip>
 </template>
