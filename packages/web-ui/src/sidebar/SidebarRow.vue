@@ -43,8 +43,10 @@ const phone = usePhone()
 const shownTitle = computed(() => conversationTitle(props.conversation.title))
 
 // The row's end holds, in the flow, the marks: the pin, the bolt and the device's
-// mark, each in a box as wide as its glyph (14, 14 and 16px), 6px apart and 6px
-// from the row's end, so the glyphs stand evenly. They are marks, not buttons.
+// mark, each in a box as wide as its glyph (14, 14 and 16px), 6px from the row's
+// end. They are marks, not buttons. Every glyph at the row's end, mark or button,
+// stands 10px from the next, as two side-by-side 24px buttons' 14px glyphs do, so
+// the spacing does not change where the buttons meet the marks.
 //
 // Marks and buttons rest in one grey, the ghost button's resting `text-fg-muted`,
 // whatever color the row's text takes. Only the button under the pointer darkens
@@ -54,8 +56,8 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 // The actions are 24px buttons, side by side, whose 14px glyphs sit 5px inside
 // them:
 //
-// - Archive stands over the pin's glyph, or 6px left of the first mark when the
-//   row is not pinned.
+// - Archive stands over the pin's glyph, or with its glyph 10px left of the
+//   first mark when the row is not pinned.
 // - Unpin stands left of Archive.
 // - The title clears the actions by a margin that leaves 12px before the first
 //   button's glyph.
@@ -63,7 +65,7 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 // A phone row shows no actions, since a tap meant to open the row could land on
 // one. Its long press opens its menu, which holds them, so its title and pin stay
 // put, and its marks keep their 32px boxes.
-const MARK_GAP_PX = 6
+const MARK_GAP_PX = 10
 const END_INSET_PX = 6
 /** A small icon button (`IconButton` `sm`) is 24px with its glyph centered. */
 const BUTTON_INSET_PX = (24 - ICON_PX.in24) / 2
@@ -82,14 +84,13 @@ const titleMargin = computed(() => {
   if (phone.value) {
     return ''
   }
-  // Pinned: the pin holds the title back by Archive's glyph; Unpin's 24px and Archive's inset remain.
-  // Not pinned: the first mark holds it back, and Archive's 24px and the gap remain; with no
+  // Pinned: the pin holds the title back by Archive's glyph; Unpin's glyph, the gap before
+  // Archive's and 12px remain, less the title's own 8px gap. Not pinned: the first mark
+  // holds it back, and Archive's glyph, the gap and the 12px remain the same way; with no
   // mark only the row's end does.
-  const margin = props.conversation.pinned
+  const margin = props.conversation.pinned || stayingMarks.value.length
     ? { hover: 'group-hover/row:mr-7', menu: 'mr-7' }
-    : stayingMarks.value.length
-      ? { hover: 'group-hover/row:mr-6', menu: 'mr-6' }
-      : { hover: 'group-hover/row:mr-[26px]', menu: 'mr-[26px]' }
+    : { hover: 'group-hover/row:mr-[26px]', menu: 'mr-[26px]' }
   return props.menuOpen ? margin.menu : margin.hover
 })
 
@@ -144,7 +145,7 @@ const rowClass = computed(() => [
     >{{ shownTitle }}</Tooltip>
     <!-- The pin's glyph and the device's mark end the row, in the flow, so the title never reaches
          them. The mark stays on hover; the pin gives its place to Archive. -->
-    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-1.5 phone:gap-0.5">
+    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-2.5 phone:gap-0.5">
       <span
         v-if="conversation.pinned"
         class="pointer-events-none flex h-6 w-3.5 items-center justify-center text-fg-muted transition-opacity phone:size-8"
