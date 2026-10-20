@@ -1739,10 +1739,11 @@ html[data-theme="light"] .file-pill {
 
 /* A file's and a commit's link lead into the conversation's own work, not off
    to the web: they read as part of the sentence, as an agent's link does, in
-   the prose's color over a faint underline, and their icons tell them apart.
-   Only a web page's link keeps the accent, so the kinds stay apart whatever
-   accent the user picks. */
+   the prose's color at bold's weight over a faint underline, and their icons
+   tell them apart. Only a web page's link keeps the accent and the prose's
+   weight, so the kinds stay apart whatever accent the user picks. */
 .markdown-body a:is([data-file-link], [data-commit-link]) {
+  font-weight: 600;
   color: var(--fg-body);
   text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
 }
@@ -1799,15 +1800,16 @@ html[data-theme="light"] .file-pill {
      before it ends, and the hover fill, its rounded ends and its space
      (`icon-link`) and the underline follow each line it spans.
    - It reads as part of the sentence, as a mention in Slack or Linear does: the
-     prose's color at medium weight over a dotted underline in the faintest text
-     color, and the hover fill behind the mark and the text.
+     prose's color at bold's weight, as a file's or a commit's link, over a
+     dotted underline in the faintest text color, and the hover fill behind
+     the mark and the text.
    - The dot on the mark is cut out of the fill the link sits on, the message's
      surface or the hovered fill. */
 .agent-link {
   --fill-color: var(--surface-current);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--fg-body);
   text-decoration: underline dotted 1px;
   text-decoration-color: var(--fg-faint);
