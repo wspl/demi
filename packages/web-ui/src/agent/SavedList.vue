@@ -11,10 +11,9 @@ import Tooltip from '../ui/Tooltip.vue'
 import type { SavedRow } from './saved'
 
 /**
- * The list of messages saved for later under the composer, about four rows tall
- * and scrolling within.
- *
- * A fifth row shows half, so the list reads as one that goes on.
+ * The list of messages saved for later under the composer, at most half the
+ * window tall and scrolling within, so a long list is found by scrolling
+ * little.
  *
  * Each row is a menu row:
  *
@@ -127,7 +126,6 @@ function onSaved(action: 'edit' | 'send' | 'retry' | 'delete', id: string) {
 }
 
 .saved-list {
-  /* Four rows and a half, with their 1px gaps and the list's padding. */
-  max-height: calc(4.5 * 1.75rem + 4px + 0.5rem);
+  max-height: 50dvh;
 }
 </style>
