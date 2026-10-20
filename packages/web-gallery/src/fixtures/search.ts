@@ -157,7 +157,7 @@ export function searchConversations(): SearchableConversation[] {
     },
     {
       conversationId: 'search-wording',
-      title: 'Release note wording for the tier contract',
+      title: 'Draft the quarterly newsletter',
       archived: false,
       lastActiveAt: ago(5 * 60 * 60 * 1000),
       messages: [

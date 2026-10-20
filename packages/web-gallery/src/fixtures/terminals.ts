@@ -14,7 +14,7 @@ export const LIVE_TERMINAL_ID = 'term-watch'
 export function runningRunCommand(): TerminalRecord {
   return {
     id: 'term-merge',
-    title: 'Review and merge the reset wording',
+    title: 'Review and merge the pricing page copy',
     script: 'git merge --no-ff fix/reset-wording && bun run test',
     phase: 'running',
     startedAt: ago(92_000),

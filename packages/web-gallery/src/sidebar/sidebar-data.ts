@@ -140,7 +140,7 @@ export function demoConversations(): SidebarConversation[] {
     },
     {
       id: 'c-wording',
-      title: 'Release note wording for the tier contract',
+      title: 'Draft the quarterly newsletter',
       updatedAt: ago(5 * HOUR),
       status: 'idle',
       projectId: null,
@@ -183,7 +183,7 @@ export function demoConversations(): SidebarConversation[] {
     },
     {
       id: 'c-gallery',
-      title: 'Gallery overlay wells',
+      title: 'Compare three laptop models',
       updatedAt: ago(3 * HOUR),
       status: 'idle',
       projectId: 'p-demi',
@@ -201,7 +201,7 @@ export function demoConversations(): SidebarConversation[] {
     },
     {
       id: 'c-tabs',
-      title: 'Session tabs drag and drop',
+      title: 'Fix the flaky login test',
       updatedAt: ago(DAY + 2 * HOUR),
       status: 'idle',
       projectId: 'p-demi',
@@ -210,7 +210,7 @@ export function demoConversations(): SidebarConversation[] {
     },
     {
       id: 'c-shell',
-      title: 'Shell preview budget as a function of the context window',
+      title: 'Summarize the customer interviews',
       updatedAt: ago(3 * DAY),
       status: 'idle',
       projectId: 'p-demi',
@@ -220,7 +220,7 @@ export function demoConversations(): SidebarConversation[] {
     // renderfarm
     {
       id: 'c-thumbs',
-      title: 'Thumbnail pipeline on the new bucket',
+      title: 'Resize the product photos for the shop',
       updatedAt: ago(DAY + 9 * HOUR),
       status: 'aborted',
       projectId: 'p-assets',
