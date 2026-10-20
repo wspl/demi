@@ -251,7 +251,7 @@ async fn menu_once(
 
 /// The `changed` batches the watch sends until one names `key`: every
 /// other key they name but `tree`'s.
-async fn others_until(socket: &mut crate::files::Socket, key: &str) -> Vec<String> {
+pub(crate) async fn others_until(socket: &mut crate::files::Socket, key: &str) -> Vec<String> {
     let mut others = Vec::new();
     loop {
         let message = watch_message(socket).await;

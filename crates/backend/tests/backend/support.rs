@@ -1093,9 +1093,9 @@ impl TestBackend {
         self.backend.until_login_ended(&session.user.id, &login).await;
     }
 
-    /// The paths `session`'s user's device `device` is subscribed to on its
+    /// What `session`'s user's device `device` is subscribed to on its
     /// runner now.
-    pub async fn subscribed(&self, session: &Session, device: &str) -> Vec<String> {
+    pub async fn subscribed(&self, session: &Session, device: &str) -> Vec<demi_runner_protocol::files::Subject> {
         let device = demi_web_api_protocol::ids::DeviceId::try_from(device).unwrap();
         self.backend.subscribed(&session.user.id, &device).await
     }
