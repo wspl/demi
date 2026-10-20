@@ -51,10 +51,9 @@ impl ProviderQuota {
     }
 
     /// When the account can be used again after a usage limit received at
-    /// `received_at`, as its kept snapshot says (`failures-and-recovery.md`
-    /// § The unfinished turn): the latest reset still to come among the
-    /// windows it shows used up, since a request succeeds only once every
-    /// one has reset; `None` when it shows none.
+    /// `received_at`, as its kept snapshot says: the latest reset still to
+    /// come among the windows it shows used up, since a request succeeds
+    /// only once every one has reset; `None` when it shows none.
     pub fn used_up_until(&self, received_at: Timestamp) -> Option<Timestamp> {
         self.latest()?
             .windows

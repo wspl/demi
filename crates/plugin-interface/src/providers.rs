@@ -1,4 +1,4 @@
-//! The port's Providers service (`plugins.md` § The contract, `media.md`):
+//! The port's Providers service (`plugins.md` § The contract):
 //! the media models of one kind of the user's provider entries with what
 //! the catalog states of each and the entries that offer it, one image
 //! made through an entry's account or key, one video's job, asked for and
@@ -12,8 +12,8 @@ use demi_shared_types::{AudioKind, B64Bytes, Cost, Timestamp, VendorTrace};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The models of one kind the user's entries offer (`media.md` § What the
-/// agent is told): newest first by release date, those without one last.
+/// The models of one kind the user's entries offer: newest first by
+/// release date, those without one last.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MediaListing {
@@ -233,13 +233,12 @@ pub struct ModelEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
     /// Whether its vendor confirms the model that answered; one that does
-    /// not, ChatGPT, is shown as asked (`images.md` § Commands).
+    /// not, ChatGPT, is shown as asked.
     pub confirmed: bool,
     pub status: EntryStatus,
 }
 
-/// Why an entry would or would not make a call now (`media.md` § What the
-/// agent is told).
+/// Why an entry would or would not make a call now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "status", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum EntryStatus {
@@ -285,7 +284,7 @@ pub struct ImageAsk {
     pub model: String,
     /// The entry to make it through, by its name or id, when the agent
     /// names one; else the first that can, by the order of Settings ›
-    /// Providers (`media.md` § Which entry makes a call).
+    /// Providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
 }
@@ -347,8 +346,7 @@ pub struct MadeImage {
 }
 
 /// One video to make: from the prompt, with the frames and references
-/// given; an option left out is the vendor's default (`videos.md`
-/// § Commands).
+/// given; an option left out is the vendor's default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoAsk {
@@ -443,8 +441,7 @@ pub struct MadeVideo {
 }
 
 /// One audio file to make: speech from the text, or music or a sound
-/// effect from the prompt; an option left out is the vendor's default
-/// (`audio.md` § Commands).
+/// effect from the prompt; an option left out is the vendor's default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AudioAsk {
@@ -598,8 +595,7 @@ pub enum Unable {
     TurnedOff,
 }
 
-/// Why no image or video was made (`images.md` § Accounts and failures,
-/// `videos.md` § Accounts and failures); the plugin words it for its kind.
+/// Why no image or video was made; the plugin words it for its kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(
     tag = "type",

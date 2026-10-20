@@ -1,13 +1,37 @@
-//! A turn (`runtime.md` § A turn): write waiting input, request the
-//! provider, retry what waiting can fix and compact once after a refusal for
-//! its tokens, apply its events to the transcript as they stream, save, run
-//! the requested tools in steps, compact when the usage reached the
-//! threshold, and ask again until a response requests no tool, unless input
-//! arrived during the round. A request's size never compacts. Every
-//! wait on the provider, a hook or a tool is raced
-//! against the action's stop and dropped when it comes; a save is never
-//! raced. A message the user sends now cuts a provider request and a step's
-//! calls short without stopping anything (`runtime.md` § Send now).
+//! A turn: write waiting input, request the provider, retry what waiting can
+//! fix and compact once after a refusal for its tokens, apply its events to
+//! the transcript as they stream, save, run the requested tools in steps,
+//! compact when the usage reached the threshold, and ask again until a
+//! response requests no tool, unless input arrived during the round. A
+//! request's size never compacts. Every wait on the provider, a hook or a
+//! tool is raced against the action's stop and dropped when it comes; a save
+//! is never raced. A message the user sends now cuts a provider request and
+//! a step's calls short without stopping anything.
+//!
+//! ```text
+//! action starts
+//!   prepare the input: a new block, or the rewound or unwound history
+//!   land a recorded model switch, compacting first if the new window needs it
+//!   compact first when the history is over the threshold
+//!   |
+//!   +-> write waiting input at the boundary
+//!   |   request the provider, retrying what waiting can fix
+//!   |     refused for its tokens: compact once, request again
+//!   |     refused for its size: the turn fails
+//!   |   apply the events to the transcript as they stream
+//!   |   save, then run the requested tools in steps
+//!   |   usage at the threshold: compact, append `resume`, loop
+//!   |   input arrived during the round: loop
+//!   +-- tools ran and none asked to end the turn: loop
+//!   |
+//! action ends: discard the human steers still pending, save, start the next
+//! ```
+//!
+//! A human steer is written only at the boundary before a provider request,
+//! never after a stream or a tool step: until the model is about to read it,
+//! it stays pending where the user can still recall it. Agent messages and
+//! command reports use all three boundaries. No provider receives input while
+//! it streams.
 
 use std::rc::Rc;
 
@@ -50,7 +74,7 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
 
 /// An accepted edit's replacement turn: its first request carries the model
 /// it was prepared with, and a switch that waited for the edit lands at the
-/// next continuation boundary (`runtime.md` § Model switch).
+/// next continuation boundary.
 pub(super) async fn run_replacement(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -73,7 +97,7 @@ async fn run_turn(
         cancel.check()?;
         // The turn needs the model's next answer from here: after its input,
         // a step's calls, or a response that the input arriving meanwhile
-        // continues (`rendering.md` § Waiting for the model).
+        // continues.
         s.update(SessionCore::start_waiting);
         if switch_first && apply_switch(s, cancel).await? {
             s.update(|core| core.push_resume(None));
@@ -90,8 +114,8 @@ async fn run_turn(
         let recover = reached.is_some();
         continues = true;
         cancel.check()?;
-        // A session copy's answer is its summary: a call in it never runs
-        // (`compaction.md` § The summary request).
+        // A session copy's answer is its summary: a call in it never
+        // runs.
         if s.read(|core| core.one_request) {
             s.release_events();
             return Ok(());
@@ -175,7 +199,7 @@ async fn write_inputs(s: &SessionShared) -> Result<(), TurnError> {
 }
 
 /// Writes the waiting input but the human steers, which stay pending until
-/// the request that carries them (`runtime.md` § Input).
+/// the request that carries them.
 async fn write_inputs_after_step(s: &SessionShared) -> Result<(), TurnError> {
     write_taken(s, Take::AllButSteers).await
 }
@@ -187,9 +211,9 @@ async fn write_taken(s: &SessionShared, take: Take) -> Result<(), TurnError> {
     Ok(())
 }
 
-/// Takes what the user sent now at this boundary (`runtime.md` § Send now):
-/// a queued message ends the turn here, once all waiting input is written,
-/// and true says so; a steer goes on as any input that arrived.
+/// Takes what the user sent now at this boundary: a queued message ends the
+/// turn here, once all waiting input is written, and true says so; a steer
+/// goes on as any input that arrived.
 async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
     match s.update(SessionCore::take_send_now) {
         Some(SendNow::Message) => {
@@ -200,8 +224,8 @@ async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
     }
 }
 
-/// Resolves once the user sent a message now (`runtime.md` § Send now),
-/// which cuts a provider request short.
+/// Resolves once the user sent a message now, which cuts a provider
+/// request short.
 async fn sent_now(s: &SessionShared) {
     let mut arrivals = s.arrivals.subscribe();
     if arrivals.wait_for(|arrivals| arrivals.send_now).await.is_err() {
@@ -221,15 +245,13 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
 
 /// One provider request, from building it to the end of its stream,
 /// retrying transient failures while everything the attempt wrote can be
-/// unwound (`failures-and-recovery.md` § Retries). A request refused for
-/// its tokens compacts once and goes again (`compaction.md` § When
-/// compaction runs); one refused for its size does not. `continues` says it
-/// continues a running turn, so a pass is followed by a `resume` block.
-/// Returns the trigger of a pass when the usage of a response that
-/// requested a tool reached the compaction threshold. The stage stays
-/// streaming across the waits, so steers keep being accepted. A message the
-/// user sent now cuts the stream, or the wait before a retry, short: what
-/// streamed stays.
+/// unwound. A request refused for its tokens compacts once and goes again;
+/// one refused for its size does not. `continues` says it continues a
+/// running turn, so a pass is followed by a `resume` block. Returns the
+/// trigger of a pass when the usage of a response that requested a tool
+/// reached the compaction threshold. The stage stays streaming across the
+/// waits, so steers keep being accepted. A message the user sent now cuts
+/// the stream, or the wait before a retry, short: what streamed stays.
 async fn stream(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -324,8 +346,7 @@ async fn compact_before_request(
 
 /// Drops what a failed attempt wrote, cutting the history to its first
 /// `cut` blocks. The row says Requesting again, so the node waits for the
-/// model again, unless its wait runs on from before any output
-/// (`rendering.md` § Waiting for the model).
+/// model again, unless its wait runs on from before any output.
 async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
     let blocks = s.read(|core| core.transcript.blocks()[..cut - core.transcript.start()].to_vec());
     persist::commit_rewrite(s, blocks).await?;
@@ -338,7 +359,7 @@ async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
 async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequest, TurnError> {
     // Only the context the model receives counts as seen: a block before
     // the last compaction boundary is summarized away, so its source tells
-    // the model again (`transcript.md` § Context).
+    // the model again.
     let (seen, turn) = s.read(|core| {
         let seen: Vec<(String, String)> = core
             .replayed()
@@ -416,8 +437,7 @@ async fn read(
     let mut reached = None;
     // The frames of an answered response are held until the turn goes on;
     // more of the run after it is the turn going on, as when Claude Code
-    // answers two messages of one run in turns of their own (`rendering.md`
-    // § Order and delivery).
+    // answers two messages of one run in turns of their own.
     let mut holding = false;
     let mut cut = std::pin::pin!(sent_now(s));
     loop {
@@ -467,8 +487,7 @@ async fn read(
                 // Every response's usage is checked, so a misreport is
                 // logged; only a call that requested a tool starts a pass:
                 // one that ended the turn as answered is not continued, and
-                // the pass before the next turn compacts (`compaction.md` §
-                // When compaction runs).
+                // the pass before the next turn compacts.
                 if let ProviderEvent::Response(Some(usage)) = &event
                     && let Some(trigger) = s.config.compaction.reached(window, model, usage)
                     && !answered
@@ -477,11 +496,10 @@ async fn read(
                 }
                 // The page says Requesting under text the model finished,
                 // so its end starts the wait again within the run, until
-                // something else shows (`rendering.md` § Waiting for the
-                // model); the response's end is the run's, after which the
-                // turn ends or its next request waits. One update, so an
-                // event that shows, such as a whole call, ends that wait
-                // before any page hears of it.
+                // something else shows; the response's end is the run's,
+                // after which the turn ends or its next request waits. One
+                // update, so an event that shows, such as a whole call,
+                // ends that wait before any page hears of it.
                 let within_run = !matches!(event, ProviderEvent::Response(_));
                 s.update(|core| {
                     if completes_text && core.complete_tail_text() && within_run {
@@ -497,8 +515,7 @@ async fn read(
     Ok(Ok(reached))
 }
 
-/// Marks open answer text at the end complete, so a Fork may end at it
-/// (`conversation-fork.md` § Eligibility).
+/// Marks open answer text at the end complete, so a Fork may end at it.
 fn complete_text(s: &SessionShared) {
     s.update(|core| {
         core.complete_tail_text();
@@ -535,8 +552,7 @@ async fn run_tools(
     while let Some(first) = calls.next() {
         cancel.check()?;
         if s.read(SessionCore::send_now_pending) {
-            // The user sent a message now: no other call starts
-            // (`runtime.md` § Send now).
+            // The user sent a message now: no other call starts.
             for call in std::iter::once(first).chain(calls.by_ref()) {
                 record_result(s, &call, ToolOutcome::not_run(), None).await;
             }
@@ -724,7 +740,7 @@ async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
 
 /// Records the result of `call`, and watches the command it left running;
 /// its media are stored before it enters the transcript, and the session
-/// holds their bytes (`transcript.md` § Media).
+/// holds their bytes.
 async fn record_result(
     s: &Rc<SessionShared>,
     call: &PendingCall,

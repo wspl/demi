@@ -1,8 +1,7 @@
-//! What fills the context (`compaction.md` § What fills the context): the
-//! rows of the context card, one figure each, computed from what the
-//! session holds, with no request to count. Messages is the rest of the
-//! estimate after the rows above it, so the rows add up to the estimate by
-//! construction.
+//! What fills the context: the rows of the context card, one figure each,
+//! computed from what the session holds, with no request to count.
+//! Messages is the rest of the estimate after the rows above it, so the
+//! rows add up to the estimate by construction.
 
 use std::collections::HashSet;
 

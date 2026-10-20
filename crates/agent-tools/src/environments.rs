@@ -298,9 +298,8 @@ impl Environments {
     }
 
     /// Lets go of every command of every environment, which runs on and
-    /// which the node takes up again when it is restored (`runtime.md`
-    /// § Dispose and restore); an environment made from now on stops its
-    /// commands.
+    /// which the node takes up again when it is restored; an environment
+    /// made from now on stops its commands.
     pub async fn dispose(&self) {
         self.disposed.set(true);
         let environments: Vec<Rc<dyn ShellEnvironment>> = self

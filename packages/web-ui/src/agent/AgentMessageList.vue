@@ -136,7 +136,7 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   /** Regenerate on the last answer: a new answer to the message `blockId`. */
   regenerate: [blockId: string]
-  /** Show the `to`th version at the place of the block `blockId` (`message-editing.md` § Versions). */
+  /** Show the `to`th version at the place of the block `blockId`. */
   switchVersion: [blockId: string, to: number]
   retryLoad: []
   /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
@@ -181,8 +181,7 @@ const {
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
  * The answer whose footer offers Regenerate: the last one after the message
- * the page offers to edit, since regenerating is that edit
- * (`message-editing.md` § Regenerate and the Up Arrow key).
+ * the page offers to edit, since regenerating is that edit.
  */
 const regenerateId = computed(() => {
   const target = editableUserId.value
@@ -205,7 +204,7 @@ function regenerate(): void {
  * regenerated answer's in its footer. A subagent's transcript shows none,
  * since only the conversation's own path switches; switching waits, as an
  * edit does, while the agent works, anything waits to be sent or the page
- * offers no edit (`readOnly`) (`message-editing.md` § Versions).
+ * offers no edit (`readOnly`).
  */
 const versionChoices = computed(() => {
   const choices = new Map<string, VersionChoice>()

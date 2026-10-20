@@ -6,9 +6,9 @@ import type { CredentialDto } from '../api/generated/web-api'
 // Settings › Credentials asks Confirm It’s You before the eye shows a secret
 // when the backend answers that the browser has not confirmed in the last
 // five minutes, and reveals once the user has; within those five minutes the
-// backend answers the values, and the eye asks nothing (`credentials.md`).
-// The page is the product's panel on a page of happy-dom; the backend is a
-// played channel and a stubbed fetch. A few milliseconds.
+// backend answers the values, and the eye asks nothing. The page is the
+// product's panel on a page of happy-dom; the backend is a played channel
+// and a stubbed fetch. A few milliseconds.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/settings/credentials' })
 // After the page, since the components ask for its elements and the played
@@ -178,9 +178,8 @@ async function edit(): Promise<HTMLElement> {
 }
 
 // The editor of a credential kept for a while says when it is removed and
-// offers Keep Always, which saves it kept always and says nothing more of it
-// (`credentials.md`). Planted defect: Keep Always that saves no keep. A few
-// milliseconds.
+// offers Keep Always, which saves it kept always and says nothing more of
+// it. Planted defect: Keep Always that saves no keep. A few milliseconds.
 test('Keep Always in the editor saves the credential kept always', async () => {
   const bodies = patches()
   const { app, product } = await openPanel([linear])

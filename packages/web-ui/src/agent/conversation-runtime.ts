@@ -111,8 +111,7 @@ export class ConversationRuntime {
   private unsubscribe: (() => void) | null = null
   /**
    * The clients whose session has listed its pending steers, the last of the
-   * frames that show the conversation as it opens
-   * (`runtime.md` § Pending steers).
+   * frames that show the conversation as it opens.
    */
   private readonly listedSteers = new WeakSet<ConversationClient>()
   /** Consecutive connections lost or not made since the session last opened. */
@@ -138,9 +137,9 @@ export class ConversationRuntime {
    * Sends a message; resolves once the session holds it, in the transcript
    * or the queue. A connection lost before the session confirmed it fails
    * nothing: the send waits for the connection to come back, then sends the
-   * message again with its id, which the session takes only once
-   * (`runtime.md` § Messages and the queue), unless what the reopened
-   * conversation shows already holds it. `comments` are those it carries.
+   * message again with its id, which the session takes only once, unless
+   * what the reopened conversation shows already holds it. `comments` are
+   * those it carries.
    */
   async submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     this.options.state.lastError = null
@@ -278,11 +277,10 @@ export class ConversationRuntime {
   }
 
   /**
-   * Shows the `to`th version at the place of the block `blockId`
-   * (`message-editing.md` § Versions), from the transcript the page shows;
-   * the path's new blocks arrive as the transcript's patches. Nothing is
-   * sent before the transcript has a version, which the controls cannot be
-   * shown without.
+   * Shows the `to`th version at the place of the block `blockId`, from the
+   * transcript the page shows; the path's new blocks arrive as the
+   * transcript's patches. Nothing is sent before the transcript has a
+   * version, which the controls cannot be shown without.
    */
   async switchVersion(blockId: string, to: number): Promise<void> {
     const client = await this.ensureOpen()
@@ -316,11 +314,10 @@ export class ConversationRuntime {
   /**
    * Removes a steer or a queued message that waits for the agent; resolves once
    * the session answers it removed, and rejects with `RemovalRefusedError` when
-   * the session answers that the message had gone on (`runtime.md` § Pending
-   * steers). A connection lost before the answer fails nothing: once the
-   * conversation is open again and has listed what waits, a message still
-   * listed is asked for again; one the transcript holds went on, and one held
-   * nowhere was removed.
+   * the session answers that the message had gone on. A connection lost before
+   * the answer fails nothing: once the conversation is open again and has
+   * listed what waits, a message still listed is asked for again; one the
+   * transcript holds went on, and one held nowhere was removed.
    */
   async removeWaiting(id: string): Promise<void> {
     const state = this.options.state
@@ -737,8 +734,7 @@ export class ConversationRuntime {
         break
       // A view never sends `close`, so a `closed` means another client
       // disposed the tree: the view opens it again, as after a lost
-      // connection, and the backend restores it (`rendering.md` § Connections
-      // and the live tree).
+      // connection, and the backend restores it.
       case 'closed':
       case 'disconnected':
         this.releaseConnection()

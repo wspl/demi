@@ -1,14 +1,13 @@
-//! An agent reads its own earlier history (`compaction.md` § Reading the
-//! earlier history, § What the model receives afterward): after a
-//! compaction the next request tells the model that `demi conversation
-//! history` finds and reads what the summary left out; `read` prints a
-//! range of the agent's transcript, messages and texts whole and other
-//! blocks as one line each, up to about 8,000 characters; `open` prints a
-//! command's script and its output a page at a time, a thinking block, a
-//! subagent's report, or saves a message's attachment under the scratch
-//! directory; a subagent reads its own transcript, where its brief is its
-//! parent's. The model is the scripted family of the subagent scenarios,
-//! the device a real runner. No test calls a real model.
+//! An agent reads its own earlier history: after a compaction the next
+//! request tells the model that `demi conversation history` finds and
+//! reads what the summary left out; `read` prints a range of the agent's
+//! transcript, messages and texts whole and other blocks as one line
+//! each, up to about 8,000 characters; `open` prints a command's script
+//! and its output a page at a time, a thinking block, a subagent's
+//! report, or saves a message's attachment under the scratch directory; a
+//! subagent reads its own transcript, where its brief is its parent's.
+//! The model is the scripted family of the subagent scenarios, the device
+//! a real runner. No test calls a real model.
 
 use std::sync::Arc;
 use std::time::Duration;

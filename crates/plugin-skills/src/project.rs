@@ -1,10 +1,16 @@
-//! Project skills (`skills.md` § Project skills): the skills a project
-//! carries in `.agents/skills` and `.claude/skills` of its directory, and
-//! nowhere else, found through Host reads that never wake the Host. Each
-//! round of the search reads every path it needs in one request. The backend
-//! keeps the result and searches again when what the search names to watch
-//! changes: the two skills directories, whether they exist yet or not, and
-//! each skill's `SKILL.md`.
+//! Project skills: the skills a project carries in `.agents/skills` and
+//! `.claude/skills` of its directory, and nowhere else, found through Host
+//! reads that never wake the Host. Each round of the search reads every path
+//! it needs in one request. The backend keeps the result and searches again
+//! when what the search names to watch changes: the two skills directories,
+//! whether they exist yet or not, and each skill's `SKILL.md`.
+//!
+//! Project skills are always available: they come with the project, their
+//! files stay where they are, and the catalog names each `SKILL.md` at its own
+//! path. Demi does not check them first: the user chose the directory, and the
+//! agent runs its code in any case. Only these two directories of the
+//! project's own directory are read, never one above it, a subagent's own
+//! working directory, the user's home or another agent's configuration.
 
 use demi_host_interface::HostPaths;
 use demi_plugin_interface::{

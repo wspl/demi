@@ -239,7 +239,7 @@ export function gallerySubagents(): SubagentRecord[] {
       ...runsOn(null, OPUS),
       phase: 'running',
       // Its turn ended while the search it started runs on: it shows no
-      // Requesting row (`rendering.md` § Frame protocol).
+      // Requesting row.
       sessionPhase: 'idle',
       contextUsage: usageAt(0.58),
       startedAt: ago(134_000),
@@ -286,7 +286,7 @@ export function gallerySubagents(): SubagentRecord[] {
       pendingCalls: [],
       // The call's result went back 31 seconds ago and the model has not
       // answered yet: its run's row shimmers meanwhile, and the server tells
-      // the wait from then (`rendering.md` § Waiting for the model).
+      // the wait from then.
       waitingSince: Date.now() - 31_000,
       history: wholeHistory([
         user(
@@ -329,8 +329,7 @@ export function gallerySubagents(): SubagentRecord[] {
       failures: {},
       pendingCalls: [],
       // Its turn began 12 seconds ago and the model has not answered yet:
-      // the view says Requesting from then, however often it opens
-      // (`rendering.md` § Waiting for the model).
+      // the view says Requesting from then, however often it opens.
       waitingSince: Date.now() - 12_000,
       history: wholeHistory([
         user(

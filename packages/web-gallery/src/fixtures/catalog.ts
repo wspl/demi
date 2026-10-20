@@ -85,7 +85,7 @@ export interface UsageShape {
   summary?: number
 }
 
-/** The room the backend's threshold keeps in `window` for a model that writes 20,000 tokens or more (`compaction.md` § When compaction runs). */
+/** The room the backend's threshold keeps in `window` for a model that writes 20,000 tokens or more. */
 function compactionBuffer(window: number): number {
   return window - Math.max(window - 33_000, Math.floor(window / 2))
 }

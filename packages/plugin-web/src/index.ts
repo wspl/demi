@@ -1,7 +1,7 @@
-// The `web` plugin's page (`plugin-pages.md`, `web.md` § Settings › Web
-// Search): its settings section, under Agent in the settings dialog only,
-// with no entry in the app's sidebar, and the types of its
-// state, parameters and results, generated from the plugin's manifest.
+// The `web` plugin's page (`plugin-pages.md`): its Web Search settings
+// section, under Agent in the settings dialog only, with no entry in the
+// app's sidebar, and the types of its state, parameters and results,
+// generated from the plugin's manifest.
 import { Globe } from '@lucide/vue'
 import { definePage } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'

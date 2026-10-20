@@ -1,11 +1,11 @@
-//! Instructions on a paired device (`instructions.md`): the user's personal
-//! instructions and the project's files reach the model as one block, whole,
-//! one file per directory from the repository's root down to the working
-//! directory, with the list the page shows; an unchanged block is sent
-//! once, and a change sends the block again. The project's files and skills
-//! are kept by the runner's file watch: an edit reaches a request without a
-//! search per request, a Host that stops answering holds no request, and a
-//! directory's first search holds a request for at most 5 seconds.
+//! Instructions on a paired device: the user's personal instructions and the
+//! project's files reach the model as one block, whole, one file per
+//! directory from the repository's root down to the working directory, with
+//! the list the page shows; an unchanged block is sent once, and a change
+//! sends the block again. The project's files and skills are kept by the
+//! runner's file watch: an edit reaches a request without a search per
+//! request, a Host that stops answering holds no request, and a directory's
+//! first search holds a request for at most 5 seconds.
 
 use std::time::Duration;
 

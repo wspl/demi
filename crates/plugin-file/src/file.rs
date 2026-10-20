@@ -6,10 +6,10 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ViewArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index): when to use it, and the shape of a call, since a
-/// model takes up a tool by the example it has seen. Its example starts at
-/// the margin, as `demi file edit`'s help says why.
+/// The group's entry in the model's capability index: when to use it, and
+/// the shape of a call, since a model takes up a tool by the example it
+/// has seen. Its example starts at the margin, as `demi file edit`'s help
+/// says why.
 const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it, and whenever you want to see an image, a video or a PDF: `view` shows you one from a file or a pipe, as in `demi browser screenshot t1 | demi file view`. Read text with cat, sed -n or rg. One `edit` creates and changes several files and keeps each file's line endings, CRLF included, then you build:
 demi file edit <<'EOF' && cargo check
 src/stream.rs

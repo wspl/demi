@@ -1,10 +1,9 @@
-//! The roots whose running turn a graceful shutdown began to interrupt
-//! (`failures-and-recovery.md` § The unfinished turn): the shutdown marks
-//! each such root before it aborts the turn, so a shutdown cut short still
-//! leaves a mark for every root it began to interrupt, and the next start
-//! finds them here, without reading any conversation's database, and
-//! resumes each once. A crash writes no mark. A mark goes with its
-//! conversation.
+//! The roots whose running turn a graceful shutdown began to interrupt:
+//! the shutdown marks each such root before it aborts the turn, so a
+//! shutdown cut short still leaves a mark for every root it began to
+//! interrupt, and the next start finds them here, without reading any
+//! conversation's database, and resumes each once. A crash writes no mark.
+//! A mark goes with its conversation.
 
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 

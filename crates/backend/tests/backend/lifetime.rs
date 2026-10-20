@@ -485,9 +485,8 @@ async fn a_command_lost_after_a_shutdown_interrupted_its_call_is_reported_by_the
     backend.until_online(&master, alpha.id(), true).await;
 
     // The interrupted turn holds the loss until the user acts, written into
-    // it as it arrives (`failures-and-recovery.md` § The unfinished turn),
-    // named by the call's title, which the command's record kept from its
-    // start.
+    // it as it arrives, named by the call's title, which the command's
+    // record kept from its start.
     let lost = || async {
         transcript(&backend, &master, FIRST)
             .await

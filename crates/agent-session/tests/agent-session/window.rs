@@ -1,8 +1,7 @@
-//! What a session reads of the blocks before its window
-//! (`runtime.md` § What a session holds): a page, a switch, a Fork and a
-//! turn's end each take what they need from the store, and none copies the
-//! path before the window into the session. Each test writes a path into a
-//! memory store and restores the session from it.
+//! What a session reads of the blocks before its window: a page, a switch,
+//! a Fork and a turn's end each take what they need from the store, and
+//! none copies the path before the window into the session. Each test
+//! writes a path into a memory store and restores the session from it.
 
 use demi_agent_session::ForkSeed;
 use demi_agent_store::{CheckpointState, CheckpointUpdate, testing::test_model};

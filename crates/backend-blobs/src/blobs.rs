@@ -282,8 +282,7 @@ async fn with_name(bytes: Bytes) -> Result<(Bytes, BlobRef), ObjectError> {
 
 /// The namespace as a session reaches it through its tree store: the
 /// conversation owner's, where a tool's medium is stored as its result enters
-/// the transcript and the replayed media are read back (`transcript.md`
-/// § Media).
+/// the transcript and the replayed media are read back.
 impl BlobStore for UserBlobs {
     fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
         Box::pin(async move {

@@ -1,21 +1,21 @@
-//! The conversation socket (`rendering.md` § Frame protocol, `backend.md`
-//! § Page synchronization): `WS /api/conversations/:id/stream`, moved into
-//! the user's shard once upgraded. The socket decodes each message into a
-//! client frame and hands it to the conversation's agent connection, one at a
-//! time in arrival order; the connection's outbox carries every server frame
-//! back, with the failure facts of the error blocks it brings; its media are
-//! references into the owner's blobs already (`transcript.md` § Media). A frame the
-//! backend refuses before the agent sees it is answered with an `error`
-//! frame: one that is not a valid frame (`invalid_frame`), one sent while the
-//! conversation is archived (`conversation_archived`), an `open` of a
-//! conversation that has no model yet (`model_not_selected`) or whose
-//! provider the user may no longer use (`provider_not_found`), and one that
-//! storage failed to prepare (`frame_delivery_failed`); a message that is not
-//! JSON closes the socket. An `open` takes the conversation's settings order,
-//! so the tree opens with the model selection the record holds. A
-//! `send_saved` becomes the `send` or `steer` of the message saved for later
-//! it names, which leaves the list as the session takes it; one the list no
-//! longer holds is answered with a `rejected` frame (`saved_not_found`).
+//! The conversation socket (`backend.md` § Page synchronization): `WS
+//! /api/conversations/:id/stream`, moved into the user's shard once upgraded.
+//! The socket decodes each message into a client frame and hands it to the
+//! conversation's agent connection, one at a time in arrival order; the
+//! connection's outbox carries every server frame back, with the failure facts
+//! of the error blocks it brings; its media are references into the owner's
+//! blobs already. A frame the backend refuses before the agent sees it is
+//! answered with an `error` frame: one that is not a valid frame
+//! (`invalid_frame`), one sent while the conversation is archived
+//! (`conversation_archived`), an `open` of a conversation that has no model yet
+//! (`model_not_selected`) or whose provider the user may no longer use
+//! (`provider_not_found`), and one that storage failed to prepare
+//! (`frame_delivery_failed`); a message that is not JSON closes the socket. An
+//! `open` takes the conversation's settings order, so the tree opens with the
+//! model selection the record holds. A `send_saved` becomes the `send` or
+//! `steer` of the message saved for later it names, which leaves the list as
+//! the session takes it; one the list no longer holds is answered with a
+//! `rejected` frame (`saved_not_found`).
 
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -654,11 +654,10 @@ enum Prepared {
 }
 
 /// The answer to a frame the backend refused: an edit's or a Regenerate's
-/// `edit_result`, a
-/// removal's `remove_result` `gone_on`, since it reached no session to hold
-/// what it names (`runtime.md` § Pending steers), a send's `rejected` as
-/// the page's `command`, a saved message's whichever frame it became, and
-/// an `error` frame for any other.
+/// `edit_result`, a removal's `remove_result` `gone_on`, since it reached
+/// no session to hold what it names, a send's `rejected` as the page's
+/// `command`, a saved message's whichever frame it became, and an `error`
+/// frame for any other.
 fn refused_frame(frame: ClientFrame, command: ClientFrameKind, code: ErrorCode, message: String) -> ServerFrame {
     if matches!(command, ClientFrameKind::Send | ClientFrameKind::SendSaved) {
         // A send is refused as itself, so the page marks its message not

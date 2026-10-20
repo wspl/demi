@@ -171,9 +171,8 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
  * user's own Stop continues, and anything else is finished or still running. An
  * error that ended no turn, such as a Compact whose summary request failed, a
  * compaction's boundary and marker, and the agent messages and command reports
- * a failed turn took after it ended leave the turn before them as it was
- * (`failures-and-recovery.md` § The unfinished turn). Both are the session's
- * `resume`; the word tells the cause.
+ * a failed turn took after it ended leave the turn before them as it was. Both
+ * are the session's `resume`; the word tells the cause.
  */
 export function turnRecovery(
   phase: 'idle' | string,
@@ -191,8 +190,8 @@ export function turnRecovery(
 
 /**
  * Whether the unfinished turn among `blocks` failed because its request was
- * too large for the vendor (`failures-and-recovery.md` § Retries): Compact
- * then summarizes the media away at any share, and Resume continues the turn.
+ * too large for the vendor: Compact then summarizes the media away at any
+ * share, and Resume continues the turn.
  */
 export function refusedForSize(blocks: readonly RecordCandidate[]): boolean {
   const end = turnRecord(blocks)
@@ -286,9 +285,8 @@ function turnRecord<T extends RecordCandidate>(blocks: readonly T[]): T | undefi
 
 /**
  * Whether the transcript ends with an error record, read past the agent
- * messages and command reports a failed root's turn took after it ended
- * (`failures-and-recovery.md` § The unfinished turn): the record still says
- * the failure, so nothing below repeats it.
+ * messages and command reports a failed root's turn took after it ended:
+ * the record still says the failure, so nothing below repeats it.
  */
 export function endsWithErrorRecord(blocks: readonly RecordCandidate[]): boolean {
   return blocks.findLast((block) => !isLateInput(block))?.type === 'error'

@@ -1,5 +1,5 @@
 //! How a run fails when the vendor refuses the request, does not answer, or
-//! breaks off (`failures-and-recovery.md`).
+//! breaks off.
 
 use std::time::Duration;
 

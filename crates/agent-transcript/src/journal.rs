@@ -1,9 +1,9 @@
-//! The record of what changed in a transcript since it was last committed
-//! (`transcript.md` § Patches and versions): each change as the patch a client
-//! applies, with the block's value as it was when the change was made, and
-//! the rows it changed, which the next save writes (§ Saving). A history
-//! rewrite is not recorded here: it is saved before it is published, and the
-//! transcript publishes its `replace` patch itself.
+//! The record of what changed in a transcript since it was last committed:
+//! each change as the patch a client applies, with the block's value as it was
+//! when the change was made, and the rows it changed, which the next save
+//! writes. A history rewrite is not recorded here: it is saved
+//! before it is published, and the transcript publishes its `replace` patch
+//! itself.
 
 use std::collections::BTreeSet;
 

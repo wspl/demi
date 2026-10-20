@@ -3,8 +3,8 @@ import { afterEach, expect, test } from 'bun:test'
 
 // A credential request's card says how long the credential is kept, as the
 // agent decided it, and offers no choice of it; Save answers the values
-// alone (`credentials.md` § A credential, § Requests and routes). One Vue
-// app on a happy-dom page; a few ms besides the page's start.
+// alone. One Vue app on a happy-dom page; a few ms besides the page's
+// start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')

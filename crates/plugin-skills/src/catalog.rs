@@ -1,6 +1,6 @@
-//! The catalog block (`skills.md` § What the model sees): every skill
-//! available to a node, sorted by name, in the format other agents and the
-//! Agent Skills guide use, in at most 8,000 characters.
+//! The catalog block: every skill available to a node, sorted by name, in
+//! the format other agents and the Agent Skills guide use, in at most
+//! 8,000 characters.
 
 use demi_shared_types::xml_escaped;
 

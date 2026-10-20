@@ -30,7 +30,7 @@ pub struct CommandRecord {
     /// command names, whatever became of the call (`crates/agent-session/src/reports.rs`).
     title: String,
     /// That call's script, which the pages' view of the command carries
-    /// with its title (`rendering.md` § Frame protocol).
+    /// with its title.
     script: Arc<str>,
     started: Instant,
     last_output: Instant,

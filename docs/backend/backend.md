@@ -106,7 +106,7 @@ request for that user and loads nothing ahead of need: the Cloud's device
 record and its latest reset load when the Cloud is first needed, and
 conversations, agent trees and devices when they are first used, and
 an agent tree that no socket watches closes again once it is idle
-([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)).
+(`crates/agent-server/src/server/tree.rs`).
 The machine manager's death events reach one edge task, which calls the shard
 of the device's owner.
 
@@ -351,9 +351,9 @@ code, is defined once in the contract crates and generated for the web app
 
 Each page that has a conversation open uses one WebSocket at
 `/api/conversations/:id/stream`, carrying the agent protocol's client and
-server frames ([Frame protocol](../agent/rendering.md#frame-protocol)); the
+server frames (`crates/conversation-socket-protocol/src/lib.rs`); the
 sockets of several pages attach to the conversation's one live tree
-([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)). After
+(`crates/agent-server/src/server/tree.rs`). After
 the upgrade the socket moves into the user's shard, which serves it until it
 closes. Execution context comes from the conversation's server-side target;
 the page cannot override it with an arbitrary frame cwd.
@@ -391,7 +391,7 @@ task of each channel reads the summary and sends it to its page.
 The channel and the conversation sockets stay apart. A conversation's frames
 are a log the page applies in order, so the socket's outbox keeps every frame
 and closes a page that falls 4,096 frames behind
-([Order and delivery](../agent/rendering.md#order-and-delivery)); the channel
+(`crates/conversation-socket-protocol/src/lib.rs`); the channel
 sends current values, which it can merge, so it never closes a slow page. On
 one shared socket, a conversation that lagged would close the page's channel
 and every other conversation with it, and a transcript's handshake or a burst
@@ -413,7 +413,7 @@ not block readable history (`crates/backend-providers/src/llm/catalog_cache.rs`)
 ## Media by reference
 
 Transcript blocks hold their media by blob reference
-([Media](../agent/transcript.md#media)), so the frames that carry them carry
+(`crates/agent-store/src/media.rs`), so the frames that carry them carry
 references, and the conversation socket sends each frame as the agent wrote
 it: it neither stores nor reads media. A blob is stored before the first frame
 that names it, so the page can fetch every reference a frame carries, when
@@ -448,7 +448,7 @@ native media block of an image, a video or a PDF, which references the
 upload's own blob; a command that needs the file fetches it with
 `demi attachment download`. An image enters fitted to what every
 provider accepts
-([Images in the transcript](../agent/transcript.md#images-in-the-transcript)):
+(`crates/agent-store/src/images.rs`):
 when fitting changes it, its block references the fitted image's blob, which
 the socket stores first. The socket hands the session the bytes of the
 block's medium, those it read to write the file or the fitted ones, so the
@@ -457,7 +457,7 @@ missing or inaccessible upload becomes an explicit attachment-unavailable text
 block.
 An edit's references to the files the edited message holds pass to the
 agent as they came, and the session resolves them from that message
-([Files the edit keeps](../agent/message-editing.md#files-the-edit-keeps)).
+(`crates/agent-session/src/editing.rs`).
 
 A remote-file reference retains its device and absolute path instead of
 copying bytes. The backend checks ownership and connectivity before adding
@@ -467,7 +467,7 @@ Its contents can change before that read.
 the wire shape.
 
 Resolving uploads keeps the socket's frame order
-([Order and delivery](../agent/rendering.md#order-and-delivery)). A frame whose
+(`crates/conversation-socket-protocol/src/lib.rs`). A frame whose
 resolution fails reports an error without affecting the frames behind it, and
 closing the socket stops resolution that has not reached the session yet. The
 underlying persistence and blob ownership are defined in [Storage](storage.md).
@@ -476,7 +476,7 @@ underlying persistence and blob ownership are defined in [Storage](storage.md).
 
 An error block keeps the vendor's failure record as it arrived; what the
 page shows from it is read when the block is sent
-([Failures and recovery](../agent/failures-and-recovery.md#reading-a-failure)).
+(`crates/provider-common/src/failure.rs`).
 For every error block in a transcript it sends, the backend asks the provider
 named in the block's model selection to read the record, and attaches the
 result as `failures`, keyed by block id, beside the blocks:
@@ -558,7 +558,7 @@ change, and nothing about it needs tracing. A file's preview, its changes
 and the file tree show the ID with a read that failed as every other view
 does. An
 error the page words from a turn's failure record keeps its own diagnostics
-([Failures and recovery](../agent/failures-and-recovery.md)).
+(`crates/provider-common/src/failure.rs`).
 
 **The server log.** Beside its standard error, which the process supervisor
 keeps, the backend writes the same events, as `DEMI_LOG` selects them, to
@@ -619,7 +619,7 @@ At startup the backend:
    so that a retry starts the Cloud
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
    creations whose destination root was committed are published
-   ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
+   (`crates/backend-user-shard/src/conversation/fork.rs`).
    Running commands are taken up as their runners connect, and a command
    that reports restores its conversation's tree
    (`crates/backend-remote-host/src/device_jobs.rs`). The manager's
@@ -628,7 +628,7 @@ At startup the backend:
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
    The turns a graceful shutdown interrupted are resumed in the background,
    each owner's on its shard; the start waits for none of them
-   ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)).
+   (`crates/agent-transcript/src/cut.rs`).
 7. Opens its listener.
 8. Reports readiness to systemd, whose unit waits for it without a timeout,
    since a migration can take minutes
@@ -654,11 +654,11 @@ runs on a Host: commands and Clouds go on, and the next start takes them up
    reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and a
    command it watched keeps running
-   ([Dispose and restore](../agent/runtime.md#dispose-and-restore)); before
+   (`crates/agent-session/src/lib.rs`); before
    it aborts a root's running turn, the shard marks the root in
    `interrupted_turns`, so the next start resumes it however far the shutdown
    got
-   ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)). Claude
+   (`crates/agent-transcript/src/cut.rs`). Claude
    Code CLI installs are cancelled; the next need starts them again. A Cloud
    boot waiting for its runner ends at once, since the closed listener lets
    no runner connect, and saves what the sandbox wrote, as a failed boot

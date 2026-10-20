@@ -3,7 +3,7 @@
 Compaction needs a genuinely large conversation, and building one costs
 hundreds of thousands of real tokens. So one such session was built once and
 is replayed here against the real DeepSeek: the real-model check of
-[Compaction](../../../../docs/agent/compaction.md#acceptance), level 3.
+compaction, the third level of its verification.
 
 `large-context-fixture.json.gz` is that session: 237 blocks that compacted
 four times over about 1.08 million tokens, with its working directory, in the

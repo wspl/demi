@@ -139,7 +139,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     a command's output views, which the shell status frame and the shell
     contract are built from (`StreamView`, `OutputView`, `BinaryStdout`);
   - agent messages (`AgentMessage`, `CompletionId`), among them the user's
-    decision on a [permission request](../agent/permissions.md#the-decisions-message);
+    decision on a `crates/backend-permissions/src/lib.rs`;
   - the session phase, queued messages and pending steers;
   - provider failure facts (`ProviderFailureFacts`, `ProviderErrorDiagnostics`);
   - what the product shows of a provider entry: its model catalog
@@ -193,7 +193,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Public boundary:** the types above. The agent resolves the files a
   frame's content refers to through the backend (`agent-server`'s
   `ContentResolver`) before the session sees the content. The protocol's
-  behavior is in [Frame protocol](../agent/rendering.md#frame-protocol).
+  behavior is in Frame protocol (`crates/conversation-socket-protocol/src/lib.rs`).
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
 
@@ -242,10 +242,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   registration runs); argv parsing (`Node::select`, `Selected::parse`,
   `Parsed::validate`), which reads each field's schema to convert its tokens;
   the argument check both ends run (`Leaf::check_arguments`); a group's
-  [permission categories](../agent/permissions.md#categories) and a leaf's
+  permission categories (`crates/command-declarations/src/lib.rs`) and a leaf's
   `permission`, with their registration checks and the help line; help
   rendering (`Node::help`, `HELP_DEFAULTS`); a group's
-  [index entry](../agent/system-prompt.md) (`Group::index_entry`, at most
+  index entry (`crates/agent-tools/src/prompt.rs`) (`Group::index_entry`, at most
   `MAX_INDEX_ENTRY` characters) and the capability index rendered from the
   entries (`render_index`, opened by `INDEX_OPENER`); and the settings every declaration's JSON
   Schema is generated with (`command_schema_settings`).
@@ -277,7 +277,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `fetch.get`, with their limits.
 - **Public boundary:** the types above. `plugin-web` declares the `demi web fetch`
   commands from them and `demi-fetch` decodes invocations with them.
-  Behavior: [Web search and fetch](../agent/web.md#demi-web-fetch).
+  Behavior: Web search and fetch (`crates/command-package-fetch/src/lib.rs`).
 - **Must not:** implement operations or perform IO.
 
 #### `command-package-browser-protocol`
@@ -606,7 +606,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   Providers (`crates/backend-providers/src/lib.rs`),
   Models (`crates/shared-types/src/catalog.rs`),
   Usage and quota (`crates/backend-providers/src/usage/mod.rs`) and
-  [Failures and recovery](../agent/failures-and-recovery.md).
+  Failures and recovery (`crates/provider-common/src/failure.rs`).
 - **Must not:** depend on concrete providers, the agent runtime, `host-interface` or a
   Host implementation.
 
@@ -681,7 +681,7 @@ Each crate implements the provider contract for one vendor family.
     that reports a command's end and `demi shell output` read alike; where an
     environment takes the numbers of its commands, the
     conversation's sequences (`Numbers`,
-    [Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees));
+    `crates/shared-types/src/ids.rs`);
     and the keeper to which an environment hands what a command leaves when it ends,
     its whole output, its media and its edit copies, which the product
     implements over its storage
@@ -721,14 +721,14 @@ Each crate implements the provider contract for one vendor family.
     records and checkpoints they carry), which also reads the records of
     commands' outputs for `demi shell output` and gives out the numbers of the
     conversation's sequences that the model sees
-    ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees));
+    (`crates/shared-types/src/ids.rs`);
   - the media rules (`media`): a medium stored once when it enters a
     transcript, the bytes a session holds for its requests and the model's
     view of them, over the `BlobStore` its tree store gives it, and the blobs
     each block references, media and edit copies, which a store indexes for
     [retention](../backend/storage.md#retention); the fitting of an image as
     it enters, with the `image` crate (`images`,
-    [Images in the transcript](../agent/transcript.md#images-in-the-transcript));
+    `crates/agent-store/src/images.rs`);
   - the run and request rules and the lists of changed files a shell call
     stores (`changes`), from the edit copies through a blob reader, for the
     session and for the block format 3 migration alike
@@ -765,8 +765,8 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the runtime of one session: `AgentSession`, a handle over one
   session's `SessionCore`, with its turns, input admission, steers and
   command reports, cancellation, retry and resume, compaction
-  ([Compaction](../agent/compaction.md)), message editing
-  ([Message editing](../agent/message-editing.md)), persistence through the
+  (`crates/agent-session/src/compaction.rs`), message editing
+  (`crates/agent-session/src/editing.rs`), persistence through the
   tree store, and its events and status; and the tool-call contract a session
   runs its tools through (`ToolInvocation`, `ToolOutcome`, `ToolEffect`,
   `ToolFailure`), which it defines and the tools implement.
@@ -777,7 +777,7 @@ Each crate implements the provider contract for one vendor family.
   contract;
   `agent_session::testing` supplies the compaction request's instruction
   (`COMPACTION_SUMMARY_INSTRUCTION`). Behavior:
-  [Agent runtime](../agent/runtime.md).
+  Agent runtime (`crates/agent-session/src/lib.rs`).
 - **Must not:** know tools, nodes, trees or connections; a session runs a
   tool only through the tool-call contract.
 
@@ -794,7 +794,7 @@ Each crate implements the provider contract for one vendor family.
   the subagent profiles as data (`Profile`); and the assembly of a node's
   system prompt from the identity, the harness guide, the capability index
   and the model's identity line (`system_prompt`, `ModelIdentity`,
-  [System prompt](../agent/system-prompt.md)).
+  `crates/agent-tools/src/prompt.rs`).
 - **Public boundary:** the items above; `agent_tools::testing` supplies a
   Host type for agents without shell tools (`NoHost`, `NoShells`) and the
   readers of a shell tool's result text (`field`, `shown_output`).
@@ -821,7 +821,7 @@ Each crate implements the provider contract for one vendor family.
     (`title`);
   - the admission of a message from the user into a node of an open tree,
     or into its nearest live ancestor when the node is closed, for the
-    decision on a [permission request](../agent/permissions.md#the-decisions-message).
+    decision on a permission request (`crates/backend-permissions/src/lib.rs`).
 - **Public boundary:** the items above; `agent_server::testing` supplies provider
   runtimes that play scripts (`ScriptedProviders`), uploads a frame's files
   resolve to (`TestFiles`) and a test client that drives a connection
@@ -831,7 +831,7 @@ guide (`ServerDeps::guide`), the profiles, the
   context sources, the Host resolver, the providers, a shell environment per
   Host and a tree store; the agent never knows which shell engine runs or
   which plugin a command, a text or a context source comes from.
-  Behavior: [Agent runtime](../agent/runtime.md) and
+  Behavior: Agent runtime (`crates/agent-session/src/lib.rs`) and
   `crates/agent-server/src/server/tree/supervisor.rs`.
 - **Rules:** the node assembly is the one place that creates a node's session;
   the supervisor asks it for a child and never builds one. A session stores
@@ -937,7 +937,7 @@ or on another plugin.
 
 #### `plugin-skills`
 
-- **Owns:** [skills](../agent/skills.md): sources with their fetch, pin and
+- **Owns:** skills (`crates/plugin-skills/src/lib.rs`): sources with their fetch, pin and
   limits, through `gix` on the blocking pool; the skills they hold; the values
   and blobs it keeps of them; the Host directories of the skills that are on;
   its context blocks with the catalog of the skills that are on; the project
@@ -951,7 +951,7 @@ or on another plugin.
 
 #### `plugin-web`
 
-- **Owns:** [web search and fetch](../agent/web.md): the `demi web` group,
+- **Owns:** web search and fetch (`crates/plugin-web/src/web.rs`): the `demi web` group,
   its `search` leaf and its calls to Exa through the port, the REST API with a
   key or the smallest MCP client of `mcp.exa.ai` signed in or anonymous, and
   its `fetch` leaf's declaration, bound to `demi.fetch`; the OAuth sign-in it names in
@@ -969,7 +969,7 @@ or on another plugin.
   prompt read from stdin, the reads of input images through the port's file
   reads, the words of a media refusal, and the `models` listing and
   one-model view on the shared renderer
-  ([Generated media](../agent/media.md)).
+  (`crates/plugin-media/src/lib.rs`).
 - **Public boundary:** those functions, called by `plugin-image`,
   `plugin-video` and later `plugin-audio`.
 - **Must not:** declare a command group or hold an HTTP client or a
@@ -977,7 +977,7 @@ or on another plugin.
 
 #### `plugin-image`
 
-- **Owns:** [image generation](../agent/images.md)'s commands: the `demi
+- **Owns:** image generation (`crates/plugin-image/src/lib.rs`)'s commands: the `demi
   image` group with its help and words, the image written to stdout, and
   the checks of the result's shape and transparency.
 - **Public boundary:** its factory.
@@ -986,7 +986,7 @@ or on another plugin.
 
 #### `plugin-audio`
 
-- **Owns:** [audio generation](../agent/audio.md)'s commands: the `demi
+- **Owns:** audio generation (`crates/plugin-audio/src/lib.rs`)'s commands: the `demi
   audio` group with its help and words, the audio written to stdout, a
   vendor's raw PCM wrapped as WAV, and the check of the file it reads with
   `shared-types`' audio reader.
@@ -996,7 +996,7 @@ or on another plugin.
 
 #### `plugin-video`
 
-- **Owns:** [video generation](../agent/videos.md)'s commands: the `demi
+- **Owns:** video generation (`crates/plugin-video/src/lib.rs`)'s commands: the `demi
   video` group with its help and words, the job's progress lines on
   stderr, the video written to stdout, and the check of the MP4 it reads
   with `shared-types`' MP4 reader.
@@ -1334,7 +1334,7 @@ demi-backend (executable: configuration, composition)
 
 #### `backend-permissions`
 
-- **Owns:** [conversation permissions](../agent/permissions.md): the check
+- **Owns:** conversation permissions (`crates/backend-permissions/src/lib.rs`): the check
   every `rpc` call passes before its handler, against the leaf's declared
   category and the conversation's grants; the requests a refused call raises,
   with their replacement, queue and withdrawal at archive; the decisions, the
@@ -1363,7 +1363,7 @@ demi-backend (executable: configuration, composition)
   with the agent server's dependencies composed from the plugin host, the
   user's subagent settings, the product's instructions and the execution
   context source, the conversation socket, history and fork, the
-  [permission check](../agent/permissions.md#the-check) in the rpc dispatch
+  permission check (`crates/backend-permissions/src/lib.rs`) in the rpc dispatch
   with the delivery of a decision's message,
   summaries and titles, the providers a session resolves, the changes of
   provider entries and their models that Settings and the `demi providers`
@@ -1490,7 +1490,7 @@ demi-backend (executable: configuration, composition)
   never through the executable. Its `testing` feature adds `Backend::hold_commits`, which
   holds the commits of the conversations' checkpoints (`CommitHold`) for the
   scenarios that stop a save at its commit
-  ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
+  (`crates/agent-session/src/editing.rs`),
   `Backend::file_gate`, a conversation's file gate, whose lease is the
   conversation's work to the idle rules and whose waiting entrants show an
   operation a transition holds, and two holds of a flow at one of its steps
@@ -1583,7 +1583,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the independently released `demi.fetch` resident program: an
   HTTP fetch from the Host, HTML to Markdown, the parts it prints, the Host's
   15-minute cache of fetched pages, and the files it saves
-  ([`demi web fetch`](../agent/web.md#demi-web-fetch)). It holds no conversation state.
+  (`crates/command-package-fetch/src/lib.rs`). It holds no conversation state.
 - **Public boundary:** the executable.
 - **Must not:** run JavaScript, send a credential or a cookie, or be linked
   into the runner.
@@ -1731,7 +1731,7 @@ under `packages/`.
   editor and its draft and submission lifecycle (`agent/message-editor/`, the
   tiptap editor a user message is written and shown in); the user Markdown
   dialect; sidebar layout and list interaction; the
-  [permission](../agent/permissions.md#what-the-user-sees) card, the
+  permission (`packages/web-ui/src/permissions/PermissionRequestCard.vue`) card, the
   needs-you mark and the decision's receipt row;
   workspace and remote-file
   selection; file previews and the file tree as primitives; the work panel
@@ -1855,8 +1855,8 @@ Each plugin page package is **private** and has the same boundary:
 | --- | --- |
 | `@demicodes/plugin-browser` | The `browser` work panel kind and the live view of its tabs (`packages/plugin-browser/src/index.ts`): the browser's messages, tabs, clipboard, dialogs and controls over the SDK's live view, with the plugin's page types and the browser's live view messages generated into `src/generated/` |
 | `@demicodes/plugin-mobile` | The `mobile` work panel kind and the live view of the conversation's simulators (`crates/command-package-mobile/src/live.rs`): the device tabs and their toolbar, the device's frame, touches and keys over the SDK's live view, with the plugin's page types and the simulators' live view messages generated into `src/generated/` |
-| `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
-| `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |
+| `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry (`packages/plugin-skills/src/index.ts`), with the plugin's page types generated into `src/generated/` |
+| `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry (`packages/plugin-web/src/index.ts`), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service (`packages/web-ui/src/files/ChangeView.vue`) |
 | `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service (`packages/web-ui/src/files/FileView.vue`) |
 

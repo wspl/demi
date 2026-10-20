@@ -1,4 +1,4 @@
-//! What the model receives of a transcript (`transcript.md` § Replay).
+//! What the model receives of a transcript.
 
 use demi_agent_store::{
     media::{HeldMedia, ModelView},

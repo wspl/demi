@@ -36,8 +36,8 @@ pub struct RunningCommand {
     /// That call's title, which the command's reports name and the pages'
     /// view of it carries.
     pub title: String,
-    /// That call's script, which the pages' view of the command carries
-    /// (`rendering.md` § Frame protocol).
+    /// That call's script, which the pages' view of the command
+    /// carries.
     pub script: String,
     /// How often its call asked it to report, or only its end when none
     /// (`crates/agent-session/src/reports.rs`).

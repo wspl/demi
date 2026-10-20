@@ -969,8 +969,7 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     // The answer measures more than half the model's million-token window,
-    // from which the user may compact (`compaction.md` § When compaction
-    // runs).
+    // from which the user may compact.
     vendor.respond(answer(&["An old shot."], 600_000, 1));
     // A message longer than the user's words a pass keeps, 20,000 tokens,
     // as replay carries it: two texts of 16,000 wide characters, 16,000
@@ -989,8 +988,7 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     // The vendor refuses the nine shots' request, so the latest answered
     // request is the first: the pass summarizes what it carried, the old
     // shot's message, whose text the boundary keeps up to the budget and
-    // without the shot, and keeps what came after it, the nine shots
-    // (`compaction.md` § One pass).
+    // without the shot, and keeps what came after it, the nine shots.
     let refusal = json!({ "type": "error", "error": { "type": "invalid_request_error", "message": "try later" } });
     vendor.respond(
         demi_provider_common::testing::MockResponse::status(400).chunk(refusal.to_string()),

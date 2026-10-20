@@ -41,8 +41,7 @@ impl GroupBuilder {
     /// The group's entry in the model's capability index: what it does,
     /// when to use it and when not, in at most
     /// [`MAX_INDEX_ENTRY`](demi_command_declarations::MAX_INDEX_ENTRY)
-    /// characters, which registration checks (`system-prompt.md`
-    /// § Capability index).
+    /// characters, which registration checks.
     pub fn index_entry(mut self, entry: impl Into<String>) -> Self {
         self.index_entry = Some(entry.into());
         self
@@ -55,10 +54,9 @@ impl GroupBuilder {
         self
     }
 
-    /// Declares a permission category the group's leaves may name
-    /// (`permissions.md` § Categories): `id` is `<group>.<name>`, `action`
-    /// completes "Allow this conversation to …", and `description` says
-    /// what a grant allows.
+    /// Declares a permission category the group's leaves may name: `id` is
+    /// `<group>.<name>`, `action` completes "Allow this conversation to
+    /// …", and `description` says what a grant allows.
     pub fn permission(
         mut self,
         id: impl Into<String>,
@@ -299,7 +297,7 @@ impl LeafBuilder {
     /// The string field of the input that names a host the call may bring
     /// into the conversation: the dispatch resolves it once, asks the user
     /// for that host when the conversation may not reach it, and hands it to
-    /// the handler as the invocation's `brought` (`permissions.md` § Hosts).
+    /// the handler as the invocation's `brought`.
     pub fn brings_host(mut self, field: impl Into<String>) -> Self {
         self.leaf.brings_host = Some(BringsHost { field: field.into() });
         self

@@ -17,11 +17,10 @@ export interface CommandEnd {
 }
 
 /**
- * How a command ended, as a shell row or a report row marks it (`rendering.md`
- * § Rendering boundary, § Command reports), that a stop waits for its
- * runner to end it (`crates/runner-shell/src/job.rs`), or that its
- * start waits for its Host, an offline device (`crates/backend-host-access/src/access.rs`): a row marks only what is not going as planned, and
- * a call's row and its notice mark it alike.
+ * How a command ended, as a shell row or a report row marks it, that a stop waits for its runner to
+ * end it (`crates/runner-shell/src/job.rs`), or that its start waits for its Host, an offline
+ * device (`crates/backend-host-access/src/access.rs`): a row marks only what is not going as
+ * planned, and a call's row and its notice mark it alike.
  */
 export type CommandEndMark =
   | { kind: 'failed', exitCode: number }
@@ -52,9 +51,9 @@ export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
 }
 
 /**
- * How long a command runs before its row wears the time as a tag
- * (`rendering.md` § Rendering boundary), and a run before its title says it
- * (§ Work groups): a quicker one shows none, so it does not flash one.
+ * How long a command runs before its row wears the time as a tag, and a run
+ * before its title says it (§ Work groups): a quicker one shows none, so it
+ * does not flash one.
  */
 export const SHOW_TIME_AFTER_MS = 3000
 
@@ -64,13 +63,11 @@ export function runningTime(elapsedMs: number | null): string | null {
 }
 
 /**
- * What an open shell row says above the output (`rendering.md` § Rendering
- * boundary): how long the command has run, while it runs and `end` is
- * none, or how it ended and after how long, given how long it ran or has
- * run, `elapsedMs`. A lost command says why, as its tag does, and no time;
- * one a stop waits for says so, as its tag does (`crates/runner-shell/src/job.rs`), and so does one whose start waits for
- * its Host (`crates/backend-host-access/src/access.rs`); none while the
- * time is unknown.
+ * What an open shell row says above the output: how long the command has run, while it runs and
+ * `end` is none, or how it ended and after how long, given how long it ran or has run, `elapsedMs`.
+ * A lost command says why, as its tag does, and no time; one a stop waits for says so, as its tag
+ * does (`crates/runner-shell/src/job.rs`), and so does one whose start waits for its Host
+ * (`crates/backend-host-access/src/access.rs`); none while the time is unknown.
  */
 export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | null): string | null {
   if (end?.status === 'lost') {

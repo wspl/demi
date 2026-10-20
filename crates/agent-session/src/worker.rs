@@ -1,8 +1,7 @@
-//! The action worker (`runtime.md` § Actions, § A turn): one task per
-//! session runs one action at a time. An action holds the tree's admission
-//! while it runs, records how it ended, saves its checkpoint, and then starts
-//! the next waiting action; the session shows idle only once that save has
-//! committed and nothing waits.
+//! The action worker: one task per session runs one action at a time. An
+//! action holds the tree's admission while it runs, records how it ended,
+//! saves its checkpoint, and then starts the next waiting action; the session
+//! shows idle only once that save has committed and nothing waits.
 
 use std::rc::{Rc, Weak};
 
@@ -193,8 +192,7 @@ async fn execute(
 ) -> Result<(), TurnError> {
     match kind {
         // The input is written before a recorded switch lands, so a switch
-        // that fails or is stopped ends a turn that holds it
-        // (`failures-and-recovery.md` § The unfinished turn).
+        // that fails or is stopped ends a turn that holds it.
         ActionKind::Send { content, comments, automation } => {
             let preamble = cancel.guard(s.runtime.preamble()).await?;
             s.update(|core| {
@@ -249,7 +247,7 @@ async fn execute(
 
 /// Discards the last input turn and runs it again from its input: the block
 /// that opened it stays, with the turn's steers and every agent message after
-/// it (`failures-and-recovery.md` § Recovery is one mechanism).
+/// it.
 async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let turn = {
         let _turn = s.persist_gate.acquire().await;

@@ -18,9 +18,9 @@ use super::{
 };
 
 /// The permission category the profile changes need, which the `agent`
-/// group declares (`crates/agent-server/src/server/tree/profiles.rs`, `permissions.md`
-/// § Categories): its id, its action and what a grant allows. They change
-/// a setting every conversation of the user's reads.
+/// group declares (`crates/agent-server/src/server/tree/profiles.rs`): its
+/// id, its action and what a grant allows. They change a setting every
+/// conversation of the user's reads.
 pub(super) const PROFILES_CATEGORY: (&str, &str, &str) = (
     "agent.profiles",
     "change subagent profiles",

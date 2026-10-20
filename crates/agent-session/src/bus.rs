@@ -1,8 +1,8 @@
-//! Delivery of a session's events (`runtime.md` § A turn): each event, once
-//! its change is complete, reaches every listener in the order the changes
-//! happened. A listener may call back into the session; what that causes is
-//! delivered after the current event has reached every listener. Events
-//! may be held and then delivered together, such as a turn's end.
+//! Delivery of a session's events: each event, once its change is complete,
+//! reaches every listener in the order the changes happened. A listener may
+//! call back into the session; what that causes is delivered after the
+//! current event has reached every listener. Events may be held and then
+//! delivered together, such as a turn's end.
 
 use std::{
     cell::{Cell, RefCell},

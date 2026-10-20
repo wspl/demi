@@ -1,10 +1,10 @@
-//! The video role of a provider (`videos.md` § Vendors): a provider that
-//! makes videos lists its video models and runs one job for its account or
-//! key in three steps, the ask, the reads of the job's state and the
-//! download; the backend chooses the entry and the account, paces the
-//! reads and bounds the job. What every vendor's request has in common is
-//! in [`crate::media`]; the xAI Videos shape, which a Grok subscription, an
-//! xAI key and a compatible API share, is in [`xai`].
+//! The video role of a provider: a provider that makes videos lists its
+//! video models and runs one job for its account or key in three steps, the
+//! ask, the reads of the job's state and the download; the backend chooses
+//! the entry and the account, paces the reads and bounds the job. What
+//! every vendor's request has in common is in [`crate::media`]; the xAI
+//! Videos shape, which a Grok subscription, an xAI key and a compatible API
+//! share, is in [`xai`].
 
 pub mod xai;
 
@@ -120,8 +120,7 @@ pub enum VideoOption {
 }
 
 /// The options `request` gives that `shape` has no field for, which are
-/// not sent (`videos.md` § Vendors, the option table), in the order of
-/// the table.
+/// not sent, in the order of the table of the shapes' options.
 pub fn unsent(shape: VideoShape, request: &VideoRequest) -> Vec<VideoOption> {
     let lacks: &[VideoOption] = match shape {
         VideoShape::Grok | VideoShape::XaiVideos => &[VideoOption::Seed],

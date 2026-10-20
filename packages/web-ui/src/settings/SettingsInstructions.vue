@@ -10,11 +10,10 @@ import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 
 /**
- * The Instructions section (`instructions.md` § Personal instructions): one
- * text every conversation's agents follow, beside each project's AGENTS.md
- * or CLAUDE.md. The draft follows the saved text until the user edits it;
- * Save is offered while the draft differs and fits, and an empty draft
- * removes the instructions. The host saves.
+ * The Instructions section: one text every conversation's agents follow,
+ * beside each project's AGENTS.md or CLAUDE.md. The draft follows the saved
+ * text until the user edits it; Save is offered while the draft differs and
+ * fits, and an empty draft removes the instructions. The host saves.
  */
 const props = defineProps<{
   /** The saved text; empty when the user has none. */

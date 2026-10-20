@@ -168,7 +168,7 @@ pub struct ApiKeyConfig {
     pub models: Option<ConfiguredModels>,
     /// A compatible entry's image shape, which its user chose; none until
     /// then, and always none for a vendor entry, whose shape is its
-    /// vendor's (`media.md` § Which entries make which media).
+    /// vendor's.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -289,7 +289,7 @@ impl ProviderEntry {
         }
     }
 
-    /// The switch of `kind` (`media.md` § Which entries make which media).
+    /// The switch of `kind`.
     pub fn generates(&self, kind: MediaKind) -> bool {
         match kind {
             MediaKind::Image => self.image_generation,

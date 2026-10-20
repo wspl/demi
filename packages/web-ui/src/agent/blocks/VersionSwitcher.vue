@@ -7,8 +7,8 @@ import Tooltip from '../../ui/Tooltip.vue'
 
 /**
  * ‹ 2/3 › under an edited message and in a regenerated answer's footer, as
- * ChatGPT and Claude show it (`message-editing.md` § Versions): the arrows
- * show the version before and after, and wait while the agent works.
+ * ChatGPT and Claude show it: the arrows show the version before and
+ * after, and wait while the agent works.
  */
 defineProps<{
   choice: VersionChoice

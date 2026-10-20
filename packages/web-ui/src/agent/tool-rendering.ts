@@ -2,10 +2,9 @@ import { nonEmptyString, truncate } from '@demicodes/utils'
 import { t } from './locales/text'
 
 /**
- * How a call renders (`rendering.md` § Rendering boundary): the one tool,
- * `shell`, has its own row; a call of any other name, such as a
- * `shell_status` or a `yield` a transcript kept from before they were
- * removed, is a generic tool card.
+ * How a call renders: the one tool, `shell`, has its own row; a call of
+ * any other name, such as a `shell_status` or a `yield` a transcript kept
+ * from before they were removed, is a generic tool card.
  */
 export type ToolRenderKind = 'shell' | 'generic'
 
@@ -24,9 +23,9 @@ const STATUS_VALUE_OPTIONS = new Set(['--wait', '--interval'])
 /**
  * The commands a script looks at when all it runs is `demi shell status`,
  * by their numbers, each once; null for a script that does anything else,
- * which runs a command of its own (`rendering.md` § Work groups). Commands
- * joined by a new line, `;`, `&&` or `||` are each a look; a pipe, a
- * redirection or a substitution makes the script more than a look.
+ * which runs a command of its own. Commands joined by a new line, `;`,
+ * `&&` or `||` are each a look; a pipe, a redirection or a substitution
+ * makes the script more than a look.
  */
 export function shellStatusLooks(script: string): string[] | null {
   const looked = new Set<string>()

@@ -1,4 +1,4 @@
-//! The token estimates compaction decides by (`compaction.md` § Estimates).
+//! The token estimates compaction decides by.
 
 use demi_agent_store::{
     media::{HeldMedia, ModelView},

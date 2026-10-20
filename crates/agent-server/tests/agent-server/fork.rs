@@ -397,9 +397,8 @@ async fn until_loss_waits(store: &MemoryTreeStore, node: &NodeId) {
 
 // A dev server the root started was lost while the conversation was idle:
 // its report waits for the next turn, and a Fork from the root's answer
-// still succeeds, its new root holding no report of the source's command
-// (`conversation-fork.md` § The fork seed). Under a second on the paused
-// clock.
+// still succeeds, its new root holding no report of the source's command.
+// Under a second on the paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_no_report() {
     let script = demi_provider_common::testing::ScriptedRuntime::new([

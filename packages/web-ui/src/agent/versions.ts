@@ -2,9 +2,9 @@ import type { Versions } from '@demicodes/protocol'
 import type { MessageListBlock } from './pending-steers'
 
 /**
- * The versions a switcher offers (`message-editing.md` § Versions): where
- * the shown one stands, `index` of `count` from 1, whether switching waits
- * for the agent, and how to choose another.
+ * The versions a switcher offers: where the shown one stands, `index` of
+ * `count` from 1, whether switching waits for the agent, and how to choose
+ * another.
  */
 export interface VersionChoice extends Versions {
   disabled: boolean

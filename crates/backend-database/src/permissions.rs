@@ -1,18 +1,16 @@
-//! A conversation's requests (`storage.md` § Control records,
-//! `permissions.md` § Requests, `credentials.md`): the permission requests
-//! refused commands raise, the credential requests of agents that wait for
-//! the user to save a credential, and the allowance requests of reads of a
-//! credential the conversation may not use yet; each undecided until the
-//! user decides it, and a decided one kept until its message is in the
-//! asking agent's checkpoint. And what the decisions record: the grants,
-//! one per conversation and category, and the allowances, one per
-//! conversation and credential, each kept for the conversation's life. A
-//! permission request names the category its call lacked or the host it
-//! asks to reach (`permissions.md` § Hosts): an allow of a host puts a
-//! device on the list of hosts the conversation may reach, or lets it pair
-//! a computer's code once. Each change reads and writes in one transaction,
-//! so a check and a decision never interleave. A permission request asks for one thing: a category,
-//! or a host (`permissions.md` § Hosts).
+//! A conversation's requests (`storage.md` § Control records): the
+//! permission requests refused commands raise, the credential requests of
+//! agents that wait for the user to save a credential, and the allowance
+//! requests of reads of a credential the conversation may not use yet; each
+//! undecided until the user decides it, and a decided one kept until its
+//! message is in the asking agent's checkpoint. And what the decisions
+//! record: the grants, one per conversation and category, and the
+//! allowances, one per conversation and credential, each kept for the
+//! conversation's life. A permission request asks for one thing, a category
+//! its call lacked or a host it asks to reach: an allow of a host puts a
+//! device on the list of hosts the conversation may reach, or lets it pair a
+//! computer's code once. Each change reads and writes in one transaction, so
+//! a check and a decision never interleave.
 
 use std::collections::BTreeMap;
 
@@ -44,14 +42,14 @@ const REQUEST_COLUMNS: &str = "id, conversation_id, kind, categories, credential
 struct Categories(#[garde(inner(length(min = 1)))] Vec<String>);
 
 /// What a call needs and its conversation may lack: one category's grant,
-/// or one host to reach; no command needs both (`permissions.md` § Hosts).
+/// or one host to reach; no command needs both.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Needed {
     Category(String),
     Host(AskedHost),
 }
 
-/// The host a call brings into its conversation (`permissions.md` § Hosts).
+/// The host a call brings into its conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AskedHost {
     /// A device of the user's, the Cloud's included.
@@ -200,12 +198,11 @@ pub struct Undelivered {
 }
 
 impl ControlService {
-    /// The check of one call (`permissions.md` § The check): whether the
-    /// conversation has the grant `needed` names or may reach its host, and
-    /// when it lacks it, the request `id` recorded for `command`, which
-    /// replaces the undecided requests of the same need from the same
-    /// agent. A pairing code the user let the conversation pair is used up
-    /// by the call it passes.
+    /// The check of one call: whether the conversation has the grant
+    /// `needed` names or may reach its host, and when it lacks it, the
+    /// request `id` recorded for `command`, which replaces the undecided
+    /// requests of the same need from the same agent. A pairing code the
+    /// user let the conversation pair is used up by the call it passes.
     pub async fn check_permission(
         &self,
         conversation: ConversationId,
@@ -262,7 +259,7 @@ impl ControlService {
 
     /// Uses up the pass to pair the computer under `code` that the user's
     /// allow gave the conversation, as the call that waited for the allow
-    /// is dispatched (`permissions.md` § Hosts); none there changes nothing.
+    /// is dispatched; none there changes nothing.
     pub async fn use_pairing_pass(&self, conversation: ConversationId, code: String) -> Result<(), StorageError> {
         self.call(move |connection, _| use_pass(connection, &conversation, &code))
             .await
@@ -307,19 +304,18 @@ impl ControlService {
         .await
     }
 
-    /// Decides the undecided request `request` (`permissions.md`
-    /// § Requests). An allow of a permission request records the grant of
-    /// its category, or puts its device on the conversation's list or lets
-    /// the conversation pair its code once, and decides it with every
-    /// undecided permission request of the conversation that is now
-    /// complete; an
-    /// allow of an allowance request records the allowance and decides
-    /// every undecided request of the conversation to use that credential;
-    /// a deny decides the request alone, and forgets a credential request,
-    /// whose agent waits for the answer rather than a message. A credential
-    /// request is allowed only with its values ([`Self::answer_credential`]).
-    /// Answers the requests it decided, whose messages the backend delivers
-    /// next, and the credential request it denied.
+    /// Decides the undecided request `request`. An allow of a permission
+    /// request records the grant of its category, or puts its device on the
+    /// conversation's list or lets the conversation pair its code once, and
+    /// decides it with every undecided permission request of the conversation
+    /// that is now complete; an allow of an allowance request records the
+    /// allowance and decides every undecided request of the conversation to
+    /// use that credential; a deny decides the request alone, and forgets a
+    /// credential request, whose agent waits for the answer rather than a
+    /// message. A credential request is allowed only with its values
+    /// ([`Self::answer_credential`]). Answers the requests it decided, whose
+    /// messages the backend delivers next, and the credential request it
+    /// denied.
     pub async fn decide_permission(
         &self,
         conversation: ConversationId,
@@ -428,9 +424,8 @@ impl ControlService {
         .await
     }
 
-    /// Records a credential request of the agent `agent` (`credentials.md`
-    /// § Commands) as `id`, unless the user has a credential of the name
-    /// with other fields.
+    /// Records a credential request of the agent `agent` as `id`, unless
+    /// the user has a credential of the name with other fields.
     pub async fn ask_credential(
         &self,
         conversation: ConversationId,
@@ -469,11 +464,10 @@ impl ControlService {
     }
 
     /// Answers the credential request `request` with `values`, kept as the
-    /// request's `keep` says (`credentials.md` § Requests and routes), in one
-    /// transaction: it saves a new credential of the request's name, or new
-    /// values of the saved one with the same fields; allows the
-    /// conversation to use it; and forgets the request, whose agent waits
-    /// for the answer.
+    /// request's `keep` says, in one transaction: it saves a new credential
+    /// of the request's name, or new values of the saved one with the same
+    /// fields; allows the conversation to use it; and forgets the request,
+    /// whose agent waits for the answer.
     pub async fn answer_credential(
         &self,
         conversation: ConversationId,
@@ -565,13 +559,12 @@ impl ControlService {
     }
 
     /// The field `field` of the user's credential `name`, for the agent
-    /// `agent` of the conversation (`credentials.md` § Using a credential):
-    /// its value when the conversation may use the credential, which is
-    /// then its last use; otherwise the allowance request recorded for
-    /// `command`, in place of the undecided one of the same credential from
-    /// the same agent. With `asks_since`, every read asks, whatever the
-    /// conversation's grants: an allowance covers one read, the first after
-    /// it and after that time.
+    /// `agent` of the conversation: its value when the conversation may use
+    /// the credential, which is then its last use; otherwise the allowance
+    /// request recorded for `command`, in place of the undecided one of the
+    /// same credential from the same agent. With `asks_since`, every read
+    /// asks, whatever the conversation's grants: an allowance covers one
+    /// read, the first after it and after that time.
     #[allow(clippy::too_many_arguments)]
     pub async fn read_credential(
         &self,

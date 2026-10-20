@@ -184,9 +184,16 @@ crate::id!(
     RequestId
 );
 
-/// A sequence of the numbers the model knows a conversation's things by
-/// (`runtime.md` § Identifiers the model sees): each is given once, in order,
-/// across crashes, restores and Forks.
+/// A sequence of the numbers the model knows a conversation's things by: each
+/// is given once, in order, across crashes, restores and Forks.
+///
+/// Every identifier the model reads or writes is a short number, or a letter
+/// and a number, within the scope it uses it in: a UUID would cost about 20
+/// tokens in every result and request that replays it, and a short number is
+/// copied without a slip. The model's text carries no identifier it has no
+/// use for: a command report names no report, and a missing medium is named
+/// by its kind, not by its blob's hash. A path keeps the identifiers it is
+/// made of, since several backends and users can share one machine.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]

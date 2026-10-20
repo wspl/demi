@@ -190,8 +190,7 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
 /// Waits until `command`'s next progress report is due, `interval_ms` after
 /// its last, `ran` ago. A command that waits for the user's answer reports
 /// nothing, since nothing about it changes until the user answers; its
-/// interval counts again from the moment it goes on (`permissions.md`
-/// § The check).
+/// interval counts again from the moment it goes on.
 async fn next_progress(runtime: &dyn SessionRuntime, command: &CommandId, interval_ms: u32, mut ran: Duration) {
     let interval = Duration::from_millis(u64::from(interval_ms));
     loop {

@@ -6,10 +6,9 @@ import type { HeadlineText } from '../ui/ui-text'
 
 /**
  * The card every request of a conversation stands in, pinned above the
- * composer (`permissions.md` § What the user sees): a mark and the title,
- * which one of how many requests it is while several wait, the request's own
- * body, and its buttons. It is not modal: the transcript and the composer
- * stay usable.
+ * composer: a mark and the title, which one of how many requests it is while
+ * several wait, the request's own body, and its buttons. It is not modal:
+ * the transcript and the composer stay usable.
  */
 defineProps<{
   title: HeadlineText

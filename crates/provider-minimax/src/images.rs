@@ -1,13 +1,12 @@
-//! MiniMax's images through its key (`images.md` § Vendors):
-//! `POST /v1/image_generation` on the entry's origin makes an image from a
-//! prompt, with `aspect_ratio` when a shape is asked
-//! ([Text to image](https://platform.minimax.io/docs/api-reference/image-generation-t2i)),
-//! and follows a portrait given as `subject_reference`, which only
-//! `image-01` and `image-01-live` take
-//! ([Image to image](https://platform.minimax.io/docs/api-reference/image-generation-i2i)).
-//! The answer is `data.image_base64[0]`, or the refusal its `base_resp`
-//! states. MiniMax lists only its text models, so the models are the
-//! catalog's.
+//! MiniMax's images through its key: `POST /v1/image_generation` on the entry's
+//! origin makes an image from a prompt, with `aspect_ratio` when a shape is
+//! asked ([Text to
+//! image](https://platform.minimax.io/docs/api-reference/image-generation-t2i)),
+//! and follows a portrait given as `subject_reference`, which only `image-01`
+//! and `image-01-live` take ([Image to
+//! image](https://platform.minimax.io/docs/api-reference/image-generation-i2i)).
+//! The answer is `data.image_base64[0]`, or the refusal its `base_resp` states.
+//! MiniMax lists only its text models, so the models are the catalog's.
 
 use std::sync::Arc;
 

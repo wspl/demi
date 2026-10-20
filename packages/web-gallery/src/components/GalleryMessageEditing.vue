@@ -21,9 +21,9 @@ import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
 /**
  * The stand-in backend's rows, in the order they were written, each naming
- * the row it follows, and the current leaf: what the conversation stores
- * (`message-editing.md` § Versions). The specimen shows the path from the
- * first row to the leaf, each block with its place's versions.
+ * the row it follows, and the current leaf: what the conversation stores.
+ * The specimen shows the path from the first row to the leaf, each block
+ * with its place's versions.
  */
 interface Row { block: Block; follows: string | null }
 const rows = shallowRef<Row[]>([])
@@ -132,8 +132,7 @@ reset()
 
 /**
  * A switch of versions: the `to`th sibling at the block's place, and the
- * latest leaf written under it, as the session switches
- * (`message-editing.md` § Versions).
+ * latest leaf written under it, as the session switches.
  */
 function switchVersion(blockId: string, to: number): void {
   const row = rows.value.find((each) => each.block.id === blockId)

@@ -248,8 +248,7 @@ impl Stores {
 
 impl ConversationDb {
     /// The file of the conversation `other`'s database, for a copy of its
-    /// rows into this one (`conversation-fork.md` § Backend creation and
-    /// retries); none when it is this one's.
+    /// rows into this one; none when it is this one's.
     pub(crate) fn file_of(&self, other: &ConversationId) -> Option<PathBuf> {
         let file = DatabaseFile::of(other);
         (file != self.file).then(|| file.path(&self.stores.directory))
@@ -387,12 +386,10 @@ impl CommitPoint {
 }
 
 /// A hold on the commits of the conversations' checkpoints and stored
-/// attachments, for the scenarios that stop a save at its commit
-/// (`message-editing.md` § Durability and failure boundaries) or a call
-/// while its attachment's commit waits (`attachment_commands`). From `Backend::hold_commits` until
-/// it is released or dropped, a save has written its rows and waits before
-/// its transaction commits, on its database's writer thread: where a process
-/// that dies inside the save leaves it.
+/// attachments, for the scenarios that stop a save at its commit or a call while its attachment's
+/// commit waits (`attachment_commands`). From `Backend::hold_commits` until it is released or
+/// dropped, a save has written its rows and waits before its transaction commits, on its
+/// database's writer thread: where a process that dies inside the save leaves it.
 #[cfg(feature = "testing")]
 pub struct CommitHold {
     hold: Arc<Hold>,

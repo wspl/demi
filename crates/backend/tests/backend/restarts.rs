@@ -1,13 +1,12 @@
-//! A root's turn a graceful shutdown interrupted (`failures-and-recovery.md`
-//! § The unfinished turn): once the backend is back it resumes by itself,
-//! without a page, with the child it waited on, each once, the model told
-//! the backend restarted, and a later restart resumes nothing again; a
-//! shutdown cut short after it marked the root still resumes it; with the
-//! user's `resumeAfterRestart` off the root waits for the user's Resume,
-//! and its child resumes when the conversation opens; and a crash's
-//! interruption never resumes by itself. The model is
-//! the scripted tree family; the device is a real runner, which the child's
-//! spawn runs on. No test calls a real model.
+//! A root's turn a graceful shutdown interrupted: once the backend is back
+//! it resumes by itself, without a page, with the child it waited on, each
+//! once, the model told the backend restarted, and a later restart resumes
+//! nothing again; a shutdown cut short after it marked the root still
+//! resumes it; with the user's `resumeAfterRestart` off the root waits for
+//! the user's Resume, and its child resumes when the conversation opens; and
+//! a crash's interruption never resumes by itself. The model is the scripted
+//! tree family; the device is a real runner, which the child's spawn runs
+//! on. No test calls a real model.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

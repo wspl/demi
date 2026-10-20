@@ -1,7 +1,6 @@
 //! The macros every contract crate declares its wire names with: a closed
 //! set of names as an enum, and an identifier the model reads and writes,
-//! such as a browser tab's `t7` or a simulator's `m2` (`runtime.md`
-//! § Identifiers the model sees).
+//! such as a browser tab's `t7` or a simulator's `m2`.
 
 #[doc(hidden)]
 pub use regex as __regex;

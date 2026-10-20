@@ -1,8 +1,8 @@
-//! `demi skills` (`skills.md` § Commands): the agent's only way to manage
-//! the user's skills, acting as the page's methods do and failing as they
-//! would. Every command but `list` names the category Manage Skills, so the
-//! backend's dispatch runs it only in a conversation the user allowed it for
-//! (`permissions.md`); the plugin never sees a permission.
+//! `demi skills`: the agent's only way to manage the user's skills, acting
+//! as the page's methods do and failing as they would. Every command but
+//! `list` names the category Manage Skills, so the backend's dispatch runs
+//! it only in a conversation the user allowed it for; the plugin never sees
+//! a permission.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -26,8 +26,7 @@ const MANAGE: &str = "skills.manage";
 
 const SUMMARY: &str = "The user's skills, which every conversation of the user receives: list, add, update, remove, enable, disable. Install and manage skills only with these commands, never with other tools such as `npx skills add`: Demi does not see a skill another tool installs, and it would reach no other host and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Manages the user's skills, packaged instructions and scripts that extend what you can do in every conversation of the user: list, add from a source, update, remove, turn on or off. Use it when the user asks to install or change a skill, and install skills only this way, never with npx or by copying files, so the user sees and controls them.";
 
 const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.";

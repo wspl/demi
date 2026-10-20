@@ -89,9 +89,8 @@ export function tileBox(natural: PixelSize | null, kind: ThumbnailKind, width: n
 }
 
 /**
- * The size a medium's reference or an attachment's record carries
- * (`transcript.md` § Media), which is known before its bytes arrive; null when
- * it carries none.
+ * The size a medium's reference or an attachment's record carries, which is
+ * known before its bytes arrive; null when it carries none.
  */
 export function declaredSize(declared: { width?: number; height?: number }): PixelSize | null {
   const { width, height } = declared

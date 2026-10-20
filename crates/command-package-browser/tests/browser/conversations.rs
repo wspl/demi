@@ -130,8 +130,8 @@ async fn listed_for(caller: CommandCaller) -> serde_json::Value {
 }
 
 /// The tab list's number and its tabs closed on purpose are the page's: the
-/// agent's `demi browser tabs --json` never carries them (`runtime.md`,
-/// "Only what the model uses").
+/// agent's `demi browser tabs --json` never carries them, since the model has
+/// no use for them.
 #[tokio::test]
 async fn only_the_users_tab_list_names_its_number() {
     assert_eq!(

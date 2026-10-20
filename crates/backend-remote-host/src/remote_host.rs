@@ -982,8 +982,7 @@ pub struct JobStart {
     pub stdin: Option<PipeRef>,
     pub stdout: Option<PipeRef>,
     /// Cancelled when the job's command is stopped: its rpc calls stop with
-    /// it at once, before the runner hears of the stop
-    /// (`permissions.md` § The check).
+    /// it at once, before the runner hears of the stop.
     pub stop: CancellationToken,
 }
 
@@ -1029,8 +1028,7 @@ impl RemoteJob {
     }
 
     /// Lets go of the job, which runs on: the device keeps its end for the
-    /// next [`RemoteHost::adopt_job`] of it (`runtime.md` § Dispose and
-    /// restore).
+    /// next [`RemoteHost::adopt_job`] of it.
     pub fn let_go(&self) {
         self.jobs.park(&self.id);
     }

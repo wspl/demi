@@ -11,8 +11,8 @@ export type BlockReader = (node: string | null, id: string) => Promise<void>
 
 /**
  * The block a row shows: one block, or several the page shows as one, as
- * thinking blocks next to each other (`rendering.md` § Work groups), whose
- * `parts` are the blocks it joins, light while any of them is.
+ * thinking blocks next to each other, whose `parts` are the blocks it
+ * joins, light while any of them is.
  */
 export type ShownBlock = HeldBlock & { parts?: readonly HeldBlock[] }
 

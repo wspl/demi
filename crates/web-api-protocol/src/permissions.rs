@@ -1,5 +1,5 @@
-//! A conversation's permission requests (`permissions.md`): what a page reads to
-//! show the card above the composer, and the decision it sends.
+//! A conversation's permission requests: what a page reads to show the card
+//! above the composer, and the decision it sends.
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use serde_with::rust::unwrap_or_skip;
@@ -33,10 +33,9 @@ pub struct PermissionCategory {
     pub description: Option<String>,
 }
 
-/// The host a permission request asks the conversation to reach
-/// (`permissions.md` § Hosts), by its `kind`: a device of the user's, by its
-/// id and the name it goes by now, or the computer `demi host pair` pairs,
-/// which has no name yet.
+/// The host a permission request asks the conversation to reach, by its
+/// `kind`: a device of the user's, by its id and the name it goes by now, or
+/// the computer `demi host pair` pairs, which has no name yet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PermissionHost {
@@ -60,14 +59,13 @@ pub struct RequestingAgent {
     pub description: String,
 }
 
-/// One undecided request of a conversation (`permissions.md` § Requests,
-/// `credentials.md` § Requests and routes), by its `kind`: what its agent
+/// One undecided request of a conversation, by its `kind`: what its agent
 /// asks of the user, the command it ran, and who ran it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PermissionRequest {
     /// The grant of the category a command lacked, or the host it asks to
-    /// reach; never both (`permissions.md` § Hosts).
+    /// reach; never both.
     Permission {
         #[garde(skip)]
         id: PermissionRequestId,

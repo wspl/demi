@@ -49,8 +49,7 @@ use super::PAGE_CHARS;
 pub(super) const VIEW_CHARS: usize = 32_768;
 /// The largest video or document: about ten minutes of video at a
 /// viewing-grade encoding, under the inline payload ceiling the major APIs
-/// enforce. An image is fitted instead (`transcript.md` § Images in the
-/// transcript).
+/// enforce. An image is fitted instead.
 const MEDIUM_CAP_BYTES: u64 = 16 * 1024 * 1024;
 /// How many of a running command's newest lines its result points to.
 const NEWEST_LINES: u64 = 50;
@@ -77,7 +76,7 @@ pub struct Look<'a> {
 /// the background, and its result says why.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Moved {
-    /// The user's send now ended the window (`runtime.md` § Send now).
+    /// The user's send now ended the window.
     SentNow,
     /// The window's time passed, and the command reports every
     /// `interval_ms` (`crates/agent-session/src/reports.rs`).
@@ -207,8 +206,8 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
 /// handles and timings that matter, the output since the model's last look
 /// within the replay bound, while the command runs each stream's newest
 /// lines beyond its start, and the next step, after the line that says why
-/// the command moved to the background when the call returned while it ran
-/// (`runtime.md` § Send now, § Command reports).
+/// the command moved to the background when the call returned while it
+/// ran.
 fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });

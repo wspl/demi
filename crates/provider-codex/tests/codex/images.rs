@@ -1,7 +1,7 @@
-//! Making images (`images.md` § Vendors): the Codex backend's image
-//! endpoints with the account's headers, the asked options sent as asked,
-//! an edit's images as data URLs, the image and its counts read from the
-//! answer, and the failures a call ends with.
+//! Making images: the Codex backend's image endpoints with the account's
+//! headers, the asked options sent as asked, an edit's images as data
+//! URLs, the image and its counts read from the answer, and the failures
+//! a call ends with.
 
 use demi_provider_common::media_catalog::Catalog;
 use bytes::Bytes;

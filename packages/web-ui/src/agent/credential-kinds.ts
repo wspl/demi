@@ -10,9 +10,9 @@ const credentialKindsKey: InjectionKey<() => CredentialKinds | undefined> = Symb
 
 /**
  * Offers the records below what each entry holds, read at each render, so
- * a failure's headline names the entry's credential
- * (`failures-and-recovery.md` § Failure codes); none where the host does
- * not know its entries, and the records then read the code's own words.
+ * a failure's headline names the entry's credential; none where the host
+ * does not know its entries, and the records then read the code's own
+ * words.
  */
 export function provideCredentialKinds(source: () => CredentialKinds | undefined): void {
   provide(credentialKindsKey, source)

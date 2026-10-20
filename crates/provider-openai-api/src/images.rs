@@ -1,6 +1,5 @@
 //! The image role of an OpenAI or xAI key and of a compatible entry whose
-//! image shape is OpenAI Images (`images.md` § Vendors, `media.md` § Which
-//! entries make which media): each vendor's image API under the entry's
+//! image shape is OpenAI Images: each vendor's image API under the entry's
 //! base URL, with the key as a bearer token; the models the vendor lists
 //! for the key, read when asked, or the models a compatible entry's user
 //! added; and the vendor's failures read as its text failures are, a usage

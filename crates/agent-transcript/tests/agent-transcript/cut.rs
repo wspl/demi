@@ -1,5 +1,4 @@
-//! Where a transcript is cut for a resume (`runtime.md` § Resume) and for a
-//! Fork (`conversation-fork.md` § Eligibility).
+//! Where a transcript is cut for a resume and for a Fork.
 
 use demi_agent_store::testing::test_model;
 use demi_agent_transcript::{CutError, ForkEnd, fork_prefix, resume_point};

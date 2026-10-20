@@ -22,8 +22,8 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
-    /// One of a user's credentials (`credentials.md`), which the backend
-    /// assigns and its name can change under.
+    /// One of a user's credentials, which the backend assigns and its
+    /// name can change under.
     UserCredentialId
 );
 

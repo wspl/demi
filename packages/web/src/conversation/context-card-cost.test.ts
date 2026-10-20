@@ -1,16 +1,15 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
-// The context card (`compaction.md` § What fills the context) and its Cost
-// section (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the cost opens and
-// closes by its own caption whether or not the context's part is there,
-// while it compacts the header still opens the list, one part stands open at
-// a time and the browser keeps which, and the cache chart draws the main
-// conversation's last 50 calls, from the fourth, with the rate over the
-// same calls; and the Profiles part shows the profiles the conversation's
-// workflow choice offers. The card is web-ui's ContextUsageIndicator, and
-// its Cost section ContextCost, on a page of happy-dom whose elements
-// measure 300 px wide, as a card's chart does; milliseconds.
+// The context card and its Cost section
+// (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the cost opens and closes
+// by its own caption whether or not the context's part is there, while it compacts
+// the header still opens the list, one part stands open at a time and the browser
+// keeps which, and the cache chart draws the main conversation's last 50 calls, from
+// the fourth, with the rate over the same calls; and the Profiles part shows the
+// profiles the conversation's workflow choice offers. The card is web-ui's
+// ContextUsageIndicator, and its Cost section ContextCost, on a page of happy-dom
+// whose elements measure 300 px wide, as a card's chart does; milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 
@@ -113,8 +112,7 @@ function disclosures(shown: HTMLElement) {
 // Production: with no context estimate, as while a reopened conversation's
 // session attaches, or compacting, the card had no disclosure, and the Cost
 // stayed closed or did not show at all. With no usage limits either there
-// is no meter, whatever the conversation cost (`compaction.md` § What fills
-// the context).
+// is no meter, whatever the conversation cost.
 test('the disclosure is there and opens the cost when there is no context estimate, and the list while compacting', async () => {
   expect(await card({ usage: null, cost: costOf([call(0.9)]) })).toBeNull()
   unmount!()
@@ -142,8 +140,7 @@ test('the disclosure is there and opens the cost when there is no context estima
 })
 
 // One part stands open at a time, as an accordion's, and a card opened later
-// shows the part the user left open (`compaction.md` § What fills the
-// context).
+// shows the part the user left open.
 test('opening one part of the card closes the other, and the next card opens the part left open', async () => {
   const props = { usage: USAGE, cost: costOf([call(0.9), call(0.9)]) }
   const first = await card(props)

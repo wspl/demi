@@ -1,10 +1,23 @@
-//! The instructions source (`instructions.md`): the user's personal
-//! instructions and the project's `AGENTS.md` or `CLAUDE.md` file and
-//! `.demi/instructions.md` of each directory from the repository's root down to
-//! the node's working directory, and for the root the instructions of the
-//! workflow the conversation chose
+//! The instructions source: the user's personal instructions and the project's
+//! `AGENTS.md` or `CLAUDE.md` file and `.demi/instructions.md` of each
+//! directory from the repository's root down to the node's working directory,
+//! and for the root the instructions of the workflow the conversation chose
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`), as one context
 //! block, with the list of what it holds for the page.
+//!
+//! The text is a context block, not part of the system prompt, which stays
+//! the same for every user and project so that its prefix is cached; an
+//! edit, or a random order, would cost the cache. One file is read per
+//! directory, the first name that exists, so a `CLAUDE.md` that links to or
+//! copies the `AGENTS.md` beside it reaches the model once. The git root
+//! bounds the search, as walking to the file system's root would read
+//! unrelated files above the project. Home directories are not read:
+//! `~/.claude/CLAUDE.md` would differ between the Cloud and each device the
+//! conversation moves to, and instructions for every project are the
+//! personal instructions, which follow the user. Nothing is cut: dropping
+//! the end of a project's rules without telling anyone is worse than a large
+//! request the context usage shows, and a file left out for its size is the
+//! same loss.
 
 use std::rc::{Rc, Weak};
 

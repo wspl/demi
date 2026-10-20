@@ -41,21 +41,17 @@ import { type CostState, hasCost } from './context-cost'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as
- * the backend estimates it. A click on it opens a card, on a phone a sheet
- * (`compaction.md` § What fills the context), as the model selector's does;
- * a click outside, another click on the ring or Escape closes it, and
+ * the backend estimates it. A click on it opens a card, on a phone a sheet, as the model
+ * selector's does; a click outside, another click on the ring or Escape closes it, and
  * resting the pointer on the ring opens nothing but its tip, Context and the figure the
- * card's header shows. The card
- * holds the estimate against the window, a header that opens and closes the list of rows, a
- * bar of what fills the context, the rows largest first while the list is
- * open, and the room before compaction with Compact; then what the
- * conversation cost, whose caption opens and closes its details;
- * then the usage limits
- * of the conversation's account, and last the instructions the model holds
- * (`instructions.md` § What the card lists), each of which opens where it
- * is written. One part stands open at most: opening one closes the other.
- * While the usage or the window is unknown the card holds the cost and the
- * usage limits, and with no limits there is no meter, cost or none.
+ * card's header shows. The card holds the estimate against the window, a header that opens
+ * and closes the list of rows, a bar of what fills the context, the rows largest first
+ * while the list is open, and the room before compaction with Compact; then what the
+ * conversation cost, whose caption opens and closes its details; then the usage limits of
+ * the conversation's account, and last the instructions the model holds, each of which
+ * opens where it is written. One part stands open at most: opening one closes the other.
+ * While the usage or the window is unknown the card holds the cost and the usage limits,
+ * and with no limits there is no meter, cost or none.
  */
 const props = defineProps<{
   usage?: ContextUsage | null

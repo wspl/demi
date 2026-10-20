@@ -1,7 +1,7 @@
-//! A media call's answer and its redirects (`media.md`, `audio.md`
-//! § Vendors), against scripted servers: a file read within 256 MiB as it
-//! arrives, and a vendor's own key header sent only to the origin the call
-//! started at, whichever way a redirect leads.
+//! A media call's answer and its redirects, against scripted servers: a
+//! file read within 256 MiB as it arrives, and a vendor's own key header
+//! sent only to the origin the call started at, whichever way a redirect
+//! leads.
 
 use bytes::Bytes;
 use demi_provider_common::media::{ANSWER_LIMIT, MediaCall, MediaCredential, MediaFailure};

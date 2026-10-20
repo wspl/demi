@@ -178,8 +178,7 @@ async fn a_whole_batch_reaches_the_agent_before_any_answer_and_a_later_call_is_a
 /// A Claude Code turn of several tool calls is several runs, one per batch:
 /// each run that stops at a batch ends with the usage of the call that wrote
 /// it, so the agent can compact at the call that crossed its threshold
-/// rather than at the turn's `result` (`compaction.md` § When compaction
-/// runs).
+/// rather than at the turn's `result`.
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn each_run_that_stops_at_a_batch_ends_with_the_usage_of_the_call_that_wrote_it() {

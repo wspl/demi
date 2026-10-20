@@ -4,9 +4,9 @@ import { thinkingFaceLabel } from '../thinking-label'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 
 /**
- * What a thinking row says, wherever it stands (`rendering.md` § Work
- * groups): Thinking and for how long while it streams, Thought for how long
- * once it ended, from its start to the start of the block after it.
+ * What a thinking row says, wherever it stands: Thinking and for how long
+ * while it streams, Thought for how long once it ended, from its start to
+ * the start of the block after it.
  */
 const props = defineProps<{
   streaming: boolean

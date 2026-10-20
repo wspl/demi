@@ -1,9 +1,9 @@
-//! What `demi image` does (`images.md`): reads the call's prompt and, for
-//! an edit, its images from the Host the command runs on; asks the
-//! Providers service for one image; decodes it whole and writes it to
-//! stdout in the format asked for, PNG by default; and says on stderr what
-//! came back, with a warning for each option the result did not honour. A
-//! failure is told in the design's words.
+//! What `demi image` does: reads the call's prompt and, for an edit, its
+//! images from the Host the command runs on; asks the Providers service
+//! for one image; decodes it whole and writes it to stdout in the format
+//! asked for, PNG by default; and says on stderr what came back, with a
+//! warning for each option the result did not honour. A failure is told in
+//! the design's words.
 
 use std::io::Cursor;
 
@@ -85,8 +85,8 @@ enum Unfinished {
 
 /// `bytes`, decoded whole as a PNG, JPEG or WebP image within
 /// [`MAX_DECODE_BYTES`], as an image in `format`: encoded again when the
-/// vendor sent another format (`images.md` § Commands). A JPEG has no
-/// alpha channel, so one is written opaque.
+/// vendor sent another format. A JPEG has no alpha channel, so one is
+/// written opaque.
 fn finish(bytes: &[u8], format: Format) -> Result<Finished, Unfinished> {
     let sent = match image::guess_format(bytes) {
         Ok(sent @ (ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP)) => sent,
@@ -156,8 +156,7 @@ async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk, form
         None => rpc.stdout(made.bytes.into_bytes()).await?,
     }
     // A model the vendor does not confirm is the one asked of, not the one
-    // that answered (`images.md` § Commands); the entry is named as
-    // Settings names it (`media.md` § What the agent is told).
+    // that answered; the entry is named as Settings names it.
     let mut said = if made.confirmed {
         format!("{width}×{height} {name} from {} ({}", made.model, made.provider)
     } else {

@@ -1,11 +1,10 @@
 //! An OpenAI key's speech and a compatible API's of the OpenAI Speech
-//! shape (`audio.md` § Vendors), against a scripted vendor built from
-//! OpenAI's Create speech reference
+//! shape, against a scripted vendor built from OpenAI's Create speech reference
 //! (developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create):
-//! the body with a built-in voice by name and a custom one as `{ "id" }`,
-//! the bytes answered as the file; the built-in voices the catalog names,
-//! as OpenAI lists none; a compatible API's `GET …/audio/voices`, and none
-//! where the server has no such route. No test calls a vendor.
+//! the body with a built-in voice by name and a custom one as `{ "id" }`, the bytes answered
+//! as the file; the built-in voices the catalog names, as OpenAI lists none; a compatible
+//! API's `GET …/audio/voices`, and none where the server has no such route. No test calls a
+//! vendor.
 
 use std::sync::Arc;
 
@@ -75,7 +74,7 @@ async fn an_openai_key_speaks_with_a_built_in_or_custom_voice_and_lists_the_cata
     let provider = OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())));
     let maker = provider.audio().expect("an OpenAI key makes speech");
     // OpenAI requires `voice` and has no default: a call without one fails
-    // before it is sent (`audio.md` § Commands).
+    // before it is sent.
     assert_eq!((maker.vendor(), maker.shape(), maker.needs_voice()), (Some(MediaVendor::OpenAi), AudioShape::OpenaiSpeech, true));
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let catalog = Catalog::decode(CATALOG).unwrap();

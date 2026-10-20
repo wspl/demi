@@ -1,9 +1,9 @@
-//! ByteDance's media through its keys (`images.md`, `videos.md`,
-//! `audio.md` § Vendors), against scripted vendors built from its API
-//! references: Ark's Image generation API, Create, Retrieve and Cancel or
-//! delete a video generation task (docs.byteplus.com/en/docs/modelark/…),
-//! BytePlus Speech's TTS Unidirectional Streaming (HTTP) and Audio 1.0
-//! (…/byteplusvoice/…), and Doubao Speech's HTTP Chunked/SSE V3
+//! ByteDance's media through its keys, against scripted vendors built from
+//! its API references: Ark's Image generation API, Create, Retrieve and
+//! Cancel or delete a video generation task
+//! (docs.byteplus.com/en/docs/modelark/…), BytePlus Speech's TTS
+//! Unidirectional Streaming (HTTP) and Audio 1.0 (…/byteplusvoice/…), and
+//! Doubao Speech's HTTP Chunked/SSE V3
 //! (docs.volcengine.com/docs/DoubaoVoice/…). No test calls a vendor.
 
 use std::sync::Arc;

@@ -15,9 +15,9 @@ import type { InUse, WebState } from './generated/plugin'
 import { t } from './locales/text'
 
 /**
- * Settings › Web Search (`web.md` § Settings › Web Search): the user's Exa
- * account, signed in or not; the API key, typed and checked, or saved and
- * shown by its last four characters; and which of them searches use.
+ * Settings › Web Search: the user's Exa account, signed in or not; the API
+ * key, typed and checked, or saved and shown by its last four characters;
+ * and which of them searches use.
  */
 const props = defineProps<{
   /** The plugin's state; null until it arrives, shown as nothing connected. */

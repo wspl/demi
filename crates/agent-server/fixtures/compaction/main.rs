@@ -1,5 +1,5 @@
 //! The compaction fixture's harness (`README.md` beside it), the real-model
-//! check of `compaction.md` § Acceptance, level 3: it opens the committed
+//! check of compaction, the third level of its verification: it opens the committed
 //! large-context session as a conversation of an agent server, talks to the
 //! real DeepSeek through the OpenAI-compatible provider, compacts it several
 //! times, and after each pass checks that the facts, the constraint and the

@@ -1,6 +1,6 @@
-//! What `demi audio` does (`audio.md`): reads the call's text or prompt;
-//! asks the Providers service for the audio; wraps raw PCM as WAV; checks
-//! that what came back is audio this reads, before a byte reaches stdout;
+//! What `demi audio` does: reads the call's text or prompt; asks the
+//! Providers service for the audio; wraps raw PCM as WAV; checks that
+//! what came back is audio this reads, before a byte reaches stdout;
 //! writes it, and says what came back, with a warning for each option the
 //! entry's API has no field for, a format the vendor does not make, and a
 //! length that differs from the one asked. It also lists a speech model's
@@ -18,7 +18,7 @@ use demi_shared_types::{AudioKind, MediaKind};
 use crate::commands::{EffectArgs, ModelsArgs, MusicArgs, SpeechArgs, VoicesArgs};
 
 /// How far a length may be from the one asked before it is a different
-/// length (`audio.md` § Commands).
+/// length.
 const DURATION_SLACK: f64 = 1.0;
 
 /// Runs the leaf `invocation` names.
@@ -103,7 +103,7 @@ async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: AudioAsk) -> R
     // Raw PCM is written after the WAV header of its stated shape, which
     // is checked again here, as a file this made; any other answer is a
     // file whose header is read before a byte reaches stdout: a file that
-    // does not read writes nothing (`audio.md` § Commands).
+    // does not read writes nothing.
     let (header, facts) = match made.pcm {
         Some(shape) => {
             let header = Pcm::new(shape.sample_rate, shape.channels, shape.bits)
@@ -165,7 +165,7 @@ fn is(format: AudioFormat, asked: AudioFileFormat) -> bool {
 
 /// The line that says what came back, and a warning for each option the
 /// shape had no field for, a format the vendor did not make and a length
-/// that differs from the one asked (`audio.md` § Commands).
+/// that differs from the one asked.
 fn summary(command: &str, made: &MadeAudio, facts: &AudioFacts, wanted: &Wanted) -> String {
     let what = match wanted.kind {
         AudioKind::Speech => "speech",

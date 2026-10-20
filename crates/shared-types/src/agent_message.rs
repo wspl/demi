@@ -1,8 +1,8 @@
 //! Input one agent of a tree sends another: an explicit message, or a child's
 //! completion receipt; the user's decision on a permission request, which
-//! reaches the agent that asked the same way (`permissions.md` § The decision's
-//! message); the user's move of the conversation, which the user tells the root
-//! of; and Demi's notice that a move the agent asked for failed
+//! reaches the agent that asked the same way; the user's move of the
+//! conversation, which the user tells the root of; and Demi's notice that a
+//! move the agent asked for failed
 //! (`crates/backend-host-access/src/transition.rs`).
 //!
 //! It is structured input, neither a human message nor the receiving agent's
@@ -65,8 +65,7 @@ pub struct AgentMessage {
 pub struct Sender {
     #[garde(skip)]
     pub id: NodeId,
-    /// The number the model knows the sender by: 0 for the root
-    /// (`runtime.md` § Identifiers the model sees).
+    /// The number the model knows the sender by: 0 for the root.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub number: u64,
     /// The sender's description; `root session` for the root.
@@ -109,9 +108,8 @@ pub enum AgentMessageEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
         credential: Option<String>,
-        /// The host the request asked to reach, by the name it went by
-        /// (`permissions.md` § Hosts); none for a request of categories
-        /// alone or a pairing.
+        /// The host the request asked to reach, by the name it went by;
+        /// none for a request of categories alone or a pairing.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
         host: Option<String>,

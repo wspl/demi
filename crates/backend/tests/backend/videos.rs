@@ -1,14 +1,14 @@
-//! The agent's `demi video` (`videos.md`, `media.md`), the `video` plugin
-//! over the port's Providers service: a video's job asked for, its states
-//! told, its MP4 downloaded to a file, and a usage ledger row with its
-//! seconds and cost; a job the vendor failed or that expired, told in the
-//! design's words; a used-up account handed on before the ask, never after
-//! it; a job still running at the bound; a stopped call's cancelled row,
-//! with the job cancelled at a vendor that can; and a compatible API whose
-//! video shape and models the agent sets with `demi providers`, its
-//! OpenRouter Videos and OpenAI Videos requests sent to a scripted server.
-//! The subscription's video role is a scripted family's, the device a real
-//! runner. No test calls a real model.
+//! The agent's `demi video`, the `video` plugin over the port's Providers
+//! service: a video's job asked for, its states told, its MP4 downloaded
+//! to a file, and a usage ledger row with its seconds and cost; a job the
+//! vendor failed or that expired, told in the design's words; a used-up
+//! account handed on before the ask, never after it; a job still running
+//! at the bound; a stopped call's cancelled row, with the job cancelled at
+//! a vendor that can; and a compatible API whose video shape and models
+//! the agent sets with `demi providers`, its OpenRouter Videos and OpenAI
+//! Videos requests sent to a scripted server. The subscription's video
+//! role is a scripted family's, the device a real runner. No test calls a
+//! real model.
 
 use std::sync::Arc;
 use std::time::Duration;

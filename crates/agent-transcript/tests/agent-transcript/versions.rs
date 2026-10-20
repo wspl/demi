@@ -1,6 +1,6 @@
-//! Versions in the live transcript (`message-editing.md` § Versions): what
-//! a compaction carries past its boundary keeps its versions, in the log
-//! and in the patch that tells the page.
+//! Versions in the live transcript: what a compaction carries past its
+//! boundary keeps its versions, in the log and in the patch that tells the
+//! page.
 
 use std::collections::BTreeMap;
 use std::{rc::Rc, sync::Arc};

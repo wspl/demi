@@ -1,6 +1,6 @@
-// The `skills` plugin's page (`plugin-pages.md`, `skills.md` § The
-// page): its settings section with its sidebar entry, and the types of its
-// state, parameters and results, generated from the plugin's manifest.
+// The `skills` plugin's page (`plugin-pages.md`): its settings section with
+// its sidebar entry, and the types of its state, parameters and results,
+// generated from the plugin's manifest.
 import { WandSparkles } from '@lucide/vue'
 import { definePage } from '@demicodes/plugin-sdk'
 import { t } from './locales/text'

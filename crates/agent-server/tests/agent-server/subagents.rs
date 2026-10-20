@@ -134,7 +134,7 @@ pub(crate) fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePha
 
 // A page that opens while a child waits for its model's answer is told how
 // long the child has waited, which its view of the child counts from instead
-// of a clock of its own (`rendering.md` § Waiting for the model).
+// of a clock of its own.
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() {
     let gate = Gate::new();
@@ -1061,7 +1061,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     wait_for_execution(&server, "waiting").await;
 
     // The pages see the child idle beside its command, and a page that
-    // opens now is told so in its handshake (`rendering.md` § Frame protocol).
+    // opens now is told so in its handshake.
     let frames = page.received();
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Running)), "{frames:?}");
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{frames:?}");
@@ -1298,8 +1298,8 @@ async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
 // records, are asked to stop again, and end as their runners report
 // (`crates/agent-server/src/server/tree/supervisor.rs`). A page holds no
 // transcript of a closed child, so the frames' title and script are all its
-// Running tab has to name such a command by (`rendering.md` § Rendering
-// boundary); production showed bare numbers there. About 0.02 s.
+// Running tab has to name such a command by; production showed bare numbers
+// there. About 0.02 s.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     let store = MemoryTreeStore::new();
@@ -1379,8 +1379,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
 // and a call before it command 4. While 4 is taken up again, slowly, 7's end
 // arrives: the restore recorded the interruption before any watch started,
 // so the report is written into the interrupted turn, which holds it, and no
-// turn starts (`failures-and-recovery.md` § The unfinished turn). A few
-// milliseconds.
+// turn starts. A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
     use demi_agent_store::{CommandInterval, StoredCommand, StoredOutput};

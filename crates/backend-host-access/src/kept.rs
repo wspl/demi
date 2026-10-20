@@ -1,11 +1,10 @@
-//! What the backend keeps of a Host's project files (`instructions.md` § When
-//! it is sent, `skills.md` § Project skills,
-//! `crates/backend-user-shard/src/conversation/workflows.rs`): for each Host
+//! What the backend keeps of a Host's project files
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`): for each Host
 //! and directory a loaded conversation uses, one search through the
 //! conversation's host access in the form that never wakes a Host, kept current
-//! by the runner's file watch (`crates/runner-host/src/subscriptions.rs`). A request takes
-//! what is held: only the first search of a directory holds it, for at most
-//! [`FIRST_SEARCH_HOLD`].
+//! by the runner's file watch (`crates/runner-host/src/subscriptions.rs`). A
+//! request takes what is held: only the first search of a directory holds it,
+//! for at most [`FIRST_SEARCH_HOLD`].
 //!
 //! For example, a conversation in `~/app` asks for its instruction files
 //! before its first request: the search starts, and the request waits until

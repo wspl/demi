@@ -1,6 +1,6 @@
-//! What the model reads of a session's media (`transcript.md` § Media): the
-//! replayed blocks with what the session holds for their media, once the
-//! session read the blobs of those it holds nothing for.
+//! What the model reads of a session's media: the replayed blocks with what
+//! the session holds for their media, once the session read the blobs of
+//! those it holds nothing for.
 
 use demi_agent_store::media::{self, ModelView};
 use demi_shared_types::BlobRef;

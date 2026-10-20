@@ -1,11 +1,35 @@
-//! One agent's session (`runtime.md` § Sessions and turns): a cloneable
-//! handle over the session's state, which one worker task changes by running
-//! one action at a time while commands from the connection change it between
-//! the worker's awaits. The worker, the persister, the tasks that watch the
-//! commands that report to it and every command change the state only
-//! through [`SessionShared::update`], whose
-//! synchronous closure ends before any await, and each change's events reach
-//! the listeners after the state is released.
+//! One agent's session: a cloneable handle over the session's state, which
+//! one worker task changes by running one action at a time while commands
+//! from the connection change it between the worker's awaits. The worker,
+//! the persister, the tasks that watch the commands that report to it and
+//! every command change the state only through [`SessionShared::update`],
+//! whose synchronous closure ends before any await, and each change's events
+//! reach the listeners after the state is released.
+//!
+//! ```text
+//!   connection
+//!      |  actions, steers, abort          ^  SessionEvent, once a change
+//!      v                                  |  is complete
+//!   AgentSession (worker, persister) -----'
+//!      |
+//!      +--> SessionRuntime (the node: prompts, context, tools, admission)
+//!      +--> ProviderRuntime (one request at a time)
+//!      '--> SessionStore (checkpoint saves, blobs)
+//! ```
+//!
+//! The session knows no product and no plugin; its node's [`SessionRuntime`]
+//! answers what it needs, and a tool never reaches into the session.
+//!
+//! The phase, the visible queue and whether the session has settled are
+//! derived from one status and the waiting actions; no second flag records
+//! them. The session is idle only once the save that ends an action has
+//! committed and no other action starts, so a client that sees `idle` can
+//! edit at once and what it then reads from the backend includes the finished
+//! turn. A send is never refused for being busy: it waits in the queue, and
+//! its message id makes a repeated send harmless. `retry`, `resume` and
+//! `compact` need an idle session. While an edit is prepared, the session
+//! refuses sends, steers, agent messages and command reports, and a model
+//! switch waits for it, so the edit never discards one.
 
 mod ahead;
 mod breakdown;
@@ -118,8 +142,7 @@ pub struct SessionInit {
     pub runtime: Box<dyn ProviderRuntime>,
 }
 
-/// What a restored session hands back for its node to decide on
-/// (`runtime.md` § Dispose and restore).
+/// What a restored session hands back for its node to decide on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Continuation {
     /// The checkpoint says a turn was running: the process died in it, or
@@ -129,8 +152,8 @@ pub struct Continuation {
     pub queued: Vec<QueuedMessage>,
 }
 
-/// A change of the model selection (`runtime.md` § Model switch), with the
-/// runtime it needs when its model belongs to another provider.
+/// A change of the model selection, with the runtime it needs when its
+/// model belongs to another provider.
 pub struct ModelSwitch {
     pub model: Box<ModelSelection>,
     /// A new runtime when the model belongs to another provider than the
@@ -164,8 +187,7 @@ pub struct TranscriptSnapshot {
     pub start: usize,
     pub blocks: Vec<Block>,
     pub version: TranscriptVersion,
-    /// The versions at each place that holds more than one
-    /// (`message-editing.md` § Versions).
+    /// The versions at each place that holds more than one.
     pub versions: std::collections::BTreeMap<usize, demi_conversation_socket_protocol::Versions>,
 }
 
@@ -237,7 +259,7 @@ impl AdmissionError {
     }
 }
 
-/// Why a steer was refused (`runtime.md` § Steers).
+/// Why a steer was refused.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SteerError {
     #[error("No turn is running to steer")]
@@ -352,13 +374,12 @@ pub enum SessionEvent {
     PendingSteersChanged {
         pending_steers: Vec<PendingSteer>,
     },
-    /// The calls the model is writing changed (`rendering.md` § Calls being
-    /// written).
+    /// The calls the model is writing changed.
     PendingCallsChanged {
         pending_calls: Vec<PendingCall>,
     },
     /// The node began to wait for the model's answer, with how long it has
-    /// waited, or its wait ended (`rendering.md` § Waiting for the model).
+    /// waited, or its wait ended.
     WaitingChanged {
         waited_ms: Option<u64>,
     },
@@ -579,24 +600,22 @@ impl AgentSession {
         Self::start(SessionCore::new(parts), deps)
     }
 
-    /// A session from its checkpoint (`runtime.md` § Restoring). A tool call
-    /// still marked executing completes as interrupted and never runs again,
-    /// naming the command it started when `running`, the node's commands
-    /// the conversation records running, holds one of the call's, which
-    /// then reports to the node as one a call left running does; the
-    /// session is idle, watches the commands its calls left running again,
-    /// and hands back its queue and whether a turn was interrupted. Waiting
-    /// input arrives only once the restored hold is in place: before any watch
-    /// starts, a root's interrupted turn ends with its interruption record,
-    /// which holds what arrives as any failed root's turn does, and a child is
-    /// held until its supervisor looks at it or its next action starts
-    /// (`failures-and-recovery.md` § The unfinished turn,
-    /// `crates/agent-server/src/server/tree/supervisor.rs`).
+    /// A session from its checkpoint. A tool call still marked executing
+    /// completes as interrupted and never runs again, naming the command it
+    /// started when `running`, the node's commands the conversation records
+    /// running, holds one of the call's, which then reports to the node as one
+    /// a call left running does; the session is idle, watches the commands its
+    /// calls left running again, and hands back its queue and whether a turn
+    /// was interrupted. Waiting input arrives only once the restored hold is
+    /// in place: before any watch starts, a root's interrupted turn ends with
+    /// its interruption record, which holds what arrives as any failed root's
+    /// turn does, and a child is held until its supervisor looks at it or its
+    /// next action starts (`crates/agent-server/src/server/tree/supervisor.rs`).
     ///
     /// The session holds the checkpoint's window, and of a checkpoint that
     /// holds its whole path, such as a Fork's seed, the blocks from its last
-    /// `compaction_boundary` on (`runtime.md` § What a session holds); it
-    /// reads what it keeps of the blocks before from the store.
+    /// `compaction_boundary` on; it reads what it keeps of the blocks before
+    /// from the store.
     pub async fn restore(
         checkpoint: Checkpoint,
         id: NodeId,
@@ -645,7 +664,7 @@ impl AgentSession {
             let text = core::interrupted_text(&core::CallEnd::Crashed, command.as_ref());
             // The call keeps naming the command it started, which runs as
             // far as the conversation knows, so that its later report and
-            // notice find their call (`runtime.md` § Stop).
+            // notice find their call.
             let view = command
                 .clone()
                 .map(|command| ToolView::Shell(ShellToolView::named(command, ShellViewStatus::Running)));
@@ -760,8 +779,8 @@ impl AgentSession {
         self.shared.read(SessionCore::phase)
     }
 
-    /// How long the node has waited for the model's answer, while it waits
-    /// (`rendering.md` § Waiting for the model).
+    /// How long the node has waited for the model's answer, while it
+    /// waits.
     pub fn waited_ms(&self) -> Option<u64> {
         self.shared.read(SessionCore::waited_ms)
     }
@@ -827,19 +846,17 @@ impl AgentSession {
         Ok(self.shared.read(|core| snapshot(core, earlier)))
     }
 
-    /// Reads the session's window (`runtime.md` § What a session holds):
-    /// the blocks it holds, by their positions on the path, and what it
-    /// keeps of those before.
+    /// Reads the session's window: the blocks it holds, by their
+    /// positions on the path, and what it keeps of those before.
     pub fn with_window<R>(&self, look: impl FnOnce(&TranscriptLog) -> R) -> R {
         self.shared.read(|core| look(&core.transcript))
     }
 
     /// The transcript a reset sends to a page that holds its blocks up to
-    /// `from`, whose block there is `edge` (`rendering.md` § Where a reset
-    /// starts): the blocks it starts with before the window are read from
-    /// the store. Nothing awaits between the reading of the window and the
-    /// return, so a caller that sends it at once sends the transcript as it
-    /// is then.
+    /// `from`, whose block there is `edge`: the blocks it starts with
+    /// before the window are read from the store. Nothing awaits between
+    /// the reading of the window and the return, so a caller that sends it
+    /// at once sends the transcript as it is then.
     pub async fn reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> Result<Reset, StoreError> {
         window::reset(&self.shared, from, edge).await
     }
@@ -908,7 +925,7 @@ impl AgentSession {
     }
 
     /// The record of the last turn when it failed: the `error` block that
-    /// left it unfinished (`failures-and-recovery.md` § The unfinished turn).
+    /// left it unfinished.
     pub fn failed_turn(&self) -> Option<ErrorBlock> {
         self.shared.read(|core| core.transcript.turn_failure().cloned())
     }
@@ -925,15 +942,13 @@ impl AgentSession {
     }
 
     /// Holds the bytes the backend read of the media a frame's content
-    /// references, for the send, steer or edit that follows it
-    /// (`transcript.md` § Media); what nothing references by the next request
-    /// is let go.
+    /// references, for the send, steer or edit that follows it; what nothing
+    /// references by the next request is let go.
     pub fn hold_media(&self, media: HeldMedia) {
         self.shared.update(|core| core.media.absorb(media));
     }
 
-    /// Submits a message the user wrote (`runtime.md` § Messages and the
-    /// queue).
+    /// Submits a message the user wrote.
     pub fn send(
         &self,
         content: Vec<UserContentBlock>,
@@ -952,8 +967,7 @@ impl AgentSession {
         self.shared.update(|core| core.admit_send(message))
     }
 
-    /// Rewinds the last input turn and runs it again
-    /// (`failures-and-recovery.md` § Recovery is one mechanism).
+    /// Rewinds the last input turn and runs it again.
     pub fn retry(&self) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| core.admit(ActionKind::Retry))
     }
@@ -961,7 +975,7 @@ impl AgentSession {
     /// Unwinds the unfinished turn to its resume point and continues it.
     /// `reason`, when given, is what the model reads before it goes on:
     /// Demi's own for a resume of its own, such as a subagent's after a
-    /// backend restart (`failures-and-recovery.md` § The unfinished turn).
+    /// backend restart.
     pub fn resume(&self, reason: Option<&str>) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| {
             core.admit(ActionKind::Resume {
@@ -970,10 +984,9 @@ impl AgentSession {
         })
     }
 
-    /// The estimate of the next request with the window in use
-    /// (`compaction.md` § Context estimate). It reads the media of the
-    /// blocks the estimate weighs when the session holds nothing for them,
-    /// as after a restore.
+    /// The estimate of the next request with the window in use. It reads
+    /// the media of the blocks the estimate weighs when the session holds
+    /// nothing for them, as after a restore.
     pub async fn context_usage(&self) -> Result<ContextUsage, ErrorReport> {
         // Outside an action nothing stops the read.
         let unstoppable = TurnCancel::new();
@@ -996,9 +1009,9 @@ impl AgentSession {
     }
 
     /// Why the user's `compact` would be refused now, or none when it is
-    /// taken (`compaction.md` § When compaction runs): below half the window
-    /// in use, unless the unfinished turn failed for its size. A usage that
-    /// cannot be read refuses it with the read's failure.
+    /// taken: below half the window in use, unless the unfinished turn
+    /// failed for its size. A usage that cannot be read refuses it with the
+    /// read's failure.
     pub async fn compaction_refusal(&self) -> Option<Refusal> {
         let size_refused = self
             .shared
@@ -1009,7 +1022,7 @@ impl AgentSession {
         }
     }
 
-    /// Runs one compaction pass (`compaction.md` § Compaction).
+    /// Runs one compaction pass.
     pub fn compact(&self) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| core.admit(ActionKind::Compact))
     }
@@ -1018,10 +1031,9 @@ impl AgentSession {
         self.shared.update(|core| core.dequeue(id))
     }
 
-    /// Sends a queued message now (`runtime.md` § Send now): while a turn
-    /// runs, the turn ends at once and the message runs next; otherwise it
-    /// moves to the front of the queue. False when no queued message has
-    /// the id.
+    /// Sends a queued message now: while a turn runs, the turn ends at
+    /// once and the message runs next; otherwise it moves to the front of
+    /// the queue. False when no queued message has the id.
     pub fn send_queued_message(&self, id: &TurnId) -> bool {
         self.shared.update(|core| core.send_queued_now(id))
     }
@@ -1030,8 +1042,7 @@ impl AgentSession {
         self.shared.update(SessionCore::clear_queue)
     }
 
-    /// Adds input to the running turn at its next boundary
-    /// (`runtime.md` § Steers).
+    /// Adds input to the running turn at its next boundary.
     pub fn steer(&self, content: Vec<UserContentBlock>, id: BlockId) -> Result<(), SteerError> {
         self.steer_with_comments(content, Vec::new(), id)
     }
@@ -1052,9 +1063,9 @@ impl AgentSession {
         self.shared.update(|core| core.cancel_steer(id))
     }
 
-    /// Delivers a pending steer now (`runtime.md` § Send now): the running
-    /// round is cut short without stopping anything, and the turn goes on
-    /// with the steer. A steer that is no longer pending changes nothing.
+    /// Delivers a pending steer now: the running round is cut short
+    /// without stopping anything, and the turn goes on with the steer. A
+    /// steer that is no longer pending changes nothing.
     pub fn steer_now(&self, id: &BlockId) {
         self.shared.update(|core| core.steer_now(id));
     }
@@ -1097,8 +1108,7 @@ impl AgentSession {
     }
 
     /// What the session knows of an edit request before its uploads are
-    /// resolved (`message-editing.md` § Commit and idempotency), so that a
-    /// repeated request writes no file.
+    /// resolved, so that a repeated request writes no file.
     pub fn check_edit(
         &self,
         operation: &demi_shared_types::OperationId,
@@ -1109,10 +1119,9 @@ impl AgentSession {
             .read(|core| core.check_edit(operation, digest, version))
     }
 
-    /// Replaces a user message and everything after it
-    /// (`message-editing.md`); returns at durable acceptance, and the
-    /// replacement's turn runs on. An operation accepted before returns its
-    /// receipt again.
+    /// Replaces a user message and everything after it; returns at durable
+    /// acceptance, and the replacement's turn runs on. An operation
+    /// accepted before returns its receipt again.
     pub async fn edit_and_send(
         &self,
         submission: EditSubmission,
@@ -1124,10 +1133,9 @@ impl AgentSession {
         }
     }
 
-    /// Makes the `to`th version at the block `target`'s place current
-    /// (`message-editing.md` § Versions), admitted as an edit is against the
-    /// transcript `version` the page showed; returns once the switch is
-    /// published, or why nothing changed.
+    /// Makes the `to`th version at the block `target`'s place current,
+    /// admitted as an edit is against the transcript `version` the page
+    /// showed; returns once the switch is published, or why nothing changed.
     pub async fn switch_version(
         &self,
         target: BlockId,
@@ -1218,7 +1226,7 @@ impl AgentSession {
 
     /// The latest call still executing: the one a command it runs, such as
     /// `demi agent`, acts for, so a child it starts belongs to that call's
-    /// branch (`message-editing.md` § Versions).
+    /// branch.
     pub fn executing_call(&self) -> Option<BlockId> {
         self.shared.read(|core| {
             core.transcript.blocks().iter().rev().find_map(|block| match block {
@@ -1248,11 +1256,11 @@ impl AgentSession {
     }
 
     /// A Fork's seed from this live session, through the completed text
-    /// `end` names (`conversation-fork.md` § The fork seed): captured in one
-    /// step, with the model a switch the session accepted would use. The
-    /// blocks before the window are named as the store's rows, which the
-    /// destination's store copies, under the session's save order, so no
-    /// rewrite before the window comes between the capture and the naming.
+    /// `end` names: captured in one step, with the model a switch the
+    /// session accepted would use. The blocks before the window are named as
+    /// the store's rows, which the destination's store copies, under the
+    /// session's save order, so no rewrite before the window comes between
+    /// the capture and the naming.
     pub async fn prepare_fork(&self, end: ForkEnd<'_>) -> Result<ForkSeed, ForkError> {
         let capture = |core: &SessionCore| {
             let state = demi_agent_store::CheckpointState {
@@ -1312,10 +1320,9 @@ impl AgentSession {
             .read(|core| core.watched.get(command))
     }
 
-    /// Stops one thing (`runtime.md` § Stop): the running action, which has
-    /// recorded the stop when this returns; else the first waiting action.
-    /// Whether another `abort` would stop more is read when the stop is
-    /// recorded.
+    /// Stops one thing: the running action, which has recorded the stop
+    /// when this returns; else the first waiting action. Whether another
+    /// `abort` would stop more is read when the stop is recorded.
     pub async fn abort(&self) -> AbortResult {
         match self.shared.update(SessionCore::abort_step) {
             AbortStep::Running { target, cancel } => AbortResult {
@@ -1346,10 +1353,9 @@ impl AgentSession {
     }
 
     /// Records a model switch, which lands at the next provider request; one
-    /// that arrives while an edit is being prepared waits for the edit
-    /// (`runtime.md` § Model switch). A runtime the switch replaces is closed
-    /// once it serves no run. A session that is closing gives the switch
-    /// back.
+    /// that arrives while an edit is being prepared waits for the edit. A
+    /// runtime the switch replaces is closed once it serves no run. A session
+    /// that is closing gives the switch back.
     pub fn update_model(&self, switch: ModelSwitch) -> Result<(), ModelSwitch> {
         self.shared.update(|core| core.record_switch(switch))
     }
@@ -1412,11 +1418,10 @@ impl AgentSession {
         persist::flush(&self.shared).await
     }
 
-    /// Disposes the session (`runtime.md` § Dispose and restore): refuses
-    /// new actions, stops a running one as a shutdown, keeps the queue, the
-    /// waiting input and the commands that report to it, saves the final
-    /// checkpoint and closes the provider runtimes. The error is a final
-    /// checkpoint that could not be saved.
+    /// Disposes the session: refuses new actions, stops a running one as a
+    /// shutdown, keeps the queue, the waiting input and the commands that
+    /// report to it, saves the final checkpoint and closes the provider
+    /// runtimes. The error is a final checkpoint that could not be saved.
     pub async fn dispose(&self) -> Result<(), StoreError> {
         let first = self.shared.update(SessionCore::begin_dispose);
         let mut status = self.shared.status.subscribe();

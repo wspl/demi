@@ -1,7 +1,7 @@
-//! What every kind of a provider's media role has in common (`media.md`):
-//! the vendor whose models it makes, the models it lists, how a request to
-//! the vendor is sent within its deadline with the account's or the key's
-//! credentials, and how a refusal reads. The image, video and audio roles
+//! What every kind of a provider's media role has in common: the vendor
+//! whose models it makes, the models it lists, how a request to the vendor
+//! is sent within its deadline with the account's or the key's credentials,
+//! and how a refusal reads. The image, video and audio roles
 //! ([`crate::images`], [`crate::videos`], [`crate::audio`]) build on it; the
 //! backend chooses the entry and the account.
 
@@ -25,13 +25,13 @@ use crate::{
 /// How long one request to a vendor may take: the token's refresh, the
 /// request and the reading of the answer or the refusal. An image is one
 /// request; a video's ask, each read of its state and its download are one
-/// each (`videos.md` § A call is a job).
+/// each.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The largest file an answer may hold, counted as it arrives: a video's
 /// longest, 15 seconds at 1080p, is tens of MiB, and ten minutes of
-/// 44.1 kHz stereo PCM about 106 MiB (`videos.md` § The job, `audio.md`
-/// § Vendors). A file sent as base64 inside JSON is counted as decoded.
+/// 44.1 kHz stereo PCM about 106 MiB. A file sent as base64 inside JSON
+/// is counted as decoded.
 pub const ANSWER_LIMIT: usize = 256 * 1024 * 1024;
 
 /// What room a JSON answer whose file is base64 has around it: its other
@@ -262,7 +262,7 @@ pub fn subscription_models(catalog: &Catalog, subscription: Subscription, kind: 
 }
 
 /// What every kind of media role says of itself, which the backend lists
-/// and chooses entries by (`media.md` § What the agent is told).
+/// and chooses entries by.
 pub trait MediaMaker: Send + Sync {
     /// How the user knows who answers, such as `ChatGPT` or `OpenAI`.
     fn name(&self) -> &str;
@@ -295,7 +295,7 @@ pub trait MediaMaker: Send + Sync {
 
     /// Whether the model that answered is known to be the one asked for.
     /// A vendor whose answer does not name it, the ChatGPT backend's, is
-    /// shown as asked, not confirmed (`images.md` § Commands).
+    /// shown as asked, not confirmed.
     fn confirms_model(&self) -> bool {
         true
     }
@@ -303,7 +303,7 @@ pub trait MediaMaker: Send + Sync {
 
 /// A media model a provider offers, as its listing names it: what the
 /// catalog of media models states of it is read by the backend, which
-/// joins the listings of every entry (`media.md` § What the agent is told).
+/// joins the listings of every entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaModelInfo {
     pub id: String,
@@ -353,8 +353,7 @@ impl<T> MediaAnswer<T> {
 
 /// Why a vendor did not answer with what was asked. Each failure the
 /// vendor sent carries what it named to trace it, its own code and its
-/// request or trace ID, which the call's words end with (`images.md`
-/// § Accounts and failures).
+/// request or trace ID, which the call's words end with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaFailure {
     /// The account or key is used up, until the moment the vendor named,

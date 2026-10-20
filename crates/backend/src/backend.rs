@@ -370,10 +370,9 @@ impl Backend {
         }
         // A credential request's command ended with the run before, so no
         // one waits for its answer; and a credential whose time came while
-        // the backend was down is removed (`credentials.md` § Storage and
-        // expiry). A failure does not stop the start: the user's shard
-        // removes what is past due when it starts, and the next start
-        // withdraws the requests.
+        // the backend was down is removed. A failure does not stop the
+        // start: the user's shard removes what is past due when it starts,
+        // and the next start withdraws the requests.
         if let Err(error) = services.control.withdraw_credential_requests().await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
@@ -387,8 +386,8 @@ impl Backend {
             );
         }
         // Each permission decision whose message a restart cut off reaches
-        // the agent that asked (`permissions.md` § The decision's message).
-        // A failure does not stop the start: the next start delivers it.
+        // the agent that asked. A failure does not stop the start: the next
+        // start delivers it.
         if let Err(error) = deliver_decisions(&services.control, &shards.shards()).await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
@@ -397,9 +396,8 @@ impl Backend {
         }
         // Each root's turn the last shutdown interrupted goes on, in the
         // background, as the user's Resume would, unless the user turned that
-        // off (`failures-and-recovery.md` § The unfinished turn). A failure
-        // does not stop the start: the marks stay for the next start, and
-        // meanwhile the turns wait for the user's Resume.
+        // off. A failure does not stop the start: the marks stay for the next
+        // start, and meanwhile the turns wait for the user's Resume.
         if let Err(error) = resume_after_restart(&services.control, &shards.shards()).await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,

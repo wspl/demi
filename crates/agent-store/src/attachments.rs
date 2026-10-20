@@ -76,8 +76,7 @@ pub struct Upload<'a> {
 /// natively when it is an image, a video or a PDF, then the file's record,
 /// with its opening when it is text. The medium references the upload's own
 /// blob, with its size in pixels, and its bytes come with the blocks, for
-/// the session to hold (`transcript.md` § Media). An image enters fitted
-/// (`transcript.md` § Images in the transcript): one that fitting changed
+/// the session to hold. An image enters fitted: one that fitting changed
 /// references the fitted image's blob, which is put into `blobs` first, and
 /// one no provider can take stays the record alone, which the model reads by
 /// path.

@@ -1,6 +1,5 @@
-//! What the backend sends (`rendering.md` § Server frames,
-//! `crates/agent-server/src/server/tree.rs`). A page accepts fields it does not
-//! know, so these types are tolerant.
+//! What the backend sends (`crates/agent-server/src/server/tree.rs`). A page
+//! accepts fields it does not know, so these types are tolerant.
 
 use std::collections::BTreeMap;
 
@@ -58,7 +57,7 @@ pub enum ServerFrame {
         request_id: Option<RequestId>,
     },
     /// The blocks from `start` to the end, whole, with the transcript's
-    /// length and version (`rendering.md` § Where a reset starts).
+    /// length and version.
     TranscriptReset {
         #[garde(skip)]
         start: u32,
@@ -78,8 +77,7 @@ pub enum ServerFrame {
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
-        /// The versions of its blocks that have others
-        /// (`message-editing.md` § Versions).
+        /// The versions of its blocks that have others.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(dive)]
         versions: Vec<BlockVersions>,
@@ -122,9 +120,8 @@ pub enum ServerFrame {
         /// The agent whose context it is: the root, or a live subagent.
         #[garde(skip)]
         node: NodeId,
-        /// None when an open cannot tell it without reading a blob
-        /// (`compaction.md` § Context estimate): the page then shows no
-        /// figure rather than one from before.
+        /// None when an open cannot tell it without reading a blob: the
+        /// page then shows no figure rather than one from before.
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<ContextUsage>")]
         #[garde(dive)]
@@ -171,8 +168,7 @@ pub enum ServerFrame {
         #[garde(dive)]
         pending_steers: Vec<PendingSteer>,
     },
-    /// The complete list of the calls the model is writing
-    /// (`rendering.md` § Calls being written).
+    /// The complete list of the calls the model is writing.
     PendingCalls {
         /// The subagent whose calls they are; absent for the root's.
         #[serde(
@@ -187,8 +183,10 @@ pub enum ServerFrame {
         pending_calls: Vec<PendingCall>,
     },
     /// How long a node had waited for the model's answer when the frame
-    /// left, or null when it waits for none (`rendering.md` § Waiting for the
-    /// model).
+    /// left, or null when it waits for none. The page counts from its own
+    /// clock when the frame arrives, minus the wait, and compares no time of
+    /// the server's with its own, so a difference between the two clocks never
+    /// shows.
     Waiting {
         /// The subagent that waits; absent for the root.
         #[serde(
@@ -212,7 +210,7 @@ pub enum ServerFrame {
         outcome: SteerOutcome,
     },
     /// Answers `cancel_pending_steer` and `dequeue_message`, after the list
-    /// frame the removal changed (`runtime.md` § Pending steers).
+    /// frame the removal changed.
     RemoveResult {
         /// The steer's or the queued message's id, as the request named it.
         #[schemars(length(min = 1))]
@@ -356,7 +354,7 @@ pub enum ServerFrame {
     Closed,
     /// Nothing: the connection sent no other frame for 30 seconds. The
     /// backend's socket sends it, not the tree, so that a page can tell a
-    /// quiet connection from a dead one (`rendering.md` § Order and delivery).
+    /// quiet connection from a dead one.
     Heartbeat,
     /// The answer to the page's `{ ping: id }`, sent at
     /// once and ahead of any other frame waiting.
@@ -637,10 +635,10 @@ pub struct SubagentChild {
     /// tells a change while it runs.
     #[garde(length(min = 1))]
     pub cwd: String,
-    /// Whether the call that started it is on its parent's current path
-    /// (`message-editing.md` § Versions): the Agents window and `agent:`
-    /// links show only the children that are, and a `changed` frame tells
-    /// when a switch of versions changes it.
+    /// Whether the call that started it is on its parent's current path:
+    /// the Agents window and `agent:` links show only the children that
+    /// are, and a `changed` frame tells when a switch of versions changes
+    /// it.
     #[garde(skip)]
     pub on_path: bool,
 }
@@ -756,7 +754,7 @@ pub struct CommandView {
     pub tool_use_id: String,
     /// That call's title, its `description`, as the command's record keeps
     /// it from its start, which its tab in the Running window shows whether
-    /// or not the page holds the call (`rendering.md` § Rendering boundary).
+    /// or not the page holds the call.
     #[garde(skip)]
     pub title: String,
     /// That call's script, as the command's record keeps it, which its

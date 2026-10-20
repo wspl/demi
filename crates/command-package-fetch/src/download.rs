@@ -1,7 +1,7 @@
-//! The HTTP fetch from the Host (`web.md` § demi web fetch): the URL asked
-//! for Markdown first, redirects followed to any host, the Host's proxies
-//! and trust store, no cookie or credential, and the body read up to its
-//! limit as text or as a file's bytes.
+//! The HTTP fetch from the Host: the URL asked for Markdown first,
+//! redirects followed to any host, the Host's proxies and trust store, no
+//! cookie or credential, and the body read up to its limit as text or as a
+//! file's bytes.
 
 use std::collections::BTreeMap;
 

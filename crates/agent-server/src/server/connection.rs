@@ -1,8 +1,16 @@
-//! One conversation socket's frame handling (`rendering.md` § Frame protocol):
-//! the backend decodes each client frame, resolves its content, and hands it
-//! to [`Connection::handle`], one frame at a time in arrival order. Every
-//! frame for the connection, a reply or an event, goes through its one
-//! bounded outbox in causal order; [`FrameRx`] is the outbox's receiving end.
+//! One conversation socket's frame handling: the backend decodes each client
+//! frame, resolves its content, and hands it to [`Connection::handle`], one
+//! frame at a time in arrival order. Every frame for the connection, a reply
+//! or an event, goes through its one bounded outbox in causal order;
+//! [`FrameRx`] is the outbox's receiving end.
+//!
+//! An event of the tree goes to every attached connection; a reply goes only
+//! to the connection whose frame it answers. Connections that act at once need
+//! no rule of their own: each hands the session its frames one at a time, and
+//! the session takes the frames of all of them in the order they reach it, so
+//! the rule that decides a lone client's frame decides each. Two sends run in
+//! the order they arrive, an edit is refused while another connection's send
+//! runs or waits, and each `abort` stops one thing.
 
 use std::{
     cell::{Cell, RefCell},
@@ -324,9 +332,8 @@ impl<H: HostResolver> Connection<H> {
             "a page opened the conversation"
         );
         // Each node's usage follows the handshake, since the window in use
-        // is asked for (`compaction.md` § Context estimate). It is the
-        // estimate at the moment it is sent, so a later change still
-        // arrives after it.
+        // is asked for. It is the estimate at the moment it is sent, so a
+        // later change still arrives after it.
         for frame in tree.held_context_usage().await {
             self.send(frame);
         }
@@ -357,8 +364,7 @@ impl<H: HostResolver> Connection<H> {
     }
 
     /// The answer to a frame that needs a session when none is open. A
-    /// removal is answered `gone_on`, since nothing held what it names
-    /// (`runtime.md` § Pending steers).
+    /// removal is answered `gone_on`, since nothing held what it names.
     fn refuse(&self, frame: ClientFrame, command: ClientFrameKind) {
         match frame {
             ClientFrame::Steer { steer_id, .. } => {
@@ -553,10 +559,10 @@ impl<H: HostResolver> Connection<H> {
             self.reject(kind, refusal);
             return;
         }
-        // The user compacts only a context that is full enough
-        // (`compaction.md` § When compaction runs). The estimate may
-        // read media, during which an action can start, so the phase
-        // is checked again with nothing awaited before the admission.
+        // The user compacts only a context that is full enough. The
+        // estimate may read media, during which an action can start, so
+        // the phase is checked again with nothing awaited before the
+        // admission.
         if kind == ClientFrameKind::Compact {
             let refusal = session
                 .compaction_refusal()
@@ -577,10 +583,10 @@ impl<H: HostResolver> Connection<H> {
         }
     }
 
-    /// An edit's acceptance (`message-editing.md` § Commit and idempotency):
-    /// a repeated request is answered from its receipt, or shares the
-    /// acceptance in flight, before any of its files is resolved; a new one
-    /// resolves its content and returns once the replacement is durable.
+    /// An edit's acceptance: a repeated request is answered from its
+    /// receipt, or shares the acceptance in flight, before any of its files
+    /// is resolved; a new one resolves its content and returns once the
+    /// replacement is durable.
     async fn edit(&self, session: &AgentSession, request: EditRequest) -> Result<TurnId, Refusal> {
         let digest = edit_digest(&request);
         let check = session
@@ -639,7 +645,7 @@ async fn regenerate(session: &AgentSession, request: RegenerateRequest) -> Resul
 }
 
 /// Why a session refuses an action that needs it idle, or none when it is
-/// idle (`runtime.md` § Actions).
+/// idle.
 fn busy(session: &AgentSession) -> Option<Refusal> {
     let phase = session.phase();
     (phase != SessionPhase::Idle)

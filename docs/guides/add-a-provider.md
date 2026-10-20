@@ -174,7 +174,7 @@ counts are `Option<u64>`.
   in its error body, and fall back to the standard `Retry-After` reading
   (`read_http_failure`). The same function sets a failure's wait when a run
   fails and reads stored records later
-  ([Reading a failure](../agent/failures-and-recovery.md#reading-a-failure)).
+  (`crates/provider-common/src/failure.rs`).
 - Give decode, protocol and process failures their own `thiserror` types and
   turn them into a failure at the run's boundary with a fixed code. Never derive
   a code by matching message text

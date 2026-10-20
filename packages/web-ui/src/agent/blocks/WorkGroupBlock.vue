@@ -15,15 +15,15 @@ import { changeFile, pillSelection, requestFileSelection, runFiles } from '../..
 import { foldedMedia, splitMedia } from '../tool-media'
 
 /**
- * The steps of a run that have ended, as one row (`rendering.md` § Work
- * groups); a step that still runs is a row of its own under it. A lone step
- * is that step's own row, which opens to the step; more read what they did,
- * done, no shimmer, and open to every step, each as its own row. A step that
- * joins never changes whether the row is open: one that joins while it is
- * open enters as a row joining the transcript does, and a lone step's row
- * that a step joins turns into the stack, open if the reader opened the
- * step. Folded, the row wears the pictures its steps returned, and the files
- * they changed show under it; open, each step its own.
+ * The steps of a run that have ended, as one row; a step that still runs is
+ * a row of its own under it. A lone step is that step's own row, which opens
+ * to the step; more read what they did, done, no shimmer, and open to every
+ * step, each as its own row. A step that joins never changes whether the row
+ * is open: one that joins while it is open enters as a row joining the
+ * transcript does, and a lone step's row that a step joins turns into the
+ * stack, open if the reader opened the step. Folded, the row wears the
+ * pictures its steps returned, and the files they changed show under it;
+ * open, each step its own.
  */
 const props = defineProps<{ group: WorkGroupBlock }>()
 /** The row is open: the transcript's (`useOpenRuns`). */

@@ -1,8 +1,8 @@
-//! The user's credentials in their shard (`credentials.md`): what Settings ›
-//! Credentials reads and changes, the sealing of their values by the product's one owner
-//! of sealing, and the expiry of the ones kept for a while: one timer for the user's
-//! nearest expiry, which each change of the credentials rearms; a removal past due, such
-//! as one that came while the backend was down, happens as the timer starts.
+//! The user's credentials in their shard: what Settings › Credentials reads and changes,
+//! the sealing of their values by the product's one owner of sealing, and the expiry of
+//! the ones kept for a while: one timer for the user's nearest expiry, which each change
+//! of the credentials rearms; a removal past due, such as one that came while the
+//! backend was down, happens as the timer starts.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -180,12 +180,11 @@ impl Shard {
         Ok(())
     }
 
-    /// Removes the user's credentials as their times come
-    /// (`credentials.md` § Storage and expiry), until the shard closes: it
-    /// removes what is past due, sleeps until the nearest time left, and
-    /// looks again when that time comes or a change of the credentials
-    /// rearms it. A removal that fails waits for the next change or the
-    /// next start, which removes what is past due.
+    /// Removes the user's credentials as their times come, until the shard
+    /// closes: it removes what is past due, sleeps until the nearest time
+    /// left, and looks again when that time comes or a change of the
+    /// credentials rearms it. A removal that fails waits for the next
+    /// change or the next start, which removes what is past due.
     pub(crate) async fn follow_credential_expiry(self: Rc<Self>) {
         loop {
             let control = &self.services().control;

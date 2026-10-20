@@ -18,10 +18,10 @@ import {
 } from './generated/plugin'
 
 /**
- * The skills plugin's settings section (`skills.md` § The page): its
- * Skills page over the plugin's state and methods. Every change comes back
- * with the state the plugin sends to each of the user's pages. Opening it
- * asks the plugin to check the sources for updates.
+ * The skills plugin's settings section: its Skills page over the plugin's
+ * state and methods. Every change comes back with the state the plugin
+ * sends to each of the user's pages. Opening it asks the plugin to check
+ * the sources for updates.
  */
 const props = defineProps<{
   /** The sources shown open at first. */
@@ -99,7 +99,7 @@ function change(method: string, params: SourceCall | SetEnabled | SetSourceEnabl
 
 /**
  * The refusals that are about the origin typed, which the dialog says under
- * its field (`skills.md` § The page), in the page's words.
+ * its field, in the page's words.
  */
 const ORIGIN_REFUSALS = new Map<string, (origin: string) => string>([
   ['invalid_origin', () => t('refusals.invalid_origin')],

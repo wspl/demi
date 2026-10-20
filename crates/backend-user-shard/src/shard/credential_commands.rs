@@ -1,9 +1,29 @@
-//! The product's `demi credentials` group (`credentials.md` § Commands): an
-//! agent lists the user's credentials and shows one, asks the user for one
-//! and waits for the answer, reads one field's value onto its standard
-//! output once the conversation may use the credential, and, with the
-//! user's Manage Credentials, removes one. No output of these commands
-//! carries a secret value but `read`'s, which the agent passes on.
+//! The product's `demi credentials` group: an agent lists the user's
+//! credentials and shows one, asks the user for one and waits for the
+//! answer, reads one field's value onto its standard output once the
+//! conversation may use the credential, and, with the user's Manage
+//! Credentials, removes one. No output of these commands carries a secret
+//! value but `read`'s, which the agent passes on.
+//!
+//! An agent that needs a secret asks the user for it with `request` rather
+//! than reading it from the message, where it would sit in the transcript and
+//! reach the model's vendor. `read` writes the value to its standard output,
+//! wherever that goes: Demi refuses and masks nothing, and how the value is
+//! passed on is the agent's choice. A field's kind is advice, not a rule: the
+//! command's help recommends passing a secret where the model does not read
+//! it, into a pipe, a file or a `$(…)`, since a value the job prints joins the
+//! transcript. The command line the model wrote, which the transcript keeps,
+//! holds the `$(…)` as written, never its value, and Demi writes no value
+//! into the transcript, a log or a frame to the page, but the Settings page's
+//! reveal. A value enters the transcript only when an agent's command prints
+//! it.
+//!
+//! A credential is used in a conversation only once the user allowed it there:
+//! one the user saved from that conversation's request is allowed at once, any
+//! other asks first, and an allowance lasts the conversation's life for every
+//! agent of its tree. How long a credential is kept is the agent's decision,
+//! with the request's `--keep`, since it knows what the secret is for; the
+//! card offers no choice, as a form does not ask how long its data is kept.
 
 use std::collections::BTreeSet;
 use std::rc::{Rc, Weak};
@@ -41,8 +61,7 @@ const MANAGE_DESCRIPTION: &str = "Manage Credentials lets the agents of this con
 
 const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Keeps the secrets a task needs, API keys, tokens, passwords, as the user's named credentials: `request` asks the user for one on a card and waits for the answer; `read` writes one field's value to standard output, to pass into a pipe, a file or `$(…)` without printing it. Use it whenever a task needs a secret, rather than asking the user to paste it into the conversation, where it would join the transcript.";
 
 const LIST_SUMMARY: &str = "List the user's credentials: name, field names, when each is removed (- for kept always), and whether this conversation may use it. No value.";

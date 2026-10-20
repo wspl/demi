@@ -88,7 +88,7 @@ impl ProviderFamily for AnthropicFamily {
     }
 
     /// A MiniMax key makes images, Hailuo's videos and speech; its coding
-    /// plans make none (`media.md` § Which entries make which media).
+    /// plans make none.
     fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
         vendor_id.and_then(Region::of).map(|_| ImageShape::Minimax)
     }
@@ -152,8 +152,7 @@ impl ProviderFamily for OpenAiFamily {
     }
 
     /// An OpenAI or xAI key makes images through the OpenAI-shaped image
-    /// API, a Volcengine Ark key through Seedream's (`media.md` § Which
-    /// entries make which media).
+    /// API, a Volcengine Ark key through Seedream's.
     fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
         match vendor_id {
             Some("openai" | "xai") => Some(ImageShape::OpenaiImages),
@@ -163,8 +162,7 @@ impl ProviderFamily for OpenAiFamily {
     }
 
     /// An xAI key makes videos through xAI's video API, a Volcengine Ark
-    /// key through Ark Tasks; OpenAI's was shut down (`videos.md`
-    /// § Vendors).
+    /// key through Ark Tasks; OpenAI's was shut down.
     fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
         match vendor_id {
             Some("xai") => Some(VideoShape::XaiVideos),
@@ -173,8 +171,7 @@ impl ProviderFamily for OpenAiFamily {
         }
     }
 
-    /// An OpenAI key makes speech; xAI's speech comes later (`audio.md`
-    /// § Vendors).
+    /// An OpenAI key makes speech; xAI's speech comes later.
     fn audio_shape(&self, vendor_id: Option<&str>) -> Option<AudioShape> {
         (vendor_id == Some("openai")).then_some(AudioShape::OpenaiSpeech)
     }

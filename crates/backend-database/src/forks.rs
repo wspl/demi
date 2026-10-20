@@ -1,9 +1,8 @@
-//! Fork creation attempts in the control store (`conversation-fork.md`
-//! § Backend creation and retries): each reserves its destination's id with
-//! its owner, source, text and creation metadata, and a control transaction
-//! publishes the destination into the conversation index once its root is
-//! committed in its own database. Publication is the public conversation
-//! row; a reservation without one stays hidden.
+//! Fork creation attempts in the control store: each reserves its
+//! destination's id with its owner, source, text and creation metadata, and
+//! a control transaction publishes the destination into the conversation
+//! index once its root is committed in its own database. Publication is the
+//! public conversation row; a reservation without one stays hidden.
 
 use demi_shared_types::{BlockId, ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ConversationTarget;

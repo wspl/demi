@@ -1,7 +1,7 @@
 //! Whether an image's bytes are a whole picture: the one check `demi file view`
 //! runs before it shows the model an image and `demi image` runs on a vendor's
 //! answer before it writes it (`crates/command-package-file/src/files.rs`,
-//! `images.md` § Commands). A picture cut short is refused, never shown or
+//! `crates/plugin-image/src/image.rs`). A picture cut short is refused, never shown or
 //! converted as the decoder fills it in.
 
 use std::io::Cursor;

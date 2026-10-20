@@ -947,8 +947,7 @@ async fn a_turn_saves_at_each_dispatch_and_at_its_end_with_only_the_changed_rows
 }
 
 /// A save that fails leaves its rows to the next one, so the history the
-/// store holds ends whole after a database refused a save (`runtime.md`
-/// § Saving).
+/// store holds ends whole after a database refused a save.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_failed_save_leaves_its_rows_to_the_next_and_the_stored_history_ends_whole() {
     let (release, released) = oneshot::channel::<()>();
@@ -1274,8 +1273,8 @@ fn paced(events: Vec<(u64, ProviderEvent)>) -> Turn {
 
 // The row says Requesting from the turn's start, so the wait the server
 // tells a page that opens meanwhile starts there too, not once the request
-// is built: here a preamble hook, which a Host answers, holds it back
-// (`rendering.md` § Waiting for the model). A paused clock.
+// is built: here a preamble hook, which a Host answers, holds it back. A
+// paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built() {
     let provider = ScriptedRuntime::new(Vec::new());
@@ -1299,12 +1298,11 @@ async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built()
     assert!(provider.requests().is_empty());
 }
 
-// The wait ends with the model's first output (`rendering.md` § Waiting for
-// the model): a call being written only once its title is, and reasoning
-// as soon as its block starts, redacted reasoning and reasoning whose text
-// never comes included, so a model that thinks never reads as one that has
-// not answered. Each request after a step waits again from the step's end.
-// A paused clock.
+// The wait ends with the model's first output: a call being written only
+// once its title is, and reasoning as soon as its block starts, redacted
+// reasoning and reasoning whose text never comes included, so a model that
+// thinks never reads as one that has not answered. Each request after a
+// step waits again from the step's end. A paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_wait_for_the_model_ends_at_its_first_output_reasoning_at_its_start() {
     let provider = ScriptedRuntime::new([
@@ -1971,9 +1969,8 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
 /// A run that yields a second response after the first, as Claude Code does
 /// when it answers two messages of one run in turns of their own, streams
 /// the second's text to the page as it comes: the frames the first held
-/// for the turn's end are released by what follows it in the run
-/// (`rendering.md` § Order and delivery). (The second answer reached the
-/// page only when the run ended.)
+/// for the turn's end are released by what follows it in the run. (The
+/// second answer reached the page only when the run ended.)
 // One turn of a scripted provider: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_second_response_of_one_run_streams_its_text_before_the_run_ends() {
@@ -2020,11 +2017,10 @@ async fn a_second_response_of_one_run_streams_its_text_before_the_run_ends() {
     assert_eq!(texts, ["one", "two"]);
 }
 
-/// A call the model is writing (`rendering.md` § Calls being written): it is
-/// listed from its start, which completes the text before it, gains its
-/// description once that string is whole, and leaves the list in the step
-/// that adds its block; a stopped request empties the list. Nothing of it
-/// is in the transcript before it is whole.
+/// A call the model is writing: it is listed from its start, which completes
+/// the text before it, gains its description once that string is whole, and
+/// leaves the list in the step that adds its block; a stopped request
+/// empties the list. Nothing of it is in the transcript before it is whole.
 #[tokio::test(flavor = "local")]
 async fn a_call_being_written_is_listed_from_its_start_until_its_block_and_a_stop_empties_the_list() {
     use futures_util::StreamExt;

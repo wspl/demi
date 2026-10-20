@@ -1,8 +1,7 @@
-//! A conversation's live tree (`rendering.md` § Connections and the live tree):
-//! its root and every live child, the connections attached to it, the frames
-//! its sessions' events become, and its eviction once it has stayed detached
-//! and quiescent. The supervisor operations on its children are in
-//! [`supervisor`], and its commands' live output in [`live`].
+//! A conversation's live tree: its root and every live child, the connections
+//! attached to it, the frames its sessions' events become, and its eviction
+//! once it has stayed detached and quiescent. The supervisor operations on its
+//! children are in [`supervisor`], and its commands' live output in [`live`].
 //!
 //! Subagent traffic of the whole tree travels on the conversation's one socket,
 //! flat: a job's `parentSessionId` is the tree. A child's transcript goes only
@@ -117,7 +116,7 @@ pub struct Tree<H: HostResolver> {
     /// which may change whether the tree only waits.
     pub(super) activity: watch::Sender<u64>,
     /// Tells the pages which children a cut path moved on or off the
-    /// current path (`message-editing.md` § Versions).
+    /// current path.
     _paths: AbortOnDropHandle<()>,
     /// Disposes the tree once it has stayed detached and quiescent.
     _eviction: AbortOnDropHandle<()>,
@@ -483,8 +482,8 @@ impl<H: HostResolver> Tree<H> {
 
     /// The `context_usage` of each live node, the root's, then each live
     /// child's, depth first in spawn order: none for a node whose session
-    /// cannot tell it without reading a blob (`compaction.md` § Context
-    /// estimate), so the page shows no figure from before.
+    /// cannot tell it without reading a blob, so the page shows no figure
+    /// from before.
     pub(crate) async fn held_context_usage(&self) -> Vec<ServerFrame> {
         let nodes: Vec<Rc<Node<H>>> = std::iter::once(self.root.clone())
             .chain(self.descendants().iter().map(|child| child.node().clone()))
@@ -525,8 +524,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The tree's admission: every action of its nodes holds a lease, and a
-    /// target switch or an archive reserves the idle tree through it
-    /// (`runtime.md` § Actions).
+    /// target switch or an archive reserves the idle tree through it.
     pub fn admission(&self) -> &ActivityGate {
         &self.admission
     }
@@ -858,9 +856,10 @@ impl<H: HostResolver> Tree<H> {
         frames
     }
 
-    /// What a restored tree does next (`runtime.md` § Dispose and restore,
-    /// `crates/agent-server/src/server/tree/supervisor.rs`): the root continues under its policy,
-    /// then its children come back from the store, each restoring its own.
+    /// What a restored tree does next
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`): the root
+    /// continues under its policy, then its children come back from the store,
+    /// each restoring its own.
     pub(crate) async fn continue_restored(
         self: &Rc<Self>,
         continuation: Continuation,
@@ -1148,8 +1147,8 @@ async fn evict_when_idle<H: HostResolver>(
     }
 }
 
-/// The root's transcript from the blocks the page holds
-/// (`rendering.md` § Where a reset starts), as its session read it.
+/// The root's transcript from the blocks the page holds, as its session
+/// read it.
 fn root_reset(reset: Reset) -> ServerFrame {
     ServerFrame::TranscriptReset {
         start: index_u32(reset.start),

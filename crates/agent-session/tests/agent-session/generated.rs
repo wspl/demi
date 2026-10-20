@@ -1,5 +1,5 @@
-//! Compaction over generated sessions (`compaction.md` § Acceptance, level
-//! 1). Each fixed seed drives one session through turns of text, signed
+//! Compaction over generated sessions, the first level of its verification.
+//! Each fixed seed drives one session through turns of text, signed
 //! reasoning of several vendors, parallel and sequential calls with text
 //! and image results, steers and agent messages that arrive during a call,
 //! a Stop and Continue, a resume after a restart, messages with images and
@@ -57,7 +57,7 @@ const MODELS: [(&str, u32); 2] = [("gen-a", 20_000), ("gen-b", 40_000)];
 
 /// The user's words a pass keeps, and the most recent work it keeps, in
 /// estimated tokens, or the share of the window in use, in percent, when
-/// that is less (`compaction.md` § One pass).
+/// that is less.
 const KEPT_WORDS: (u64, u64) = (20_000, 10);
 const KEPT_WORK: (u64, u64) = (20_000, 15);
 
@@ -793,11 +793,10 @@ enum HistoryEnd {
 }
 
 /// Every summary request is the session's next request with the
-/// instruction added (`compaction.md` § The summary request): every
-/// builder encodes it as it encodes that request, but for the instruction,
-/// and it begins with the latest request the session sent to the same
-/// model since the summary request before, with the same system prompt and
-/// tools. Returns how its history ended.
+/// instruction added: every builder encodes it as it encodes that request,
+/// but for the instruction, and it begins with the latest request the
+/// session sent to the same model since the summary request before, with
+/// the same system prompt and tools. Returns how its history ended.
 fn check_summary(earlier: &[InferenceRequest], summary: &InferenceRequest, context: &str) -> HistoryEnd {
     let items = without_instruction(summary).unwrap_or_else(|| {
         panic!("{context}: the instruction is not the last block of the last user message")
@@ -907,7 +906,7 @@ fn uncached(mut body: Value) -> Value {
 /// The signatures of `request`'s reasoning that `tag` marks as its
 /// vendor's, without the tag; with `checks_history`, a vendor that checks
 /// reasoning against the history before it, not the reasoning kept past a
-/// summary (`transcript.md` § Replay).
+/// summary.
 fn signatures(request: &InferenceRequest, tag: &str, checks_history: bool) -> Vec<String> {
     request
         .items

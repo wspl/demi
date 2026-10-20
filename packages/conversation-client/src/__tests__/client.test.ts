@@ -219,8 +219,8 @@ test('the pending steers leave by id, even when the history arrives before the l
   expect(h.events.filter((event) => event.type === 'pending_steers').at(-1)).toEqual({ type: 'pending_steers', pendingSteers: [] })
 })
 
-// The session answers a removal after the list it changed
-// (`runtime.md` § Pending steers); a turn that fails meanwhile is no answer.
+// The session answers a removal after the list it changed; a turn that fails
+// meanwhile is no answer.
 test('a cancelled steer leaves with the list the server answers, and the removal resolves with the answer', async () => {
   const h = harness()
   h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first'), pendingSteer('second')] })
@@ -383,8 +383,8 @@ test('retry, resume and compact resolve when their action ends, and a busy sessi
   expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume' }, { type: 'compact' }])
 })
 
-// A child's context card compacts that child (`rendering.md` § Client frames):
-// the frame names it, and the wait follows the child's phase, not the root's.
+// A child's context card compacts that child: the frame names it, and the wait
+// follows the child's phase, not the root's.
 test('a compact of a subagent names it and ends when the child\'s compaction ends', async () => {
   const h = harness()
   let ended = false
@@ -402,8 +402,8 @@ test('a compact of a subagent names it and ends when the child\'s compaction end
   expect(ended).toBe(true)
 })
 
-// A child's phase is the child's (`rendering.md` § Frame protocol): it reaches
-// the listeners and leaves the root's own phase, and what waits on it, alone.
+// A child's phase is the child's: it reaches the listeners and leaves the
+// root's own phase, and what waits on it, alone.
 test('a subagent\'s phase frame is passed on and ends no action of the root', async () => {
   const h = harness()
   const phases: unknown[] = []

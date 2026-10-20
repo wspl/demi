@@ -1,5 +1,4 @@
-//! Exa's REST search with the user's API key (`web.md` § Accounts), which
-//! offers every option.
+//! Exa's REST search with the user's API key, which offers every option.
 
 use std::time::Instant;
 

@@ -1,5 +1,5 @@
-//! How a transcript travels (`transcript.md` § Patches and versions): as
-//! patches, each naming the index of the block it touches, and a version.
+//! How a transcript travels: as patches, each naming the index of the
+//! block it touches, and a version.
 
 use std::ops::Range;
 
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "op", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum TranscriptPatch {
     /// Insert a block at the index, with its place among the versions there
-    /// when it has others (`message-editing.md` § Versions).
+    /// when it has others.
     Add {
         #[garde(skip)]
         index: u32,
@@ -51,11 +51,10 @@ pub enum TranscriptPatch {
     },
 }
 
-/// Where a block stands among the versions at its place on the path
-/// (`message-editing.md` § Versions): the `index`th of `count`, from 1, in
-/// the order they were made. Only a block whose place holds two versions
-/// or more has one: an edited message, or the first block of a
-/// regenerated answer.
+/// Where a block stands among the versions at its place on the path: the
+/// `index`th of `count`, from 1, in the order they were made. Only a block
+/// whose place holds two versions or more has one: an edited message, or
+/// the first block of a regenerated answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Versions {
@@ -117,13 +116,13 @@ pub const PAGE_BYTES: usize = 64 * 1024;
 
 /// How long a call's input a light form keeps whole: a short script, such
 /// as one that only looks at a command, says on the folded row what the
-/// call did (`rendering.md` § Work groups).
+/// call did.
 pub const LIGHT_INPUT_BYTES: usize = 512;
 
 /// Whole requests' `blocks` in their light form: each without what only its open
 /// row shows, and of the lists of changed files a shell call carries, only those a
 /// page shows: the run's on the latest call of each run, and the request's on the
-/// latest call of each request (`rendering.md` § Rendering boundary).
+/// latest call of each request.
 pub fn light<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Vec<Block> {
     let mut light: Vec<Block> = blocks.into_iter().map(light_block).collect();
     // From the end, the first call met with a run's or a request's list is
@@ -333,20 +332,20 @@ pub fn page(
 }
 
 /// The start of a transcript's latest page, for a reset the page named no
-/// blocks for (`rendering.md` § Where a reset starts).
+/// blocks for.
 pub fn latest_page_start(blocks: &[Block]) -> usize {
     latest_page_start_within(blocks, true)
 }
 
 /// The start of the latest page among `blocks`, the transcript's from
-/// its start when `whole`, else a window of it that a session holds
-/// (`runtime.md` § What a session holds), which starts inside the request
-/// before its first `user` block: the window's blocks before that block,
-/// the end of that request, count as a request of their own, and the page
-/// reaches no further back than the window, so that no block before it is
-/// read to size the page. For example, a window from a boundary at 23,000
-/// whose first message is at 23,600 starts its latest page at 23,600 when
-/// that request fills the page, and never at the earlier request's start.
+/// its start when `whole`, else a window of it that a session holds,
+/// which starts inside the request before its first `user` block: the
+/// window's blocks before that block, the end of that request, count as a
+/// request of their own, and the page reaches no further back than the
+/// window, so that no block before it is read to size the page. For
+/// example, a window from a boundary at 23,000 whose first message is at
+/// 23,600 starts its latest page at 23,600 when that request fills the
+/// page, and never at the earlier request's start.
 pub fn latest_page_start_within(blocks: &[Block], whole: bool) -> usize {
     let users: Vec<usize> = blocks
         .iter()
@@ -371,10 +370,9 @@ pub fn latest_page_start_within(blocks: &[Block], whole: bool) -> usize {
 }
 
 /// Where a reset of `blocks` starts for a page that holds them from `from`,
-/// whose block there it holds as `edge` (`rendering.md` § Where a reset
-/// starts): at `from` while that block is still `edge`, and otherwise, or
-/// when the page names none or only one of them, at the start of the latest
-/// page.
+/// whose block there it holds as `edge`: at `from` while that block is
+/// still `edge`, and otherwise, or when the page names none or only one of
+/// them, at the start of the latest page.
 pub fn reset_start(blocks: &[Block], from: Option<u32>, edge: Option<&BlockId>) -> usize {
     let held = from.and_then(|from| usize::try_from(from).ok());
     match (held, edge) {

@@ -1,8 +1,8 @@
-//! `demi skills` through the loopback (`skills.md` § Commands), as the
-//! backend's dispatch hands a command to the plugin once the conversation
-//! has the grant: each acts as the page's method does and fails as it would,
-//! and prints what changed. Without the grant no command reaches the plugin,
-//! which the backend's permission scenarios cover.
+//! `demi skills` through the loopback, as the backend's dispatch hands a
+//! command to the plugin once the conversation has the grant: each acts as
+//! the page's method does and fails as it would, and prints what changed.
+//! Without the grant no command reaches the plugin, which the backend's
+//! permission scenarios cover.
 
 use demi_plugin_skills::{SkillsState, SourceState};
 use demi_plugin_skills::testing::{Repos, skill_md};

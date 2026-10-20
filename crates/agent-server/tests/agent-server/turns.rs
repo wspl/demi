@@ -656,9 +656,9 @@ async fn a_crash_during_a_turn_is_recorded_as_an_interruption_when_the_conversat
     assert_eq!(checkpoint.state.phase, SessionPhase::Idle);
 }
 
-/// A switch lands at the root's next provider request (`runtime.md` § Model
-/// switch): the request in flight keeps its model, and the running turn's
-/// next request carries the new model, effort and tier.
+/// A switch lands at the root's next provider request: the request in
+/// flight keeps its model, and the running turn's next request carries the
+/// new model, effort and tier.
 #[tokio::test(flavor = "local")]
 async fn a_switch_lands_at_the_next_request_inside_the_running_turn() {
     let release = Gate::new();
@@ -948,10 +948,9 @@ async fn the_context_sources_are_asked_at_once_and_answer_in_their_order() {
     );
 }
 
-/// Remove on a steer or a queued message (`runtime.md` § Pending steers):
-/// the session answers whether it removed the message or the message had
-/// gone on, after the list frame the removal changed, so the page never
-/// guesses from what comes next.
+/// Remove on a steer or a queued message: the session answers whether it
+/// removed the message or the message had gone on, after the list frame
+/// the removal changed, so the page never guesses from what comes next.
 #[tokio::test(flavor = "local")]
 async fn removing_a_waiting_message_is_answered_after_its_list() {
     let script = ScriptedRuntime::new([Turn::pending()]);

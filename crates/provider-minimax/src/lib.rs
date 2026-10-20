@@ -1,11 +1,10 @@
-//! The MiniMax provider (`crates-and-packages.md` § Vendor provider
-//! crates, `media.md` § Which entries make which media): a MiniMax entry's
-//! media through its key. The entry is models.dev's `minimax` or
-//! `minimax-cn`, whose text is MiniMax's Anthropic-shaped API, the
-//! provider it is given; its images, Hailuo videos and speech are asked on
-//! its endpoint's origin, `https://api.minimax.io` or
-//! `https://api.minimax.cn`. MiniMax lists only its text models to a key,
-//! so the media models are the catalog's.
+//! The MiniMax provider (`crates-and-packages.md` § Vendor provider crates): a
+//! MiniMax entry's media through its key. The entry is models.dev's `minimax`
+//! or `minimax-cn`, whose text is MiniMax's Anthropic-shaped API, the provider
+//! it is given; its images, Hailuo videos and speech are asked on its
+//! endpoint's origin, `https://api.minimax.io` or `https://api.minimax.cn`.
+//! MiniMax lists only its text models to a key, so the media models are the
+//! catalog's.
 
 mod images;
 mod minimax;

@@ -6,11 +6,10 @@ import { shellRowEnd, shellRowRunning, shellRowTime } from './terminals'
 import { useElapsedTime } from '../composables/useElapsedTime'
 
 /**
- * Where the command a `shell` call started is, as its row shows it
- * (`rendering.md` § Rendering boundary), wherever the row stands: its own row,
- * a run's step, or the face of a folded run that is that step. From the
- * command's live frames, also after the call returned, or the view the call
- * stored.
+ * Where the command a `shell` call started is, as its row shows it, wherever
+ * the row stands: its own row, a run's step, or the face of a folded run that
+ * is that step. From the command's live frames, also after the call returned,
+ * or the view the call stored.
  */
 export function useShellRow(block: () => ToolCallBlock) {
   const liveCalls = useLiveCalls()

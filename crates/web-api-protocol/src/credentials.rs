@@ -1,6 +1,6 @@
-//! The user's credentials (`credentials.md`): what Settings › Credentials reads and
-//! sends, the answer to a credential request, and the rules a name, a field and a value
-//! follow wherever they arrive, a page's body or an agent's command alike.
+//! The user's credentials: what Settings › Credentials reads and sends, the answer to a
+//! credential request, and the rules a name, a field and a value follow wherever they
+//! arrive, a page's body or an agent's command alike.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,7 +30,7 @@ pub const FIELD_NAME_PATTERN: &str = r"^[a-z0-9_-]+$";
 
 /// How a field is meant to be used: a secret is typed hidden and left out of
 /// what an agent lists, a visible one is shown as it is. It is advice, not a
-/// rule (`credentials.md` § Using a credential).
+/// rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKind {
@@ -256,7 +256,7 @@ pub struct CredentialPatch {
 
 /// The answer to a credential request: every field's value by its name.
 /// The credential is kept as the request's `keep` says, which the agent
-/// chose (`credentials.md` § A credential).
+/// chose.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RequestedValues {

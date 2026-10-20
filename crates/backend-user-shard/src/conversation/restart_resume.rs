@@ -1,8 +1,7 @@
 //! A root's turn a graceful shutdown interrupted, resumed once the backend
-//! is back (`failures-and-recovery.md` § The unfinished turn): the restart
-//! was Demi's doing, not the turn's, so the turn goes on by itself, as the
-//! user's Resume would, unless the user's `resumeAfterRestart` preference
-//! is off.
+//! is back: the restart was Demi's doing, not the turn's, so the turn goes
+//! on by itself, as the user's Resume would, unless the user's
+//! `resumeAfterRestart` preference is off.
 //!
 //! Before the shard's close aborts the agent's turns, it marks each live
 //! root whose turn is running, in the control database

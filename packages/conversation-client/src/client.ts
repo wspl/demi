@@ -23,7 +23,7 @@ import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
 import { FrameTooLargeError, type ConversationClientTransport } from './transport'
 
-/** The root's blocks the page holds, as `open` and `sync_transcript` name them (`rendering.md` § Where a reset starts). */
+/** The root's blocks the page holds, as `open` and `sync_transcript` name them. */
 export interface HeldEdge {
   from: number
   edge: string
@@ -137,14 +137,14 @@ type TranscriptState =
 type Decision<T> = { resolve: T } | { reject: Error } | undefined
 
 /**
- * The web app's client of the conversation socket's frame protocol
- * (`rendering.md` § Frame protocol). It validates every frame it receives with
- * the generated schemas and drops the connection when one does not match,
- * keeps the patch revisions, the phase, the queue and the pending steers,
- * and tells its listeners what the transcript frames bring, which the page
- * applies to the parts of the transcript it holds with the one patch
- * applier. Of the transcript it keeps only which messages and steers it has
- * seen written, which its waits settle on.
+ * The web app's client of the conversation socket's frame protocol. It
+ * validates every frame it receives with the generated schemas and drops the
+ * connection when one does not match, keeps the patch revisions, the phase,
+ * the queue and the pending steers, and tells its listeners what the
+ * transcript frames bring, which the page applies to the parts of the
+ * transcript it holds with the one patch applier. Of the transcript it keeps
+ * only which messages and steers it has seen written, which its waits settle
+ * on.
  */
 export class ConversationClient {
   private readonly transport: ConversationClientTransport
@@ -178,7 +178,7 @@ export class ConversationClient {
   private phase: SessionPhase | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
-  /** The calls the root's model is writing, as the server last listed them (`rendering.md` § Calls being written). */
+  /** The calls the root's model is writing, as the server last listed them. */
   private calls: PendingCall[] = []
 
   constructor(transport: ConversationClientTransport) {
@@ -195,7 +195,7 @@ export class ConversationClient {
    * Attaches to the conversation's tree, which runs with the model settings
    * the conversation's record holds; resolves on `opened`. `held` names the
    * root's blocks the page holds, now and at each later sync, so the stream
-   * sends none before them (`rendering.md` § Where a reset starts).
+   * sends none before them.
    */
   open(held: () => HeldEdge | undefined = () => undefined): Promise<void> {
     this.held = held
@@ -275,19 +275,18 @@ export class ConversationClient {
   }
 
   /**
-   * Regenerate (`message-editing.md` § Regenerate and the Up Arrow key): a
-   * new version of the answer to the message `request` names; resolves on
-   * its durable receipt, as an edit does.
+   * Regenerate: a new version of the answer to the message `request`
+   * names; resolves on its durable receipt, as an edit does.
    */
   regenerate(request: RegenerateRequest): Promise<void> {
     return this.editRequest({ type: 'regenerate', request }, request.operationId)
   }
 
   /**
-   * Makes the `to`th version at the place of the block `blockId` current
-   * (`message-editing.md` § Versions), from the transcript `version` the
-   * page shows. The rewrite reaches the transcript as patches; a refusal
-   * arrives as a `rejected` frame.
+   * Makes the `to`th version at the place of the block `blockId`
+   * current, from the transcript `version` the page shows. The rewrite
+   * reaches the transcript as patches; a refusal arrives as a `rejected`
+   * frame.
    */
   switchVersion(blockId: string, to: number, version: TranscriptVersion): void {
     this.sendFrame({ type: 'switch_version', blockId, to, version })
@@ -323,8 +322,7 @@ export class ConversationClient {
 
   /**
    * Removes a queued message; resolves with the session's answer: `removed`,
-   * or `gone_on` when its turn had started or the session never held it
-   * (`runtime.md` § Pending steers).
+   * or `gone_on` when its turn had started or the session never held it.
    */
   async dequeueMessage(messageId: string): Promise<RemoveOutcome> {
     const outcome = await this.removeRequest(messageId, { type: 'dequeue_message', messageId })
@@ -335,9 +333,9 @@ export class ConversationClient {
   }
 
   /**
-   * Sends a queued message now (`runtime.md` § Send now): while a turn runs,
-   * the turn ends at once and the message runs next; otherwise it moves to
-   * the front of the queue. The caller watches the queue and the transcript.
+   * Sends a queued message now: while a turn runs, the turn ends at once and
+   * the message runs next; otherwise it moves to the front of the queue. The
+   * caller watches the queue and the transcript.
    */
   sendQueuedMessage(messageId: string): void {
     this.sendFrame({ type: 'send_queued_message', messageId })
@@ -358,9 +356,9 @@ export class ConversationClient {
   }
 
   /**
-   * Delivers a pending steer now (`runtime.md` § Send now): the running call
-   * returns at once with its command still running, and the turn goes on
-   * with the steer. The caller watches the pending steers and the transcript.
+   * Delivers a pending steer now: the running call returns at once with its
+   * command still running, and the turn goes on with the steer. The caller
+   * watches the pending steers and the transcript.
    */
   steerNow(steerId: string): void {
     this.sendFrame({ type: 'steer_now', steerId })
@@ -369,7 +367,7 @@ export class ConversationClient {
   /**
    * Withdraws a pending steer; resolves with the session's answer:
    * `removed`, or `gone_on` when the turn had taken it or the session never
-   * held it (`runtime.md` § Pending steers).
+   * held it.
    */
   cancelPendingSteer(steerId: string): Promise<RemoveOutcome> {
     return this.removeRequest(steerId, { type: 'cancel_pending_steer', steerId })
@@ -832,8 +830,8 @@ export class ConversationClient {
           }
         }
         return
-      // A heartbeat only shows that the socket is alive
-      // (`rendering.md` § Order and delivery); it changes nothing here.
+      // A heartbeat only shows that the socket is alive; it changes
+      // nothing here.
       case 'heartbeat':
         return
       // The answer to the page's ping as it returns, for the socket's
@@ -846,8 +844,7 @@ export class ConversationClient {
 
   /**
    * Applies a patch whose revision is one past the client's, ignores one that
-   * is not past it, and asks for a fresh transcript at a gap
-   * (`rendering.md` § Order and delivery).
+   * is not past it, and asks for a fresh transcript at a gap.
    */
   private patchTranscript(frame: ServerFrameOf<'transcript_patch'>): void {
     const state = this.transcriptState
@@ -943,10 +940,9 @@ export class ConversationClient {
 
   /**
    * The session shows `idle` only once nothing runs or waits, and an action
-   * that follows another starts without an `idle` between them
-   * (`runtime.md` § A turn). So an action other than a send starts when the
-   * session leaves `idle`, and at `idle` every action the session took has
-   * ended.
+   * that follows another starts without an `idle` between them. So an
+   * action other than a send starts when the session leaves `idle`, and at
+   * `idle` every action the session took has ended.
    */
   private followPhase(node: string | null, previous: SessionPhase | null, phase: SessionPhase): void {
     const own = this.actionWaiters.filter((waiter) => waiter.node === node)

@@ -1,10 +1,10 @@
-//! What `demi video` does (`videos.md`): reads the call's prompt and its
-//! frames and references from the Host the command runs on; asks the
-//! Providers service for the video's job and names it on stderr at once;
-//! says each change of the job's state; checks that what came back is an
-//! MP4 and writes it to stdout; and says what came back, with a warning
-//! for each option the result did not honour or the entry's API has no
-//! field for. A failure is told in the design's words.
+//! What `demi video` does: reads the call's prompt and its frames and
+//! references from the Host the command runs on; asks the Providers
+//! service for the video's job and names it on stderr at once; says each
+//! change of the job's state; checks that what came back is an MP4 and
+//! writes it to stdout; and says what came back, with a warning for each
+//! option the result did not honour or the entry's API has no field for.
+//! A failure is told in the design's words.
 
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{
@@ -85,7 +85,7 @@ async fn generate(invocation: &RpcInvocation, port: &PluginPort, ask: VideoAsk) 
         .map_err(|failure| refused(MediaKind::Video, failure, aspect, invocation))?;
     let rpc = port.rpc();
     // The job is named at once: from here it runs, and is paid for, at the
-    // vendor whatever becomes of the call (`videos.md` § A call is a job).
+    // vendor whatever becomes of the call.
     rpc.stderr(format!("{command}: asked {} ({}), job {}\n", asked.model, entry(&asked), asked.job))
         .await?;
     let video = loop {
@@ -145,7 +145,7 @@ fn seconds(value: f64) -> String {
 
 /// The line that says what came back, and a warning for each option the
 /// result did not honour or the shape had no field for, in the order of
-/// the options (`videos.md` § A call is a job).
+/// the options.
 fn summary(command: &str, asked: &AskedVideo, video: &MadeVideo, facts: &mp4::Mp4Facts, wanted: &Wanted) -> String {
     let sound = if facts.sound { "with sound" } else { "without sound" };
     let mut said = format!(

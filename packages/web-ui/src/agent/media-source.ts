@@ -4,7 +4,7 @@ import type { DocumentSource, MediaSource as ContentMediaSource, ToolMediaSource
 /**
  * Where the bytes of an image, a video or a document are: an address, or a
  * blob of the user's own, which the backend serves. A transcript never holds
- * a medium's bytes (`transcript.md` § Media).
+ * a medium's bytes.
  */
 export type MediaSource = ContentMediaSource | DocumentSource | ToolMediaSource
 

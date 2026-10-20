@@ -6,10 +6,9 @@ import FunctionalBlock from './FunctionalBlock.vue'
 import { toolRowIcon } from './tool-row-icon'
 
 /**
- * A call the model is still writing (`rendering.md` § Calls being written):
- * its tool's row, shimmering, titled by its description, which shows it from
- * the moment the description is written. The call's own block takes its
- * place once it is whole.
+ * A call the model is still writing: its tool's row, shimmering, titled by
+ * its description, which shows it from the moment the description is
+ * written. The call's own block takes its place once it is whole.
  */
 const props = defineProps<{ step: PendingCallRenderBlock }>()
 

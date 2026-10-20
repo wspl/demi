@@ -1,8 +1,6 @@
-//! Where history is cut: the recovery of an unfinished turn
-//! (`failures-and-recovery.md` § Recovery is one mechanism), the prefix an
-//! edit keeps (`message-editing.md`), the prefix a Fork keeps
-//! (`conversation-fork.md`). Each is a pure reading of the blocks; the
-//! window compaction summarizes is [`crate::compaction`]'s.
+//! Where history is cut: the recovery of an unfinished turn, the prefix an
+//! edit keeps, the prefix a Fork keeps. Each is a pure reading of the
+//! blocks; the window compaction summarizes is [`crate::compaction`]'s.
 
 use demi_shared_types::{
     Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank,
@@ -27,6 +25,23 @@ pub struct ResumePoint {
 /// redacted thinking, `error` blocks and blank text, passing over a
 /// compaction's boundary and marker. The first other block stops the scan;
 /// reaching the block that opened the turn makes it a rerun.
+///
+/// Recovery is this one mechanism: a transient provider failure and a human
+/// asking to continue a dead turn ask the same question, how the turn gets
+/// finished, and the answer depends only on what has already left the
+/// process, never on which of the two asked or how the turn died. A caller
+/// must not branch on the failure kind: a terminal error can arrive after ten
+/// minutes of tool calls as easily as before the first token, so mapping an
+/// error to one action and a stop to another picks the destructive path
+/// exactly when it is most damaging. The scan stops at the first block
+/// someone may already have acted on, since blocks stream outward as they
+/// are produced and become effects that cannot be recalled: rendering,
+/// posting, running the tool. A tool call stops it whatever its status, as
+/// one still executing outlived the process and whether its effect landed is
+/// unknown. A rerun spares the model a continuation attached to a stub of its
+/// own aborted output. `retry` ([`rewind`]) is not recovery: it discards the
+/// whole turn for a caller who wants another answer and knows its effects can
+/// be repeated.
 pub fn resume_point(blocks: &[Block]) -> ResumePoint {
     resume_point_within(blocks).unwrap_or(ResumePoint {
         cut: blocks.len(),
@@ -147,7 +162,7 @@ pub enum CutError {
     NothingCompleted,
 }
 
-/// Where a Fork's history ends (`conversation-fork.md` § Eligibility).
+/// Where a Fork's history ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForkEnd<'a> {
     /// The completed text the user picked, which a conversation Fork names.
@@ -252,12 +267,12 @@ pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
         })
 }
 
-/// The record that ended the last turn (`failures-and-recovery.md` § The
-/// unfinished turn): the last block but a compaction's boundary and marker,
-/// an error that ended no turn, such as a Compact whose summary request
-/// failed, and the agent messages and command reports a failed turn took
-/// after it ended, which leave the turn before them as it was. An `error`
-/// block there is the failure that left the turn unfinished.
+/// The record that ended the last turn: the last block but a compaction's
+/// boundary and marker, an error that ended no turn, such as a Compact
+/// whose summary request failed, and the agent messages and command reports
+/// a failed turn took after it ended, which leave the turn before them as
+/// it was. An `error` block there is the failure that left the turn
+/// unfinished.
 pub fn turn_record(blocks: &[Block]) -> Option<&Block> {
     blocks.iter().rev().find(|block| Kind::Record.holds(block))
 }

@@ -1,7 +1,6 @@
-//! The `models` command of a media group (`media.md` § What the agent is
-//! told): the models of the plugin's kind as a table, newest first, or one
-//! model as labelled lines with its prices and its entries as tables
-//! under their keys, and all of it as JSON with `--json`
+//! The `models` command of a media group: the models of the plugin's kind as a
+//! table, newest first, or one model as labelled lines with its prices and its
+//! entries as tables under their keys, and all of it as JSON with `--json`
 //! (`crates/shared-types/src/output.rs`). Notes, such as an entry whose models could
 //! not be listed, go to stderr.
 
@@ -93,7 +92,7 @@ pub async fn models(invocation: &RpcInvocation, port: &PluginPort, kind: MediaKi
         json_line(&ModelsOutput::List(listed))
     } else {
         // An audio model's kinds are what a call chooses it by, so the
-        // list says them (`audio.md` § Commands).
+        // list says them.
         let audio = kind == MediaKind::Audio;
         let mut columns = vec!["id", "vendor", "released", "entry", "name"];
         if audio {

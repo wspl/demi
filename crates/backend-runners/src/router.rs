@@ -110,8 +110,7 @@ impl CommandRouter {
 
     /// The commands of the agent node that started `job`, in which its
     /// calls run; the backend's dispatch checks a call's permission between
-    /// the command set's check and the handler (`permissions.md` § The
-    /// check).
+    /// the command set's check and the handler.
     pub fn commands_of(&self, job: &JobOrigin) -> Result<Rc<CommandSet>, String> {
         Ok(self.node_of(job)?.commands.clone())
     }

@@ -1,7 +1,7 @@
-//! Grok Build's image role (`images.md` § Vendors): the chat proxy's image
-//! endpoints, which Grok's own CLI calls, with the account's identity as
-//! inference sends it. The image comes back as base64: an image the proxy
-//! answers by URL refuses an immediate download.
+//! Grok Build's image role: the chat proxy's image endpoints, which Grok's
+//! own CLI calls, with the account's identity as inference sends it. The
+//! image comes back as base64: an image the proxy answers by URL refuses
+//! an immediate download.
 
 use bytes::Bytes;
 use demi_provider_common::{

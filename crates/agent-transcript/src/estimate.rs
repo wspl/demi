@@ -1,6 +1,6 @@
-//! Token estimates (`compaction.md` § Token estimates): compaction decides
-//! from these, not from a tokenizer, and the latest usage a provider
-//! reported keeps the context estimate close to the provider's own count.
+//! Token estimates: compaction decides from these, not from a tokenizer,
+//! and the latest usage a provider reported keeps the context estimate
+//! close to the provider's own count.
 
 use std::borrow::Cow;
 
@@ -32,9 +32,8 @@ pub fn text_tokens(text: &str) -> u64 {
 }
 
 /// A block's estimate in `request`: the estimate of its text plus the
-/// weight of its media, each as the request carries it (`compaction.md`
-/// § Block estimates): with its bytes, weighed by them, or as the text that
-/// names it, which counts as text.
+/// weight of its media, each as the request carries it: with its bytes,
+/// weighed by them, or as the text that names it, which counts as text.
 pub fn block_tokens(block: &Block, request: &RequestView) -> u64 {
     let (text, media) = block_estimate(block, request);
     text_tokens(&text) + media
@@ -52,16 +51,14 @@ pub fn tool_tokens(tool: &ToolDefinition) -> u64 {
 }
 
 /// The estimate of what a request carries before its history: its
-/// `system_prompt` and `tools`, each its text's (`compaction.md` § Context
-/// estimate, rule 5).
+/// `system_prompt` and `tools`, each its text's.
 pub fn prompt_tokens(system_prompt: &str, tools: &[ToolDefinition]) -> u64 {
     text_tokens(system_prompt) + tools.iter().map(tool_tokens).sum::<u64>()
 }
 
-/// Where the estimate of the next request starts weighing blocks
-/// (`compaction.md` § Context estimate): the latest usage a provider
-/// reported, and the first block after its `response`; or no usage and the
-/// last compaction boundary.
+/// Where the estimate of the next request starts weighing blocks: the
+/// latest usage a provider reported, and the first block after its
+/// `response`; or no usage and the last compaction boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContextAnchor {
     /// Whether a reported usage anchors the estimate.
@@ -185,7 +182,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
             }
             return (lines.join("\n"), media);
         }
-        // The instructions are sent whole (`compaction.md` § Text bounds).
+        // The instructions are sent whole.
         Block::Context(context) if context.source == INSTRUCTIONS_SOURCE => context.text.clone(),
         Block::Context(context) => bound_text(&context.text).into_owned(),
         Block::AgentMessage(receipt) => {
@@ -203,7 +200,7 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
         }
         Block::Error(error) => error.message.clone(),
         Block::Abort(_) => "aborted".to_owned(),
-        // The model receives nothing of it (`compaction.md` § Text bounds).
+        // The model receives nothing of it.
         Block::AccountSwitch(_) => String::new(),
         // The note, the messages it kept and the summary, as the model
         // reads them.

@@ -4,7 +4,7 @@
 //! BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag. The
 //! plugins' secrets are sealed here too (`plugins.md` § Secrets), through
 //! the product's side of the plugin host's port, and so are the values of
-//! the users' credentials (`credentials.md` § Storage and expiry).
+//! the users' credentials.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};

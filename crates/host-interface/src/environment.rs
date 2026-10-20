@@ -71,9 +71,9 @@ pub trait ShellEnvironment {
     fn outliving(&self, command: &CommandId) -> Vec<String>;
 
     /// Whether a call of `command` waits for the user's answer, as it
-    /// changes: such a command reports no progress meanwhile
-    /// (`permissions.md` § The check). None for a command whose job has not
-    /// started, that ended, or that the environment does not hold.
+    /// changes: such a command reports no progress meanwhile. None for a
+    /// command whose job has not started, that ended, or that the
+    /// environment does not hold.
     fn awaits_user(&self, command: &CommandId) -> Option<watch::Receiver<bool>>;
 
     /// How long the Host of `command`, which runs, has been unreachable as
@@ -120,9 +120,8 @@ pub trait ShellEnvironment {
     /// knew it (`crates/backend-remote-host/src/device_jobs.rs`).
     fn adopt(&self, taken: TakenUp);
 
-    /// Lets go of every command, which runs on, as a disposed node does
-    /// (`runtime.md` § Dispose and restore); waits until the environment
-    /// follows none.
+    /// Lets go of every command, which runs on, as a disposed node does;
+    /// waits until the environment follows none.
     fn detach_all(&self) -> LocalBoxFuture<'_, ()>;
 
     /// Stops every command that runs, and waits until each has ended.
@@ -132,8 +131,7 @@ pub trait ShellEnvironment {
 }
 
 /// Where an environment's command numbers come from: the
-/// conversation's sequences, which give each number once, in order
-/// (`runtime.md` § Identifiers the model sees).
+/// conversation's sequences, which give each number once, in order.
 pub trait Numbers {
     /// The conversation's next number of `sequence`.
     fn next(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>>;

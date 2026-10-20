@@ -24,8 +24,9 @@ impl Default for LifecycleTuning {
     }
 }
 
-/// How the backend serves conversations (`rendering.md` § Order and delivery,
-/// `crates/backend-providers/src/usage/rate_limit.rs`). Tests lower the bounds.
+/// How the backend serves conversations
+/// (`crates/backend-providers/src/usage/rate_limit.rs`). Tests lower the
+/// bounds.
 #[derive(Debug, Clone, Copy)]
 pub struct ConversationTuning {
     /// The most frames a conversation socket's outbox holds; a client that
@@ -82,9 +83,11 @@ impl Default for PageTuning {
     }
 }
 
-/// How a video's job is waited for (`videos.md` § A call is a job): its
-/// state read every 5 seconds, the whole job bounded by 10 minutes from the
-/// ask to the end of the download. Tests shorten both.
+/// How a video's job is waited for: its state read every 5 seconds, as each
+/// vendor's own SDK does, since no vendor announces a finished job to a
+/// caller without a public address and a callback would need one. The whole
+/// job is bounded by 10 minutes from the ask to the end of the download,
+/// which the slowest vendor's documented wait fits. Tests shorten both.
 #[derive(Debug, Clone, Copy)]
 pub struct MediaTuning {
     pub video_reads_every: Duration,

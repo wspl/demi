@@ -1,6 +1,18 @@
-//! Compaction (`compaction.md`): passes before a turn, inside a turn and
-//! before a model switch, the session copy that writes the summary, the
-//! `compact` action, and the request prefix a provider caches.
+//! Compaction: passes before a turn, inside a turn and before a model
+//! switch, the session copy that writes the summary, the `compact`
+//! action, and the request prefix a provider caches.
+//!
+//! A compacted history is what every later request of the conversation rests
+//! on: a pass that leaves an invalid request breaks the conversation for good.
+//! So compaction is verified at four levels beyond these scenarios: the
+//! invariants over generated sessions (`generated.rs`); the request after a
+//! pass pinned whole for each provider (`golden.rs`), so any change to what
+//! the model receives shows in review; a real model, by hand, over the large
+//! recorded conversation (`crates/agent-server/fixtures/compaction`), run
+//! against DeepSeek before a release that changes compaction; and the
+//! product, a conversation on the development backend with a small context
+//! limit, a command left running and a subagent working through several
+//! passes.
 
 use demi_agent_session::{
     TranscriptSnapshot, compaction_refusal, testing::COMPACTION_SUMMARY_INSTRUCTION,
@@ -256,8 +268,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
         .concat()
     );
     // The turn waits for the model from its start; the page shows the pass
-    // instead of the wait, which starts again at the pass's end
-    // (`rendering.md` § Waiting for the model).
+    // instead of the wait, which starts again at the pass's end.
     assert_eq!(
         *changes.borrow(),
         ["Running", "waits", "Compacting", "waits no more", "Running", "waits", "waits no more", "Idle"]
@@ -3175,8 +3186,7 @@ fn last_boundary(blocks: &[Block]) -> usize {
         .expect("the history was compacted")
 }
 
-// `runtime.md` § What a session holds. Three sessions over one store,
-// eight scripted requests: a few milliseconds.
+// A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_session_of_many_compactions_holds_only_its_last_window_and_reads_the_earlier_history_from_the_store() {
     let provider = ScriptedRuntime::new([

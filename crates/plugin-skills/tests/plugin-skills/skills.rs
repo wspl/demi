@@ -1,7 +1,6 @@
-//! The skills plugin through the loopback (`skills.md` § Acceptance): its
-//! sources, fetched from repositories the tests make, the Host directories
-//! of the skills that are on, the project skills it reads on the Host, and
-//! its catalog.
+//! The skills plugin through the loopback: its sources, fetched from
+//! repositories the tests make, the Host directories of the skills that
+//! are on, the project skills it reads on the Host, and its catalog.
 
 use std::time::Duration;
 

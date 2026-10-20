@@ -7,15 +7,13 @@
 //! conversation's work ends, and `move` makes a host and a directory where
 //! the conversation runs once its work ends. The dispatch asks the user
 //! before a call brings in a host the conversation may not reach, and before
-//! every pairing (`permissions.md` § Hosts). A `shell`
-//! job carries its invoking job's command context, caller and commands, and
-//! its standard input and output are the calling command's (a script read
-//! from stdin leaves the job none):
-//! the relayed pipes' far ends become the job's device, so the bytes flow
-//! between the two devices through the backend's pipes, never through a
-//! runner socket. Like the agent's own jobs, its admission installs the
-//! user's Host directories there before it starts and tells the shard when
-//! it ended.
+//! every pairing. A `shell` job carries its invoking job's command context,
+//! caller and commands, and its standard input and output are the calling
+//! command's (a script read from stdin leaves the job none): the relayed
+//! pipes' far ends become the job's device, so the bytes flow between the
+//! two devices through the backend's pipes, never through a runner socket.
+//! Like the agent's own jobs, its admission installs the user's Host
+//! directories there before it starts and tells the shard when it ended.
 //!
 //! An agent pairs a computer it reaches without the user typing the code: it runs
 //! the command `install-command` prints, the one Add Device shows, on the computer,
@@ -66,12 +64,11 @@ use crate::transition::ChangeRefusal;
 const SUMMARY: &str =
     "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another, expose a device's port to the backend's requests.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on with the user's account; forwards a port between Hosts, as ssh -L does; exposes a device's port, such as Ollama's, to a provider entry. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or reaching a service on another Host.";
 
 /// The path of `demi host pair`, which always brings a host the
-/// conversation may not reach (`permissions.md` § Hosts).
+/// conversation may not reach.
 const PAIR_PATH: [&str; 3] = [DEMI_ROOT, "host", "pair"];
 
 const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies when this conversation's work ends, and the host it leaves stays attached.";
@@ -240,8 +237,7 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
 }
 
 /// The pairing code of a call of `demi host pair`, which always brings a
-/// host the conversation may not reach (`permissions.md` § Hosts); none for
-/// any other call.
+/// host the conversation may not reach; none for any other call.
 pub fn pairing_code(invocation: &RpcInvocation) -> Option<String> {
     if invocation.path != PAIR_PATH {
         return None;
@@ -264,11 +260,10 @@ pub struct NamedDevice {
 }
 
 /// The host `wanted` names, as a `bringsHost` argument that names a host is
-/// resolved, once, by the dispatch (`permissions.md` § Hosts): of the hosts
-/// it may stand for, the first in this order: a host of the conversation by
-/// the name it goes by there or its id, a device by its id, a paired device
-/// by its name, and the user's Cloud by `Cloud`, which makes its device on
-/// its first use.
+/// resolved, once, by the dispatch: of the hosts it may stand for, the
+/// first in this order: a host of the conversation by the name it goes by
+/// there or its id, a device by its id, a paired device by its name, and
+/// the user's Cloud by `Cloud`, which makes its device on its first use.
 pub async fn resolve_host(
     shard: &dyn HostShard,
     conversation: &ConversationId,

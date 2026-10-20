@@ -1,8 +1,7 @@
-//! What a product supplies for its agents (`runtime.md` § Sessions and
-//! turns) besides the data the agent server is given: the commands a tree
-//! opens with, the user's subagent settings each spawn reads, the Host a
-//! node's shell tools reach, and the context sources asked before each
-//! request.
+//! What a product supplies for its agents besides the data the agent
+//! server is given: the commands a tree opens with, the user's subagent
+//! settings each spawn reads, the Host a node's shell tools reach, and
+//! the context sources asked before each request.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -29,9 +28,9 @@ pub struct Toolset {
 
 /// Where a tree that opens takes its toolset from: the product's current
 /// one, which may change while the server runs. The server composes a
-/// revision once and every node holds that one set (`runtime.md` § What a
-/// session holds), so it asks for the revision first and for the commands
-/// only when it holds none of that revision.
+/// revision once and every node holds that one set, so it asks for the
+/// revision first and for the commands only when it holds none of that
+/// revision.
 pub trait ToolsetSource {
     /// The revision of the toolset [`current`](Self::current) would give
     /// now, read without composing it.
@@ -419,8 +418,7 @@ pub trait HostResolver: 'static {
 }
 
 /// What a context source tells the node: its block's text, and for the
-/// instructions source what the text holds (`instructions.md` § What the
-/// card lists).
+/// instructions source what the text holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextAnswer {
     pub text: String,
@@ -436,9 +434,19 @@ impl From<String> for ContextAnswer {
     }
 }
 
-/// One source of what the model must learn before a request (`transcript.md`
-/// § Context), such as the conversation's execution context, the
-/// instructions or a plugin.
+/// One source of what the model must learn before a request, such as the
+/// conversation's execution context, the instructions or a plugin.
+///
+/// What the model must learn between its requests, and what differs by user
+/// or conversation, reaches it as `context` blocks, never through the system
+/// prompt: when the user moves the conversation from the Cloud to a laptop,
+/// the execution context source answers the new Host before the node's next
+/// request. The session asks each source before every request, in the
+/// product's order, appends each answer as one block that names its source and
+/// saves it at once, so a request never carries a context its transcript does
+/// not hold. A source sees only the blocks the model still receives, those
+/// from the last compaction boundary on, so after a compaction it tells the
+/// model again what the summary may have left out.
 pub trait ContextSource {
     /// The name its blocks record: `execution`, `instructions`,
     /// `side_questions`, or a plugin's id.

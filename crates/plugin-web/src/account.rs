@@ -1,11 +1,16 @@
-//! Which way a search goes (`web.md` § Accounts): the user's API key, kept
-//! as a secret, over the Exa sign-in the plugin host keeps, over neither.
+//! Which way a search goes: the user's API key, kept as a secret, over the
+//! Exa sign-in the plugin host keeps, over neither.
 //!
 //! The host forgets a sign-in Exa refuses to renew, after which the user
 //! reads as never signed in. So the plugin keeps a value of its own saying
 //! the user was signed in, written while a token is live, and a search that
 //! finds the sign-in gone while that value says otherwise fails once with
 //! the words for an expired sign-in, rather than turning anonymous unsaid.
+//!
+//! An anonymous search leaves from the backend's address, so all of an
+//! instance's users share the one allowance Exa grants that address; when it
+//! is used up, the call says so and names the sign-in, rather than routing the
+//! request through a Host to find another address.
 
 use demi_plugin_interface::{PluginError, PluginPort, PortFailure, PortRefusal, SecretName};
 use serde_json::json;

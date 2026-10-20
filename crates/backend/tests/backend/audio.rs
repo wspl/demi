@@ -1,12 +1,12 @@
-//! The agent's `demi audio` (`audio.md`, `media.md`), the `audio` plugin
-//! over the port's Providers service: a compatible API whose audio shape
-//! and models the agent sets with `demi providers`, its OpenAI Speech
-//! request sent to a scripted server and its file written with a ledger
-//! row of its seconds; an ElevenLabs entry of media alone, offered from
-//! the media catalog, its key checked by Test Connection through its
-//! models, the call that takes one of its models sent there, and speech
-//! without a voice refused before anything is sent; a model asked for a
-//! kind it does not make refused likewise. No test calls a real vendor.
+//! The agent's `demi audio`, the `audio` plugin over the port's
+//! Providers service: a compatible API whose audio shape and models the
+//! agent sets with `demi providers`, its OpenAI Speech request sent to a
+//! scripted server and its file written with a ledger row of its
+//! seconds; an ElevenLabs entry of media alone, offered from the media
+//! catalog, its key checked by Test Connection through its models, the
+//! call that takes one of its models sent there, and speech without a
+//! voice refused before anything is sent; a model asked for a kind it
+//! does not make refused likewise. No test calls a real vendor.
 
 use std::sync::Arc;
 

@@ -615,8 +615,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // Each call to the vendor ends with a response carrying its own usage,
     // the context that call read: the batch's call when the batch comes
     // out, the answer's at the result, never the sum the CLI's result adds
-    // up (`crates/provider-claude-code/src/output.rs`, `compaction.md` § When compaction
-    // runs).
+    // up (`crates/provider-claude-code/src/output.rs`).
     let call_usage = |index: usize| {
         let Block::Response(response) = &blocks[index] else {
             panic!("no response at {index}: {:?}", kinds(&blocks))

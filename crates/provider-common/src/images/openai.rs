@@ -1,5 +1,5 @@
 //! The size an OpenAI-shaped image request sends, a ChatGPT
-//! subscription's and an OpenAI key's alike (`images.md` § Vendors).
+//! subscription's and an OpenAI key's alike.
 
 use super::{Aspect, nearest_size};
 use crate::media_catalog::Catalog;

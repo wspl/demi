@@ -108,7 +108,7 @@ struct Reader {
 /// A usage limit's moment when its failure names none: the latest reset
 /// among the windows the quota of the account the failing request used
 /// shows used up, the account the error block names under rotation, else
-/// the active one (`failures-and-recovery.md` § The unfinished turn).
+/// the active one.
 async fn quota_moment(
     assembly: &ProviderAssembly,
     reader: &Reader,

@@ -1196,7 +1196,7 @@
         "https://docs.x.ai/developers/model-capabilities/video/overview",
         "https://docs.x.ai/developers/model-capabilities/video/generation",
         "https://docs.x.ai/developers/pricing",
-        "docs/agent/videos.md#vendors"
+        "crates/provider-common/src/videos/xai.rs"
       ]
     },
     {
@@ -1210,7 +1210,7 @@
       ],
       "sources": [
         "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
-        "docs/agent/videos.md#vendors"
+        "crates/provider-common/src/videos/xai.rs"
       ]
     },
     {
@@ -1224,7 +1224,7 @@
       ],
       "sources": [
         "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
-        "docs/agent/videos.md#vendors"
+        "crates/provider-common/src/videos/xai.rs"
       ]
     },
     {
@@ -1277,7 +1277,7 @@
         "https://docs.x.ai/developers/model-capabilities/video/overview",
         "https://docs.x.ai/developers/model-capabilities/video/generation",
         "https://docs.x.ai/developers/pricing",
-        "docs/agent/videos.md#vendors"
+        "crates/provider-common/src/videos/xai.rs"
       ]
     },
     {
@@ -1329,7 +1329,7 @@
         "https://docs.x.ai/developers/model-capabilities/video/overview",
         "https://docs.x.ai/developers/model-capabilities/video/generation",
         "https://docs.x.ai/developers/pricing",
-        "docs/agent/videos.md#vendors"
+        "crates/provider-common/src/videos/xai.rs"
       ]
     },
     {

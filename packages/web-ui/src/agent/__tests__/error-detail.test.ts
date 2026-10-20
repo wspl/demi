@@ -35,8 +35,7 @@ test('a code the page has no words for reads the neutral line, and the vendor’
 
 // The vendor's reason is what the reader opens Provider Response for, so
 // an http record leads with its status and body and keeps its headers
-// apart, folded (`failures-and-recovery.md` § Diagnostics); Copy still
-// carries the whole record.
+// apart, folded; Copy still carries the whole record.
 test('an http record shows its status and the vendor’s reason first, and its headers apart', () => {
   const body = '{"error":{"message":"Your Go plan doesn\'t include API access.","code":"upgrade_required"}}'
   const upstream = JSON.stringify({ status: 403, headers: [['cf-ray', 'a4c1'], ['content-type', 'application/json']], body })
@@ -56,8 +55,8 @@ test('an http record shows its status and the vendor’s reason first, and its h
 
 // A 403 says the vendor knows the credential and refuses the request, so
 // the record never sends the user to sign in again, and an API key entry's
-// refused credential is its key, never a sign-in (`failures-and-recovery.md`
-// § Failure codes); the vendor's own words stay under Provider Response.
+// refused credential is its key, never a sign-in; the vendor's own words
+// stay under Provider Response.
 test('a key entry’s 403 is a refused request and its 401 a refused key, with the vendor’s text below', () => {
   const now = new Date(2026, 9, 17, 21, 42)
   const onKey = { retryAt: null, signedOut: null, notExposed: null, deviceOffline: null, credential: 'api_key' } as const

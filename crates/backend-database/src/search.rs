@@ -187,8 +187,8 @@ impl SearchKind {
     }
 }
 
-/// What `demi conversation history search` looks for in an agent's rows
-/// (`compaction.md` § Reading the earlier history).
+/// What `demi conversation history search` looks for in an agent's
+/// rows.
 #[derive(Debug, Clone)]
 pub struct HistoryQuery {
     /// The words a text holds every one of, or any with `any`.
@@ -559,9 +559,8 @@ impl SearchIndexes {
     /// that `query` finds: those of its kinds and between its bounds that
     /// hold every one of its words, or any, case ignored, newest first or
     /// oldest first as it says: what `demi conversation history search`
-    /// finds (`compaction.md` § Reading the earlier history). A word is
-    /// found as [`SearchIndexes::find`] finds it: through the trigram index,
-    /// or by a scan when it is shorter.
+    /// finds. A word is found as [`SearchIndexes::find`] finds it: through
+    /// the trigram index, or by a scan when it is shorter.
     pub async fn find_in(
         &self,
         user: &UserId,

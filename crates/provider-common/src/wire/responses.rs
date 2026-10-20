@@ -46,7 +46,7 @@ tagged_wire! {
 }
 
 /// A decoded event with the text it arrived as: a failure keeps that text
-/// as its record (`failures-and-recovery.md` § The failure record).
+/// as its record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Received {
     pub event: ResponsesEvent,

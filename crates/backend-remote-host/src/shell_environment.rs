@@ -138,7 +138,7 @@ pub struct KeptStart {
     pub caller: JobCaller,
     pub title: String,
     /// The call's script, which the record keeps with its title for the
-    /// pages' view (`rendering.md` § Frame protocol).
+    /// pages' view.
     pub script: String,
     pub interval_ms: Option<u32>,
 }
@@ -222,7 +222,7 @@ struct Environment {
     /// The jobs' tasks.
     tasks: TaskTracker,
     /// Cancelled when the environment lets go of its commands, which run
-    /// on (`runtime.md` § Dispose and restore).
+    /// on.
     detached: CancellationToken,
     /// Changes each time one of its commands ends, which a wait for a
     /// command's end watches.

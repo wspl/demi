@@ -55,8 +55,7 @@ const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
 const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its prompt, read its whole output, or stop it.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const GROUP_ENTRY: &str = "Works on the commands your shell calls ran, by their commandIds: status looks at a command again, waits for its end and changes how often it reports to you; input answers its prompt; output prints its whole output a page at a time, when a result was cut short in the middle; stop ends a dev server, a watcher or any command you no longer need.";
 
 const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them. --wait <duration>, such as 30s or 5m, waits up to that long for them to end first. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
@@ -728,14 +727,13 @@ async fn output<H: HostResolver>(
 
 impl<H: HostResolver> Tree<H> {
     /// Page `page`, from 1, of what `demi conversation history open` shows
-    /// of the conversation's command `id` (`compaction.md` § Reading the
-    /// earlier history): `head`, the line that names the call, on every
-    /// page, then the script after `$ `, then the whole output, both
-    /// streams, its lines as `demi shell output` shows them under its
-    /// header, all cut into pages of [`PAGE_CHARS`] less `reserve`, the line
-    /// the caller adds under a page; and how many pages there are. One pass
-    /// over the output finds both. A page past the last fails, naming how
-    /// many there are.
+    /// of the conversation's command `id`: `head`, the line that names the
+    /// call, on every page, then the script after `$ `, then the whole
+    /// output, both streams, its lines as `demi shell output` shows them
+    /// under its header, all cut into pages of [`PAGE_CHARS`] less
+    /// `reserve`, the line the caller adds under a page; and how many pages
+    /// there are. One pass over the output finds both. A page past the last
+    /// fails, naming how many there are.
     pub async fn command_page(
         &self,
         id: &CommandId,

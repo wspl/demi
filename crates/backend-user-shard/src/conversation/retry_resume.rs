@@ -1,5 +1,4 @@
-//! A root's failed turn resumed at its retry time
-//! (`failures-and-recovery.md` § The unfinished turn): a turn whose failure
+//! A root's failed turn resumed at its retry time: a turn whose failure
 //! names when it can succeed again, such as a usage limit that resets at
 //! 09:00, is resumed then, as the user's Resume would, when the user's
 //! `resumeAtRetry` preference says so at that moment.

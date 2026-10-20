@@ -274,14 +274,12 @@ CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
 /// Providers and generated media try them in, first the order they were
 /// added in (`crates/backend-user-shard/src/provider_settings.rs`); and preferences no
 /// longer choose an entry per vendor's images, which the order and the
-/// switches say instead (`media.md` § Which entry makes a call), so a
-/// saved choice is dropped; an entry whose provider makes videos has a
-/// Video Generation switch, and one whose provider makes audio an Audio
-/// Generation switch, each on for every entry stored before; and a usage
-/// ledger row may be a video's or an audio file's, with the seconds made
-/// and the cost the vendor reported (`crates/backend-database/src/usage.rs`),
-/// which SQLite's checks let in only on a table made again, its rows as
-/// they were with null for both.
+/// switches say instead, so a saved choice is dropped; an entry whose provider makes videos has a
+/// Video Generation switch, and one whose provider makes audio an Audio Generation switch, each on
+/// for every entry stored before; and a usage ledger row may be a video's or an audio file's, with
+/// the seconds made and the cost the vendor reported (`crates/backend-database/src/usage.rs`),
+/// which SQLite's checks let in only on a table made again, its rows as they were with null for
+/// both.
 const CONTROL_FROM_0_1_27: &str = "
 CREATE TABLE port_forwards (
   id                TEXT PRIMARY KEY,
@@ -376,11 +374,11 @@ ALTER TABLE devices ADD COLUMN autostart_unavailable TEXT;
 ";
 
 /// From 0.1.22's control schema to 0.1.25's: a usage ledger row may
-/// be an image's (`images.md` § Accounts and failures), which SQLite's
-/// checks let in only on a table made again, its rows as they were; each
-/// browser's push subscription is kept; a running job may wait to be sent to
-/// its device (`sessions-and-targets.md` § Host operations), which every one
-/// recorded before was; and the users' automations and their runs, none before.
+/// be an image's, which SQLite's checks let in only on a table made again, its
+/// rows as they were; each browser's push subscription is kept; a running job
+/// may wait to be sent to its device (`sessions-and-targets.md` § Host
+/// operations), which every one recorded before was; and the users' automations
+/// and their runs, none before.
 const CONTROL_FROM_0_1_22: &str = "
 ALTER TABLE running_jobs ADD COLUMN sent INTEGER NOT NULL DEFAULT 1 CHECK (sent IN (0, 1));
 CREATE TABLE usage_ledger_images (
@@ -801,7 +799,7 @@ CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE
 
 /// From the control schema that keeps the turns a shutdown interrupted to
 /// the one in which a conversation keeps the hosts it may reach and a request
-/// may ask for one (`crates/backend-database/src/conversation_index.rs`, `permissions.md` § Hosts), which replace the Manage Devices
+/// may ask for one (`crates/backend-database/src/conversation_index.rs`), which replace the Manage Devices
 /// category. Every attached host seeds its conversation's list: a host
 /// attached by name took Manage Devices to attach, and one attached with a
 /// directory is a primary target the conversation left, which the list
@@ -835,10 +833,9 @@ DELETE FROM permission_requests
 ";
 
 /// From the control schema where a placeholder title holds no words to the
-/// one that keeps the root turns a graceful shutdown interrupted
-/// (`failures-and-recovery.md` § The unfinished turn). A database a shutdown
-/// of the earlier release closed marks none: its interrupted turns wait for
-/// the user's Resume.
+/// one that keeps the root turns a graceful shutdown interrupted. A database
+/// a shutdown of the earlier release closed marks none: its interrupted
+/// turns wait for the user's Resume.
 const CONTROL_FROM_PLACEHOLDER_TITLES: &str = "
 CREATE TABLE interrupted_turns (
   conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
@@ -1197,10 +1194,10 @@ CREATE INDEX passkey_challenges_expiry ON passkey_challenges (expires_at);
 ";
 
 /// From the control schema with the plugins' secrets to the one with the
-/// users' credentials (`credentials.md` § Storage and expiry): two new
-/// tables, empty; and a conversation's requests of three kinds, of which
-/// every stored one is a permission request. The requests' table is
-/// rebuilt, since SQLite cannot make a column nullable in place.
+/// users' credentials: two new tables, empty; and a conversation's
+/// requests of three kinds, of which every stored one is a permission
+/// request. The requests' table is rebuilt, since SQLite cannot make a
+/// column nullable in place.
 const CONTROL_FROM_PLUGIN_SECRETS: &str = "
 CREATE TABLE user_credentials (
   id           TEXT PRIMARY KEY,
@@ -1396,11 +1393,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
 
 /// From 0.1.33's conversation schema, which 0.1.33 shipped, to the current
 /// one: a running command keeps its call's script beside its title, which
-/// the pages' view of it carries (`rendering.md` § Frame protocol). A
-/// command recorded before takes both from the call that started it, the
-/// latest of its id in its node's transcript; one whose call names no
-/// title is titled by its number, and one whose call names no script keeps
-/// none. A title a record kept stays.
+/// the pages' view of it carries. A command recorded before takes both
+/// from the call that started it, the latest of its id in its node's
+/// transcript; one whose call names no title is titled by its number, and
+/// one whose call names no script keeps none. A title a record kept stays.
 fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE running_commands ADD COLUMN script TEXT NOT NULL DEFAULT '';")?;
     let rows = transaction
@@ -1828,9 +1824,9 @@ fn commands_with_their_intervals(transaction: &Transaction<'_>, _: &dyn ReadBlob
 }
 
 /// From a transcript whose rows were its blocks' positions to a tree of
-/// rows (`message-editing.md` § Versions): a node's rows below its block
-/// count, which are all it kept, are one path, each row following the one
-/// before it and its last row the leaf; its runs are that one run.
+/// rows: a node's rows below its block count, which are all it kept, are
+/// one path, each row following the one before it and its last row the
+/// leaf; its runs are that one run.
 const ONE_PATH: &str = "
 ALTER TABLE blocks ADD COLUMN follows INTEGER CHECK (follows < idx);
 ALTER TABLE blocks ADD COLUMN replaces INTEGER CHECK (replaces < idx);
@@ -1991,13 +1987,13 @@ fn codex_length(text: &str, unit: u64) -> Option<Option<u64>> {
 
 /// From the conversation schema that `0.1.22-dev.20261015T105826Z`
 /// deployed, of transcript block format 8, to format 9, in which a call's
-/// block records when it returned, `endedAt`, which a run's time adds up
-/// (`rendering.md` § Work groups). A stored call kept no record of it: one
-/// that returned ends the time its shell view says its command ran until
-/// then, `runningMs`, after it started, and a call of another tool where
-/// it started; a call still executing has not returned. Each block is
-/// decoded and checked as format 9 before it is written back; the shares'
-/// snapshots are removed later ([`shares_as_lists`]).
+/// block records when it returned, `endedAt`, which a run's time adds up.
+/// A stored call kept no record of it: one that returned ends the time its
+/// shell view says its command ran until then, `runningMs`, after it
+/// started, and a call of another tool where it started; a call still
+/// executing has not returned. Each block is decoded and checked as format
+/// 9 before it is written back; the shares' snapshots are removed later
+/// ([`shares_as_lists`]).
 fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let calls = "json_extract(block, '$.type') = 'tool_call'";
     let rows = transaction
@@ -2286,9 +2282,9 @@ const CONVERSATION_FROM_ADDED_INSTRUCTIONS: &str =
 const CONVERSATION_FROM_BLOCK_FORMAT_5: &str = "";
 
 /// From the conversation schema of transcript block format 4 to format 5,
-/// where a `compaction_boundary` holds the user's messages its pass kept
-/// (`compaction.md` § One pass): no pass before kept any, so each stored
-/// boundary keeps none. The tables are as they were.
+/// where a `compaction_boundary` holds the user's messages its pass kept:
+/// no pass before kept any, so each stored boundary keeps none. The
+/// tables are as they were.
 fn boundaries_with_kept_messages(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
@@ -2753,10 +2749,9 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
 /// From 0.1.21's transcript blocks (transcript block format 2): a stored
 /// call of `shell_exec` is the `shell` call it became, with its input, and
 /// its repeat guard's view is `repeated_shell`; a call of `yield` keeps its
-/// name, which replays as text (`transcript.md` § Replay), and loses its
-/// `yield_wakeup` view, which no tool has any more; a stored shell view no
-/// longer names a shell; and a fired wakeup becomes what it stood for
-/// (`rendering.md` § Rendering boundary): one a command's end fired, that
+/// name, which replays as text, and loses its `yield_wakeup` view, which no
+/// tool has any more; a stored shell view no longer names a shell; and a
+/// fired wakeup becomes what it stood for: one a command's end fired, that
 /// command's report, titled by the `description` of the call that started
 /// the command; one its time fired, a `resume` block. Each block changed is
 /// decoded and written again through the block's own encoding; a block that
@@ -2795,20 +2790,17 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// shell call's view its own files with those it removed and renamed, its
 /// run's and its request's (`crates/agent-store/src/changes.rs`); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
 /// a `resume` block and at a Stop the user continued, to format 4, where
-/// the steps after them join the run before (`rendering.md` § Work groups),
-/// with the run's files to match; from format 5's in which a node says
-/// which agent it was forked from, which the server keeps data of, to
-/// format 6, where redacted reasoning is a step of its run, and a run it
-/// opens is named after it (format 6 also leaves out of a `response` the
-/// usage its provider did not report, `crates/provider-claude-code/src/output.rs`: every
-/// stored response carries one, which format 6 reads as it is; responses
-/// whose usage summed a Claude Code run stay as recorded, and the next
-/// response anchors the estimate in their place, `compaction.md` § Context
-/// estimate). Each agent's transcript is walked in
-/// order from the edit copies in the conversation's blob namespace, by the
-/// code that computes them for a new block. The tables are as they were. A
-/// copy that cannot be read stops the migration, which the next open tries
-/// again; one the namespace no longer holds leaves its file named alone.
+/// the steps after them join the run before, with the run's files to match; from format 5's in
+/// which a node says which agent it was forked from, which the server keeps data of, to format 6,
+/// where redacted reasoning is a step of its run, and a run it opens is named after it (format 6
+/// also leaves out of a `response` the usage its provider did not report,
+/// `crates/provider-claude-code/src/output.rs`: every stored response carries one, which format 6
+/// reads as it is; responses whose usage summed a Claude Code run stay as recorded, and the next
+/// response anchors the estimate in their place). Each agent's
+/// transcript is walked in order from the edit copies in the conversation's blob namespace, by the
+/// code that computes them for a new block. The tables are as they were. A copy that cannot be read
+/// stops the migration, which the next open tries again; one the namespace no longer holds leaves
+/// its file named alone.
 fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
@@ -5863,8 +5855,7 @@ mod tests {
     /// returned: migrated to format 9, a shell call ends the time its view
     /// says its command ran after it started, a call of another tool where
     /// it started, and a call still executing has not returned; a share's
-    /// snapshot of a call is migrated the same way (`rendering.md` § Work
-    /// groups, a run's time).
+    /// snapshot of a call is migrated the same way.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_stored_call_gets_when_it_returned() {
@@ -7470,10 +7461,9 @@ mod tests {
 
     /// A ledger row of 0.1.22 keeps every column
     /// through the table made again, and the ledger then takes an image's
-    /// row (`images.md` § Accounts and failures).
-    /// Planted defect this catches: a migration that leaves the purpose's
-    /// check as it was, or copies the columns out of order.
-    /// One small database, milliseconds.
+    /// row. Planted defect this catches: a migration that leaves the
+    /// purpose's check as it was, or copies the columns out of order. One
+    /// small database, milliseconds.
     #[test]
     fn a_ledger_row_of_0_1_22_stays_whole_and_the_ledger_takes_an_images_row() {
         let (_directory, path, mut connection) =

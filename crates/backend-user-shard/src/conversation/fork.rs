@@ -1,14 +1,28 @@
-//! Conversation Fork on the backend (`conversation-fork.md` § Backend
-//! creation and retries): a new conversation holding the source's history
-//! through one of its completed assistant texts. The creation reserves its
-//! destination's id in the control store, the agent prepares the seed, the
-//! kept edits of its retained shell calls are copied into the destination's
-//! namespace, the outputs of its commands and the conversation's attachments
-//! are copied into the destination's database, the agent commits the destination's root in the destination's
-//! own database, and a control transaction then publishes the destination. Requests for one
-//! destination run one at a time, a retry of the same attempt finds its
-//! destination, and startup publishes a destination whose root committed
-//! before its publication.
+//! Conversation Fork on the backend: a new conversation holding the source's history through one of
+//! its completed assistant texts. The creation reserves its destination's id in the control store,
+//! the agent prepares the seed, the kept edits of its retained shell calls are copied into the
+//! destination's namespace, the outputs of its commands and the conversation's attachments are
+//! copied into the destination's database, the agent commits the destination's root in the
+//! destination's own database, and a control transaction then publishes the destination. Requests
+//! for one destination run one at a time, a retry of the same attempt finds its destination, and
+//! startup publishes a destination whose root committed before its publication.
+//!
+//! The control metadata and the conversation's history live in different
+//! SQLite files, so no transaction spans them: the reservation makes the
+//! attempt durable and the public conversation row is the publication
+//! boundary. Listing and opening show the destination only after its root
+//! checkpoint is committed, and a failure never publishes an empty or partial
+//! conversation. A retry after a lost confirmation must create no second
+//! conversation and recapture no newer data over a committed destination.
+//!
+//! A Fork copies history and configuration, not live state: the destination
+//! starts idle, with no queue, pending steer, edit receipt, child, running
+//! command, permission grant or request (the user decides for the new
+//! conversation again), and attached hosts are copied as configuration, but a
+//! device revoked before publication is left out, as its revocation detached
+//! it from the source. The destination's execution-context revision starts
+//! where the source's stood, so the context blocks its copied transcript
+//! holds are older than any announced later, its first switch included.
 
 use demi_backend_database::Selection;
 use demi_agent_session::ForkError;

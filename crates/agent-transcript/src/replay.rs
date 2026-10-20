@@ -1,8 +1,17 @@
-//! What the model receives of a transcript (`transcript.md` § Replay): the
-//! blocks from the last compaction boundary on, each as its inference item,
-//! with long texts cut in the middle (`compaction.md` § Text bounds), each
-//! medium with the bytes the session holds for it, and each medium the
-//! request's model cannot take as a text that says why.
+//! What the model receives of a transcript: the blocks from the last
+//! compaction boundary on, each as its inference item, with long texts cut
+//! in the middle, each medium with the bytes the session holds for it, and
+//! each medium the request's model cannot take as a text that says why.
+//!
+//! Replay reads only what the blocks hold for the model and which media the
+//! request's model accepts, never an ID or a time, and a block keeps its
+//! place, so the same history gives the same items for the same model in any
+//! session. Each request's items therefore begin with the previous request's:
+//! new blocks are appended, a tool call's result completes a call no request
+//! carried yet, and a view is never replayed. Only compaction, a model switch
+//! and an edit change what an earlier request carried, and a retry or a
+//! resume cuts back to an earlier request. This is how a session keeps its
+//! vendor's prompt cache.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -31,8 +40,7 @@ use super::{COMPACTION_NOTE, gone_text, latest_answer, replay_start, summary_tex
 pub const RESUME_TEXT: &str = "Continue from where you left off.";
 
 /// What the model reads of `resume`: [`RESUME_TEXT`], after why the turn
-/// is resumed when its block says (`failures-and-recovery.md` § The
-/// unfinished turn).
+/// is resumed when its block says.
 pub fn resume_text(resume: &demi_shared_types::ResumeBlock) -> String {
     match &resume.reason {
         Some(reason) => format!("{reason} {RESUME_TEXT}"),
@@ -87,7 +95,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 let content = user.lead_content().iter().chain(&user.content).map(|part| request.user_part(part)).collect();
                 items.push(InferenceItem::UserMessage { content });
             }
-            // The instructions are sent whole (`compaction.md` § Text bounds).
+            // The instructions are sent whole.
             Block::Context(context) => items.push(InferenceItem::UserMessage {
                 content: vec![if context.source == INSTRUCTIONS_SOURCE {
                     UserPart::Text(context.text.clone())
@@ -166,8 +174,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 }
             }
             // The note, each message it kept as the user message it was,
-            // oldest first, then the summary (`compaction.md` § What the
-            // model receives afterward).
+            // oldest first, then the summary.
             Block::CompactionBoundary(boundary) => {
                 items.push(InferenceItem::UserMessage {
                     content: vec![UserPart::Text(COMPACTION_NOTE.to_owned())],
@@ -221,14 +228,13 @@ fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
     start + 1..marker
 }
 
-/// A request of one model over the model's view (`transcript.md` § Replay,
-/// § Media): the one owner of what each medium becomes in that request.
-/// Each medium goes with the bytes the session holds for it, within the
-/// types the model reads natively, each within half of its vendor's
-/// request body limit. A medium whose blob is missing, and any medium the
-/// model cannot take, goes as a text that names it, the same text in every
-/// request to that model. Replay puts that into the request's items, and
-/// the token estimates weigh it (`compaction.md` § Block estimates).
+/// A request of one model over the model's view: the one owner of what
+/// each medium becomes in that request. Each medium goes with the bytes
+/// the session holds for it, within the types the model reads natively,
+/// each within half of its vendor's request body limit. A medium whose
+/// blob is missing, and any medium the model cannot take, goes as a text
+/// that names it, the same text in every request to that model. Replay
+/// puts that into the request's items, and the token estimates weigh it.
 pub struct RequestView<'a> {
     view: &'a ModelView,
     model: &'a Model,
@@ -265,8 +271,8 @@ impl<'a> RequestView<'a> {
     }
 
     /// A call of a tool the request does not declare, such as one removed
-    /// since, with its result, as the model's text (`transcript.md` § Replay):
-    /// `[called yield {"durationMs":600000}: yield scheduled]`.
+    /// since, with its result, as the model's text: `[called yield
+    /// {"durationMs":600000}: yield scheduled]`.
     fn undeclared_call(&self, call: &ToolCallBlock) -> String {
         let input = tool_input(&call.input);
         let input = match &input {

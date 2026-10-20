@@ -30,7 +30,7 @@ demi-shared-types = { path = "../shared-types" }
 encoding_rs = "0.8"
 # HTML to Markdown on html5ever, the HTML parser of Servo: headings, lists,
 # links, tables and code, with the parsed tree open to remove what a reader
-# never sees before it converts (`web.md` § demi web fetch).
+# never sees before it converts.
 htmd = "0.5"
 # htmd's tree, whose elements are removed before it converts.
 markup5ever_rcdom = "0.38"

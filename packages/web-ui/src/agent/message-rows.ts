@@ -66,17 +66,17 @@ interface Recovery {
 
 /**
  * The rows a transcript list shows and what closes them, derived from the
- * conversation's state (`rendering.md` § Work groups): the transcript's blocks
- * with the run of steps grouped, then the tail, the tail row under them, and
- * the footers. A row is named by `rowKey`, which it keeps as it changes form:
- * the message being sent and the message confirmed, a run from its first step
- * to its end. Whatever replaces a row of another name takes its key (`keyOf`):
- * the step that ends a wait, the Requesting row of a Continue, the answer that
- * follows thinking without text. A run's row holds the steps that ended; a step
- * that still runs is a row of its own under it, in the tail row's place, and
- * once it ended the turn waits for the model in a Requesting row under the run.
- * The messages that wait, the steers and the queue, stay below the turn: the
- * tail row stands above them, and its kind is read from the transcript alone.
+ * conversation's state: the transcript's blocks with the run of steps grouped,
+ * then the tail, the tail row under them, and the footers. A row is named by
+ * `rowKey`, which it keeps as it changes form: the message being sent and the
+ * message confirmed, a run from its first step to its end. Whatever replaces a
+ * row of another name takes its key (`keyOf`): the step that ends a wait, the
+ * Requesting row of a Continue, the answer that follows thinking without text.
+ * A run's row holds the steps that ended; a step that still runs is a row of
+ * its own under it, in the tail row's place, and once it ended the turn waits
+ * for the model in a Requesting row under the run. The messages that wait, the
+ * steers and the queue, stay below the turn: the tail row stands above them,
+ * and its kind is read from the transcript alone.
  *
  * Continue after a Stop and Resume after an error take the place of the
  * record they continue from: from the press, the record's row is the

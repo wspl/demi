@@ -1,5 +1,4 @@
-//! Failures and recovery (`failures-and-recovery.md`): transient retries,
-//! `retry` and `resume`.
+//! Failures and recovery: transient retries, `retry` and `resume`.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
 use demi_provider_common::ProviderFailure;
@@ -32,8 +31,7 @@ fn retries(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<SessionEvent
 
 // A steer sent now stops a request that showed nothing and sends another
 // with it: Requesting reads 0s from that moment, while a retry of the same
-// request before it ran the clock on (`rendering.md` § Waiting for the
-// model). A paused clock.
+// request before it ran the clock on. A paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_steer_sent_now_starts_the_wait_again_where_a_retry_runs_it_on() {
     use futures_util::StreamExt;
@@ -446,7 +444,7 @@ async fn retry_reruns_the_last_input_turn_with_its_steers_as_one_replacement() {
         ["user", "steer", "text", "response"]
     );
     // The answer the retry replaced stays stored on its branch, and is no
-    // version the page offers (`message-editing.md` § Versions).
+    // version the page offers.
     assert!(store.rows(&root()).iter().any(|row| matches!(row, Block::Text(text) if text.text == "after the steer")));
     assert!(checkpoint.versions.is_empty(), "{:?}", checkpoint.versions);
     assert!(

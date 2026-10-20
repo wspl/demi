@@ -41,7 +41,7 @@ const errorText = computed(() => (storedShellView(props.block) ? undefined : get
 const { started, end, elapsedMs, running } = useShellRow(() => props.block)
 /** Above the output: how long it has run, or how it ended and after how long. */
 const statusLine = computed(() => commandStatusLine(end.value, elapsedMs.value))
-/** While the call runs, its command's output as it comes (`rendering.md` § Rendering boundary). */
+/** While the call runs, its command's output as it comes. */
 const liveOutput = computed(() =>
   props.block.status === 'executing' ? started.value?.output ?? '' : '',
 )

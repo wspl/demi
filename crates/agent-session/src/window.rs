@@ -1,7 +1,13 @@
-//! The blocks before a session's window (`runtime.md` § What a session
-//! holds): what a work that concerns them reads from the store while it
-//! holds the session's save order, under which no row before the window
-//! changes and the window keeps its start.
+//! The blocks before a session's window: what a work that concerns them
+//! reads from the store while it holds the session's save order, under
+//! which no row before the window changes and the window keeps its
+//! start.
+//!
+//! The window is the only copy of the transcript the live process keeps, so a
+//! tree's memory grows with its sessions' windows, never with the length of
+//! their conversations; whatever concerns a block before it, a page reading
+//! history, an edit, a Fork, reads the rows it needs from the store and holds
+//! them no longer than that work.
 
 use std::collections::BTreeMap;
 
@@ -49,9 +55,8 @@ pub(crate) async fn position(s: &SessionShared, id: &BlockId) -> Result<Option<u
     s.store.position(id).await
 }
 
-/// The transcript a reset sends (`rendering.md` § Where a reset starts):
-/// its blocks from `start` to the end, the transcript's length and the
-/// versions among them.
+/// The transcript a reset sends: its blocks from `start` to the end, the
+/// transcript's length and the versions among them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reset {
     pub start: usize,

@@ -260,7 +260,7 @@ const emit = defineEmits<{
    * which the host sends at once through `regenerateMessage`.
    */
   regenerate: [request: MessageEditRequest]
-  /** Show the `to`th version at the place of the block `blockId` (`message-editing.md` § Versions). */
+  /** Show the `to`th version at the place of the block `blockId`. */
   switchVersion: [blockId: string, to: number]
   saveScroll: [id: string, state: PersistedScrollState | null]
   decidePermission: [id: string, decision: PermissionDecision, credential?: CredentialAnswer]
@@ -301,8 +301,7 @@ provideResumeAtRetry(() => props.resumeAtRetry === undefined
 provideBlockReader(() => props.readBlock)
 provideCredentialKinds(() => props.credentialKinds)
 // A running call shows its command's output under it; once the call
-// returned, a command that still runs is the dock's (`rendering.md`
-// § Rendering boundary).
+// returned, a command that still runs is the dock's.
 const commandOf = useCallTerminals(() => props.conversation.terminals)
 provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 // A report's title whose call the window shown does not hold asks the host where it lies.
@@ -530,7 +529,7 @@ function scrollToBottom(): void {
 /**
  * The children the Agents window and `agent:` links show: those started on
  * the current path; a child of another version of a message stays stored
- * and comes back with its version (`message-editing.md` § Versions).
+ * and comes back with its version.
  */
 const shownAgents = computed(() => props.conversation.subagents.filter((agent) => agent.onPath))
 const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =

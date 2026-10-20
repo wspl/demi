@@ -1,5 +1,5 @@
-//! The tree store over a conversation's database (`runtime.md` § Tree store,
-//! `storage.md` § Conversation state and transactions): a node's record is
+//! The tree store over a conversation's database (`storage.md`
+//! § Conversation state and transactions): a node's record is
 //! its `nodes` row, and its checkpoint is that row's state with the node's
 //! `blocks` rows. Creating, saving, closing, reopening and deleting a node
 //! are each one transaction on the conversation's writer connection, where
@@ -870,15 +870,14 @@ impl SessionStore for SqliteSessionStore {
     }
 }
 
-/// Writes one save of `node` in `transaction` (`message-editing.md`
-/// § Versions): from the cut, the rows the path held leave it and stay as
-/// they are, and each block from there is a new row following the one
-/// before it; below the cut, a changed block updates its row. The rows
-/// carry the blobs and attachments each names, and the state row and the
-/// path's runs go with them; the child completions it carries are marked
-/// delivered. Changed output, or a path cut, advances the node's output
-/// revision; input alone does not. A refusal leaves the transaction
-/// uncommitted.
+/// Writes one save of `node` in `transaction`: from the cut, the rows the
+/// path held leave it and stay as they are, and each block from there is
+/// a new row following the one before it; below the cut, a changed block
+/// updates its row. The rows carry the blobs and attachments each names,
+/// and the state row and the path's runs go with them; the child
+/// completions it carries are marked delivered. Changed output, or a path
+/// cut, advances the node's output revision; input alone does not. A
+/// refusal leaves the transaction uncommitted.
 fn write_checkpoint(
     transaction: &Transaction<'_>,
     node: &NodeId,
@@ -900,7 +899,7 @@ fn write_checkpoint(
         .min(stored);
     // A block the save carries to the new branch under its id, as a
     // compaction inside a turn does, replaces its row there, whose
-    // versions it keeps (`message-editing.md` § Versions).
+    // versions it keeps.
     let mut moved = HashMap::new();
     if cut < stored {
         replaced = path.row_at(cut);
@@ -1033,8 +1032,8 @@ fn is_output(block: &Block) -> bool {
 
 /// A node's checkpoint: its state row and its window, the blocks of its
 /// current path from the last `compaction_boundary` on with the versions
-/// there (`runtime.md` § Restoring); none when the node does not exist. No
-/// row before the window is read.
+/// there; none when the node does not exist. No row before the window is
+/// read.
 fn checkpoint(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoint>, StorageError> {
     let row: Option<String> = connection
         .query_row("SELECT state FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
@@ -1755,8 +1754,8 @@ fn ended_turn(
 /// § Search index): its output revision and its block count. Every save
 /// that changes the transcript changes one of them: a save of output, or one
 /// that removes rows, advances the revision, and a save of input alone adds
-/// blocks. The transcript's own version, its epoch and revision
-/// (`transcript.md` § Patches and versions), lives only in the running session.
+/// blocks. The transcript's own version, its epoch and revision, lives only in
+/// the running session.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SavedVersion {
     pub revision: u64,
@@ -2155,9 +2154,8 @@ impl Transcript {
     }
 
     /// The entries of the newest instructions block among its first
-    /// `length` blocks, which the context card lists; none before the first
-    /// (`instructions.md` § What the card lists), and none in a share,
-    /// which shows no `context` block.
+    /// `length` blocks, which the context card lists; none before the
+    /// first, and none in a share, which shows no `context` block.
     pub fn newest_instructions(
         &self,
         connection: &Connection,
@@ -2451,9 +2449,8 @@ fn steps_bytes(count: u64) -> usize {
 /// A subagent as [`subagents`] reads it: its record, the model selection
 /// its checkpoint saved, whether the call that started it is on its
 /// parent's current path, and whether its every ancestor's start is too,
-/// which makes it a child of the conversation's current path
-/// (`message-editing.md` § Versions). A child no call started is on every
-/// path.
+/// which makes it a child of the conversation's current path. A child no
+/// call started is on every path.
 #[derive(Debug, Clone)]
 pub struct Subagent {
     pub record: NodeRecord,
@@ -2529,11 +2526,10 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
 }
 
 /// The call that started the command `command`, with the node that ran it, on
-/// whatever branch it is, since the command ran (`message-editing.md` §
-/// Versions): of the calls whose view names the command, the first, since a
-/// stored look at a command, from before such looks were removed, came after
-/// it; of calls equally early, the oldest agent's, since a fork's copy of its
-/// source's call keeps the call's time
+/// whatever branch it is, since the command ran: of the calls whose view names
+/// the command, the first, since a stored look at a command, from before such
+/// looks were removed, came after it; of calls equally early, the oldest
+/// agent's, since a fork's copy of its source's call keeps the call's time
 /// (`crates/agent-server/src/server/tree/supervisor.rs`), and a side question's
 /// copy comes after every agent's.
 pub fn command_call(
@@ -2742,7 +2738,7 @@ pub(crate) mod tests {
     // the destination's store copies them from the source's database file
     // with the blobs they name, never reading them into the process; the
     // commands its shell calls name are found in the source's database the
-    // same way (`conversation-fork.md` § Backend creation and retries).
+    // same way.
     #[tokio::test(flavor = "local")]
     async fn a_fork_copies_the_rows_it_names_from_the_source_conversations_database() {
         let (source, stores, _data) = store().await;
@@ -2948,7 +2944,7 @@ pub(crate) mod tests {
     }
 
     // A child off the current path takes its own children off it, whose
-    // starts are on its path (`message-editing.md` § Versions).
+    // starts are on its path.
     #[tokio::test(flavor = "local")]
     async fn a_child_off_the_current_path_takes_its_subtree_with_it() {
         let (tree, stores, _data) = store().await;

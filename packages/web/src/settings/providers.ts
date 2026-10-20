@@ -91,8 +91,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }))
     // The signed-in subscriptions in the user's order, which generated
     // media follow, then each one nobody signed in to, in the vendors' order,
-    // as what could be added follows what was (`media.md` § Which entry
-    // makes a call).
+    // as what could be added follows what was.
     const placeholders = (product.vendors?.subscriptions ?? []).flatMap((subscription) =>
       configured.some(
         (provider) =>
@@ -683,9 +682,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   /**
    * Puts the entries in the order the user dragged the list to, which
-   * generated media follow (`media.md` § Which entry makes a call): the list
-   * shows it at once, the change is sent after every entry's earlier
-   * writes, and a refusal puts the list back with a toast.
+   * generated media follow: the list shows it at once, the change is sent
+   * after every entry's earlier writes, and a refusal puts the list back
+   * with a toast.
    */
   function reorderProviders(ids: string[]): Promise<void> {
     const shown = product.change('providers', (state) => ({

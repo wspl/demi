@@ -1,17 +1,17 @@
-//! The agent's `demi image` (`images.md`, `media.md`), the `image` plugin
-//! over the port's Providers service: an image made to a file and to `demi
-//! file view`, an edit of the Host's files, warnings for what the result
-//! did not honour, a used-up account under Balanced moving the call to
-//! another, a usage ledger row per call, a stopped call's cancelled row, no
-//! account named to a shared instance's user, an entry whose Image
-//! Generation is off never chosen, the entry a call takes: subscriptions
-//! before keys, each in the order of Settings › Providers, the next once
-//! one is used up, never another after a refusal, and the one
-//! `--provider` names or why it cannot; what `demi image models` says of
-//! each model; and a compatible API whose shape is OpenAI Images. The
-//! model is the scripted family of the subagent scenarios, the image role a
-//! scripted family's, or OpenAI Images' requests to a scripted server, and
-//! the device a real runner. No test calls a real model.
+//! The agent's `demi image`, the `image` plugin over the port's Providers
+//! service: an image made to a file and to `demi file view`, an edit of the
+//! Host's files, warnings for what the result did not honour, a used-up
+//! account under Balanced moving the call to another, a usage ledger row
+//! per call, a stopped call's cancelled row, no account named to a shared
+//! instance's user, an entry whose Image Generation is off never chosen,
+//! the entry a call takes: subscriptions before keys, each in the order of
+//! Settings › Providers, the next once one is used up, never another after
+//! a refusal, and the one `--provider` names or why it cannot; what `demi
+//! image models` says of each model; and a compatible API whose shape is
+//! OpenAI Images. The model is the scripted family of the subagent
+//! scenarios, the image role a scripted family's, or OpenAI Images'
+//! requests to a scripted server, and the device a real runner. No test
+//! calls a real model.
 
 use std::sync::Arc;
 

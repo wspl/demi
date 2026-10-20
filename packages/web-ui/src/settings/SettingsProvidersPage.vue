@@ -413,10 +413,10 @@ function chooseRotation(provider: SettingsProviderEntry, rotation: SettingsRotat
 }
 
 /**
- * The list's order, which generated media follow (`media.md` § Which entry
- * makes a call): a row is dragged within its own group, as Finder's sidebar
- * rows are, or moved one place with Option and the arrow keys, and the host
- * receives every stored entry's new place.
+ * The list's order, which generated media follow: a row is dragged within
+ * its own group, as Finder's sidebar rows are, or moved one place with
+ * Option and the arrow keys, and the host receives every stored entry's new
+ * place.
  */
 const subscriptionList = ref<HTMLElement>()
 const keyList = ref<HTMLElement>()

@@ -216,10 +216,9 @@ impl Shard {
     }
 }
 
-/// The side questions context source (`transcript.md` § Context): what the
-/// root learns of the questions the user asked aside, which its tree
-/// decides; nothing while the tree is not open, as a closed tree's root
-/// makes no request.
+/// The side questions context source: what the root learns of the
+/// questions the user asked aside, which its tree decides; nothing while
+/// the tree is not open, as a closed tree's root makes no request.
 pub(crate) struct Told {
     shard: std::rc::Weak<Shard>,
 }

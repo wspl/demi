@@ -1,9 +1,8 @@
-//! A node's current path through its tree of rows (`message-editing.md`
-//! § Versions, `storage.md` § Conversation state and transactions): the
-//! node's leaf, and the runs of consecutive row numbers from its first
-//! block to the leaf, which `path_runs` keeps so a range of positions reads
-//! a range of rows. The runs are derived from the rows and the leaf, and
-//! written with the leaf in the same transaction.
+//! A node's current path through its tree of rows (`storage.md` § Conversation
+//! state and transactions): the node's leaf, and the runs of consecutive row
+//! numbers from its first block to the leaf, which `path_runs` keeps so a range
+//! of positions reads a range of rows. The runs are derived from the rows and
+//! the leaf, and written with the leaf in the same transaction.
 
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -178,14 +177,13 @@ impl Path {
         Ok(())
     }
 
-    /// The versions at each position in `range` that holds more than one
-    /// (`message-editing.md` § Versions). A place holds versions only where
-    /// a row's parent has another row after it, which the index of rows
-    /// that do not follow the row before them finds without reading the
-    /// path's rows. A block a compaction carried past its boundary shows
-    /// the versions of the place it was carried from, which the boundary
-    /// then stands at without showing them, unless its new place holds
-    /// versions of its own.
+    /// The versions at each position in `range` that holds more than one. A
+    /// place holds versions only where a row's parent has another row after
+    /// it, which the index of rows that do not follow the row before them
+    /// finds without reading the path's rows. A block a compaction carried
+    /// past its boundary shows the versions of the place it was carried
+    /// from, which the boundary then stands at without showing them, unless
+    /// its new place holds versions of its own.
     pub(crate) fn versions(
         &self,
         connection: &Connection,
@@ -321,7 +319,7 @@ impl Path {
 
 /// The row `row` was carried from, through every compaction that carried
 /// it: a row that replaces one with another parent is that one's block on a
-/// new branch (`message-editing.md` § Versions); `row` itself otherwise.
+/// new branch; `row` itself otherwise.
 fn carried(connection: &Connection, node: &str, row: i64) -> Result<i64, StorageError> {
     let mut row = row;
     loop {

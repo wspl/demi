@@ -11,16 +11,15 @@ import RequestFrame from './RequestFrame.vue'
 import type { CredentialAnswer, CredentialRequestView, PermissionDecision } from './types'
 
 /**
- * The body of a credential request's card (`credentials.md` § Requests and
- * routes): the credential's name, the agent's reason, one input per field
- * under its label, a secret one typed hidden with an eye, and how long it
- * is kept, *Kept for 1 hour*, which the agent decided and the card only
- * says (`credentials.md` § A credential). Save waits until every field has
- * a value and sends the values once; Decline answers the agent that the
- * user declined.
- * A renewal of a saved credential asks for its fields again, empty. A value
- * over the 64 KiB a field holds is said under it and keeps Save off. A
- * refusal of the values shows under the form, and the typed values stay.
+ * The body of a credential request's card: the credential's name, the
+ * agent's reason, one input per field under its label, a secret one typed
+ * hidden with an eye, and how long it is kept, *Kept for 1 hour*, which the
+ * agent decided and the card only says. Save waits until every field has a
+ * value and sends the values once; Decline answers the agent that the user
+ * declined. A renewal of a saved credential asks for its fields again,
+ * empty. A value over the 64 KiB a field holds is said under it and keeps
+ * Save off. A refusal of the values shows under the form, and the typed
+ * values stay.
  */
 const props = defineProps<{
   request: CredentialRequestView

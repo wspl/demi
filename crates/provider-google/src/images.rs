@@ -1,8 +1,8 @@
-//! The image role of a Gemini API key (`images.md` § Vendors): an image
-//! asked of a model's `generateContent` with the key in `x-goog-api-key`,
-//! the image read from the answer's first inline part, a blocked prompt
-//! or answer told in Google's words, and the models Google lists for the
-//! key, read when asked.
+//! The image role of a Gemini API key: an image asked of a model's
+//! `generateContent` with the key in `x-goog-api-key`, the image read
+//! from the answer's first inline part, a blocked prompt or answer told
+//! in Google's words, and the models Google lists for the key, read when
+//! asked.
 
 use std::sync::Arc;
 

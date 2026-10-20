@@ -1,8 +1,8 @@
-//! A source's fetch (`skills.md` § User skills): a shallow fetch of the
-//! repository's default branch into a temporary directory, which stops as
-//! soon as it has received 64 MiB, and the skills of the commit it pins;
-//! and the check of the commit that branch points to now. Both block, so
-//! they run on the blocking pool.
+//! A source's fetch: a shallow fetch of the repository's default branch
+//! into a temporary directory, which stops as soon as it has received 64
+//! MiB, and the skills of the commit it pins; and the check of the commit
+//! that branch points to now. Both block, so they run on the blocking
+//! pool.
 
 use std::collections::BTreeSet;
 use std::num::NonZeroU32;
@@ -172,8 +172,8 @@ pub(crate) fn fetch(
 }
 
 /// The commit `url`'s default branch points to now, read from the remote's
-/// ref advertisement without fetching any object (`skills.md` § Updates
-/// available). It blocks, so it runs on the blocking pool.
+/// ref advertisement without fetching any object. It blocks, so it runs on
+/// the blocking pool.
 pub(crate) fn remote_head(url: &str) -> Result<String, String> {
     // A remote needs a repository; an empty one, isolated as a fetch's is.
     let directory =

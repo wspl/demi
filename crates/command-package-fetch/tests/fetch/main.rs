@@ -1,9 +1,8 @@
-//! The `demi.fetch` program at its boundary (`web.md` § demi web fetch): the
-//! command service a runner starts, fetching from local HTTP servers, never
-//! the internet. Each test starts its own service with its own temporary
-//! directory, which holds the pages it keeps and the files it saves. As the
-//! package's integration tests, they also make `cargo test` build the
-//! program.
+//! The `demi.fetch` program at its boundary: the command service a runner
+//! starts, fetching from local HTTP servers, never the internet. Each test
+//! starts its own service with its own temporary directory, which holds the
+//! pages it keeps and the files it saves. As the package's integration
+//! tests, they also make `cargo test` build the program.
 
 use std::{
     collections::BTreeMap,

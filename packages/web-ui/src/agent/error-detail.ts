@@ -20,7 +20,7 @@ export function failureHeadline(
   now: Date,
   credential: CredentialKind | null = null,
 ): SentenceText {
-  // A key is never called a sign-in (`failures-and-recovery.md` § Failure codes).
+  // A key is never called a sign-in.
   const words = code === 'auth_expired' && credential === 'api_key'
     ? t('transcript.apiKeyRefused')
     : code ? codeText(code) : null
@@ -63,9 +63,8 @@ export function recordHeadline(
 }
 
 /**
- * The record of a request the vendor answered with a failure status
- * (`failures-and-recovery.md` § Diagnostics): its status, every header as a
- * `[name, value]` pair, and the body as received.
+ * The record of a request the vendor answered with a failure status: its
+ * status, every header as a `[name, value]` pair, and the body as received.
  */
 const httpRecordSchema = z.object({
   status: z.int(),

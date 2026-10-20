@@ -1,13 +1,12 @@
 //! The ByteDance provider (`crates-and-packages.md` § Vendor provider
-//! crates, `media.md` § Which entries make which media): ByteDance's media
-//! through its keys. An Ark key, BytePlus ModelArk's or Volcengine Ark's,
-//! makes Seedream's images and Seedance's videos; a BytePlus ModelArk
-//! entry makes no text, and a Volcengine Ark entry's text is the
-//! OpenAI-compatible provider's it is given. A speech key, BytePlus
-//! Speech's or Doubao Speech's, makes Seed speech and Seed Audio's sound
-//! effects. No ByteDance API lists its models to an API key, so the models
-//! are the catalog's, and a key is checked by a request ByteDance refuses
-//! for its body.
+//! crates): ByteDance's media through its keys. An Ark key, BytePlus
+//! ModelArk's or Volcengine Ark's, makes Seedream's images and Seedance's
+//! videos; a BytePlus ModelArk entry makes no text, and a Volcengine Ark
+//! entry's text is the OpenAI-compatible provider's it is given. A speech
+//! key, BytePlus Speech's or Doubao Speech's, makes Seed speech and Seed
+//! Audio's sound effects. No ByteDance API lists its models to an API key,
+//! so the models are the catalog's, and a key is checked by a request
+//! ByteDance refuses for its body.
 
 mod ark;
 mod images;
