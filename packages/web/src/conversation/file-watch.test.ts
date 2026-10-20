@@ -279,7 +279,7 @@ test("a device's folder dialog subscribes to the details of what it lists on the
     kind: 'listing',
     path: '/Users/alex/logs',
     details: true,
-    watch: deviceWatch('d7', files),
+    watch: deviceWatch('d7', files, () => () => true),
     read: async () => ({ value: [], readAt: { epoch: 'e', number: 1 } }),
     size: () => 0,
   })
@@ -290,4 +290,54 @@ test("a device's folder dialog subscribes to the details of what it lists on the
   await flush()
   expect(subscribed(socket).map(({ kind, path }) => `${kind} ${path}`)).toEqual(['folder_details /Users/alex/logs'])
   listing.release()
+})
+
+test("a device's own watch of an offline device opens nothing until the device comes online, then opens once", async () => {
+  jest.useFakeTimers()
+  try {
+    // The device's state the page holds; the test tells the watch when it comes online.
+    let online = false
+    let cameOnline = () => {}
+    const { files } = kept()
+    const listing = files.show({
+      kind: 'listing',
+      path: '/Users/alex/logs',
+      details: true,
+      watch: deviceWatch('d8', files, (_deviceId, onOnline) => {
+        cameOnline = onOnline
+        return () => online
+      }),
+      read: async () => ({ value: [], readAt: { epoch: 'e', number: 1 } }),
+      size: () => 0,
+    })
+    await flush()
+    jest.advanceTimersByTime(30 * 60_000)
+    await flush()
+    expect(sockets).toHaveLength(0)
+
+    online = true
+    cameOnline()
+    expect(sockets).toHaveLength(1)
+    const first = sockets[0]!
+    first.open()
+    await flush()
+
+    // The device goes offline: the backend says so and closes.
+    first.receive({ type: 'offline' })
+    first.end(1011, 'host_unreachable')
+    online = false
+    jest.advanceTimersByTime(30 * 60_000)
+    await flush()
+    expect(sockets).toHaveLength(1)
+
+    online = true
+    cameOnline()
+    expect(sockets).toHaveLength(2)
+    sockets[1]!.open()
+    await flush()
+    expect(subscribed(sockets[1]!)).toEqual(subscribed(first))
+    listing.release()
+  } finally {
+    jest.useRealTimers()
+  }
 })

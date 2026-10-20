@@ -43,7 +43,7 @@ export function conversationWatch(conversationId: string): ConversationWatch {
 }
 
 /** Follows a device's state from the synchronization channel, the Cloud's included, for the page's lifetime. */
-const followDevice: FollowHost = (deviceId, cameOnline) => {
+export const followDevice: FollowHost = (deviceId, cameOnline) => {
   const resources = useResources()
   const online = () => resources.deviceById(deviceId)?.state === 'online'
   effectScope(true).run(() => {

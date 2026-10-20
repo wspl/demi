@@ -7,7 +7,7 @@ import { apiRequest, readResponse } from '../api/client'
 import { fileBrowserError, hostFiles, readAtOf } from '../api/files'
 import { conversationWorkflowsSchema, type ConversationWorkflows } from '../api/generated/web-api'
 import { deviceWatch } from './file-watch'
-import { conversationWatch } from './files'
+import { conversationWatch, followDevice } from './files'
 import { executionFor } from '../targets/execution'
 import { useProduct } from '../state/product'
 import { useConversations } from './store'
@@ -79,7 +79,7 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
       path: directory,
       key: 'workflows',
       watch: conversationId === null
-        ? deviceWatch(deviceId, files)
+        ? deviceWatch(deviceId, files, followDevice)
         : conversationWatch(conversationId).channel(deviceId, files),
       // A read after the page's watch went live asks for an answer read at
       // or after it, which the backend's kept search then searches again
