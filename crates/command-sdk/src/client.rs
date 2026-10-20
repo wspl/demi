@@ -70,20 +70,17 @@ impl Client {
         self.invoke_at(CONVERSATION_PATH, request.encode()?).await
     }
 
-    /// Opens the service's numbers stream (`native-runtime.md`
-    /// § Conversation numbers), which the caller answers.
+    /// Opens the service's numbers stream (`crates/command-protocol/src/numbers.rs`), which the caller answers.
     pub async fn numbers(&self) -> Result<RequestStream, ServiceError> {
         self.request_stream(NUMBERS_PATH).await
     }
 
-    /// Opens the service's artifacts stream (`native-runtime.md` § The
-    /// artifacts stream), which the caller answers.
+    /// Opens the service's artifacts stream (`crates/command-protocol/src/artifacts.rs`), which the caller answers.
     pub async fn artifacts(&self) -> Result<RequestStream, ServiceError> {
         self.request_stream(ARTIFACTS_PATH).await
     }
 
-    /// Opens the service's messages stream (`native-runtime.md`
-    /// § Messages to the plugin), which the caller answers.
+    /// Opens the service's messages stream (`crates/command-protocol/src/messages.rs`), which the caller answers.
     pub async fn messages(&self) -> Result<RequestStream, ServiceError> {
         self.request_stream(MESSAGES_PATH).await
     }
@@ -103,7 +100,7 @@ impl Client {
         if path == CONVERSATION_PATH {
             // The metadata is the whole request, so it leaves with its end:
             // nothing is left to send once the service can answer it
-            // (`native-runtime.md` § Request body and input demand).
+            // (`crates/command-protocol/src/lib.rs`).
             input.send_data(metadata, true)?;
         } else {
             send_bytes(&mut input, metadata).await?;
@@ -161,8 +158,7 @@ impl CommandInput {
 
     /// A service that finished without reading all input resets the request
     /// with NO_ERROR once its response is complete; input sent after that,
-    /// a chunk or its end, is dropped, not a failure (`native-runtime.md`
-    /// § Request body and input demand).
+    /// a chunk or its end, is dropped, not a failure (`crates/command-protocol/src/lib.rs`).
     fn unless_answered(&mut self, sent: Result<(), ServiceError>) -> Result<(), ServiceError> {
         let Err(error) = sent else {
             return Ok(());

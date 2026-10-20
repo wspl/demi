@@ -1,4 +1,4 @@
-//! The numbers stream (`native-runtime.md` § Conversation numbers): the
+//! The numbers stream (`crates/command-protocol/src/numbers.rs`): the
 //! handler draws numbers of a conversation's sequence from its [`Numbers`],
 //! and the runner answers each draw with the numbers the backend reserved.
 

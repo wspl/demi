@@ -1,5 +1,5 @@
 //! Where a conversation's work runs, changed through the API
-//! (`sessions-and-targets.md` § Switch the primary target, § Attached hosts): a
+//! (`crates/backend-host-access/src/transition.rs`, `crates/backend-database/src/conversation_index.rs`): a
 //! target switch moves the work and attaches the device it leaves, a switch ends
 //! the conversation's open transfers instead of waiting for them, attached hosts
 //! are detached, each change of them raises the revision a page reads them by,

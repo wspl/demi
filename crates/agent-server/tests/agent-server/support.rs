@@ -586,7 +586,7 @@ async fn demi_call<H: HostResolver>(
     let path = invocation.path.join(" ");
     // A failure is told as the backend's dispatcher tells it: a runtime
     // error after the command's path, a usage error whole
-    // (`commands.md` § Handle an rpc call).
+    // (`crates/host-interface/src/rpc.rs`).
     let (code, told) = match live
         .commands()
         .dispatch(invocation, RpcPort::new(port.clone(), cancel))

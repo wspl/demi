@@ -1,5 +1,4 @@
-//! One invocation driven to its completion (`native-runtime.md` § Invocation
-//! protocol): each input pull of the service is answered with one chunk from
+//! One invocation driven to its completion (`crates/command-protocol/src/lib.rs`): each input pull of the service is answered with one chunk from
 //! the caller's source, and the service's records are sorted into standard
 //! output, standard error and the one completion.
 //!
@@ -33,7 +32,7 @@ pub trait OutputSink {
 
     fn stderr(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), Self::Error>>;
 
-    /// A medium the service returned (`commands.md` § Return media), whole,
+    /// A medium the service returned (`crates/runner-jobs/src/commands/command_output.rs`), whole,
     /// with the facts its record gave.
     fn medium(
         &mut self,

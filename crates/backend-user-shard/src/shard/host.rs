@@ -1,5 +1,5 @@
 //! The shard's side of the conversations' host access
-//! (`sessions-and-targets.md` § Host operations): what host access needs of
+//! (`crates/backend-host-access/src/access.rs`): what host access needs of
 //! the shard (`HostShard`), whose operations the edge and the shard's own
 //! work reach through `host_shard`.
 

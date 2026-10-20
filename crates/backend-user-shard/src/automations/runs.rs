@@ -94,7 +94,7 @@ pub(crate) enum Unrunnable {
     Offline(String),
     /// A paired device the backend's own restart disconnected, whose runner
     /// is given the rest of the restart hold to come back
-    /// (`sessions-and-targets.md` § Recovery and persistence).
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     Returning { device: DeviceId, rest: std::time::Duration },
     Gone(PauseReason),
 }

@@ -1,4 +1,4 @@
-//! The messages stream (`native-runtime.md` § Messages to the plugin): the
+//! The messages stream (`crates/command-protocol/src/messages.rs`): the
 //! handler tells the plugin of its package what changed in the state it
 //! keeps for a conversation through its [`Messages`], and the runner answers
 //! each message once its connection to the backend took it.

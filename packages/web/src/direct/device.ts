@@ -1,6 +1,5 @@
 /**
- * The page's choice of path to one paired device (`direct-channel.md`
- * § Choosing the path): `direct` while its peer is connected and the
+ * The page's choice of path to one paired device (`packages/web/src/direct/index.ts`): `direct` while its peer is connected and the
  * device's route takes it, under Automatic only while the direct path is
  * not the slower one, `relay` otherwise. Every operation starts on the relay at once and chooses as it
  * starts; nothing waits for the direct channel. While the choice is `relay`
@@ -35,7 +34,7 @@ export interface DeviceDirectDeps {
   connect(signal: AbortSignal): Promise<DirectPeer>
   /** Calls `run` after `ms`, unless the answer is called first. */
   after(ms: number, run: () => void): () => void
-  /** A peer connected, which Automatic measures to decide (`direct-channel.md` § Measuring the paths). */
+  /** A peer connected, which Automatic measures to decide (`packages/web/src/direct/measure.ts`). */
   connected(): void
 }
 

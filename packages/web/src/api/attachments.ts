@@ -15,8 +15,7 @@ export interface AttachmentSource {
 }
 
 /**
- * The answers about the conversation's attachments (`commands.md`
- * § Attachment commands), by the address asked, for the page's
+ * The answers about the conversation's attachments (`crates/backend-host-access/src/attachment_commands.rs`), by the address asked, for the page's
  * lifetime: an attachment never changes, and a number up to the
  * conversation's latest that has none never will have one, so the page asks
  * for each once.

@@ -2,8 +2,7 @@ import { expect, test } from 'bun:test'
 import { DeviceLive } from './live'
 import type { DirectPeer } from './peer'
 
-// The device's peer for live views (`direct-channel.md` § Making the
-// channel): it closes a minute after its last view ends, counting the views
+// The device's peer for live views (`crates/runner-direct/src/lib.rs`): it closes a minute after its last view ends, counting the views
 // of each peer apart, since a view of a peer that went still ends later.
 
 function peer(): DirectPeer {

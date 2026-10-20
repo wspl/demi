@@ -1,4 +1,4 @@
-//! The media a declared command returns (`commands.md` § Return media):
+//! The media a declared command returns (`crates/runner-jobs/src/commands/command_output.rs`):
 //! images, videos and PDF documents that `demi file view` hands to its job,
 //! their bound, how their bytes are recognized, and the facts a medium
 //! record carries of one.
@@ -60,7 +60,7 @@ pub fn is_binary(bytes: &[u8]) -> bool {
 }
 
 /// What a medium record says of the medium whose bytes follow
-/// (`native-runtime.md` § Response records and completion): its media type,
+/// (`crates/command-protocol/src/lib.rs`): its media type,
 /// a document's name, and the facts its header gives, which the handler
 /// read once: an image's or a video's size in pixels, a video's length.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

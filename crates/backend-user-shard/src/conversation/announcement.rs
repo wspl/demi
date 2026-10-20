@@ -1,6 +1,6 @@
 //! The context block a node reads before its first request, and before
 //! its next one once the conversation's execution context changed
-//! (`sessions-and-targets.md` § Switch the primary target). Every block
+//! (`crates/backend-host-access/src/transition.rs`). Every block
 //! names the primary Host with its system and the directory its shells
 //! start in. Then, after a switch, the departed and current targets, that
 //! no files moved, and the departed device under the name it stays
@@ -56,8 +56,7 @@ const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $D
 const MACOS_UTILITIES: &str = "macOS's own are in /usr/bin";
 
 /// What a block for Windows adds: what the shell is, since a model
-/// otherwise guesses Git Bash or MSYS and writes `/c/…` paths
-/// (`sessions-and-targets.md` § Execution context).
+/// otherwise guesses Git Bash or MSYS and writes `/c/…` paths.
 const WINDOWS_SHELLS: &str = "Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes.";
 
 /// The line of a block after the conversation's attached hosts changed.

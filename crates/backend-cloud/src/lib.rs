@@ -68,8 +68,7 @@ impl CloudServices {
 
 /// What the Cloud needs of its user's shard: the handles its operations
 /// use, and the user's conversations, which keep the Cloud awake while they
-/// work and which an idle stop and a reset hold (`sessions-and-targets.md`
-/// § How a conversation uses a device).
+/// work and which an idle stop and a reset hold (`crates/backend-cloud/src/uses.rs`).
 pub trait CloudShard {
     fn user(&self) -> &UserId;
     /// The user's Cloud machine.
@@ -120,8 +119,7 @@ pub trait CloudShard {
         hold: Duration,
     ) -> LocalBoxFuture<'a, Option<Box<dyn ConversationHold>>>;
     /// The Cloud `device` stopped, and with it whatever its command
-    /// packages kept for its conversations (`native-runtime.md` § Messages
-    /// to the plugin).
+    /// packages kept for its conversations (`crates/command-protocol/src/messages.rs`).
     fn packages_lost(&self, device: &DeviceId);
 }
 

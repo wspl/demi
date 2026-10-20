@@ -3,7 +3,7 @@
 //! anything is created, so a refused one creates nothing. Its directory is selected
 //! as a move's is, in the transaction that creates it, which makes the directory's
 //! project when there is none, by the directory's name on its Host
-//! (`sessions-and-targets.md` § Resolve a target).
+//! (`crates/backend-database/src/selection.rs`).
 
 use demi_backend_database::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;

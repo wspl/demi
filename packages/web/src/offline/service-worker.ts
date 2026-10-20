@@ -12,8 +12,7 @@ import {
  * The page's one service worker, served from the root so that its scope is
  * the whole origin. It has three jobs:
  *
- * - The direct channel's raw requests (`direct-channel.md` § Bytes the
- *   browser fetches itself): a `GET` of a conversation's raw file route,
+ * - The direct channel's raw requests (`packages/web/src/direct/raw-bridge.ts`): a `GET` of a conversation's raw file route,
  *   which an image, a video, a PDF or a download makes, goes to the page
  *   that made it, which answers it over its direct channel when it has one
  *   to the conversation's device, or sends it to the network.

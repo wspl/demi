@@ -1,7 +1,6 @@
 /**
  * A raw file answer as the relay's route gives it, for the bytes the service
- * worker serves over a direct channel (`direct-channel.md` § Bytes the browser
- * fetches itself): the part a `Range` asks for, and the headers that keep the
+ * worker serves over a direct channel (`packages/web/src/direct/raw-bridge.ts`): the part a `Range` asks for, and the headers that keep the
  * bytes inert, name their version and say how long they may be kept.
  */
 import { IMAGE_CONTENT_POLICY, previewMediaType, showsInPlace } from '@demicodes/protocol'

@@ -8,7 +8,7 @@ import { t } from './locales/text'
 /**
  * Why a forward's connections go through the relay after a direct path
  * between its two runners failed: the direct channel's own reasons
- * (`port-forwarding.md` § What the user sees).
+ * (`crates/runner-protocol/src/forward.rs`).
  */
 export type ForwardPairReason =
   | { kind: 'unreachable' }

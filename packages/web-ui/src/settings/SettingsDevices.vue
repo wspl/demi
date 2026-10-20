@@ -24,7 +24,7 @@ import type { ExposedPortChange, SettingsExposedPort } from './exposed-ports'
 import type { SettingsDevice } from './types'
 
 /**
- * Settings → Devices (`direct-channel.md` § What the user sees): the Cloud,
+ * Settings → Devices (`packages/web-ui/src/devices/direct.ts`): the Cloud,
  * then the paired devices, each a row that names it and says in one line
  * its system and its state, such as how this page reaches it or when an
  * offline one was last seen, and opens its own page, which `shown` names;

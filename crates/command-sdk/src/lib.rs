@@ -1,5 +1,24 @@
 //! HTTP/2 command services over caller-owned duplex transports: the SDK of the
 //! command wire that `demi_command_protocol` defines.
+//!
+//! It handles framing, HTTP/2, byte IO and cancellation over a transport it is
+//! given, and nothing else: it installs no artifact and starts no process
+//! (the runner does), and a command's algorithm belongs to its package, never
+//! to the SDK or the runner.
+//!
+//! Cancellation is cooperative and accounted for. A handler stops and releases
+//! its resources when its token fires; a reset stream or an aborted task is
+//! not a release, since native work may ignore both. A handler that outlasts
+//! the grace makes the service return a fault, and the runner retires the
+//! process and fails every call it held, rather than claim that the
+//! cancellation was isolated. Blocking or CPU-bound work must leave the
+//! connection's worker free, or resets and disconnects go unseen.
+//!
+//! Once a shutdown is answered, either side may close while the other still
+//! has frames queued (the service exits when its connection has drained, the
+//! caller's connection may still send its own GOAWAY), so a write into the
+//! closed transport, a reset or an end of input after an answered shutdown
+//! ends the connection and is not a failure.
 
 pub mod descriptors;
 pub mod edits;

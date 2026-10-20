@@ -338,7 +338,7 @@ user's or parent's messages and steers, its own text and the description of
 each command it ran, that hold every word, or any with `--any`; words match
 anywhere in a text, in any language, case aside. The newest come first, five
 to a page. It prints a table of blocks
-([Output](../execution/commands.md#output)): each hit with the message
+(`crates/shared-types/src/output.rs`): each hit with the message
 before and after it, each row its index, whether it is the hit, who wrote
 it, when, and its text cut around the words to about 600 characters, the
 words marked, so most hits answer without a read; which page this is and

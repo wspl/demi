@@ -1,4 +1,4 @@
-//! The user's exposed ports (`port-exposure.md`): what a device's page in
+//! The user's exposed ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`): what a device's page in
 //! Settings › Devices and `demi host expose` read and send, and the address
 //! the backend's requests reach an exposed port at.
 
@@ -15,8 +15,7 @@ use crate::text::Trimmed;
 pub const LABEL_MAX: usize = 64;
 
 /// The address the backend's requests for the user reach `port` of
-/// `device` at: the device's id is its host (`port-exposure.md` § Exposed
-/// ports).
+/// `device` at: the device's id is its host (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
 pub fn exposed_address(device: &DeviceId, port: u16) -> String {
     format!("http://{device}:{port}")
 }

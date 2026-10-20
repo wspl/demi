@@ -11,8 +11,7 @@ import { SimulatedWatch } from '../memory-source'
 import { FileBrowserError } from '../types'
 import { WatchChannel } from '../watch-channel'
 
-// The Change view's Commits mode as the page keeps it (`edit-tracking.md`
-// § Commits mode): a page of the commit list that could not be read waits
+// The Change view's Commits mode as the page keeps it (`packages/web-ui/src/files/history.ts`): a page of the commit list that could not be read waits
 // for Retry, a file that becomes a staged rename reads its old side at its
 // earlier path, a file's sides at a commit's full id are read once, and
 // history read outside a repository is read again once one is made there.

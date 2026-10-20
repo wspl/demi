@@ -1,16 +1,56 @@
-//! The conversation's host access (`sessions-and-targets.md` § Host
-//! operations): the one way to a conversation's primary or attached Host. An
+//! The conversation's host access: the one way to a conversation's primary or
+//! attached Host. An
 //! operation takes the conversation's file gate, so it excludes an archive
 //! or a target switch; the target is resolved, and an archived conversation
 //! or a device that is not bound is refused; in the grace after the
 //! backend starts, a device its last shutdown disconnected is waited for
-//! (§ Recovery and persistence), and after it an agent's job on the primary
+//! (a restart is not a device going away: its runners connect again by
+//! themselves within seconds), and after it an agent's job on the primary
 //! Host waits for its device's runner however long it takes, while an
 //! attached device without a live runner is refused with its offline error;
 //! a Cloud's admission is taken; the file gate is let go while any of them
 //! waits; then the operation runs once. Each
 //! conversation has one slot in its user's shard, with its file gate, its
 //! open transfers and the gate its open user streams hold.
+//!
+//! Admission is a loop, because the two things it waits for, the
+//! conversation's file gate and a Cloud's admission, are also what a
+//! transition takes:
+//!
+//! ```text
+//! 1. Take the conversation's file gate.        Waits while a transition
+//!                                              holds it.
+//! 2. Resolve the target; check the archive,    Refused: an archived
+//!    the binding and the owner.                conversation, a device that
+//!                                              is not bound.
+//! 3. A Cloud whose admission this attempt does not hold yet: release
+//!    the file gate, take the Cloud's admission (wakes a stopped Cloud,
+//!    joins a boot, waits for a running reset), and go back to 1.
+//! 4. Run the operation, once.
+//! 5. Release the file gate and the Cloud's admission.
+//! ```
+//!
+//! The file gate is released before waiting for a Cloud because a reset
+//! takes the file gates of the conversations it holds: a caller that kept its
+//! own while it waited would wait for the reset forever. For the same reason
+//! nothing enters a conversation's file gate while it holds a lease of it:
+//! the gate is first-in, first-out, so a reservation queued between the two
+//! entries would wait for the first lease while the second waits behind the
+//! reservation. A conversation socket's frame is therefore handled under one
+//! lease, and a frame with uploads is admitted once on the primary Host
+//! through this entry, its uploads written through that admission.
+//!
+//! Going back to step 1 repeats every check, since while the attempt waited
+//! the conversation may have been archived, switched or had its device
+//! detached. Only an attempt that has not dispatched its operation waits and
+//! starts over; a dispatched operation runs once and is never retried: if a
+//! reset or the loss of its device cuts it off, it fails with that cause.
+//!
+//! An agent's command on a primary device without a live runner waits for it
+//! as for a held conversation, so the agent sees a command that is slow, never
+//! one that failed for the device's absence; the user's Stop ends every waiting
+//! command, which never runs, since a user who stops expects nothing to start
+//! later.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -116,7 +156,7 @@ impl Drop for HeldWait {
 
 /// A running job's admission, held until the job ends, unless a move away
 /// from the job's offline Host leaves the job to that Host's runner
-/// without it (`sessions-and-targets.md` § Switch the primary target).
+/// without it (`crates/backend-host-access/src/transition.rs`).
 struct JobAdmission {
     device: DeviceId,
     admitted: RefCell<Option<Admitted>>,
@@ -668,7 +708,7 @@ impl dyn HostShard + '_ {
     /// How long an operation on `device` waits for its runner first: the
     /// rest of the grace after the backend started, when the last shutdown
     /// disconnected the device and its runner is not back yet
-    /// (`sessions-and-targets.md` § Recovery and persistence). The wait
+    /// (`crates/backend-remote-host/src/device_jobs.rs`). The wait
     /// comes once per admission, before anything answers that the device is
     /// offline or the Cloud stopped, and holds no file lease, so a
     /// transition does not wait for it.
@@ -769,7 +809,7 @@ impl dyn HostShard + '_ {
 
     /// The Hosts the user's conversation `id` reaches, which the web app's
     /// host routes and `demi host shell --host` accept
-    /// (`sessions-and-targets.md` § Attached hosts): its primary Host, then
+    /// (`crates/backend-database/src/conversation_index.rs`): its primary Host, then
     /// its attached ones. A command on the primary Host starts in the
     /// conversation's directory there; one on an attached Host in the
     /// directory fixed when it was attached, or in its home when none was.

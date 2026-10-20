@@ -1,5 +1,4 @@
-//! The line counts of a change to a file (`edit-tracking.md` § What the
-//! conversation shows): one algorithm, gix's blob diff, for the runner's
+//! The line counts of a change to a file (`crates/agent-store/src/changes.rs`): one algorithm, gix's blob diff, for the runner's
 //! report, its working tree and the backend's lists of a conversation's
 //! changes alike.
 

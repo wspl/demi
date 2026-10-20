@@ -28,8 +28,7 @@ const filePillsKey: InjectionKey<() => boolean> = Symbol('file-pills')
 /**
  * Whether the transcript below shows the files its calls and folded runs
  * changed as pills, read at each render: a conversation outside a project
- * shows none, and its Change view still lists them (`edit-tracking.md`
- * § What the conversation shows).
+ * shows none, and its Change view still lists them (`crates/agent-store/src/changes.rs`).
  */
 export function provideFilePills(shown: () => boolean): void {
   provide(filePillsKey, shown)

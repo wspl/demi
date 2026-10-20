@@ -1,5 +1,4 @@
-//! The addresses a runner offers a page (`direct-channel.md` § Making the
-//! channel): `127.0.0.1`, and the IPv4 addresses of its interfaces that are
+//! The addresses a runner offers a page (`crates/runner-direct/src/lib.rs`): `127.0.0.1`, and the IPv4 addresses of its interfaces that are
 //! up, can broadcast and are not point-to-point. A VPN's tunnel interface is
 //! point-to-point, so the fake address a VPN client gives is never offered:
 //! WebKit's encryption handshake times out over one.

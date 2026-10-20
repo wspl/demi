@@ -76,8 +76,7 @@ impl Page {
         Self::offer_as(direct, peer, introduction, false).await
     }
 
-    /// Offers the page's peer for live views (`direct-channel.md` § Making
-    /// the channel).
+    /// Offers the page's peer for live views (`crates/runner-direct/src/lib.rs`).
     pub async fn offer_live(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
         Self::offer_as(direct, peer, introduction, true).await
     }
@@ -209,7 +208,7 @@ impl Page {
     }
 
     /// Opens a probe channel, unordered and never retransmitted, as the
-    /// page's (`direct-channel.md` § Measuring the paths).
+    /// page's (`packages/web/src/direct/measure.ts`).
     pub async fn probe(&self) -> PageChannel {
         self.channel(probe_config()).await
     }

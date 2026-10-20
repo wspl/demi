@@ -16,7 +16,7 @@ host.
 
 This document owns provisioning, isolation, persistence, reset, and the stored
 disk generations of Cloud machines. The
-[execution-target contract](../execution/sessions-and-targets.md) owns Host
+execution-target contract (`crates/backend-host-access/src/lib.rs`) owns Host
 access and admission; `crates/backend-user-shard/src/lifecycle/mod.rs`
 owns the idle rule and its clock. [Cloud setup](setup.md) owns deployment
 configuration; [Cloud images](images.md) owns image production.
@@ -280,7 +280,7 @@ of its backend and its command contexts, which every boot makes anew. Its
 artifact cache is `.demi/artifacts` in the `demi` user's home, on the home
 image, so an artifact the image does not hold, such as a newer Claude Code
 CLI, is downloaded once and survives stops, wakes and resets
-([The cache](../execution/native-runtime.md#the-cache)). Two things of the
+(`crates/runner-command-packages/src/cache.rs`). Two things of the
 runner's are on the system image, in directories the image makes for the
 `demi` user ([Root filesystem contents](images.md#root-filesystem-contents)):
 
@@ -692,7 +692,7 @@ idle rule, checkpoints, the network rules and a capacity permit. It differs in
 whom it serves. It serves the deployment, not a user: it is in no user's
 Hosts, no conversation binds it, nobody pairs it, opens a shell in it or
 resets it, and only the backend's machine access reaches it
-([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)).
+(`crates/backend-host-access/src/lib.rs`).
 
 Its record belongs to the instance's master, the one user every instance
 has, as a managed machine of a second kind beside the master's Cloud
@@ -727,7 +727,7 @@ operation id, selected base, phase, and error. A retry resumes that operation,
 rather than selecting a newer base.
 
 1. Reserve device admission and hold/interrupt affected work according to
-   [shared Cloud coordination](../execution/sessions-and-targets.md#coordinate-shared-cloud-activity):
+   shared Cloud coordination (`crates/backend-cloud/src/uses.rs`):
    new operations on the Cloud wait for the reset, and the turns of the
    conversations that cannot work without it stop.
 2. Let the runner go after a best-effort flush, which ends every command still

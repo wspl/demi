@@ -1,4 +1,4 @@
-//! The service registry (`native-runtime.md` § Keep a service resident): a
+//! The service registry (`crates/runner-command-packages/src/registry.rs`): a
 //! service stays while a lease or a conversation holds it, or while it cannot
 //! say what it holds; a failed release retires it; a service that fails
 //! reports its exit status and the end of its standard error. A service
@@ -215,8 +215,7 @@ async fn a_lease_keeps_a_service_that_holds_nothing() {
     .unwrap();
 }
 
-/// A status check that fails keeps the service (`native-runtime.md` § Keep a
-/// service resident): a service that cannot say what it holds is not one
+/// A status check that fails keeps the service (`crates/runner-command-packages/src/registry.rs`): a service that cannot say what it holds is not one
 /// that holds nothing.
 #[tokio::test]
 async fn a_service_that_cannot_say_what_it_holds_stays() {
@@ -247,8 +246,7 @@ async fn a_service_that_cannot_say_what_it_holds_stays() {
 
 /// A release that ends while the service's answer to what it holds is on its
 /// way makes that answer stale, so the registry asks again, and the service,
-/// which now holds nothing, stops (`native-runtime.md` § Keep a service
-/// resident).
+/// which now holds nothing, stops (`crates/runner-command-packages/src/registry.rs`).
 #[tokio::test]
 async fn an_answer_from_before_a_release_is_asked_again() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -303,8 +301,7 @@ async fn a_failed_release_retires_the_service_and_the_next_caller_gets_a_new_one
 }
 
 /// A call that fails because its service died reports the exit status and
-/// the end of the service's standard error (`native-runtime.md` § Invocation
-/// protocol); the next caller starts a new service.
+/// the end of the service's standard error (`crates/command-protocol/src/lib.rs`); the next caller starts a new service.
 #[tokio::test]
 async fn a_service_that_dies_reports_its_status_and_standard_error() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -363,8 +360,7 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
 }
 
 /// Callers asking at once share one start; one that gives up leaves the
-/// start to the others (`native-runtime.md` § Install
-/// artifacts).
+/// start to the others (`crates/runner-command-packages/src/cache.rs`).
 #[tokio::test]
 async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -518,8 +514,7 @@ async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
 }
 
 /// Puts `bytes` where a Cloud image rooted at `image` preinstalls the
-/// executable of `descriptor` (`native-runtime.md` § Preinstalled
-/// executables), runnable as the image build leaves it.
+/// executable of `descriptor` (`crates/runner-command-packages/src/cache.rs`), runnable as the image build leaves it.
 async fn preinstall(image: &Path, descriptor: &PackageDescriptor, bytes: &[u8]) {
     let directory = image.join(digest(descriptor));
     tokio::fs::create_dir_all(&directory).await.unwrap();
@@ -793,7 +788,7 @@ async fn invoke(
 /// A first use whose install takes longer than two seconds tells its
 /// command so, naming the package, its version and its size, before the
 /// install ends; the install's failure is the acquisition's
-/// (`native-runtime.md` § Install artifacts). The test's clock runs only
+/// (`crates/runner-command-packages/src/cache.rs`). The test's clock runs only
 /// while the install waits. Cost: a copy of the fixture.
 #[tokio::test(start_paused = true)]
 async fn a_slow_install_tells_its_command_what_it_installs() {

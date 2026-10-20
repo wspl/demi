@@ -1,5 +1,5 @@
 //! Each agent node's commands, for the rpc calls its jobs make
-//! (`commands.md` § Handle an rpc call). A node registers its command set
+//! (`crates/host-interface/src/rpc.rs`). A node registers its command set
 //! while one of its shell environments lives; a job's call names its node,
 //! and the relay dispatches the call to that node's commands, provided the
 //! node belongs to the job's conversation. The registration is removed with

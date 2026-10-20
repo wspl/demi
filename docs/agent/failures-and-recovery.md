@@ -279,7 +279,7 @@ leave such a record, and a compaction leaves none:
 - **A Host that is away** never ends a turn: the agent's operations on its
   primary Host wait for the device however long it takes, and one on an
   attached device fails with an error the agent reads and decides on
-  ([Host operations](../execution/sessions-and-targets.md#host-operations)).
+  (`crates/backend-host-access/src/access.rs`).
 - **A compaction** is not a turn's end. Its boundary and marker are kept
   history, but they say nothing about the turn before them. For example, a
   turn fails, and the user then compacts: the divider is the last block,

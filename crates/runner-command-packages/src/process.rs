@@ -1,5 +1,4 @@
-//! One resident service process (`native-runtime.md` § Invoke and retire a
-//! service): the runner starts the executable, speaks HTTP/2 to it over its
+//! One resident service process (`crates/runner-command-packages/src/lib.rs`): the runner starts the executable, speaks HTTP/2 to it over its
 //! standard input and output, relays its numbers and messages streams, drains its standard
 //! error into the Host log, and reaps it. One owner task holds the process
 //! from its start to its end and returns how it ended, with the end of its
@@ -32,8 +31,7 @@ use crate::{ExitReason, ServiceBackend, RuntimeError, ServiceExit};
 
 /// How long a new service has to finish the handshake and answer its catalog.
 const START_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long a service has to shut down when asked (`native-runtime.md`
-/// § Invoke and retire a service).
+/// How long a service has to shut down when asked (`crates/runner-command-packages/src/lib.rs`).
 const STOP_TIMEOUT: Duration = Duration::from_secs(6);
 /// A service whose connection closed usually is exiting: its exit status is
 /// awaited this long before the runner stops it as broken.
@@ -184,7 +182,7 @@ impl ResidentService {
 }
 
 /// Answers the service's numbers stream from `backend`
-/// (`native-runtime.md` § Conversation numbers), until the service ends it.
+/// (`crates/command-protocol/src/numbers.rs`), until the service ends it.
 /// A stream that broke is logged: the service's draws then fail.
 async fn answer_numbers(service: &str, stream: RequestStream, backend: Arc<dyn ServiceBackend>) {
     let answered = stream
@@ -198,8 +196,7 @@ async fn answer_numbers(service: &str, stream: RequestStream, backend: Arc<dyn S
 }
 
 /// Hands the service's messages to `backend` one after another, in the
-/// order the service wrote them (`native-runtime.md` § Messages to the
-/// plugin), and answers each once the connection took it, until the service
+/// order the service wrote them (`crates/command-protocol/src/messages.rs`), and answers each once the connection took it, until the service
 /// ends the stream. A stream that broke is logged: the service's sends then
 /// fail.
 async fn answer_messages(service: &str, stream: RequestStream, backend: Arc<dyn ServiceBackend>) {
@@ -236,7 +233,7 @@ async fn answer_messages(service: &str, stream: RequestStream, backend: Arc<dyn 
 }
 
 /// Answers the service's artifacts stream from `artifacts`
-/// (`native-runtime.md` § The artifacts stream), until the service ends it.
+/// (`crates/command-protocol/src/artifacts.rs`), until the service ends it.
 /// A stream that broke is logged: the service's requests then fail.
 async fn answer_artifacts(service: &str, stream: RequestStream, artifacts: Arc<ServiceArtifacts>) {
     let answered = stream
@@ -380,8 +377,7 @@ fn exited(status: std::io::Result<std::process::ExitStatus>) -> ExitReason {
     }
 }
 
-/// A service's standard error, which goes two ways (`native-runtime.md`
-/// § Invocation protocol): each line to the Host's log as it arrives, and
+/// A service's standard error, which goes two ways (`crates/command-protocol/src/lib.rs`): each line to the Host's log as it arrives, and
 /// the end kept to accompany the service's failure.
 struct Stderr {
     pipe: Option<ChildStderr>,

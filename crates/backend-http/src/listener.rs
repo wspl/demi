@@ -3,7 +3,7 @@
 //! which axum's own graceful shutdown, closing connections as it stops
 //! accepting, cannot. Each connection also has a control a request can
 //! close it through, and an idle deadline a file transfer arms
-//! (`sessions-and-targets.md` § Host operations): a connection on which no
+//! (`crates/backend-host-access/src/access.rs`): a connection on which no
 //! byte moves for the deadline is closed, whoever stopped moving them. The
 //! edge serves its connections itself, with hyper's HTTP/1 server, since
 //! axum's `serve` gives a connection neither a control nor a deadline. The

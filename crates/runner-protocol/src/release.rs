@@ -102,8 +102,7 @@ impl RunnerRelease {
 
 /// A server release's record, the root's `release.json`: where the
 /// release's files are, an HTTPS URL or an absolute directory on the
-/// backend's machine (`native-runtime.md` § Backend deployment
-/// configuration).
+/// backend's machine (`crates/backend-runners/src/publication.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ServerRelease {

@@ -1,6 +1,5 @@
 /**
- * The measuring of one device's paths (`direct-channel.md` § Measuring the
- * paths): a measurement only when something reads it, when a peer connects,
+ * The measuring of one device's paths (`packages/web/src/direct/measure.ts`): a measurement only when something reads it, when a peer connects,
  * the device's page shows or the user selects Measure, never on a timer.
  * Its figures are the device page's until the next one replaces them, and
  * Automatic decides from them.

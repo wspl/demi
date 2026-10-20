@@ -1,6 +1,5 @@
 /**
- * A conversation's operations over either path (`direct-channel.md`
- * § Operations on the channel, § Choosing the path): each starts on the
+ * A conversation's operations over either path (`crates/runner-protocol/src/direct.rs`, `packages/web/src/direct/index.ts`): each starts on the
  * path the device's choice names at that moment and finishes there. One
  * that fails on the direct channel sets the choice to `relay` and runs
  * again on the relay, a write once; a refusal the runner answers is the
@@ -230,7 +229,7 @@ async function writeFile(
  * A plugin's user stream over either path: it opens on the path the
  * device's choice names, and when the choice changes it ends, as after a
  * lost connection, and the views waiting to reconnect connect at once, on
- * the other path (`direct-channel.md` § Choosing the path). A live view's
+ * the other path (`packages/web/src/direct/index.ts`). A live view's
  * stream goes on the device's live peer (`live.ts`).
  */
 export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStream): OpenUserStream {

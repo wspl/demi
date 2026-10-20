@@ -87,7 +87,7 @@ pub struct ShellToolView {
     pub files_truncated: Option<bool>,
     /// The renames and removals the command's embedded utilities made, in
     /// order, by which a request's file list follows its files to where
-    /// they stand (`edit-tracking.md` § A request).
+    /// they stand (`crates/agent-store/src/changes.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub path_changes: Vec<PathChange>,
@@ -103,8 +103,7 @@ pub struct ShellToolView {
     #[schemars(with = "Vec<ChangedFile>")]
     #[garde(dive)]
     pub run_files: Option<Vec<ChangedFile>>,
-    /// The files of the call's request up to it (`edit-tracking.md` § A
-    /// request), with All Changes' counts and their edits; a page's light
+    /// The files of the call's request up to it (`crates/agent-store/src/changes.rs`), with All Changes' counts and their edits; a page's light
     /// form keeps it only on the latest call of each request.
     #[serde(
         default,
@@ -175,11 +174,10 @@ pub enum StreamKind {
 serde_plain::derive_display_from_serialize!(StreamKind);
 serde_plain::derive_fromstr_from_deserialize!(StreamKind);
 
-/// A file a command changed (`edit-tracking.md` § Edit copies): its line
+/// A file a command changed (`crates/agent-store/src/media.rs`): its line
 /// counts and, per edit segment, the blobs of its two sides when they were
 /// stored. One the command removed is `deleted`, and one it renamed
-/// `renamed` with its old path, without edits (`edit-tracking.md` § The
-/// report).
+/// `renamed` with its old path, without edits (`crates/command-protocol/src/edits.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditedFile {
@@ -203,7 +201,7 @@ pub struct EditedFile {
     pub removed: u32,
     /// Whether `path` is outside the working directory of the agent whose
     /// call it is, as the backend found it when it stored the view
-    /// (`edit-tracking.md` § Within the working directory): the call's
+    /// (`crates/agent-store/src/changes.rs`): the call's
     /// pills leave it out. Absent means false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
@@ -239,8 +237,7 @@ pub enum EditKind {
     Renamed,
 }
 
-/// A file of a run's or a request's list (`edit-tracking.md` § What the
-/// conversation shows), as it stands after the call that stores the list:
+/// A file of a run's or a request's list (`crates/agent-store/src/changes.rs`), as it stands after the call that stores the list:
 /// its kind, the lines added and removed between its two ends, and its
 /// edits in the order they were made.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -314,7 +311,7 @@ pub struct FileEdit {
     #[garde(skip)]
     pub copies: Option<EditCopies>,
     /// No copies were kept because a side is binary, which edit tracking
-    /// never keeps (`edit-tracking.md` § Rationale), as against a side over
+    /// never keeps (`crates/command-sdk/src/edits.rs`), as against a side over
     /// the limits; the Change view says so.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
@@ -356,7 +353,7 @@ pub struct EditSegment {
     #[garde(skip)]
     pub copies: Option<EditCopies>,
     /// No copies were kept because a side is binary, which edit tracking
-    /// never keeps (`edit-tracking.md` § Rationale), as against a side over
+    /// never keeps (`crates/command-sdk/src/edits.rs`), as against a side over
     /// the limits; the Change view says so.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]

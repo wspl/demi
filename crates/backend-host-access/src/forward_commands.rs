@@ -1,4 +1,4 @@
-//! `demi host forward` (`port-forwarding.md` § From a conversation): lists,
+//! `demi host forward`: lists,
 //! adds and removes the user's port forwards. `list` needs no permission;
 //! `add` and `remove` need Manage Port Forwards (`host.forward`), since a
 //! forward outlives the conversation and lets any program on its listening
@@ -88,7 +88,7 @@ pub fn forward_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
 }
 
 /// What a forward does now, in the words of its row in Settings › Port
-/// Forwarding (`port-forwarding.md` § What the user sees), from what its
+/// Forwarding (`crates/runner-protocol/src/forward.rs`), from what its
 /// Listen On runner announced and whether its Hosts are online.
 fn state_words(forward: &PortForwardDto, name_of: &dyn Fn(&DeviceId) -> (String, bool)) -> String {
     if !forward.enabled {

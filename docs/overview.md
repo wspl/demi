@@ -67,7 +67,7 @@ its CLI on the user's Cloud, whatever the conversation's execution target is.
 The provider in the backend exchanges stream-json with that process through the
 Host process interface, and the CLI contacts the vendor directly.
 Providers (`crates/backend-providers/src/lib.rs`) and Claude Code (`crates/provider-claude-code/src/lib.rs`)
-define that boundary; [native execution](execution/native-runtime.md) defines
+define that boundary; `crates/command-protocol/src/lib.rs` defines
 native command services, which are separate from provider CLIs.
 
 Each wire between these parts is defined once, as Rust types in a contract
@@ -91,9 +91,9 @@ agent to edit a file:
 
 The edited file stays on the laptop. Switching the conversation's target
 changes where subsequent operations run; it does not move files or the
-transcript. [Sessions and targets](execution/sessions-and-targets.md) owns
+transcript. Sessions and targets (`crates/backend-host-access/src/lib.rs`) owns
 switching and attachment rules.
-[Execution coordination](execution/sessions-and-targets.md#coordinate-shared-cloud-activity)
+Execution coordination (`crates/backend-cloud/src/uses.rs`)
 owns admission while agent nodes or device operations are active.
 
 Keeping the agent in the backend gives the transcript and orchestration one
@@ -127,7 +127,7 @@ uses backend APIs rather than receiving stored provider secrets.
 | Execution target | The conversation's selection of Cloud, a device directory, or a workspace. |
 | Device | A registered execution device, either user-paired or managed. |
 | Host | The filesystem and process abstraction used to execute on a device. |
-| Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate ([Host operations](execution/sessions-and-targets.md#host-operations)). |
+| Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/backend-host-access/src/access.rs`). |
 | Guest | A managed gVisor/systrap sandbox running a runner. |
 | User shard | The part of the backend that holds everything belonging to one user, such as conversations, runner connections and Cloud state, on a single thread ([The user shard](architecture/concurrency.md#the-user-shard)). |
 | Backend machine | The machine that runs the backend or the machine manager. |

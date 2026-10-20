@@ -43,7 +43,7 @@ pub struct JobStart {
     /// Ends the job and everything it runs when cancelled.
     pub cancellation: CancellationToken,
     pub commands: Option<JobCommands>,
-    /// Records the files the job changes (`edit-tracking.md`).
+    /// Records the files the job changes (`crates/command-sdk/src/edits.rs`).
     pub edits: Option<Recorder>,
 }
 

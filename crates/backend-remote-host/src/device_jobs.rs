@@ -1,5 +1,4 @@
-//! A device's jobs, which outlive each connection of its runner (`crates/runner/src/connection/kept.rs`, `sessions-and-targets.md` § Recovery and
-//! persistence). A connection that ends leaves its jobs waiting for the
+//! A device's jobs, which outlive each connection of its runner (`crates/runner/src/connection/kept.rs`). A connection that ends leaves its jobs waiting for the
 //! next; the next one's hello lists the jobs its runner keeps, and each job
 //! the backend knows goes on there, ends with the status the runner kept, or
 //! is lost with the reason the backend can tell from what it knows of the
@@ -98,8 +97,7 @@ pub(crate) struct JobEntry {
 
 /// What arrives of a job while its kept output is read again after a new
 /// connection, which waits for the read to follow it: from a connection
-/// lost before the read answered, until the next one's read
-/// (`sessions-and-targets.md` § Recovery and persistence). It holds what a
+/// lost before the read answered, until the next one's read. It holds what a
 /// job nobody follows sends, since the kept output holds the rest and the
 /// end reads what it lacks.
 #[derive(Default)]
@@ -450,8 +448,7 @@ impl DeviceJobs {
     }
 
     /// Matches the jobs `hello` lists with those the device knows, for the
-    /// new connection `link` (`sessions-and-targets.md` § Recovery and
-    /// persistence): a job that runs goes on, one that ended waits for its
+    /// new connection `link`: a job that runs goes on, one that ended waits for its
     /// exit, which follows the hello's answer, one the runner does not list
     /// although it is the runner its start went to is sent again, once,
     /// since that runner lists every job it received, and any other one the

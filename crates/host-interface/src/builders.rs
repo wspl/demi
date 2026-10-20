@@ -1,7 +1,7 @@
 //! Declaration builders: a leaf's input and `--json` output schemas are
 //! derived from Rust types with the settings every declaration uses, so the
 //! schema a runner enforces and the type a handler decodes are one
-//! definition (`commands.md` § Declare a command).
+//! definition (`crates/command-declarations/src/lib.rs`).
 
 use std::{future::Future, marker::PhantomData, rc::Rc};
 
@@ -268,7 +268,7 @@ impl LeafBuilder {
 
     /// The guidance the model sees in place of the generic running hint
     /// while this command runs.
-    /// The command may return media (`commands.md` § Return media).
+    /// The command may return media (`crates/runner-jobs/src/commands/command_output.rs`).
     pub fn media(mut self) -> Self {
         self.leaf.media = true;
         self

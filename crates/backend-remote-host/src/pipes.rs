@@ -101,7 +101,7 @@ pub struct PipeFailure(Arc<str>);
 impl PipeFailure {
     /// Why the pipe failed, without the words that say a pipe failed: what a
     /// runner's end is answered, which its command reports as its own error
-    /// (`commands.md` § Handle an rpc call).
+    /// (`crates/host-interface/src/rpc.rs`).
     pub fn reason(&self) -> &str {
         &self.0
     }

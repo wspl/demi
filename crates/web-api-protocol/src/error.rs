@@ -332,7 +332,7 @@ pub enum ErrorCode {
     WorkspaceIsHome,
     /// A move names a directory on a device whose runner never reported its
     /// home, so whether the directory is a project's is unknown
-    /// (`sessions-and-targets.md` § Resolve a target).
+    /// (`crates/backend-database/src/selection.rs`).
     DeviceHomeUnknown,
     /// A sidebar move leaves its row's project or pin partition.
     InvalidOrder,

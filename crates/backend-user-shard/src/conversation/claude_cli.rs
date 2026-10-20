@@ -1366,8 +1366,7 @@ impl Shard {
 
     /// Installs `release` on `target` and keeps what the install left for
     /// the runner connection it ran over: that version alone, since the
-    /// runner removes the others it does not hold (`native-runtime.md`
-    /// § The cache). A failed install drops what is kept, for the next start
+    /// runner removes the others it does not hold (`crates/runner-command-packages/src/cache.rs`). A failed install drops what is kept, for the next start
     /// to ask the machine again.
     async fn ensure_cli(&self, target: &CliTarget, release: &Release) -> Result<Installed, CliError> {
         let link = self.devices().link(&target.device).map(|link| link.downgrade());

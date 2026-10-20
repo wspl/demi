@@ -26,7 +26,7 @@ function refusedField(error: unknown): boolean {
 
 /**
  * The user's port forwards as Settings › Port Forwarding changes them
- * (`port-forwarding.md` § What the user sees): each change shows its answer,
+ * (`crates/runner-protocol/src/forward.rs`): each change shows its answer,
  * and the `port_forwards` part brings it, and every state the runners
  * announce, to every page.
  */

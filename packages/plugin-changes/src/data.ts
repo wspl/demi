@@ -10,8 +10,7 @@ import {
 } from '@demicodes/plugin-sdk'
 
 /**
- * What the Change view shows (`edit-tracking.md` § What the conversation
- * shows, § Commits mode): its mode; in Commits, the item selected, the
+ * What the Change view shows (`crates/agent-store/src/changes.rs`, `packages/web-ui/src/files/history.ts`): its mode; in Commits, the item selected, the
  * repository's uncommitted changes or one of its commits, and the file of
  * it shown; the request, file and edit it holds in Conversation; and what
  * Back and Forward return to. A request is named, never copied: the view

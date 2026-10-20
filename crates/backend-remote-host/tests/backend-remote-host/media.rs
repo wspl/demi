@@ -1,5 +1,5 @@
 //! The media a job's commands view (`crates/command-package-file/src/files.rs`,
-//! `commands.md` § Return media) over a real runner: each medium goes to
+//! `crates/runner-jobs/src/commands/command_output.rs`) over a real runner: each medium goes to
 //! the job whatever the command's stdout is, its line goes into the job's
 //! output as it arrives, and the backend has each one the job kept when the
 //! job ended.

@@ -6,7 +6,7 @@ import type { ToolCallBlock } from '../agent/block-types'
 import type { ChangeFile, ReadCallChange } from './changes'
 
 /**
- * A request's changes (`edit-tracking.md` § A request): what one message of
+ * A request's changes (`crates/agent-store/src/changes.rs`): what one message of
  * the user asked for, from its `user` block to the same agent's next one,
  * and the files its calls changed, as the backend stored them with the
  * request's latest call (`requestFiles`). The page reads the lists it is
@@ -206,7 +206,7 @@ export function pillSelection(
 
 /**
  * What the "+N Files" pill opens for the file `path` of the call or run
- * (`edit-tracking.md` § What the conversation shows): the file of the
+ * (`crates/agent-store/src/changes.rs`): the file of the
  * request whose list holds it, at All Changes, so it works for a file the
  * request removed too, which a pill alone is no control for; null for a
  * file the request does not list.

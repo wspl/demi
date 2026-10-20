@@ -1,4 +1,4 @@
-//! A conversation's attached hosts (`sessions-and-targets.md` § Attached hosts):
+//! A conversation's attached hosts (`crates/backend-database/src/conversation_index.rs`):
 //! the list, with each device's connection, and a detach, which is a transition
 //! and reaches the conversation's nodes at their next context block. The
 //! conversation's agents attach the devices.

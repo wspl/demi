@@ -108,7 +108,7 @@ async fn list_update_switch_and_remove_act_as_the_page_does_and_print_what_chang
         assert_eq!(code, 0, "{err}");
 
         // A table of the skills under its header, one row each
-        // (`commands.md` § Output); --json gives the sources with them.
+        // (`crates/shared-types/src/output.rs`); --json gives the sources with them.
         let (_, listed, _) = plugged.run(&["skills", "list"]).await;
         let mut lines = listed.lines().map(|line| line.split_whitespace().collect::<Vec<_>>());
         assert_eq!(

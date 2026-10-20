@@ -27,7 +27,7 @@ behind the runner's narrow port, and that port is all the runner and the
 backend know about it. The runner and the command-sdk supply mechanism: the
 trusted conversation and caller identity on every invocation, and the generic
 conversation release with its status query
-([Conversation-scoped state](../execution/native-runtime.md#conversation-scoped-state)).
+(`crates/command-protocol/src/conversation.rs`).
 The backend owns one policy: when a conversation is idle
 (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 Each tool owns its own state and cleanup.
@@ -208,7 +208,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     (`PluginMessage`, `MessageAnswer`);
   - the line counts of a change (`line_counts`, with `gix-imara-diff`), which
     the runner's edit report and the stored lists of changed files share
-    ([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows));
+    (`crates/agent-store/src/changes.rs`);
   - record framing (`Record`, `RecordDecoder`), with the medium records a
     handler returns media in;
   - the media a command returns: their bound (`MAX_MEDIUM_BYTES`), the
@@ -256,7 +256,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `jsonschema` over the declaration's schema at both ends, through the one
   check and its one wording; the runner checks `--json` output against the
   leaf's output schema with the same check.
-  Behavior: [Commands](../execution/commands.md).
+  Behavior: Commands (`crates/command-declarations/src/lib.rs`).
 - **Must not:** hold handlers or their bindings (`host-interface` pairs declarations
   with handlers), read stdin, or perform any other IO.
 
@@ -267,7 +267,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `file.read`, `file.edit` and `file.patch`, with their limits.
 - **Public boundary:** the types above. `plugin-file` declares the `demi file`
   commands from them and `demi-file` decodes invocations with them.
-  Behavior: [Commands](../execution/commands.md).
+  Behavior: Commands (`crates/command-declarations/src/lib.rs`).
 - **Must not:** implement operations or perform IO.
 
 #### `command-package-fetch-protocol`
@@ -376,7 +376,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     command, and the removed projects
     (`crates/runner/src/console.rs`).
 - **Conversation scope:** jobs and service streams carry the
-  [command context](../execution/native-runtime.md#command-context);
+  command context (`crates/command-protocol/src/invocation.rs`);
   `conversation_release` is the one generic release message, and
   `numbers_reserve` the one generic request for a conversation's numbers;
   `package_message` and `package_lost` carry a package's word to its plugin
@@ -516,7 +516,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** Demi's one download of a file over HTTP, resumed after a break or
   a stall, which every file download goes through
-  ([Downloads](../execution/native-runtime.md#downloads)); verified download over HTTPS with a declared size and SHA-256
+  (`crates/shared-artifacts/src/download.rs`); verified download over HTTPS with a declared size and SHA-256
   (plain HTTP too for the runner's artifact cache, whose digests come from the
   pinned descriptor, and redirects followed for a server release's files,
   which the backend checks against its own records), and the measured
@@ -732,7 +732,7 @@ Each crate implements the provider contract for one vendor family.
   - the run and request rules and the lists of changed files a shell call
     stores (`changes`), from the edit copies through a blob reader, for the
     session and for the block format 3 migration alike
-    ([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows));
+    (`crates/agent-store/src/changes.rs`);
     and the blocks an upload becomes with its recorded media type and opening
     (`attachments`).
 - **Public boundary:** the items above; `agent_store::testing` supplies an
@@ -871,8 +871,8 @@ guide (`ServerDeps::guide`), the profiles, the
   workspace built (`NativeFixture`, such as the runner's native fixture
   package) and a policy that runs every call in one command set
   (`CommandPolicy`). Behavior: `crates/runner/src/main.rs` and
-  [Native command execution](../execution/native-runtime.md), which owns
-  [artifact-location admission](../execution/native-runtime.md#install-artifacts).
+  Native command execution (`crates/command-protocol/src/lib.rs`), which owns
+  artifact-location admission (`crates/runner-command-packages/src/cache.rs`).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
   pipe routes feed it), claim policy, the device registry, credentials or
   conversation state.
@@ -1039,7 +1039,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   state files written atomically, through `shared-artifacts`'s publication; the line
   counts of a change to a file; the
   local command client that a command alias runs
-  ([External command clients](../execution/commands.md#external-command-clients));
+  (`crates/runner-process/src/command_client.rs`);
   and the job shell contract (`JobShell`, `ShellJob`): how the runner starts
   a job's script, feeds its input, signals, cancels and awaits it, without
   knowing which shell runs it. A job's declared commands come with it as
@@ -1065,8 +1065,8 @@ demi-runner (executable: connection, registration, Host log, composition)
 
 #### `runner-direct`
 
-- **Owns:** the runner's side of [direct channels](../execution/direct-channel.md),
-  with a page or with another runner ([Port forwarding](../execution/port-forwarding.md)):
+- **Owns:** the runner's side of direct channels (`crates/runner-direct/src/lib.rs`),
+  with a page or with another runner (`crates/backend-user-shard/src/shard/port_forwards.rs`):
   the peers the backend introduces, offering or answering, their UDP sockets
   on `127.0.0.1` and the local network's addresses, ICE, DTLS and SCTP
   through str0m, the operations' headers and the one flow control every
@@ -1093,7 +1093,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   backend the composition supplies (`ServiceBackend`), its artifacts
   stream, whose installs resolve through the invocation's work, and its
   retirement
-  ([Native command execution](../execution/native-runtime.md)).
+  (`crates/command-protocol/src/lib.rs`).
 - **Public boundary:** the registry and its handles (`ServiceHandle`), the
   cache, the installs a connection reports (`InstallsReceiver`), and
   `NumberSource`. Its `testing` feature builds
@@ -1126,7 +1126,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   is checked against the leaf's output schema, routes native invocations to
   their services and rpc calls to the backend, and hands the media
   `demi file view` returns to its job,
-  [Return media](../execution/commands.md#return-media)) with local command
+  `crates/runner-jobs/src/commands/command_output.rs`) with local command
   forwarding.
 - **Conversation scope:** keeps each job's command context and writes it into
   every native invocation; it implements no conversation browser operation.
@@ -1239,7 +1239,7 @@ demi-backend (executable: configuration, composition)
   and the backend's public address
   that runners reach (`PublicUrl`)
   (`crates/runner/src/main.rs`,
-  [Native runtime](../execution/native-runtime.md#backend-deployment-configuration)).
+  `crates/backend-runners/src/publication.rs`).
   Publication uploads to the object store `backend-blobs` configures, and
   the file gate is a `shared-gates` gate, which is why it depends on both.
 - **Public boundary:** the items above. A Host handle owned by a conversation
@@ -1279,7 +1279,7 @@ demi-backend (executable: configuration, composition)
 #### `backend-host-access`
 
 - **Owns:** the conversation's host access (`with_host`, the one way to a
-  conversation's Host; [Host operations](../execution/sessions-and-targets.md#host-operations)),
+  conversation's Host; `crates/backend-host-access/src/access.rs`),
   with each conversation's slot and its file gate, target resolution and the
   transitions that end a target (switch, archive, detach); file transfers,
   uploads, remote files and user streams, with the leases the edge holds of
@@ -1392,7 +1392,7 @@ demi-backend (executable: configuration, composition)
   installer, native artifact and web app asset routes, the plugins' page call
   routes, the conversation permissions routes, runner acceptance, and
   the byte copies of file transfers, pipes and user streams,
-  and the signaling socket of [direct channels](../execution/direct-channel.md),
+  and the signaling socket of `crates/runner-direct/src/lib.rs`,
   with its device access check (`crates/web-api-protocol/src/lib.rs`).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
   state its routes reach (`AppState`, `Site`). Its `testing` feature holds
@@ -1564,7 +1564,7 @@ demi-backend (executable: configuration, composition)
   requests (`status`, `drain`) beside the dispatcher's commands. It keeps a
   service resident while it holds conversation state and forwards the
   conversation release, through `runner-command-packages`; the user's
-  [port forwards](../execution/port-forwarding.md) whose Listen On is this
+  port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`) whose Listen On is this
   Host, their listeners, the path of each connection and the states it
   announces, and the connections it opens for forwards whose Connect To is
   this Host.
@@ -1572,7 +1572,7 @@ demi-backend (executable: configuration, composition)
   binary drives the built program, as a backend does; the open-file test, a
   binary of its own, runs the runner libraries in its process. Behavior:
   `crates/runner/src/main.rs` and
-  [Native command execution](../execution/native-runtime.md).
+  Native command execution (`crates/command-protocol/src/lib.rs`).
 - **Must not:** own conversations or provider implementations; administer
   Cloud mounts, networking or volumes, which belong to the machine manager;
   boot as PID 1, since init belongs to the image; link Demi's command
@@ -1594,11 +1594,11 @@ demi-backend (executable: configuration, composition)
   view, which reads a viewed medium's header facts once, edit and patch,
   with the file mutations serialized by one
   gate and recorded through the edit recorder
-  ([Edit tracking](../execution/edit-tracking.md)). It holds no conversation
+  (`crates/command-sdk/src/edits.rs`). It holds no conversation
   state, so it answers every conversation status as empty and ends with its
   last lease.
 - **Public boundary:** the executable. Behavior:
-  [Commands](../execution/commands.md).
+  Commands (`crates/command-declarations/src/lib.rs`).
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner. Standard shell utilities
   belong to the runner.
@@ -1791,7 +1791,7 @@ under `packages/`.
   preferences and per-user local state, the account's cache for opening
   offline included;
   `devices/` pairing and filesystem adapters; `direct/` the
-  [direct channel](../execution/direct-channel.md): the peer, the choice of
+  direct channel (`crates/runner-direct/src/lib.rs`): the peer, the choice of
   path and the operations' clients; `offline/` the page's one service
   worker, which answers the raw route's requests over the direct channel and
   keeps the page for opening offline; `plugins/` the page context

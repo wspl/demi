@@ -96,7 +96,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   const watcher = conversationWatch(conversationId)
   // For the page's lifetime: a Host that comes back online has the watch
   // connect at once, and the watch moves whenever the path to its device
-  // changes (`direct-channel.md` § Choosing the path).
+  // changes (`packages/web/src/direct/index.ts`).
   effectScope(true).run(() => {
     watch(() => device.value?.state === 'online' ? device.value.id : null, (online, _previous, onCleanup) => {
       if (online === null)

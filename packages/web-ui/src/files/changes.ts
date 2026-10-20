@@ -67,7 +67,7 @@ export interface ChangeSetSource {
 export interface ChangeSides { original: string; modified: string }
 /**
  * Reads one edit segment's two sides by the blobs its copies name
- * (`edit-tracking.md` § Edit copies); null when one of them is gone.
+ * (`crates/agent-store/src/media.rs`); null when one of them is gone.
  */
 export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promise<ChangeSides | null>
 
@@ -86,7 +86,7 @@ export function emptyChangeSetText(source: ChangeSetSource): string {
  * Where a change view's diffs come from: a request of the conversation (the
  * files its calls changed, nothing to do with git) or the repository's
  * commits, its uncommitted changes against its last commit first
- * (`edit-tracking.md` § Commits mode).
+ * (`packages/web-ui/src/files/history.ts`).
  */
 export type ChangeMode = 'conversation' | 'commits'
 
@@ -158,7 +158,7 @@ export interface ChangeTreeRow extends TreeRow {
 
 /**
  * The changed files as a tree, as VS Code's Source Control shows changes
- * as a tree (`edit-tracking.md` § What the conversation shows): only the
+ * as a tree (`crates/agent-store/src/changes.rs`): only the
  * folders that hold a changed file, folders first and then files at every
  * level, each sorted by name, and a folder whose only content is one folder
  * joined with it into one row, `src/web/app`. The folders in `folded`, by

@@ -1,4 +1,4 @@
-//! Changes of a conversation (`sessions-and-targets.md` § Switch the primary target, §
+//! Changes of a conversation (`crates/backend-host-access/src/transition.rs`, §
 //! Lifecycle access). Every change goes through one entry, `Shard::transition`. A
 //! rename, a pin or a change of the model settings waits while a transition holds the
 //! conversation, and is then applied as if it arrived afterwards; the model settings
@@ -131,8 +131,7 @@ impl Shard {
             change => change,
         };
         // A switch away from an offline device leaves the commands still
-        // running there to its runner (`sessions-and-targets.md` § Switch
-        // the primary target).
+        // running there to its runner (`crates/backend-host-access/src/transition.rs`).
         let leaving = match &change {
             ConversationChange::Target(_) => self.leaving_offline(&record).await?,
             _ => None,
@@ -165,8 +164,7 @@ impl Shard {
             }
             ConversationChange::Record(RecordChange::Archived(false)) => {
                 // A conversation whose project was deleted while it was
-                // archived makes it again (`sessions-and-targets.md`
-                // § Resolve a target).
+                // archived makes it again (`crates/backend-database/src/selection.rs`).
                 let remakes = match &record.target {
                     Selection::Workspace { workspace_id, .. } => self
                         .services()
@@ -297,8 +295,7 @@ impl Shard {
     /// the tree with commands running, which run on there, and also a tree
     /// whose every running node only waits for that device: its waiting
     /// jobs were never sent, the switch fails them, and the nodes go on on
-    /// the new Host, so nothing is reserved (`sessions-and-targets.md`
-    /// § Switch the primary target). A conversation without a live tree runs
+    /// the new Host, so nothing is reserved (`crates/backend-host-access/src/transition.rs`). A conversation without a live tree runs
     /// nothing; one whose tree works otherwise refuses the transition.
     fn reserve_idle_tree(
         &self,
@@ -324,7 +321,7 @@ impl Shard {
     /// Fails the jobs that wait for `device`, the offline device the switch
     /// of `record` left, with what the agent reads of them: where the
     /// conversation runs now, and that the command did not run
-    /// (`sessions-and-targets.md` § Host operations).
+    /// (`crates/backend-host-access/src/access.rs`).
     async fn fail_waiting_for(&self, record: &ConversationRecord, device: &DeviceId) -> Result<(), ChangeRefusal> {
         let control = &self.services().control;
         let left = control
@@ -439,8 +436,7 @@ impl Shard {
 impl Shard {
     /// Tells the conversation's root of the user's move `switched`, through
     /// the entry a permission decision's message takes, which opens a closed
-    /// tree and wakes an idle root (`sessions-and-targets.md` § Switch the
-    /// primary target). The message's id is the revision the move made, so
+    /// tree and wakes an idle root (`crates/backend-host-access/src/transition.rs`). The message's id is the revision the move made, so
     /// delivering it again changes nothing. A message that is not admitted
     /// leaves the move made, and the agent reads it from its next context
     /// block.
@@ -613,8 +609,7 @@ mod tests {
         pool.close().await;
     }
 
-    /// A directory is the one its Host names (`sessions-and-targets.md`
-    /// § Resolve a target): on Windows `C:/Users/ana/site/` and
+    /// A directory is the one its Host names (`crates/backend-database/src/selection.rs`): on Windows `C:/Users/ana/site/` and
     /// `c:\users\ana\site` are the one project `C:\Users\ana\site`, and a
     /// link to the home is the home.
     /// Planted defect this catches: a move that selects by the spelling it

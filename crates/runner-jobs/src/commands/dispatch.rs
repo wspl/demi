@@ -62,7 +62,7 @@ impl Handler for Dispatcher {
 /// A local invocation's end as its caller sees it: a failure other than a
 /// cancellation is told on its standard error as a runtime error of the
 /// program or command `name`, `<name>: <error>`, and ends it with 1
-/// (`commands.md` § Handle an rpc call).
+/// (`crates/host-interface/src/rpc.rs`).
 pub async fn reported(
     result: Result<Completion, ServiceError>,
     output: &Output,
@@ -194,7 +194,7 @@ impl Dispatcher {
                     .ok_or_else(|| ServiceError::failed(DispatchError::MissingDescriptor))?;
                 let resolver = Arc::new(JobArtifacts::new(self.contexts.clone()));
                 // What the program asks for during the call is located for
-                // this job (`native-runtime.md` § The artifacts stream).
+                // this job (`crates/command-protocol/src/artifacts.rs`).
                 let _invoking = self.services.invoking(
                     &invocation.request.invocation_id,
                     &descriptor.id,
@@ -203,7 +203,7 @@ impl Dispatcher {
                 // An install of the program that takes a while says so on
                 // the command's standard error, unless the command runs with
                 // `--json`, whose caller reads its standard error as one
-                // JSON document (`native-runtime.md` § Install artifacts).
+                // JSON document (`crates/runner-command-packages/src/cache.rs`).
                 let (lines, mut told) = tokio::sync::mpsc::unbounded_channel::<String>();
                 let quiet = parsed.json;
                 let acquiring = self.services.acquire_telling(
@@ -260,7 +260,7 @@ impl Dispatcher {
                         return Err(error.into());
                     }
                     // A call that failed with its service reports how the
-                    // service ended (`native-runtime.md` § Invocation protocol).
+                    // service ended (`crates/command-protocol/src/lib.rs`).
                     Err(Failed::Service(error)) => {
                         return Err(ServiceError::failed(resident.failure(error).await).into());
                     }

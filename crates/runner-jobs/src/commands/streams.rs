@@ -11,6 +11,17 @@
 //! of standard error, since a one-shot call has no page to tell: its caller learns a
 //! failure and its words from this message, not from a stream that merely ended. The
 //! runner does not parse what flows through.
+//!
+//! A stream invokes its operation with the same package binding as the
+//! conversation's jobs, so it reaches the service that already holds the
+//! conversation's state, and while it is open it leases that service. Its
+//! context names the conversation and a `user` caller with the user's
+//! locale; its cwd is the conversation's directory and its environment is
+//! empty. The same mechanism serves a one-shot user call (the conversation
+//! browser's tab methods): an operation that finishes by itself, with `args`
+//! as a command's invocation has them, a JSON result and no input. Its
+//! failure keeps the bounded standard output as well as the standard error,
+//! so a package whose error document is on stdout reports its cause.
 
 use std::{
     collections::HashMap,
@@ -77,7 +88,7 @@ impl ServiceStreams {
 
     /// What opens a stream's invocation, for a stream whose bytes do not
     /// travel through the backend's pipes: a direct channel's
-    /// (`direct-channel.md` § Operations on the channel).
+    /// (`crates/runner-protocol/src/direct.rs`).
     pub fn opener(&self) -> StreamOpener {
         StreamOpener {
             connection: self.connection.clone(),
@@ -309,13 +320,13 @@ impl Opening {
             .get(host_target())
             .map(|artifact| artifact.sha256.clone());
         // The stream holds its service from the start
-        // (`native-runtime.md` § Keep a service resident).
+        // (`crates/runner-command-packages/src/registry.rs`).
         let lease = match digest {
             Some(digest) => Some(services.lease(digest).await),
             None => None,
         };
         // What the program asks for during the invocation is located for
-        // this stream (`native-runtime.md` § The artifacts stream).
+        // this stream (`crates/command-protocol/src/artifacts.rs`).
         let resolver = Arc::new(StreamArtifacts::new(
             opener.connection.clone(),
             stream_id.clone(),
@@ -446,7 +457,7 @@ impl OpenedStream {
 
 /// The package releases the connection's streams bound last, one per
 /// package, each with the lease that keeps its service resident until the
-/// connection ends (`native-runtime.md` § Keep a service resident), so
+/// connection ends (`crates/runner-command-packages/src/registry.rs`), so
 /// consecutive user calls reuse the service as consecutive jobs do.
 #[derive(Clone, Default)]
 struct Bindings(Arc<Mutex<HashMap<String, Bound>>>);
@@ -607,7 +618,7 @@ impl OutputSink for StreamSink {
         Ok(())
     }
 
-    /// A user stream's writer refuses media (`commands.md` § Return media).
+    /// A user stream's writer refuses media (`crates/runner-jobs/src/commands/command_output.rs`).
     async fn medium(&mut self, _: demi_command_protocol::MediumFacts, _: Bytes) -> io::Result<()> {
         Err(io::Error::other("a user stream returned a medium"))
     }

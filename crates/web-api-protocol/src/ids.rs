@@ -28,13 +28,13 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
-    /// One of a user's exposed ports (`port-exposure.md`), which the
+    /// One of a user's exposed ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`), which the
     /// backend assigns.
     ExposedPortId
 );
 
 demi_shared_types::id!(
-    /// One of a user's port forwards (`port-forwarding.md`), which the
+    /// One of a user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`), which the
     /// backend assigns and its name can change under.
     PortForwardId
 );

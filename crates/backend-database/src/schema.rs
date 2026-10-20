@@ -268,7 +268,7 @@ CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
 ";
 
 /// From 0.1.27's control schema to the current one: the users' port
-/// forwards (`port-forwarding.md`) and exposed ports (`port-exposure.md`),
+/// forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`) and exposed ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`),
 /// none before; each owner's entries
 /// have an order of their own, which the user sets by dragging Settings ›
 /// Providers and generated media try them in, first the order they were
@@ -801,8 +801,7 @@ CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE
 
 /// From the control schema that keeps the turns a shutdown interrupted to
 /// the one in which a conversation keeps the hosts it may reach and a request
-/// may ask for one (`sessions-and-targets.md` § Hosts a conversation may
-/// reach, `permissions.md` § Hosts), which replace the Manage Devices
+/// may ask for one (`crates/backend-database/src/conversation_index.rs`, `permissions.md` § Hosts), which replace the Manage Devices
 /// category. Every attached host seeds its conversation's list: a host
 /// attached by name took Manage Devices to attach, and one attached with a
 /// directory is a primary target the conversation left, which the list
@@ -911,7 +910,7 @@ const CONTROL_FROM_DEVICE_NAMES: &str =
 
 /// From the control schema that kept the edits and sends of saved messages
 /// to the one where an attached host goes by its device's name
-/// (`sessions-and-targets.md` § Attached hosts) and a switch is known by the
+/// (`crates/backend-database/src/conversation_index.rs`) and a switch is known by the
 /// revision it made.
 ///
 /// The hosts' table loses the names conversations gave them, rebuilt since
@@ -1445,7 +1444,7 @@ fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
 /// whose shell call started it, which a command's call's usage ledger row
 /// names (`crates/backend-database/src/usage.rs`); one recorded before keeps
 /// none. A command whose start waits for its Host keeps what it starts
-/// (`sessions-and-targets.md` § Host operations); every one recorded before
+/// (`crates/backend-host-access/src/access.rs`); every one recorded before
 /// was sent. A `user` block (transcript block format 11) and a queued
 /// message (checkpoint state format 5) may name the automation's run that
 /// sent it; one stored before names none, as a message the user wrote, so
@@ -2167,7 +2166,7 @@ const CONVERSATION_FROM_BLOCK_FORMAT_7: &str = "";
 /// in which a shell call's own files mark the paths outside its agent's
 /// working directory `outside` in place of the paths in a temporary
 /// directory `temporary`, and its renames and removals mark none
-/// (`edit-tracking.md` § Within the working directory). This database does
+/// (`crates/agent-store/src/changes.rs`). This database does
 /// not know the root's directory, so a file marked temporary is marked
 /// outside, and the stored run and request lists, which already left those
 /// out, stay as they are.
@@ -2441,7 +2440,7 @@ CREATE TABLE preview_namespace (
 
 /// From 0.1.20's control schema: a device keeps how pages reach it, which
 /// is Automatic for every device migrated from 0.1.20, as for a new one
-/// (`direct-channel.md` § Choosing the path).
+/// (`packages/web/src/direct/index.ts`).
 const CONTROL_FROM_0_1_20: &str = "
 ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server'));
 ";
@@ -2794,8 +2793,7 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// 0.1.22-dev.20261011T064359Z's, whose blocks have neither, to transcript
 /// block format 3, where each block of a run carries its run, and each
 /// shell call's view its own files with those it removed and renamed, its
-/// run's and its request's (`edit-tracking.md` § What the conversation
-/// shows); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
+/// run's and its request's (`crates/agent-store/src/changes.rs`); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
 /// a `resume` block and at a Stop the user continued, to format 4, where
 /// the steps after them join the run before (`rendering.md` § Work groups),
 /// with the run's files to match; from format 5's in which a node says

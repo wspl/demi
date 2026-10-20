@@ -1,4 +1,4 @@
-//! The caller's port forwards (`port-forwarding.md` § What the user sees):
+//! The caller's port forwards (`crates/runner-protocol/src/forward.rs`):
 //! each route acts in the caller's shard, and a change reaches the
 //! caller's pages as the `portForwards` part. Each refusal is in words for
 //! the user, which the page shows as they are.

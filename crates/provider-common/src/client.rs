@@ -1,5 +1,5 @@
 //! The one HTTP client of the requests the backend makes to provider
-//! entries (`port-exposure.md` § What is shared): a turn, a model list, an
+//! entries: a turn, a model list, an
 //! image. A request whose host is a device id goes to the backend's
 //! [`DeviceRoute`], which hands it to that device's runner when the device
 //! is one of the entry owner's Hosts and the port is exposed; every other
@@ -73,7 +73,7 @@ pub enum Routed {
 }
 
 /// Why a request to a device's port got no answer, in the words the user
-/// reads (`port-exposure.md` § Exposed ports).
+/// reads (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DeviceRefusal {
     /// The device has not exposed the port.
@@ -293,7 +293,7 @@ impl RequestBuilder {
 }
 
 /// A file's download goes the provider's way, to the network or to one of
-/// its owner's devices (`native-runtime.md` § Downloads); its client follows
+/// its owner's devices (`crates/shared-artifacts/src/download.rs`); its client follows
 /// no redirect, as [`ProviderHttp::without_redirects`] makes it.
 impl demi_shared_artifacts::Fetch for ProviderHttp {
     fn fetch(

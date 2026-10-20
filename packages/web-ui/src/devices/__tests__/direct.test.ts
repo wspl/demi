@@ -13,8 +13,7 @@ import {
 } from '../direct'
 
 // The reason a device's page gives for going via the relay, from its
-// route, its peer and what the last attempt saw (`direct-channel.md`
-// § What the user sees), the kind of path the address in use names, and
+// route, its peer and what the last attempt saw (`packages/web-ui/src/devices/direct.ts`), the kind of path the address in use names, and
 // the Latency row that compares the two paths. Pure; milliseconds.
 
 const failed: DirectAttempt = {

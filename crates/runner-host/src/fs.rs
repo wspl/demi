@@ -45,8 +45,7 @@ pub async fn handle(
 }
 
 /// Carries out one filesystem request whose answer is a message, the
-/// backend's or a direct channel's (`direct-channel.md` § Operations on
-/// the channel): the request's paths resolved against `default_cwd`.
+/// backend's or a direct channel's (`crates/runner-protocol/src/direct.rs`): the request's paths resolved against `default_cwd`.
 pub async fn call(
     message: &Inbound,
     default_cwd: &Path,
@@ -183,8 +182,7 @@ pub async fn call(
                 .to_string_lossy()
                 .into_owned(),
         ),
-        // The directory's canonical name (`sessions-and-targets.md`
-        // § Resolve a target): links followed, no trailing separator, the
+        // The directory's canonical name (`crates/backend-database/src/selection.rs`): links followed, no trailing separator, the
         // file system's spelling, and on Windows a drive path rather than
         // the verbatim `\\?\` form the system answers with.
         FsRealpath {

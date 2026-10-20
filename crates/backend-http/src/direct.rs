@@ -1,5 +1,4 @@
-//! The signaling socket of a direct channel (`direct-channel.md` § Making the
-//! channel): the backend introduces the page to its paired device's runner,
+//! The signaling socket of a direct channel (`crates/runner-direct/src/lib.rs`): the backend introduces the page to its paired device's runner,
 //! through device access, and is the only check. It relays each offer to the
 //! runner and its answer to the page, each side's candidates found after them
 //! to the other, and the page's probes of the relay path and their answers,

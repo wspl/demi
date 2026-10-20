@@ -219,8 +219,7 @@ pub fn references(block: &Block) -> impl Iterator<Item = &BlobRef> {
 }
 
 /// Every blob a block names: its media, then the two sides of each edit
-/// segment of the files its shell command changed, which only the user sees
-/// (`edit-tracking.md` § Edit copies). A collection of the owner's blobs
+/// segment of the files its shell command changed, which only the user sees. A collection of the owner's blobs
 /// keeps each one (`storage.md` § Deleting a conversation).
 pub fn block_blobs(block: &Block) -> impl Iterator<Item = &BlobRef> {
     let files = match block {

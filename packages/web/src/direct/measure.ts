@@ -1,6 +1,5 @@
 /**
- * Measuring a device's two paths (`direct-channel.md` § Measuring the
- * paths): one measurement sends 20 probes on each path, 100 ms apart, and
+ * Measuring a device's two paths: one measurement sends 20 probes on each path, 100 ms apart, and
  * counts one not answered within 2 seconds as lost; its figures decide
  * Automatic's choice until the next one.
  */

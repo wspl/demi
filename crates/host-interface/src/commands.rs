@@ -1,4 +1,4 @@
-//! The command set (`commands.md` § Declare a command): root command
+//! The command set (`crates/command-declarations/src/lib.rs`): root command
 //! declarations paired with the handler of each `rpc` leaf. Everything that
 //! reads the tree, the manifest a runner receives and the capability index
 //! the model reads, sees only the declarations.
@@ -273,8 +273,7 @@ impl CommandSet {
 
     /// The failure of a call to the `rpc` leaf `path` names as its caller
     /// reads it: a usage error's message, the check's or the handler's, in
-    /// clap's shape with the leaf's usage line (`commands.md` § Parse input
-    /// and render help); any other failure as it is.
+    /// clap's shape with the leaf's usage line (`crates/command-declarations/src/parse.rs`); any other failure as it is.
     pub fn tell(&self, path: &[String], error: RpcError) -> RpcError {
         match (error, self.leaf(path)) {
             (RpcError::Usage(message), Some(leaf)) => {

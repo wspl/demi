@@ -1,7 +1,53 @@
-//! Bounded edit snapshots shared by a runner and its native command services.
+//! Bounded edit snapshots shared by a runner and its native command services:
+//! the recorder behind the list of files a shell job created or modified,
+//! which the conversation shows under the call and as diffs on request.
 //!
-//! One OS lock covers capture, mutation and publication. It is never held while
-//! waiting for command input or while running another command.
+//! The runner learns what changed from the commands themselves as they run,
+//! not from the filesystem afterwards: every in-process file write (brush
+//! redirections, the embedded utilities, the native `file` commands) passes
+//! through a layer that takes notes. Watching the filesystem or diffing the
+//! working tree around a call cannot say which call made a change, misses
+//! edits outside the repository and blurs concurrent calls. External programs
+//! (git, python, node) stay outside; their edits still show in the working
+//! tree view, unattributed. The recorder lives here because the runner and the
+//! native services both link this crate, so both record through the same file
+//! interface; its context and journal are types of the command wire, never
+//! another message stream or a byte on a command's stdout.
+//!
+//! The recorder takes the before and after contents around each actual
+//! mutation (a write-capable open, a write to an opened file, a whole-file
+//! write, publishing a temporary file over a destination) and saves the after
+//! contents before releasing the operation, never rereading the workspace at
+//! job exit. So two jobs that write one file stay apart:
+//!
+//! ```text
+//!              x=0, y=0
+//! A writes     x=1, y=0     A edit 1: x=0 -> x=1
+//! B writes     x=1, y=1
+//! A writes     x=2, y=1     A edit 2: x=1 -> x=2
+//! ```
+//!
+//! Successive writes to a file combine only when the earlier saved after
+//! contents equal the next before contents, so a combined segment never
+//! holds anyone else's change; otherwise a new segment starts, and a
+//! combined segment that returns to its original bytes disappears. A segment
+//! without contents cannot establish continuity: the file then keeps only
+//! metadata rather than a stale or misleading diff.
+//!
+//! One OS lock covers capture, mutation and publication, shared by every
+//! participating writer of a runner installation. It is held for one file
+//! operation, never while a command waits for input, another command or a
+//! background task, and is released with the lock file on return, unwinding or
+//! process death. Pipes, devices and directories do not enter the recorder.
+//! Writers that do not participate take no lock, so tracking guarantees
+//! coordination among the participants, not isolation from other
+//! applications. A recording failure never changes the command's result: it is
+//! logged.
+//!
+//! Binary contents are never retained, whatever their size, because copies
+//! of images and media would fill the blob store for little use; a segment
+//! without contents says `binary` when that is why, so the view can tell a
+//! picture from a text file over the size limit.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -62,9 +108,9 @@ impl Recorder {
     /// sides, as any whole-file write. Otherwise the rename moves `from`,
     /// which carries what this job recorded under the old name, or within
     /// it, to the new name once it happened; a move of a file the job did not
-    /// change records no edit (`edit-tracking.md` § Scope). Either way the
+    /// change records no edit. Either way the
     /// rename itself is listed, for a request's earlier calls' edits
-    /// (`edit-tracking.md` § A request).
+    /// (`crates/agent-store/src/changes.rs`).
     pub fn rename(&self, from: &Path, to: &Path) -> Renaming {
         let to = normalize(to);
         let replacing = if fs::metadata(&to).is_ok_and(|metadata| metadata.is_file()) {
@@ -88,7 +134,7 @@ impl Recorder {
     /// removal is listed, but of a file the job itself created, which was
     /// neither there before nor is after, and what this job recorded at or
     /// within it goes, so a file made again there starts anew
-    /// (`edit-tracking.md` § The report). Nothing is locked meanwhile, so a prompt or a large
+    /// (`crates/command-protocol/src/edits.rs`). Nothing is locked meanwhile, so a prompt or a large
     /// folder blocks no other job's writes.
     pub fn remove(&self, path: &Path) -> Removing {
         Removing {
@@ -514,7 +560,7 @@ fn opening_binary(path: &Path) -> bool {
 }
 
 /// Whether a lookup failed because nothing is at the path: a path below a
-/// file names nothing either (`edit-tracking.md` § Recording actual writes).
+/// file names nothing either.
 fn absent(error: &io::Error) -> bool {
     matches!(
         error.kind(),
@@ -609,8 +655,7 @@ fn normalize(path: &Path) -> PathBuf {
 }
 
 /// Inside the runner the event reaches the Host log; inside a command service
-/// it reaches standard error, which the runner drains into the same log
-/// (`edit-tracking.md`).
+/// it reaches standard error, which the runner drains into the same log.
 fn diagnostic(error: &io::Error) {
     tracing::warn!("edit recording failed: {error}");
 }

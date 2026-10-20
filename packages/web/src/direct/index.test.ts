@@ -10,7 +10,7 @@ import { followDirect, watchDirect } from '.'
 
 // A page that shows a conversation on a paired device whose runner is
 // connected opens the device's signaling socket at once, the first step of
-// making its peer (`direct-channel.md` § Making the channel), before any
+// making its peer (`crates/runner-direct/src/lib.rs`), before any
 // operation of the conversation needs the device. The backend's channels
 // are played; no peer connection is made, since the socket never opens.
 

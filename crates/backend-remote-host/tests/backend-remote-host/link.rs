@@ -329,8 +329,7 @@ async fn a_stop_while_a_jobs_start_waits_to_go_again_follows_the_start() {
 /// A job's start goes again over a new connection only when the runner it
 /// went to, the same instance since, does not list it, and only once; a
 /// runner that lists it has it, and one of another instance may have run
-/// it, so it is lost (`sessions-and-targets.md` § Recovery and
-/// persistence). A few milliseconds.
+/// it, so it is lost (`crates/backend-remote-host/src/device_jobs.rs`). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receive_it() {
     let starts = |sent: &[Inbound], id: &str| {
@@ -983,7 +982,7 @@ impl LinkPolicy for AdmitsDirectStreams {
 }
 
 /// A direct stream the runner reports is known as a stream the backend
-/// opened (`direct-channel.md` § Operations on the channel): its artifact
+/// opened (`crates/runner-protocol/src/direct.rs`): its artifact
 /// request, made before the policy admitted it, is answered once it is,
 /// while it holds its conversation active; once it closed, the lease is
 /// gone and a request naming it is refused. A stream of another name may
@@ -1970,8 +1969,7 @@ async fn a_call_exits_after_its_standard_output_drained() {
 
 /// A call whose handler returns without reading its finite input answers
 /// the process's upload of it as a whole one, so the runner does not take
-/// the call for a failed one while its stdout still travels (`commands.md`
-/// § Handle an rpc call). Before, the call's end failed the upload with
+/// the call for a failed one while its stdout still travels (`crates/host-interface/src/rpc.rs`). Before, the call's end failed the upload with
 /// `rpc call ended`, and the runner cut a large stdout short 15 seconds
 /// later.
 #[tokio::test(flavor = "local")]
@@ -2578,8 +2576,7 @@ async fn away_twice(
 /// printed while no connection served: the backend reads the kept output
 /// again and delivers what its consumer did not receive, before what the
 /// job prints from then on and before its end, which may both come while
-/// the read is under way (`sessions-and-targets.md` § Recovery and
-/// persistence). A few milliseconds.
+/// the read is under way (`crates/backend-remote-host/src/device_jobs.rs`). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhile() {
     let device = device();
@@ -2610,8 +2607,7 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
 /// While a read of the kept output stalls, a job that goes on printing
 /// has only its first bytes and its newest ones held for after the read,
 /// at their offsets, as a job nobody follows sends them; its end gives the
-/// lengths that tell the rest is on the Host (`sessions-and-targets.md`
-/// § Recovery and persistence). A few milliseconds.
+/// lengths that tell the rest is on the Host (`crates/backend-remote-host/src/device_jobs.rs`). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_stalled_read_holds_only_the_first_and_the_newest_output() {
     let device = device();
@@ -2662,8 +2658,7 @@ async fn a_stalled_read_holds_only_the_first_and_the_newest_output() {
 /// A connection lost again while the read after a reconnect is under way,
 /// with output and the job's end waiting behind it, leaves the command
 /// running; the next connection's read completes it, and the end stores
-/// the whole output (`sessions-and-targets.md` § Recovery and
-/// persistence). A few milliseconds.
+/// the whole output (`crates/backend-remote-host/src/device_jobs.rs`). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn an_end_that_waited_through_another_loss_completes_with_the_next_connection() {
     let device = device();
@@ -2916,7 +2911,7 @@ async fn a_stop_while_the_runner_is_away_reaches_the_job_when_it_is_back() {
 /// After a backend restart, a recorded job the device's runner does not
 /// list is lost for the reason the device's record tells: the runner, still
 /// the same instance, never received it; one of another instance started
-/// anew (`sessions-and-targets.md` § Recovery and persistence). A few
+/// anew (`crates/backend-remote-host/src/device_jobs.rs`). A few
 /// milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_recorded_job_not_listed_after_a_restart_is_lost_for_what_the_record_tells() {

@@ -1,4 +1,4 @@
-//! `demi file` as the model runs it (`commands.md` § File commands): each
+//! `demi file` as the model runs it (`crates/command-package-file/src/files.rs`): each
 //! script is one `shell` call on a real runner,
 //! whose `file` commands run in the `demi.file` package the workspace
 //! built.

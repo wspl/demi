@@ -49,8 +49,7 @@ pub(super) async fn create(
             name,
         } => {
             // The directory as its Host names it, so two spellings of one
-            // directory are one project (`sessions-and-targets.md` § Resolve
-            // a target).
+            // directory are one project (`crates/backend-database/src/selection.rs`).
             let resolving = device_id.clone();
             let path = state
                 .shards

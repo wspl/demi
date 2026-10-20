@@ -394,7 +394,7 @@ pub trait HostResolver: 'static {
     type Host: Host;
 
     /// The Host a node's shell tools reach now: the conversation's current
-    /// execution target (`sessions-and-targets.md` § Host operations). Two
+    /// execution target (`crates/backend-host-access/src/access.rs`). Two
     /// answers for the same target have equal keys, so a node keeps one
     /// shell environment per target it used. By default there is none, and a
     /// shell tool's call fails.

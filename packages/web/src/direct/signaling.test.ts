@@ -36,8 +36,7 @@ test('a signaling socket that closes after it opened tells the page at once, and
 })
 
 /**
- * The page's two peers share the socket (`direct-channel.md` § Making the
- * channel): each message names its peer, and each answer, candidate and
+ * The page's two peers share the socket (`crates/runner-direct/src/lib.rs`): each message names its peer, and each answer, candidate and
  * close reaches the peer it names. Planted defect this catches: one peer's
  * answer or candidate taken by the other.
  */

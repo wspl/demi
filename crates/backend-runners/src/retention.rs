@@ -1,5 +1,4 @@
-//! What the native store keeps (`native-runtime.md` § Publish packages, then
-//! source artifacts on demand): as the backend starts, once its release's
+//! What the native store keeps (`crates/backend-runners/src/publication.rs`): as the backend starts, once its release's
 //! packages are published, it records its release under
 //! `native/releases/<version>.json`, naming each package's version and each
 //! runner executable's SHA-256. It keeps its own record and the newest other

@@ -1,4 +1,4 @@
-//! A conversation's files through its host access (`sessions-and-targets.md` §
+//! A conversation's files through its host access (`crates/backend-host-access/src/lib.rs` §
 //! Host operations): listings, directories, deletes and text; a file's bytes by
 //! range under the headers that keep them inert, and back as an upload; the
 //! working tree's changes; what the host access refuses; and the transfer a
@@ -449,7 +449,7 @@ async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_de
 
     // Offline: the routes say so at once rather than waking anything or
     // waiting for the runner, which only an agent's operation does
-    // (`sessions-and-targets.md` § Host operations).
+    // (`crates/backend-host-access/src/access.rs`).
     device.paired.runner.stop().await;
     device
         .backend
@@ -1104,8 +1104,7 @@ impl OnDevice {
     }
 }
 
-/// A restart is not a device going away (`sessions-and-targets.md`
-/// § Recovery and persistence): for 30 seconds after the start, an operation
+/// A restart is not a device going away (`crates/backend-remote-host/src/device_jobs.rs`): for 30 seconds after the start, an operation
 /// for a device whose connection the shutdown ended waits for its runner
 /// instead of answering that the device is offline; after that it answers
 /// as for any device that is away. Costs two restarts, a runner start and
@@ -1310,7 +1309,7 @@ async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
 }
 
 /// A device's folder dialog watches its listings through device access
-/// (`sessions-and-targets.md` § Every way to a Host): a folder's details
+/// (`crates/backend-host-access/src/lib.rs`): a folder's details
 /// change when a file in it is written, its listing answers the Host's
 /// number, and a message the page should not send closes the socket.
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! The runner's peers (`direct-channel.md`), driven by a page in process
+//! The runner's peers (`crates/runner-direct/src/lib.rs`), driven by a page in process
 //! over loopback: making the channel, each operation's protocol, the
 //! limits, closing, giving up, and the addresses offered. Each test runs a
 //! real connection on 127.0.0.1 in tens of milliseconds; the give-up and
@@ -297,8 +297,7 @@ async fn until_told(fake: &Fake, count: usize) {
 
 /// A `watch` channel carries the relay's watch messages both ways, a
 /// `changed` too large for one message in as many as it takes, and says
-/// `heartbeat` when quiet (`direct-channel.md` § Operations on the
-/// channel).
+/// `heartbeat` when quiet (`crates/runner-protocol/src/direct.rs`).
 #[tokio::test]
 async fn a_watch_carries_subscriptions_and_their_changes_and_says_heartbeat_when_quiet() {
     let fake = Fake::default();

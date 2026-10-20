@@ -85,7 +85,7 @@ the product supplies, in the product's order:
   block (`crates/agent-server/src/server/tree/told.rs`).
 - Each answer becomes one `context` block that names its source: `execution`
   for the conversation's execution context
-  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
+  (`crates/backend-host-access/src/transition.rs`),
   `instructions` for the user's personal instructions and the project's
   instruction files ([Instructions](instructions.md)), which also lists what
   its text holds, `side_questions` for what the user asked aside, or the id
@@ -349,7 +349,7 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 The shell view's characters are Unicode scalar values, counted from the end so
 the newest output stays. `files` lists one entry per changed path with its line
 counts and, for each edit segment, the blobs of its two sides when they were
-stored ([Edit copies](../execution/edit-tracking.md#edit-copies)).
+stored (`crates/agent-store/src/media.rs`).
 The model's result and the view come from the same command status; the view
 shows nothing the model could not read from the command, except `files`, which
 exists only for the user.

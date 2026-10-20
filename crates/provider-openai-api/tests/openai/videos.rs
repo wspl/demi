@@ -282,7 +282,7 @@ impl demi_provider_common::DeviceRoute for Device {
 
 /// A compatible server on a device's exposed port, such as vLLM-Omni on a
 /// paired workstation, takes the OpenAI Videos form: the device route
-/// carries only a whole body (`port-exposure.md` § Exposed ports).
+/// carries only a whole body (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
 /// Planted defect this catches: the form sent as a stream, which the route
 /// refuses.
 // No network: the route answers in memory.

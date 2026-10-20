@@ -3,7 +3,7 @@ import { afterEach, expect, test } from 'bun:test'
 
 // A port another row of the device exposes is refused by the server; the
 // field keeps the typed value to correct, with the refusal under it, as a
-// value the field itself refuses (`port-exposure.md` § Exposed ports). One
+// value the field itself refuses (`crates/backend-user-shard/src/shard/exposed_ports.rs`). One
 // Vue app on a happy-dom page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })

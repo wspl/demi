@@ -245,7 +245,7 @@ export function signedOutOffer(
 /**
  * The port that the unfinished turn's request named on the user's device
  * while the device had not exposed it, which the dock offers to expose
- * before the turn resumes (`port-exposure.md` § Exposed ports, Recovery):
+ * before the turn resumes (`crates/backend-user-shard/src/shard/exposed_ports.rs`, Recovery):
  * none once `exposed` says the port is exposed by now, from Settings or
  * another tab, when Resume alone tries again. Null while running, and for
  * any other end.

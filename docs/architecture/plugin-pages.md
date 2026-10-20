@@ -216,7 +216,7 @@ by who shows it. The SDK defines each intent and its payload:
 | `file` | `{ path, tree? }`, an absolute path on the conversation's Host, whose row the File view's tree selects and shows (`packages/web-ui/src/files/FileBar.vue`); `tree: true` also shows the tree if it was hidden | A file a message names (`packages/web-ui/src/markdown/message-files.ts`), an attachment's capsule, a Host image; *Show in Files* on a file link |
 | `web` | `{ url }`, an `http` or `https` address | *Open in Work Panel* on a link in a reply (`packages/web-ui/src/ui/context-menu.ts`) |
 | `attachment` | `{ id, name, size, url }`: the attachment's number, its file name, its size in bytes and the address of its stored copy | An attachment's card (`packages/web-ui/src/markdown/attachment-block.ts`) |
-| `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes ([A request](../execution/edit-tracking.md#a-request)) | A tool call's file pill, a request's changed-files line |
+| `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes (`crates/agent-store/src/changes.rs`) | A tool call's file pill, a request's changed-files line |
 
 To open an intent, the panel takes the first kind, in registration order, of
 a page the user has on that declares it. A pinned kind's tab takes the data
@@ -315,7 +315,7 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 | `root` | Where the conversation's work runs, which a retained edit's paths are relative to |
 | `changes` | The working tree's uncommitted changes: the list, each file's two sides and the committed contents, with whether a listing is on its way or failed |
 | `edit(copies)` | The two sides of one call's retained edit |
-| `request(node, request)` | A request's changes, derived from that agent's transcript: its files in first-changed order, each with its edits ([A request](../execution/edit-tracking.md#a-request)) |
+| `request(node, request)` | A request's changes, derived from that agent's transcript: its files in first-changed order, each with its edits (`crates/agent-store/src/changes.rs`) |
 | `showChanges()` | The calling component shows the working tree: the service follows the Host's reports for it and keeps `changes` current until the component's scope ends ([What the service keeps](#what-the-service-keeps)) |
 
 `changes` and `file-browser` show these; any other page may read them.

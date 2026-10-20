@@ -153,8 +153,7 @@ export class ConversationWatch {
   }
 
   /**
-   * The path to the Host changed (`direct-channel.md` § Choosing the
-   * path): the watch reopens on the other path at once and subscribes again
+   * The path to the Host changed (`packages/web/src/direct/index.ts`): the watch reopens on the other path at once and subscribes again
    * to what it carries.
    */
   move(): void {

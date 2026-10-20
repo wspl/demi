@@ -1,7 +1,33 @@
 //! Command declarations: the tree of groups and leaves a command manifest
 //! carries, the rules a leaf's input declaration follows, and how a command
-//! line selects a command, fills its input and renders its help
-//! (`commands.md`).
+//! line selects a command, fills its input and renders its help.
+//!
+//! One implementation serves the runner, which parses argv and answers
+//! `--help`, and the backend, which renders the model's capability index and
+//! checks registrations, so no second set of rules exists to drift from a
+//! declaration. A leaf's input is the JSON Schema that schemars derives from
+//! one Rust argument type: the schema a runner enforces and the type a
+//! handler decodes are one definition, and the declaration is data that
+//! serializes as the manifest node a runner receives. clap parses argv; the
+//! `jsonschema` validator checks what clap cannot express and arguments that
+//! arrive as JSON, both reporting in clap's shape.
+//!
+//! The input subset is what the runner can enforce: it sees only the schema,
+//! so a rule the schema cannot state is a rule it cannot check. Hence no
+//! `default` (validation never fills in a missing value; the handler does),
+//! no transform, no `null` (argv has no spelling for it), and no nested
+//! object or union (argv has no syntax to fill them). The argument type
+//! decodes with serde's derived rules only, so every value the schema
+//! accepts decodes; a handler that cannot decode one has a declaration bug,
+//! not a usage error. Length bounds count Unicode scalar values at both ends
+//! (`𝄞` is one), the rule JSON Schema gives.
+//!
+//! Declarations are separate from handlers: the host-interface command set
+//! pairs the tree with one handler per `rpc` leaf, and everything that reads
+//! the tree sees declarations only, so a manifest needs no handler and a
+//! runner never holds one. A group or `--help` invocation prints help
+//! without running a handler or reading stdin; help is generated from the
+//! declaration, which carries no examples that could fall out of sync.
 //!
 //! A tree is generic over how its native commands name their operation. A
 //! declaration names the package and the operation ([`NativeOperation`]); the
@@ -45,8 +71,7 @@ pub const MAX_INDEX_ENTRY: usize = 600;
 
 /// The keyword beside a field's `pattern` that says what the pattern stands
 /// for, with an example, as a usage error names it: `"foo" is not a ref,
-/// such as e12` for `"a ref, such as e12"` (`commands.md` § Parse input and
-/// render help).
+/// such as e12` for `"a ref, such as e12"` (`crates/command-declarations/src/parse.rs`).
 pub const PATTERN_DESCRIPTION: &str = "patternDescription";
 
 /// A declaration that breaks one of the tree's rules.
@@ -145,7 +170,7 @@ pub struct Leaf<B = Binding> {
     pub stdin_read: Option<StdinRead>,
     pub rest_field: Option<String>,
     pub output: Option<LeafOutput>,
-    /// Whether the command may return media (`commands.md` § Return media).
+    /// Whether the command may return media (`crates/runner-jobs/src/commands/command_output.rs`).
     pub media: bool,
     /// The id of the permission category the command needs, which one of
     /// its groups declares; only an `rpc` leaf names one.
@@ -167,8 +192,7 @@ pub struct BringsHost {
 
 /// When a leaf reads its stdin field, by the options the command line gives.
 /// When it does not, stdin stays with the calling process, as a `while read`
-/// loop's input or a job's `</dev/null` (`commands.md` § Demi command
-/// inputs). An option counts as given unless its value is `false`, which
+/// loop's input or a job's `</dev/null`. An option counts as given unless its value is `false`, which
 /// `--query=false` spells.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", deny_unknown_fields)]

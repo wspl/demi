@@ -142,7 +142,7 @@ fn powershell_expandable(value: &str) -> String {
 }
 
 /// A server release's `runners/`, where the runner releases are
-/// (`native-runtime.md` § Runner releases): `manifest.json` names the
+/// (`crates/backend-http/src/install.rs`): `manifest.json` names the
 /// current one, the release the installers install and every paired
 /// device's runner follows, and each release's directory holds its own,
 /// which names each target's executable. A backend without them, as in

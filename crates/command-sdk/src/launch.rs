@@ -1,5 +1,5 @@
 //! How a runner starts a command program, and how the program reads it
-//! (`native-runtime.md` § Invoke and retire a service): with
+//! (`crates/runner-command-packages/src/lib.rs`): with
 //! `--command-service` alone.
 
 use clap::Parser;

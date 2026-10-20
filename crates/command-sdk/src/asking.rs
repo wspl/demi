@@ -1,6 +1,5 @@
 //! A stream the runner opens into a service and answers the service's
-//! requests on, at both ends (`native-runtime.md` § Conversation numbers,
-//! § The artifacts stream). The service writes each request as one standard
+//! requests on, at both ends (`crates/command-protocol/src/numbers.rs`, `crates/command-protocol/src/artifacts.rs`). The service writes each request as one standard
 //! output record with an id of its own, unique among its requests in flight;
 //! the runner sends each answer back as one input chunk when the service
 //! pulls. Before its outcome, a request may be answered with how far it has

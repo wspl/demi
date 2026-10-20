@@ -4,7 +4,7 @@
 //! holds one live connection; a new hello with its token is refused while
 //! the held connection answers its ping, and adopted once a silent one
 //! finished tearing down. A Host handle is made here only for one
-//! of the ways to a Host (`sessions-and-targets.md` § Every way to a Host):
+//! of the ways to a Host (`crates/backend-host-access/src/lib.rs`):
 //! a conversation's against a lease of its file gate, device access while
 //! the runner is connected, and machine access under the Cloud's admission.
 
@@ -48,8 +48,7 @@ const REVOKED_LOST: &str = "its device was revoked";
 const SHUTTING_DOWN: &str = "backend shutting down";
 
 /// How long after the backend starts an operation waits for the runner of a
-/// device the last shutdown disconnected (`sessions-and-targets.md`
-/// § Recovery and persistence).
+/// device the last shutdown disconnected (`crates/backend-remote-host/src/device_jobs.rs`).
 pub const RETURN_GRACE: Duration = Duration::from_secs(30);
 
 /// The devices whose connections the backend's last shutdown ended, whose
@@ -400,7 +399,7 @@ impl Devices {
     }
 
     /// How long an operation that starts at `now` waits for `device`'s
-    /// runner (`sessions-and-targets.md` § Recovery and persistence): the
+    /// runner (`crates/backend-remote-host/src/device_jobs.rs`): the
     /// rest of the grace after the start, for a device the backend's last
     /// shutdown disconnected whose runner is not back yet; none otherwise.
     pub fn returning(&self, device: &DeviceId, now: jiff::Timestamp) -> Option<Duration> {
@@ -450,7 +449,7 @@ impl Devices {
 
     /// The conversation's Host on the device, starting work in `cwd`, for
     /// the operation that holds `files`, a lease of the conversation's file
-    /// gate (`sessions-and-targets.md` § Host operations): the handle is the
+    /// gate (`crates/backend-host-access/src/access.rs`): the handle is the
     /// conversation's the lease names.
     pub fn conversation_host(
         &self,
@@ -463,7 +462,7 @@ impl Devices {
         self.host(device, key, cwd, admission)
     }
 
-    /// Machine access (`sessions-and-targets.md` § Every way to a Host): the
+    /// Machine access (`crates/backend-host-access/src/lib.rs`): the
     /// Cloud's Host starting in `home`, whose operations take `admission`,
     /// the Cloud's; it touches no conversation's files.
     pub fn machine_host(
@@ -476,7 +475,7 @@ impl Devices {
         self.host(device, key, home, admission)
     }
 
-    /// Device access (`sessions-and-targets.md` § Every way to a Host): the
+    /// Device access (`crates/backend-host-access/src/lib.rs`): the
     /// device's Host for work that touches no conversation's files, only
     /// while its runner is connected. It takes nothing and wakes nothing.
     pub fn device_access(&self, device: &DeviceId) -> Option<RemoteHost> {
@@ -594,8 +593,7 @@ impl Devices {
 
     /// Ends every connection as the backend shuts down, and records the
     /// devices whose connections it ended: their runners connect again by
-    /// themselves, and the next start waits for them (`sessions-and-targets.md`
-    /// § Recovery and persistence).
+    /// themselves, and the next start waits for them (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn shut_down(&self, control: &ControlService) {
         let links: Vec<(DeviceId, Link)> = self
             .slots
@@ -734,7 +732,7 @@ impl DeviceRecorder {
     /// system, its release, its instance, its home and why it will not
     /// start by itself after a restart, and that it was
     /// connected just now, and advances the execution contexts the report
-    /// changes (`sessions-and-targets.md` § Resolve a target). Answers the
+    /// changes (`crates/backend-database/src/selection.rs`). Answers the
     /// directories the runner resolves before a paired device's first home
     /// is recorded, when an earlier release left any (`upgrades.md` § What
     /// crosses releases).

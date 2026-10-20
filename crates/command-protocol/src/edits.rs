@@ -1,5 +1,16 @@
 //! The runner-owned file interface through which a native command reports
-//! the files it edited (`edit-tracking.md`).
+//! the files it edited, and the journal a job's recorder keeps.
+//!
+//! At the job's end, once all its work has stopped, the runner reads the
+//! journal into the report: a file is `Added` when it did not exist before
+//! the job first changed it and `Modified` otherwise, and a path absent at
+//! the end, an edit whose before and after bytes are identical, and a patch
+//! that rolled back completely are omitted. Only creations and modifications
+//! are reported, because the conversation shows what the model wrote, not the
+//! state of the directory; renames and removals are listed apart as
+//! [`PathChange`]s, so a request can follow a file across its calls. The
+//! journal and the copies share the job directory's lifetime: they go once
+//! the backend has read the job's end.
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -83,7 +94,7 @@ pub struct EditFile {
 
 /// A rename an embedded utility made or a path an embedded `rm` removed,
 /// which a request's file list follows across its calls
-/// (`edit-tracking.md` § A request). Paths are absolute; a folder is named
+/// (`crates/agent-store/src/changes.rs`). Paths are absolute; a folder is named
 /// once by its own path, never by each file in it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]

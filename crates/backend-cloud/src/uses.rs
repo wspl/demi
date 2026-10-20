@@ -1,11 +1,37 @@
-//! How the user's conversations use the Cloud (`sessions-and-targets.md`
-//! § How a conversation uses a device): as the `target` their files and
+//! How the user's conversations use the Cloud: as the `target` their files and
 //! commands are on, or `attached` as an extra Host. Every role keeps the
 //! Cloud awake while the conversation works; an idle stop and a reset hold
 //! the conversations whose files are on the Cloud and leave an attached one
 //! alone: it runs on its own target. A conversation's `provider` role names
 //! the Claude Code machine, never the user's Cloud, and the work on that
 //! machine holds it instead (`managed-hosts.md` § The Claude Code machine).
+//! The `provider`
+//! role is derived, never stored: a node of the conversation's tree, the root
+//! or any subagent, infers with a provider that needs a process on a Host,
+//! and the provider's placement says which device that is; the same placement
+//! starts the process, so the role and the process cannot name different
+//! machines. The lifecycle knows roles; it does not know providers.
+//!
+//! A reset reaches a conversation through the `target` and `provider` roles
+//! only, since those conversations cannot work without the device. A
+//! conversation that merely has the Cloud attached keeps running on its own
+//! target: its turn is not interrupted, its streams stay open and it can be
+//! opened, read and written throughout. A command it had running on the Cloud
+//! ends with the device, as on any Host that went away, and its next Cloud
+//! command waits for the reset like any other wake and then runs, never
+//! refused because a reset is running.
+//!
+//! A held conversation is waiting, not failed. While a transition holds it (a
+//! reset, a target change, an archive), everything the user sends to it waits
+//! for the transition and then proceeds (opening it, a message, a steer, a
+//! rename, a pin, a model change, a Host operation): nothing is answered with
+//! a refusal because the transition is running, so nothing is left for the
+//! user to retry. A wait ends early only when its requester goes away. User
+//! streams, the one-shot user calls admitted like them and file transfers are
+//! the exception: a transition ends them instead of waiting, and the page
+//! reopens its streams by itself afterwards. A request for another
+//! transition (a target change, a detach, an archive) does not wait either: it
+//! answers busy.
 
 use std::time::Duration;
 

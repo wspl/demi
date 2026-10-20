@@ -1,6 +1,5 @@
 /**
- * A device's peer for live views (`direct-channel.md` § Making the
- * channel): the page's second peer with the device, which carries only the
+ * A device's peer for live views (`crates/runner-direct/src/lib.rs`): the page's second peer with the device, which carries only the
  * live views' `stream` and `video` channels, on an association the runner
  * runs without SCTP's congestion window. It is made when a live view opens
  * on the direct path, shared by every live view on the device, closed a

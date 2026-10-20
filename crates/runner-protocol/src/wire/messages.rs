@@ -322,7 +322,7 @@ pub enum Inbound {
         error: Option<String>,
     },
     /// The numbers a `numbers_reserve` asked for: the first of them, or why
-    /// there are none (`native-runtime.md` § Conversation numbers).
+    /// there are none (`crates/command-protocol/src/numbers.rs`).
     NumbersReserved {
         id: String,
         #[serde(
@@ -407,7 +407,7 @@ pub enum Inbound {
     },
     /// Fill the file with the bytes the backend offers at `source`, which
     /// the runner downloads as every file Demi downloads
-    /// (`native-runtime.md` § Downloads): resumed after a break or a stall,
+    /// (`crates/shared-artifacts/src/download.rs`): resumed after a break or a stall,
     /// with no overall deadline, and checked against the offer's size and
     /// SHA-256 before the file is put in place as `fs_writeFile` puts it.
     /// The answer names the file it wrote, or the cause of the failure.
@@ -730,8 +730,7 @@ pub enum Inbound {
     FsRenew {
         ids: Vec<String>,
     },
-    /// Introduces a page to the runner (`direct-channel.md` § Making the
-    /// channel): `sdp` is the page's offer for peer `peer`, which replaces
+    /// Introduces a page to the runner (`crates/runner-direct/src/lib.rs`): `sdp` is the page's offer for peer `peer`, which replaces
     /// the peer of that id; `direct_answer` or `direct_refused` answers.
     DirectOffer {
         id: String,
@@ -748,7 +747,7 @@ pub enum Inbound {
         stun: Vec<crate::direct::StunUrl>,
     },
     /// A candidate the page found after its offer, which the runner checks
-    /// too (`direct-channel.md` § Making the channel): the `candidate:` line
+    /// too (`crates/runner-direct/src/lib.rs`): the `candidate:` line
     /// as the browser gives it.
     DirectCandidate {
         #[garde(length(min = 1))]
@@ -756,8 +755,7 @@ pub enum Inbound {
         #[garde(length(min = 1, max = crate::direct::CANDIDATE_CHARS))]
         candidate: String,
     },
-    /// A page's probe of the relay path (`direct-channel.md` § Measuring the
-    /// paths): the runner answers `direct_pong` with the same `id` at once,
+    /// A page's probe of the relay path (`packages/web/src/direct/measure.ts`): the runner answers `direct_pong` with the same `id` at once,
     /// whether or not it holds the peer.
     DirectPing {
         #[garde(length(min = 1))]
@@ -784,7 +782,7 @@ pub enum Inbound {
         code: crate::direct::DialRefusal,
         message: String,
     },
-    /// Every forward this runner is an end of (`port-forwarding.md`), as
+    /// Every forward this runner is an end of (`crates/backend-user-shard/src/shard/port_forwards.rs`), as
     /// the connection begins and whenever one of them, or the presence of
     /// a device at its other end, changes.
     Forwards {
@@ -824,7 +822,7 @@ pub enum Inbound {
         message: String,
     },
     /// A request the backend makes for the user to exposed port `port`
-    /// (`port-exposure.md`): the runner makes it with `method`, `path` and
+    /// (`crates/backend-user-shard/src/shard/exposed_ports.rs`): the runner makes it with `method`, `path` and
     /// `headers`, reading its body from `body`, when it has one, and answers `http_answered`
     /// with the status and headers, the answer's body going into `answer`,
     /// or `http_failed`.
@@ -914,7 +912,7 @@ pub enum Outbound {
         error: Option<String>,
     },
     /// Reserves `count` numbers of the conversation's `sequence` for a
-    /// native service (`native-runtime.md` § Conversation numbers).
+    /// native service (`crates/command-protocol/src/numbers.rs`).
     NumbersReserve {
         id: String,
         #[garde(custom(conversation_name))]
@@ -924,7 +922,7 @@ pub enum Outbound {
         count: u32,
     },
     /// A message of the service of `package` to its plugin about the
-    /// conversation (`native-runtime.md` § Messages to the plugin).
+    /// conversation (`crates/command-protocol/src/messages.rs`).
     PackageMessage {
         #[garde(length(min = 1))]
         package: String,
@@ -1105,7 +1103,7 @@ pub enum Outbound {
         #[garde(length(max = demi_command_protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
         /// The renames and removals of the job's embedded utilities, in
-        /// order (`edit-tracking.md` § A request).
+        /// order (`crates/agent-store/src/changes.rs`).
         #[garde(length(max = demi_command_protocol::EDIT_JOB_PATH_CHANGES), dive)]
         path_changes: Vec<JobPathChange>,
         files_truncated: bool,
@@ -1280,7 +1278,7 @@ pub enum Outbound {
     },
     /// A direct channel's `stream` of `conversation`, named by the id the
     /// runner gave it, of the user stream `name` its header asked for,
-    /// opened, or closed (`direct-channel.md` § Operations on the channel):
+    /// opened, or closed (`crates/runner-protocol/src/direct.rs`):
     /// the backend knows each open one as a stream of that name it opened,
     /// counts it as the conversation's activity and answers its artifact
     /// requests.
@@ -1345,7 +1343,7 @@ pub enum Outbound {
     },
     /// Every artifact this runner's cache holds, once the connection is
     /// online and whenever an install or a retirement changes them
-    /// (`native-runtime.md` § Installed artifacts).
+    /// (`crates/runner-command-packages/src/cache.rs`).
     Installed {
         #[garde(length(max = MAX_INSTALLED), dive)]
         artifacts: Vec<HostArtifact>,
@@ -1498,7 +1496,7 @@ pub struct RunnerInfo {
     pub name: String,
     pub platform: RunnerPlatform,
     /// The Host's operating system, which the agent reads in its context
-    /// block (`sessions-and-targets.md` § Switch the primary target).
+    /// block (`crates/backend-host-access/src/transition.rs`).
     #[garde(dive)]
     pub os: OperatingSystem,
     /// The runner's release, such as `0.1.16`, which Settings shows.
@@ -2220,7 +2218,7 @@ pub struct JobFileChange {
 }
 
 /// A rename or a removal of a job's embedded utilities, as its edit record
-/// names it (`edit-tracking.md` § The report).
+/// names it (`crates/command-protocol/src/edits.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum JobPathChange {

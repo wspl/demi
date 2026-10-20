@@ -1,5 +1,4 @@
-//! Building manifests from a command set (`commands.md` § Dispatch the same
-//! declaration on each surface): the backend's catalog of command packages,
+//! Building manifests from a command set (`crates/runner-jobs/src/commands/mod.rs`): the backend's catalog of command packages,
 //! fixed at startup, pins each declared native command to its package's
 //! descriptor, and a job carries the resulting selection.
 

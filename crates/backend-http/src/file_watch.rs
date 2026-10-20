@@ -63,8 +63,7 @@ pub(super) async fn open(
 }
 
 /// `WS /devices/:deviceId/fs/watch`: a device's folder dialog's watch,
-/// through device access (`sessions-and-targets.md` § Every way to a
-/// Host). A device that is not the caller's paired device answers before
+/// through device access (`crates/backend-host-access/src/lib.rs`). A device that is not the caller's paired device answers before
 /// the upgrade; one whose runner is not connected answers after it, with
 /// `offline`.
 pub(super) async fn open_device(

@@ -85,7 +85,7 @@ pub struct ConversationAttachmentQuery {
 }
 
 /// `GET /conversations/:id/attachments/:attachment`: an attachment the agent
-/// uploaded to the conversation (`commands.md` § Attachment commands). It
+/// uploaded to the conversation (`crates/backend-host-access/src/attachment_commands.rs`). It
 /// never changes, so a page asks for each once.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

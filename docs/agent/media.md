@@ -138,7 +138,7 @@ first by release date:
   *next*.
 
 The listing follows the commands' output rules
-([Output](../execution/commands.md#output)): a table of the models, one row
+(`crates/shared-types/src/output.rs`): a table of the models, one row
 each with its ID, vendor, release date, the entry a call takes now and the
 model's name, and `models <model>`, as `kubectl get` takes a name, with every fact above as labelled lines,
 the entries in the order a call tries them as a table under its key;

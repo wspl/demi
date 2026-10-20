@@ -1,6 +1,5 @@
 /**
- * An artifact a Host's runner holds in its cache (`native-runtime.md`
- * § Installed artifacts): the package, the artifact's line and its version.
+ * An artifact a Host's runner holds in its cache (`crates/runner-command-packages/src/cache.rs`): the package, the artifact's line and its version.
  */
 export interface HostArtifact {
   package: string

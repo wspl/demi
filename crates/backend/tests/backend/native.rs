@@ -1,5 +1,4 @@
-//! A local store end to end (`native-runtime.md` § Backend deployment
-//! configuration). The harness writes the command packages the workspace
+//! A local store end to end (`crates/backend-runners/src/publication.rs`). The harness writes the command packages the workspace
 //! built as development releases of a server release, which the backend's
 //! local store takes from the release's files when a runner first needs
 //! them and serves itself (`support::Harness::with_file_package`), so every
@@ -77,7 +76,7 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
     let stored = encoded.bytes().await.unwrap();
     assert!(stored.len() < artifact.size as usize);
     // A download that broke off continues from a byte on, in the stored
-    // bytes (`native-runtime.md` § Downloads); a byte past them is none.
+    // bytes (`crates/shared-artifacts/src/download.rs`); a byte past them is none.
     let from = |byte: usize| {
         undecoded
             .get(format!("{}{path}", backend.url))
@@ -107,8 +106,7 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
 /// The first command on a device after an upgrade finds its executable in
 /// the store: the backend stores it for the device's target as the device
 /// pairs, before any command, and again for the targets of the Hosts it
-/// knows as it starts (`native-runtime.md` § Publish packages, then source
-/// artifacts on demand).
+/// knows as it starts (`crates/backend-runners/src/publication.rs`).
 // A few seconds: a runner pairs.
 #[tokio::test]
 async fn a_backend_stores_its_hosts_executables_ahead_as_a_device_pairs_and_as_it_starts() {

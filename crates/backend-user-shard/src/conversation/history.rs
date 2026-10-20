@@ -193,7 +193,7 @@ impl Reader {
     }
 
     /// A time as a read shows it: an instant in UTC, as every command
-    /// prints one (`commands.md` § Output).
+    /// prints one (`crates/shared-types/src/output.rs`).
     fn when(&self, time: Timestamp) -> String {
         output::instant(time)
     }

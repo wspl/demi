@@ -23,7 +23,7 @@ export interface RequestSides {
 
 /**
  * The two sides a request's diff shows, read by the blobs `copies` names
- * (`edit-tracking.md` § What the conversation shows). `selection` names
+ * (`crates/agent-store/src/changes.rs`). `selection` names
  * what the user chose to see, such as a file's All Changes or one of its
  * edits, and null while nothing is chosen.
  *

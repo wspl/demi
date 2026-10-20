@@ -360,7 +360,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             Ok(command) => command,
             // A Host that is offline to the environment runs nothing now:
             // the call's result is its offline error as it is, worded for
-            // the model (`sessions-and-targets.md` § Host operations).
+            // the model (`crates/backend-host-access/src/access.rs`).
             Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
                 return Ok(ToolOutcome::error(error.message));
             }
@@ -422,7 +422,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Takes up `running`, a command the node ran that the conversation
     /// records running and that started `ran` ago, in the node's
     /// environment for the conversation's current Host
-    /// (`sessions-and-targets.md` § Recovery and persistence).
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
         let cwd = self.cwd().await?;
         let (_, environment) = self.environment(Handle::None, cwd.as_deref()).await?;

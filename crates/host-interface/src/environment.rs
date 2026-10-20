@@ -112,12 +112,12 @@ pub trait ShellEnvironment {
 
     /// Ends each of its commands whose start still waits for its Host, as
     /// the user's Stop does, whatever turn started it: none of them ever
-    /// runs (`sessions-and-targets.md` § Host operations). A command that
+    /// runs (`crates/backend-host-access/src/access.rs`). A command that
     /// started runs on.
     fn stop_waiting(&self) -> LocalBoxFuture<'_, ()>;
 
     /// Takes up `taken`, a command that still ran when the backend last
-    /// knew it (`sessions-and-targets.md` § Recovery and persistence).
+    /// knew it (`crates/backend-remote-host/src/device_jobs.rs`).
     fn adopt(&self, taken: TakenUp);
 
     /// Lets go of every command, which runs on, as a disposed node does
@@ -176,7 +176,7 @@ pub struct ExecRequest {
 }
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
-/// (`sessions-and-targets.md` § Bind jobs to their caller), and the call of
+/// (`crates/backend-user-shard/src/shard/policy.rs`), and the call of
 /// it that started the job, which a message the job sends comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -216,15 +216,14 @@ pub struct TakenUp {
     pub running: Duration,
     pub seen: Seen,
     /// What it was asked to start, while its start still waits for its
-    /// Host and was never sent (`sessions-and-targets.md` § Host
-    /// operations): it waits again, and is sent once its runner connects.
+    /// Host and was never sent (`crates/backend-host-access/src/access.rs`): it waits again, and is sent once its runner connects.
     pub unsent: Option<UnsentStart>,
 }
 
 /// What a command whose start waits for its Host, a paired device whose
 /// runner is away, was asked to run, which its record keeps until the start
 /// is sent, so a backend that starts again sends it once the runner
-/// connects (`sessions-and-targets.md` § Host operations).
+/// connects (`crates/backend-host-access/src/access.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UnsentStart {

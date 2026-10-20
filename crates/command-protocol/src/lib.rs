@@ -1,6 +1,50 @@
 //! The command wire between an execution host and a command program
 //! (`crates-and-packages.md` § command-protocol): its values and its bounded
 //! incremental response framing.
+//!
+//! ```text
+//! Backend --- job + pinned manifest (MessagePack/WebSocket) ---> Runner
+//! Runner  --- native invocation (HTTP/2 over stdio) ---> command service
+//! ```
+//!
+//! The runner is the HTTP/2 client and the service its server, over the
+//! child's standard input and output: no port, TLS, HTTP/1 upgrade or gRPC.
+//! The service is resident and serves many calls, one stream per invocation,
+//! so an algorithm ships and releases without the runner.
+//!
+//! A native service never receives a raw command line: the runner's
+//! dispatcher validates the context, parses the input and sends a validated
+//! operation, whether the call came from a brush builtin or an external
+//! client. `rpc` leaves go to the backend instead.
+//!
+//! What holds across the requests:
+//! - Each invocation owns its cwd, environment, identity, input, output and
+//!   cancellation; a handler never changes the process-wide ones.
+//! - Exactly one completion record ends a handled invocation, and nothing
+//!   follows it. A response without one is a failure even after HTTP 200.
+//!   The HTTP status only reports a rejection before execution (invalid
+//!   metadata, an unknown operation, a service shutting down), never how many
+//!   calls run; once execution starts, failure is the completion, and the
+//!   output carries any partial result.
+//! - Input is demand-driven: the caller sends exactly one chunk per input
+//!   pull and keeps its boundary across DATA frames. Transport capacity never
+//!   authorizes a read of stdin, so a command that never asks consumes
+//!   nothing. END_STREAM is EOF, never cancellation; `RST_STREAM(CANCEL)` is.
+//! - A handler that finishes without reading its input ends the request with
+//!   `RST_STREAM(NO_ERROR)`, and what the caller sends afterwards is dropped,
+//!   not an error. A conversation request therefore carries its metadata with
+//!   END_STREAM: a caller that sent it in a second step could find the
+//!   request already reset, and a release the service answered would look
+//!   failed, which retires the service.
+//! - A medium is a medium record then its bytes, with no other record
+//!   between; sizes that do not add up, bytes without a medium and a medium
+//!   over [`MAX_MEDIUM_BYTES`] break the protocol. The service neither routes
+//!   nor keeps media: the runner hands each to the invocation's job.
+//! - The wire's own values are decoded and validated where they enter, and
+//!   sizes are checked while decoding, before any allocation of that size.
+//!   Command arguments are the exception: their schemas come from the
+//!   declarations at run time, so the dispatcher validates them and the
+//!   handler decodes them into its argument type.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
@@ -60,8 +104,7 @@ pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'sta
     fn validate(&self) -> Result<(), ProtocolError>;
     fn operation(&self) -> &str;
 
-    /// Whether the invocation may return media (`commands.md` § Return
-    /// media): only one a job's command makes, which carries the media
+    /// Whether the invocation may return media (`crates/runner-jobs/src/commands/command_output.rs`): only one a job's command makes, which carries the media
     /// types the job may show the model.
     fn returns_media(&self) -> bool;
 
@@ -150,8 +193,7 @@ pub enum Record {
     InputPull,
     /// A returned medium of `size` bytes, which `facts` describe, begins;
     /// its bytes follow in [`Record::MediumBytes`], with no other record
-    /// between them (`native-runtime.md` § Response records and
-    /// completion).
+    /// between them.
     Medium { size: u64, facts: MediumFacts },
     /// Bytes of the medium that began last.
     MediumBytes(Bytes),

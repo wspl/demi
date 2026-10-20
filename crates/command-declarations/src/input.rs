@@ -1,4 +1,4 @@
-//! The command input subset (`commands.md` § The input subset): the JSON
+//! The command input subset: the JSON
 //! Schema forms a command's input may take, checked once when the command is
 //! declared, and the settings every declaration's schema is generated with.
 

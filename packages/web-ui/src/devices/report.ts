@@ -17,7 +17,7 @@ export interface DeviceReport {
 
 /**
  * The chip family a person knows a machine's architecture by
- * (`direct-channel.md` § What the user sees): Apple silicon for a Mac on
+ * (`packages/web-ui/src/devices/direct.ts`): Apple silicon for a Mac on
  * ARM, ARM elsewhere, Intel for x86; null for another, which is not shown
  * rather than shown as a code.
  */

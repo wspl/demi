@@ -183,7 +183,7 @@ export interface SettingsDevice extends DeviceReport {
   home?: string | null
   /** When it was paired, as an ISO 8601 timestamp. */
   pairedAt: string
-  /** How this page reaches it (`direct-channel.md` § What the user sees). */
+  /** How this page reaches it (`packages/web-ui/src/devices/direct.ts`). */
   direct: DirectStatus
   /** Its mark, with the number it shows (`shownMark`); null draws the plain computer. */
   mark: DeviceMark | null
@@ -413,7 +413,7 @@ export interface SettingsProviderEntry {
   testedWith?: string
   /**
    * The port of the user's device the last test named and the device has not
-   * exposed, which the test's result offers to expose (`port-exposure.md`).
+   * exposed, which the test's result offers to expose (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
    */
   notExposed?: { deviceId: string; device: string; port: number }
   enabled: boolean

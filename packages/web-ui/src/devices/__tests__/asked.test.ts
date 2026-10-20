@@ -3,7 +3,7 @@ import { effectScope, nextTick, ref } from 'vue'
 import { useAsked } from '../useAsked'
 
 // Try Again and Measure show only the work the user asked for
-// (`direct-channel.md` § What the user sees). The host here starts an
+// (`packages/web-ui/src/devices/direct.ts`). The host here starts an
 // attempt synchronously, as the product's and the gallery's do. Pure; no
 // timers.
 

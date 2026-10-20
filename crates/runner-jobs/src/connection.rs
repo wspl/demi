@@ -29,7 +29,7 @@ const REQUESTS: usize = 64;
 /// How long the backend has to answer which numbers a service may use. Where
 /// an artifact is has no deadline of its own: the backend may fetch it first,
 /// which takes as long as the server's disk or link does
-/// (`native-runtime.md` § Publish packages, then source artifacts on demand).
+/// (`crates/backend-runners/src/publication.rs`).
 const NUMBERS_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Why work that needs the backend did not reach it: the runner ends
@@ -144,8 +144,7 @@ impl ConnectionHandle {
     }
 
     /// Asks the backend where the artifact `sha256` is, on behalf of the live
-    /// work `owner` names (`native-runtime.md` § Install
-    /// artifacts).
+    /// work `owner` names (`crates/runner-command-packages/src/cache.rs`).
     pub async fn locate(
         &self,
         owner: wire::ArtifactOwner,
@@ -224,7 +223,7 @@ impl ConnectionHandle {
 pub struct Unreachable;
 
 /// A service's conversation numbers come from the connection it started
-/// under (`native-runtime.md` § Conversation numbers), and its messages to
+/// under (`crates/command-protocol/src/numbers.rs`), and its messages to
 /// its plugin go there (§ Messages to the plugin).
 impl ServiceBackend for ConnectionHandle {
     fn reserve(

@@ -12,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use demi_shared_types::DecodeError;
 
 /// The artifact line the pinned release is installed as on a Host, which
-/// its installed artifacts name (`native-runtime.md` § Installed
-/// artifacts).
+/// its installed artifacts name (`crates/runner-command-packages/src/cache.rs`).
 pub const ARTIFACT: &str = "Chrome for Testing";
 
 /// The artifact lines the Chrome runtime's archives are installed as: its

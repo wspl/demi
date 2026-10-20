@@ -1386,7 +1386,7 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 
 /**
  * The record of a turn whose request named port 11434 of alex-mbp, which
- * the device has not exposed (`port-exposure.md` § Exposed ports): refused
+ * the device has not exposed (`crates/backend-user-shard/src/shard/exposed_ports.rs`): refused
  * before it reached the device, with no answer to keep.
  */
 export function notExposedErrorBlock(id: string): Block {
@@ -1404,7 +1404,7 @@ export function notExposedErrorBlock(id: string): Block {
 /**
  * The record of a turn whose request named a port of alex-mbp while it was
  * offline, after the retries an unreachable endpoint gets
- * (`port-exposure.md` § Exposed ports).
+ * (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
  */
 export function deviceOfflineErrorBlock(id: string): Block {
   return {
@@ -1485,7 +1485,7 @@ export const WAITING_SHELL_SCRIPT = 'cargo test'
 
 /**
  * A `shell` call whose command waits for the conversation's offline device
- * (`sessions-and-targets.md` § Host operations): the call runs, and its
+ * (`crates/backend-host-access/src/access.rs`): the call runs, and its
  * command starts once the device's runner is back.
  */
 export function waitingShellCall(): ToolCallBlock {

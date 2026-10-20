@@ -364,8 +364,7 @@ impl Shard {
         };
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never
-        // refuse (`sessions-and-targets.md` § How a conversation uses a
-        // device). Its uploads go to no Host (`backend.md` § Media by
+        // refuse (`crates/backend-cloud/src/uses.rs`). Its uploads go to no Host (`backend.md` § Media by
         // reference).
         let _files = self
             .conversations()

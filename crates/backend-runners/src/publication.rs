@@ -1,5 +1,4 @@
-//! Native package publication (`native-runtime.md` § Publish packages, then
-//! source artifacts on demand, § Backend deployment configuration): before
+//! Native package publication: before
 //! the backend accepts requests, every command package release in its server
 //! release's `commands/` is read and checked, its descriptor and then its
 //! immutable package-and-version mapping are published into the

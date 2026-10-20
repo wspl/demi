@@ -107,7 +107,7 @@ pub struct EditArgs {
     pub context: Option<usize>,
 }
 
-/// `file.edit`, decoded (`commands.md` § Editing files) from checked
+/// `file.edit`, decoded (`crates/command-package-file/src/edit.rs`) from checked
 /// [`EditArgs`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Edit {

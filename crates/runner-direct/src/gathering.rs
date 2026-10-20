@@ -1,5 +1,4 @@
-//! A peer's server-reflexive candidates (`direct-channel.md` § Making the
-//! channel): the runner asks each STUN server the backend names, from each
+//! A peer's server-reflexive candidates (`crates/runner-direct/src/lib.rs`): the runner asks each STUN server the backend names, from each
 //! of the peer's sockets that can reach it, for the address the internet
 //! sees that socket at, and offers each new one to the page. A socket on
 //! `127.0.0.1` asks only a server on loopback, as a test's is, and a socket

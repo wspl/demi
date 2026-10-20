@@ -111,14 +111,13 @@ pub struct ProviderFailureFacts {
     /// For a request to a port of the entry owner's device that the device
     /// had not exposed, that port, which the conversation offers to expose
     /// with Expose Port while the page holds it not exposed, and to try
-    /// again once it is (`port-exposure.md` § Exposed ports); omitted
+    /// again once it is (`crates/backend-user-shard/src/shard/exposed_ports.rs`); omitted
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub not_exposed: Option<NotExposedPort>,
     /// For a request to a port of a device that was offline, the device,
-    /// which the failure's headline names (`port-exposure.md` § Exposed
-    /// ports); omitted otherwise.
+    /// which the failure's headline names (`crates/backend-user-shard/src/shard/exposed_ports.rs`); omitted otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub device_offline: Option<OfflineDevice>,

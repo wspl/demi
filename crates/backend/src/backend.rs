@@ -53,11 +53,10 @@ pub struct Backend {
     /// Announces each ledger row to its conversation's pages.
     usage: AbortOnDropHandle<()>,
     /// Sources the runner executables of the paired devices' systems
-    /// (`native-runtime.md` § Runner releases); a close ends it.
+    /// (`crates/backend-http/src/install.rs`); a close ends it.
     runners: Option<AbortOnDropHandle<()>>,
     /// Stores the package executables ahead for the targets of the Hosts
-    /// (`native-runtime.md` § Publish packages, then source artifacts on
-    /// demand); a close ends it.
+    /// (`crates/backend-runners/src/publication.rs`); a close ends it.
     ahead: AbortOnDropHandle<()>,
 }
 
@@ -145,8 +144,7 @@ async fn take_over_clouds(
 
 /// Forgets each Cloud the last shutdown disconnected that does not run, as
 /// after an upgrade stopped it: no operation waits for its runner, which
-/// does not come back by itself (`sessions-and-targets.md` § Recovery and
-/// persistence).
+/// does not come back by itself (`crates/backend-remote-host/src/device_jobs.rs`).
 async fn forget_stopped_clouds(
     running: &[demi_backend_database::devices::DeviceRecord],
     services: &demi_backend_user_shard::services::Services,
@@ -194,8 +192,7 @@ async fn take_up_stopped_clouds(
 /// Publishes the command packages of the server release whose root is
 /// `release`: its `commands/`, whose executables come from the files its
 /// `release.json` names, into the object store `config` names, before the
-/// backend that serves them starts (`native-runtime.md` § Publish packages,
-/// then source artifacts on demand); `cancel` interrupts it.
+/// backend that serves them starts (`crates/backend-runners/src/publication.rs`); `cancel` interrupts it.
 pub async fn publish_commands(
     config: &BackendConfig,
     release: &std::path::Path,
@@ -363,7 +360,7 @@ impl Backend {
         }
         // Each move or detach an agent asked for that a restart cut off is
         // made, before a page opens its tree
-        // (`sessions-and-targets.md` § Switch the primary target). A failure
+        // (`crates/backend-host-access/src/transition.rs`). A failure
         // does not stop the start: the next start makes it.
         if let Err(error) = settle_pending(&services.control, &shards.shards()).await {
             tracing::error!(
@@ -632,7 +629,7 @@ impl Backend {
     /// The file gate of the user's conversation `conversation`: every
     /// operation on the conversation's Host holds a lease of it, a
     /// transition reserves it, and a lease the caller takes is activity
-    /// (`sessions-and-targets.md` § Host operations).
+    /// (`crates/backend-host-access/src/access.rs`).
     #[cfg(feature = "testing")]
     pub async fn file_gate(
         &self,

@@ -176,8 +176,7 @@ impl RemoteHost {
         };
         let claimed = self.0.jobs.start(id.clone(), entry, &link);
         // A start that carries pipes never goes again: its pipes end with
-        // the call that opened them (`sessions-and-targets.md` § Recovery
-        // and persistence).
+        // the call that opened them (`crates/backend-remote-host/src/device_jobs.rs`).
         let piped = job.stdin.is_some() || job.stdout.is_some();
         let start = Inbound::JobStart {
             job_id: id.clone(),
@@ -208,8 +207,7 @@ impl RemoteHost {
     }
 
     /// Takes up the job `id`, which the backend recorded running on this
-    /// Host before it restarted (`sessions-and-targets.md` § Recovery and
-    /// persistence): its runner's hello says whether it goes on, ended or
+    /// Host before it restarted (`crates/backend-remote-host/src/device_jobs.rs`): its runner's hello says whether it goes on, ended or
     /// was lost, now or when the runner connects.
     /// Its rpc calls act for `caller` with `context`; without a context
     /// they are refused, and they stop when `stop` is cancelled.
@@ -423,7 +421,7 @@ impl RemoteHost {
 
     /// Writes the file `path` with `bytes`, whose SHA-256 is `sha256`, which
     /// the runner downloads from this backend as every file Demi downloads
-    /// (`native-runtime.md` § Downloads): resumed after a break or a stall,
+    /// (`crates/shared-artifacts/src/download.rs`): resumed after a break or a stall,
     /// with no overall deadline, and checked before it is put in place as
     /// `options` says. Answers the name the file has, or the cause of the
     /// failure.
@@ -1307,7 +1305,7 @@ pub struct ServiceRequest {
     pub resolver: Rc<dyn ArtifactResolver>,
     /// Other artifacts the invocation may install, each with its location,
     /// such as the downloads of a release the backend chose
-    /// (`native-runtime.md` § Where an artifact comes from).
+    /// (`crates/runner-command-packages/src/cache.rs`).
     pub attached: Vec<AttachedArtifact>,
 }
 

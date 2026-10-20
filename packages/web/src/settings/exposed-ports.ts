@@ -30,7 +30,7 @@ function refusedField(error: unknown): boolean {
 
 /**
  * The user's exposed ports as a device's page and a failed request's
- * Expose Port change them (`port-exposure.md` § Exposed ports): each change
+ * Expose Port change them (`crates/backend-user-shard/src/shard/exposed_ports.rs`): each change
  * shows its answer, and the `exposed_ports` part brings it to every page.
  */
 export const useExposedPortSettings = defineStore('exposed-port-settings', () => {
@@ -46,7 +46,7 @@ export const useExposedPortSettings = defineStore('exposed-port-settings', () =>
   /**
    * The name of the user's device `endpoint` names by its id, when every
    * user of an entry reaches it: on a shared instance, where the master's
-   * entries are everyone's (`port-exposure.md` § Exposed ports, Whose).
+   * entries are everyone's (`crates/backend-user-shard/src/shard/exposed_ports.rs`, Whose).
    */
   function sharedDevice(endpoint: string): string | null {
     if (product.snapshot?.mode !== 'shared' || !URL.canParse(endpoint)) {

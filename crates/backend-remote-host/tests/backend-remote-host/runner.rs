@@ -735,7 +735,7 @@ fn names_in(directory: &str) -> Vec<String> {
 
 /// A file the backend offers reaches the Host whole though the link breaks
 /// off partway through the first answer: the runner asks again from the byte
-/// it has (`native-runtime.md` § Downloads). Planted defect this catches: a
+/// it has (`crates/shared-artifacts/src/download.rs`). Planted defect this catches: a
 /// download that starts over, or fails, at a break. A real runner, about a
 /// second.
 #[tokio::test(flavor = "local")]
@@ -1585,8 +1585,7 @@ async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_r
         failed.stderr.delta
     );
     // The service draws its conversation's numbers through its runner from
-    // the backend, which gives each out once (`native-runtime.md`
-    // § Conversation numbers).
+    // the backend, which gives each out once (`crates/command-protocol/src/numbers.rs`).
     let numbered = run(&on_a, "demi number && demi number").await;
     assert_eq!(exited(&numbered), 0, "{}", numbered.stderr.tail);
     assert_eq!(numbered.stdout.delta, r#"{"first":1}{"first":2}"#);
@@ -2110,7 +2109,7 @@ fn said(page: &LogPage, text: &str) -> usize {
 
 /// A user stream's service stays for as long as the stream is open, and for
 /// the connection's next streams while the connection binds that release
-/// (`native-runtime.md` § Keep a service resident): consecutive one-shot
+/// (`crates/runner-command-packages/src/registry.rs`): consecutive one-shot
 /// calls reuse it, and binding another release of the package lets it go
 /// once no stream of it is open.
 #[tokio::test(flavor = "local")]

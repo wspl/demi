@@ -1,6 +1,40 @@
-//! Resident native services (`native-runtime.md` § Invoke and retire a
-//! service): the verified executable cache, the service processes, and the
-//! registry that keeps each one resident while something holds a lease on it.
+//! Resident native services: the verified executable cache, the service
+//! processes, and the registry that keeps each one resident while something
+//! holds a lease on it.
+//!
+//! A service starts, and is admitted to calls, in this order:
+//!
+//! ```text
+//! Runner                                       Command service
+//!   |--- start the verified executable ---------------->|
+//!   |--- GET /v1/info ---------------------------------->|
+//!   |<-- protocol version + operations ------------------|
+//!   |    checked against the pinned descriptor           |
+//!   |--- POST /v1/numbers, /v1/artifacts, /v1/messages ->|  open for the
+//!   |                                                    |  service's life
+//!   |--- POST /v1/invoke (one stream per call) --------->|  reused by later
+//!   |<-- stdout / stderr records, one completion --------|  calls
+//!   |--- POST /v1/shutdown, when no lease is left ------>|  drain, exit
+//! ```
+//!
+//! The runner owns the child and its three pipes. The handshake does not ask
+//! the service for its hash: the verified file is what establishes which
+//! executable runs. A start fails on a timeout, a missing or an extra
+//! operation, or another wire version, and releases the process and its
+//! transports.
+//!
+//! One service serves every call that needs the same artifact digest, from
+//! every conversation of the device; different immutable artifacts run side
+//! by side, and concurrent starts of one share a launch. The runner's own
+//! account is the only security context, so no service crosses a privilege
+//! boundary. Sharing saves the cost of starting a process and a connection;
+//! it is not a performance promise for any command.
+//!
+//! A service that exits or breaks the protocol fails each call it held with
+//! its exit status and the end of its standard error (which the Host log
+//! holds too). A call is never replayed, since its side effects may have
+//! happened. A new startup catalog makes new pinned bindings; it never swaps
+//! the executable under an existing execution context.
 
 pub mod cache;
 mod invocations;
@@ -32,7 +66,7 @@ pub enum RuntimeError {
     #[error("native runtime was cancelled")]
     Cancelled,
     /// Why the download this install shared with others failed, which each
-    /// of them reports (`native-runtime.md` § Install artifacts).
+    /// of them reports (`crates/runner-command-packages/src/cache.rs`).
     #[error(transparent)]
     Shared(std::sync::Arc<RuntimeError>),
     #[error(transparent)]
@@ -53,7 +87,7 @@ pub enum RuntimeError {
 }
 
 /// How a resident service ended on its own, which every call that fails with
-/// it reports (`native-runtime.md` § Invocation protocol).
+/// it reports (`crates/command-protocol/src/lib.rs`).
 #[derive(Debug, Clone, thiserror::Error)]
 pub struct ServiceExit {
     /// The package, such as `demi.file`.
@@ -145,7 +179,7 @@ pub trait ArtifactResolver: Send + Sync + 'static {
 }
 
 /// Where a service's requests to the backend go: its conversation numbers
-/// (`native-runtime.md` § Conversation numbers) and its messages to its
+/// (`crates/command-protocol/src/numbers.rs`) and its messages to its
 /// plugin (§ Messages to the plugin). It is the backend connection the
 /// service started under, which a lost connection ends together with the
 /// service.

@@ -1,5 +1,5 @@
 //! A forwarded TCP connection over a data channel of a peer between two
-//! runners (`port-forwarding.md` § The path of a connection): the Listen On
+//! runners (`crates/runner-direct/src/pairs.rs`): the Listen On
 //! runner opens the channel with the forward's header, the Connect To
 //! runner connects to the forward's address, and each side carries its TCP
 //! connection's bytes both ways. A side whose program ended its writing

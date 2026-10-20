@@ -1,7 +1,37 @@
-//! The messages stream (`native-runtime.md` § Messages to the plugin): what
-//! a service tells the plugin of its package about the state it keeps for a
-//! conversation, which the runner forwards to the backend, and the runner's
-//! answer once its connection took a message.
+//! The messages stream: what a service tells the plugin of its package about
+//! the state it keeps for a conversation, which the runner forwards to the
+//! backend, and the runner's answer once its connection took a message.
+//!
+//! The service tells when its state changes; nobody asks it, so an agent that
+//! runs `rg` a thousand times moves no message. The runner answers a message
+//! once its connection took it, and a service has a bounded number
+//! unanswered, so one that writes faster than the backend reads waits in its
+//! send and nothing piles up between. A service that would say the same thing
+//! twice says it once: the browser keeps the conversations whose tabs changed
+//! since its last message, so a burst of title and favicon changes costs one.
+//!
+//! ```text
+//! Service                         Runner                         Backend
+//!   |<-- POST /v1/messages ----------|  opened after GET /v1/info    |
+//!   |--- {id 4, c1, {"tabs":..}} --->|--- package_message ---------->|--> plugin
+//!   |<-- {id 4} ---------------------|  taken by the connection      |
+//! ```
+//!
+//! The backend accepts a message only for a conversation of the device's user
+//! that reaches the device, as its primary Host or an attached one, and logs
+//! and drops any other; it hands one connection's messages on one after
+//! another.
+//!
+//! When the state a service kept for a conversation ends without the service
+//! saying so, whoever sees it end says it in the service's place, and the
+//! plugin receives a `package_lost` request for the conversation: the runner
+//! sends it with the package when the service ends without releasing its
+//! conversations, as a crash does, and the backend sends it for every package
+//! when the runner starts anew (its hello names another instance than the
+//! device's last) or a Cloud stops. It goes to the plugin whose commands bind
+//! the package, when that plugin has panel tabs in a conversation that
+//! reaches the device, once for each such conversation: a plugin that shows
+//! nothing of a conversation has nothing to correct.
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;

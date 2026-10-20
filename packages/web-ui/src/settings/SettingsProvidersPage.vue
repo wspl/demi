@@ -149,8 +149,7 @@ const props = defineProps<{
   isExposed?: (deviceId: string, port: number) => boolean
   /**
    * The name of the user's device an endpoint names, when every user of the
-   * entry reaches it, as on a shared instance (`port-exposure.md` §
-   * Exposed ports, Whose); null for any other endpoint. Absent, none is.
+   * entry reaches it, as on a shared instance (`crates/backend-user-shard/src/shard/exposed_ports.rs`); null for any other endpoint. Absent, none is.
    */
   sharedDevice?: (endpoint: string) => string | null
 }>()

@@ -1,5 +1,5 @@
 //! The conversation's attachments, the files its messages sent and those
-//! the agent uploaded (`commands.md` § Attachment commands,
+//! the agent uploaded (`crates/backend-host-access/src/attachment_commands.rs`,
 //! `storage.md` § Conversation state and transactions): a sent file's
 //! bytes, and those `demi attachment upload` stores, are a blob of the conversation owner's
 //! namespace, and the conversation's `attachments` table holds one row per

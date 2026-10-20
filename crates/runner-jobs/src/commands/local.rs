@@ -1,5 +1,4 @@
-//! The runner's private local endpoint (`commands.md` § External command
-//! clients), which command aliases and the runner's management commands
+//! The runner's private local endpoint (`crates/runner-process/src/command_client.rs`), which command aliases and the runner's management commands
 //! reach.
 
 use demi_command_protocol::LocalInvocation;

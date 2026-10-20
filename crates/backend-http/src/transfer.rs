@@ -1,5 +1,4 @@
-//! The bytes of file transfers (`sessions-and-targets.md` § Host
-//! operations): the edge moves them while the user's shard holds the
+//! The bytes of file transfers (`crates/backend-host-access/src/access.rs`): the edge moves them while the user's shard holds the
 //! transfer's admission through its lease. A download's body is read as
 //! the user's browser takes it and is cut short, never ended, when the
 //! Host's read fails or the shard ends the transfer; a connection on which

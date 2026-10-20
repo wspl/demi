@@ -36,7 +36,7 @@ export interface LinkedCommit {
 }
 
 /**
- * The commit a link's target names (`edit-tracking.md` § Commits mode):
+ * The commit a link's target names (`packages/web-ui/src/files/history.ts`):
  * `commit:3f2a9c1`, its id or at least 7 of its first hex digits, or
  * `commit:src/v8@86229da`, the repository's folder before the last `@`;
  * null for any other target.

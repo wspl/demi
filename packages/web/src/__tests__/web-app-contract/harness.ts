@@ -168,8 +168,7 @@ async function launchBackend(root: string, socket: string): Promise<Backend> {
   const port = freePort()
   const origin = `http://127.0.0.1:${port}`
   // A server release with no command package to publish, whose record names
-  // an empty directory as its files (`native-runtime.md` § Backend
-  // deployment configuration).
+  // an empty directory as its files (`crates/backend-runners/src/publication.rs`).
   const release = join(root, 'release')
   const files = join(root, 'files')
   await mkdir(join(release, 'commands'), { recursive: true })

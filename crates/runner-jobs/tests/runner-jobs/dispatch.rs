@@ -255,7 +255,7 @@ async fn breaking_pipe() -> String {
 
 /// A relayed stdout that breaks after it opened ends the call with the
 /// backend's exit, 1 and the cause on stderr, which the backend sends once
-/// it sees the pipe fail (`commands.md` § Handle an rpc call). Before, the
+/// it sees the pipe fail (`crates/host-interface/src/rpc.rs`). Before, the
 /// call failed at once with the transport's own words, `error decoding
 /// response body`, and the cause never showed.
 #[tokio::test]
@@ -376,8 +376,7 @@ async fn slow_call_pipes(stdout: Vec<u8>, serving: tokio::sync::oneshot::Sender<
 
 /// A call's stdout reaches a process that reads it slowly whole, and the
 /// call exits with the backend's code, after its unused input's upload was
-/// refused as the backend refuses it once the call ended (`commands.md`
-/// § Handle an rpc call). Before, the refused upload gave the rest of the
+/// refused as the backend refuses it once the call ended (`crates/host-interface/src/rpc.rs`). Before, the refused upload gave the rest of the
 /// call 15 seconds: `demi image generate … > fox.png` to a slow disk was
 /// cut at a multiple of 64 KiB with `rpc call ended`. The clock is paused
 /// while the process reads nothing, so those seconds pass at once. Costs
@@ -481,7 +480,7 @@ fn command_context() -> CommandContext {
 /// program's install waits on a backend that never says where the program
 /// is: with `--json`, nothing, since its caller reads its standard error as
 /// one JSON document; without, that it installs, once the install has taken
-/// two seconds (`native-runtime.md` § Install artifacts). The run with
+/// two seconds (`crates/runner-command-packages/src/cache.rs`). The run with
 /// `--json` starts first, so its two seconds have passed when the other
 /// tells. Cost: in process, about two seconds.
 #[tokio::test]

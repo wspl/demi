@@ -1,6 +1,6 @@
 //! What the backend and a runner both apply to a page's work on a Host's
 //! files, so that the relay's routes and a direct channel answer alike
-//! (`direct-channel.md` § Operations on the channel): a listing's entries,
+//! (`crates/runner-protocol/src/direct.rs`): a listing's entries,
 //! the paths a delete keeps, how a failed file operation reads to the page,
 //! and the page's file watch: its messages, its limits and the
 //! subscriptions it holds on the Host for them.

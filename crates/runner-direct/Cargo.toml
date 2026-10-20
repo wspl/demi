@@ -19,7 +19,7 @@ bytes.workspace = true
 futures-util.workspace = true
 garde.workspace = true
 # The interfaces a runner offers its local network addresses on
-# (`direct-channel.md` § Making the channel): up, broadcast and
+# (`crates/runner-direct/src/lib.rs`): up, broadcast and
 # point-to-point, on every platform a runner runs on.
 if-addrs = "0.15"
 serde.workspace = true

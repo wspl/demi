@@ -34,7 +34,7 @@ export interface WorkToStop {
  * its subagents and its commands have all ended. A command counts as work
  * because its job holds the conversation's file gate until its runner says it
  * ended, and the backend moves no conversation while it is held
- * (`sessions-and-targets.md` § Switch the primary target). None either while
+ * (`crates/backend-host-access/src/transition.rs`). None either while
  * the backend says the agent only waits for the conversation's offline
  * device, `onlyWaitsForHost`: a move fails the commands that wait, which
  * never ran, and lets the agent go on on the new Host.

@@ -37,7 +37,7 @@ Claude Code release distribution. It assembles
 the command packages the workspace built into a server release of its Host's
 target, which the backend publishes into the local store of its data
 directory and serves to the runners
-([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
+(`crates/backend-runners/src/publication.rs`).
 It pairs real runner processes and owns cleanup. The runners are the real
 runner executable, which the test starts from the target directory it runs from
 ([Validation](builds-and-releases.md#validation)). The fakes come from the
@@ -113,7 +113,7 @@ common checks do not establish.
 | Long jobs | Status, stdin, abort, and background jobs retain attribution and do not leave orphan processes; observation timeout does not cancel work |
 | Subagents | Inherited execution target, completion events, and cross-host callbacks retain child identity |
 | Target exchange | Cloud/device/project changes update each node's context; files stay on their original device; same-device changes do not duplicate bindings |
-| Transitions | While a reset, target change, or archive holds a conversation, opening it, a message, a metadata change, and a Host operation wait and then proceed; a conversation that only has the Cloud attached keeps running through a Cloud reset ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)) |
+| Transitions | While a reset, target change, or archive holds a conversation, opening it, a message, a metadata change, and a Host operation wait and then proceed; a conversation that only has the Cloud attached keeps running through a Cloud reset (`crates/backend-cloud/src/uses.rs`) |
 | Concurrent conversations | cwd and job handles stay scoped while filesystem data is shared on the same machine |
 | Attachments | Provider requests receive authorized bytes; the upload answer carries the detected media type and, for a text file, its snippet; persisted references and blob reads enforce ownership |
 | Client disconnect | Backend work continues and the client can reattach to persisted results |
@@ -126,8 +126,8 @@ common checks do not establish.
 | Reset | Affected jobs end, retained home survives, and the selected system generation becomes authoritative without changing device/project identity |
 | Cross-host RPC and pipes | Valid callbacks use the invoking Host; unauthorized or mismatched job/node/device contexts fail; bulk bytes stream separately from bounded control views |
 
-Use [Commands](../execution/commands.md),
-[Sessions and targets](../execution/sessions-and-targets.md),
+Use Commands (`crates/command-declarations/src/lib.rs`),
+Sessions and targets (`crates/backend-host-access/src/lib.rs`),
 [Storage](../backend/storage.md), and
 [Managed hosts](../cloud/managed-hosts.md) as the authorities for behavior. A
 fixture must not define an alternative execution contract.

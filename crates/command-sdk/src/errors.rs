@@ -1,5 +1,5 @@
 //! A command's runtime error as GNU tools write it, `<command>: <object>:
-//! <reason>` (`commands.md` § Handle an rpc call).
+//! <reason>` (`crates/host-interface/src/rpc.rs`).
 
 use std::io;
 

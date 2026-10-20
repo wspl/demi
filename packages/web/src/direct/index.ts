@@ -1,9 +1,37 @@
 /**
- * The page's direct channels (`direct-channel.md`), one per paired device
- * it uses: the device's signaling socket and the choice of path to it,
- * while its runner is connected. A conversation's operations go to the
- * device its summary names as its Host, in the directory the summary
+ * The page's direct channels (`crates/runner-direct/src/lib.rs`), one per
+ * paired device it uses: the device's signaling socket and the choice of
+ * path to it, while its runner is connected. A conversation's operations go
+ * to the device its summary names as its Host, in the directory the summary
  * names, so they stop going to a device once the conversation moved.
+ *
+ * The page keeps one choice per device, `relay` or `direct`, from the
+ * device's route. Automatic makes a peer and chooses `direct` while it is
+ * connected and its last measurement found it no worse than the relay, since
+ * a connected peer is not always the better path: across networks the pair
+ * may run over a congested or lossy link. Prefer P2P is for a user who knows
+ * the direct path suits them, Relay Only for one whose network or policy
+ * makes the attempts unwelcome; it makes no peer.
+ *
+ * Each operation chooses as it starts and finishes there, while an open
+ * stream or watch reopens on the other path when the choice changes. A
+ * channel that closed before it opened while its peer stays connected says
+ * nothing about the path and is tried once more. Any other failure sets the
+ * choice to `relay` at once and the operation runs again there, a write once,
+ * since one that did not finish leaves the file as it was. While the choice
+ * is `relay`, the page makes a new peer when the browser's local network
+ * permission changes, when it comes back online, when the device's runner
+ * connects again, when its signaling socket reconnects, and otherwise after 1,
+ * 2, 5 and then every 10 minutes, one attempt at a time. The runners keep the
+ * same schedule in Rust (`crates/runner-protocol/src/forward.rs`): the two
+ * cannot share code, so both follow its numbers. The relay never closes
+ * because the direct channel opened.
+ *
+ * A page measures the two paths only when something reads the result (a
+ * peer connecting, the device's page becoming visible, the user asking), so
+ * an idle page sends nothing. Latency and loss decide the route; throughput
+ * is not measured, since a speed test would move megabytes through the
+ * user's server to show a figure nothing acts on.
  */
 import { effectScope, reactive, ref, watch } from 'vue'
 import { z } from 'zod'
@@ -75,7 +103,7 @@ export function watchDirect(deviceId: string): void {
     use(deviceId)
 }
 
-/** What Settings → Devices shows of the path to paired device `deviceId` (`direct-channel.md` § What the user sees). */
+/** What Settings → Devices shows of the path to paired device `deviceId` (`packages/web-ui/src/devices/direct.ts`). */
 export function directStatus(deviceId: string): DirectStatus {
   const product = useProduct()
   const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
@@ -143,7 +171,7 @@ function keepLastPath(deviceId: string, path: DevicePath): void {
 /**
  * Measures paired device `deviceId`'s paths once, starting its use while
  * its runner is connected, as its page shows or Measure asks
- * (`direct-channel.md` § Measuring the paths). A measurement that runs is
+ * (`packages/web/src/direct/measure.ts`). A measurement that runs is
  * joined.
  */
 export function measureDirect(deviceId: string): void {
@@ -246,7 +274,7 @@ let following = false
  * Follows, for the page's lifetime, from its start, what makes the page use
  * a device, try again or let it go: the conversation it shows, whose
  * device's peer is made as it shows, before any operation needs it
- * (`direct-channel.md` § Making the channel); a runner leaving or
+ * (`crates/runner-direct/src/lib.rs`); a runner leaving or
  * connecting again; the page coming back online; and the browser's local
  * network permission.
  */

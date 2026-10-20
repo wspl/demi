@@ -1,4 +1,4 @@
-//! Execution contexts (`native-runtime.md` § Command context): the live
+//! Execution contexts (`crates/command-protocol/src/invocation.rs`): the live
 //! authority a job's declared commands run under, and the manifest the
 //! connection installed. The connection owns its contexts; everything else
 //! looks them up in the snapshot it publishes.
@@ -25,7 +25,7 @@ pub struct ExecutionContext {
     pub id: String,
     pub job_id: String,
     /// What the backend told the job's declared commands
-    /// (`native-runtime.md` § Command context).
+    /// (`crates/command-protocol/src/invocation.rs`).
     pub command: CommandContext,
     pub manifest: Arc<Manifest>,
     pub cancel: CancellationToken,
@@ -232,8 +232,7 @@ impl Drop for ContextTable {
 pub type PackageLeases = BTreeMap<String, ServiceLease>;
 
 /// The manifests one connection installed, by hash, and those it is still
-/// installing; they end with the connection (`commands.md` § Dispatch the
-/// same declaration on each surface).
+/// installing; they end with the connection (`crates/runner-jobs/src/commands/mod.rs`).
 #[derive(Default)]
 pub struct Manifests {
     installed: HashMap<String, Arc<Manifest>>,
@@ -243,7 +242,7 @@ pub struct Manifests {
     installs: u64,
     /// For each package, the lease on the release that the latest manifest
     /// naming the package names, with that manifest's install number
-    /// (`native-runtime.md` § Keep a service resident): an older release's
+    /// (`crates/runner-command-packages/src/registry.rs`): an older release's
     /// service ends with the last job pinned to it.
     leases: HashMap<String, (u64, ServiceLease)>,
 }
@@ -351,8 +350,7 @@ impl PinnedManifest {
 }
 
 /// A manifest the connection installed, with the leases that keep its
-/// packages' services resident (`native-runtime.md` § Keep a service
-/// resident).
+/// packages' services resident (`crates/runner-command-packages/src/registry.rs`).
 pub struct Installed {
     pub manifest: Arc<Manifest>,
     pub leases: PackageLeases,

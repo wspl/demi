@@ -1,4 +1,4 @@
-//! `demi host expose` (`port-exposure.md` § From a conversation): lists,
+//! `demi host expose`: lists,
 //! adds and removes the ports of the user's devices that the backend's
 //! requests for the user may reach. `list` needs no permission; `add` and
 //! `remove` need Manage Exposed Ports (`host.expose`).

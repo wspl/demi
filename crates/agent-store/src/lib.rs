@@ -230,8 +230,7 @@ pub trait AgentTreeStore {
 
     /// The commands `node` ran that the conversation records running
     /// (`storage.md` § Command outputs), which the node takes up again when
-    /// it is restored (`sessions-and-targets.md` § Recovery and
-    /// persistence).
+    /// it is restored (`crates/backend-remote-host/src/device_jobs.rs`).
     fn running_commands<'a>(
         &'a self,
         node: &'a NodeId,
@@ -281,7 +280,7 @@ pub struct RunningCommand {
     pub started: Timestamp,
     pub place: Seen,
     /// What it starts once its Host is back, while its start waits for it
-    /// and was never sent (`sessions-and-targets.md` § Host operations).
+    /// and was never sent (`crates/backend-host-access/src/access.rs`).
     pub unsent: Option<UnsentStart>,
 }
 

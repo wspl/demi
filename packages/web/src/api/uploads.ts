@@ -20,7 +20,7 @@ function sentMediaType(file: File): string {
 
 /**
  * How long an upload may go without a byte moving before it fails, the
- * backend's own stall rule (`sessions-and-targets.md` § Host operations).
+ * backend's own stall rule (`crates/backend-host-access/src/access.rs`).
  */
 const UPLOAD_STALL_MS = 60_000
 

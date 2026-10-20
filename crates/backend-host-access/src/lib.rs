@@ -1,13 +1,56 @@
-//! The conversation's host access (`sessions-and-targets.md` § Host
-//! operations): the one way to a conversation's primary or attached Host, with
-//! target resolution and the transitions that end a target (switch, archive,
-//! detach); file transfers, uploads, remote files, user streams and the
-//! file watch; the shell environments of the agent's nodes over it; and the product's
-//! `demi host` and `demi attachment` groups.
+//! The conversation's host access: the one way to a conversation's primary or
+//! attached Host, with target resolution and the transitions that end a
+//! target (switch, archive, detach); file transfers, uploads, remote files,
+//! user streams and the file watch; the shell environments of the agent's
+//! nodes over it; and the product's `demi host` and `demi attachment` groups.
 //!
 //! Host access's operations are methods of `dyn HostShard`, what host access
 //! needs of its user's shard (`concurrency.md` § The user shard), which the
 //! shard implements.
+//!
+//! Everything that reaches a conversation's Host on the conversation's behalf
+//! goes through it, whether the agent resolves its Host for a tool call or
+//! the backend writes an attachment, lists the working tree or reads a file
+//! for the web app. For every kind of target it resolves the target, refuses
+//! an archived conversation, wakes a stopped Cloud and holds it for the
+//! operation, and takes the conversation's file gate so the operation
+//! excludes an archive or a target switch. A plugin never writes to a Host:
+//! the Host directories its user needs are installed by a job's own
+//! admission, and its reads of a conversation's files never wake the Host.
+//! Any other change to wake or gate behavior is decided here, not introduced
+//! as a bypass.
+//!
+//! These are every way to a Host; the last three touch no conversation's files:
+//!
+//! ```text
+//! way                    takes                       a stopped Cloud
+//! ---------------------  --------------------------  -------------------
+//! conversation access    file gate, Cloud admission  woken; reset waited
+//! stream admission       file gate while admitting   not woken
+//! lifecycle access       nothing (a runner message)  not woken
+//! device access          nothing; caller owns it     not woken
+//! machine access         the machine's admission     woken; reset waited
+//! ```
+//!
+//! Stream admission serves user streams, one-shot user calls that must not
+//! wake the Host and a plugin's reads of a conversation's files; lifecycle
+//! access is the conversation release, which a stopped Cloud hears after its
+//! next wake. Device access is the owner's work on a device whose runner is
+//! connected (a direct channel, the device log, browsing directories to
+//! choose a target, a port forward's listener): it takes no file gate and
+//! checks no conversation's binding, so a transition does not wait for it, and
+//! it never wakes a Cloud, since a log is read when its Host runs again and
+//! showing a version is no reason to wake one. Machine access is for work that
+//! needs the machine itself, such as creating a Cloud project's directory or a
+//! provider's process on the Claude Code machine.
+//!
+//! The state this protects lives in the user's shard because one shard holds
+//! all of a user's conversations, devices and Cloud: the file gates, the
+//! admission of transfers and streams, and the transitions that end them. The
+//! edge moves the bytes of transfers and user streams; admitting them is the
+//! shard's. A runner connection makes a conversation's Host handle only
+//! against a lease of that conversation's file gate, which only host access
+//! takes, so no other code can make one.
 
 pub mod access;
 pub mod attachment_commands;
@@ -104,8 +147,7 @@ pub trait HostShard {
     /// attachment.
     fn summary_changed(&self, conversation: &ConversationId);
     /// Makes the conversation's pending changes, a move or a detach an agent
-    /// asked for, once its tree is next idle (`sessions-and-targets.md`
-    /// § Switch the primary target).
+    /// asked for, once its tree is next idle (`crates/backend-host-access/src/transition.rs`).
     fn settle_when_idle(&self, conversation: &ConversationId);
     /// The user's port forwards, as `demi host forward list` names them.
     fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>>;

@@ -1,5 +1,4 @@
-//! Subagents through a conversation (`sessions-and-targets.md`
-//! § Host operations, § Switch the primary target, `conversation-fork.md`):
+//! Subagents through a conversation (`crates/backend-host-access/src/access.rs`, `crates/backend-host-access/src/transition.rs`, `conversation-fork.md`):
 //! the root and its child each learn the Host they work on before their
 //! first request, once; a child works on the
 //! conversation's Host in its parent's files, keeps its own identity even

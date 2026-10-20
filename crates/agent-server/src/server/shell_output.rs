@@ -47,8 +47,7 @@ use crate::AgentServer;
 /// The characters of one line a page shows.
 const LINE_CHARS: usize = 2_000;
 
-/// The exit status of a call the runner cancelled (`commands.md` § Handle
-/// an `rpc` call); its relay ends it with the cause all the same.
+/// The exit status of a call the runner cancelled; its relay ends it with the cause all the same.
 const CANCELLED: u8 = 130;
 
 /// The size of the writes `--raw` makes.

@@ -51,8 +51,7 @@ use tokio_util::sync::CancellationToken;
 pub struct Options {
     pub backend: Backend,
     pub directory: PathBuf,
-    /// The artifact cache (`native-runtime.md` § Install
-    /// artifacts).
+    /// The artifact cache (`crates/runner-command-packages/src/cache.rs`).
     pub artifacts: PathBuf,
     /// The Host's log, which `main` opened (`crates/runner/src/host_log.rs`).
     pub log: HostLogReader,

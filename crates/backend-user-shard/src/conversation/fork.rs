@@ -184,7 +184,7 @@ impl Shard {
                 .await?;
         }
         // The attachments its messages name are its too, with the blobs
-        // shared (`commands.md` § Attachment commands). They are read before
+        // shared (`crates/backend-host-access/src/attachment_commands.rs`). They are read before
         // the sequences, so every number copied lies below the next one.
         // The source's root uploaded what the destination's root, which
         // holds its history, did: its replies show them still; another

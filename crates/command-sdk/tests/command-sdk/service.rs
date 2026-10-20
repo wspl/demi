@@ -229,7 +229,7 @@ async fn answer_early(io: tokio::io::DuplexStream) {
 }
 
 /// A service may answer before it has the whole request and then reset it
-/// with NO_ERROR (`native-runtime.md` § Request body and input demand): a
+/// with NO_ERROR (`crates/command-protocol/src/lib.rs`): a
 /// conversation release it answered succeeds, and an input chunk written
 /// after its answer is dropped without an error.
 #[tokio::test]

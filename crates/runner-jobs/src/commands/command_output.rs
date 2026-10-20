@@ -1,7 +1,5 @@
-//! Invocation output with bounded JSON capture when the caller passes `--json`
-//! (`commands.md` § Deliver IO and release an invocation), and the media a
-//! command returns, which go to its job whatever its stdout is
-//! (`commands.md` § Return media).
+//! Invocation output with bounded JSON capture when the caller passes `--json`, and the media a
+//! command returns, which go to its job whatever its stdout is.
 
 use std::sync::Arc;
 
@@ -135,7 +133,7 @@ enum OutputError {
     Invalid(String),
 }
 
-/// Why a command's medium failed it (`commands.md` § Return media).
+/// Why a command's medium failed it.
 #[derive(Debug, thiserror::Error)]
 enum MediaFailure {
     #[error("returned a medium, but its declaration does not say it returns media")]

@@ -165,8 +165,7 @@ async fn a_pipe_request_whose_connection_fails_unanswered_goes_again_on_a_new_on
 }
 
 /// A download its caller cancels partway stops, writes nothing to its
-/// output and leaves no staging file behind (`native-runtime.md`
-/// § Downloads): the transfer it served is gone, and a later one is given a
+/// output and leaves no staging file behind (`crates/shared-artifacts/src/download.rs`): the transfer it served is gone, and a later one is given a
 /// new offer. Planted defect this catches: a cancelled download that keeps
 /// its partial staging file. A local server that sends the first half and
 /// then waits; milliseconds.

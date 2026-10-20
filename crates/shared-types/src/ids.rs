@@ -197,8 +197,7 @@ pub enum Sequence {
     /// Subagents, from 1; the root is agent 0.
     Agent,
     /// Conversation browser tabs, from 1: `t7`. The `demi.browser` service
-    /// reserves them a few at a time (`native-runtime.md` § Conversation
-    /// numbers).
+    /// reserves them a few at a time (`crates/command-protocol/src/numbers.rs`).
     Tab,
     /// Simulators `demi mobile` opens, from 1: `m2`. The `demi.mobile`
     /// service reserves them as it opens devices
@@ -206,7 +205,7 @@ pub enum Sequence {
     Device,
     /// The conversation's attachments, from 1: `a3`. Each file a message
     /// sends and each one `demi attachment upload` stores takes one
-    /// (`commands.md` § Attachment commands).
+    /// (`crates/backend-host-access/src/attachment_commands.rs`).
     Attachment,
 }
 

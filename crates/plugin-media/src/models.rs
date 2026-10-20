@@ -2,7 +2,7 @@
 //! told): the models of the plugin's kind as a table, newest first, or one
 //! model as labelled lines with its prices and its entries as tables
 //! under their keys, and all of it as JSON with `--json`
-//! (`commands.md` § Output). Notes, such as an entry whose models could
+//! (`crates/shared-types/src/output.rs`). Notes, such as an entry whose models could
 //! not be listed, go to stderr.
 
 use demi_host_interface::RpcInvocation;

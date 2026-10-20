@@ -663,7 +663,7 @@ impl ShardPool {
         }
         shared.assembly.set_machine(Arc::new(machine));
         // A provider entry's request to one of its owner's devices goes
-        // through the owner's shard (`port-exposure.md`).
+        // through the owner's shard (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
         shared.assembly.set_devices(exposed_ports::DeviceRequests::new(shards.clone()));
         Ok(Self { shards, workers })
     }

@@ -52,7 +52,7 @@ import type { ExposedPortChange, SettingsExposedPort } from './exposed-ports'
 import type { SettingsDevice } from './types'
 
 /**
- * A device's own page (`direct-channel.md` § What the user sees), which its
+ * A device's own page (`packages/web-ui/src/devices/direct.ts`), which its
  * row in Devices opens. Its header names the device and its state, and an
  * offline device's header gives the command that starts its runner.
  * Connection is one group of rows, as macOS's Wi-Fi settings lay it out:

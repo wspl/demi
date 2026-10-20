@@ -269,8 +269,7 @@ impl ScriptedManager {
         std::fs::read_to_string(self.state(device).join("log/host.log")).unwrap_or_default()
     }
 
-    /// The device's runner's artifact cache (`native-runtime.md` § The
-    /// cache): in its state, unless the script names one.
+    /// The device's runner's artifact cache (`crates/runner-command-packages/src/cache.rs`): in its state, unless the script names one.
     pub fn artifacts(&self, device: &str) -> std::path::PathBuf {
         let state = self.shared.lock();
         match &state.script.artifacts {

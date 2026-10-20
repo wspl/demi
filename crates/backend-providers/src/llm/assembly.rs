@@ -113,7 +113,7 @@ pub struct ProviderAssembly {
     /// The media catalog, whose time each entry's media carry.
     media: MediaCatalog,
     /// The way to the users' devices, set once the backend's shards
-    /// started, which hold their connections (`port-exposure.md`).
+    /// started, which hold their connections (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
     devices: OnceLock<Arc<dyn DeviceRoute>>,
 }
 
@@ -163,8 +163,7 @@ impl ProviderAssembly {
 
     /// The client `entry`'s requests go through on `client`, the shard's or
     /// the shared services': an address naming one of the entry owner's
-    /// devices reaches that device's exposed port (`port-exposure.md`
-    /// § Exposed ports).
+    /// devices reaches that device's exposed port (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
     pub fn http_for(&self, entry: &ProviderEntry, client: reqwest::Client) -> ProviderHttp {
         self.http_of(Some(entry.owner.as_str()), client)
     }

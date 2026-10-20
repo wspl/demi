@@ -1,5 +1,4 @@
-//! The root command names a command set refuses (`commands.md` § Declare a
-//! command): a root with one of them would shadow the shell's own words, the
+//! The root command names a command set refuses (`crates/command-declarations/src/lib.rs`): a root with one of them would shadow the shell's own words, the
 //! builtins every shell provides, or a program a script expects to find.
 
 /// Every reserved root name: shell words and builtins, the usual Unix tools,

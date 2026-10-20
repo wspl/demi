@@ -2,7 +2,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { expect, test } from 'bun:test'
 
 // A commit link opened in a folder outside any Git repository
-// (`edit-tracking.md` § Commits mode): the Change view says Not a Git
+// (`packages/web-ui/src/files/history.ts`): the Change view says Not a Git
 // repository, without Retry, whichever read answers first, the commit's
 // or the working tree's list, and keeps saying it when the list then fails.
 // ChangeView over the kept history, on a page of happy-dom; tens of ms.

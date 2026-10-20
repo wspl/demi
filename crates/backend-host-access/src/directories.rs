@@ -1,5 +1,4 @@
-//! A directory as its Host names it (`sessions-and-targets.md` § Resolve a
-//! target): every move asks the destination's Host, which follows links,
+//! A directory as its Host names it (`crates/backend-database/src/selection.rs`): every move asks the destination's Host, which follows links,
 //! drops a trailing separator and spells the directory as its file system
 //! keeps it, so two spellings of one directory select the one project, and
 //! a home reached through a link is the home.

@@ -1,6 +1,6 @@
 /**
  * A device's signaling socket: the page's introduction to the device's runner, for both of the page's
- * peers with it, `files` and `live` (`direct-channel.md` § Making the channel), each message naming its
+ * peers with it, `files` and `live` (`crates/runner-direct/src/lib.rs`), each message naming its
  * peer. It carries one offer at a time for each peer and its answer, each side's candidates found after
  * them, and the page's probes of the relay path with their answers; a socket that brings nothing, not
  * even a heartbeat, for as long as the page's sockets may is broken, and a closed or broken socket

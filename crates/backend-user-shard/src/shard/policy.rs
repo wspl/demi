@@ -1,13 +1,28 @@
-//! The backend's rules for the calls a runner connection relays
-//! (`sessions-and-targets.md` § Bind jobs to their caller): a call runs only
-//! for a live job on the connection whose command context names the
+//! The backend's rules for the calls a runner connection relays: a call runs
+//! only for a live job on the connection whose command context names the
 //! conversation of the Host that started it, and it reaches that job's agent
 //! node's commands. A native service's conversation numbers come only from a
-//! conversation of the user that reaches the device (`native-runtime.md`
-//! § Conversation numbers), a direct stream counts as the activity of such
-//! a conversation only (`direct-channel.md` § Operations on the channel),
-//! and a service's message reaches its plugin only about such a
-//! conversation (`native-runtime.md` § Messages to the plugin).
+//! conversation of the user that reaches the device
+//! (`crates/command-protocol/src/numbers.rs`), a direct stream counts as the
+//! activity of such a conversation only, and a service's message reaches its
+//! plugin only about such a conversation
+//! (`crates/command-protocol/src/messages.rs`).
+//!
+//! The backend registers a job before sending it. Its live record binds the
+//! device, the shell, the invoking Host, the command context's conversation
+//! and the agent node, and these stay fixed for the job even when another
+//! shell starts or another conversation uses the same device: node `a1`'s job
+//! on the primary laptop and its job on attached `ci` each call back for `a1`,
+//! each with its own invoking Host. A callback supplies only its job
+//! reference; the backend checks the authenticated device connection and the
+//! live job record, gives the handler the command context from that record
+//! and validates the arguments. An unknown, completed or disconnected job
+//! cannot invoke a callback, and a device token never authorizes another
+//! user's jobs. A job that runs on another Host carries its originating job's
+//! context, and its pipes stay bound to the participating device endpoints.
+//! The callback is authorized here, where the backend holds the device's
+//! runner connection, in the owner's shard, rather than delegated to the
+//! generic Host adapter, which knows no user policy.
 
 use std::rc::{Rc, Weak};
 

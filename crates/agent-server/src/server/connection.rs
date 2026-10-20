@@ -460,8 +460,7 @@ impl<H: HostResolver> Connection<H> {
                 let result = session.abort().await;
                 // Every command of the conversation whose start waits for
                 // its Host ends and never runs, whichever turn left it,
-                // though started commands run on (`sessions-and-targets.md`
-                // § Host operations).
+                // though started commands run on (`crates/backend-host-access/src/access.rs`).
                 tree.stop_waiting().await;
                 self.send(ServerFrame::AbortResult { result });
             }

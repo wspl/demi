@@ -104,7 +104,7 @@ database when its conversation is next opened, so a start does not wait for
 every conversation a server ever had. For example, transcript block format 3
 gave each block of a run its `run` and each shell call's view its
 `runFiles` and `requestFiles`
-([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows)):
+(`crates/agent-store/src/changes.rs`):
 its migration walks the conversation's stored blocks in order and computes
 them from the edit copies already in the blob store, by the same code that
 computes them for a new block, so a conversation stored before shows what a
@@ -176,15 +176,15 @@ input, which the multi-worker control service also relies on
 - **Personal instructions:** `user_instructions` stores the
   [personal instructions](../agent/instructions.md#personal-instructions) of
   each user who has any: user and text. Saving an empty text deletes the row.
-- **Devices and workspaces:** `port_forwards` stores each forward of a user: its name, its Listen On device and port, its Connect To device and address, and whether it is on ([Port forwarding](../execution/port-forwarding.md)). `devices` stores ownership, kind, name, the
+- **Devices and workspaces:** `port_forwards` stores each forward of a user: its name, its Listen On device and port, its Connect To device and address, and whether it is on (`crates/backend-user-shard/src/shard/port_forwards.rs`). `devices` stores ownership, kind, name, the
   home its runner last reported,
   platform, the operating system (with a Linux distribution's os-release `ID`) and architecture and the runner release its runner last reported, the device's
   `crates/backend-database/src/selection.rs` number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
-  holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)),
+  holds (`crates/runner-command-packages/src/cache.rs`),
   the instance its runner last said hello with, so a restarted backend tells
   a runner that kept its jobs from one that started anew
-  ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
+  (`crates/backend-remote-host/src/device_jobs.rs`),
   and for a Cloud the time its current boot completed, which a backend that
   takes a running Cloud over counts its lifetime cap from.
   The token hash is unique, so a runner's token finds its device
@@ -209,7 +209,7 @@ input, which the multi-worker control service also relies on
   compares and sets these columns, so it commits only against the selection it
   expected. They are not foreign keys: a conversation that targets a device
   directly does not block revoking that device. A
-  [pending move](../execution/sessions-and-targets.md#switch-the-primary-target)
+  pending move (`crates/backend-host-access/src/transition.rs`)
   is the same typed columns again, prefixed `pending_`, with its id, all
   null while none waits; making the move clears them in the switch's
   transaction, so a move a restart interrupted is made at the next start,
@@ -253,7 +253,7 @@ input, which the multi-worker control service also relies on
   when it was granted, one row per conversation and category.
   `reachable_hosts` stores the hosts each conversation may reach beyond its
   primary Host, one row per conversation and device
-  ([Hosts a conversation may reach](../execution/sessions-and-targets.md#hosts-a-conversation-may-reach)),
+  (`crates/backend-database/src/conversation_index.rs`),
   and `pairing_passes` each pairing code the user allowed a conversation to
   pair, deleted when a `demi host pair` uses it. Allow writes
   the grants, the host or the pass, and decides the requests they complete in one
@@ -351,12 +351,12 @@ Subagents (`crates/agent-store/src/lib.rs`).
 | Table | Meaning |
 |---|---|
 | `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added (`crates/agent-store/src/lib.rs`), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
-| `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs, simulators `demi mobile` opens and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
+| `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs, simulators `demi mobile` opens and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several (`crates/command-protocol/src/numbers.rs`), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command (`crates/backend-http/src/history.rs`) |
 | `block_attachments` | Each attachment a block's text delivers as an attachment block (`packages/web-ui/src/markdown/attachment-block.ts`), by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
 | `block_blobs` | Each blob a block names, by node and block index and by blob, written with the block in the same checkpoint, so what names a blob is found without reading a block: a share's check of a blob and the collection of the user's namespace read it |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
-| `attachments` | Each attachment of the conversation, by its number: the file's name, its media type, its size, its blob, and the agent that uploaded it, by its node, a side question's included, null for a file the user sent or uploaded themselves ([Attachment commands](../execution/commands.md#attachment-commands)); a Fork's seed copies the rows, uploader included, and the blobs stay shared. A row from before the uploader was kept, that is an agent's upload and not a file a user message holds, takes the first agent whose text delivers it as a block, or the root when none does, so a reply that showed it still does; a file a user message holds stays the user's, from whichever release the conversation comes |
+| `attachments` | Each attachment of the conversation, by its number: the file's name, its media type, its size, its blob, and the agent that uploaded it, by its node, a side question's included, null for a file the user sent or uploaded themselves (`crates/backend-host-access/src/attachment_commands.rs`); a Fork's seed copies the rows, uploader included, and the blobs stay shared. A row from before the uploader was kept, that is an agent's upload and not a file a user message holds, takes the first agent whose text delivers it as a block, or the root when none does, so a reply that showed it still does; a file a user message holds stays the user's, from whichever release the conversation comes |
 | `share_entries`, `share_blocks`, `share_blobs`, `share_attachments` | Each share's list, by share and position: a message or text it shows, the root's transcript row it reads or a copy, or a count of steps not shared; the copies of texts still being written when it was made, and in `share_blobs` the blobs they name; a blob is the share's when a block on its list names it in `block_blobs` or in its copies; and each attachment its text names that existed then, by number (`crates/backend-database/src/shares.rs`) |
 
 For example, saving a streamed assistant block updates that block's row and
@@ -420,7 +420,7 @@ fitting changed ([Images in the transcript](../agent/transcript.md#images-in-the
 by the conversation socket as it resolves the message, a tool's medium by
 the session, through its tree store, before the tool's result enters the
 transcript, and an edit copy by the backend when its command ends
-([Edit copies](../execution/edit-tracking.md#edit-copies)). A session reads back, through the same store, only the media its
+(`crates/agent-store/src/media.rs`). A session reads back, through the same store, only the media its
 provider requests send, and cold history for the web app reads none. The agent
 defines these rules, including what a missing blob becomes
 ([Media](../agent/transcript.md#media)); the backend decides where the bytes go.
@@ -475,7 +475,7 @@ starts and deleted with the command's end. A runner's hello names its jobs,
 and the table says which conversation each belongs to, so a backend that
 starts again takes the commands up when their runners connect, and restores
 a conversation's tree when one of its commands reports
-([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence));
+(`crates/backend-remote-host/src/device_jobs.rs`);
 a command whose runner lost it ends as lost, with its reason, in
 `command_outputs`.
 
@@ -495,7 +495,7 @@ native/releases/<version>.json         what a server release names: its package 
 `DEMI_STORAGE` chooses where the store lives, and the two choices are
 equal: the same keys, the same rules for creating and reading an object, and
 the same publication of the command packages
-([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
+(`crates/backend-runners/src/publication.rs`).
 
 | `DEMI_STORAGE` | The store | How a runner downloads a command artifact |
 | --- | --- | --- |

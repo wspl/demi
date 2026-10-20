@@ -104,7 +104,7 @@ function blobText(blob: string): Promise<string> {
 
 /**
  * Reads both sides of a tool call's edit from the blob route, by the blobs
- * its view names (`edit-tracking.md` § Edit copies), without the Host; null
+ * its view names (`crates/agent-store/src/media.rs`), without the Host; null
  * when the user's namespace no longer holds one of them. The copies are
  * text, since only text is stored. The read itself is shared and kept, so
  * `signal` only stops this caller's wait.

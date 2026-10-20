@@ -1,4 +1,4 @@
-//! Port forwards between the user's Hosts (`port-forwarding.md`): what the
+//! Port forwards between the user's Hosts (`crates/backend-user-shard/src/shard/port_forwards.rs`): what the
 //! backend tells each runner of the forwards it is an end of, what the
 //! Listen On runner announces of each, and a forwarded connection's channel
 //! when two runners talk directly.
@@ -11,15 +11,15 @@ use serde::{Deserialize, Serialize};
 
 /// How long a forwarded connection's target has to accept it, and its two
 /// relay pipes to both open, before the connection is closed as a refused
-/// one is (`port-forwarding.md` § A port forward).
+/// one is (`crates/backend-user-shard/src/shard/port_forwards.rs`).
 pub const DEADLINE: Duration = Duration::from_secs(10);
 /// How long a pair's peer stays once the last connection between the pair
-/// ended (`port-forwarding.md` § The path of a connection).
+/// ended (`crates/runner-direct/src/pairs.rs`).
 pub const PEER_IDLE: Duration = Duration::from_secs(60);
 
 /// The waits before each new attempt at a direct peer while a pair is on
 /// the relay: 1, 2 and 5 minutes, then every 10, as the page's
-/// (`direct-channel.md` § Choosing the path).
+/// (`packages/web/src/direct/index.ts`).
 pub const RETRY_WAITS: [Duration; 4] = [
     Duration::from_secs(60),
     Duration::from_secs(2 * 60),
@@ -77,7 +77,7 @@ pub enum ForwardRunState {
 
 /// Why a pair of runners talks through the relay although it may talk
 /// directly: the direct channel's reasons that two runners can meet
-/// (`direct-channel.md` § What the user sees), the Listen On runner on the
+/// (`packages/web-ui/src/devices/direct.ts`), the Listen On runner on the
 /// page's side and the Connect To runner on the device's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
@@ -116,8 +116,7 @@ pub enum ForwardHeader {
     },
 }
 
-/// A credit on a channel that grants it (`port-forwarding.md` § Flow
-/// control): the receiver lets the sender send `grant` bytes more.
+/// A credit on a channel that grants it (`crates/runner-direct/src/channel.rs`): the receiver lets the sender send `grant` bytes more.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Grant {

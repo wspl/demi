@@ -1,8 +1,8 @@
 //! The public installation routes: the runner installers for the backend's
 //! current runner release, the runner executables of each release its server
 //! release's `runners/` names, sourced into the object store on their first
-//! download (`native-runtime.md` § Runner releases), and a local store's
-//! command executables (§ Backend deployment configuration). None holds a
+//! download, and a local store's
+//! command executables (`crates/backend-runners/src/publication.rs`). None holds a
 //! credential; pairing grants device access. Without runner releases, the
 //! installers answer 503 and the runner executables 404.
 
@@ -137,8 +137,7 @@ fn request_origin(https: bool, headers: &HeaderMap) -> Result<Url, ApiError> {
 }
 
 /// A release's executable for one target, immutable once published: the
-/// backend's own release's, or the next one's an upgrade announced
-/// (`native-runtime.md` § Runner releases). The compressed copy answers a
+/// backend's own release's, or the next one's an upgrade announced. The compressed copy answers a
 /// Range request from a byte on with 206, and what it serves a paired
 /// device whose token the request carries counts as that device's
 /// download (`crates/runner/src/update.rs`).
@@ -253,8 +252,7 @@ async fn counted(state: &AppState, device: Option<DeviceRecord>, stored: Stored)
 
 /// A local store's command executable, by its SHA-256, as S3 would serve
 /// it: its compressed copy, in zstd, from a byte on for a Range request, as
-/// a download that broke off resumes (`native-runtime.md` § Install
-/// artifacts). Only one of the catalog's that a runner's need put in the
+/// a download that broke off resumes (`crates/runner-command-packages/src/cache.rs`). Only one of the catalog's that a runner's need put in the
 /// store; any other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
@@ -302,8 +300,7 @@ enum Form {
     Coded,
     /// The compressed file itself, a `.zst` the client keeps as it is: it
     /// declares no content coding, which a proxy in front, such as
-    /// Cloudflare, would decode for a client that does not accept it
-    /// (`native-runtime.md` § Runner releases).
+    /// Cloudflare, would decode for a client that does not accept it.
     Compressed,
 }
 

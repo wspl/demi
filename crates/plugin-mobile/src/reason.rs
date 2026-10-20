@@ -36,8 +36,7 @@ pub enum PanelReason {
     CaptureUnavailable,
     InputFailed,
     NoFocusedField,
-    // The conversation's host access (`sessions-and-targets.md` § Host
-    // operations).
+    // The conversation's host access (`crates/backend-host-access/src/access.rs`).
     ConversationNotFound,
     ConversationArchived,
     ConversationBusy,

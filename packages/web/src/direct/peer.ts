@@ -1,12 +1,20 @@
 /**
- * The page's peer of a direct channel (`direct-channel.md` § Making the
- * channel): an `RTCPeerConnection` with the STUN servers the backend names,
+ * The page's peer of a direct channel (`crates/runner-direct/src/lib.rs`): an
+ * `RTCPeerConnection` with the STUN servers the backend names,
  * whose offer goes at once; its candidates follow as the browser finds them,
  * the public one once a STUN server answers, and the runner's come the
  * other way. Each attempt records what it saw, for the device's page. Each
  * operation opens a data channel of its own, reliable and ordered but a live
  * view's `video`, which is unordered; its first message is the header, the
- * runner's first the answer (§ Operations on the channel).
+ * runner's first the answer. The page waits up to 10 seconds for the
+ * connection, as the runner does for its end.
+ *
+ * A data channel has no traffic of its own when nothing happens, so each
+ * long-lived operation keeps the heartbeat it has on the relay (the live
+ * view's module, the file watch), which the page treats as it treats the
+ * relay's sockets. WebRTC's own consent checks end a peer whose other end is
+ * gone within about 30 seconds; the page sets the choice to `relay` as soon
+ * as the connection state is `failed` or `closed`.
  */
 import { z } from 'zod'
 import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_PROBE_LABEL, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'
@@ -27,8 +35,7 @@ export class ChannelFailed extends Error {
 /**
  * A channel closed before it opened while its connection stood, as one
  * whose opening the runner could not acknowledge does: it says nothing about
- * the path, so the operation tries a new channel once (`direct-channel.md`
- * § Choosing the path). A second one is a failure like any other.
+ * the path, so the operation tries a new channel once (`packages/web/src/direct/index.ts`). A second one is a failure like any other.
  */
 class ChannelNeverOpened extends ChannelFailed {
   constructor() {
@@ -278,7 +285,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
  * The channels a peer makes before its offer, which so carries the data
  * channels' section, and which open with the connection: the peer is ready
  * once the first is open. The `files` peer's is the probe channel, which
- * measures the direct path (`direct-channel.md` § Measuring the paths): a
+ * measures the direct path (`packages/web/src/direct/measure.ts`): a
  * probe lost stays lost, as a video packet would, and a measurement starts
  * as the peer connects, since a probe sent before would be counted lost.
  * The `live` peer has no probe channel; its first is the `video` channel of

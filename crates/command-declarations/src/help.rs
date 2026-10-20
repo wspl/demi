@@ -1,5 +1,5 @@
 //! Help rendering: the text `--help` prints for a group or a command, and
-//! the model's capability index (`commands.md` § Help, `system-prompt.md`
+//! the model's capability index (`system-prompt.md`
 //! § Capability index).
 
 use serde_json::Value;
@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 
 /// The paragraph the capability index opens with: what every command does
-/// unless its own help says otherwise (`commands.md` § Help).
+/// unless its own help says otherwise.
 pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints its data on stdout, a list as a table under a header row and one object as Key: value lines, and --json, where usage offers it, prints the same as JSON; warnings and errors go to stderr, and a failure exits 1, a usage error 2. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. Read text with the standard tools; file view alone shows you an image, a video or a PDF, from a file or a pipe.";
 
 /// The paragraph after [`HELP_DEFAULTS`] that introduces the groups'
@@ -148,7 +148,7 @@ impl<B> Leaf<B> {
 
 impl<B> Node<B> {
     /// The help of this node, as command-line programs print it
-    /// (`commands.md` § Output): `Usage:` first, then what it does, then a
+    /// (`crates/shared-types/src/output.rs`): `Usage:` first, then what it does, then a
     /// group's commands or a command's arguments, options and stdin; `path`
     /// is the command line that names this node.
     pub fn help(&self, path: &str) -> String {

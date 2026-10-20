@@ -1,5 +1,4 @@
-//! Command output as every `demi` command prints it (`commands.md`
-//! § Output): tables aligned by terminal width, missing values, exact
+//! Command output as every `demi` command prints it (`crates/shared-types/src/output.rs`): tables aligned by terminal width, missing values, exact
 //! numbers, labelled lines with nested tables and free text.
 
 use demi_shared_types::{

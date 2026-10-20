@@ -1,5 +1,4 @@
-//! Each agent node's Host and shell environments (`sessions-and-targets.md`
-//! § Host operations, `commands.md` § Handle an rpc call). A node's Host is
+//! Each agent node's Host and shell environments (`crates/backend-host-access/src/access.rs`, `crates/host-interface/src/rpc.rs`). A node's Host is
 //! the conversation's current primary Host, which the host access admits and
 //! lets go at once. A node's environment on it is backend-remote-host's: each of its
 //! jobs runs inside the conversation's host access and is refused once the
@@ -62,7 +61,7 @@ impl dyn HostShard + '_ {
     /// `host` is not the Host the conversation reaches on that device, as
     /// after a target switch. While the conversation's primary Host is a
     /// paired device without a live runner, the job waits for it as `wait`
-    /// says (`sessions-and-targets.md` § Host operations).
+    /// says (`crates/backend-host-access/src/access.rs`).
     pub async fn run_job(
         &self,
         id: &ConversationId,
@@ -251,7 +250,7 @@ impl ShowWait for Shown<'_> {
 
 /// Keeps what each job's commands leave when they end, before they read as
 /// ended, as blobs of the conversation owner's: the copies of their edits
-/// (`edit-tracking.md` § Edit copies), read from the job's Host inside its
+/// (`crates/agent-store/src/media.rs`), read from the job's Host inside its
 /// host access, and their whole outputs, each with its record in the
 /// conversation's database (`storage.md` § Command outputs).
 struct Keeper {
@@ -331,7 +330,7 @@ impl Keeper {
 }
 
 /// The Host's copies the edit segments of `files` name, each read once with
-/// one request (`edit-tracking.md` § Edit copies): each copy's text, when it
+/// one request (`crates/agent-store/src/media.rs`): each copy's text, when it
 /// is text within the edit limits, or why it is not stored. The runner
 /// keeps no copy that is not.
 async fn read_copies(
@@ -529,8 +528,7 @@ struct Registered {
 
 impl ShellEnvironment for Registered {
     /// Starts the command; a job whose Host is the conversation's offline
-    /// device waits for it in its admission (`sessions-and-targets.md`
-    /// § Host operations).
+    /// device waits for it in its admission (`crates/backend-host-access/src/access.rs`).
     fn start(
         &self,
         request: ExecRequest,

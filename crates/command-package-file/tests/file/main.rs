@@ -1,4 +1,4 @@
-//! The `demi.file` program at its boundary (`commands.md` § File commands):
+//! The `demi.file` program at its boundary (`crates/command-package-file/src/files.rs`):
 //! the command service a runner starts, its file operations, and the edits
 //! it records. As the package's integration tests, they also make `cargo
 //! test` build the program, which the runner's and the backend's tests start.

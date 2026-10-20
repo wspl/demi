@@ -7,7 +7,7 @@ import { shownAmong } from './device-marks'
 
 /**
  * The paths a demo device's attempts take, one per state its page shows
- * (`direct-channel.md` § What the user sees), and the devices of the
+ * (`packages/web-ui/src/devices/direct.ts`), and the devices of the
  * Devices specimens, whose controls act on them as the product's do: Try
  * Again runs an attempt that ends as the device's path says, Measure and
  * the page showing measure the paths again, the route changes how it is

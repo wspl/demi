@@ -145,7 +145,7 @@ Cloud is pinned to
   its SHA-256 names. The runner starts command services from these copies
   instead of downloading the artifacts, after checking each against the
   backend's pinned descriptor
-  ([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
+  (`crates/runner-command-packages/src/cache.rs`).
 
 The image also makes the runner's two directories on the system layer,
 private to `demi`: `/var/lib/demi` for the job directories and the

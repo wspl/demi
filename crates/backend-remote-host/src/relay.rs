@@ -1,4 +1,4 @@
-//! The rpc relay (`commands.md` § Handle an rpc call): a job's `rpc_call`
+//! The rpc relay (`crates/host-interface/src/rpc.rs`): a job's `rpc_call`
 //! becomes a handler call in the backend. The relay checks that the call
 //! comes from a live job on this connection, mints the call's standard
 //! output pipe (and its standard input's, when the process has one), and
@@ -111,7 +111,7 @@ impl CallEntry {
     /// Ends the call's finite standard input as finished, read or unread:
     /// the handler took what it wanted, so the process's upload is answered
     /// as a whole one rather than failed, and its stdout goes on to its end
-    /// (`commands.md` § Handle an rpc call).
+    /// (`crates/host-interface/src/rpc.rs`).
     fn finish_input(&self) {
         let pipes = self.pipes.borrow();
         let Some(stdin) = pipes.as_ref().and_then(|pipes| pipes.stdin.as_ref()) else {
@@ -240,8 +240,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             Ok(code) => code,
             Err(ended) => {
                 // A usage error is clap's text whole; a runtime error is
-                // GNU's line, the command's path first (`commands.md`
-                // § Handle an rpc call).
+                // GNU's line, the command's path first (`crates/host-interface/src/rpc.rs`).
                 let (text, code) = match ended {
                     Ended::Usage(text) => (format!("{text}\n"), 2),
                     Ended::Failed(message) => (

@@ -757,7 +757,7 @@ pub struct Ended {
 
 
 /// Tells the plugin, once per burst, which conversations' devices changed
-/// (`native-runtime.md` § Messages to the plugin).
+/// (`crates/command-protocol/src/messages.rs`).
 struct Announcer {
     pending: Arc<Mutex<BTreeMap<String, ()>>>,
     wake: Arc<Notify>,

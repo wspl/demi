@@ -1,5 +1,5 @@
 //! The peers between this runner and the runners at the other end of its
-//! forwards (`port-forwarding.md` § The path of a connection), one per pair
+//! forwards, one per pair
 //! of runners, and the path each connection takes as it opens:
 //!
 //! - The first connection of any forward between a pair has the backend

@@ -84,7 +84,7 @@ export function useGalleryWork(
   // The conversation's simulators, whose plugin opens and closes devices for the panel's `mobile` tabs.
   const mobile = galleryMobile(backend)
   // The browser tells the plugin of every change of its tabs, as the browser package does
-  // (`native-runtime.md` § Messages to the plugin).
+  // (`crates/command-protocol/src/messages.rs`).
   watch(browser.listed, () => void plugin.tabsChanged())
   // The browser's tabs stand in the panel in its order, as the product's would: the user's with the tab the
   // user made for each, the agent's with the id the plugin gives them. A panel without the browser's page has none.
