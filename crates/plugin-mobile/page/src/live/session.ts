@@ -8,8 +8,10 @@
  * - Keeps what the view shows.
  * - Sends the viewer's touches and keys.
  * - Follows the agent's activity on the watched device, and keeps each open
- *   device's last frame with its last picture, so a return to its tab shows
- *   both at once until a newer frame replaces it.
+ *   device's last frame of each orientation with its last picture, so a
+ *   return to its tab shows both at once until a newer frame replaces it, and
+ *   every picture still to be painted, of whichever orientation, finds its
+ *   frame, however quickly the device turned back.
  * - Watches a device only while one of its tabs is shown in a visible page, so a
  *   device nobody looks at gets its hour; with none shown, the view stays open
  *   watching nothing and says nobody watches it, so nothing stays awake for it,
@@ -132,10 +134,11 @@ export interface LiveState {
   /** The agent's activity on the watched device. */
   activity: LiveActivity
   /**
-   * Each open device's last frame, as the module drew it for the view's
-   * size while the device was watched; a newer one replaces it.
+   * Each open device's last frame of each orientation, as the module drew it
+   * for the view's size while the device was watched; a newer one of the same
+   * orientation replaces it.
    */
-  frames: Record<string, DeviceFrame>
+  frames: Record<string, Partial<Record<Orientation, DeviceFrame>>>
   /** Whether the watched device's screen is off, as the Host says. */
   screenOff: boolean
   pictureless: PicturelessReason | null
@@ -372,11 +375,14 @@ export class MobileSession {
       case 'frame':
         if (message.device === this.state.watched) {
           this.state.frames[message.device] = {
-            device: message.device,
-            orientation: message.orientation,
-            pointsWidth: message.pointsWidth,
-            pointsHeight: message.pointsHeight,
-            frame: message.frame,
+            ...this.state.frames[message.device],
+            [message.orientation]: {
+              device: message.device,
+              orientation: message.orientation,
+              pointsWidth: message.pointsWidth,
+              pointsHeight: message.pointsHeight,
+              frame: message.frame,
+            },
           }
           if (message.frame !== null) {
             const area = { width: message.width, height: message.height, scale: message.scale }
@@ -430,6 +436,8 @@ export class MobileSession {
     const id = this.nextTurn++
     const quarters = TURN_QUARTERS[turn]
     this.state.turning.push({ id, device, quarters, expected: turned(shown, quarters), answered: null, reported: [] })
+    // The turned device shows in its new orientation's frame, which the disk cache may keep.
+    this.cachedFrame()
     return id
   }
 
@@ -539,7 +547,7 @@ export class MobileSession {
    * for which it needs a frame, so a cached frame cannot wait for them;
    * turns still go by the pictures alone.
    */
-  private frameOrientation(device: string): Orientation | null {
+  frameOrientation(device: string): Orientation | null {
     return this.shownOrientation(device) ?? this.state.devices.find((listed) => listed.id === device)?.orientation ?? null
   }
 
@@ -566,7 +574,7 @@ export class MobileSession {
   private cachedFrame(): void {
     const wanted = this.watchedFrameKey()
     const cache = this.options.cache
-    if (wanted === null || !cache || wanted.key === this.readingFrame || this.state.frames[wanted.device]?.orientation === wanted.orientation) {
+    if (wanted === null || !cache || wanted.key === this.readingFrame || this.state.frames[wanted.device]?.[wanted.orientation]) {
       return
     }
     const { device, orientation, key } = wanted
@@ -576,7 +584,7 @@ export class MobileSession {
         this.readingFrame = null
       }
       const current = this.watchedFrameKey()
-      if (bytes === null || current?.device !== device || current.key !== key || this.state.frames[device]?.orientation === orientation) {
+      if (bytes === null || current?.device !== device || current.key !== key || this.state.frames[device]?.[orientation]) {
         return
       }
       const kept = cachedFrameSchema.safeParse(JSON.parse(new TextDecoder().decode(bytes)))
@@ -584,7 +592,7 @@ export class MobileSession {
         // Written by another build of the page: the Host's own frame follows.
         return
       }
-      this.state.frames[device] = { device, ...kept.data }
+      this.state.frames[device] = { ...this.state.frames[device], [orientation]: { device, ...kept.data } }
     }, (error: unknown) => {
       if (this.readingFrame === key) {
         this.readingFrame = null

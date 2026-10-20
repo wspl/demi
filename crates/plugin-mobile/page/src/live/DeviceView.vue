@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type CSSP
 import {
   Button,
   CanvasPictures,
-  DRAWN_FRAME_ROOM,
   LiveActivityOverlay,
   LiveDrawnFrame,
   RegionStatus,
@@ -16,8 +15,9 @@ import {
   touchInput,
   wheelInput,
 } from '@demicodes/plugin-sdk'
-import type { DeviceFrame, DeviceStream, MobileSession } from './session'
-import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, type Placement, type Size } from './view'
+import type { DeviceStream, MobileSession } from './session'
+import type { LiveFrame } from '../generated/plugin'
+import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, turnedBox, turnedFrame, type Placement, type Size } from './view'
 import { insertedText } from './typed'
 import { t } from '../locales/text'
 
@@ -58,8 +58,12 @@ const picture = shallowRef<DeviceStream | null>(null)
 const announced = shallowRef<DeviceStream | null>(null)
 const painted = ref(false)
 const watching = computed(() => props.shown && props.session.state.watched === props.device)
-/** The device's last frame as the module drew it, kept with its last picture until a newer one comes. */
-const framed = computed(() => props.session.state.frames[props.device] ?? null)
+/** The device's last frame of each orientation as the module drew it, kept with its last picture until a newer one comes. */
+const frames = computed(() => props.session.state.frames[props.device] ?? {})
+/** The orientation of the picture drawn, before the first one the announced one's or, before that, the device's own. */
+const drawnOrientation = computed(() => (picture.value ?? announced.value)?.orientation ?? props.session.frameOrientation(props.device))
+/** The frame of the drawn picture's orientation, which a turn's frame of another orientation, coming first, does not replace. */
+const framed = computed(() => drawnOrientation.value ? frames.value[drawnOrientation.value] ?? null : null)
 /** The screen in points: the drawn picture's, before the first one the announced one's or the frame's, so the view says its size at once. */
 const screen = computed<Size | null>(() => {
   const stream = picture.value ?? announced.value
@@ -68,38 +72,15 @@ const screen = computed<Size | null>(() => {
   }
   return framed.value ? { width: framed.value.pointsWidth, height: framed.value.pointsHeight } : null
 })
-/**
- * The last frame drawn for the shown picture's orientation, kept while the
- * frame of a turn comes before the turned pictures.
- */
-const pictureFrame = shallowRef<DeviceFrame | null>(null)
-watch([framed, picture], ([drawn, shown]) => {
-  if (drawn && shown && drawn.orientation === shown.orientation) {
-    pictureFrame.value = drawn
-  }
-}, { immediate: true })
-/** The frame drawn for the picture's orientation; a frame of the orientation after a turn is not this picture's. */
-const frame = computed(() => {
-  const drawn = framed.value
-  const orientation = picture.value?.orientation ?? drawn?.orientation
-  if (drawn && drawn.orientation === orientation) {
-    return drawn.frame
-  }
-  const kept = pictureFrame.value
-  return kept && kept.device === props.device && kept.orientation === orientation ? kept.frame : null
-})
+const frame = computed(() => framed.value?.frame ?? null)
 /** A drawn frame's image, its box in the area, and the device's silhouette that bounds the picture under it, if any. */
 type FrameImage = { src: string; box: Placement; silhouette: string | null }
 type Layout = { screen: Placement; corners: ScreenCorners; image: FrameImage | null }
 
-/** Where the picture sits in an area of `area`, with its corners, and the drawn frame around it, if any. */
-function layoutIn(area: Size): Layout | null {
-  if (!screen.value) {
-    return null
-  }
-  const drawn = frame.value
+/** Where a screen of `points` sits in an area of `area`, with its corners, and `drawn`, its frame, around it, if any. */
+function layoutIn(area: Size, drawn: LiveFrame | null, points: Size): Layout {
   if (drawn?.kind === 'image') {
-    const placed = placeInFrame(drawn, screen.value, area)
+    const placed = placeInFrame(drawn, points, area)
     return {
       screen: placed.screen,
       corners: SQUARE_CORNERS,
@@ -110,21 +91,70 @@ function layoutIn(area: Size): Layout | null {
       },
     }
   }
-  const placed = placeScreen(screen.value, area)
-  const corners = drawn?.kind === 'drawn' ? scaledCorners(drawn.corners, placed.width / screen.value.width) : SQUARE_CORNERS
+  const placed = placeScreen(points, area)
+  const corners = drawn?.kind === 'drawn' ? scaledCorners(drawn.corners, placed.width / points.width) : SQUARE_CORNERS
   return { screen: placed, corners, image: null }
 }
 
-/** The picture follows the area at once. */
-const layout = computed(() => layoutIn(size.value))
+/**
+ * The device as it shows: its layout in the area, under the whole device's
+ * quarter turns, clockwise, and the picture's within its screen.
+ */
+type Shown = { layout: Layout; frame: LiveFrame | null; device: number; picture: number }
+
+/**
+ * The device shows at once in the orientation the device reports, turned by
+ * the viewer's presses it has not shown yet, laid out as its pictures in that
+ * orientation will be, so their first paint leaves the device where it is
+ * (`docs/decisions/0007-rotation-shows-at-once.md`). Until those pictures
+ * paint, the picture drawn shows turned in the new screen, in that
+ * orientation's frame; a device whose frame of that orientation has not come
+ * turns whole, its frame turned with it, laid out as that frame would be.
+ */
+const shown = computed<Shown | null>(() => {
+  const points = screen.value
+  if (!points) {
+    return null
+  }
+  const drawn = picture.value
+  const quarters = drawn ? props.session.pendingQuarters(props.device, drawn.orientation) : 0
+  const orientation = props.session.shownOrientation(props.device)
+  if (quarters === 0 || !orientation) {
+    return { layout: layoutIn(size.value, frame.value, points), frame: frame.value, device: 0, picture: 0 }
+  }
+  const target = frames.value[orientation] ?? null
+  const turnedPoints = target
+    ? { width: target.pointsWidth, height: target.pointsHeight }
+    : quarters % 2 === 0 ? points : { width: points.height, height: points.width }
+  const current = frame.value
+  if (target?.frame || !current) {
+    const turned = target?.frame ?? null
+    return { layout: layoutIn(size.value, turned, turnedPoints), frame: turned, device: 0, picture: quarters }
+  }
+  const geometry = current.kind === 'image' ? { ...current, ...turnedFrame(current, quarters) } : current
+  const final = layoutIn(size.value, geometry, turnedPoints)
+  // Laid out turned, drawn in the frame's own orientation, which the device's turn turns back.
+  const back = (box: Placement) => turnedBox(box, size.value, -quarters)
+  return {
+    layout: {
+      screen: back(final.screen),
+      corners: final.corners,
+      image: final.image && { ...final.image, box: back(final.image.box) },
+    },
+    frame: current,
+    device: quarters,
+    picture: 0,
+  }
+})
+const layout = computed(() => shown.value?.layout ?? null)
 const placement = computed(() => layout.value?.screen ?? null)
 /** The frame the view draws itself when none is drawn for the device. */
 const drawnFrame = computed(() => {
-  const drawn = frame.value
-  if (drawn?.kind !== 'drawn' || !placement.value || !screen.value) {
+  const drawn = shown.value?.frame
+  if (drawn?.kind !== 'drawn' || !layout.value) {
     return null
   }
-  return { corners: layout.value?.corners ?? SQUARE_CORNERS, buttons: drawn.buttons }
+  return { corners: layout.value.corners, buttons: drawn.buttons }
 })
 /**
  * What bounds the picture, and the screen-off dimming over it, under the
@@ -137,13 +167,13 @@ const drawnFrame = computed(() => {
  */
 const bounds = computed<CSSProperties | undefined>(() => {
   const placed = placement.value
-  const shown = layout.value
-  if (!placed || !shown) {
+  const laid = layout.value
+  if (!placed || !laid) {
     return undefined
   }
-  const silhouette = shown.image?.silhouette
-  if (shown.image && silhouette) {
-    const box = shown.image.box
+  const silhouette = laid.image?.silhouette
+  if (laid.image && silhouette) {
+    const box = laid.image.box
     return {
       maskImage: `url(${silhouette})`,
       maskMode: 'luminance',
@@ -155,25 +185,23 @@ const bounds = computed<CSSProperties | undefined>(() => {
   const drawn = drawnFrame.value
   return drawn ? { clipPath: drawnFramePictureClip(placed.width, placed.height, drawn.corners) } : undefined
 })
-/**
- * The quarter turns, clockwise, from the picture drawn to the orientation
- * the device is shown in, the one it reports turned by the viewer's presses
- * it has not shown yet, and the scale that fits the turned device into the
- * area's room.
- */
-const pending = computed(() => {
-  const shown = picture.value
-  const quarters = shown ? props.session.pendingQuarters(props.device, shown.orientation) : 0
+/** The whole device's turn, which turns a frame of the orientation drawn into the one shown. */
+const deviceTurn = computed<CSSProperties | undefined>(() => shown.value?.device ? { transform: `rotate(${shown.value.device * 90}deg)` } : undefined)
+/** The picture's box in its screen, turned into the orientation shown. */
+const pictureBox = computed<CSSProperties | undefined>(() => {
   const placed = placement.value
-  if (quarters === 0 || !placed || !layout.value) {
-    return null
+  if (!placed || !shown.value) {
+    return undefined
   }
-  // The device's box: its drawn image, or the screen with the frame the view draws around it.
-  const around = DRAWN_FRAME_ROOM * Math.min(placed.width, placed.height)
-  const device = layout.value.image?.box ?? { width: placed.width + 2 * around, height: placed.height + 2 * around }
-  const room = frameRoom(size.value)
-  const scale = quarters % 2 === 0 ? 1 : Math.min(1, room.width / device.height, room.height / device.width)
-  return { quarters, transform: `rotate(${quarters * 90}deg) scale(${scale})` }
+  const quarters = shown.value.picture
+  const [width, height] = quarters % 2 === 0 ? [placed.width, placed.height] : [placed.height, placed.width]
+  return {
+    left: `${(placed.width - width) / 2}px`,
+    top: `${(placed.height - height) / 2}px`,
+    width: `${width}px`,
+    height: `${height}px`,
+    transform: quarters === 0 ? undefined : `rotate(${quarters * 90}deg)`,
+  }
 })
 const activity = computed(() => watching.value ? props.session.state.activity : { active: false })
 const mark = computed(() => {
@@ -188,7 +216,10 @@ const screenOff = computed(() => watching.value && painted.value && props.sessio
 // which a drag of the panel's edge would otherwise do at every step.
 const settledScreen = computed(() => {
   const area = settledSize.value
-  return watching.value && area.width > 0 && area.height > 0 ? layoutIn(area)?.screen ?? null : null
+  if (!watching.value || area.width === 0 || area.height === 0 || !screen.value) {
+    return null
+  }
+  return layoutIn(area, frame.value, screen.value).screen
 })
 watch(() => settledScreen.value ? [settledScreen.value.width, settledScreen.value.height] as const : null, (shownAt) => {
   if (shownAt) {
@@ -438,10 +469,10 @@ function composed(event: CompositionEvent): void {
 <template>
   <div ref="area" class="relative min-h-0 flex-1 overflow-hidden bg-sunken">
     <!-- The device, turned at once for a rotation its pictures do not show yet. -->
-    <div class="absolute inset-0" :style="pending ? { transform: pending.transform } : undefined">
-      <canvas
-        ref="canvas"
-        class="absolute touch-none select-none"
+    <div class="absolute inset-0" :style="deviceTurn">
+      <!-- The screen, bounded under the frame, and the picture in it. -->
+      <div
+        class="absolute"
         :class="painted ? '' : 'invisible'"
         :style="placement ? {
           left: `${placement.left}px`,
@@ -450,13 +481,19 @@ function composed(event: CompositionEvent): void {
           height: `${placement.height}px`,
           ...bounds,
         } : undefined"
-        @pointerdown="down"
-        @pointermove="move"
-        @pointerup="up"
-        @pointercancel="cancel"
-        @wheel="wheel"
-        @contextmenu.prevent
-      />
+      >
+        <canvas
+          ref="canvas"
+          class="absolute touch-none select-none"
+          :style="pictureBox"
+          @pointerdown="down"
+          @pointermove="move"
+          @pointerup="up"
+          @pointercancel="cancel"
+          @wheel="wheel"
+          @contextmenu.prevent
+        />
+      </div>
       <div
         v-if="screenOff && placement"
         class="absolute flex flex-col items-center justify-center gap-3 bg-black/60"

@@ -72,6 +72,29 @@ export function placeInFrame(frame: DrawnFrame, points: Size, area: Size): { fra
   }
 }
 
+/** `frame` turned by `quarters` clockwise, as the device's frame of that orientation is drawn. */
+export function turnedFrame(frame: DrawnFrame, quarters: number): DrawnFrame {
+  let turned = frame
+  for (let turn = 0; turn < ((quarters % 4) + 4) % 4; turn++) {
+    const { width, height, screen } = turned
+    turned = {
+      width: height,
+      height: width,
+      screen: { x: height - screen.y - screen.height, y: screen.x, width: screen.height, height: screen.width },
+    }
+  }
+  return turned
+}
+
+/** `box`, a box of `area`, turned by `quarters` clockwise about the area's center, as `rotate` turns it. */
+export function turnedBox(box: Placement, area: Size, quarters: number): Placement {
+  const turns = ((quarters % 4) + 4) % 4
+  const across = { x: box.left + box.width / 2 - area.width / 2, y: box.top + box.height / 2 - area.height / 2 }
+  const [x, y] = [[across.x, across.y], [-across.y, across.x], [-across.x, -across.y], [across.y, -across.x]][turns]!
+  const [width, height] = turns % 2 === 0 ? [box.width, box.height] : [box.height, box.width]
+  return { left: area.width / 2 + x! - width / 2, top: area.height / 2 + y! - height / 2, width, height }
+}
+
 /** The device's point under `inside`, a point of the area, clamped to the screen. */
 export function devicePoint(inside: { x: number; y: number }, screen: Size, placed: Placement): { x: number; y: number } {
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value))
