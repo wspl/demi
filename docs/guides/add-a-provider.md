@@ -1,17 +1,15 @@
 # Add a provider
 
 This guide adds a provider crate: the code that connects Demi to one more
-inference service. The crate implements the
-provider contract (`crates/provider-common/src/lib.rs`); read that
-first, because this guide shows where each of its rules lands in code instead of
-restating them.
+inference service. The crate implements the provider contract
+(`crates/provider-common/src/lib.rs`). Read that first, because this guide
+shows where each of its rules lands in code instead of restating them.
 
 Before you write a crate, check whether the service needs one:
 
 - A service that speaks a wire Demi already reads (OpenAI Responses or Chat
   Completions, Anthropic Messages, Gemini `generateContent`) is an entry of that
-  family with its own base URL
-  (`crates/provider-common/src/endpoint.rs`).
+  family with its own base URL (`crates/provider-common/src/endpoint.rs`).
 - A vendor that models.dev lists with a supported client package appears in the
   vendor catalog without any code
   (`crates/backend-providers/src/llm/vendors.rs`).
@@ -23,21 +21,24 @@ process.
 
 ## Create the crate
 
-1. Create the library crate `crates/provider-<vendor>`.
-2. Depend on `provider-common`, which holds the contract and the shared building
-   blocks; a provider that starts a process also depends on `host-interface` for the
-   Host process interface. Never depend on what sits above a provider: the
-   agent, the backend or a Host implementation.
+Follow these steps to create the crate:
+
+1. Create the library crate `crates/provider-<vendor>`, named by the rules in
+   [Names](../../ARCHITECTURE.md#names).
+2. Depend on `provider-common`, which holds the contract and the shared
+   building blocks. A provider that starts a process also depends on
+   `host-interface` for the Host process interface. Never depend on what sits
+   above a provider: the agent, the backend or a Host implementation.
 3. Add the crate and its edges to the Rust graph in
-   [Dependency graphs](../../ARCHITECTURE.md),
-   and its entry to [Crates](../../ARCHITECTURE.md).
-   The [boundary check](../../crates/xtask/src/boundaries.rs)
-   refuses an edge that the graph does not list.
+   [Rust crates](../../ARCHITECTURE.md#rust-crates). The
+   [boundary check](../../crates/xtask/src/boundaries.rs) refuses an edge that
+   the graph does not list.
 
 ## Implement the provider
 
 The provider is the shared half of the contract: one exists per entry and
-account, and it is used from any thread.
+account, and any thread can use it. The following code shows its trait and the
+environment it receives:
 
 ```rust
 /// One provider entry, shared by every user and request of the entry.
@@ -59,6 +60,8 @@ pub struct RuntimeEnv {
 }
 ```
 
+The following table says what your provider does in each method:
+
 | Method | What your provider does |
 |---|---|
 | `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then builds the runtime over a placement that starts the process (`crates/provider-claude-code/src/placement.rs`) |
@@ -67,7 +70,7 @@ pub struct RuntimeEnv {
 | `read_failure` | Reads your vendor's own fields out of a stored failure record ([Report failures](#report-failures)) |
 | `quota` | Returns your quota when the vendor reports one ([Optional: quota](#optional-quota)) |
 | `accounts` | Returns the account operations of a subscription family ([Credentials](#credentials)) |
-| `runtime` | Builds a runtime for one session, on the calling thread, with the shard's client in `env`; a provider whose runtime starts a process refuses, since only the backend chooses the machine |
+| `runtime` | Builds a runtime for one session, on the calling thread, with the shard's client in `env`; a provider whose runtime starts a process refuses, because only the backend chooses the machine |
 
 Keep what runtimes share (configuration, authentication, quota, the catalog
 client) in one `Arc` that the provider and all its runtimes hold.
@@ -75,7 +78,9 @@ client) in one `Arc` that the provider and all its runtimes hold.
 ## Implement the runtime
 
 The runtime is the per-session half. It lives on the user's shard, so it has no
-`Send` bound, and it runs one request at a time: `run` borrows it.
+`Send` bound. It runs one request at a time: `run` borrows it. The following
+code shows the runtime trait, the request it receives and the events it
+yields:
 
 ```rust
 /// A session's inference runtime. One run at a time: `run` borrows the runtime.
@@ -106,49 +111,50 @@ pub enum ProviderEvent {
 pub struct ToolCall { pub tool_use_id: String, pub tool_name: String, pub input: serde_json::Value }
 ```
 
-Write `run` as a stream that keeps the rules of
-A run (`crates/provider-common/src/contract.rs`):
+Write `run` as a stream that keeps the rules of A run
+(`crates/provider-common/src/contract.rs`):
 
 1. Build the request body from the request and the entry's typed
-   configuration. Map the thinking setting, the output limit and the service
-   tier as Request parameters (`crates/shared-types/src/model.rs`)
-   defines for your vendor; the output limit you send is
-   `request.max_output_tokens()`, which lowers the model's limit to the
-   request's cap. Serialize a body that carries media on the blocking
-   pool, not on the shard
-   ([Blocking work](../../ARCHITECTURE.md)).
-2. Send it once, with the client from `RuntimeEnv`. Never build a client of your
-   own: pooled connections belong to the Tokio runtime that created them
-   ([Programs and threads](../../ARCHITECTURE.md)).
+   configuration.
+   - Map the thinking setting, the output limit and the service tier as
+     Request parameters (`crates/shared-types/src/model.rs`) defines for your
+     vendor. The output limit you send is `request.max_output_tokens()`, which
+     lowers the model's limit to the request's cap.
+   - Serialize a body that carries media on the blocking pool, not on the shard
+     ([Blocking work](../../ARCHITECTURE.md#blocking-work)).
+2. Send it once, with the client from `RuntimeEnv`. Never build a client of
+   your own: pooled connections belong to the Tokio runtime that created them
+   ([Where work runs](../../ARCHITECTURE.md#where-work-runs)).
 3. Yield events as the vendor streams them. End after `Response`, after
    `Error`, or after the last `ToolCall` of a batch when the vendor needs the
    results before it can finish, and yield nothing after that.
 4. Wait on the vendor inside `select!` against `request.cancel`. When the token
    fires, drop the connection or stop the process, and end the stream without
    an event. Dropping your stream must stop the work too
-   ([Cancellation and cleanup](../../ARCHITECTURE.md)).
+   ([Cancellation](../../ARCHITECTURE.md#cancellation)).
 5. Report every failure as `Error`. Never panic, and never fail outside the
    stream.
 6. For a subscription family, when the vendor answers HTTP 401 before any
    event, refresh the account's token once and send the request again. That is
    the only repeat a run makes.
 
-`fresh` returns a runtime that shares the provider's `Arc` and nothing of this
-runtime's execution state: no connection, process, pending tool call or
-continuation
-(`crates/provider-common/src/lib.rs`).
-`close` releases what outlives a run; an HTTP runtime has nothing to release. A
-runtime that keeps a process between runs follows
-Claude Code (`crates/provider-claude-code/src/live.rs`): the process moves
-into the run and back to the runtime only where the conversation can continue
-in it, so every other exit drops it and the Host kills it.
+Two more methods:
+
+- `fresh` returns a runtime that shares the provider's `Arc` and nothing of
+  this runtime's execution state: no connection, process, pending tool call or
+  continuation (`crates/provider-common/src/lib.rs`).
+- `close` releases what outlives a run. An HTTP runtime has nothing to release.
+  A runtime that keeps a process between runs follows Claude Code
+  (`crates/provider-claude-code/src/live.rs`): the process moves into the run
+  and back to the runtime only where the conversation can continue in it, so
+  every other exit drops it and the Host terminates it.
 
 ## Read the vendor's stream
 
 Everything the vendor sends is untrusted input, decoded at the point of entry
-under the rules of
-Reading vendor input (`crates/provider-common/src/wire/mod.rs`). Reuse
-the building blocks of the `provider-common` crate instead of writing your own:
+under the rules of Reading vendor input
+(`crates/provider-common/src/wire/mod.rs`). Reuse the building blocks of the
+`provider-common` crate instead of writing your own:
 
 | Need | Use |
 |---|---|
@@ -166,8 +172,10 @@ counts are `Option<u64>`.
 
 ## Report failures
 
-- A response with a failure status becomes a failure through `http_failure`,
-  which reads the body and builds the message
+A provider reports failures as follows:
+
+- Turn a response with a failure status into a failure through
+  `http_failure`, which reads the body and builds the message
   (`<label> API request failed with HTTP <status>: <body>`), the failure record
   and the wait. Pass it your failure reader.
 - Implement `read_failure` for your vendor's own fields, such as a reset time
@@ -179,7 +187,7 @@ counts are `Option<u64>`.
   turn them into a failure at the run's boundary with a fixed code. Never derive
   a code by matching message text
   (`crates/provider-common/src/failure.rs`).
-- A message you compose never contains a credential.
+- Never put a credential in a message you compose.
 
 ## Credentials
 
@@ -187,9 +195,9 @@ An API-key family reads its key from the entry's typed configuration, which the
 backend passes in. It reads no key, base URL or option from environment
 variables.
 
-A subscription provider is built for one account: its factory receives the
+A subscription provider is built for one account. Its factory receives the
 entry's credential pool and the account's ID
-(`crates/provider-common/src/credentials/pool.rs`).
+(`crates/provider-common/src/credentials/pool.rs`). Follow these steps:
 
 1. Define your family's secret document as a strict serde type
    (`deny_unknown_fields`) that holds what your requests and refreshes need
@@ -206,30 +214,33 @@ entry's credential pool and the account's ID
    document (a label, a detail and the identity key), and your login flow or
    token import. Listing, selecting, importing and removing accounts are the
    shared `Accounts<K>` operations.
-5. Write a device login by hand on `provider_common::oauth`. Report the verification
-   address and code once, poll with `tokio::time::sleep` so that dropping the
-   login's future cancels it at once, and return the new document
+5. Write a device login by hand on `provider_common::oauth`. Report the
+   verification address and code once, poll with `tokio::time::sleep` so that
+   dropping the login's future cancels it at once, and return the new document
    (`crates/backend-providers/src/vault/logins.rs`).
 
 ## Optional: quota
 
-When the vendor reports usage windows, implement a quota source: whether a
-probe is free or costs a request, a probe that reads the plan, the account's
-label and the windows, and an observation of a response's headers or a CLI
-line. An observation is pure and never fails a run. `ProviderQuota::new`
-connects your source to the account's snapshot store. What a snapshot holds and
-how probes and observations merge is defined in
-Vendor quota (`crates/provider-common/src/quota.rs`).
+When the vendor reports usage windows, implement a quota source. It supplies:
+
+- Whether a probe is free or costs a request.
+- A probe that reads the plan, the account's label and the windows.
+- An observation of a response's headers or a CLI line. An observation is pure
+  and never fails a run.
+
+`ProviderQuota::new` connects your source to the account's snapshot store. What
+a snapshot holds and how probes and observations merge is defined in Vendor
+quota (`crates/provider-common/src/quota.rs`).
 
 ## Register the family
 
-The backend's built-in families (`builtin` in the backend's `families` module) map each
-family to its credential kind, an API key or a subscription account, and to a
-factory.
-The factory builds your provider from the entry's configuration and the
-models.dev client and, for a subscription family, from the entry's pool, the
-account's ID and the account's quota snapshot store. Add your family there.
-Then:
+The backend's built-in families (`builtin` in the backend's `families` module)
+map each family to its credential kind, an API key or a subscription account,
+and to a factory. The factory builds your provider from the entry's
+configuration and the models.dev client and, for a subscription family, from
+the entry's pool, the account's ID and the account's quota snapshot store.
+
+Add your family there. Then:
 
 - If models.dev lists vendors for your wire, add the mapping from their client
   package to your family
@@ -249,23 +260,22 @@ streams, and the `provider-common` crate's `testing` feature supplies the fakes:
 | `MockVendor` | An in-process HTTP server that scripts status, headers, body chunks and delays, and records each request |
 | `sse_body` | Builds a server-sent events body from a list of payloads |
 | `FakeWebSocket` | A WebSocket server that records the handshake headers, scripts frames and records the close reason |
-| `ScriptedCli` | A process Host whose process scripts its output, reacts to its input, and counts kills and waits |
+| `ScriptedCli` | A process Host whose process scripts its output, reacts to its input, and counts terminations and waits |
 | `ScriptedRuntime` | A runtime with scripted runs, for tests of what sits above providers |
-| `FixedClock`, `jwt` | A fixed wall clock; a token with the claims you give it |
+| `FixedClock`, `jwt` | A fixed wall clock, and a token with the claims you give it |
 | `MemoryCredentialPool` | A credential pool held in memory, for account and refresh tests |
 
 Run timeouts, polling intervals and freshness windows on Tokio's paused clock
-([Tests and time](../../ARCHITECTURE.md)). Cover at
-least:
+([Tests and time](../../ARCHITECTURE.md#tests-and-time)). Cover at least:
 
-- each way a run ends, including cancellation that drops the connection, and
-  no event after the last one;
-- an unregistered tag that is ignored, and a malformed registered payload that
-  fails with its field's path;
-- the failure record, its message and the facts your reader returns;
-- a refresh race over the memory pool, in which the loser uses the winner's
-  tokens;
-- your login flow against `MockVendor`.
+- Each way a run ends, including cancellation that drops the connection, and no
+  event after the last one.
+- An unregistered tag that is ignored, and a malformed registered payload that
+  fails with its field's path.
+- The failure record, its message and the facts your reader returns.
+- A refresh race over the memory pool, in which the loser uses the winner's
+  tokens.
+- Your login flow against `MockVendor`.
 
-A check against the real vendor is run by hand during acceptance, never in the
+Run a check against the real vendor by hand during acceptance, never in the
 test suite.
