@@ -1,6 +1,6 @@
-//! Mounts through the kernel's interface (`managed-hosts.md` § Linux
-//! control): the base bind, the ext4 working images, the system overlay and
-//! the credentials tmpfs, each in the manager's private mount namespace.
+//! Mounts through the kernel's interface: the base bind, the ext4 working
+//! images, the system overlay and the credentials tmpfs, each in the
+//! manager's private mount namespace.
 
 use std::{ffi::CString, io, path::Path};
 

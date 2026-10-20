@@ -1,6 +1,12 @@
 //! `demi-backend`: reads its configuration, publishes its server release's
 //! command packages, serves until SIGINT or SIGTERM, then shuts down in
-//! order (`backend.md` § Startup and shutdown).
+//! order (`Backend::close`).
+//!
+//! The stop signals are watched from the first step. One that comes while
+//! the command packages are being published stops the start; one that comes
+//! later is kept, the start finishes and the shutdown follows at once.
+//! Readiness goes to systemd, whose unit waits for it without a timeout,
+//! since a migration or an image import can take minutes.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -15,12 +21,11 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 fn main() -> ExitCode {
-    // A panic leaves its report on standard error (`builds-and-releases.md`
-    // § Build profiles).
+    // A panic leaves its report on standard error.
     demi_shared_cli::install_panic_hook();
     // Every socket, database and stream shares one table of open files, and
-    // systemd starts the backend with a soft limit of 1024 (`backend.md`
-    // § Startup and shutdown); the outcome is logged once the log is up.
+    // systemd starts the backend with a soft limit of 1024 under a hard one
+    // of 524288; the outcome is logged once the log is up.
     #[cfg(unix)]
     let open_files = demi_shared_cli::raise_open_file_limit();
     // An unusable value stops here, naming its variable, and so does a
@@ -85,13 +90,12 @@ async fn run(
         }
     };
     // An upgrade checks the next release's view of the configuration before
-    // it stops anything (`upgrades.md` § Prepare).
+    // it stops anything.
     if config.check_config {
         return ExitCode::SUCCESS;
     }
     // What `DEMI_LOG` selects goes to standard error, which the process
-    // supervisor keeps, and to the server log in the data directory
-    // (`backend.md` § Request IDs and the server log).
+    // supervisor keeps, and to the server log in the data directory.
     let (log, log_layer) = match server_log::open(&settings.data_dir) {
         Ok(log) => log,
         Err(error) => {

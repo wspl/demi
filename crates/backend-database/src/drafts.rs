@@ -1,7 +1,7 @@
-//! Conversation drafts (`storage.md` § Control records): each conversation's draft
-//! with its revision, the revision its text and files were written at, and the
-//! version a save replaced. Every change reads the row and writes it in one
-//! transaction, so two saves never build on the same revision.
+//! Conversation drafts: each conversation's draft with its revision, the revision
+//! its text and files were written at, and the version a save replaced. Every
+//! change reads the row and writes it in one transaction, so two saves never build
+//! on the same revision.
 
 use demi_agent_store::media::comment_references;
 use demi_shared_types::{BlobRef, MessageComment};
@@ -95,7 +95,7 @@ pub(super) struct Stored {
     /// The version a save replaced, with the revision it had.
     pub(super) replaced: Option<(u64, Version)>,
     /// The revision of the conversation's messages saved for later, which
-    /// the row keeps beside the draft's (`storage.md` § Control records).
+    /// the row keeps beside the draft's.
     pub(super) saved_revision: u64,
 }
 

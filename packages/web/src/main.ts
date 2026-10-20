@@ -98,7 +98,7 @@ const session = useSession(pinia)
 const product = useProduct(pinia)
 const startup = new AbortController()
 // A failure the page finds itself goes to the backend's log, which the error
-// then names (`backend.md` § Request IDs and the server log).
+// then names (`crates/backend-http/src/request_id.rs`).
 const stopReports = reportPageErrorsWith(sendPageErrorReport)
 // The synchronization channel starts beside the session check; a page the check
 // finds signed out has no channel.

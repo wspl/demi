@@ -1,5 +1,6 @@
 //! The times and bounds the shard and the edge run with, which the
-//! configuration sets and tests shorten (`backend.md` § Configuration).
+//! configuration sets and tests shorten
+//! (`crates/backend/src/config/mod.rs`).
 
 use std::time::Duration;
 
@@ -39,8 +40,8 @@ pub struct ConversationTuning {
     /// answers only the turns turns it off.
     pub titles: bool,
     /// The least time between two indexings of one conversation for search
-    /// (`storage.md` § Search index); a change within it is indexed once it
-    /// has passed.
+    /// (`crates/backend-database/src/search.rs`); a change within it is
+    /// indexed once it has passed.
     pub search_interval: Duration,
     /// The least interval a command reports at, in milliseconds
     /// (`crates/agent-tools/src/lib.rs`): the product's, which a test shortens to
@@ -61,8 +62,7 @@ impl Default for ConversationTuning {
 }
 
 /// How the backend times its sockets to a page, the synchronization channel
-/// and the conversation sockets (`backend.md` § Page synchronization).
-/// Tests shorten the times.
+/// and the conversation sockets. Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct PageTuning {
     /// A socket that has sent nothing for this long sends a heartbeat, so
@@ -70,7 +70,7 @@ pub struct PageTuning {
     pub heartbeat: Duration,
     /// How long a socket's close frame waits for a page that does not read;
     /// a page that has not taken it by then loses the connection without it
-    /// (`backend.md` § Startup and shutdown).
+    /// (`crates/backend/src/backend.rs`).
     pub close_wait: Duration,
 }
 
@@ -103,8 +103,8 @@ impl Default for MediaTuning {
     }
 }
 
-/// How the backend treats runner connections (`crates/runner-protocol/src/wire/mod.rs`, `backend.md` § Authentication and ownership). Tests shorten
-/// the times.
+/// How the backend treats runner connections (`crates/runner-protocol/src/wire/mod.rs`, `crates/backend-http/src/runner_socket.rs`). Tests shorten the
+/// times.
 #[derive(Debug, Clone, Copy)]
 pub struct RunnerTuning {
     /// A connection that sends no hello within this is closed.

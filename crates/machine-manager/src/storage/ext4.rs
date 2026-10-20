@@ -1,8 +1,7 @@
-//! A device's ext4 images (`managed-hosts.md` § Images): making the two
-//! filesystems, reading a capacity from the superblock, enlarging an
-//! unmounted one to the capacity a wake names (`managed-hosts.md`
-//! § Lifecycle and capacity), and checking an unmounted image before it is
-//! published.
+//! A device's ext4 images: making the two filesystems, reading a capacity
+//! from the superblock, enlarging an unmounted one to the capacity a wake
+//! names (`crates/backend-cloud/src/lib.rs`), and checking an unmounted
+//! image before it is published.
 
 use std::{
     ffi::OsStr, fs::File, io, num::NonZeroU64, os::unix::fs::FileExt, path::Path, time::Duration,

@@ -1,8 +1,8 @@
-// `bun xtask <command>` (builds-and-releases.md): builds the one Cargo
-// selection, which holds xtask, and runs target/debug/xtask with the arguments
-// given. xtask runs detached: it ends by itself when this program ends, and
-// `xtask dev` then stops the backend and removes its data directory, which
-// a SIGKILL to this program's process group would leave behind.
+// `bun xtask <command>` (`crates/xtask/src/native/build.rs`): builds the one
+// Cargo selection, which holds xtask, and runs target/debug/xtask with the
+// arguments given. xtask runs detached: it ends by itself when this program
+// ends, and `xtask dev` then stops the backend and removes its data directory,
+// which a SIGKILL to this program's process group would leave behind.
 import { delimiter, dirname, resolve } from 'node:path'
 import { findCargo } from './cargo'
 import { runSteps } from './run-steps'

@@ -1,8 +1,7 @@
 //! Moves between releases on a server laid out in a directory, with the
-//! services simulated (`upgrades.md` § Acceptance): each release's programs
-//! are scripts that accept the configuration and the import, its
-//! `demi-server` names a gVisor version of its own, and a release named as
-//! failing does not start.
+//! services simulated: each release's programs are scripts that accept the
+//! configuration and the import, its `demi-server` names a gVisor version
+//! of its own, and a release named as failing does not start.
 
 use std::{
     cell::RefCell,
@@ -483,7 +482,7 @@ fn answer(mut stream: &std::os::unix::net::UnixStream, lines: &[serde_json::Valu
 /// The runners step names the next runner release and its root to the
 /// running backend, prints how many devices have it as they finish, and
 /// goes on once none is downloading, naming those that will download
-/// after the switch (`upgrades.md` § Prepare).
+/// after the switch.
 #[test]
 fn the_runners_step_waits_for_the_devices_and_says_how_many_have_the_new_runner() {
     let directory = tempfile::tempdir().unwrap();

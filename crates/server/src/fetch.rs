@@ -1,9 +1,8 @@
-//! Fetching a release (`upgrades.md` § Fetch): its server archive and image
-//! archive for this server's architecture, each checked against the
-//! release's `SHA256SUMS`, unpacked together into a stage under `releases/`
-//! and renamed to the version once whole. The asset names and the sums'
-//! format are the part of a release every earlier release reads
-//! (`builds-and-releases.md` § Release workflow).
+//! Fetching a release: its server archive and image archive for this
+//! server's architecture, each checked against the release's `SHA256SUMS`,
+//! unpacked together into a stage under `releases/` and renamed to the
+//! version once whole. The asset names and the sums' format are the part of
+//! a release every earlier release reads (`.github/workflows/release.yml`).
 
 use std::{
     io::{self, Read},

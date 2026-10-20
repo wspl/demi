@@ -1,7 +1,7 @@
-//! Cgroups (`managed-hosts.md` § Resource limits): with the resource limits
-//! on, every sandbox's Sentry and Gofer live in `demi-cloud/<sandbox>` under
-//! the cgroup v2 root, which limits them together and lets the manager kill
-//! all of them. With the limits off, nothing here runs.
+//! Cgroups: with the resource limits on, every sandbox's Sentry and Gofer
+//! live in `demi-cloud/<sandbox>` under the cgroup v2 root, which limits
+//! them together and lets the manager kill all of them. With the limits off,
+//! nothing here runs.
 
 use std::{io, path::PathBuf, time::Duration};
 

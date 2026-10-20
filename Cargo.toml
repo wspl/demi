@@ -145,7 +145,7 @@ opt-level = 3
 opt-level = 3
 
 # Small executables, since every paired device downloads each one
-# (`builds-and-releases.md` § Build profiles). Measured on aarch64-apple-darwin,
+# (`crates/xtask/src/native/build.rs`). Measured on aarch64-apple-darwin,
 # runner and demi-commands: thin LTO at opt-level 3 36.0 and 23.8 MiB in 79 s;
 # these 20.4 and 14.0 MiB in 125 s. Panics unwind: the runner and the command
 # services contain a panic to one job or invocation. The line tables go to a

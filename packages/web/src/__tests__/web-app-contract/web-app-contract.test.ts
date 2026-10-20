@@ -46,13 +46,13 @@ import { useProduct } from '../../state/product'
 import { openWebBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
 import { startScriptedAnthropic, type MessagesRequest, type ScriptedAnthropic } from './scripted-anthropic'
 
-// The web app contract suite (`scenarios.md` § Web app contract suite): the
-// backend executable, driven the way the page drives it, through the web
-// application's API client and the conversation socket's `ConversationClient`,
-// which validate every answer and frame with the generated schemas. The
-// model is a scripted Anthropic-compatible endpoint, and tools run on a real
-// runner. The file takes about 4 seconds: the backend's start and a runner's
-// pairing once, then each test well under a second.
+// The web app contract suite: the backend executable, driven the way the page
+// drives it, through the web application's API client and the conversation
+// socket's `ConversationClient`, which validate every answer and frame with
+// the generated schemas. The model is a scripted Anthropic-compatible
+// endpoint, and tools run on a real runner. The file takes about 4 seconds:
+// the backend's start and a runner's pairing once, then each test well under a
+// second.
 
 const EMAIL = 'master@example.test'
 const PASSWORD = 'contract-password'

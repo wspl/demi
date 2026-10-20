@@ -151,8 +151,8 @@ mod linux {
         /// Reports the devices whose sandboxes run, which stay running,
         /// recovers what an interrupted operation left of the others, and
         /// installs the network policy again with the running sandboxes'
-        /// slots (`managed-hosts.md` § Control and ownership): a backend's
-        /// restart stops no Cloud and cuts none off.
+        /// slots (`crates/machine-manager-protocol/src/lib.rs`): a
+        /// backend's restart stops no Cloud and cuts none off.
         pub async fn reconcile(&self) -> Result<Reconciled, OpError> {
             let _whole = self.admission.exclusive().await?;
             let (running, slots): (Vec<DeviceId>, Vec<Slot>) =

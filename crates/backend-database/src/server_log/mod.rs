@@ -1,12 +1,13 @@
-//! The server log (`backend.md` § Request IDs and the server log): every
-//! event `DEMI_LOG` selects, as a row of `log.sqlite` in the data directory,
-//! which an administrator searches by request. A `tracing` layer turns each
-//! event into a row and queues it without waiting; one writer thread owns the
+//! The server log (`crates/backend-http/src/request_id.rs`): every event
+//! `DEMI_LOG` selects, as a row of `log.sqlite` in the data directory, which
+//! an administrator searches by request. A `tracing` layer turns each event
+//! into a row and queues it without waiting; one writer thread owns the
 //! database, inserts what the queue holds in one transaction at most every
 //! 200 milliseconds, and each hour deletes what is older than seven days or
-//! over 512 MiB. The log is a record for diagnosis, not state: a database
-//! the writer cannot open or write is removed and created again, never
-//! migrated (`storage.md` § Schemas and migrations).
+//! over 512 MiB. The log is a record for diagnosis, not state: a database the
+//! writer cannot open or write is removed and created again, never migrated.
+//! Nothing writes a request's body or query string, a credential, a secret's
+//! value or a file's contents to the log.
 
 mod layer;
 mod store;

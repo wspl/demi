@@ -1,7 +1,6 @@
-//! The socket's messages (`managed-hosts.md` § Control and ownership): one
-//! JSON document per line, a request from the backend, the manager's reply
-//! to it, and the manager's unsolicited death event. Fields are declared in
-//! the order a message is written.
+//! The socket's messages: one JSON document per line, a request from the
+//! backend, the manager's reply to it, and the manager's unsolicited death
+//! event. Fields are declared in the order a message is written.
 
 use std::num::NonZeroU64;
 
@@ -16,7 +15,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
-/// changes it (`managed-hosts.md` § Control and ownership).
+/// changes it.
 pub const VERSION: u32 = 4;
 
 /// A request: an id the client chooses, which its reply names, and the call.
@@ -96,8 +95,8 @@ pub struct RuntimeStateParams {
 }
 
 /// The capacities, in bytes, of a device's system and home filesystems,
-/// which the backend names from the account's setting (`managed-hosts.md`
-/// § Lifecycle and capacity).
+/// which the backend names from the account's setting
+/// (`crates/backend-cloud/src/lib.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Capacity {
@@ -133,9 +132,10 @@ pub struct WakeParams {
     pub machine: SandboxMachine,
 }
 
-/// Which managed machine a sandbox runs (`managed-hosts.md` § The Claude
-/// Code machine): a user's Cloud, or the Claude Code machine, which has a
-/// memory limit of its own and keeps only its current generation.
+/// Which managed machine a sandbox runs
+/// (`crates/backend-cloud/src/lib.rs`): a user's Cloud, or the Claude
+/// Code machine, which has a memory limit of its own and keeps only its
+/// current generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxMachine {

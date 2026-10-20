@@ -297,10 +297,10 @@ impl NativeCatalog {
     }
 
     /// The runner release `release` of the server release whose root is
-    /// `root`, which an upgrade announced as next (`upgrades.md`
-    /// § Prepare): its record from the root's `runners/`, and its
-    /// executables sourced into this backend's store from the files the
-    /// root's `release.json` names.
+    /// `root`, which an upgrade announced as next
+    /// (`crates/server/src/main.rs`): its record from the root's
+    /// `runners/`, and its executables sourced into this backend's
+    /// store from the files the root's `release.json` names.
     pub async fn next_release(&self, release: &str, root: &Path) -> Result<NextRelease, String> {
         let artifacts = self
             .artifacts

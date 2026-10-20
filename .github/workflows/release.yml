@@ -1,14 +1,29 @@
-# Builds a release and publishes it as a GitHub release
-# (docs/delivery/builds-and-releases.md § Release workflow). A manual start
-# on a branch publishes the branch's workspace version and creates its tag
-# v<version>; a run started by a tag could not read the previous release's
-# caches. With `prerelease`, as `bun xtask deploy` starts it after committing
-# the next version (docs/delivery/upgrades.md § A development build on a
-# server), it publishes a pre-release, which no installer takes as the
-# newest. Each platform's targets build natively on
-# the newest free standard runner of that platform, and every step is a
-# command of the repository: the workflow only orders them and carries files
-# between jobs.
+# Builds a release and publishes it as a GitHub release. A manual start on a
+# branch, `gh workflow run release.yml --ref <branch>`, publishes the workspace
+# version in Cargo.toml of the branch's newest commit, refuses a version that
+# has a release already, never changes the version, and creates the tag
+# v<version> on the commit it built (the npm packages' tags name their package,
+# so the two never collide). Nothing else starts it: an ordinary push builds no
+# release, and a release never starts by pushing its tag, because a run reads
+# only the caches of its own branch and the default branch, so a run started by
+# a tag could not read the previous release's. With `prerelease`, as
+# `bun xtask deploy` starts it after committing the next version, it publishes
+# a pre-release, which no installer takes as the newest and which a later
+# `gh release edit` publishes. Each platform's targets build natively on the
+# newest free standard runner of that platform, one target's group of programs
+# per job, so no runner compiles two targets or two groups one after the other,
+# and every step is a command of the repository: the workflow only orders them
+# and carries files between jobs. A job waits only for the files it uses.
+#
+#   programs (12 jobs) -+-> server release amd64: root, files, image -+-> publish
+#   server (2 jobs) ----+                                             |
+#   web ----------------+-> server release arm64: root, files, image -+
+#
+# No job compiles or compresses what another already did: a command-program job
+# packages its programs, which compresses them, and a runner job compresses its
+# runner, and the server release jobs reuse those copies. The release runs no
+# check: developers run them, and release acceptance runs the shared Rust suite
+# on each platform that ships a feature.
 name: Release
 
 on:
@@ -37,6 +52,12 @@ env:
   # restored from the previous release's cache compiled again. The unstable
   # flag only lets Cargo accept the setting, so both are needed. These are in
   # the workflow, not .cargo/config.toml, so a developer's builds keep mtimes.
+  # A build script's `rerun-if-changed` files are still compared by time, so a
+  # vendored crate's build script watches no file of the repository: it names
+  # its inputs as compiled sources (`include_str!`, `include!`), or watches
+  # environment variables, as uucore and sed do. Restoring times from commits
+  # was rejected, since a change committed before the cached build would be
+  # missed.
   CARGO_UNSTABLE_CHECKSUM_FRESHNESS: true
   CARGO_BUILD_FINGERPRINT: content
 
@@ -116,6 +137,9 @@ jobs:
       - uses: ./.github/actions/rust-cache
         with:
           key: ${{ matrix.target }}-${{ matrix.group }}
+      # xtask builds alone here, without its developer features, which leaves
+      # out the commands that only a developer runs, `contracts` and `dev`, and
+      # with them the backend they compile.
       - name: Build
         if: runner.os != 'Windows'
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
@@ -209,6 +233,9 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
+      # The Bun that `packageManager` in package.json names, the one
+      # developers use: a newer Bun on GitHub, whose ICU words a date
+      # differently, changes nothing until the version is raised there.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
@@ -219,7 +246,7 @@ jobs:
       - run: bun run build
       # The release's third-party notices, written into the built web app,
       # whose server releases carry them at their roots
-      # (docs/delivery/builds-and-releases.md § Licenses in a release).
+      # (`crates/xtask/src/notices.rs`).
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about@0.9.2

@@ -1,12 +1,12 @@
-//! The backend's end of the machine manager's socket (`managed-hosts.md`
-//! § Control and ownership): one connection, opened by the first call and
-//! opened again by the next call after it drops. Requests carry ids this
-//! client counts, and replies are matched to them in whatever order they
-//! come. When the connection drops, every call in flight fails with a
-//! manager-unavailable error: losing the socket does not establish that an
-//! operation failed, so the Cloud's lifecycle asks the manager before it
-//! retries. A death event goes to the one receiver the backend routes to
-//! the device's owner.
+//! The backend's end of the machine manager's socket
+//! (`crates/machine-manager-protocol/src/lib.rs`): one connection, opened
+//! by the first call and opened again by the next call after it drops.
+//! Requests carry ids this client counts, and replies are matched to them
+//! in whatever order they come. When the connection drops, every call in
+//! flight fails with a manager-unavailable error: losing the socket does
+//! not establish that an operation failed, so the Cloud's lifecycle asks
+//! the manager before it retries. A death event goes to the one receiver
+//! the backend routes to the device's owner.
 //!
 //! A supervisor task owns the connection, the calls in flight and the id
 //! counter; the client is its handle, and the task ends with the client.
@@ -127,8 +127,8 @@ impl MachinesClient {
     }
 
     /// Disconnects, leaving the manager and its sandboxes running
-    /// (`managed-hosts.md` § Control and ownership); a later call connects
-    /// again.
+    /// (`crates/machine-manager-protocol/src/lib.rs`); a later call
+    /// connects again.
     pub async fn close(&self) {
         let (done, disconnected) = oneshot::channel();
         if self

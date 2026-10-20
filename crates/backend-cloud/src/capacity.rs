@@ -1,8 +1,8 @@
-//! Cloud capacity (`managed-hosts.md` § Lifecycle and capacity): the one
-//! Cloud fact that spans users, how many machines are not stopped. A Cloud
-//! takes a permit when it leaves the stopped state, to boot or to reset,
-//! and gives it back only when it is stopped again; a Cloud that finds none
-//! free fails to start, and nothing queues for one.
+//! Cloud capacity: the one Cloud fact that spans users, how many machines
+//! are not stopped. A Cloud takes a permit when it leaves the stopped
+//! state, to boot or to reset, and gives it back only when it is stopped
+//! again; a Cloud that finds none free fails to start, and nothing queues
+//! for one.
 
 use std::sync::Arc;
 

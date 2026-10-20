@@ -1,6 +1,6 @@
 //! Setup, the session cookie and its gate, the pages a request that could
 //! act may come from, login and its lockout, and the caller's own account
-//! (`backend.md` § Authentication and ownership).
+//! (`crates/backend-http/src/gate.rs`).
 
 use std::sync::atomic::Ordering;
 

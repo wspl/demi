@@ -1,12 +1,13 @@
-//! The conversation index of the control store (`storage.md` § Control
-//! records): each conversation's owner, title, archive and pin state, place
-//! in the sidebar, read revision, target, execution-context revision and
-//! model selection, which is the conversation's model settings
-//! (`crates/shared-types/src/catalog.rs`), and Workflow menu choice
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`). The agent tree itself is in the
-//! conversation's own database. A conversation's id is the one the web app chose, kept in the
-//! case it arrived in and compared without case, so an id another
-//! conversation holds in any spelling is taken.
+//! The conversation index of the control store: each conversation's owner,
+//! title, archive and pin state, place in the sidebar, read revision,
+//! target, execution-context revision and model selection, which is the
+//! conversation's model settings (`crates/shared-types/src/catalog.rs`), and
+//! Workflow menu choice
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`). The agent
+//! tree itself is in the conversation's own database. A conversation's id is
+//! the one the web app chose, kept in the case it arrived in and compared
+//! without case, so an id another conversation holds in any spelling is
+//! taken.
 
 use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::automations::FiledRun;

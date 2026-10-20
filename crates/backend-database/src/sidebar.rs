@@ -1,6 +1,6 @@
-//! The sidebar's explicit order (`storage.md` § Control records): a move of
-//! one row before another, or to the end, within its partition, which the
-//! move writes whole in one transaction. Activity never reorders a row.
+//! The sidebar's explicit order: a move of one row before another, or to
+//! the end, within its partition, which the move writes whole in one
+//! transaction. Activity never reorders a row.
 
 use demi_web_api_protocol::ids::{ConversationId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -21,10 +21,10 @@ pub enum Reorder {
 
 impl ControlService {
     /// Moves the user's conversation `moved` before `before`, or to the end,
-    /// within its partition (`storage.md` § Control records): the
-    /// conversations that are not archived, pinned as it is, and in the same
-    /// workspace or in none. Nothing is written when either is not the
-    /// user's, or not in that partition, an archived one included.
+    /// within its partition: the conversations that are not archived, pinned
+    /// as it is, and in the same workspace or in none. Nothing is written
+    /// when either is not the user's, or not in that partition, an archived
+    /// one included.
     pub async fn reorder_conversations(
         &self,
         user: UserId,

@@ -7,8 +7,8 @@ import { sendPageErrorReport } from './page-errors'
 
 // The page keeps the ID the backend names each request by, so that an error
 // can show it, and reports its own failures, which the backend logs under
-// the report's ID (`backend.md` § Request IDs and the server log). Answers
-// played by a fetch stand-in; a few milliseconds.
+// the report's ID (`crates/backend-http/src/request_id.rs`). Answers played
+// by a fetch stand-in; a few milliseconds.
 
 const realFetch = globalThis.fetch
 /** The reports the page sent, as their bodies. */
@@ -71,7 +71,7 @@ test('an answer that does not read is the page’s own failure: its detail names
   }
 })
 
-// Only a defect is reported (`backend.md` § The page's own errors): a
+// Only a defect is reported (`packages/web-ui/src/infra/errors.ts`): a
 // request that reached no backend is the environment's failure, told on the
 // console alone. Before, it was posted to /api/page-errors as a defect.
 test('a request that reached no backend posts no report; a defect does', async () => {

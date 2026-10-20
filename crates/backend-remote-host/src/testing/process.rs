@@ -107,7 +107,7 @@ exec /bin/sh -c "$2"
 }
 
 /// The launcher an installer writes into an installation
-/// (`builds-and-releases.md` § Packaging), which runs the installation's
+/// (`crates/xtask/src/native/package.rs`), which runs the installation's
 /// release for its backend.
 #[cfg(unix)]
 const LAUNCHER: &str = r#"#!/bin/sh
@@ -382,7 +382,7 @@ impl RunnerProcess {
     /// Empties the runner's state while it is stopped as a Cloud's stop
     /// does: its temporary state, `/run/demi` on a Cloud, goes, while its
     /// log and its job directories, which a Cloud keeps on its system image
-    /// (`managed-hosts.md` § Images), and its home stay.
+    /// (`crates/machine-manager/src/storage/mod.rs`), and its home stay.
     pub fn clear_run_state(&mut self) {
         self.clear_state_but(&["log", "jobs"]);
     }

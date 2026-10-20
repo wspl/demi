@@ -1,6 +1,15 @@
-//! `xtask native` (`builds-and-releases.md`): builds the workspace's
-//! executables for their targets with this machine's toolchain and cross
-//! tools, and packages the built executables into releases.
+//! `xtask native`: builds the workspace's executables for their targets with
+//! this machine's toolchain and cross tools, and packages the built
+//! executables into releases.
+//!
+//! Linux executables link musl statically, so one file runs on any
+//! distribution and inside the Cloud guest, and Windows executables link the C
+//! runtime statically. The programs that run on a Host allocate with mimalloc
+//! on a musl target and the server's programs keep musl's (`shared-cli` holds
+//! the reasons). Cargo merges the features of every package one invocation
+//! builds, so the Host programs and the server programs are built in separate
+//! invocations, here and in the release workflow; built together, the backend
+//! would take mimalloc too.
 
 mod build;
 mod package;
@@ -98,8 +107,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-/// An executable of the workspace, named by its Cargo package
-/// (`builds-and-releases.md` § Executables and targets).
+/// An executable of the workspace, named by its Cargo
+/// package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Executable {
     #[value(name = "demi-runner")]
@@ -158,8 +167,7 @@ impl Executable {
     }
 
     /// Whether it runs on a Host, as the runner and the command programs
-    /// do, and so allocates with mimalloc on a musl target
-    /// (`builds-and-releases.md` § Memory allocator).
+    /// do, and so allocates with mimalloc on a musl target.
     pub(crate) fn runs_on_host(self) -> bool {
         match self {
             Self::Runner

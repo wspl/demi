@@ -145,8 +145,8 @@ impl ProviderAssembly {
     }
 
     /// Sets the Claude Code machine, once, as the backend's shards start
-    /// (`managed-hosts.md` § The Claude Code machine); a second setting is
-    /// refused and the first kept.
+    /// (`crates/backend-cloud/src/lib.rs`); a second setting is refused
+    /// and the first kept.
     pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
         if self.machine.set(machine).is_err() {
             tracing::error!("the Claude Code machine was set twice; the first is kept");

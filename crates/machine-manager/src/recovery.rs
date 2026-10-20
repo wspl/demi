@@ -1,7 +1,7 @@
-//! Recovery of what a stopped manager left behind (`managed-hosts.md` §
-//! Startup and recovery): staging directories are removed, every recorded
-//! sandbox is fenced, and every working pair is published. It runs at
-//! startup, on `reconcile`, and in the stop-post recovery.
+//! Recovery of what a stopped manager left behind: staging directories
+//! are removed, every recorded sandbox is fenced, and every working pair
+//! is published. It runs at startup, on `reconcile`, and in the stop-post
+//! recovery.
 
 use std::io;
 

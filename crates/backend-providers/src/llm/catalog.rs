@@ -238,8 +238,8 @@ impl ProviderAssembly {
 
 /// The digest a catalog record is kept under: the SHA-256 of the RFC 8785
 /// form of the entry's family, configuration and active account, so a
-/// changed entry starts from an empty cache (`storage.md` § Encodings and
-/// digests).
+/// changed entry starts from an empty cache
+/// (`crates/backend-database/src/columns.rs`).
 fn catalog_key(entry: &ProviderEntry) -> String {
     let config = match &entry.credential {
         EntryCredential::ApiKey(config) => serde_json::to_value(config),

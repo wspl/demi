@@ -9,15 +9,15 @@ A build runs as root on a Linux builder of the image's architecture.
 `rootfs/build.sh` makes the Ubuntu tree from Ubuntu's container image, then
 runs `xtask cloud-image package`, which embeds the runner release and the
 command packages' executables, and publishes the release. The image goes into the `image/` directory of
-the [server release](../docs/delivery/builds-and-releases.md#server-release)
+the server release (`crates/xtask/src/server_release.rs`)
 whose runner and command package releases it embeds. The release workflow
 builds the published images this way on its `ubuntu-26.04` and
 `ubuntu-26.04-arm` runners
-([Release workflow](../docs/delivery/builds-and-releases.md#release-workflow));
+(`.github/workflows/release.yml`);
 the steps below are a developer's build.
 
 First, on the developer's machine, build the image's target with the
-[native cross tools](../docs/delivery/builds-and-releases.md), assemble a
+native cross tools (`crates/xtask/src/native/build.rs`), assemble a
 server release of the targets in use, and build `xtask` for the builder. For
 an arm64 image (use `x86_64-unknown-linux-musl` for amd64), with the Mac's
 target for its own runner:

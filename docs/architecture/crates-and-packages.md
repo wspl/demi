@@ -407,7 +407,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   server, which the manager requires and `demi-server` fetches.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `xtask` writes the image manifest with it. Behavior:
-  [Managed Cloud hosts](../cloud/managed-hosts.md).
+  `crates/machine-manager/src/lib.rs`.
 - **Must not:** hold the manager's policy or IO.
 
 #### `web-api-protocol`
@@ -497,17 +497,17 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   so a misspelt setting is never ignored. The machine manager refuses an
   unknown `DEMI_MANAGED_*` variable, and the backend an unknown `DEMI_*`
   variable outside that prefix, so that both read one configuration file
-  ([Backend configuration](../backend/backend.md#configuration)). And the
+  (`crates/backend/src/config/mod.rs`). And the
   panic hook every program installs at start, which writes a panic's
   message, location and backtrace to standard error before an abort can
-  end the process ([Builds and releases](../delivery/builds-and-releases.md)).
+  end the process (`crates/xtask/src/native/build.rs`).
   And the memory allocator of the programs that run on a Host when built for
   a musl target, mimalloc, declared once here as the global allocator behind
-  the `host-allocator` feature, which those programs turn on ([Memory allocator](../delivery/builds-and-releases.md#memory-allocator)).
+  the `host-allocator` feature, which those programs turn on (`crates/xtask/src/native/build.rs`).
   And raising a program's soft limit on open files as far as the system
   allows, which the runner and the backend do as they start
   (Load (`crates/runner/src/main.rs`),
-  [Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
+  `crates/backend/src/backend.rs`).
 - **Public boundary:** `unknown_variable`, over the program's clap command,
   `install_panic_hook` and `raise_open_file_limit`.
 - **Must not:** parse a program's settings, which its clap command does.
@@ -726,7 +726,7 @@ Each crate implements the provider contract for one vendor family.
     transcript, the bytes a session holds for its requests and the model's
     view of them, over the `BlobStore` its tree store gives it, and the blobs
     each block references, media and edit copies, which a store indexes for
-    [retention](../backend/storage.md#retention); the fitting of an image as
+    retention (`crates/backend-database/src/deletions.rs`); the fitting of an image as
     it enters, with the `image` crate (`images`,
     `crates/agent-store/src/images.rs`);
   - the run and request rules and the lists of changed files a shell call
@@ -1030,7 +1030,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   Builtins that act on a process (`crates/runner-shell/src/process_builtins.rs`)),
   killing and reaping it; standard IO plumbing; the way to the backend, at its
   URL or through a Cloud's runner socket
-  ([Backend socket](../cloud/managed-hosts.md#backend-socket)); the pipe endpoints that carry
+  (`crates/backend-http/src/lib.rs`); the pipe endpoints that carry
   file contents and output to the backend's pipe routes, and the report of a
   pipe's outcome (`crates/runner-jobs/src/tasks.rs`);
   the identity of a job's own input, which tells a command whether its
@@ -1167,7 +1167,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the change registry of the pages' synchronization channels: the
   parts of a user's product state (`Part`), and the marks each change leaves
   on that user's open channels (`SyncRegistry`, `UserMarks`)
-  ([Page synchronization](../backend/backend.md#page-synchronization)).
+  (`crates/backend-user-shard/src/sync/mod.rs`).
   A channel is registered under the hash of the session it opened with, a
   record of `backend-database`, so a sign-out ends that session's channels.
 - **Public boundary:** the items above.
@@ -1175,14 +1175,14 @@ demi-backend (executable: configuration, composition)
 
 #### `backend-database`
 
-- **Owns:** the SQLite databases ([Storage](../backend/storage.md)): the
+- **Owns:** the SQLite databases (`crates/backend-database/src/lib.rs`): the
   control service and every control record, the conversation index, each
   conversation's database with the tree store over it and its records of
   commands' outputs, the schemas and their migrations, and
   the encodings of stored values; and the record types it stores, among them
   the hashes and policies of sessions and challenges, a conversation's target
   and settings changes, and catalog records, which the domains above use;
-  and the [server log](../backend/backend.md#request-ids-and-the-server-log),
+  and the server log (`crates/backend-http/src/request_id.rs`),
   its database, its writer thread and the `tracing` layer that feeds it.
 - **Public boundary:** the stores and their records. Its `testing` feature
   opens a control database with a test key and runs raw statements behind the
@@ -1194,7 +1194,7 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the object store, on local disk or S3 through `object_store`, and
   the attachment and transcript media over it
-  ([The object store](../backend/storage.md#the-object-store)).
+  (`crates/backend-blobs/src/store.rs`).
 - **Public boundary:** the store and the blob namespaces. Its `testing`
   feature adds an S3 fake and a store that counts its operations
   (`ObjectCounts`).
@@ -1205,7 +1205,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** accounts, password hashing, web sessions, login lockout and
   email-change delivery, push subscriptions and sending push notifications, and each user's preferences and subagent settings,
   the Subagent switch and the profile records with their name and text rules
-  ([Authentication and ownership](../backend/backend.md#authentication-and-ownership),
+  (`crates/backend-http/src/gate.rs`,
   `crates/web-api-protocol/src/settings.rs`,
   `crates/backend-http/src/subagents.rs`).
 - **Public boundary:** the account, session, preference and subagent settings services. The key
@@ -1267,7 +1267,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** each user's Cloud: policy and capacity across users, the machine
   transitions, wake, hibernate, checkpoint, reset, recovery and
   maintenance, the machine manager's client, and machine access
-  ([Managed hosts](../cloud/managed-hosts.md)), with its times and limits
+  (`crates/machine-manager/src/lib.rs`), with its times and limits
   (`CloudTuning`); and `CloudShard`, what the Cloud needs of its user's
   shard: the handles its operations use, holding the user's conversations
   for an idle stop or a reset (`ConversationHold`), their activity and
@@ -1473,7 +1473,7 @@ demi-backend (executable: configuration, composition)
   `Backend::start`, the one composition root: the storage, the shared services,
   the shard pool and the edge, with the command manifest it serves to runners,
   the rpc handlers it runs. Its modules and their crates are
-  listed in [Backend](../backend/backend.md#request-paths-and-responsibilities).
+  listed in `crates/backend/src/lib.rs`.
 - **Public boundary:** the `demi-backend` executable; the built-in families,
   beside which a test registers scripted ones; `Backend::start` and
   `BackendConfig` for tests, with the parts a test replaces: the provider
@@ -1502,10 +1502,10 @@ demi-backend (executable: configuration, composition)
   (`SyncStep`: once a channel has read its snapshot, before it sends it; or
   once a change woke it, before it takes and reads the parts that changed)
   for the scenarios that change the state while a channel waits
-  ([Page synchronization](../backend/backend.md#page-synchronization)).
+  (`crates/backend-user-shard/src/sync/mod.rs`).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
-  ([Web app contract suite](../delivery/scenarios.md#web-app-contract-suite)).
+  (`packages/web/src/__tests__/web-app-contract/harness.ts`).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
@@ -1652,7 +1652,7 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the repository's development commands: `xtask sweep`, which
   removes the build products no current selection uses
-  ([Stale build products](../delivery/builds-and-releases.md#stale-build-products));
+  (`crates/xtask/src/sweep.rs`);
   `xtask logos`, which refreshes the marks of the vendors the backend offers
   from models.dev, reading the offered vendors as the backend does
   (`crates/backend-providers/src/llm/vendors.rs`);
@@ -1665,20 +1665,20 @@ demi-backend (executable: configuration, composition)
   [Registration](plugin-pages.md#registration)), native build and
   release packaging for every executable, the server release root
   (`xtask server-release`;
-  [Server release](../delivery/builds-and-releases.md#server-release)), the
+  `crates/xtask/src/server_release.rs`), the
   pinned Chrome for Testing
   release record, Cloud image packaging, and the comparison of the vendored
   crates with their upstream releases (`xtask vendor diff`), the one-command
   development backend with its development models (`xtask dev`;
-  [Development backend](../backend/backend.md#one-command-development-backend));
+  `crates/xtask/src/dev/mod.rs`);
   and the crate boundary check, one
   of its tests ([Boundary checks](#boundary-checks)).
   The checks and tests are plain Cargo and bun commands
-  ([Validation](../delivery/builds-and-releases.md#validation)).
+  (`crates/xtask/src/main.rs`).
   `xtask contracts` and `xtask dev` need the backend, so they exist on Unix
   with the `developer` feature, which is on by default; the release
   workflow builds `xtask` without it
-  ([Release workflow](../delivery/builds-and-releases.md#release-workflow)).
+  (`.github/workflows/release.yml`).
 - **Public boundary:** its commands; no crate links it.
 - **Must not:** hold a second implementation of something a crate owns: it
   downloads and publishes through `shared-artifacts` and writes every record with its
@@ -1805,7 +1805,7 @@ under `packages/`.
   chat uses the agent client over WebSocket; operations on resources and
   settings use REST. `packages/web/src/App.vue` owns
   state ownership and operation contracts. The web app contract suite in this
-  package drives the backend binary ([Scenarios](../delivery/scenarios.md)).
+  package drives the backend binary (`crates/backend/tests/backend/support.rs`).
 - **Public boundary:** `bun run web:dev` and the production build; no library
   API.
 - **Must not:** import `web-gallery`, import a package by a computed name, or
@@ -1871,7 +1871,7 @@ Each plugin page package is **private** and has the same boundary:
   the artifact and build contract.
 - **Build boundary:** filesystem assembly runs at build time; native binaries
   come from the machine's cross tools
-  ([Builds and releases](../delivery/builds-and-releases.md)). No guest kernel,
+  (`crates/xtask/src/native/build.rs`). No guest kernel,
   bootloader or hypervisor configuration.
 - **Must not:** own runtime OCI policy, mounts, networking, device credentials,
   lifecycle or backend configuration.
@@ -2063,7 +2063,7 @@ review.
   branches on business state.
 - **Modules mirror design modules, and files carry one responsibility.** A
   module must be nameable as a part of its crate's design, such as the
-  backend's modules in [Backend](../backend/backend.md). There are no
+  backend's modules in `crates/backend/src/lib.rs`. There are no
   catch-all modules (`misc`, `helpers`, `utils`): generic Rust comes from the
   standard library or an established crate, generic web app code goes to
   `@demicodes/utils`, and domain helpers sit next to their module. A crate
@@ -2101,7 +2101,7 @@ review.
   depends upward. A test reaches another program as the
   binary Cargo built into the target directory the test runs from
   (`command_protocol::testing::built_program`), and a TypeScript test through
-  `DEMI_TEST_PROGRAMS` ([Validation](../delivery/builds-and-releases.md#validation)).
+  `DEMI_TEST_PROGRAMS` (`crates/xtask/src/main.rs`).
   JavaScript that a crate ships, such as the capture extension of
   `browser-driver`, is tested by a Bun test beside it, which `bun run test`
   runs.

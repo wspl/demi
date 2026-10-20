@@ -9,8 +9,8 @@ asserts the token is 64 hexadecimal characters adds nothing to that scenario:
 it cannot fail unless the scenario fails too, and it would break if the token
 format changed for a good reason. This document says what a test protects,
 where it runs, how it proves itself, and what it may cost. The commands that
-run the tests are in [Validation](builds-and-releases.md#validation), and the
-backend's scenario suites in [Scenarios](scenarios.md).
+run the tests are in `crates/xtask/src/main.rs`, and the
+backend's scenario suites in `crates/backend/tests/backend/support.rs`.
 
 ## What a test protects
 
@@ -40,7 +40,7 @@ backend's scenario suites in [Scenarios](scenarios.md).
 
 - **Scenarios first.** The default test runs the real programs through their
   real boundaries: the backend over HTTP and WebSocket, real runner processes,
-  and a scripted model ([Scenarios](scenarios.md)). One scenario covers many
+  and a scripted model (`crates/backend/tests/backend/support.rs`). One scenario covers many
   modules working together and survives refactoring, since it depends on no
   internals.
 - **Tables for dense logic.** Code with many cases and no side effects, such as
@@ -115,7 +115,7 @@ backend's scenario suites in [Scenarios](scenarios.md).
   environment variables supply those resources; of them the Chrome, Cloud and
   Claude Code suites exist, and release acceptance checks by hand what they
   leave out
-  ([Real machine acceptance](scenarios.md#real-machine-acceptance)).
+  (`crates/backend/tests/backend/real_cloud.rs`).
 - Each crate has one test binary, which tests its public boundary
   ([Module layout](../architecture/crates-and-packages.md#module-layout)); a
   test gets a binary of its own only when it changes or exhausts process-wide

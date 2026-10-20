@@ -1,5 +1,5 @@
-//! The object store (`storage.md` § The object store), on local disk or S3
-//! through `object_store`, and the attachment and transcript media over it.
+//! The object store, on local disk or S3 through `object_store`, and the
+//! attachment and transcript media over it.
 
 pub mod blobs;
 #[cfg(any(test, feature = "testing"))]

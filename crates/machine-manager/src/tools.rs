@@ -1,8 +1,16 @@
-//! The external programs the manager runs (`managed-hosts.md` § Linux
-//! control): `runsc`, `mke2fs`, `e2fsck`, `resize2fs`, `bsdtar` and `nft`.
-//! Each starts from the loop, which only spawns it and waits for its exit,
-//! with the C locale's UTF-8 variant so its messages have one form. Dropping
-//! a running tool kills it.
+//! The external programs the manager runs: `runsc`, the sandbox runtime, which
+//! the manager drives through its OCI commands; `mke2fs`, `e2fsck` and
+//! `resize2fs`, since no Rust library creates, repairs or enlarges an ext4
+//! filesystem; `bsdtar`, which extracts a base archive with numeric ownership,
+//! setuid modes, ACLs and extended attributes intact and refuses a path that
+//! leaves the target; and `nft`, which applies the firewall table as one
+//! transaction. Each starts from the loop, which only spawns it and waits for
+//! its exit, with the C locale's UTF-8 variant so its messages have one form.
+//! Dropping a running tool kills it.
+//!
+//! Filesystem checks and resizes run without a deadline, since a repair lasts as
+//! long as the damage it finds and killing one midway does more harm than
+//! waiting; `runsc` commands have deadlines.
 
 use std::{
     ffi::OsStr,

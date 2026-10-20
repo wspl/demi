@@ -189,9 +189,9 @@ impl CodexSecret {
 }
 
 /// The Codex sign-in a development backend is started with
-/// (`backend.md` § One-command development backend): the tokens of a Codex
-/// CLI sign-in without its refresh token, so that Demi never renews it and
-/// the CLI's own stays valid.
+/// (`crates/xtask/src/dev/mod.rs`): the tokens of a Codex CLI sign-in
+/// without its refresh token, so that Demi never renews it and the CLI's
+/// own stays valid.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DevelopmentSignIn {

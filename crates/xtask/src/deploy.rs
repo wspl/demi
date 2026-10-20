@@ -1,11 +1,25 @@
-//! `xtask deploy` (`upgrades.md` § A development build on a server): moves
-//! a server that runs Demi to the next version, built on GitHub. It checks
-//! that the checkout is clean and its branch even with origin's, writes the
-//! next patch version into `Cargo.toml` and `Cargo.lock`, commits it as
-//! `chore: release <version>` and pushes it; starts the release workflow on
-//! the branch as a pre-release, checks that the run builds that commit and
-//! waits for it; then, in one SSH session, runs `demi-server upgrade
-//! <version>` and `demi-server status` on the server. Nothing is built here.
+//! `xtask deploy`: moves a server that runs Demi to the next version, built on
+//! GitHub. It checks that the checkout is clean and its branch even with origin's,
+//! writes the next patch version into `Cargo.toml` and `Cargo.lock`, commits it as
+//! `chore: release <version>` and pushes it; starts the release workflow on the
+//! branch as a pre-release, checks that the run builds that commit and waits for
+//! it; then, in one SSH session, runs `demi-server upgrade <version>` and
+//! `demi-server status` on the server. Nothing is built here.
+//!
+//! Every deploy is a version of its own, so the repository always says which
+//! version a server runs. A pre-release is never the latest release, which the
+//! installer and `demi-server upgrade` without a version take, so only a deploy
+//! installs one until it is published; a version the user is content with is
+//! published by turning its pre-release into the latest release, so the files
+//! users install are the ones the server ran, built once. Every version is kept,
+//! published or not. A workflow run that fails ends the deploy with the failing
+//! job's name and address, before the server is touched. A deploy that changes a
+//! schema migrates the server's databases as an upgrade does, and the first
+//! change to a schema after a deploy adds the deployed schema to the history (see
+//! `backend-database`): a schema changed again after a deploy shipped it, in the
+//! same unpublished batch, extends that step, and one that was changed without it
+//! leaves the server's databases at a version the next build does not know, which
+//! the upgrade's data check reports before anything is interrupted.
 
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::process::{Command, ExitStatus, Stdio};
@@ -13,8 +27,7 @@ use std::time::{Duration, Instant};
 
 use semver::{BuildMetadata, Prerelease, Version};
 
-/// The installed `demi-server` (`upgrades.md` § One release on a server),
-/// by its path: sudo's search path may leave out `/usr/local/bin`.
+/// The installed `demi-server`, by its path: sudo's search path may leave out `/usr/local/bin`.
 const DEMI_SERVER: &str = "/usr/local/bin/demi-server";
 /// The release workflow, which a deploy starts as a pre-release.
 const WORKFLOW: &str = "release.yml";

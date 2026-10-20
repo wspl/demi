@@ -24,8 +24,8 @@ use tokio::sync::Notify;
 use super::Shard;
 
 /// Seals and opens credentials' values under the instance's key, bound to
-/// the user and the credential's name (`storage.md` § Passwords and
-/// credentials at rest).
+/// the user and the credential's name
+/// (`crates/backend/src/config/secret.rs`).
 pub(crate) struct VaultSeal(pub(crate) VaultKey);
 
 impl CredentialSeal for VaultSeal {

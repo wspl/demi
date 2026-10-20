@@ -43,7 +43,7 @@ fn databases(data: &Path) -> io::Result<Vec<(PathBuf, DatabaseKind)>> {
 /// The databases of `data` that this release would migrate, relative to it.
 /// A database it could not open, of a schema neither its own nor in its
 /// history, stops the move here, before anything is interrupted, naming
-/// each such file (`upgrades.md` § Prepare).
+/// each such file.
 pub fn migrating(data: &Path) -> io::Result<Vec<PathBuf>> {
     let mut migrating = Vec::new();
     let mut other = Vec::new();

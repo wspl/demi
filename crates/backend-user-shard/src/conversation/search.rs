@@ -1,6 +1,6 @@
-//! Finding a conversation (`storage.md` § Search index): the user's indexer, which keeps
-//! the user's search index in step with the conversations, and the search the edge
-//! answers from that index alone.
+//! Finding a conversation (`crates/backend-database/src/search.rs`): the user's indexer,
+//! which keeps the user's search index in step with the conversations, and the search
+//! the edge answers from that index alone.
 //!
 //! The indexer follows each save of a root's checkpoint by what it changed:
 //! the save hands over the version it follows and the one it makes, the
@@ -299,9 +299,9 @@ fn report_catch_up(id: &ConversationId, caught_up: Result<(), StorageError>) {
 }
 
 /// Brings each user's search index in step with the conversations at start
-/// (`storage.md` § Search index): every user who has a conversation has
-/// their shard index it in the background, while the backend serves.
-/// Answers once each shard has its task.
+/// (`crates/backend-database/src/search.rs`): every user who has a
+/// conversation has their shard index it in the background, while the
+/// backend serves. Answers once each shard has its task.
 pub async fn index_at_start(
     control: &ControlService,
     shards: &Shards,

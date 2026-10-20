@@ -1,9 +1,9 @@
-//! Runners waiting to be paired (`backend.md` § Authentication and
-//! ownership). An unpaired runner has no user yet, so it waits at the edge,
-//! under the code it printed, until a signed-in user claims that code: the
-//! claim creates the device and hands the waiting runner its token, and the
-//! runner's socket moves into the user's shard. Each user may try ten codes
-//! a minute.
+//! Runners waiting to be paired (`crates/backend-http/src/runner_socket.rs`). An
+//! unpaired runner has no user yet, so it waits at the edge, under the code
+//! it printed, until a signed-in user claims that code: the claim creates
+//! the device and hands the waiting runner its token, and the runner's
+//! socket moves into the user's shard. Each user may try ten codes a
+//! minute.
 //!
 //! An agent pairs a computer it reaches without the user typing the code (`demi host
 //! pair`): the code is proof enough, since it reaches only the runner's output and

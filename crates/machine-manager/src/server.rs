@@ -1,9 +1,10 @@
-//! The socket server (`managed-hosts.md` § Control and ownership): one Unix
-//! socket, any number of backend connections, every request handed to one
-//! [`MachineService`]. Requests on a connection run concurrently and are
+//! The socket server (`crates/machine-manager-protocol/src/lib.rs`): one
+//! Unix socket, any number of backend connections, every request handed to
+//! one [`MachineService`]. Requests on a connection run concurrently and are
 //! answered in completion order; a death event goes to every connection. The
 //! socket's owner and group are the boundary: there is no authentication and
-//! no TCP listener.
+//! no TCP listener. The group includes only trusted backend infrastructure,
+//! and the backend never runs as root merely to reach the socket.
 
 use std::{
     collections::HashMap,

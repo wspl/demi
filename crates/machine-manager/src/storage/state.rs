@@ -1,8 +1,8 @@
-//! The format of the manager's state directory (`managed-hosts.md`
-//! § Startup and recovery): `<data>/format` names the format its records
-//! are in. A release that changes a record changes the format and migrates
-//! the records of every earlier format as it starts; a state directory of a
-//! format this release does not know, made by a newer one, stops the start.
+//! The format of the manager's state directory: `<data>/format` names the
+//! format its records are in. A release that changes a record changes the
+//! format and migrates the records of every earlier format as it starts; a
+//! state directory of a format this release does not know, made by a newer
+//! one, stops the start.
 
 use std::path::Path;
 

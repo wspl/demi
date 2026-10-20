@@ -18,7 +18,7 @@ test = false
 
 [features]
 # Acceptance builds: `DEMI_MACHINE_MANAGER_FAULT=<point>` aborts the process at that
-# point (`managed-hosts.md` § Verification).
+# point (`crates/backend/tests/backend/real_cloud.rs`).
 fault-injection = []
 # The Cloud image fixtures of the manager's process tests (`tests/manager`).
 testing = ["dep:tempfile"]

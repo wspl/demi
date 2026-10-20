@@ -52,8 +52,7 @@ impl Settings {
         self.directory("DEMI_MANAGED_DATA")
     }
 
-    /// The backend's management socket (`upgrades.md` § Prepare), when the
-    /// configuration names one.
+    /// The backend's management socket, when the configuration names one.
     pub fn manage_socket(&self) -> Option<PathBuf> {
         self.value(demi_runner_protocol::release::MANAGE_SOCKET_ENV)
             .map(PathBuf::from)

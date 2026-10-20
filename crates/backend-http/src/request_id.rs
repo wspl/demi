@@ -1,10 +1,17 @@
-//! Request IDs (`backend.md` § Request IDs and the server log): the edge
-//! names every request as it arrives, a WebSocket's upgrade included, and
-//! never takes a name from the client. The ID is a field of the request's
-//! `tracing` span, every response carries it in `X-Request-Id`, and every
-//! JSON error carries it as `requestId`. Every request logs one line as it
-//! is answered, or as its client abandons it, so that an ID a user copies
-//! always finds its request.
+//! Request IDs: the edge names every request as it arrives, a WebSocket's
+//! upgrade included, and never takes a name from the client. The ID is a
+//! field of the request's `tracing` span, every response carries it in
+//! `X-Request-Id`, and every JSON error carries it as `requestId`. Every
+//! request logs one line as it is answered, or as its client abandons it, so
+//! that an ID a user copies always finds its request.
+//!
+//! Work the request starts in another task is started inside its span: a
+//! session it opens, a Host operation it sends and a store write it waits for
+//! log under the same ID. A socket keeps the ID of its upgrade for its whole
+//! life, and work that outlives a request, such as a turn a socket's frame
+//! started, logs under the socket's ID with its own conversation and turn
+//! IDs. What an abandoned request started goes on or stops by that work's own
+//! rule; its line only records it.
 
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};

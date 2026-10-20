@@ -1,6 +1,6 @@
-//! The session cookie (`backend.md` § Authentication and ownership):
-//! `demi_session`, `HttpOnly`, `SameSite=Lax` and `Path=/`, and `Secure` for a
-//! request that came over HTTPS, directly or through a proxy.
+//! The session cookie: `demi_session`, `HttpOnly`, `SameSite=Lax` and
+//! `Path=/`, and `Secure` for a request that came over HTTPS, directly or
+//! through a proxy.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;

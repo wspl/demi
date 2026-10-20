@@ -1,11 +1,11 @@
-//! The users' credentials (`storage.md` § Passwords and credentials at
-//! rest): each credential's name, note, fields and times in the clear, and
-//! its values sealed with the user and the name as the additional data, so a
-//! rename seals them again in the same transaction; and the conversations
-//! allowed to use each. The control database stores the values only sealed;
-//! whoever calls seals and opens them through [`CredentialSeal`], on the
-//! database's thread, so that a change that reads and writes values does so
-//! in one transaction.
+//! The users' credentials (`crates/backend/src/config/secret.rs`): each
+//! credential's name, note, fields and times in the clear, and its values
+//! sealed with the user and the name as the additional data, so a rename
+//! seals them again in the same transaction; and the conversations allowed
+//! to use each. The control database stores the values only sealed; whoever
+//! calls seals and opens them through [`CredentialSeal`], on the database's
+//! thread, so that a change that reads and writes values does so in one
+//! transaction.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

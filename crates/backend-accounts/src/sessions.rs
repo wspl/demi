@@ -1,14 +1,23 @@
-//! The web app's login sessions (`backend.md` § Authentication and
-//! ownership): the cookie holds a random 256-bit token, storage holds the
-//! token's SHA-256, and a session expires 30 days after its last renewal.
-//! Each is named for the browser and system it signed in from, and a request
-//! writes its last activity at most once an hour. A session verified by
-//! password or passkey in the last five minutes makes handoff codes and
-//! adds passkeys; a sign-in counts as a verification, a handoff code's too,
-//! which a phone keeping its session is verified by. Handoff codes are
-//! 256 random bits, kept as their SHA-256 for ten minutes and spent once;
-//! they open the account on a phone: in the phone's own session of the
-//! account when it has one, else in a new session.
+//! The web app's login sessions: the
+//! cookie holds a random 256-bit token, storage holds the token's SHA-256,
+//! and a session expires 30 days after its last renewal. Each is named for
+//! the browser and system it signed in from, and a request writes its last
+//! activity at most once an hour. A session verified by password or passkey
+//! in the last five minutes makes handoff codes and adds passkeys; a sign-in
+//! counts as a verification, a handoff code's too, which a phone keeping its
+//! session is verified by. Handoff codes are 256 random bits, kept as their
+//! SHA-256 for ten minutes and spent once; they open the account on a phone:
+//! in the phone's own session of the account when it has one, else in a new
+//! session.
+//!
+//! A handoff code travels after `#` in its URL, which a browser never sends
+//! to a server, so no access log or proxy holds it. Its `to` is a path of
+//! the product, checked when the code is made and again when it is spent, so
+//! a code never sends a phone to another site. The laptop learns of the
+//! spending from the account's sessions, the synchronization channel's
+//! `sessions` part, whose new session names the code that made it; it never
+//! asks. Signing a session out deletes it and closes its channel and its
+//! conversation sockets with `session_ended`, and so does an expiry.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -34,8 +43,8 @@ const SESSION_POLICY: SessionPolicy = SessionPolicy {
 };
 
 /// The policy of a look that never renews and is no activity: a
-/// synchronization channel's, which only requests renew (`backend.md`
-/// § Page synchronization).
+/// synchronization channel's, which only requests renew
+/// (`crates/backend-user-shard/src/sync/mod.rs`).
 const WITHOUT_RENEWAL: SessionPolicy = SessionPolicy {
     renew_below: SignedDuration::ZERO,
     activity_every: None,

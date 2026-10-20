@@ -1,14 +1,14 @@
 //! Demi's Claude Code CLI on the Claude Code machine
 //! (`crates/command-package-claude-code/src/lib.rs`,
 //! `crates/provider-claude-code/src/placement.rs`,
-//! `crates/provider-claude-code/src/account.rs`; `managed-hosts.md` § The
-//! Claude Code machine): the versions the
-//! machine has and the install of the vendor's newest, through the
-//! `demi.claude-code` package; the placement that starts a provider's
-//! process there, in its account's directory with a directory of its own
-//! for its session, or a sign-in's new directory; the machine as every
-//! user's sign-in and usage probe reach it; and the installs no
-//! conversation asked for, whose outcome the settings page shows.
+//! `crates/provider-claude-code/src/account.rs`;
+//! `crates/backend-cloud/src/lib.rs`): the versions the machine has and
+//! the install of the vendor's newest, through the `demi.claude-code`
+//! package; the placement that starts a provider's process there, in its
+//! account's directory with a directory of its own for its session, or a
+//! sign-in's new directory; the machine as every user's sign-in and usage
+//! probe reach it; and the installs no conversation asked for, whose
+//! outcome the settings page shows.
 //!
 //! What each machine has installed is kept per runner connection, and a process
 //! start asks the machine nothing: the root's process and three subagents'
@@ -126,8 +126,9 @@ struct CliTarget {
 }
 
 /// The Claude Code machine as every shard reaches it: through the shard of
-/// the instance's master, which holds it (`managed-hosts.md` § The Claude
-/// Code machine). It serves a sign-in and a usage probe from any thread.
+/// the instance's master, which holds it
+/// (`crates/backend-cloud/src/lib.rs`). It serves a sign-in and a usage
+/// probe from any thread.
 #[derive(Clone)]
 pub struct ClaudeMachine {
     shards: Shards,

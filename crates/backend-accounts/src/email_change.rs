@@ -77,7 +77,7 @@ const CHALLENGE_POLICY: ChallengePolicy = ChallengePolicy {
 };
 
 /// The key email-change codes are hashed under, which the instance secret
-/// derives (`storage.md` § Passwords and credentials at rest).
+/// derives (`crates/backend/src/config/secret.rs`).
 #[derive(Clone)]
 pub struct CodeKey([u8; 32]);
 

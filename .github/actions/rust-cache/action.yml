@@ -1,9 +1,12 @@
 # Restores the job's compiled Rust dependencies and saves them when the job
-# ends (docs/delivery/builds-and-releases.md § Release workflow). Each job
-# keeps its own entry, since each builds other targets or programs; a release
-# changes Cargo.lock, so an entry is restored from the job's previous release
-# and only what changed compiles again. The workspace's own crates are not
-# kept: every release changes their version, so none would be reused.
+# ends. Each job keeps its own entry, since each builds other targets or
+# programs; a release changes Cargo.lock, so an entry is restored from the
+# job's previous release and only what changed compiles again. The workspace's
+# own crates are not kept: every release changes their version, so none would
+# be reused; the vendored crates, which are path dependencies, are. A job that
+# fails keeps what it compiled too. The repository's cache holds up to 50 GB,
+# paid beyond the free 10 GB, and keeps an entry for 90 days after its last
+# use, so an entry survives the time between releases.
 name: Rust cache
 description: Restores and saves the job's compiled Rust dependencies.
 inputs:

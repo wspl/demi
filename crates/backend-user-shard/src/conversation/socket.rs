@@ -1,11 +1,10 @@
-//! The conversation socket (`backend.md` § Page synchronization): `WS
-//! /api/conversations/:id/stream`, moved into the user's shard once upgraded.
-//! The socket decodes each message into a client frame and hands it to the
-//! conversation's agent connection, one at a time in arrival order; the
-//! connection's outbox carries every server frame back, with the failure facts
-//! of the error blocks it brings; its media are references into the owner's
-//! blobs already. A frame the backend refuses before the agent sees it is
-//! answered with an `error` frame: one that is not a valid frame
+//! The conversation socket: `WS /api/conversations/:id/stream`, moved into the
+//! user's shard once upgraded. The socket decodes each message into a client
+//! frame and hands it to the conversation's agent connection, one at a time in
+//! arrival order; the connection's outbox carries every server frame back, with
+//! the failure facts of the error blocks it brings; its media are references
+//! into the owner's blobs already. A frame the backend refuses before the agent
+//! sees it is answered with an `error` frame: one that is not a valid frame
 //! (`invalid_frame`), one sent while the conversation is archived
 //! (`conversation_archived`), an `open` of a conversation that has no model yet
 //! (`model_not_selected`) or whose provider the user may no longer use
@@ -216,8 +215,8 @@ impl Shard {
             }
         };
         // The shard's close ends the relay wherever it waits, a send to a
-        // page that stopped reading included (`backend.md` § Startup and
-        // shutdown).
+        // page that stopped reading included
+        // (`crates/backend/src/backend.rs`).
         let ending = tokio::select! {
             biased;
             () = self.closed() => Ending::Closing,
@@ -363,9 +362,9 @@ impl Shard {
             frame => (frame, None, None),
         };
         // The frame is handled under the conversation's file gate, which a
-        // transition holding the conversation makes it wait for, never
-        // refuse (`crates/backend-cloud/src/uses.rs`). Its uploads go to no Host (`backend.md` § Media by
-        // reference).
+        // transition holding the conversation makes it wait for, never refuse
+        // (`crates/backend-cloud/src/uses.rs`). Its uploads go to no Host
+        // (`crates/backend-host-access/src/uploads.rs`).
         let _files = self
             .conversations()
             .slot(conversation)
@@ -575,9 +574,8 @@ impl Shard {
     }
 
     /// A server frame as the page receives it: a transcript frame carries
-    /// the failure facts of the error blocks it brings (`backend.md`
-    /// § Failure facts). Its blocks hold their media by reference already
-    /// (§ Media by reference).
+    /// the failure facts of the error blocks it brings. Its blocks hold
+    /// their media by reference already (§ Media by reference).
     async fn present(&self, frame: ServerFrame) -> ServerFrame {
         let services = self.services();
         let assembly = &services.assembly;

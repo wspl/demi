@@ -403,8 +403,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     }
     let own: BTreeMap<String, String> = demi_runner_shell::host_environment().collect();
     // A paired device's is the user's login environment, whoever started
-    // the runner; a managed guest's is its image's (`managed-hosts.md`
-    // § Images), and one that `uninstall` runs starts nothing.
+    // the runner; a managed guest's is its image's
+    // (`crates/machine-manager/src/storage/mod.rs`), and one that
+    // `uninstall` runs starts nothing.
     #[cfg(unix)]
     let (resolved, unresolved) = if boot.is_none() && !removing {
         match environment::login_environment(&own).await {
@@ -539,13 +540,14 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     #[cfg(unix)]
     let _umask = demi_runner_process::process::umask();
     // A Cloud's temporary directory, which its runner's `TMPDIR` names,
-    // starts each boot empty (`managed-hosts.md` § Images).
+    // starts each boot empty
+    // (`crates/machine-manager/src/storage/mod.rs`).
     if boot.is_some() {
         prepare_temporary(Path::new(TEMPORARY_DIRECTORY)).await;
     }
     let installation_directory = directory.clone();
     // A Cloud's runner reaches its backend through the socket the machine
-    // manager mounted (`managed-hosts.md` § Backend socket).
+    // manager mounted (`crates/backend-http/src/lib.rs`).
     let backend = match &boot {
         Some(_) => Backend::through(backend, PathBuf::from(BACKEND_SOCKET)),
         None => Backend::at(backend),
@@ -808,8 +810,8 @@ async fn signal() -> io::Result<()> {
 }
 
 fn main() {
-    // A panic leaves its report on standard error (`builds-and-releases.md`
-    // § Build profiles).
+    // A panic leaves its report on standard error
+    // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
     let args: Vec<_> = std::env::args().collect();
     let name = Path::new(&args[0])

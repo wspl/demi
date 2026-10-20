@@ -1,17 +1,25 @@
-//! Importing the configured base (`images.md` § Import and publication): the
-//! manager verifies its image release once, at startup, extracts it into a
-//! stage and publishes it under its base version, the SHA-256 of the
-//! manifest's bytes. A base already imported under that version must hold
-//! the same manifest bytes.
+//! Importing the configured base: the manager verifies its image release
+//! once, at startup, extracts it into a stage and publishes it under its
+//! base version, the SHA-256 of the manifest's bytes. A base already
+//! imported under that version must hold the same manifest bytes.
 //!
 //! ```text
 //! <data>/images/configured.json            the configured base and the one before it
 //! <data>/images/bases/<baseVersion>/manifest.json, rootfs/
 //! ```
 //!
+//! The import rejects unknown schemas, mismatched hashes or sizes, missing
+//! executable entries and an architecture other than its host's, strips no
+//! unexpected input to make a corrupt release appear valid, and never executes
+//! image content on the host. The base directory is writable only while it is
+//! staged, then exposed read-only as OverlayFS's lower layer. An upgrade
+//! imports the next release's image early with `--import`, which takes none of
+//! the running manager's locks: a base is an immutable directory named by its
+//! version and published atomically, and a running manager reads no base it was
+//! not configured with.
+//!
 //! After each import the manager keeps those two bases and every base a
-//! committed generation or a working pair names, and removes the rest
-//! (`managed-hosts.md` § Base retention).
+//! committed generation or a working pair names, and removes the rest.
 
 use std::{
     io::{self, Read, Write},

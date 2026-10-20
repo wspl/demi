@@ -1,6 +1,6 @@
-//! Loop devices the manager attaches itself (`managed-hosts.md` § Images):
-//! each working image gets a free device with auto-clear set, so unmounting
-//! its filesystem, or a mount that fails, detaches the device.
+//! Loop devices the manager attaches itself: each working image gets a free
+//! device with auto-clear set, so unmounting its filesystem, or a mount
+//! that fails, detaches the device.
 
 use std::{
     io,

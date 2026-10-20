@@ -1,6 +1,7 @@
-//! A device's stored images (`managed-hosts.md` § Images): the names that
-//! identify them and the committed generation's record, which both
-//! `image_state` answers and the manager keeps on disk.
+//! A device's stored images
+//! (`crates/machine-manager/src/storage/mod.rs`): the names that identify
+//! them and the committed generation's record, which both `image_state`
+//! answers and the manager keeps on disk.
 
 use std::{fmt, num::NonZeroU64};
 

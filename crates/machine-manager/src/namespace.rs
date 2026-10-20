@@ -1,7 +1,22 @@
-//! The saved mount namespace (`managed-hosts.md` § Startup and recovery):
-//! the manager pins its private mount namespace with a handle in the
-//! execution host's namespace, so the filesystems it froze or mounted stay
-//! reachable if it dies, and the next manager recovers them through it.
+//! The saved mount namespace: the manager pins its private mount namespace
+//! with a handle in the execution host's namespace, so the filesystems it
+//! froze or mounted stay reachable if it dies, and the next manager
+//! recovers them through it.
+//!
+//! The manager binds the handle from PID 1's mount namespace, on a service
+//! host systemd's initial one, because Linux binds a mount namespace only
+//! into one with a lower number, and Linux 6.18 numbers namespaces in per-CPU
+//! batches, so that only the initial namespace, numbered at boot before all
+//! others, is sure to be lower than the service's. The owner record must name
+//! the next manager's own state directory; otherwise startup stops and asks
+//! for the earlier manager to be recovered with its original directory, so
+//! that changing directories cannot abandon that manager's writers. Recovery
+//! runs as a separate process of the manager's own executable, started inside
+//! the saved namespace, which inherits the manager's lock on the state
+//! directory and refuses to run without it, so nobody can start it by hand
+//! beside a live manager. Only after it succeeds does the manager release the
+//! handle; if it fails the handle stays and the next start retries. Recovery
+//! has no deadline, for the reason filesystem checks have none.
 //!
 //! ```text
 //! /run/demi-machine-manager/mount-namespace              the handle: a bind of /proc/<pid>/ns/mnt

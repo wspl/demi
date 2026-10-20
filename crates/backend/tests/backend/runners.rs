@@ -659,9 +659,10 @@ async fn a_runner_that_goes_away_while_its_token_is_looked_up_is_let_go_and_neve
     backend.close().await;
 }
 
-/// A runner whose hello reaches its device's shard as the backend shuts
-/// down is not welcomed: a closing shard binds no runner, so the runner's
-/// connection closes without an answer, and the shutdown ends (`crates/runner-protocol/src/wire/mod.rs`, `backend.md` § Startup and shutdown).
+/// A runner whose hello reaches its device's shard as the backend shuts down is
+/// not welcomed: a closing shard binds no runner, so the runner's connection
+/// closes without an answer, and the shutdown ends
+/// (`crates/runner-protocol/src/wire/mod.rs`).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_runner_whose_hello_meets_the_shutdown_is_never_welcomed() {
     let harness = Harness::new();
@@ -1238,9 +1239,10 @@ async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo()
 }
 
 /// A Cloud's runner reaches its backend through the runner socket the
-/// machine manager mounts into the Cloud (`managed-hosts.md` § Backend
-/// socket), with the backend's public URL as the origin: the socket answers
-/// the runner's socket and pipes, and nothing a browser uses.
+/// machine manager mounts into the Cloud
+/// (`crates/backend-http/src/lib.rs`), with the backend's public URL as the
+/// origin: the socket answers the runner's socket and pipes, and nothing a
+/// browser uses.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
     let directory = tempfile::tempdir().unwrap();

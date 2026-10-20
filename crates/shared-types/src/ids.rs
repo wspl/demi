@@ -180,7 +180,7 @@ crate::id!(
 crate::id!(
     /// An HTTP request to the backend, a WebSocket's upgrade included, which
     /// the backend names as it arrives: `req_` and 16 random lowercase
-    /// base-32 characters (`backend.md` § Request IDs and the server log).
+    /// base-32 characters (`crates/backend-http/src/request_id.rs`).
     RequestId
 );
 

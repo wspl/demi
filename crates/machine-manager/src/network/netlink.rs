@@ -1,6 +1,6 @@
-//! Interfaces, addresses and routes through rtnetlink (`managed-hosts.md` §
-//! Networking). Each [`session`] opens a netlink socket in the calling
-//! thread's network namespace and closes it when its work ends.
+//! Interfaces, addresses and routes through rtnetlink. Each [`session`]
+//! opens a netlink socket in the calling thread's network namespace and
+//! closes it when its work ends.
 
 use std::{collections::HashMap, future::Future, io, net::Ipv4Addr, os::fd::RawFd};
 

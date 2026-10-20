@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Runs the Cloud suite (scenarios.md § Cloud suite) on a Linux machine, as
-# root, against a manager of its own, never an installed one, with its
-# resource limits off, in a stand-in execution host. The stand-in is the init
-# of a throwaway PID and mount namespace with its own /run and an empty,
-# read-only cgroup root, so nothing in it can create a cgroup and the
-# machine's cgroup hierarchies stay untouched; it shares the machine's network
-# namespace, so the Clouds reach the backend.
+# Runs the Cloud suite on a Linux machine, as root, against a manager of its
+# own, never an installed one, with its resource limits off, in a stand-in
+# execution host. The stand-in is the init of a throwaway PID and mount
+# namespace with its own /run and an empty, read-only cgroup root, so nothing
+# in it can create a cgroup and the machine's cgroup hierarchies stay
+# untouched; it shares the machine's network namespace, so the Clouds reach
+# the backend.
 #
 # After the run, also after a failure or an interruption, the script stops the
 # manager, which saves every Cloud, ends the stand-in, deletes the manager's

@@ -1,9 +1,10 @@
-//! The pages' synchronization channel end to end (`backend.md` § Page
-//! synchronization): the product state a page receives first, and the run that
-//! tells one start of the backend from the next; what it receives when another
-//! session changes something, after it reconnects, and when it falls behind; a
-//! turn and its reading as other pages see them; when the channel opens and how
-//! it ends; and the heartbeat each of a page's sockets sends when it is quiet.
+//! The pages' synchronization channel end to end
+//! (`crates/backend-user-shard/src/sync/mod.rs`): the product state a page
+//! receives first, and the run that tells one start of the backend from the
+//! next; what it receives when another session changes something, after it
+//! reconnects, and when it falls behind; a turn and its reading as other pages
+//! see them; when the channel opens and how it ends; and the heartbeat each of
+//! a page's sockets sends when it is quiet.
 
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};

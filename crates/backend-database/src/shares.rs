@@ -576,9 +576,8 @@ pub fn shown_attachment(
 }
 
 /// Every blob the shares' copies and kept attachments in a conversation's
-/// database name, which keeps them while the shares do (`storage.md`
-/// § Retention); the other blocks a list shows are the transcript's, which
-/// keeps theirs.
+/// database name, which keeps them while the shares do; the other blocks a
+/// list shows are the transcript's, which keeps theirs.
 pub fn copied_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
     let mut blobs = BTreeSet::new();
     let mut statement = connection.prepare("SELECT blob FROM share_blobs UNION SELECT blob FROM share_attachments")?;

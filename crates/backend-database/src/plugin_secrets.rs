@@ -1,10 +1,10 @@
 //! The plugins' secrets and OAuth clients (`plugins.md` § Secrets, § OAuth
-//! sign-in; `storage.md` § Passwords and credentials at rest): each
-//! plugin's sealed values for a user, by name, each with the revision a
-//! conditional write names; and the public client each plugin registered
-//! with its vendor's authorization server, with the redirect URI it was
-//! registered with. The control database stores a secret only sealed; the
-//! plugin host seals and opens it.
+//! sign-in; `crates/backend/src/config/secret.rs`): each plugin's sealed
+//! values for a user, by name, each with the revision a conditional write
+//! names; and the public client each plugin registered with its vendor's
+//! authorization server, with the redirect URI it was registered with. The
+//! control database stores a secret only sealed; the plugin host seals and
+//! opens it.
 
 use demi_web_api_protocol::ids::UserId;
 use rusqlite::{OptionalExtension, params};

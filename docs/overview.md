@@ -108,7 +108,7 @@ Conversation records live in backend storage. Working files and full shell
 output live on their execution targets. The backend receives bounded shell
 output views and can request target files when needed. Runner messages carry
 requests, replies and small values; HTTP pipes stream file contents and command
-IO. [Storage](backend/storage.md) defines persistence, and
+IO. `crates/backend-database/src/lib.rs` defines persistence, and
 runner IO (`crates/runner-jobs/src/tasks.rs`) defines output and pipe
 lifetimes.
 

@@ -1,13 +1,13 @@
-//! The runner release record (`builds-and-releases.md` § Packaging): one
+//! The runner release record (`crates/xtask/src/native/package.rs`): one
 //! release of `demi-runner`, the wire and command protocol versions it
 //! speaks, and the executable of each target it carries. A runner release
 //! directory's `manifest.json` holds it, and a Cloud image manifest embeds it
 //! to name its runner. Beside it, a server release's own record,
-//! `release.json`, which says where the release's files are, and the name
-//! of each file (`builds-and-releases.md` § Server release). And the
-//! release check before a runner's socket opens, the one part of the
-//! connection every release keeps, and the backend's management socket,
-//! which an upgrade's next release asks (`upgrades.md` § Prepare).
+//! `release.json`, which says where the release's files are, and the name of
+//! each file (`crates/xtask/src/server_release.rs`). And the release check
+//! before a runner's socket opens, the one part of the connection every
+//! release keeps, and the backend's management socket, which an upgrade's
+//! next release asks (`crates/server/src/main.rs`).
 //!
 //! A runner always runs the runner release of the backend it serves, so before its
 //! socket opens the backend compares the release in `RELEASE_HEADER` with its
@@ -74,7 +74,7 @@ impl RunnerRelease {
     /// Decodes a release record's JSON and checks its integrity alone, its
     /// digests and targets, whatever versions it speaks: the record of a
     /// release this build serves but does not run, such as the next one an
-    /// upgrade names (`upgrades.md` § Prepare).
+    /// upgrade names (`crates/server/src/main.rs`).
     pub fn decode_intact(bytes: &[u8]) -> Result<Self, ReleaseError> {
         let release: Self = serde_json::from_slice(bytes)?;
         release.validate()?;
@@ -243,7 +243,7 @@ impl RunnerUpdate {
 }
 
 /// The variable that names the backend's management socket, and its
-/// default (`upgrades.md` § Prepare): only root may open it.
+/// default (`crates/server/src/main.rs`): only root may open it.
 pub const MANAGE_SOCKET_ENV: &str = "DEMI_BACKEND_MANAGE_SOCKET";
 pub const MANAGE_SOCKET: &str = "/run/demi-backend-manage/manage.sock";
 

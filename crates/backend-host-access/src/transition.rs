@@ -337,8 +337,8 @@ impl dyn HostShard + '_ {
 
     /// The devices of every Host the conversation reaches, primary and
     /// attached: where its release goes. A deletion reads them before its
-    /// records go, and releases them after (`storage.md` § Deleting a
-    /// conversation).
+    /// records go, and releases them after
+    /// (`crates/backend-database/src/deletions.rs`).
     pub async fn release_devices(
         &self,
         record: &ConversationRecord,

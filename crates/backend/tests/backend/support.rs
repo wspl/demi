@@ -3,6 +3,50 @@
 //! the command packages the workspace built as development releases, which
 //! the backend's local store serves its runners, and an HTTP client that
 //! sends a session's cookie.
+//!
+//! The world starts the backend inside the test process with its production
+//! shard threads, serves a scripted machine manager on a Unix socket and local
+//! fixtures in place of models.dev and the Claude Code release distribution,
+//! and pairs real runner processes, the executable the test starts from the
+//! target directory it runs from. The model is scripted in one of two ways: a
+//! scripted vendor that a built-in family sends to, which answers each request
+//! with the next scripted response and records every request, or a family the
+//! scenario registers. Title requests are off unless a scenario turns them on,
+//! since one beside the first turn would take a scripted answer. Assertions
+//! inspect what the model receives, not only what a client displays, and no
+//! check runs by itself when a scenario closes: each asserts what it protects.
+//!
+//! - A driver reads a transcript as the backend serves it cold and follows
+//!   events and phases in the frames; it does not rebuild the live transcript
+//!   from patches. The web app's patch applier is the only one, so the web app
+//!   contract suite compares live with cold.
+//! - Scenarios run real runner processes, so they use real time with short
+//!   configured windows, a short idle window instead of the product's hour:
+//!   a paused clock would advance whenever the runtime waits on a runner and
+//!   fire every timer early, and in-process tests on a paused clock pin the
+//!   exact boundaries of timer rules instead. A scenario that needs wall time
+//!   to pass, such as a session's expiry, sets an injected clock. A scenario
+//!   never fits a step into such a window: one that looks at a running Cloud
+//!   holds its conversation's file gate while it looks (`file_gate`), so the
+//!   Cloud idles only after the lease ends, and one that shows an operation a
+//!   transition holds waits until the operation waits at that gate
+//!   (`ActivityGate::waiting`) and fails if it finishes first.
+//! - A restart reuses the data directory. A backend restart whose runners come
+//!   back listens at the address it had, since a runner keeps its backend's
+//!   URL; one that needs only the same public URL configures it and listens on
+//!   a port of its own, because another test may take a released port.
+//!   Multi-user scenarios use separate authenticated sessions: the world's
+//!   default helper uses one, and is no isolation test by itself.
+//! - The world does not bound the `job_output` bytes a job sends, nor record
+//!   the runner's wire frames: the job table's tests of `runner-jobs` pin the
+//!   first, and the runner tests of `backend-remote-host` read every frame
+//!   their runner sends and pin `job_exit` and `pipe_done`. A scenario sees a
+//!   missing `job_exit` as a command that never ends. The usage ledger is
+//!   checked by the scenarios that read it through `GET /api/usage`.
+//! - Cleanup belongs to the world and its scripted manager, also after an
+//!   assertion fails: drivers detach, runners stop and the backend closes. A
+//!   test that introduces a stream, a process or a failure injection verifies
+//!   its cleanup too.
 
 use demi_provider_common::media_catalog::Catalog;
 use std::future::Future;
@@ -327,11 +371,12 @@ pub struct Harness {
     /// `machines` names a real manager.
     pub manager: ScriptedManager,
     /// A real machine manager's socket, which the backends use instead of
-    /// the scripted manager's (`scenarios.md` § Cloud suite).
+    /// the scripted manager's
+    /// (`crates/machine-manager/scripts/cloud-suite.sh`).
     pub machines: Option<PathBuf>,
     /// The runner socket the backends serve their Clouds' runners on, which
-    /// a real manager mounts into its Clouds (`managed-hosts.md` § Backend
-    /// socket).
+    /// a real manager mounts into its Clouds
+    /// (`crates/backend-http/src/lib.rs`).
     pub runner_socket: Option<PathBuf>,
     /// The management socket an upgrade names the next runner release on.
     pub manage_socket: Option<PathBuf>,

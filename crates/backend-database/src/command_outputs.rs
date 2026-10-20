@@ -1,10 +1,10 @@
-//! The records of commands' outputs (`storage.md` § Command outputs): each
-//! ended command's whole output is a blob of the conversation owner's
-//! namespace, in the kept output's records, and the conversation's
-//! `command_outputs` table holds one row per command, keyed by its id,
-//! which says when the command ended and how, and whether its output is
-//! stored, or was not stored and why. A row is written once when its
-//! command ends, or copied into a Fork's destination, and never changes.
+//! The records of commands' outputs: each ended command's whole output is
+//! a blob of the conversation owner's namespace, in the kept output's
+//! records, and the conversation's `command_outputs` table holds one row
+//! per command, keyed by its id, which says when the command ended and
+//! how, and whether its output is stored, or was not stored and why. A row
+//! is written once when its command ends, or copied into a Fork's
+//! destination, and never changes.
 
 use demi_host_interface::Missing;
 use demi_shared_types::{BlobRef, Block, CommandEnd, CommandId, Timestamp, ToolView};

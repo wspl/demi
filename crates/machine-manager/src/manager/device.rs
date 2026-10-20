@@ -1,7 +1,10 @@
-//! A device's worker (`managed-hosts.md` § Control and ownership): it owns
+//! A device's worker (`crates/machine-manager-protocol/src/lib.rs`): it owns
 //! the device's sandbox and runs the device's operations one at a time, in
 //! arrival order. The sandbox's exit is one more event between operations,
-//! never during one.
+//! never during one, and the worker waits only on its current sandbox, so the
+//! late exit of an earlier boot cannot stop a newer one. After the current
+//! boot exits the worker stops what remains, saves the working pair and sends
+//! the death event, even when stopping or saving fails.
 
 use std::{path::Path, rc::Rc};
 
@@ -249,8 +252,7 @@ impl DeviceWorker {
         let bases = self.core.store.bases();
         let base = bases.join(&state.base_version);
         // Demi's own programs come from the configured base, whatever base
-        // the device is pinned to (`managed-hosts.md` § Demi's programs in a
-        // Cloud).
+        // the device is pinned to.
         let configured = bases.join(&self.base);
         let runner_release = base::runner_release(&configured).await?;
         let programs = configured.join("rootfs").join(PROGRAMS_PATH.trim_start_matches('/'));

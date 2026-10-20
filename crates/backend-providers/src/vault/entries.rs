@@ -74,8 +74,8 @@ const ACCOUNT_CHANGES_KEPT: usize = 64;
 
 /// An account a subscription entry is created with outside a sign-in: the
 /// development backend's Codex sign-in, which the master account is created
-/// with (`backend.md` § One-command development backend), and a suite's
-/// account whose vendor sign-in cannot run.
+/// with (`crates/xtask/src/dev/mod.rs`), and a suite's account whose vendor
+/// sign-in cannot run.
 #[derive(Debug, Clone)]
 pub struct SeededAccount {
     /// The entry's family, such as `codex`.
@@ -761,7 +761,7 @@ impl Vault {
 }
 
 /// The vault's side of the control database's migration to provider
-/// configuration format 2 (`storage.md` § Schemas and migrations): it opens
+/// configuration format 2 (`crates/backend-database/src/lib.rs`): it opens
 /// each configuration of format 1 under the vault's key, decodes and checks
 /// it as any configuration is, and seals it again in format 2. One that
 /// names neither a vendor nor an endpoint was its family's own vendor's

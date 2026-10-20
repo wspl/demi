@@ -20,7 +20,7 @@ portForwards:
     hostSocket: "{{.Dir}}/sock/demi-machine-manager.sock"
   # The other way: the backend on the Mac serves its Clouds' runners on this
   # socket, which appears in the VM where the manager mounts it into each
-  # Cloud (managed-hosts.md § Backend socket).
+  # Cloud (`crates/backend-http/src/lib.rs`).
   - guestSocket: "/run/demi-backend/runners.sock"
     hostSocket: "{{.Dir}}/sock/runners.sock"
     reverse: true

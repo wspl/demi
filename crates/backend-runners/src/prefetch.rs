@@ -1,10 +1,10 @@
 //! Downloading ahead (`crates/runner/src/update.rs`): the runner release an
 //! upgrade announced as next, over the management socket
-//! (`upgrades.md` § Prepare), which every connected paired device's runner
-//! downloads while the current release serves, and how far each device has
-//! come, which the upgrade waits on. The backend serves that release's
-//! executables from the next release's files, and keeps nothing of it past
-//! its own run.
+//! (`crates/server/src/main.rs`), which every connected paired device's
+//! runner downloads while the current release serves, and how far each
+//! device has come, which the upgrade waits on. The backend serves that
+//! release's executables from the next release's files, and keeps nothing
+//! of it past its own run.
 
 use std::sync::Arc;
 

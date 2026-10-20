@@ -1,7 +1,25 @@
-//! What stands in front of the web app's routes (`backend.md`
-//! § Authentication and ownership): the check that a request that could act
-//! comes from a page of the product, over every web app route, and the
-//! session gate over every `/api` path except the public entrances.
+//! What stands in front of the web app's routes: the check that a request
+//! that could act comes from a page of the product, over every web app
+//! route, and the session gate over every `/api` path except the public
+//! entrances.
+//!
+//! The origin check stands in front of the web app's routes rather than in
+//! each of them, so a new route has it without asking. Setup and login need
+//! no cookie, yet they are covered, since they set one: a login from another
+//! page would sign the visitor's browser in to the page author's account,
+//! where a device paired from Settings would give that account a runner on
+//! the visitor's computer, and a setup from another page could take the
+//! master account of an instance the author cannot reach but the visitor's
+//! browser can, such as one on `localhost`. Other GET, HEAD, OPTIONS and
+//! TRACE requests pass: their routes only read, and another page cannot read
+//! their answers. Runner routes and public downloads have no such check,
+//! since no cookie authenticates them.
+//!
+//! The session gate covers every other `/api` path, unknown ones included,
+//! so an unauthenticated request for a path that does not exist answers 401,
+//! not 404. The synchronization channel checks the session cookie itself,
+//! since the gate would renew the session and a channel never does: only
+//! requests renew a session.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;

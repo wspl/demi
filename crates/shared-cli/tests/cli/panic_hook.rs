@@ -1,5 +1,5 @@
-//! The panic hook every program installs at start (`builds-and-releases.md`
-//! § Build profiles).
+//! The panic hook every program installs at start
+//! (`crates/xtask/src/native/build.rs`).
 
 use std::process::Command;
 

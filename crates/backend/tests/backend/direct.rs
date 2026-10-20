@@ -465,7 +465,7 @@ async function readDirectly(deviceId, path, offset, length) {
 // Seconds: Chrome for Testing starts, connects to a paired device's real
 // runner over loopback, and reads a range of a file of 300 KB.
 #[tokio::test]
-#[ignore = "the browser suite: needs DEMI_TEST_CHROME, and DEMI_TEST_CHROME_RUNTIME on Linux (scenarios.md § Browser suite)"]
+#[ignore = "the browser suite: needs DEMI_TEST_CHROME, and DEMI_TEST_CHROME_RUNTIME on Linux"]
 async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
     let harness = Harness::new().with_web(&[
         ("index.html", DIRECT_PAGE),

@@ -1,12 +1,11 @@
-//! A page's synchronization channel in the user's shard (`backend.md`
-//! § Page synchronization): registered for changes before it reads the
-//! product state, it sends that state, then waits for marks and sends each
-//! marked part as it is when the channel takes it, and a heartbeat once its
-//! page socket has been silent for the heartbeat interval. It keeps what the
-//! page says it shows, which holds back the session's notifications of that
-//! conversation while the channel lives. It ends with its session, at
-//! shutdown, when the page sends anything else, and when a part cannot be
-//! read.
+//! A page's synchronization channel in the user's shard: registered for
+//! changes before it reads the product state, it sends that state, then
+//! waits for marks and sends each marked part as it is when the channel
+//! takes it, and a heartbeat once its page socket has been silent for the
+//! heartbeat interval. It keeps what the page says it shows, which holds
+//! back the session's notifications of that conversation while the channel
+//! lives. It ends with its session, at shutdown, when the page sends
+//! anything else, and when a part cannot be read.
 
 use std::collections::BTreeSet;
 use std::convert::Infallible;

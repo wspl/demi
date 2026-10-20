@@ -1568,9 +1568,9 @@ async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
 
 /// An account an earlier release stored with its tokens hands them to its
 /// directory at its first use (`crates/provider-claude-code/src/account.rs`,
-/// `upgrades.md` § What crosses releases): the first start writes them as
-/// the CLI's own files, private to the machine's user, and the record keeps
-/// none, so the next start finds the sign-in in the directory alone.
+/// `crates/server/src/main.rs`): the first start writes them as the CLI's
+/// own files, private to the machine's user, and the record keeps none, so
+/// the next start finds the sign-in in the directory alone.
 // A second or two: the machine boots and starts two CLI processes and those
 // prepared ahead.
 #[tokio::test]

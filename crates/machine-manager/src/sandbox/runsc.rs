@@ -1,6 +1,6 @@
-//! The runsc commands the manager drives (`managed-hosts.md` § Isolation and
-//! joining): every call names the manager's state root and the one runtime
-//! profile, and the pinned release must be the one installed.
+//! The runsc commands the manager drives: every call names the manager's
+//! state root and the one runtime profile, and the pinned release must be
+//! the one installed.
 
 use std::{
     ffi::{OsStr, OsString},
@@ -22,9 +22,11 @@ use crate::{
 /// image), shared file access so the images can be saved while the sandbox
 /// is paused, setuid programs for sudo, and only the sidecar programs
 /// beside runsc: without the strict policy runsc downloads a missing one or
-/// falls back to a deprecated embedded copy. The sandbox may connect to the
+/// falls back to a deprecated embedded copy, where a Cloud runs only the
+/// programs `demi-server` fetched and checked. The sandbox may connect to the
 /// host's Unix sockets its mounts show, of which there is one: the backend's
-/// runner socket (`managed-hosts.md` § Backend socket).
+/// runner socket. Shared file access, with no forced private page cache, is a
+/// deliberate persistence choice whose performance must be measured.
 pub const PROFILE_FLAGS: [&str; 9] = [
     "--platform=systrap",
     "--network=sandbox",
@@ -79,7 +81,7 @@ pub struct Runsc {
     tools: Tools,
     root: PathBuf,
     /// Whether runsc sets up each sandbox's cgroup: only with the resource
-    /// limits on (`managed-hosts.md` § Resource limits).
+    /// limits on.
     cgroups: bool,
 }
 

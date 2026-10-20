@@ -17,8 +17,9 @@ export interface ReportErrorOptions {
 
 /**
  * The report of a failure the page found itself, which the backend logs
- * under the report's own request ID (`backend.md` § Request IDs and the
- * server log): what failed and where, never a value the page held.
+ * under the report's own request ID
+ * (`crates/backend-http/src/request_id.rs`): what failed and where,
+ * never a value the page held.
  */
 export interface PageErrorReport {
   title: string
@@ -85,9 +86,8 @@ export function errorCode(error: unknown): string | null {
 /**
  * Marks `error` as a failure of the page's environment, not a defect: the
  * network that brought no answer, the browser's storage that refused, as
- * with a full quota, or a part of the page that did not load
- * (`backend.md` § The page's own errors). `reportError` tells of it as of
- * any failure and reports it to no one. Marked where the failure comes
+ * with a full quota, or a part of the page that did not load. `reportError`
+ * tells of it as of any failure and reports it to no one. Marked where the failure comes
  * from, which alone knows what it is; answers `error`.
  */
 export function environmental<E>(error: E): E {
@@ -191,9 +191,9 @@ function detailOf(error: unknown): string {
  * `error` as the form the user filled shows it. A refusal whose `code` is
  * one of `corrections`' is one the user corrects there, such as a wrong
  * current password or an address already taken: it names no request, since
- * nothing about it needs tracing (`backend.md` § Request IDs and the server
- * log), and says the words `corrections` gives its code, or its own when
- * that is null. Any other failure names its request.
+ * nothing about it needs tracing (`crates/backend-http/src/request_id.rs`),
+ * and says the words `corrections` gives its code, or its own when that is
+ * null. Any other failure names its request.
  */
 export function formError(
   error: unknown,
@@ -246,8 +246,7 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
  * when the user should see it, with the ID of the request it came from. A
  * defect no request names, one the page found itself, is reported to the
  * backend, and its toast shows the report's ID once the report is in; a
- * failure of the environment (`environmental`) is not
- * (`backend.md` § The page's own errors).
+ * failure of the environment (`environmental`) is not.
  */
 export function reportError(
   title: HeadlineText,

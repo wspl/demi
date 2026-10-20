@@ -1,8 +1,8 @@
-//! Copying a machine image (`managed-hosts.md` § Images): a reflink clone
-//! where the filesystem supports one, and otherwise a copy of only the
-//! ranges that hold data, skipping holes and all-zero blocks, so unused
-//! capacity never becomes allocated host storage. It runs in the manager's
-//! process, so the checkpoint's frozen window starts no program.
+//! Copying a machine image: a reflink clone where the filesystem supports
+//! one, and otherwise a copy of only the ranges that hold data, skipping
+//! holes and all-zero blocks, so unused capacity never becomes allocated
+//! host storage. It runs in the manager's process, so the checkpoint's
+//! frozen window starts no program.
 
 use std::{io, os::unix::fs::FileExt, path::Path};
 

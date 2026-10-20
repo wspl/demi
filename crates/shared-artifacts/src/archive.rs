@@ -1,9 +1,10 @@
-//! Archive installation: a verified zip archive, or a tar archive
-//! compressed with zstd, unpacked into a directory named by its SHA-256,
-//! beside a receipt that lets a later process trust the files without
-//! downloading them again. A runner installs a command
-//! package's resources into its artifact cache and the Cloud image build
-//! into the image, with the same steps (`crates/runner-command-packages/src/cache.rs`, `images.md` § Root filesystem contents).
+//! Archive installation: a verified zip archive, or a tar archive compressed
+//! with zstd, unpacked into a directory named by its SHA-256, beside a receipt
+//! that lets a later process trust the files without downloading them again. A
+//! runner installs a command package's resources into its artifact cache and
+//! the Cloud image build into the image, with the same steps
+//! (`crates/runner-command-packages/src/cache.rs`,
+//! `cloud-guest-image/rootfs/packages.txt`).
 
 use std::{
     fs::File,
@@ -284,7 +285,7 @@ fn at(path: &Path, error: std::io::Error) -> std::io::Error {
 enum Format {
     Zip,
     /// A tar archive compressed with zstd, as the Chrome runtime's
-    /// (`builds-and-releases.md` § Chrome runtime).
+    /// (`crates/command-package-browser-chrome/src/driver/installation.rs`).
     TarZstd,
 }
 

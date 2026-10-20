@@ -1,12 +1,11 @@
-//! The schedules of a running Cloud (`managed-hosts.md` § Lifecycle and
-//! capacity): its idle watch, which stops it once no conversation using it
-//! has been active for the idle window (the Claude Code machine: once no
-//! work has held it, `managed-hosts.md` § The Claude Code machine), and its
-//! maintenance loop, which saves it every checkpoint interval and stops it
-//! at its lifetime cap. Both belong to the running phase and end with it.
-//! Maintenance holds the Cloud's gate for maintenance, not demand, so it
-//! never restarts the idle clock; an idle stop that finds maintenance
-//! holding the gate waits for it to let go.
+//! The schedules of a running Cloud: its idle watch, which stops it once no
+//! conversation using it has been active for the idle window (the Claude
+//! Code machine: once no work has held it), and its maintenance loop, which
+//! saves it every checkpoint interval and stops it at its lifetime cap.
+//! Both belong to the running phase and end with it. Maintenance holds the
+//! Cloud's gate for maintenance, not demand, so it never restarts the idle
+//! clock; an idle stop that finds maintenance holding the gate waits for it
+//! to let go.
 //!
 //! A stop sends no conversation releases: what a release would end, such as
 //! a conversation's Chrome, ends with the machine, and no command's output
@@ -99,8 +98,8 @@ impl dyn CloudShard {
     }
 
     /// Publishes the running machine's disks, keeping its processes
-    /// (`managed-hosts.md` § Save a generation), with its runner's liveness
-    /// check paused for as long as the manager holds the sandbox.
+    /// (`crates/machine-manager/src/storage/mod.rs`), with its runner's
+    /// liveness check paused for as long as the manager holds the sandbox.
     async fn checkpoint(&self, machine: &Machine, lease: GateLease, at: Instant) {
         let device = &machine.device.id;
         let link = self.devices().link(device);
@@ -129,12 +128,12 @@ impl dyn CloudShard {
         }
     }
 
-    /// Stops a machine that ran for its lifetime cap (`managed-hosts.md`
-    /// § Lifecycle and capacity). A turn in flight postpones it, and so does
-    /// a file transfer or a stream the user has open. Otherwise new
-    /// operations are held back, the jobs nothing attends end as lost for
-    /// that reason, and once their leases are released the machine is saved
-    /// and stopped as an idle stop would stop it.
+    /// Stops a machine that ran for its lifetime cap. A turn in flight
+    /// postpones it, and so does a file transfer or a stream the user has
+    /// open. Otherwise new operations are held back, the jobs nothing
+    /// attends end as lost for that reason, and once their leases are
+    /// released the machine is saved and stopped as an idle stop would stop
+    /// it.
     async fn stop_at_lifetime_cap(&self, machine: &Rc<Machine>) {
         let uses = match self.uses_of(machine).await {
             Ok(uses) => uses,

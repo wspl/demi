@@ -11,7 +11,7 @@ import type { AcknowledgementsState } from './types'
  * own with a back button to About, as a row of System Settings opens one.
  * Acknowledgements shows the third-party notices of the release, the
  * licenses of the open-source software it includes
- * (`builds-and-releases.md` § Licenses in a release).
+ * (`crates/xtask/src/notices.rs`).
  */
 defineProps<{
   version: string

@@ -59,8 +59,8 @@ pub fn download_client_allowing_http() -> Result<reqwest::Client, Error> {
 }
 
 /// [`download_client_allowing_http`] through the connection `connect` sets
-/// up, such as a Cloud runner's backend socket (`managed-hosts.md` §
-/// Backend socket).
+/// up, such as a Cloud runner's backend socket
+/// (`crates/backend-http/src/lib.rs`).
 pub fn download_client_through(
     connect: impl FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
 ) -> Result<reqwest::Client, Error> {

@@ -30,7 +30,7 @@ use crate::retention::keep_releases;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
 
 /// The key prefix of every command package object in the store
-/// (`storage.md` § The object store).
+/// (`crates/backend-blobs/src/store.rs`).
 pub const PREFIX: &str = "native";
 
 /// The metadata keys of the SHA-256 and the size of what an object stands

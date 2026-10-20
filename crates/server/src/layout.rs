@@ -1,7 +1,38 @@
 //! Where a server keeps its releases, its configuration, its units and the
-//! state of an upgrade (`upgrades.md` § One release on a server). Every path
-//! lies beneath a root, `/` on a server, so a test runs a whole upgrade in a
-//! directory of its own.
+//! state of an upgrade. Every path lies beneath a root, `/` on a server, so a
+//! test runs a whole upgrade in a directory of its own.
+//!
+//! ```text
+//! /opt/demi/
+//!   releases/0.1.0/            a server release root, unpacked, never changed
+//!   releases/0.2.0/
+//!   current -> releases/0.2.0  the release the services run
+//!   gvisor/<runsc version>/    the gVisor runtime a release's manager pins
+//!   config/demi.env            the configuration, shared by both services
+//!   data/backend/              the backend's data directory, with snapshots/
+//!   data/cloud/                the machine manager's state directory
+//!   server/                    the lock, an upgrade's journal, a setup's marker
+//! ```
+//!
+//! Everything of Demi's lies under `/opt/demi`, so an operator finds it in one
+//! place, and under `/opt` for one more reason: SELinux, which the dnf
+//! distributions enforce, lets systemd start a program under `/opt`, whose
+//! files it labels as installed software, and refuses one in a data directory
+//! or a home directory (tried on Fedora 44, a service whose program lay in
+//! `/var/lib/<user>` or `/home/<user>` failed to start until relabeled). The
+//! services write their data under `/opt` as well, since on Fedora 44 in
+//! enforcing mode a service running as a system user wrote into its directory
+//! there, and a root service wrote its own and ran a program from another,
+//! where one directory under `/opt` needs no such rule. A server keeps the current
+//! release and at most one other, the one a rollback returns to, and the gVisor
+//! versions of those two. `current` is replaced atomically by renaming a new
+//! link over it, and both services take their release root from the real path
+//! of their own executable, so they always run one release and the
+//! configuration file never sets `DEMI_RELEASE`. Each release carries its
+//! units, which a move copies into place, so a release that changes how a
+//! service runs brings that change itself. The configuration and the data
+//! directories belong to the installation: no upgrade rewrites them, and a
+//! release that needs a new setting fails its check and names it.
 
 use std::{
     io,

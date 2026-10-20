@@ -1,16 +1,16 @@
-//! A conversation's requests (`storage.md` § Control records): the
-//! permission requests refused commands raise, the credential requests of
-//! agents that wait for the user to save a credential, and the allowance
-//! requests of reads of a credential the conversation may not use yet; each
-//! undecided until the user decides it, and a decided one kept until its
-//! message is in the asking agent's checkpoint. And what the decisions
-//! record: the grants, one per conversation and category, and the
-//! allowances, one per conversation and credential, each kept for the
-//! conversation's life. A permission request asks for one thing, a category
-//! its call lacked or a host it asks to reach: an allow of a host puts a
-//! device on the list of hosts the conversation may reach, or lets it pair a
-//! computer's code once. Each change reads and writes in one transaction, so
-//! a check and a decision never interleave.
+//! A conversation's requests: the permission requests refused commands
+//! raise, the credential requests of agents that wait for the user to save a
+//! credential, and the allowance requests of reads of a credential the
+//! conversation may not use yet; each undecided until the user decides it,
+//! and a decided one kept until its message is in the asking agent's
+//! checkpoint. And what the decisions record: the grants, one per
+//! conversation and category, and the allowances, one per conversation and
+//! credential, each kept for the conversation's life. A permission request
+//! asks for one thing, a category its call lacked or a host it asks to
+//! reach: an allow of a host puts a device on the list of hosts the
+//! conversation may reach, or lets it pair a computer's code once. Each
+//! change reads and writes in one transaction, so a check and a decision
+//! never interleave.
 
 use std::collections::BTreeMap;
 

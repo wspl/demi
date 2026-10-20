@@ -22,10 +22,10 @@ paired. Operators handling sensitive prompts should know where data rests:
 
 - **Backend storage.** Conversation records, transcripts and uploaded media
   live in the backend's data directory and object store
-  ([Storage](docs/backend/storage.md)). Passwords are stored as argon2id
+  (`crates/backend-database/src/lib.rs`). Passwords are stored as argon2id
   hashes, session and device tokens as SHA-256 digests, and provider
   credentials sealed with keys derived from the instance secret
-  ([Passwords and credentials at rest](docs/backend/storage.md#passwords-and-credentials-at-rest)).
+  (`crates/backend/src/config/secret.rs`).
 - **Hosts.** A job's full output stays in files on its Host, and the backend
   receives bounded views
   (Pipes and output (`crates/runner-jobs/src/tasks.rs`)). Each runner
@@ -48,10 +48,10 @@ Each user's Cloud is a gVisor sandbox on a Linux host, with its own gVisor
 kernel, filesystem view, network namespace and resource group. The sandbox is
 the isolation boundary; the infrastructure still trusts the Linux kernel, the
 machine manager, the runsc distribution and the image builder
-([Isolation and joining](docs/cloud/managed-hosts.md#isolation-and-joining)).
+(`crates/machine-manager/src/sandbox/oci.rs`).
 A user's projects share that user's Cloud: jobs run as the image's `demi` user,
 which has passwordless sudo inside the sandbox
-([Cloud images](docs/cloud/images.md)).
+(`cloud-guest-image/rootfs/build.sh`).
 
 A paired device runs the runner with the permissions of its local account. The
 device executes the requests the backend authorizes, so the backend is part of

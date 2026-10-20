@@ -1,5 +1,4 @@
-//! Password hashing with argon2id (`storage.md` § Passwords and credentials
-//! at rest).
+//! Password hashing with argon2id (`crates/backend/src/config/secret.rs`).
 
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -33,7 +32,9 @@ pub fn generate_first_password() -> Password {
 }
 
 /// Hashes and verifies passwords with the argon2 crate's default parameters,
-/// on the blocking pool and no more at once than the machine has CPUs,
+/// OWASP's minimum for argon2id (19 MiB, two passes, one lane), which the
+/// PHC string records beside the salt so a stored hash stays verifiable if
+/// they change, on the blocking pool and no more at once than the machine has CPUs,
 /// because each hash holds its memory until it finishes.
 #[derive(Clone)]
 pub struct PasswordHasher {

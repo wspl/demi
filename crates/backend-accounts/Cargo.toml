@@ -43,8 +43,8 @@ tokio.workspace = true
 tracing.workspace = true
 url = "2"
 uuid = { version = "1", features = ["v4"] }
-# Every check of a passkey (`backend.md` § Authentication and ownership);
-# its features are the control store's, which keeps what it makes.
+# Every check of a passkey; its
+# features are the control store's, which keeps what it makes.
 webauthn-rs = { version = "=0.5.5", default-features = false }
 webauthn-rs-core = "=0.5.5"
 rust-i18n = "4.2.4"

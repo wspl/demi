@@ -1,5 +1,5 @@
-//! The immutable image store (`managed-hosts.md` § Save a generation): each
-//! device's committed generations and the pointer to the current one.
+//! The immutable image store: each device's committed generations and the
+//! pointer to the current one.
 //!
 //! ```text
 //! <data>/images/<device>/current.json               the committed generation
@@ -60,8 +60,8 @@ impl ImagePair<PathBuf> {
     }
 }
 
-/// Which committed generations a publication keeps beside the new one
-/// (`managed-hosts.md` § Save a generation).
+/// Which committed generations a publication keeps beside the new
+/// one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Retention {
     /// The generation the new one replaces stays, there when the new one

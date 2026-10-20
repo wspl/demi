@@ -26,9 +26,8 @@ pub(super) const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
 /// Upgrades to a page's WebSocket, which takes no message larger than
 /// [`MAX_PAGE_MESSAGE_BYTES`]; a larger one fails the socket. `serve` runs
-/// in the upgrade request's span, so the socket's whole life logs under
-/// the request ID of its upgrade (`backend.md` § Request IDs and the server
-/// log).
+/// in the upgrade request's span, so the socket's whole life logs under the
+/// request ID of its upgrade.
 pub(super) fn page_socket<F, Fut>(upgrade: WebSocketUpgrade, serve: F) -> Response
 where
     F: FnOnce(WebSocket) -> Fut + Send + 'static,

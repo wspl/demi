@@ -1,6 +1,6 @@
-//! A new home's first contents (`managed-hosts.md` § Container
-//! initialization): the base's `/etc/skel`, copied with symbolic links as
-//! they are and every entry owned by the sandbox's user.
+//! A new home's first contents: the base's `/etc/skel`, copied with
+//! symbolic links as they are and every entry owned by the sandbox's
+//! user.
 
 use std::{io, path::Path};
 

@@ -1,21 +1,53 @@
-//! `xtask server-release` (`builds-and-releases.md` § Server release):
-//! assembles a server release from the executables `xtask native
-//! build` wrote. The root holds the runner release's manifests in
-//! `runners/`, each command package's descriptor in `commands/`, the record
-//! `release.json`, which says where the release's files are, and, when
-//! asked, a Linux target's backend, machine manager and `demi-server` in
-//! `bin/` with the
-//! services' units in `systemd/`, and the built web app in `web/`. Its
-//! `LICENSE`, `LICENSE-DEMI` and `NOTICE` are the repository's, and with a web app its
-//! `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into it
-//! (`builds-and-releases.md` § Licenses in a release). The release's files hold each target's runner
-//! executable and each command program's compressed copy. Packaging makes
-//! each release whole first, so its records and its files are the ones
-//! packaging checked. The root is assembled in a stage beside it and renamed
-//! into place, so it exists whole or not at all, and is never changed in
-//! place; the files directory may already hold this build's files, as when
-//! the build's other Linux root was assembled into it, and a file in place
-//! must then be the same.
+//! `xtask server-release`: assembles a server release from the executables
+//! `xtask native build` wrote. A server release is one directory per version
+//! and Linux target, its root, in which the backend and the machine manager
+//! find everything they serve, publish or run, with the release's files beside
+//! it. For example, 0.1.3 for x86_64:
+//!
+//! ```text
+//! /opt/demi/releases/0.1.3/
+//!   bin/demi-backend              the target's backend
+//!   bin/demi-machine-manager      the target's machine manager
+//!   bin/demi-server               the server's installer and upgrader
+//!   systemd/                      the units of the backend and the manager
+//!   web/                          the built web app, with its build.json
+//!   runners/                      the runner release's manifests
+//!   commands/demi-file/           one command package release per directory,
+//!   commands/demi-browser/        its descriptor
+//!   ...
+//!   release.json                  where the release's files are
+//!   image/                        the Cloud image release of the architecture
+//!
+//! the release's files:
+//!   demi-runner-x86_64-unknown-linux-musl.zst   a runner executable's
+//!   demi-runner-x86_64-pc-windows-msvc.exe.zst  compressed copy, per target
+//!   demi-file-x86_64-unknown-linux-musl.zst     a command program's
+//!   ...                                         compressed copy, per target
+//! ```
+//!
+//! `release.json` names where the files are: for a published release, the
+//! GitHub release that offers them; for a developer's, the directory they lie
+//! in. The backend takes each program from there the first time a Host needs
+//! it, so a server downloads the Windows programs only when a Windows laptop
+//! pairs. The backend serves `web/`, installs runners from `runners/` and
+//! publishes every package under `commands/`; the machine manager imports
+//! `image/`, built from the same release with its Linux target's programs taken
+//! from the release's files, so the command artifacts it embeds are the ones
+//! the backend's catalog selects and a Cloud starts them from the image instead
+//! of downloading them. A root without `--server` has no `bin/` or `systemd/`
+//! (a developer's backend runs from the Cargo target directory), one without
+//! `--web` has no web app (Vite serves it in development), and one without
+//! `image/` serves a backend whose machine manager runs elsewhere. No root
+//! carries gVisor.
+//!
+//! Its `LICENSE`, `LICENSE-DEMI` and `NOTICE` are the repository's, and with a
+//! web app its `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into
+//! it. Packaging makes each release whole first, so its records and its files
+//! are the ones packaging checked. The root is assembled in a stage beside it
+//! and renamed into place, so it exists whole or not at all, and is never
+//! changed in place; the files directory may already hold this build's files,
+//! as when the build's other Linux root was assembled into it, and a file in
+//! place must then be the same.
 
 use std::path::{Path, PathBuf};
 
@@ -41,7 +73,7 @@ const LEGAL: [(&str, &str); 3] = [
 const NOTICES: &str = "THIRD-PARTY-NOTICES";
 
 /// The services' units, which each program's crate keeps and a server
-/// release carries (`upgrades.md` § One release on a server).
+/// release carries (`crates/server/src/main.rs`).
 const UNITS: [(&str, &str); 2] = [
     (
         "demi-backend.service",

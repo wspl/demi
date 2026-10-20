@@ -1,9 +1,14 @@
-//! The backend's management socket (`upgrades.md` § Prepare): a Unix socket
-//! only root may open, on which the next release's `demi-server` names the
-//! runner release that comes next. The backend has its connected paired
-//! devices' runners download it ahead and answers how far they are, a line
-//! of JSON each time one moves on, until none is downloading or the asker
-//! stops waiting.
+//! The backend's management socket (`crates/server/src/main.rs`): a Unix
+//! socket only root may open, on which the next release's `demi-server`
+//! names the runner release that comes next. The backend has its connected
+//! paired devices' runners download it ahead and answers how far they are,
+//! a line of JSON each time one moves on, until none is downloading or the
+//! asker stops waiting.
+//!
+//! The socket takes requests without credentials and acts on every user's
+//! devices, so its directory is the backend unit's second runtime directory,
+//! apart from the one with the runner socket, which every Cloud mounts: a
+//! Cloud's root must never reach it.
 
 use std::io;
 use std::os::unix::fs::PermissionsExt as _;

@@ -1,7 +1,7 @@
-//! One boot (`managed-hosts.md` § Container initialization): its resources
-//! are acquired in a fixed order, each recorded where recovery finds it, and
-//! released in reverse by [`Sandbox::close`], which tolerates every absence,
-//! so it also cleans up a failed start and a boot recovery found.
+//! One boot: its resources are acquired in a fixed order, each recorded
+//! where recovery finds it, and released in reverse by [`Sandbox::close`],
+//! which tolerates every absence, so it also cleans up a failed start and a
+//! boot recovery found.
 
 use std::{io, path::Path, time::Duration};
 

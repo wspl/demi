@@ -1,7 +1,29 @@
 //! The composition root: `Backend::start` opens storage, starts the shared
 //! services and the shard threads, and opens the listener;
-//! `Backend::close` shuts them down in order (`backend.md` § Startup and
-//! shutdown).
+//! `Backend::close` shuts them down in order.
+//!
+//! Start recovers before it serves. The machine manager settles what an
+//! earlier backend left and keeps every running Cloud and its sandbox; an
+//! interrupted Cloud reset finishes committing its disks and is marked
+//! failed, so that a retry starts the Cloud; the Fork creations whose
+//! destination root committed are published. Running commands are taken up as
+//! their runners connect, and a command that reports restores its
+//! conversation's tree. The manager's first message names its wire version,
+//! so a manager of another release stops the start here. The turns a graceful
+//! shutdown interrupted resume in the background, each owner's on its shard,
+//! and the start waits for none of them. The listener opens last, so nothing
+//! reaches a half-recovered backend.
+//!
+//! Shutdown closes the listener first, so no new work starts and no runner
+//! reconnects into a backend that is closing; a request on a connection
+//! already open answers 503 `backend_closing`, and a pipe a runner would open
+//! is refused, so shutdown reads nothing from a Host. It stops nothing that
+//! runs on a Host: commands and Clouds go on, and the next start takes them
+//! up. Every step runs even when an earlier one fails, the failures are
+//! reported together, and the process exits with a failure status. A page
+//! cannot hold up shutdown, nor can a Host: a page socket's close waits at
+//! most a second for the page to take the close frame, and a runner
+//! connection's end at most five seconds for the work it carries.
 
 use std::fmt;
 use std::io;
@@ -48,7 +70,7 @@ pub struct Backend {
     /// Routes the machine manager's death events to their owners' shards.
     deaths: AbortOnDropHandle<()>,
     /// Has the users whose search index is reset index their conversations
-    /// again (`storage.md` § Search index).
+    /// again (`crates/backend-database/src/search.rs`).
     resets: AbortOnDropHandle<()>,
     /// Announces each ledger row to its conversation's pages.
     usage: AbortOnDropHandle<()>,
@@ -125,7 +147,7 @@ impl fmt::Display for ShutdownErrors {
 impl std::error::Error for ShutdownErrors {}
 
 /// Hands each running Cloud to its owner's shard, which takes it over
-/// (`managed-hosts.md` § Control and ownership).
+/// (`crates/machine-manager-protocol/src/lib.rs`).
 async fn take_over_clouds(
     running: Vec<demi_backend_database::devices::DeviceRecord>,
     shards: &demi_backend_user_shard::shard::Shards,
@@ -416,9 +438,9 @@ impl Backend {
             );
         }
         // Each user's search index catches up with the conversations, in the
-        // background (`storage.md` § Search index). A failure does not stop
-        // the start: a conversation not indexed here is indexed by its next
-        // change.
+        // background (`crates/backend-database/src/search.rs`). A failure
+        // does not stop the start: a conversation not indexed here is
+        // indexed by its next change.
         if let Err(error) = index_at_start(&services.control, &shards.shards()).await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
@@ -672,7 +694,7 @@ impl Backend {
     }
 
     /// Resolves once no collection of `user`'s blob namespace runs or is to
-    /// follow (`storage.md` § Deleting a conversation).
+    /// follow (`crates/backend-database/src/deletions.rs`).
     #[cfg(feature = "testing")]
     pub async fn until_collected(&self, user: &demi_web_api_protocol::ids::UserId) {
         self.shards
@@ -697,8 +719,8 @@ impl Backend {
 
     /// Stores `secret`, a secret document of `family`, as the one account of
     /// a new entry of `owner`'s labelled `label`, as a sign-in would store
-    /// it, for a suite whose vendor sign-in cannot run (`scenarios.md` §
-    /// Claude Code suite). The account is known by `identity`.
+    /// it, for a suite whose vendor sign-in cannot run. The account is known
+    /// by `identity`.
     #[cfg(feature = "testing")]
     pub async fn seed_subscription(
         &self,

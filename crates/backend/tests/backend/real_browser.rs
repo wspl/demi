@@ -1,9 +1,21 @@
-//! The browser suite through the whole stack (`scenarios.md` § Browser
-//! suite): the backend, a paired device's real runner, the `demi.browser`
-//! package the workspace built, and the pinned Chrome for Testing that
-//! `DEMI_TEST_CHROME` names, on Linux with the pinned Chrome runtime that
-//! `DEMI_TEST_CHROME_RUNTIME` names, with a scripted model. An ordinary run
-//! ignores it.
+//! The browser suite through the whole stack: the backend, a paired
+//! device's real runner, the `demi.browser` package the workspace built,
+//! and the pinned Chrome for Testing that `DEMI_TEST_CHROME` names, on
+//! Linux with the pinned Chrome runtime that `DEMI_TEST_CHROME_RUNTIME`
+//! names, with a scripted model. An ordinary run ignores it.
+//!
+//! ```sh
+//! DEMI_TEST_CHROME=<chrome> cargo test --workspace \
+//!   --features demi-runner/test-fixtures --test backend -- --ignored real_browser
+//! ```
+//!
+//! Each test answers the browser program's request for Chrome through the
+//! runner's artifact cache, so none downloads Chrome. The model's shell job
+//! opens a page a local HTTP server serves and reads it with `demi browser`,
+//! the page's `browser` user stream brings the live view's first key frame of
+//! that tab through the backend, and archiving the conversation releases it on
+//! the device, after which no Chrome process runs from the device's
+//! installation.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -201,7 +213,7 @@ impl View {
 /// device installs the package, Chrome starts, and the view's first picture
 /// is encoded.
 #[tokio::test]
-#[ignore = "the browser suite: needs DEMI_TEST_CHROME, and DEMI_TEST_CHROME_RUNTIME on Linux (scenarios.md § Browser suite)"]
+#[ignore = "the browser suite: needs DEMI_TEST_CHROME, and DEMI_TEST_CHROME_RUNTIME on Linux"]
 async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_release() {
     let chrome = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     let page = Page::start().await;

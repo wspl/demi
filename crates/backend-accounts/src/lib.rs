@@ -1,5 +1,5 @@
 //! Accounts, password hashing, web sessions, the login lockout and
-//! email-change delivery (`backend.md` § Authentication and ownership),
+//! email-change delivery,
 //! each user's preferences and each user's subagent settings and personal
 //! instructions, and each user's push subscriptions with the sending of push
 //! notifications. The key email codes are hashed under, and the VAPID key, are

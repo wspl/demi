@@ -644,9 +644,9 @@ async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() 
 }
 
 /// The Chrome runtime's archives are tar archives compressed with zstd
-/// (`builds-and-releases.md` § Chrome runtime): one installs as a zip
-/// archive does, its empty directories with it, and its entry is found the
-/// same way. Bytes of neither kind install nothing.
+/// (`crates/command-package-browser-chrome/src/driver/installation.rs`):
+/// one installs as a zip archive does, its empty directories with it, and
+/// its entry is found the same way. Bytes of neither kind install nothing.
 #[tokio::test]
 async fn a_tar_archive_compressed_with_zstd_installs_as_a_zip_archive_does() {
     let client = download_client_allowing_http().unwrap();

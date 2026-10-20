@@ -71,11 +71,11 @@ impl ApiError {
     ///
     /// It is never 502 or 504, even for a vendor or a Host that failed or did
     /// not answer in time: a CDN in front of the backend, such as Cloudflare
-    /// (`backend.md` § Public URL and listening address), replaces those
-    /// answers with a page of its own, and the web app reads a 502, 503 or
-    /// 504 without the backend's body as the backend being away and sends the
-    /// request again until it is back. Such a failure answers 503, which the
-    /// CDN passes through with the body.
+    /// (`crates/backend/src/config/mod.rs`), replaces those answers with a
+    /// page of its own, and the web app reads a 502, 503 or 504 without the
+    /// backend's body as the backend being away and sends the request again
+    /// until it is back. Such a failure answers 503, which the CDN passes
+    /// through with the body.
     pub(crate) fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             status,

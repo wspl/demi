@@ -1,4 +1,4 @@
-//! The services every shard is given (`backend.md` § Runtime model): the
+//! The services every shard is given (`crates/backend/src/lib.rs`): the
 //! ones that span users, or that are needed before the user is known, which
 //! the edge and every shard share, over the storage they are opened on.
 
@@ -76,9 +76,8 @@ pub struct Services {
     /// The users' push subscriptions, and the sending to them.
     pub push: Pusher,
     pub vault: Vault,
-    /// The account setup signs the master account's first entry in with,
-    /// a development backend's only (`backend.md` § One-command development
-    /// backend).
+    /// The account setup signs the master account's first entry in with, a
+    /// development backend's only (`crates/xtask/src/dev/mod.rs`).
     pub master_account: Option<SeededAccount>,
     pub assembly: Arc<ProviderAssembly>,
     /// The catalog of image and video models (`crates/provider-common/src/media_catalog.rs`).
@@ -94,7 +93,7 @@ pub struct Services {
     /// Runners waiting to be paired, which have no user yet.
     pub claims: PendingClaims,
     /// The page error reports each session sent within the last minute, at
-    /// most thirty (`backend.md` § Request IDs and the server log).
+    /// most thirty (`crates/backend-http/src/request_id.rs`).
     pub page_errors: RateWindow<SessionId>,
     /// The calls the automations' URLs took this minute.
     pub hook_limits: crate::automations::HookLimits,

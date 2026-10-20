@@ -1,6 +1,6 @@
-//! A device's working pair (`managed-hosts.md` § Images): the private
-//! writable copies of its committed images, with a manifest that names the
-//! generation they came from and their current capacities.
+//! A device's working pair: the private writable copies of its committed
+//! images, with a manifest that names the generation they came from and
+//! their current capacities.
 //!
 //! ```text
 //! <data>/working/<device>/manifest.json   the working pair's record

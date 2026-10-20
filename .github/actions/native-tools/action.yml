@@ -1,7 +1,7 @@
 # The native tools of the job's platform, at the pins the cross tools' image
 # names (scripts/native/Dockerfile): Zig and cargo-zigbuild on Linux, the
 # pinned Apple SDK on macOS, and the pinned MSVC toolset on Windows
-# (docs/delivery/builds-and-releases.md § Toolchain). cargo-zigbuild comes
+# (`crates/xtask/src/native/build.rs`). cargo-zigbuild comes
 # prebuilt rather than compiled in every job.
 name: Native tools
 description: Installs the pinned native build tools of the runner's platform.

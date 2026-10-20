@@ -1,7 +1,7 @@
 # Develop on a Mac with Lima
 
 This guide is optional. The standard development machine is Linux
-([Development backend](../backend/backend.md#development-backend)); nothing in
+(`crates/xtask/src/dev/mod.rs`); nothing in
 the product or its checks needs a Mac. Use this guide only to develop on a Mac.
 
 gVisor runs only on Linux, so on a Mac the machine manager and its Clouds run
@@ -25,7 +25,7 @@ Lima VM (Linux, the Mac's architecture)
 On an Apple silicon Mac, the Hosts in use are the Mac,
 `aarch64-apple-darwin`, and the Cloud guest, `aarch64-unknown-linux-musl`.
 Build those two targets with the Mac's own toolchain, cross tools and Apple
-SDK ([Builds and releases](../delivery/builds-and-releases.md)), and assemble
+SDK (`crates/xtask/src/native/build.rs`), and assemble
 a server release of them, which the backend on the Mac uses:
 
 ```sh
@@ -79,7 +79,7 @@ bash crates/machine-manager/scripts/lima-machines.sh \
 `--public-url` is the backend's public URL. The Cloud guests reach the
 backend through its runner socket, which Lima forwards into the VM at
 `/run/demi-backend/runners.sock`
-([Backend socket](../cloud/managed-hosts.md#backend-socket)), and name the
+(`crates/backend-http/src/lib.rs`), and name the
 URL only as the backend's origin. The Mac's own runner connects to the URL
 directly, so it names the Mac's address on its network, such as Wi-Fi's
 `192.168.75.36`. For Wi-Fi, this prints the address:
@@ -99,7 +99,7 @@ it: the manager's network policy refuses that range to the Clouds, so every
 name a Cloud looks up would be unreachable. `--dns 1.1.1.1` then gives the
 Clouds a resolver that answers with the real addresses.
 
-The [Cloud suite](../delivery/scenarios.md#cloud-suite) runs in the VM, as
+The `crates/machine-manager/scripts/cloud-suite.sh` runs in the VM, as
 root, with programs built for it on the Mac: build the manager, `demi-server`
 and the backend's scenario test executable for the VM's Linux target with the
 Mac's cross tools, then run `cloud-suite.sh` in the VM with `--programs`
@@ -135,7 +135,7 @@ state directory to make a start succeed.
 
 ## Backend on the Mac
 
-Follow the [Development backend](../backend/backend.md#development-backend)
+Follow the Development backend (`crates/xtask/src/dev/mod.rs`)
 steps with the root above, and start the backend with the three settings the
 script printed:
 
@@ -169,7 +169,7 @@ limactl shell demi-machine-manager -- sudo <test executable> --include-ignored
 - A Lima Cloud is not an acceptance environment: results on it do not certify
   a Linux execution host, and its performance says nothing about one.
 - A backend on the Mac cannot keep its runner socket's connections within
-  one sandbox read ([Backend socket](../cloud/managed-hosts.md#backend-socket)):
+  one sandbox read (`crates/backend-http/src/lib.rs`):
   the sandbox reads the socket Lima forwards inside the VM. A large file
   written to a Lima Cloud can then stall before its end. The Cloud suite
   runs its backend inside the VM, where the workaround applies.

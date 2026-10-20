@@ -198,10 +198,10 @@ pub struct Unreachable {
     pub away_ms: u64,
 }
 
-/// A command an environment takes up again: the call `caller` names,
-/// titled `title`, started it with `script` as the job `job` on the environment's Host
-/// for its node, it has run for `running` since, and the node had seen
-/// `seen` of its output (`storage.md` § Command outputs).
+/// A command an environment takes up again: the call `caller` names, titled
+/// `title`, started it with `script` as the job `job` on the environment's
+/// Host for its node, it has run for `running` since, and the node had seen
+/// `seen` of its output (`crates/backend-database/src/command_outputs.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TakenUp {
     pub command: CommandId,

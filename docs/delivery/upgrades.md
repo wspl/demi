@@ -37,10 +37,10 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
 - Each Cloud, left running by the shutdown, is restarted by the new backend
   with 0.2.0's runner and command programs. Its system, the packages the user installed, stays on the
   image it was created or last reset with, until the user resets it
-  ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)).
+  (`crates/machine-manager/src/sandbox/mod.rs`).
 - The control database is migrated as the backend starts, and each
   conversation's database when the conversation is next opened
-  ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
+  (`crates/backend-database/src/lib.rs`).
 
 If anything fails before 0.2.0 reports ready, `demi-server` puts 0.1.0 back,
 with the databases as they were, and says what failed. Once 0.2.0 runs,
@@ -63,7 +63,7 @@ release `current` points to:
 ```text
 /opt/demi/
   releases/0.1.0/            a server release root, unpacked, never changed
-  releases/0.2.0/            (builds-and-releases.md § Server release)
+  releases/0.2.0/
   current -> releases/0.2.0  the release the services run
   gvisor/<runsc version>/    the gVisor runtime a release's manager pins
   config/demi.env            the configuration, shared by both services
@@ -79,7 +79,7 @@ group `demi-cloud`. `data/cloud` may be another directory, such as one on a
 dedicated filesystem ([Storage and service setup](../cloud/setup.md#storage-and-service-setup)),
 which the configuration names.
 
-- **Releases.** Each root is the [server release](builds-and-releases.md#server-release)
+- **Releases.** Each root is the server release (`crates/xtask/src/server_release.rs`)
   of the server's Linux target, unpacked from its two archives. A root is
   never changed once unpacked; a new release is a new directory. A server
   keeps the current release and at most one other, the one a rollback
@@ -87,14 +87,14 @@ which the configuration names.
 - **gVisor.** No release carries gVisor: each machine manager is built
   against one pinned version of `runsc`, and `demi-server` fetches that
   version into `gvisor/<version>/` before a release that needs it runs
-  ([gVisor runtime](builds-and-releases.md#gvisor-runtime)). Versions sit
+  (`crates/server/src/gvisor.rs`). Versions sit
   beside each other, so a rollback finds its own; a move keeps the versions
   of its two releases and removes the others.
 - **`current`.** A symbolic link, replaced atomically by renaming a new link
   over it. The units run `/opt/demi/current/bin/demi-backend` and
   `/opt/demi/current/bin/demi-machine-manager`. Each program takes its
   release root from the real path of its own executable
-  ([Configuration](../backend/backend.md#configuration)), so both services
+  (`crates/backend/src/config/mod.rs`), so both services
   always run the same release, and the configuration file does not set
   `DEMI_RELEASE`.
 - **Units.** Each release carries its units in `systemd/`, and
@@ -111,15 +111,6 @@ which the configuration names.
   rewrites them. Moving to a release never edits the configuration: a
   release that needs a new setting fails the [check](#prepare) and names it,
   and the operator adds it.
-- **Programs under `/opt`.** SELinux, which the dnf distributions enforce,
-  lets systemd start a program under `/opt`, whose files it labels as
-  installed software, and refuses one in a data directory or a home
-  directory: tried on Fedora 44, a service whose program lay in
-  `/var/lib/<user>` or `/home/<user>` failed to start until the program was
-  relabeled. Services write their data under `/opt` as well: on Fedora 44
-  in enforcing mode, a service running as a system user wrote into its
-  directory there, and a root service wrote its own and ran a program from
-  another. One directory under `/opt` needs no such rule.
 
 ## What follows the release
 
@@ -128,79 +119,30 @@ which the configuration names.
 | Backend and web app | The backend restarts from `current`; an open page shows the connection banner meanwhile and then loads the new build (`packages/web-ui/src/infra/build-reload.ts`) | During the upgrade |
 | Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)) | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
-| A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
+| A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot (`crates/machine-manager/src/sandbox/mod.rs`) | The Cloud's next wake |
 | A Cloud's system | Stays on the image it is pinned to; Cloud settings says when a newer one is available, and a reset moves to it (`packages/web-ui/src/cloud/CloudSettings.vue`) | When the user resets |
 | A paired device's runner | The runner updates itself when the backend names another runner release (`crates/runner/src/update.rs`) | Its next connection |
 | A paired device's command programs | The backend's catalog names the new packages; the runner downloads each the first time it needs it (`crates/runner-command-packages/src/cache.rs`) | Each program's next use |
-| Control database | Migrated as the backend starts ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)) | During the upgrade |
+| Control database | Migrated as the backend starts (`crates/backend-database/src/lib.rs`) | During the upgrade |
 | Conversation databases | Each migrated when its conversation is next opened | On use |
-| Machine manager state | Migrated as the manager starts, when a release changes its format ([Startup and recovery](../cloud/managed-hosts.md#startup-and-recovery)) | During the upgrade |
+| Machine manager state | Migrated as the manager starts, when a release changes its format (`crates/machine-manager/src/main.rs`) | During the upgrade |
 | Object store | Nothing: objects are immutable, and a release never rewrites one or changes what a key means | Never |
 
-A Cloud's system stays where it is because a newer image cannot go under it.
-The system image holds the user's changes as an overlay of the base: the
-packages the user installed are files in it, and so is the package
-database, whose copy would hide the new base's own. Putting a new base under
-that layer would leave a system whose package database matches neither.
-Demi's own programs do not have that problem, since nothing a user installs
-changes `/opt/demi`, so they follow the release at every wake.
+A Cloud's system stays on its image because the system image holds the user's
+changes, the package database among them, as an overlay of the base
+(`crates/machine-manager/src/sandbox/mod.rs` says why); Demi's own programs
+follow the release at every wake.
 
 ## What crosses releases
 
-Since every part of a deployment runs one release, only these things meet a
-part of another release, and each is a contract that a release never breaks:
-
-- **The release's assets.** `demi-server` of one release downloads the next
-  one by the asset names and the `SHA256SUMS` file of
-  [Release workflow](builds-and-releases.md#release-workflow). Their names and
-  that file's format do not change.
-- **A runner's update.** A paired device's runner of any earlier release must
-  understand that the backend serves another one, and how to fetch it. The
-  release check before the runner's socket opens, its headers and the body
-  of its 409 answer, never change; fields are only added
-  (`crates/runner/src/update.rs`). Everything after
-  that check is the release's own wire.
-- **Stored data.** The databases, the manager's records and the object
-  store's keys outlive every release. A release reads what every earlier
-  release wrote, through its migrations
-  ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
-- **A pinned Cloud base.** The manager boots a Cloud on the base it is
-  pinned to, which an earlier release built. What the manager needs of a
-  base, its users, directories and init, is part of the base's
-  `formatVersion` ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)).
-- **A Claude Code sign-in kept in its record.** Releases before the Claude
-  Code machine kept each account's tokens sealed in its record; a later
-  release hands them to the account's directory at the account's first use
-  and clears the record
-  (`crates/provider-claude-code/src/account.rs`),
-  so an upgrade never asks the user to sign in again. The handover stays
-  until the history starts again with the first formal release.
-- **A conversation outside a project in a directory other than its home.**
-  Releases before `crates/backend-database/src/selection.rs`
-  let a conversation run in any directory outside a project, and a project
-  in a home or under two spellings of one directory. The control migration
-  moves each such Cloud conversation into the workspace of its directory,
-  making it when there is none. When a device's runner first reports its
-  home after the upgrade, once, the backend has the runner resolve the
-  directory of each of the device's workspaces and of its conversations
-  outside projects: workspaces that turn out to be one directory become
-  one, the oldest, with their conversations; a workspace at the home is
-  removed and its conversations go among Conversations; and each
-  conversation outside a project goes to the home or its directory's
-  workspace. A device revoked before its first report keeps its
-  conversations outside projects, in their directories, since nothing can
-  resolve them.
-- **The configuration file.** It is the installation's. Each program
-  refuses a setting it does not read, so a renamed or removed setting is
-  reported, never silently ignored
-  ([Configuration](../backend/backend.md#configuration)).
-
-These rules hold for every published release. A server upgrades from any
-release in the history to any later one directly; it never has to pass
-through the releases in between, since each release migrates from every
-earlier format. The history starts with 0.1.11, the first release whose
-databases migrate, and the first formal release starts it again
-([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
+Every part of a deployment runs one release, so only a few things meet a part of
+another release, and each is a contract that a release never breaks: the
+release's assets and their names, a runner's update check, the stored data, a
+pinned Cloud base, a stored thing a release moves to its new place, and the
+configuration file. A server upgrades from any release in the history to any
+later one directly; `crates/server/src/main.rs` lists the contracts, and the
+history starts with 0.1.11, the first release whose databases migrate
+(`crates/backend-database/src/lib.rs`).
 
 ## The upgrade
 
@@ -229,7 +171,7 @@ under `releases/`, which it renames to the version once complete. A staging
 directory left by an interrupted fetch is removed. An archive entry that is
 not a regular file, directory, symbolic link or hard link, or whose path or
 link target is absolute or leaves the root, fails the fetch, as an image
-import does ([Import and publication](../cloud/images.md#import-and-publication)).
+import does (`crates/machine-manager/src/storage/base.rs`).
 A release already unpacked under that version is used as it is.
 
 Then the installed `demi-server` hands the upgrade to the new release's own
@@ -248,7 +190,7 @@ current release serves:
    as a start would and exits. A failure names the variable.
 2. **gVisor.** `demi-server` fetches the `runsc` version the new manager
    pins into `/opt/demi/gvisor/<version>/`, unless it is there
-   ([gVisor runtime](builds-and-releases.md#gvisor-runtime)).
+   (`crates/server/src/gvisor.rs`).
 3. **Cloud image.** The new manager imports the release's `image/` with
    `demi-machine-manager --import`, beside the running manager. Bases are
    immutable directories named by their `baseVersion` and published
@@ -273,7 +215,7 @@ current release serves:
    which only the backend's user and root may open. Its directory is the
    backend unit's second runtime directory, apart from
    `/run/demi-backend/`, which every Cloud mounts
-   ([Backend socket](../cloud/managed-hosts.md#backend-socket)): a Cloud's
+   (`crates/backend-http/src/lib.rs`): a Cloud's
    root must never reach it, since the socket takes requests without
    credentials and acts on every user's devices. The backend has its connected paired runners
    download it ahead (`crates/runner/src/update.rs`)
@@ -290,7 +232,7 @@ its journal, `/opt/demi/server/upgrade.json`, before taking it:
 
 1. Stop the backend. Its shutdown ends every turn with the shutdown record
    and closes every runner connection
-   ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
+   (`crates/backend/src/backend.rs`).
 2. Stop the machine manager. Its stop saves and stops every device that is
    still running, so each Cloud boots with the new release's programs.
 3. Copy the databases that will migrate into
@@ -311,29 +253,17 @@ user.
 
 ### Interruptions
 
-The journal lets an upgrade killed at any point be finished. The next
-`demi-server` command finds it, hands it to the `demi-server` of the release
-the move goes to, and that one takes the recorded step again and the steps
-after it: every step can be taken twice, since a service stops or starts
-twice harmlessly, the copy of the databases is made anew from databases no
-release has opened since, and `current` and the units are written whole. A
-release whose services do not start then returns the server as step 5 does.
-The steps themselves leave nothing half done: `current` is replaced by one
-rename, a migration commits in one transaction
-([Schemas and migrations](../backend/storage.md#schemas-and-migrations)), and
+The journal lets an upgrade killed at any point be finished: the next
+`demi-server` command finds it, hands it to the `demi-server` of the release the
+move goes to, and that one takes the recorded step again and the steps after
+it. A release whose services do not start returns the server as step 5 does, and
+a return that is killed or does not start either is finished by the next command
+too. Either way the release the command reports is the one `current` names. The
+steps themselves leave nothing half done: `current` is replaced by one rename, a
+migration commits in one transaction (`crates/backend-database/src/lib.rs`), and
 a server that loses power after step 4 boots into the new release, whose
-services migrate and start as they would have.
-
-The return after a failed step 5 undoes step 4, so the journal goes back to
-step 4 before the return begins and is removed once the old release runs
-again. A return that is killed, or whose old release does not start either,
-leaves the journal at step 4, and the next command finishes the upgrade from
-there: it points `current` at the new release again and starts it, and
-returns once more if it still does not start. The new release migrates
-whichever databases the return had put back, as at its first start. Either
-way the release the command reports is the one `current` names. A journal
-left at step 5 would not be: taking step 5 again would start the old release
-that the return pointed `current` at, and step 6 would report the new one.
+services migrate and start as they would have. `crates/server/src/journal.rs`
+holds the reasons.
 
 ## A development build on a server
 
@@ -363,7 +293,7 @@ developer's machine.
   with `prerelease`, and checks that the run builds the commit it pushed.
   The workflow builds every target, the server releases, the Cloud images
   and the web app, as for any release
-  ([Release workflow](builds-and-releases.md#release-workflow)), and
+  (`.github/workflows/release.yml`), and
   publishes them as a GitHub pre-release, `v0.1.22`. A pre-release is never
   the latest release, which `releases/latest` and so the installer and
   `demi-server upgrade` without a version never return: only a deploy
@@ -412,8 +342,8 @@ whose services do not start leaves its journal, and the next command tries
 it again.
 
 Restoring a snapshot loses what the backend wrote since the upgrade, such as
-the conversations of that time. `demi-server` says how long ago the snapshot
-was taken and asks before it restores one; the databases it replaces move to
+the conversations of that time. `demi-server` says when the snapshot was
+taken and asks before it restores one; the databases it replaces move to
 `snapshots/abandoned-<new version>/`, so nothing is deleted. An upgrade that
 migrated nothing took no snapshot, and its rollback loses nothing.
 
@@ -430,35 +360,12 @@ Two things a rollback leaves as they are:
 ## `demi-server`
 
 `demi-server` is a Linux executable of the server release, built for the two
-Linux targets with the backend and the manager
-([Executables and targets](builds-and-releases.md#executables-and-targets)),
-and the server's program for its own installation: it owns the layout above,
-fetching, preparing, switching and rolling back, and the units.
-`demi-server status` prints the current release, the one a rollback returns
-to and whether its rollback restores a snapshot, and an interrupted upgrade
-if there is one.
-
-It downloads through the artifact library, as every other download of Demi's
-does ([`shared-artifacts`](../architecture/crates-and-packages.md#shared-artifacts)).
-It changes nothing outside the layout above: it never edits the
-configuration, never touches a data directory except for its `snapshots/`
-and a restore, and asks systemd to start and stop only Demi's two services.
-Setting a server up, the first time, is its `setup`
+Linux targets with the backend and the manager, and the server's program for its
+own installation: it owns the layout above, fetching, preparing, switching and
+rolling back, and the units. `demi-server status` prints the current release, the
+one a rollback returns to and whether its rollback restores a snapshot, and an
+interrupted upgrade if there is one. It changes nothing outside the layout above:
+it never edits the configuration, never touches a data directory except for its
+`snapshots/` and a restore, and asks systemd to start and stop only Demi's two
+services. Setting a server up, the first time, is its `setup`
 ([Installation](installation.md)).
-
-## Acceptance
-
-Tests protect each mechanism where it is observable, without a real server:
-a database of an earlier schema migrates and one of a newer schema is
-refused; a runner answered with 409 replaces itself and connects with the
-new release, and one whose download does not match stays on its release; the
-backend answers the release check; `demi-server`, with its services
-simulated, returns to the old release when a service does not start and
-finishes or undoes an upgrade interrupted after any step; a page shows the
-connection banner and loads a new build once.
-
-One real upgrade accepts the whole: a Linux server with a paired device and
-a Cloud with a package its user installed moves from one release to the
-next. Afterwards the page runs the new build, the device is online with the
-new runner without anyone touching it, and the Cloud runs the new runner and
-still has the package.

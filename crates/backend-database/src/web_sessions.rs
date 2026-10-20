@@ -1,9 +1,9 @@
-//! The web app's sessions and handoff codes (`storage.md` § Control
-//! records, `backend.md` § Authentication and ownership): each session by
-//! the hash of its token, with the browser it signed in from, when it signed
-//! in, was last active and was last verified, and the handoff code that made
-//! it; each user's one handoff code by the hash of the code. The accounts
-//! service decides the policies; storage keeps the records they govern.
+//! The web app's sessions and handoff codes
+//! (`crates/backend-accounts/src/sessions.rs`): each session by the hash of its
+//! token, with the browser it signed in from, when it signed in, was last
+//! active and was last verified, and the handoff code that made it; each
+//! user's one handoff code by the hash of the code. The accounts service
+//! decides the policies; storage keeps the records they govern.
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::ids::UserId;

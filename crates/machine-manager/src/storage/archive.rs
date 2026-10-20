@@ -1,7 +1,6 @@
-//! The check of a base archive before it is extracted (`images.md` § Import
-//! and publication): every entry is a regular file, directory, symbolic link
-//! or hard link, and no path or hard-link target is absolute or climbs out
-//! with `..`.
+//! The check of a base archive before it is extracted: every entry is a
+//! regular file, directory, symbolic link or hard link, and no path or
+//! hard-link target is absolute or climbs out with `..`.
 
 use std::{
     io,

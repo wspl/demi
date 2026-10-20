@@ -26,6 +26,27 @@
  *
  * Auth: a registry token from $NPM_TOKEN (Bun auto-loads .env) or an already
  * configured .npmrc. Usage: bun run release [--dry-run]
+ *
+ * Versions. The TypeScript packages share one version: .changeset/config.json
+ * puts the three published packages (`@demicodes/protocol`,
+ * `@demicodes/conversation-client`, `@demicodes/utils`) and the private
+ * `@demicodes/web`, `@demicodes/web-gallery` and `@demicodes/web-ui` in one
+ * fixed group, so any release-worthy change bumps the group together and a
+ * consumer who installs the same version of each gets packages released
+ * together. Every changeset declares the semantic impact of its change;
+ * Changesets selects the highest bump for the group and applies it to every
+ * package, so manifests, changelogs, tarballs and Git tags show one group
+ * version. `@demicodes/protocol` has no hand-written source: a change to a Rust
+ * contract type the generator emits changes it, so that change's changeset names
+ * it. This command publishes each public package whose shared version is absent
+ * from the registry: it refreshes the lockfile, generates the contract
+ * TypeScript from the Rust crates, builds the packages, validates the packed
+ * dependency ranges and export targets, publishes the tarballs, and creates one
+ * package tag per artifact. A package's tag names the package, so it never
+ * collides with the `v<workspace version>` tag the release workflow creates.
+ * The Rust workspace version (`[workspace.package]` in Cargo.toml, which every
+ * crate inherits) and this group's version change independently: a release of
+ * one does not bump the other.
  */
 import { $ } from 'bun'
 import { constants, copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

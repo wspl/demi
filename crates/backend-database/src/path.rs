@@ -1,8 +1,8 @@
-//! A node's current path through its tree of rows (`storage.md` § Conversation
-//! state and transactions): the node's leaf, and the runs of consecutive row
-//! numbers from its first block to the leaf, which `path_runs` keeps so a range
-//! of positions reads a range of rows. The runs are derived from the rows and
-//! the leaf, and written with the leaf in the same transaction.
+//! A node's current path through its tree of rows: the node's leaf, and the
+//! runs of consecutive row numbers from its first block to the leaf, which
+//! `path_runs` keeps so a range of positions reads a range of rows. The runs
+//! are derived from the rows and the leaf, and written with the leaf in the
+//! same transaction.
 
 use std::collections::BTreeMap;
 use std::ops::Range;

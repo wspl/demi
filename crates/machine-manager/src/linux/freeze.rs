@@ -1,6 +1,5 @@
-//! Filesystem freezes for a checkpoint (`managed-hosts.md` § Save a
-//! generation): `FIFREEZE` flushes a mounted filesystem and blocks its
-//! writers; `FITHAW` releases it.
+//! Filesystem freezes for a checkpoint: `FIFREEZE` flushes a mounted
+//! filesystem and blocks its writers; `FITHAW` releases it.
 
 use std::{
     io,

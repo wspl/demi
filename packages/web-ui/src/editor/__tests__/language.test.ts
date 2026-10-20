@@ -4,7 +4,7 @@ import { waitFor } from '@demicodes/utils'
 import { reportError, reportPageErrorsWith, type PageErrorReport } from '../../infra/errors'
 import { loadFileLanguage } from '../language'
 
-// Only a defect is reported (`backend.md` § The page's own errors): a
+// Only a defect is reported (`packages/web-ui/src/infra/errors.ts`): a
 // language whose chunk did not download is the environment's failure, and
 // one that threw as it was built is a defect. The language data's own load
 // stands in for the chunk; no I/O, a few milliseconds.

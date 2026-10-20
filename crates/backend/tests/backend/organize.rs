@@ -517,17 +517,17 @@ async fn a_project_whose_conversation_works_is_not_deleted() {
 
 /// What a release before projects by directory left on a paired device
 /// settles when the device's runner first reports its home after the
-/// upgrade, by the directories its runner resolves (`upgrades.md` § What
-/// crosses releases): two workspaces of one directory, `site/` and a link
-/// to it, become the older, with the newer's conversation; a workspace at
-/// the home, reached through a link, goes and its conversation runs in the
-/// home; and each conversation outside a project moves to the home or its
-/// directory's project, a directory gone as it was spelled. A device
-/// revoked before its first report keeps its conversations outside
-/// projects, in their directories.
-/// Planted defect this catches: projects compared by spelling, so one
-/// directory stays two projects or the home a project; and conversations
-/// resolved before the runner names their directories.
+/// upgrade, by the directories its runner resolves
+/// (`crates/server/src/main.rs`): two workspaces of one directory, `site/`
+/// and a link to it, become the older, with the newer's conversation; a
+/// workspace at the home, reached through a link, goes and its
+/// conversation runs in the home; and each conversation outside a project
+/// moves to the home or its directory's project, a directory gone as it
+/// was spelled. A device revoked before its first report keeps its
+/// conversations outside projects, in their directories. Planted defect
+/// this catches: projects compared by spelling, so one directory stays two
+/// projects or the home a project; and conversations resolved before the
+/// runner names their directories.
 // About three seconds: one paired runner connects twice, another once.
 #[tokio::test]
 async fn a_devices_first_home_report_settles_what_an_upgrade_left_by_the_directories_its_runner_names() {

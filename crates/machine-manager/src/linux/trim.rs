@@ -1,7 +1,7 @@
-//! Discarding a mounted filesystem's free blocks (`managed-hosts.md` §
-//! Images): `FITRIM` asks ext4 to discard every free block, which the loop
-//! device beneath turns into holes punched in its image file, so a file the
-//! Cloud deleted stops taking host storage.
+//! Discarding a mounted filesystem's free blocks: `FITRIM` asks ext4 to
+//! discard every free block, which the loop device beneath turns into holes
+//! punched in its image file, so a file the Cloud deleted stops taking host
+//! storage.
 
 use std::{io, os::fd::AsFd, path::Path};
 

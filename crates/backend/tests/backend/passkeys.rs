@@ -1,4 +1,4 @@
-//! Passkeys at the edge (`backend.md` § Authentication and ownership), against
+//! Passkeys at the edge (`crates/backend-accounts/src/passkeys.rs`), against
 //! a software authenticator and WebAuthn client of the kind a password manager
 //! is: adding one takes the password, a sign-in names no email, a synced
 //! passkey signs in, a removed one is named back as unknown, and a challenge

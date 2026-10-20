@@ -1,9 +1,9 @@
-//! Pairing codes and device tokens (`backend.md` § Authentication and
-//! ownership). A pairing code is 128 random bits a waiting runner prints for
-//! its user, so guessing one is infeasible by its entropy alone; it is
-//! single use and short-lived by the pending claims' rules. A device token is
-//! 256 random bits in hexadecimal, which only the runner receives; storage
-//! keeps its SHA-256.
+//! Pairing codes and device tokens (`crates/backend-http/src/runner_socket.rs`). A
+//! pairing code is 128 random bits a waiting runner prints for its user, so
+//! guessing one is infeasible by its entropy alone; it is single use and
+//! short-lived by the pending claims' rules. A device token is 256 random
+//! bits in hexadecimal, which only the runner receives; storage keeps its
+//! SHA-256.
 
 use std::sync::LazyLock;
 

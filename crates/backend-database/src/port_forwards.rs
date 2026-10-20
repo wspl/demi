@@ -1,8 +1,8 @@
-//! The users' port forwards (`storage.md` § Control records,
-//! `crates/backend-user-shard/src/shard/port_forwards.rs`): each forward's name, unique among its user's, its
-//! Listen On device and port, its Connect To device, none until chosen, and
-//! address, and its switch. What a forward is doing now is its Listen On
-//! runner's, not a record's.
+//! The users' port forwards
+//! (`crates/backend-user-shard/src/shard/port_forwards.rs`): each forward's
+//! name, unique among its user's, its Listen On device and port, its Connect To
+//! device, none until chosen, and address, and its switch. What a forward is
+//! doing now is its Listen On runner's, not a record's.
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::ids::{DeviceId, PortForwardId, UserId};

@@ -1,5 +1,5 @@
 //! Request IDs, the page's own error reports and the server log
-//! (`backend.md` § Request IDs and the server log).
+//! (`crates/backend-http/src/request_id.rs`).
 
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::diagnostics::{LogLevel, ServerLog};

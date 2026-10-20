@@ -895,9 +895,9 @@ async fn a_page_learns_a_login_completed_no_sooner_than_its_account() {
     backend.close().await;
 }
 
-/// The development backend's Codex sign-in (`backend.md` § One-command
-/// development backend): setup creates the master account with a Codex
-/// entry signed in as it, its tokens sealed.
+/// The development backend's Codex sign-in
+/// (`crates/xtask/src/dev/mod.rs`): setup creates the master account
+/// with a Codex entry signed in as it, its tokens sealed.
 #[tokio::test]
 async fn setup_signs_the_masters_codex_entry_in_with_the_development_sign_in() {
     use demi_backend_providers::vault::entries::SeededAccount;

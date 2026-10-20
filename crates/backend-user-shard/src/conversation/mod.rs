@@ -1,10 +1,10 @@
-//! Conversations on the user's shard (`backend.md` § Request paths and
-//! responsibilities): the agent server that hosts each conversation's tree
-//! over the conversation's database, the conversation socket, the provider
-//! runtimes the sessions infer with, the Claude Code CLI's work on the
-//! user's Cloud and the provider test, the conversations' summaries, the
-//! failure facts of their history and the resume of a failed turn at its
-//! retry time, their deletion, and the search index that follows them.
+//! Conversations on the user's shard (`crates/backend/src/lib.rs`): the
+//! agent server that hosts each conversation's tree over the
+//! conversation's database, the conversation socket, the provider runtimes
+//! the sessions infer with, the Claude Code CLI's work on the user's Cloud
+//! and the provider test, the conversations' summaries, the failure facts
+//! of their history and the resume of a failed turn at its retry time,
+//! their deletion, and the search index that follows them.
 
 mod announcement;
 pub mod claude_cli;

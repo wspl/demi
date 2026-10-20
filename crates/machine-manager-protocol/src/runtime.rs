@@ -1,5 +1,5 @@
-//! The gVisor runtime a release's machine manager runs
-//! (`builds-and-releases.md` § gVisor runtime): the one runsc version
+//! The gVisor runtime a release's machine manager runs: no release carries
+//! it. The manager is built against the one runsc version
 //! `crates/machine-manager/runtime/release.json` pins, which the manager
 //! requires and `demi-server` fetches onto a server, and where a server keeps
 //! it.
