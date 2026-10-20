@@ -614,25 +614,28 @@ async fn read_working_side(
 }
 
 /// `value` as JSON with an ETag of its content, or 304 when the request's
-/// `If-None-Match` names that ETag: the page then keeps what it holds and
-/// receives nothing.
+/// `If-None-Match` names that ETag, compared weakly as RFC 9110 § 13.1.2
+/// asks, since a compressing proxy weakens the tag it passes on: the page
+/// then keeps what it holds and receives nothing.
 fn unless_held(headers: &HeaderMap, value: &impl serde::Serialize) -> Response {
+    use axum_extra::headers::{ETag, HeaderMapExt as _, IfNoneMatch};
     use sha2::{Digest as _, Sha256};
     let body = serde_json::to_vec(value).expect("an answer of the API serializes");
     // As the assets' tags are made (`assets.rs`).
-    let tag = format!("\"{:x}\"", Sha256::digest(&body));
-    let held = header(headers, IF_NONE_MATCH);
-    if held.is_some_and(|held| held.split(',').any(|one| one.trim() == tag)) {
-        return (StatusCode::NOT_MODIFIED, [(ETAG, header_value(&tag))]).into_response();
-    }
-    (
-        [
-            (ETAG, header_value(&tag)),
-            (axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/json")),
-        ],
-        body,
-    )
-        .into_response()
+    let tag: ETag = format!("\"{:x}\"", Sha256::digest(&body))
+        .parse()
+        .expect("a quoted hex digest is an entity tag");
+    let held = headers
+        .typed_get::<IfNoneMatch>()
+        .is_some_and(|held| !held.precondition_passes(&tag));
+    let mut answer = if held {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        ([(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body)
+            .into_response()
+    };
+    answer.headers_mut().typed_insert(tag);
+    answer
 }
 
 /// A changed file's last committed bytes, or a commit's, by range. Git's
@@ -727,12 +730,18 @@ fn file_name(path: &str) -> Option<String> {
 /// revalidated on each use unless the request named the `versioned` bytes,
 /// which can only be that version's, and streamed rather than buffered by a
 /// proxy in front.
+///
+/// They are also `no-transform` (RFC 9110 § 7.7): the page reads a file's
+/// size from a `HEAD`'s `Content-Length` and asks for byte ranges of the
+/// file itself, and a proxy that compresses the answer, as a CDN does to an
+/// SVG, drops that length and changes what the bytes are. The directive is
+/// the one standard way to keep every proxy from doing so.
 fn raw_file_headers(versioned: bool) -> HeaderMap {
     let mut headers = HeaderMap::new();
     let cache = if versioned {
-        "private, max-age=31536000, immutable"
+        "private, max-age=31536000, immutable, no-transform"
     } else {
-        "private, no-cache"
+        "private, no-cache, no-transform"
     };
     headers.insert(
         axum::http::header::CACHE_CONTROL,
