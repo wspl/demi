@@ -157,13 +157,19 @@ fn summary_item(summary: &str) -> InferenceItem {
 }
 
 /// What the model receives of a `compaction_boundary` that kept the user's
-/// messages `kept`, oldest first, and holds `summary`: the note, each
-/// message, then the summary.
-fn boundary_items(kept: &[&str], summary: &str) -> Vec<InferenceItem> {
+/// messages `kept`, oldest first, each by its index and its text, and holds
+/// `summary`: the note, each message after its index, then the summary.
+fn boundary_items(kept: &[(u64, &str)], summary: &str) -> Vec<InferenceItem> {
     let mut items = vec![user_item(COMPACTION_NOTE)];
-    items.extend(kept.iter().map(|message| user_item(message)));
+    items.extend(kept.iter().map(|(index, text)| user_item(&format!("[#{index}]\n{text}"))));
     items.push(summary_item(summary));
     items
+}
+
+/// `text`, kept as the message at `index`, cut to the 100 tokens of the
+/// user's words a 1,000-token window keeps, its index included.
+fn within_words(index: u64, text: &str) -> &str {
+    &text[..400 - format!("[#{index}]\n").len()]
 }
 
 fn answer_item(model_id: &str, answer: &str) -> InferenceItem {
@@ -261,7 +267,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
         [
             // The message, cut to the 100 tokens of the user's words a
             // 1,000-token window keeps.
-            boundary_items(&[&"x".repeat(400)], "summary of the first turn"),
+            boundary_items(&[(0, within_words(0, &"x".repeat(400)))], "summary of the first turn"),
             vec![
                 answer_item("small-model", "first answer"),
                 user_item(&"y".repeat(400)),
@@ -403,7 +409,7 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
     assert_eq!(
         c.items.as_ref(),
         [
-            boundary_items(&["A"], "summary of A"),
+            boundary_items(&[(0, "A")], "summary of A"),
             vec![
                 answer_item("small-model", "answer A"),
                 user_item(&question_b),
@@ -718,7 +724,7 @@ async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_kee
     assert_eq!(
         requests[3].items.as_ref(),
         [
-            boundary_items(&[&"x".repeat(400)], "summary"),
+            boundary_items(&[(0, within_words(0, &"x".repeat(400)))], "summary"),
             vec![
                 answer_item("small-model", "first"),
                 user_item("again"),
@@ -1066,8 +1072,8 @@ async fn a_final_answer_over_the_threshold_ends_its_turn_and_the_next_send_compa
 #[tokio::test(flavor = "local")]
 async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     let provider = ScriptedRuntime::new([
-        answer(&"f".repeat(1_500)),
-        answer(&"s".repeat(1_500)),
+        answer(&"f".repeat(1_400)),
+        answer(&"s".repeat(1_400)),
         answer("summary by the large model"),
         answer("third"),
         answer("fourth"),
@@ -1122,9 +1128,9 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     );
 }
 
-/// An answer of 375 estimated tokens.
+/// An answer of 350 estimated tokens.
 fn long_answer() -> Turn {
-    answer(&"s".repeat(1_500))
+    answer(&"s".repeat(1_400))
 }
 
 /// A session with two short messages, answered by [`long_answer`]s that
@@ -1295,7 +1301,7 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
     );
     assert_eq!(
         continuation.items[..4],
-        boundary_items(&["a", &"b".repeat(480)], "summary by the large model")
+        boundary_items(&[(0, "a"), (3, &"b".repeat(480))], "summary by the large model")
     );
     assert_eq!(continuation.items.last(), Some(&user_item(RESUME_TEXT)));
 }
@@ -1520,7 +1526,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
     assert_eq!(
         rerun.items.as_ref(),
         [
-            boundary_items(&[&question[..400]], "retry summary"),
+            boundary_items(&[(0, within_words(0, &question))], "retry summary"),
             vec![
                 answer_item("small-model", "old answer"),
                 user_item("retry this"),
@@ -1611,7 +1617,7 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     assert_eq!(
         summary.items.as_ref(),
         [
-            boundary_items(&["old question"], "summary one"),
+            boundary_items(&[(0, "old question")], "summary one"),
             vec![
                 answer_item("small-model", &old_answer),
                 user_item(&question),
@@ -1624,7 +1630,7 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     assert_eq!(
         continuation.items.as_ref(),
         [
-            boundary_items(&["old question"], "resume summary"),
+            boundary_items(&[(0, "old question")], "resume summary"),
             vec![
                 user_item(&question),
                 answer_item("small-model", &partial),
@@ -1725,7 +1731,7 @@ async fn input_too_large_for_the_model_on_its_own_is_never_summarized_and_its_re
     assert_eq!(
         requests[2].items.as_ref(),
         [
-            boundary_items(&["one"], "summary of one"),
+            boundary_items(&[(0, "one")], "summary of one"),
             vec![answer_item("small-model", "first"), message.clone()],
         ]
         .concat()
@@ -1733,7 +1739,7 @@ async fn input_too_large_for_the_model_on_its_own_is_never_summarized_and_its_re
     assert_eq!(
         requests[4].items.as_ref(),
         [
-            boundary_items(&["one"], "summary of the first answer"),
+            boundary_items(&[(0, "one")], "summary of the first answer"),
             vec![message],
         ]
         .concat()
@@ -1811,7 +1817,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     assert_eq!(
         continuation.items.as_ref(),
         [
-            boundary_items(&["old question", "second question"], "switch summary"),
+            boundary_items(&[(0, "old question"), (3, "second question")], "switch summary"),
             vec![
                 answer_item("test-model", "second answer"),
                 user_item("follow-up"),
@@ -1915,7 +1921,7 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
     );
     assert_eq!(
         continuation.items[..3],
-        boundary_items(&["use the tool"], "tool summary")
+        boundary_items(&[(0, "use the tool")], "tool summary")
     );
     assert!(matches!(
         &continuation.items[4],
@@ -2160,7 +2166,7 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
     assert_eq!(
         second_summary.items.as_ref(),
         [
-            boundary_items(&["first", "second"], "summary one"),
+            boundary_items(&[(0, "first"), (3, "second")], "summary one"),
             vec![
                 answer_item("small-model", &long("second")),
                 user_item("third"),
@@ -2173,7 +2179,7 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
     assert_eq!(
         fourth_request.items.as_ref(),
         [
-            boundary_items(&["first", "second", "third"], "summary two"),
+            boundary_items(&[(0, "first"), (3, "second"), (7, "third")], "summary two"),
             vec![
                 answer_item("small-model", &long("third")),
                 user_item("fourth"),
@@ -2277,7 +2283,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         content: sent_text("mind the tests"),
     };
     let after_first = [
-        boundary_items(&["first", "second"], "summary one"),
+        boundary_items(&[(0, "first"), (3, "second")], "summary one"),
         vec![
             answer_item("small-model", "second answer"),
             user_item(&third),
@@ -2313,11 +2319,12 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
     assert_eq!(
         provider.requests()[6].items.as_ref(),
         [
-            // Newest first within the 100 tokens a 1,000-token window keeps:
-            // the fourth message and the steer whole, the third cut to what
-            // is left, and the first two left to the summary.
+            // Newest first within the 100 tokens a 1,000-token window keeps,
+            // each with its index: the fourth message (52 tokens) and the
+            // steer (5) whole, the third cut to the 43 left, and the first two
+            // left to the summary.
             boundary_items(
-                &[&third[..184], "mind the tests", &fourth],
+                &[(7, &third[..167]), (9, "mind the tests"), (12, &fourth)],
                 "summary two"
             ),
             vec![
@@ -2403,7 +2410,7 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
             [
                 // B's question, cut to the 100 tokens of the user's words
                 // a 1,000-token window keeps; A's is left to the summary.
-                boundary_items(&[&question("B")[..400]], "summary one"),
+                boundary_items(&[(3, within_words(3, &question("B")))], "summary one"),
                 vec![answer_item("small-model", "answer B")],
             ]
             .concat(),
@@ -2490,7 +2497,7 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
     assert_eq!(
         provider.requests().last().unwrap().items.as_ref(),
         [
-            boundary_items(&[&question("A")[..400]], "summary one"),
+            boundary_items(&[(0, within_words(0, &question("A")))], "summary one"),
             vec![
                 answer_item("small-model", "answer A"),
                 user_item(&question("B")),
@@ -2548,7 +2555,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
     assert_eq!(
         replacement.items.as_ref(),
         [
-            boundary_items(&[&first[..400]], "summary of A"),
+            boundary_items(&[(0, within_words(0, &first))], "summary of A"),
             vec![answer_item("small-model", "answer A"), user_item("B2")],
         ]
         .concat()
@@ -2890,7 +2897,7 @@ async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_sec
     assert_eq!(
         again.items.as_ref(),
         [
-            boundary_items(&["one"], "summary of the first message"),
+            boundary_items(&[(0, "one")], "summary of the first message"),
             vec![answer_item("small-model", "first"), user_item("two")],
         ]
         .concat()
@@ -3022,7 +3029,7 @@ async fn the_cut_keeps_the_recent_work_at_the_end_of_an_answered_request() {
     );
     assert_eq!(
         continuation.items[..3],
-        boundary_items(&["go"], "summary of the first calls")
+        boundary_items(&[(0, "go")], "summary of the first calls")
     );
 
     // When no end leaves that much, the window ends where the latest
@@ -3036,24 +3043,29 @@ async fn the_cut_keeps_the_recent_work_at_the_end_of_an_answered_request() {
     );
 }
 
-/// The content a kept message replays as.
-fn kept_texts(boundary: &Block) -> Vec<Vec<String>> {
+/// The messages a boundary kept, each its index and its text.
+fn kept_of(boundary: &Block) -> Vec<(u64, String)> {
     let Block::CompactionBoundary(boundary) = boundary else {
         panic!("not a boundary: {boundary:?}");
     };
-    boundary
-        .kept
+    boundary.kept.iter().map(|kept| (kept.index, kept.text.clone())).collect()
+}
+
+/// The index of the user's message or steer of `blocks` whose text starts
+/// with `start`.
+fn message_at(blocks: &[Block], start: &str) -> u64 {
+    let index = blocks
         .iter()
-        .map(|kept| {
-            kept.content
-                .iter()
-                .map(|part| match part {
-                    UserContentBlock::Text { text } => text.clone(),
-                    other => format!("{other:?}"),
-                })
-                .collect()
+        .position(|block| {
+            let content = match block {
+                Block::User(user) => &user.content,
+                Block::Steer(steer) => &steer.content,
+                _ => return false,
+            };
+            matches!(content.first(), Some(UserContentBlock::Text { text }) if text.starts_with(start))
         })
-        .collect()
+        .unwrap_or_else(|| panic!("no message starts with {start:?}"));
+    u64::try_from(index).unwrap()
 }
 
 // One session, two passes and messages of about 200 KB: a few
@@ -3092,28 +3104,27 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     let mut held = HeldMedia::default();
     held.hold(BlobRef::of(&photo), photo.clone());
     session.hold_media(held);
-    // 12,000 tokens and a screenshot; then 9,000 tokens. Their characters
-    // are wide, so the replay bound keeps each whole and its estimate is
-    // its own.
-    let second = format!("Second s{}", "😀".repeat(11_998));
-    let third = format!("Third {}", "あ".repeat(11_998));
-    let up_to = |tokens: usize| second[..second.floor_char_boundary(tokens * 4)].to_owned();
-    session.send(text("Keep the old rule."), turn("t1")).unwrap().await.unwrap();
-    let mut with_image = text(&second);
-    with_image.push(UserContentBlock::Image {
+    let screenshot = || UserContentBlock::Image {
         source: MediaSource::Ref {
             r#ref: BlobRef::of(&photo),
             media_type: "image/png".into(),
             width: None,
             height: None,
         },
-    });
+    };
+    // 12,000 tokens and a screenshot; then 9,000 tokens; then a steer
+    // with a screenshot of its own.
+    let second = format!("Second s{}", "😀".repeat(11_998));
+    let third = format!("Third {}", "あ".repeat(11_998));
+    session.send(text("Keep the old rule."), turn("t1")).unwrap().await.unwrap();
+    let mut with_image = text(&second);
+    with_image.push(screenshot());
     session.send(with_image, turn("t2")).unwrap().await.unwrap();
     let running = session.send(text(&third), turn("t3")).unwrap();
     started.await.unwrap();
-    session
-        .steer(text("Mind the tests."), BlockId::try_from("s1").unwrap())
-        .unwrap();
+    let mut steer = text("Mind the tests.");
+    steer.push(screenshot());
+    session.steer(steer, BlockId::try_from("s1").unwrap()).unwrap();
     session
         .accept_agent_message(agent_message("m1"))
         .await
@@ -3126,66 +3137,72 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
 
     // Newest first:
     //
-    // - The last message, the steer and the third message are kept whole.
+    // - The last message, the steer and the third message are kept whole,
+    //   each named by its index, the steer's screenshot as `[Image]`.
     // - The second crosses the 10,000 tokens a 100,000-token window keeps, 10%
-    //   of it, and keeps its text up to them, without its screenshot.
+    //   of it, and keeps its text up to them, its index included.
     // - The first is left to the summary, and so is the agent's message.
     let blocks = session.history().await.unwrap().blocks;
+    let at = |start: &str| message_at(&blocks, start);
+    let (second_at, third_at, steer_at, last_at) = (at("Second s"), at("Third "), at("Mind the tests."), at("Now report."));
+    // What the model reads of a kept message, in estimated tokens.
+    let read = |index: u64, text: &str| format!("[#{index}]\n{text}").len().div_ceil(4);
+    let whole = [
+        (third_at, third.clone()),
+        (steer_at, "Mind the tests. [Image]".to_owned()),
+        (last_at, "Now report.".to_owned()),
+    ];
+    let left = 10_000 - whole.iter().map(|(index, text)| read(*index, text)).sum::<usize>();
+    let up_to = |left: usize| {
+        let room = left * 4 - format!("[#{second_at}]\n").len();
+        second[..second.floor_char_boundary(room)].to_owned()
+    };
     let boundary = blocks
         .iter()
         .find(|block| matches!(block, Block::CompactionBoundary(_)))
         .expect("the pass inserted a boundary");
-    let kept = kept_texts(boundary);
-    let edge = 10_000 - (third.len() / 4 + 4 + 3);
-    assert_eq!(
-        kept,
-        [
-            vec![up_to(edge)],
-            vec![third.clone()],
-            vec!["Mind the tests.".to_owned()],
-            vec!["Now report.".to_owned()],
-        ]
-    );
+    let first_kept: Vec<(u64, String)> = std::iter::once((second_at, up_to(left))).chain(whole.clone()).collect();
+    assert_eq!(kept_of(boundary), first_kept);
     session.send(text("Go on."), turn("t5")).unwrap().await.unwrap();
     let requests = provider.requests();
     let next = requests.last().unwrap();
-    // The next request carries the note, the kept messages oldest first,
-    // each as a user message with the replay's bound on its text, then the
-    // summary.
-    let starts = |item: &InferenceItem, start: &str| {
-        matches!(item, InferenceItem::UserMessage { content }
-            if matches!(content.as_slice(), [UserPart::Text(text)] if text.starts_with(start)))
-    };
+    // The next request carries the note, each kept message oldest first as
+    // a user message of its index and its text, then the summary; no
+    // screenshot's bytes.
+    let kept_items: Vec<InferenceItem> = first_kept
+        .iter()
+        .map(|(index, text)| user_item(&format!("[#{index}]\n{text}")))
+        .collect();
     assert_eq!(next.items[0], user_item(COMPACTION_NOTE));
-    assert!(starts(&next.items[1], "Second "), "{:?}", next.items[1]);
-    assert!(starts(&next.items[2], "Third "), "{:?}", next.items[2]);
-    assert_eq!(
-        next.items[3..6],
-        [
-            user_item("Mind the tests."),
-            user_item("Now report."),
-            summary_item("summary one")
-        ]
+    assert_eq!(next.items[1..5], kept_items[..]);
+    assert_eq!(next.items[5], summary_item("summary one"));
+    assert!(
+        !next.items.iter().any(|item| matches!(item, InferenceItem::UserMessage { content }
+            if content.iter().any(|part| matches!(part, UserPart::Image(_))))),
+        "{:?}",
+        next.items
     );
 
-    // The next pass starts from what this boundary kept, and the new
-    // message pushes the edge further.
+    // The next pass starts from what this boundary kept, each with the index
+    // it had, and the new message pushes the edge further.
     session.compact().unwrap().await.unwrap();
     let blocks = session.history().await.unwrap().blocks;
+    let go_on = message_at(&blocks, "Go on.");
     let boundary = blocks
         .iter()
         .rfind(|block| matches!(block, Block::CompactionBoundary(_)))
         .expect("the pass inserted a boundary");
-    let edge = edge - 2;
+    let left = left - read(go_on, "Go on.");
+    let second_kept: Vec<(u64, String)> = std::iter::once((second_at, up_to(left)))
+        .chain(whole)
+        .chain([(go_on, "Go on.".to_owned())])
+        .collect();
+    assert_eq!(kept_of(boundary), second_kept);
+    // Each index still names its message.
+    let at = |start: &str| message_at(&blocks, start);
     assert_eq!(
-        kept_texts(boundary),
-        [
-            vec![up_to(edge)],
-            vec![third.clone()],
-            vec!["Mind the tests.".to_owned()],
-            vec!["Now report.".to_owned()],
-            vec!["Go on.".to_owned()],
-        ]
+        [at("Second s"), at("Third "), at("Mind the tests."), at("Now report.")],
+        [second_at, third_at, steer_at, last_at]
     );
 }
 

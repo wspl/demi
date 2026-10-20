@@ -2,13 +2,15 @@
 //!
 //! It reads two things: the window it summarizes, which ends where the content
 //! of a request the vendor answered ends, and the user's own messages it keeps
-//! beside the summary. Each is a pure reading of the blocks, weighed by the
-//! token estimates of the request the pass serves.
+//! beside the summary, each as text that names the message it came from. Each
+//! is a pure reading of the blocks: the window weighed by the token estimates
+//! of the request the pass serves, the kept messages by the text the model
+//! reads of them, as `demi_shared_types::choose_kept` chooses them.
 
-use demi_shared_types::{Block, KeptMessage, ModelSelection, UserContentBlock, comments_content};
+use demi_shared_types::{Block, KeptMessage, ModelSelection, choose_kept, comments_content};
 
 use super::{
-    estimate::{block_tokens, content_tokens},
+    estimate::block_tokens,
     is_answer, is_compaction,
     replay::RequestView,
     replay_start,
@@ -16,7 +18,7 @@ use super::{
 
 /// What the model reads first of a `compaction_boundary`, before the
 /// messages it kept and its summary.
-pub const COMPACTION_NOTE: &str = "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it.";
+pub const COMPACTION_NOTE: &str = "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Each kept message starts with its index, which `demi conversation history read` and `open` take. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it.";
 
 /// The summary of a `compaction_boundary` as the model reads it: in
 /// `<summary>` tags.
@@ -146,83 +148,36 @@ fn unanswered_input(blocks: &[Block]) -> usize {
         .map_or(answered, |user| answered + user)
 }
 
-/// The user's own messages a pass over `window`, blocks of `request`, keeps
-/// beside its summary, oldest first.
+/// The user's own messages a pass over `window`, whose first block is at
+/// `first` in the transcript, keeps beside its summary within `budget`,
+/// oldest first ([`choose_kept`]).
 ///
-/// They are, in order:
+/// They are chosen among, in order:
 ///
-/// 1. the messages the boundary that opens the window kept;
-/// 2. the window's `user` and `steer` blocks, the newest first, whole, while
-///    they fit `budget` estimated tokens.
+/// 1. the messages the boundary that opens the window kept, with their
+///    indices;
+/// 2. the window's `user` and `steer` blocks, each named by its index
+///    ([`KeptMessage::of`]).
 ///
-/// The one that crosses the budget keeps its text up to it, without its media,
-/// and older ones are left to the summary. A receipt of the user's decision, an
-/// agent's message and a command report are not the user's words.
-pub fn kept_messages(window: &[Block], request: &RequestView, budget: u64) -> Vec<KeptMessage> {
+/// A receipt of the user's decision, an agent's message and a command report
+/// are not the user's words.
+pub fn kept_messages(window: &[Block], first: usize, budget: u64) -> Vec<KeptMessage> {
     let mut messages: Vec<KeptMessage> = Vec::new();
-    for block in window {
+    for (offset, block) in window.iter().enumerate() {
+        let index = u64::try_from(first + offset).expect("a transcript index fits in 64 bits");
         match block {
             Block::CompactionBoundary(boundary) => messages.extend(boundary.kept.iter().cloned()),
             Block::User(user) => {
-                messages.push(KeptMessage {
-                    content: user.lead_content().into_iter().chain(user.content.iter().cloned()).collect(),
-                });
+                let content: Vec<_> = user.lead_content().into_iter().chain(user.content.iter().cloned()).collect();
+                messages.push(KeptMessage::of(index, &content));
             }
-            Block::Steer(steer) => messages.push(KeptMessage {
-                content: comments_content(&steer.comments)
-                    .into_iter()
-                    .chain(steer.content.iter().cloned())
-                    .collect(),
-            }),
+            Block::Steer(steer) => {
+                let content: Vec<_> =
+                    comments_content(&steer.comments).into_iter().chain(steer.content.iter().cloned()).collect();
+                messages.push(KeptMessage::of(index, &content));
+            }
             _ => {}
         }
     }
-    let mut kept = Vec::new();
-    let mut left = budget;
-    for message in messages.into_iter().rev() {
-        let tokens = content_tokens(&message.content, request);
-        if tokens <= left {
-            left -= tokens;
-            kept.push(message);
-            continue;
-        }
-        if let Some(cut) = text_within(&message.content, left) {
-            kept.push(cut);
-        }
-        break;
-    }
-    kept.reverse();
-    kept
-}
-
-/// The text parts of `content`, cut to at most `tokens` estimated tokens
-/// together, as a message's estimate counts them (one line per part), never
-/// inside a character; none when no text is left.
-fn text_within(content: &[UserContentBlock], tokens: u64) -> Option<KeptMessage> {
-    let mut bytes = usize::try_from(tokens.saturating_mul(4)).unwrap_or(usize::MAX);
-    let mut cut = Vec::new();
-    for part in content {
-        let UserContentBlock::Text { text } = part else {
-            continue;
-        };
-        // The line break before every part after the first.
-        if !cut.is_empty() {
-            if bytes == 0 {
-                break;
-            }
-            bytes -= 1;
-        }
-        let end = text.floor_char_boundary(bytes.min(text.len()));
-        if end == 0 {
-            break;
-        }
-        bytes -= end;
-        cut.push(UserContentBlock::Text {
-            text: text[..end].to_owned(),
-        });
-        if end < text.len() {
-            break;
-        }
-    }
-    (!cut.is_empty()).then_some(KeptMessage { content: cut })
+    choose_kept(messages, budget)
 }

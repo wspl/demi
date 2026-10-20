@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use demi_provider_common::{MediaBytes, Medium, ToolDefinition};
 use demi_shared_types::{
     MessageComment,
-    B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind, ResponseBlock,
+    B64Bytes, Block, DocumentSource, KeptMessage, INSTRUCTIONS_SOURCE, Model, ModelMediaKind, ResponseBlock,
     ToolResultContentBlock, UserContentBlock, comments_content,
 };
 
@@ -25,11 +25,7 @@ const IMAGE_BYTES_PER_TOKEN: u64 = 1_000;
 /// Bytes per token of a document.
 const DOCUMENT_BYTES_PER_TOKEN: u64 = 4;
 
-/// A text's estimate: its UTF-8 bytes divided by 4, rounded up, so `hello`
-/// and `你好` are both 2 tokens.
-pub fn text_tokens(text: &str) -> u64 {
-    byte_count(text.len()).div_ceil(4)
-}
+pub use demi_shared_types::text_tokens;
 
 /// What a provider charges for a tool call beyond its arguments: its
 /// framing, the call's name and id, which it counts and never streams.
@@ -267,17 +263,11 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
         Block::AccountSwitch(_) => String::new(),
         // The note, the messages it kept and the summary, as the model
         // reads them.
-        Block::CompactionBoundary(boundary) => {
-            let mut lines = vec![COMPACTION_NOTE.to_owned()];
-            let mut media = 0;
-            for kept in &boundary.kept {
-                let (text, weight) = content_estimate(&kept.content, request);
-                lines.push(text);
-                media += weight;
-            }
-            lines.push(bound_text(&boundary.summary).into_owned());
-            return (lines.join("\n"), media);
-        }
+        Block::CompactionBoundary(boundary) => std::iter::once(COMPACTION_NOTE.to_owned())
+            .chain(boundary.kept.iter().map(KeptMessage::model_text))
+            .chain([bound_text(&boundary.summary).into_owned()])
+            .collect::<Vec<_>>()
+            .join("\n"),
         Block::CompactionMarker(marker) => marker.compacted_tokens.to_string(),
     };
     (text, 0)

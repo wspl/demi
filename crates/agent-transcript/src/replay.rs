@@ -178,7 +178,7 @@ pub fn replay(request: &RequestView) -> Replay {
                     });
                 }
             }
-            // The note, each message it kept as the user message it was,
+            // The note, each message it kept as a user message of its own,
             // oldest first, then the summary.
             Block::CompactionBoundary(boundary) => {
                 items.push(InferenceItem::UserMessage {
@@ -186,11 +186,7 @@ pub fn replay(request: &RequestView) -> Replay {
                 });
                 for kept in &boundary.kept {
                     items.push(InferenceItem::UserMessage {
-                        content: kept
-                            .content
-                            .iter()
-                            .map(|part| request.user_part(part))
-                            .collect(),
+                        content: vec![UserPart::Text(kept.model_text())],
                     });
                 }
                 items.push(InferenceItem::UserMessage {

@@ -1753,12 +1753,8 @@
     "summaryTokens": 120,
     "kept": [
       {
-        "content": [
-          {
-            "type": "text",
-            "text": "Do not touch the migration files."
-          }
-        ]
+        "index": 4,
+        "text": "Do not touch the migration files."
       }
     ]
   },

@@ -3,7 +3,8 @@
 //! Scenarios:
 //!
 //! - After a compaction the next request tells the model that `demi
-//!   conversation history` finds and reads what the summary left out.
+//!   conversation history` finds and reads what the summary left out, and
+//!   names each message it kept by the index a read takes.
 //! - `read` prints a range of the agent's transcript, messages and texts whole
 //!   and other blocks as one line each, up to about 8,000 characters.
 //! - `open` prints a command's script and its output a page at a time, a
@@ -157,6 +158,14 @@ async fn an_agent_reads_and_opens_what_its_compaction_summarized() {
     let after = &asked[asked.len() - 7];
     assert!(
         after.contains("What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it."),
+        "{after}"
+    );
+    // The message it kept starts with the index a read of it takes, below,
+    // and holds its attachment as a placeholder, without the file's tag.
+    assert!(
+        after.contains(&format!(
+            "Text(\"[#{message}]\\nThe README's feature list should name what sets Demi apart [Attachment]\")"
+        )),
         "{after}"
     );
 

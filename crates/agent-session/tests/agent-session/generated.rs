@@ -33,13 +33,13 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     RequestView,
-    estimate::{block_tokens, content_tokens, context_tokens},
+    estimate::{block_tokens, context_tokens, text_tokens},
 };
 use demi_provider_common::{
     InferenceRequest, MediaBytes, ProviderRun, RequestLimits, ToolResultKinds,
     VendorPolicy,
 };
-use demi_shared_types::{FileExtension, KeptMessage, MediaSource};
+use demi_shared_types::{FileExtension, KeptMessage, MediaSource, kept_words_budget};
 use futures_util::{StreamExt as _, stream};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde_json::Value;
@@ -58,10 +58,8 @@ const STEPS: usize = 24;
 /// 40,000 tokens, whose thresholds are half of them.
 const MODELS: [(&str, u32); 2] = [("gen-a", 20_000), ("gen-b", 40_000)];
 
-/// The user's words a pass keeps, and the most recent work it keeps, in
-/// estimated tokens, or the share of the window in use, in percent, when
-/// that is less.
-const KEPT_WORDS: (u64, u64) = (20_000, 10);
+/// The most recent work a pass keeps, in estimated tokens, or the share of
+/// the window in use, in percent, when that is less.
 const KEPT_WORK: (u64, u64) = (20_000, 15);
 
 /// Each provider's request builder.
@@ -669,7 +667,7 @@ impl Driver {
         let model = &boundary.model.model;
         let window = u64::from(model.context_window);
         let budget = KEPT_WORK.0.min(window * KEPT_WORK.1 / 100);
-        let words_budget = KEPT_WORDS.0.min(window * KEPT_WORDS.1 / 100);
+        let words_budget = kept_words_budget(Some(window));
         // The history as the pass found it: without the boundary, up to the
         // marker.
         let before: Vec<Block> = blocks[..marker]
@@ -738,40 +736,28 @@ impl Driver {
         if let Some(expected) = expected {
             assert_eq!(index, expected, "{context}: the cut of {:?} (ends {ends:?})", boundary.summary);
         }
-        // The user's words: within their budget, each as the user wrote it
-        // but for the oldest, which may be cut to its text.
+        // The user's words: within their budget, oldest first, each named
+        // by the index of a message of the user's before the boundary and
+        // as its text, but for the oldest, which may be cut.
         let kept = &boundary.kept;
-        let words: u64 = kept.iter().map(|kept| content_tokens(&kept.content, &request)).sum();
+        let words: u64 = kept.iter().map(|kept| text_tokens(&kept.model_text())).sum();
         assert!(words <= words_budget, "{context}: {words} tokens of kept words");
-        let written: Vec<Vec<UserContentBlock>> = before[start..index]
-            .iter()
-            .flat_map(|block| match block {
-                Block::User(user) => vec![user.content.clone()],
-                Block::Steer(steer) => vec![steer.content.clone()],
-                Block::CompactionBoundary(previous) => {
-                    previous.kept.iter().map(|kept| kept.content.clone()).collect()
-                }
-                _ => Vec::new(),
-            })
-            .collect();
-        for (at, KeptMessage { content }) in kept.iter().enumerate() {
-            let whole = written.contains(content);
-            let cut = at == 0
-                && content.iter().all(|part| matches!(part, UserContentBlock::Text { .. }))
-                && written.iter().any(|message| {
-                    let texts: Vec<&str> = message
-                        .iter()
-                        .filter_map(|part| match part {
-                            UserContentBlock::Text { text } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect();
-                    let UserContentBlock::Text { text } = &content[0] else {
-                        return false;
-                    };
-                    texts.first().is_some_and(|first| first.starts_with(text.as_str()))
-                });
-            assert!(whole || cut, "{context}: kept {content:?} is no message of the user's");
+        assert!(
+            kept.windows(2).all(|pair| pair[0].index < pair[1].index),
+            "{context}: kept {kept:?} out of order"
+        );
+        for (at, message) in kept.iter().enumerate() {
+            let source = usize::try_from(message.index).ok().filter(|source| *source < index);
+            let written = match source.map(|source| &blocks[source]) {
+                Some(Block::User(user)) => user.content.clone(),
+                Some(Block::Steer(steer)) => steer.content.clone(),
+                _ => panic!("{context}: kept {message:?} names no message of the user's"),
+            };
+            let whole = KeptMessage::of(message.index, &written).text;
+            assert!(
+                whole == message.text || (at == 0 && whole.starts_with(&message.text)),
+                "{context}: kept {message:?} is not the text of {whole:?}"
+            );
         }
         // The estimate after the pass is under the threshold, or the pass
         // freed nothing.
