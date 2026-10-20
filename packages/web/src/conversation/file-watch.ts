@@ -205,12 +205,22 @@ const deviceWatches = new Map<string, WatchChannel>()
  * A device's folder dialog's watch, `WS /devices/:deviceId/fs/watch`,
  * through device access, which carries the subscriptions of what the
  * dialog keeps of the device's files.
+ *
+ * It opens only while the device is online, as `followHost` holds it, and at
+ * once when the device comes online; the first call's `followHost` follows
+ * the device for the page's lifetime.
  */
-export function deviceWatch(deviceId: string, files: HostFiles): WatchChannel {
+export function deviceWatch(deviceId: string, files: HostFiles, followHost: FollowHost): WatchChannel {
   let channel = deviceWatches.get(deviceId)
   if (!channel) {
-    channel = new WatchChannel(files, (handlers) =>
-      socketWatchLink(`/devices/${encodeURIComponent(deviceId)}/fs/watch`, handlers))
+    let online: (() => boolean) | null = null
+    const opened = new WatchChannel(
+      files,
+      (handlers) => socketWatchLink(`/devices/${encodeURIComponent(deviceId)}/fs/watch`, handlers),
+      undefined,
+      () => (online ??= followHost(deviceId, () => opened.online()))(),
+    )
+    channel = opened
     deviceWatches.set(deviceId, channel)
   }
   return channel

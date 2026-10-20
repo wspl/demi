@@ -5,6 +5,7 @@ import {
 } from '@demicodes/web-ui/files/types'
 import { fileSource } from '../api/files'
 import { deviceWatch } from '../conversation/file-watch'
+import { followDevice } from '../conversation/files'
 import type { Device, Project } from '../state/types'
 import { t } from './locales/text'
 
@@ -18,7 +19,7 @@ export function fileSourceFor(device: Device | null): FileBrowserSource {
     directory: device ? `/devices/${encodeURIComponent(device.id)}/fs` : null,
   }, device, {
     details: true,
-    watch: (files) => device ? deviceWatch(device.id, files) : null,
+    watch: (files) => device ? deviceWatch(device.id, files, followDevice) : null,
   })
 }
 
