@@ -73,13 +73,19 @@ function paste(editor: Editor, clipboardData: DataTransfer): void {
   editor.view.dom.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
 }
 
-/** Drops `dataTransfer` at `pos` of the document: the page has no layout to find it under the pointer. */
+/**
+ * Drops `dataTransfer` at `pos` of the document: the page has no layout to find
+ * it under the pointer.
+ */
 function drop(editor: Editor, dataTransfer: DataTransfer, pos: number): void {
   editor.view.posAtCoords = () => ({ pos, inside: -1 })
   editor.view.dom.dispatchEvent(dragEvent('drop', dataTransfer))
 }
 
-/** A drag event carrying `dataTransfer`, which happy-dom's constructor leaves out. */
+/**
+ * A drag event carrying `dataTransfer`, which happy-dom's constructor leaves
+ * out.
+ */
 function dragEvent(type: string, dataTransfer: DataTransfer): DragEvent {
   const event = new DragEvent(type, { bubbles: true, cancelable: true })
   Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })

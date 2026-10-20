@@ -6,10 +6,12 @@ import type { ToolCallBlock } from '../block-types'
 import { useShellRow } from '../shell-row'
 
 /**
- * The tag after a `shell` row's title: how its command went wrong once it
- * ended; Failed for a call that ran nothing, as one the input check refused;
- * or, while its command runs past 3 seconds, how long it has run, counting
- * up; nothing for a quick or a succeeded command.
+ * The tag after a `shell` row's title:
+ *
+ * - how its command went wrong once it ended
+ * - Failed for a call that ran nothing, as one the input check refused
+ * - while its command runs past 3 seconds, how long it has run, counting up
+ * - nothing for a quick or a succeeded command
  */
 const props = defineProps<{ block: ToolCallBlock }>()
 

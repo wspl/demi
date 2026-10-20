@@ -14,7 +14,9 @@ const { openMessageLink } = await import('../message-files')
 const { renderMarkdown } = await import('../render')
 
 const opened: string[] = []
-/** The Host's kept files, which a message's Host images show; never read here. */
+/**
+ * The Host's kept files, which a message's Host images show; never read here.
+ */
 const contents: FileContents = {
   url: (path) => `/raw?path=${encodeURIComponent(path)}`,
   describe: () => new Promise(() => {}),
@@ -27,10 +29,16 @@ const files: MessageFiles = {
   open: (target) => void opened.push(target.path),
 }
 
-/** The Host images of a message as the page shows them once their files are read. */
+/**
+ * The Host images of a message as the page shows them once their files are
+ * read.
+ */
 const hostImages = new Map([['/work/out/chart.png', { state: 'shown' as const, src: '/raw?path=%2Fwork%2Fout%2Fchart.png&version=v1' }]])
 
-/** Renders `markdown` into the page, clicks the first `selector` match and says what the viewer then shows. */
+/**
+ * Renders `markdown` into the page, clicks the first `selector` match and says
+ * what the viewer then shows.
+ */
 function click(markdown: string, selector: string) {
   document.body.innerHTML = renderMarkdown(markdown, { files, hostImages })
   const viewer = createMediaViewer(() => ({ page: { width: 1440, height: 900 }, pixelRatio: 1 }))

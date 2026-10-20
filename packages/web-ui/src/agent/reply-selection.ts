@@ -2,13 +2,16 @@ import { inject, provide, type InjectionKey } from 'vue'
 import type { ContextMenuEntry } from '../ui/context-menu'
 
 /**
- * Tools the transcript adds for what the user picks in an agent's reply,
- * the reply's text block `blockId`, whose element is `root`: for selected
- * text, after Copy and before Send to Conversation, and for a picture,
- * after Copy Image and Save Image and before Send to Conversation, such as
- * Comment and Ask (`ReplyComments`).
- * `streaming` reads whether the reply is still arriving now, where a tool
- * that needs its whole text is disabled; read where the tool is drawn, so it
+ * Tools the transcript adds for what the user picks in an agent's reply, the
+ * reply's text block `blockId`, whose element is `root`, such as Comment and
+ * Ask (`ReplyComments`):
+ *
+ * - for selected text, after Copy and before Send to Conversation
+ * - for a picture, after Copy Image and Save Image and before Send to
+ *   Conversation
+ *
+ * `streaming` reads whether the reply is still arriving now, where a tool that
+ * needs its whole text is disabled. It is read where the tool is drawn, so it
  * turns enabled as the reply ends under a selection that stays. A page that
  * provides none adds nothing.
  */

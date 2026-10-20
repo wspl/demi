@@ -19,14 +19,20 @@ export function useSessionPanels(
     | { kind: 'terminal'; id: string }
     | null
   >(null)
-  /** The Agents panel is open; it opens on the first running child, or empty when none runs. */
+  /**
+   * The Agents panel is open; it opens on the first running child, or empty
+   * when none runs.
+   */
   const agentsOpen = computed({
     get: () => panel.value?.kind === 'agent',
     set: (open: boolean) => {
       panel.value = open ? { kind: 'agent', id: firstRunningSubagentId(agents()) } : null
     },
   })
-  /** The child the Agents panel shows; setting one opens the panel on it, and null leaves it open, empty. */
+  /**
+   * The child the Agents panel shows; setting one opens the panel on it, and
+   * null leaves it open, empty.
+   */
   const activeSubagentId = computed({
     get: () => (panel.value?.kind === 'agent' ? panel.value.id : null),
     set: (id: string | null) => {

@@ -13,7 +13,8 @@ const props = defineProps<{
 }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 
-// The result's own text; its pictures show in the row's line, and a medium that is gone under it.
+// The result's own text; its pictures show in the row's line, and a medium that
+// is gone under it.
 const texts = computed(() => props.block.output.flatMap((part) => part.type === 'text' ? [part.text] : []))
 const media = computed(() => splitMedia(toolMedia(props.block.output, props.block.toolName)))
 </script>

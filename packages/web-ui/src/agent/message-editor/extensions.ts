@@ -75,8 +75,9 @@ function capsuleStopsEvent({ event }: { event: Event }): boolean {
 }
 
 /**
- * `![alt](target)`: the image. It is read back only from a message editor's own HTML: an
- * image from anywhere else enters as a capsule or its link (`intake.ts`).
+ * `![alt](target)`: the image. It is read back only from a message editor's own
+ * HTML: an image from anywhere else enters as a capsule or its link
+ * (`intake.ts`). /
  */
 const ImageNode = Node.create({
   name: 'image',
@@ -94,7 +95,8 @@ const ImageNode = Node.create({
   parseHTML() {
     return [
       { tag: `img[${MESSAGE_IMAGE_ATTRIBUTE}]` },
-      // A sent message draws it as its capsule, in a span that keeps its attributes (`SentMessage`).
+      // A sent message draws it as its capsule, in a span that keeps its
+      // attributes (`SentMessage`).
       {
         tag: `span[${MESSAGE_IMAGE_ATTRIBUTE}]`,
         getAttrs: (element) => ({
@@ -148,7 +150,9 @@ const LinkMark = Mark.create({
 
 // ── Formatting as it is typed ──
 
-/** The characters a conversion replaced, which Backspace right after gives back. */
+/**
+ * The characters a conversion replaced, which Backspace right after gives back.
+ */
 interface FormatUndo {
   transform: Transaction
   from: number
@@ -158,7 +162,10 @@ interface FormatUndo {
 
 const formatKey = new PluginKey<FormatUndo | null>('messageFormat')
 
-/** The inline run that ends at `$pos` on its line, split into what comes before its plain tail and that tail. */
+/**
+ * The inline run that ends at `$pos` on its line, split into what comes before
+ * its plain tail and that tail.
+ */
 function runBefore($pos: ResolvedPos): { before: JSONContent[]; tail: string } {
   let run: ProseMirrorNode[] = []
   $pos.parent.forEach((child, offset) => {
@@ -239,7 +246,10 @@ const formatPlugin = new Plugin<FormatUndo | null>({
   },
 })
 
-/** The text of the line the cursor ends: from the line break before it, or the block's start. */
+/**
+ * The text of the line the cursor ends: from the line break before it, or the
+ * block's start.
+ */
 function lineAt($pos: ResolvedPos): { from: number; text: string; plain: boolean; breakBefore: boolean } | null {
   let from = $pos.start()
   let text = ''
@@ -300,7 +310,10 @@ function openFence(editor: Editor): boolean {
   return true
 }
 
-/** A fence typed as a code block's last line closes it: the cursor leaves for a line after the block. */
+/**
+ * A fence typed as a code block's last line closes it: the cursor leaves for a
+ * line after the block.
+ */
 function closeFence(editor: Editor): boolean {
   const { state, view } = editor
   const { $from, empty } = state.selection
@@ -336,17 +349,24 @@ export interface MessageKeyOptions {
   submit: (otherWay: boolean) => void
   /** Escape: true when it ended something, such as an edit. */
   cancel: () => boolean
-  /** Up Arrow in an empty composer: true when it opened something, such as the editor on the last message. */
+  /**
+   * Up Arrow in an empty composer: true when it opened something, such as the
+   * editor on the last message.
+   */
   editLast: () => boolean
 }
 
 /**
- * The composer's keys: Enter sends and Shift+Enter breaks the line; in a
- * code block Enter breaks the line and ⌘/Ctrl+Enter sends. Outside a code
- * block ⌘/Ctrl+Enter sends the other way. A line typed as a
- * fence opens or closes a code block when it ends. Up Arrow in a composer
- * with no text and no files may open the editor on the last message. An
- * input method's keys never reach them (`KeepComposition`).
+ * The composer's keys:
+ *
+ * - Enter sends and Shift+Enter breaks the line.
+ * - In a code block, Enter breaks the line and ⌘/Ctrl+Enter sends.
+ * - Outside a code block, ⌘/Ctrl+Enter sends the other way.
+ * - A line typed as a fence opens or closes a code block when it ends.
+ * - Up Arrow in a composer with no text and no files may open the editor on the
+ *   last message.
+ *
+ * An input method's keys never reach them (`KeepComposition`).
  */
 const MessageKeys = Extension.create<MessageKeyOptions>({
   name: 'messageKeys',
@@ -408,7 +428,10 @@ const KeepComposition = Extension.create({
 
 const decorationsKey = new PluginKey<DecorationSet>('messageDecorations')
 
-/** Asks the editor to draw its decorations again, as when code's colors arrive or the page's mode changes. */
+/**
+ * Asks the editor to draw its decorations again, as when code's colors arrive
+ * or the page's mode changes.
+ */
 export function redrawDecorations(editor: Editor): void {
   editor.view.dispatch(editor.state.tr.setMeta(decorationsKey, true))
 }

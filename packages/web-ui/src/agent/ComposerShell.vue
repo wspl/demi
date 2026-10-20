@@ -8,36 +8,43 @@ import { dataTransferFiles } from './message-input/attachments'
 import { transferCopiedMessage } from './message-input/copied-message'
 
 /**
- * The composer's frame. Files dragged over it can be dropped anywhere on it:
- * a dashed line runs inside its edge, so the target is the whole composer
- * and not one control, and the editor marks where in the text they will land.
+ * The composer's frame.
  *
- * The box holds the attach control, the message and the actions; the `below`
- * slot is a row under it, on the right, for what belongs to the conversation
- * and not to the message (the model, the context), aligned to the box's right
- * edge. Its `below-start` slot is the same row's left end, for what lists
- * the conversation's messages saved for later; the `list` slot is a panel under that row.
+ * Files dragged over it can be dropped anywhere on it. A dashed line runs
+ * inside its edge, so the target is the whole composer and not one control, and
+ * the editor marks where in the text the files will land.
  *
- * The list opens and closes in 150 ms: the layout takes its new shape at
- * once, so the transcript above resizes once, and the frame glides from where
- * it was drawn to its new place while the list unrolls beneath it, or rolls
- * up as it leaves, through transforms and clips alone. A toggle in the midst
- * turns the glide around from where it is drawn; reduced motion shows the change
- * at once.
+ * The frame has these parts:
  *
- * The `context` slot is a row at the top of the box, for what the message
- * carries besides its text, such as a batch of comments; the owner opens the
- * shell while it shows, so the row stands over the message.
+ * - The box holds the attach control, the message and the actions.
+ * - The `below` slot is a row under the box, on the right, for what belongs to
+ *   the conversation and not to the message (the model, the context). It is
+ *   aligned to the box's right edge.
+ * - The `below-start` slot is the same row's left end, for what lists the
+ *   conversation's messages saved for later.
+ * - The `list` slot is a panel under that row.
+ * - The `context` slot is a row at the top of the box, for what the message
+ *   carries besides its text, such as a batch of comments. The owner opens the
+ *   shell while it shows, so the row stands over the message.
+ *
+ * The list opens and closes in 150 ms. The layout takes its new shape at once,
+ * so the transcript above resizes once. The frame glides from where it was
+ * drawn to its new place while the list unrolls beneath it, or rolls up as it
+ * leaves, through transforms and clips alone. A toggle in the midst turns the
+ * glide around from where it is drawn. Reduced motion shows the change at once.
  *
  * The message's line comes first. The editor slot hears what the line offers
  * its text (`line`), so a message that outgrows it opens the shell instead of
  * running off its end.
  *
- * A ruler measures the line in both shapes: on one line it lies in the
- * editor's own cell, and in the open shell it takes the editor's column in
- * the row of controls below, which is the same width. So the editor hears one
- * width that does not change with the shape, and the controls neither jump
- * nor drive each other when the shell opens and closes.
+ * A ruler measures the line in both shapes:
+ *
+ * - On one line, it lies in the editor's own cell.
+ * - In the open shell, it takes the editor's column in the row of controls
+ *   below, which is the same width.
+ *
+ * So the editor hears one width that does not change with the shape, and the
+ * controls neither jump nor drive each other when the shell opens and closes.
  */
 
 const props = defineProps<{
@@ -59,7 +66,7 @@ const { over: dragOver } = useFileDrop(shell, {
   drop(event) {
     const transfer = event.dataTransfer
     // A message dragged out of another one brings its files without their
-    // bytes: the editor takes it (`intake.ts`), not its files.
+    // bytes. The editor takes the message (`intake.ts`), not its files.
     if (!transfer || transferCopiedMessage(transfer))
       return
     const files = dataTransferFiles(transfer)
@@ -74,12 +81,21 @@ const LIST_GLIDE_MS = 150
 const GLIDE: KeyframeAnimationOptions = { duration: LIST_GLIDE_MS, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
 const motion = usePreferredReducedMotion()
 const frame = ref<HTMLElement | null>(null)
-/** The glide under way: the frame's and the list's, which a toggle or the unmount cancels. */
+/**
+ * The glide under way: the frame's and the list's, which a toggle or the
+ * unmount cancels.
+ */
 let gliding: Animation[] = []
-/** Where the frame was drawn, and the list's clip mid-glide, as the layout began to change. */
+/**
+ * Where the frame was drawn, and the list's clip mid-glide, as the layout began
+ * to change.
+ */
 let before: { top: number; clip: string } | null = null
 
-/** Reads where the frame and the list are drawn, then stops a glide under way there. */
+/**
+ * Reads where the frame and the list are drawn, then stops a glide under way
+ * there.
+ */
 function measure(list: Element): void {
   before = frame.value ? { top: drawnTop(frame.value), clip: getComputedStyle(list).clipPath } : null
   for (const animation of gliding.splice(0)) {
@@ -87,7 +103,10 @@ function measure(list: Element): void {
   }
 }
 
-/** Plays the glide from what `measure` read to the layout now applied; `done` once it ends. */
+/**
+ * Plays the glide from what `measure` read to the layout now applied; `done`
+ * once it ends.
+ */
 function glide(list: Element, to: string, done: () => void): void {
   const start = before
   before = null
@@ -99,11 +118,15 @@ function glide(list: Element, to: string, done: () => void): void {
   const from = start.clip === '' || start.clip === 'none' ? (to === SHOWN_CLIP ? ROLLED_UP_CLIP : SHOWN_CLIP) : start.clip
   const moves = [glideFrom(frame.value, start.top, GLIDE), unroll(list, from, to, GLIDE)]
   gliding = moves.filter((move): move is Animation => move !== null)
-  // A cancelled glide rejects; whoever cancelled it plays its own, or the page is gone.
+  // A cancelled glide rejects; whoever cancelled it plays its own, or the page
+  // is gone.
   Promise.all(gliding.map((move) => move.finished)).then(done, () => {})
 }
 
-/** The list leaves the layout at once, kept where it stood until it has rolled up. */
+/**
+ * The list leaves the layout at once, kept where it stood until it has rolled
+ * up.
+ */
 function leave(element: Element, done: () => void): void {
   const list = element as HTMLElement
   list.style.position = 'absolute'

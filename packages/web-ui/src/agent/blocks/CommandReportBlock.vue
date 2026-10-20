@@ -11,20 +11,24 @@ import { reportMedia, splitMedia } from '../tool-media'
 import { provideBlockScope } from '../whole-blocks'
 
 /**
- * The ends a `wakeup` block reports, one notice row each where the block
- * lies (`crates/agent-session/src/reports.rs`): a reply the agent writes after a
- * command's end never appears without its cause. A report of progress shows
- * nothing, and a block of progress reports alone has no row: the agent's
- * answer says what it learned, and a row for every interval would outnumber
- * the answers it caused. The notice names
- * the call that started the command, which a click brings into view. The
- * pictures an end report carries stand in its row's line, as a call's do.
+ * The ends a `wakeup` block reports, one notice row each where the block lies
+ * (`crates/agent-session/src/reports.rs`): a reply the agent writes after a
+ * command's end never appears without its cause.
+ *
+ * A report of progress shows nothing, and a block of progress reports alone has
+ * no row. The agent's answer says what it learned, and a row for every interval
+ * would outnumber the answers it caused.
+ *
+ * The notice names the call that started the command, which a click brings into
+ * view. The pictures an end report carries stand in its row's line, as a call's
+ * do.
  */
 const props = defineProps<{
   reports: readonly CommandReport[]
 }>()
 
-// What a notice shows, the light form keeps: its rows never open to read the block whole.
+// What a notice shows, the light form keeps: its rows never open to read the
+// block whole.
 provideBlockScope(() => undefined)
 const rows = computed(() => props.reports.flatMap((report, index) => reportShown(report)
   ? [{

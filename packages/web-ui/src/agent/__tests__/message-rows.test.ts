@@ -15,7 +15,9 @@ import { createdAt, model, userBlock } from './agent-harness'
 // Pure, with a fake clock: a few milliseconds.
 
 const text = (id: string, body: string): Block => ({ type: 'text', id, createdAt, model, text: body })
-/** A step of the run `run`, the id of its first block, as the backend stores it. */
+/**
+ * A step of the run `run`, the id of its first block, as the backend stores it.
+ */
 const thinking = (id: string, run = id): Block => ({ type: 'thinking', id, run, createdAt, model, text: '', signature: null })
 const call = (id: string, status: 'executing' | 'completed', run = id): Block => ({
   type: 'tool_call',
@@ -100,7 +102,8 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   const tail = () => list.rows.value.at(-1)!
   async function step(name: string, change: () => void): Promise<void> {
     await follows(name, change)
-    // The answer before the message keeps Copy and Fork while the message is delivered.
+    // The answer before the message keeps Copy and Fork while the message is
+    // delivered.
     expect({ name, footer: list.footerIds.value.has('a-1') }).toEqual({ name, footer: true })
   }
 
@@ -141,14 +144,16 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   await step('call written', () => {
     state.pendingCalls = []
   })
-  // The command runs: its own row, the turn's activity, and the run shows nothing yet.
+  // The command runs: its own row, the turn's activity, and the run shows
+  // nothing yet.
   expect([tail().type, list.keyOf(tail())]).toEqual(['tool_call', tailKey])
   expect(run()).toBeUndefined()
   expect(list.slot.value).toBeNull()
   await step('command ended', () => {
     state.blocks = state.blocks.map((block) => block.id === 'c-1' ? call('c-1', 'completed', runOf) : block)
   })
-  // It joined the run, whose row is the one it ran in, and Requesting stands under it.
+  // It joined the run, whose row is the one it ran in, and Requesting stands
+  // under it.
   expect(run()?.steps.map((each) => each.id)).toEqual(['c-1'])
   expect(list.keyOf(run()!)).toBe(tailKey)
   expect(tail().type).toBe('activity_slot')
@@ -183,7 +188,10 @@ const phase = (next: MessageRowsSource['phase']) => (state: MessageRowsSource) =
 const recover: Change = ['Continue or Resume', (state) => {
   state.pendingAction = 'resume'
 }]
-/** The server acknowledges the recovery with the phase, before the transcript says so. */
+/**
+ * The server acknowledges the recovery with the phase, before the transcript
+ * says so.
+ */
 const acknowledged: Change = ['acknowledged', (state) => {
   state.phase = 'running'
   state.pendingAction = null
@@ -200,7 +208,10 @@ const sentAndWritten: Change[] = [
   }],
 ]
 
-/** The run the stopped or failed turn had done: the user's message and a command that ended. */
+/**
+ * The run the stopped or failed turn had done: the user's message and a command
+ * that ended.
+ */
 const workedOn = (...end: Block[]): Block[] => [userBlock('u-1', 'm-1', 'Fix the login test.'), call('c-1', 'completed'), ...end]
 
 // Each way a row gives way to the next state without the user removing it, as
@@ -378,11 +389,11 @@ test.each(transitions)('$name: no row goes while another takes its place, and th
   stop()
 })
 
-// Continue after a Stop and Resume after an error: the Stopped row or the
-// error record rolls into Requesting, and the turn's first step belongs to
-// the run above, as the backend stores it: it runs in the Requesting row's
-// place, under the run, whose row keeps its key, and once it ended it joins
-// the run and its row goes, the answer taking its place.
+// Continue after a Stop and Resume after an error. The Stopped row or the error
+// record rolls into Requesting. The turn's first step belongs to the run above,
+// as the backend stores it. It runs in the Requesting row's place, under the
+// run, whose row keeps its key. Once it ended, it joins the run and its row
+// goes, the answer taking its place.
 test.each([
   { name: 'Continue after a Stop', record: abort('x-1'), unwind: replace('x-1', abort('x-1', true)) },
   { name: 'Resume after an error', record: failure('e-1'), unwind: drop('e-1') },
@@ -414,7 +425,10 @@ test.each([
   stop()
 })
 
-/** A conversation whose agent runs: the user's message, then a run whose last call ended. */
+/**
+ * A conversation whose agent runs: the user's message, then a run whose last
+ * call ended.
+ */
 function running(): MessageRowsSource {
   return reactive<MessageRowsSource>({
     conversationId: 'c-1',
@@ -481,11 +495,11 @@ test('a call being written without its description leaves the face as it was, th
 const redacted = (id: string, run = id): Block => ({ type: 'redacted_thinking', id, run, createdAt, model, data: 'opaque' })
 
 // Reasoning ends the wait as soon as its block starts, whether its text
-// streams, never comes, or is redacted: the server ends the wait, and the
-// reasoning, shown as thinking without text, takes the Requesting row's
-// place in that row, so the page never counts Requesting on its own clock
-// while the model thinks. Once the answer follows, the reasoning has
-// nothing to show and goes.
+// streams, never comes, or is redacted. The server ends the wait. The
+// reasoning, shown as thinking without text, takes the Requesting row's place
+// in that row, so the page never counts Requesting on its own clock while the
+// model thinks. Once the answer follows, the reasoning has nothing to show and
+// goes.
 test.each([
   { name: 'empty', reasoning: thinking('k-1') },
   { name: 'redacted', reasoning: redacted('k-1') },
@@ -682,7 +696,9 @@ function finishedRows(blocks: Block[]): string[] {
   return rows
 }
 
-/** `blocks` as a page read after a reload holds them: each in its light form. */
+/**
+ * `blocks` as a page read after a reload holds them: each in its light form.
+ */
 function reopened(blocks: Block[]): Block[] {
   const light = blocks.map((block): Block =>
     block.type === 'thinking' ? { ...block, text: '', signature: null, textLength: [...block.text.trim()].length } : block)
@@ -709,12 +725,12 @@ test.each([
   expect(finishedRows(reopened(blocks))).toEqual(live)
 })
 
-// Review: parallel calls return in any order. A step the reader opened while
-// it ran is still open as the run it starts, and a run the reader opened
-// stays the same open row when a call that started before the one that
-// joined it returns; while a call still runs, the turn waits for it, so no
-// Requesting row shows. Before, the run was named after its first ended
-// step: A returning after B made it another row, closed.
+// Review: parallel calls return in any order. A step the reader opened while it
+// ran is still open as the run it starts. A run the reader opened stays the
+// same open row when a call that started before the one that joined it returns.
+// While a call still runs, the turn waits for it, so no Requesting row shows.
+// Before, the run was named after its first ended step: A returning after B
+// made it another row, closed.
 test('a run stays the same open row as parallel calls return out of order, and Requesting waits for the last', async () => {
   const state = reactive<MessageRowsSource>({
     ...answered(),
@@ -800,7 +816,10 @@ test('a turn that streams leaves the rows of the runs before it the same rows, w
 // could not send in place: before the first message sent after it that shows,
 // in the transcript, among the steers, in the queue or on its way.
 describe('a message not delivered stays where it was sent', () => {
-  /** The rows drawn for a conversation answered to m-1, changed by `change`, without the tail row. */
+  /**
+   * The rows drawn for a conversation answered to m-1, changed by `change`,
+   * without the tail row.
+   */
   function rows(change: (state: MessageRowsSource) => void): string[] {
     const state = answered()
     change(state)

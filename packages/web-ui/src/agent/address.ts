@@ -1,9 +1,12 @@
 /**
- * What a browser's address bar opens for the text its user typed, as
- * Chrome's omnibox reads it:
- * a URL with its scheme as it is; a local name, an IP address or a
- * `host:port` without one over `http://`; other text with a dot and no
- * space over `https://`; anything else, a word or words, a Google search.
+ * What a browser's address bar opens for the text its user typed, as Chrome's
+ * omnibox reads it:
+ *
+ * - A URL with its scheme opens as it is.
+ * - A local name, an IP address or a `host:port` without a scheme opens over
+ *   `http://`.
+ * - Other text with a dot and no space opens over `https://`.
+ * - Anything else, a word or words, opens a Google search.
  */
 
 /** Schemes a typed address names without `//`. */
@@ -11,7 +14,9 @@ const OPAQUE_SCHEMES = /^(about|data|file|blob|view-source):/i
 /** An IPv4 address, or an IPv6 one in brackets. */
 const IP = /^(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:.]+\])$/i
 
-/** The URL the address bar opens for `text`; null for text that names nothing. */
+/**
+ * The URL the address bar opens for `text`; null for text that names nothing.
+ */
 export function addressUrl(text: string): string | null {
   const typed = text.trim()
   if (!typed) {

@@ -14,7 +14,10 @@ export type SendWhileRunning = 'steer' | 'queue'
 
 export const DEFAULT_SEND_WHILE_RUNNING: SendWhileRunning = 'steer'
 
-/** How the composer sends a message: at once while nothing runs, otherwise one of the two ways. */
+/**
+ * How the composer sends a message: at once while nothing runs, otherwise one
+ * of the two ways.
+ */
 export type SendWay = 'send' | SendWhileRunning
 
 /** A way's name, as the send button and the setting say it. */
@@ -38,7 +41,10 @@ export function chooseSendWay(working: boolean, preferred: SendWhileRunning, ask
   return asksOtherWay ? otherWay(preferred) : preferred
 }
 
-/** A message the user sent that the session has not confirmed: how it was sent, and why its delivery failed, null while it is on its way. */
+/**
+ * A message the user sent that the session has not confirmed: how it was sent,
+ * and why its delivery failed, null while it is on its way.
+ */
 export interface MessageOnItsWay {
   way: SendWay
   error: string | null
@@ -92,20 +98,20 @@ export function offersRetry(sent: readonly (MessageOnItsWay & { retryable?: fals
 }
 
 /**
- * The message on its way that starts a turn, or undefined while none does:
- * the one reading for the composer's Stop and its way of sending, the
- * transcript's Requesting row, Stop's wait and Retry's way. Its turn is as
- * good as running from the send, so the composer shows Stop and a message sent
- * meanwhile steers it or waits in the queue.
+ * The message on its way that starts a turn, or undefined while none does: the
+ * one reading for the composer's Stop and its way of sending, the transcript's
+ * Requesting row, Stop's wait and Retry's way. Its turn is as good as running
+ * from the send, so the composer shows Stop and a message sent meanwhile steers
+ * it or waits in the queue.
  *
- * It is the first message on its way that was sent as the next message,
- * which the session's phase leaves the starting one through its delivery
- * and confirmation, since the backend starts the turn before it writes the
- * message. While nothing runs, it is the first message on its way, whichever
- * way it was sent: the session answers any message next then, a steer it
- * refuses because its turn ended included, which goes as a message, and a
- * queued message whose turn ended. A message whose delivery failed starts
- * nothing.
+ * It is the first message on its way that was sent as the next message, which
+ * the session's phase leaves the starting one through its delivery and
+ * confirmation, since the backend starts the turn before it writes the message.
+ *
+ * While nothing runs, it is the first message on its way, whichever way it was
+ * sent: the session answers any message next then, a steer it refuses because
+ * its turn ended included, which goes as a message, and a queued message whose
+ * turn ended. A message whose delivery failed starts nothing.
  */
 export function turnStartingMessage<T extends MessageOnItsWay>(phase: SessionPhase, sent: readonly T[]): T | undefined {
   return sent.find((message) => message.error === null && (message.way === 'send' || phase === 'idle'))
@@ -145,10 +151,16 @@ export function useSendOnceLoaded(options: {
   /** Sends the message, the other way when Enter asked for it. */
   send: (asksOtherWay: boolean) => void
 }): {
-  /** Keeps Enter pressed on a message that cannot go yet, while what it waits for loads; answers whether it waits. */
+  /**
+   * Keeps Enter pressed on a message that cannot go yet, while what it waits
+   * for loads; answers whether it waits.
+   */
   keep: (asksOtherWay: boolean) => boolean
 } {
-  /** The Enter that waits, by whether it asked for the other way; null while none does. */
+  /**
+   * The Enter that waits, by whether it asked for the other way; null while
+   * none does.
+   */
   let waiting: boolean | null = null
   watch(options.blocked, (blocked) => {
     const asksOtherWay = waiting
@@ -174,7 +186,10 @@ export function useSendOnceLoaded(options: {
   }
 }
 
-/** Whether a click on the send button asks for the other way: ⌘-click on macOS, Ctrl-click elsewhere, as the key does. */
+/**
+ * Whether a click on the send button asks for the other way: ⌘-click on macOS,
+ * Ctrl-click elsewhere, as the key does.
+ */
 export function clickAsksOtherWay(event: MouseEvent): boolean {
   return isMacOS() ? event.metaKey : event.ctrlKey
 }

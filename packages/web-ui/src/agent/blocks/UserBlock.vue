@@ -40,10 +40,13 @@ const props = defineProps<{
   attachments?: readonly ComposerAttachment[]
   forceStuck?: boolean
   /**
-   * A message the agent has not read yet, drawn faded, with what happens to
-   * it said under it and its controls in view: a steer, which the running
-   * turn reads at its next step, or a queued message, which runs after it.
-   * Send Now delivers either at once; Recall takes it back, into the composer
+   * A message the agent has not read yet, drawn faded, with what happens to it
+   * said under it and its controls in view. It is one of two kinds:
+   *
+   * - `steer`: the running turn reads it at its next step.
+   * - `queued`: it runs after the turn.
+   *
+   * Send Now delivers either at once. Recall takes it back, into the composer
    * when that is empty.
    */
   pending?: 'steer' | 'queued'
@@ -58,8 +61,8 @@ const props = defineProps<{
   /** Allows editing an explicitly submitted user message. */
   editable?: boolean
   /**
-   * Offers Delete beside Edit, which takes the message away at once: a
-   * message that was not delivered.
+   * Offers Delete beside Edit, for a message that was not delivered. Delete
+   * takes the message away at once.
    */
   deletable?: boolean
   /** The message's versions, shown under it; absent with none. */
@@ -77,7 +80,10 @@ const props = defineProps<{
   origin?: MessageOrigin | null
 }>()
 
-/** Where a picture comment's picture loads from, which the bubble shows as its quote. */
+/**
+ * Where a picture comment's picture loads from, which the bubble shows as its
+ * quote.
+ */
 const mediaAddress = useMediaAddress()
 
 
@@ -96,8 +102,8 @@ const clipboard = useMessageClipboard()
 
 /**
  * Copy puts the message on the clipboard in every form, its files with it, its
- * comments before its text as the model reads them; a brief, as its Markdown,
- * as an answer's Copy does.
+ * comments before its text as the model reads them. A brief copies as its
+ * Markdown, as an answer's Copy does.
  */
 function copySource(): CopySource {
   if (typeof props.brief === 'string') {
@@ -115,7 +121,10 @@ function copySource(): CopySource {
   return clipboard.item(clipboard.forms(schema, doc.content))
 }
 
-/** The message as Send to Conversation takes it: its comments before its text, their pictures as files with its own. */
+/**
+ * The message as Send to Conversation takes it: its comments before its text,
+ * their pictures as files with its own.
+ */
 function sentWords(): CopiedMessage {
   return contentCopy([...commentsContent(props.comments ?? []), ...props.content])
 }
@@ -141,7 +150,10 @@ interface BubbleAction {
   emit: () => void
 }
 
-/** The message as it shows: its Markdown, and a capsule for each file in the order of their marks. */
+/**
+ * The message as it shows: its Markdown, and a capsule for each file in the
+ * order of their marks.
+ */
 const message = computed(() => {
   const held = contentMessage(props.content)
   return props.attachments ? { ...held, capsules: props.attachments.map(composerCapsule) } : held
@@ -162,9 +174,9 @@ const actions = computed<BubbleAction[]>(() => {
 const { copy } = useCopy(copySource)
 
 /**
- * The bubble's widest: four fifths of the row, narrower where its actions,
- * which sit left of it, would not fit beside it otherwise, as three do on a
- * phone.
+ * The bubble's widest width: four fifths of the row. It is narrower where its
+ * actions, which sit left of the bubble, would not fit beside it otherwise, as
+ * three do on a phone.
  */
 const actionsRef = ref<HTMLElement | null>(null)
 const { width: actionsWidth } = useElementSize(actionsRef, undefined, { box: 'border-box' })
@@ -173,13 +185,16 @@ const bubbleWidth = computed(() => ({
 }))
 
 const targets = useSendTargets()
-/** Whether the message is the user's own, which Send to Conversation takes elsewhere; a child's brief is not. */
+/**
+ * Whether the message is the user's own, which Send to Conversation takes
+ * elsewhere; a child's brief is not.
+ */
 const own = computed(() => typeof props.brief !== 'string')
 
 /**
  * The message's menu: what its controls offer, Copy and, where it can be
- * edited, Edit, then Send to Conversation, which takes it with its files;
- * a message not yet read, its Send Now and Recall.
+ * edited, Edit, then Send to Conversation, which takes it with its files. A
+ * message not yet read has its Send Now and Recall.
  */
 const menu: ContextMenuDeclaration = {
   entries: () => {
@@ -202,10 +217,10 @@ const menu: ContextMenuDeclaration = {
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
 
 /**
- * A message taller than `FOLD_ABOVE_PX` folds to show about `FOLDED_PX` of
- * it, its last line fading out, until Show More opens it, as Claude Code's
- * does: a message a few lines over the fold shows whole, since folding would
- * hide less than the control takes.
+ * A message taller than `FOLD_ABOVE_PX` folds to show about `FOLDED_PX` of it,
+ * its last line fading out, until Show More opens it, as Claude Code's does. A
+ * message a few lines over the fold shows whole, since folding would hide less
+ * than the control takes.
  */
 const FOLD_ABOVE_PX = 300
 const FOLDED_PX = 200
@@ -214,10 +229,10 @@ const expanded = ref(false)
 const contentRef = ref<HTMLElement>()
 const bodyRef = ref<HTMLElement>()
 /**
- * Where a long message folds, and the line box its fade spans; null when it
- * is short enough to show whole. The fold is `FOLDED_PX` down, or lower, at
- * the end of a line of text across that mark, so it cuts no letter; anything
- * else across it, such as an image or a code block, is cut there.
+ * Where a long message folds, and the line box its fade spans; null when it is
+ * short enough to show whole. The fold is `FOLDED_PX` down, or lower, at the
+ * end of a line of text across that mark, so it cuts no letter. Anything else
+ * across it, such as an image or a code block, is cut there.
  */
 const clip = ref<{ height: number; line: number } | null>(null)
 
@@ -245,7 +260,8 @@ function measure(): void {
   for (let text = texts.nextNode(); text; text = texts.nextNode()) {
     range.selectNodeContents(text)
     const rects = [...range.getClientRects()]
-    // Text runs top to bottom: once it starts below the mark, the rest does too.
+    // Text runs top to bottom: once it starts below the mark, the rest does
+    // too.
     if (rects[0] && rects[0].top - top > limit) {
       break
     }
@@ -324,7 +340,10 @@ useResizeObserver(bodyRef, measure)
             :content="brief"
           />
           <template v-else>
-            <!-- The quoted text is the reply's words as they rendered, never read as Markdown again. -->
+            <!--
+              The quoted text is the reply's words as they rendered, never read
+              as Markdown again.
+            -->
             <div v-if="comments?.length" class="markdown-body" :class="message.markdown || message.capsules.length ? 'mb-[var(--markdown-block-gap)]' : ''" data-sent-comments>
               <template v-for="comment in comments" :key="comment.id">
                 <blockquote v-if="comment.picture" data-comment-picture>
@@ -355,12 +374,18 @@ useResizeObserver(bodyRef, measure)
     </div>
     <!-- An edited message's versions, under it at its end, always in view. -->
     <VersionSwitcher v-if="versions && !pending" :choice="versions" class="-mr-1 mt-0.5" />
-    <!-- A pending message says what happens to it, its controls in view rather than on hover. -->
+    <!--
+      A pending message says what happens to it, its controls in view rather
+      than on hover.
+    -->
     <div
       v-if="pending"
       class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-detail leading-5 text-fg-subtle"
     >
-      <!-- A queued message stands under the queue's divider, which already says so. -->
+      <!--
+        A queued message stands under the queue's divider, which already says
+        so.
+      -->
       <span v-if="pending === 'steer'" class="mr-1">{{ t('transcript.user.sendsNext') }}</span>
       <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">{{ t('transcript.user.sendNow') }}</Button>
       <Button size="xs" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
@@ -369,7 +394,10 @@ useResizeObserver(bodyRef, measure)
 </template>
 
 <style scoped>
-/* Sits on the last text line: the bubble's bottom padding plus one line box, buttons centered in it. */
+/*
+ * Sits on the last text line: the bubble's bottom padding plus one line box,
+ * buttons centered in it.
+ */
 .user-actions {
   height: calc(var(--agent-text) * var(--agent-leading));
 }

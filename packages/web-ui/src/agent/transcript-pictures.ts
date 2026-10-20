@@ -13,9 +13,15 @@ import type { MessageListBlock } from './pending-steers'
 
 /** What a transcript's pictures are read against. */
 export interface TranscriptPicturesContext {
-  /** The agent whose transcript it is: null for the conversation's own, a subagent's id otherwise. */
+  /**
+   * The agent whose transcript it is: null for the conversation's own, a
+   * subagent's id otherwise.
+   */
   node: string | null
-  /** The files a block's messages name, resolved from the directory the agent wrote the block in. */
+  /**
+   * The files a block's messages name, resolved from the directory the agent
+   * wrote the block in.
+   */
   files(blockId: string): MessageFiles | undefined
   /** Where a medium's bytes load from. */
   address(source: MediaSource): string
@@ -72,7 +78,10 @@ function toolPictures(media: readonly ToolMedium[], context: TranscriptPicturesC
       : [{ kind: medium.kind, src: context.address(medium.source), name: medium.name, size: sourceSize(medium.source) }])
 }
 
-/** The picture or the video a user's attached file shows; none for a file of another kind. */
+/**
+ * The picture or the video a user's attached file shows; none for a file of
+ * another kind.
+ */
 function capsuleMedia(capsule: MessageCapsule, context: TranscriptPicturesContext): ShownMedium[] {
   const { image, video, name } = capsule
   if (image !== undefined)

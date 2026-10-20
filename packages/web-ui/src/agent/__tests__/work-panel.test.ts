@@ -23,7 +23,10 @@ afterEach(() => {
 
 const Empty = defineComponent({ setup: () => () => null })
 
-/** The kinds a panel session binds for one conversation: each binding makes them anew. */
+/**
+ * The kinds a panel session binds for one conversation: each binding makes them
+ * anew.
+ */
 function boundKinds(): PanelTabKind[] {
   const page: PanelTabKind<{ title: string }> = {
     kind: 'page',

@@ -30,7 +30,9 @@ export function loadHighlighter(): Promise<void> {
   return loading
 }
 
-/** The highlighter, null until it has loaded: the first call starts its load. */
+/**
+ * The highlighter, null until it has loaded: the first call starts its load.
+ */
 function loadedHighlighter(): Highlighter | null {
   if (!highlighter)
     void loadHighlighter()
@@ -66,7 +68,10 @@ export function codeBlockHtml(code: string, lang: string): string {
   return `<div class="code-block">${label}${pre}</div>`
 }
 
-/** A highlighted run of code: where it starts and ends in the code, and the classes that color it. */
+/**
+ * A highlighted run of code: where it starts and ends in the code, and the
+ * classes that color it.
+ */
 export interface CodeRun {
   from: number
   to: number

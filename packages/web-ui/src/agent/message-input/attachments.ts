@@ -4,11 +4,13 @@ import { t } from '../locales/text'
 
 /**
  * A failed upload keeps its capsule, which offers Retry; the toast says why it
- * failed. `attaching` is a file a pasted message names, which the backend
- * makes an upload of from the user's own stored file, sending no bytes.
- * `missing` is a file of a message that came back to the composer, such as
- * one not delivered, whose bytes and upload are gone: the user deletes it or
- * attaches it again.
+ * failed.
+ *
+ * - `attaching` is a file a pasted message names, which the backend makes an
+ *   upload of from the user's own stored file, sending no bytes.
+ * - `missing` is a file of a message that came back to the composer, such as
+ *   one not delivered, whose bytes and upload are gone: the user deletes it or
+ *   attaches it again.
  */
 export type AttachmentPhase = 'attaching' | 'uploading' | 'ready' | 'failed' | 'missing'
 
@@ -134,7 +136,10 @@ export function clampUnit(value: number): number {
   return value
 }
 
-/** How a transfer's update shows on a file: the progress of a file without bytes to send is its attaching. */
+/**
+ * How a transfer's update shows on a file: the progress of a file without bytes
+ * to send is its attaching.
+ */
 export function attachingUpdate(update: AttachmentUploadUpdate, hasBytes: boolean): AttachmentUploadUpdate {
   return update.phase === 'uploading' && !hasBytes ? { phase: 'attaching' } : update
 }
@@ -222,7 +227,10 @@ export function attachmentsReady(items: readonly ComposerAttachment[]): boolean 
   return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
 }
 
-/** A file on a paired device as the backend names it in a message, for a specimen or a test. */
+/**
+ * A file on a paired device as the backend names it in a message, for a
+ * specimen or a test.
+ */
 export function encodeRemoteReference(host: string, path: string, deviceId?: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`
@@ -265,7 +273,10 @@ export function decodeRemoteReference(reference: string): {
   }
 }
 
-/** Why a message cannot go yet, from the phases of the files it uploads; nothing when all are ready. */
+/**
+ * Why a message cannot go yet, from the phases of the files it uploads; nothing
+ * when all are ready.
+ */
 export function attachmentSendBlockReason(
   phases: readonly AttachmentPhase[],
 ): string | undefined {
@@ -305,7 +316,10 @@ export function arrangeCapsuleFiles<T extends { id: string }>(
   }
 }
 
-/** In-flight uploads by attachment id. Removing an attachment cancels its upload, which then reports nothing. */
+/**
+ * In-flight uploads by attachment id. Removing an attachment cancels its
+ * upload, which then reports nothing.
+ */
 export class AttachmentUploadQueue {
   readonly #jobs = new Map<string, AbortController>()
 
@@ -333,7 +347,8 @@ export class AttachmentUploadQueue {
       apply({ phase: 'ready' })
       return true
     } catch (error) {
-      // A cancelled upload is not a failure: whoever removed the file has moved on.
+      // A cancelled upload is not a failure: whoever removed the file has moved
+      // on.
       if (controller.signal.aborted)
         return false
       throw error

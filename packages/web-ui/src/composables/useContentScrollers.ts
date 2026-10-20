@@ -4,7 +4,10 @@ import type { OverlayScrollbars } from 'overlayscrollbars'
 import { attachScrollbars } from '../ui/scrollbars'
 import { useScrollFades } from './useScrollFades'
 
-/** The sideways scrollers of rendered Markdown: a code block, a wide table or equation, or an equation's source. */
+/**
+ * The sideways scrollers of rendered Markdown: a code block, a wide table or
+ * equation, or an equation's source.
+ */
 const CONTENT_SCROLLERS = '.markdown-body :is(pre, .table-scroll, .katex-display, .math-display)'
 
 /**

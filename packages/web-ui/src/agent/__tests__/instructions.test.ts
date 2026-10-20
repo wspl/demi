@@ -11,7 +11,10 @@ const model: ModelSelection = {
 
 let blockCount = 0
 
-/** A context block of `source`, listing `instructions` as an instructions block does. */
+/**
+ * A context block of `source`, listing `instructions` as an instructions block
+ * does.
+ */
 function context(source: string, instructions?: InstructionEntry[]): Block {
   blockCount += 1
   const id = `context-${blockCount}`

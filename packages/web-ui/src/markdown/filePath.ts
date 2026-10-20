@@ -4,7 +4,9 @@ import type { MessageFileTarget, MessageFiles } from './types'
 
 const LINE_RANGE_SUFFIX_RE = /:\d+(?:-\d+)?$/
 
-/** A URL scheme of two or more letters; a single letter before `:` is a drive. */
+/**
+ * A URL scheme of two or more letters; a single letter before `:` is a drive.
+ */
 const SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i
 
 /**
@@ -28,10 +30,16 @@ function normalizeFilePath(rawPath: string): string {
   return withoutCurrentDirPrefix
 }
 
-/** A commit a link names: its id or an abbreviation, and the folder of its repository when the link names one. */
+/**
+ * A commit a link names: its id or an abbreviation, and the folder of its
+ * repository when the link names one.
+ */
 export interface LinkedCommit {
   commit: string
-  /** The folder as written, relative or absolute; null for the writing agent's working directory. */
+  /**
+   * The folder as written, relative or absolute; null for the writing agent's
+   * working directory.
+   */
   folder: string | null
 }
 
@@ -60,7 +68,10 @@ export function commitFolder(folder: string, places: MessagePlaces): string | nu
   return resolveHostPath(places.cwd, normalizeFilePath(named))
 }
 
-/** A target as written may be percent-encoded; one that does not decode stays as it is. */
+/**
+ * A target as written may be percent-encoded; one that does not decode stays as
+ * it is.
+ */
 export function decodedTarget(value: string): string {
   try {
     return decodeURIComponent(value)
@@ -69,7 +80,10 @@ export function decodedTarget(value: string): string {
   }
 }
 
-/** Where a message's paths start: the working directory, and the Host's home for `~/`, while it is known. */
+/**
+ * Where a message's paths start: the working directory, and the Host's home for
+ * `~/`, while it is known.
+ */
 export type MessagePlaces = Pick<MessageFiles, 'cwd' | 'home'>
 
 /**
@@ -91,9 +105,15 @@ export function messageHostPath(target: string, places: MessagePlaces): string |
   return resolveHostPath(places.cwd, named)
 }
 
-/** A line a target points at: `#L42` or `#L42-L50` after it, as GitHub links one. */
+/**
+ * A line a target points at: `#L42` or `#L42-L50` after it, as GitHub links
+ * one.
+ */
 const LINE_FRAGMENT_RE = /#L([1-9]\d*)(?:-L?\d+)?$/
-/** The same as a `:42` or `:42-50` after the path, as a compiler or a search names one. */
+/**
+ * The same as a `:42` or `:42-50` after the path, as a compiler or a search
+ * names one.
+ */
 const LINE_SUFFIX_RE = /:([1-9]\d*)(?:-\d+)?$/
 
 /**
@@ -107,7 +127,10 @@ export function targetLine(target: string): number | null {
   return line === undefined ? null : Number(line)
 }
 
-/** The Host file a link's target names, resolved from `places`, with its line; null for a target that names none. */
+/**
+ * The Host file a link's target names, resolved from `places`, with its line;
+ * null for a target that names none.
+ */
 export function messageFileTarget(target: string, places: MessagePlaces): MessageFileTarget | null {
   const path = messageHostPath(target, places)
   return path === null ? null : { path, line: targetLine(target) }
@@ -124,7 +147,10 @@ export function isHttpUrl(path: string): boolean {
   return path.startsWith('http://') || path.startsWith('https://')
 }
 
-/** Whether a target names a file rather than a web page, a fragment, another scheme or a bare word. */
+/**
+ * Whether a target names a file rather than a web page, a fragment, another
+ * scheme or a bare word.
+ */
 export function isLikelyFilePath(rawPath: string): boolean {
   const trimmedPath = rawPath.trim()
   const normalizedPath = normalizeFilePath(trimmedPath)

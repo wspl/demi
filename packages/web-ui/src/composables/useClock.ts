@@ -36,10 +36,15 @@ export function holdClock(): () => void {
   }
 }
 
-/** The clock's `now` in milliseconds as of its last tick; it moves only while some reader holds the clock. */
+/**
+ * The clock's `now` in milliseconds as of its last tick; it moves only while
+ * some reader holds the clock.
+ */
 export const clockNow: Readonly<Ref<number>> = readonly(now)
 
-/** The clock's `now` in milliseconds, held until the calling scope is disposed. */
+/**
+ * The clock's `now` in milliseconds, held until the calling scope is disposed.
+ */
 export function useClock(): Readonly<Ref<number>> {
   if (getCurrentScope()) {
     onScopeDispose(holdClock())

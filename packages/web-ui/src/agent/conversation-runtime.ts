@@ -54,7 +54,10 @@ async function untilEndedOrLost(ended: Promise<void>): Promise<void> {
  */
 export class RemovalRefusedError extends Error {}
 
-/** The refusal of a removal whose message went on: a steer the agent read, or a queued message whose turn began. */
+/**
+ * The refusal of a removal whose message went on: a steer the agent read, or a
+ * queued message whose turn began.
+ */
 function refusedRemoval(steer: boolean): RemovalRefusedError {
   return new RemovalRefusedError(steer ? 'The agent had already read it.' : 'Its turn had already begun.')
 }
@@ -81,8 +84,8 @@ export interface ConversationRuntimeOptions {
   onEvent?: (event: ClientSessionEvent) => void
   /**
    * The children whose transcripts the page shows now, which each connection
-   * names before its `open` (`crates/agent-server/src/server/tree.rs`); `showSubagents`
-   * names them again when they change.
+   * names before its `open` (`crates/agent-server/src/server/tree.rs`);
+   * `showSubagents` names them again when they change. /
    */
   shownSubagents?: () => readonly string[]
 }
@@ -92,16 +95,19 @@ const OPEN_TIMEOUT_MS = 30_000
 /**
  * Owns one reconnectable client. Disposing a view leaves its server task alive.
  *
- * A connection that cannot be made or is lost, before the session answered
- * `open` or after, or whose tree another client disposed, is never a
- * failure the reader is told about: on a weak network it comes and goes, so
- * the runtime keeps `load` at `reconnecting` (the transcript's tail row says
- * Connecting, the composer stays), or at `connecting` while the session has
- * never opened, and tries again after the page's reconnect
- * waits until the socket is back or the view is disposed. An action taken
- * meanwhile waits for the connection, without cutting a wait short. Only the
- * session refusing to open is a failure, told once through `load` `failed` and
- * `lastError`.
+ * A connection that cannot be made or is lost is never a failure the reader is
+ * told about. This holds before the session answered `open` or after, and when
+ * another client disposed the tree. On a weak network a connection comes and
+ * goes, so the runtime:
+ *
+ * - keeps `load` at `reconnecting` (the transcript's tail row says Connecting,
+ *   the composer stays), or at `connecting` while the session has never opened
+ * - tries again after each of the page's reconnect waits, until the socket is
+ *   back or the view is disposed
+ *
+ * An action taken meanwhile waits for the connection, without cutting a wait
+ * short. Only the session refusing to open is a failure, told once through
+ * `load` `failed` and `lastError`.
  */
 export class ConversationRuntime {
   private readonly options: ConversationRuntimeOptions
@@ -116,7 +122,10 @@ export class ConversationRuntime {
   private readonly listedSteers = new WeakSet<ConversationClient>()
   /** Consecutive connections lost or not made since the session last opened. */
   private connectionFailures = 0
-  /** Whether a session of this view has opened: a later opening is a reconnection. */
+  /**
+   * Whether a session of this view has opened: a later opening is a
+   * reconnection.
+   */
   private opened = false
   private disposed = false
 
@@ -128,18 +137,22 @@ export class ConversationRuntime {
     return this.client.value !== null
   }
 
-  /** Whether a session of this view has opened, whose handshake the page has applied. */
+  /**
+   * Whether a session of this view has opened, whose handshake the page has
+   * applied.
+   */
   get hasOpened(): boolean {
     return this.opened
   }
 
   /**
-   * Sends a message; resolves once the session holds it, in the transcript
-   * or the queue. A connection lost before the session confirmed it fails
-   * nothing: the send waits for the connection to come back, then sends the
-   * message again with its id, which the session takes only once, unless
-   * what the reopened conversation shows already holds it. `comments` are
-   * those it carries.
+   * Sends a message; resolves once the session holds it, in the transcript or
+   * the queue. `comments` are those it carries.
+   *
+   * A connection lost before the session confirmed the message fails nothing.
+   * The send waits for the connection to come back, then sends the message
+   * again with its id, which the session takes only once, unless what the
+   * reopened conversation shows already holds it.
    */
   async submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     this.options.state.lastError = null
@@ -161,11 +174,14 @@ export class ConversationRuntime {
 
   /**
    * Steers the running turn with a message; resolves once the session holds it
-   * as a pending steer. A steer the session refuses, because its turn is ending
-   * or nothing runs, is sent as a message instead, with the same id and no
-   * error. A connection lost before the session answered fails nothing: once
-   * the conversation is open again and has listed its pending steers, a steer
-   * it neither lists nor holds in the transcript is sent as a message, so it is
+   * as a pending steer.
+   *
+   * A steer the session refuses, because its turn is ending or nothing runs, is
+   * sent as a message instead, with the same id and no error.
+   *
+   * A connection lost before the session answered fails nothing. Once the
+   * conversation is open again and has listed its pending steers, a steer it
+   * neither lists nor holds in the transcript is sent as a message, so it is
    * never lost and never delivered twice.
    */
   async steer(content: ClientContent[], id: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
@@ -187,15 +203,18 @@ export class ConversationRuntime {
   }
 
   /**
-   * Sends the message saved for later `id` the way the composer chose, as
-   * the message `turnId`; the backend takes it off the list once the session
-   * takes it, and keeps it when the session refuses it. A connection lost
-   * before the session answered fails nothing: once the conversation is open
-   * again, a send the session holds already is not sent again, and one it
-   * does not hold goes again as the same turn. A steer the session refuses,
-   * as its turn ended meanwhile, goes as a message, as the composer's steer
-   * would. Answers false when the list no longer held it, as another page
-   * sent or deleted it first, and nothing was sent.
+   * Sends the message saved for later `id` the way the composer chose, as the
+   * message `turnId`. The backend takes it off the list once the session takes
+   * it, and keeps it when the session refuses it.
+   *
+   * A connection lost before the session answered fails nothing. Once the
+   * conversation is open again, a send the session holds already is not sent
+   * again, and one it does not hold goes again as the same turn. A steer the
+   * session refuses, as its turn ended meanwhile, goes as a message, as the
+   * composer's steer would.
+   *
+   * Answers false when the list no longer held it, as another page sent or
+   * deleted it first, and nothing was sent.
    */
   async sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<boolean> {
     this.options.state.lastError = null
@@ -221,7 +240,10 @@ export class ConversationRuntime {
     }
   }
 
-  /** Whether the session, open again after a lost connection, holds the steer `id`: pending, or in the transcript. */
+  /**
+   * Whether the session, open again after a lost connection, holds the steer
+   * `id`: pending, or in the transcript.
+   */
   private async holdsSteer(id: string): Promise<boolean> {
     for (;;) {
       const client = await this.ensureOpen()
@@ -271,7 +293,10 @@ export class ConversationRuntime {
     return this.edit(request.targetBlockId, (client) => client.editAndSend(request))
   }
 
-  /** Regenerate: a new version of the answer to the message `request` names, sent as an edit is. */
+  /**
+   * Regenerate: a new version of the answer to the message `request` names,
+   * sent as an edit is.
+   */
   regenerate(request: RegenerateRequest): Promise<void> {
     return this.edit(request.targetBlockId, (client) => client.regenerate(request))
   }
@@ -312,12 +337,16 @@ export class ConversationRuntime {
   }
 
   /**
-   * Removes a steer or a queued message that waits for the agent; resolves once
+   * Removes a steer or a queued message that waits for the agent. Resolves once
    * the session answers it removed, and rejects with `RemovalRefusedError` when
-   * the session answers that the message had gone on. A connection lost before
-   * the answer fails nothing: once the conversation is open again and has
-   * listed what waits, a message still listed is asked for again; one the
-   * transcript holds went on, and one held nowhere was removed.
+   * the session answers that the message had gone on.
+   *
+   * A connection lost before the answer fails nothing. Once the conversation is
+   * open again and has listed what waits:
+   *
+   * - a message still listed is asked for again
+   * - one the transcript holds went on
+   * - one held nowhere was removed
    */
   async removeWaiting(id: string): Promise<void> {
     const state = this.options.state
@@ -409,12 +438,13 @@ export class ConversationRuntime {
   }
 
   /**
-   * The tail row says Requesting from the click until the server's next
-   * `phase` event; a refused or lost request ends that wait as well. A
-   * session busy running a turn already, as after another page's Resume,
-   * runs the turn on: what the user asked for is there, and nothing failed. One
-   * busy with other work, such as another page's Compact, may end without
-   * running it, so that refusal is a failure.
+   * The tail row says Requesting from the click until the server's next `phase`
+   * event. A refused or lost request ends that wait as well.
+   *
+   * A session busy running a turn already, as after another page's Resume, runs
+   * the turn on: what the user asked for is there, and nothing failed. One busy
+   * with other work, such as another page's Compact, may end without running
+   * it, so that refusal is a failure.
    */
   async resume(): Promise<void> {
     const state = this.options.state
@@ -526,7 +556,10 @@ export class ConversationRuntime {
     return opening
   }
 
-  /** One opening: attempts until the session opens, waiting before each attempt after a connection lost or not made. */
+  /**
+   * One opening: attempts until the session opens, waiting before each attempt
+   * after a connection lost or not made.
+   */
   private async openSession(controller: AbortController, afterLoss: boolean): Promise<ConversationClient> {
     for (let wait = afterLoss; ; wait = true) {
       if (wait) {
@@ -548,9 +581,9 @@ export class ConversationRuntime {
         if (!(error instanceof ConversationSocketError)) {
           this.client.value = null
           this.opening = null
-          // A record that holds no model opens no session until one is
-          // chosen: the opening stops at its first step, its transcript
-          // shown, as one with no session does; it did not fail.
+          // A record that holds no model opens no session until one is chosen.
+          // The opening stops at its first step, its transcript shown, as one
+          // with no session does; it did not fail.
           if (errorCode(error) === 'model_not_selected') {
             this.options.state.load = 'ready'
           } else {
@@ -566,7 +599,8 @@ export class ConversationRuntime {
   private async openOnce(controller: AbortController): Promise<ConversationClient> {
     let client: ConversationClient | null = null
     let unsubscribe: (() => void) | null = null
-    // Each attempt has its own deadline; the opening's controller ends them all.
+    // Each attempt has its own deadline; the opening's controller ends them
+    // all.
     const attempt = new AbortController()
     const abortAttempt = () => attempt.abort(controller.signal.reason)
     controller.signal.addEventListener('abort', abortAttempt, { once: true })
@@ -574,7 +608,8 @@ export class ConversationRuntime {
       () => attempt.abort(new ConversationSocketError('The conversation did not open in time')),
       OPEN_TIMEOUT_MS,
     )
-    // A deadline or a release while the session opens ends the connection, which ends the wait.
+    // A deadline or a release while the session opens ends the connection,
+    // which ends the wait.
     const disconnect = () => client?.disconnect(asError(attempt.signal.reason))
     attempt.signal.addEventListener('abort', disconnect, { once: true })
     // The handshake's frames, held until the session has opened, so what
@@ -740,7 +775,7 @@ export class ConversationRuntime {
         this.releaseConnection()
         if (!this.disposed) {
           // The opening keeps trying on its own, and a refused open shows
-          // through `load` and `lastError`; a release ends it with the view.
+          // through `load` and `lastError`. A release ends it with the view.
           this.startOpening(true).catch(() => {})
         }
         break

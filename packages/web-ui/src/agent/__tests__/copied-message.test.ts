@@ -24,7 +24,10 @@ const BEFORE = 'b'.repeat(64)
 const AFTER = 'a'.repeat(64)
 const FITTED = 'f'.repeat(64)
 
-/** A message the transcript holds: two images, each its fitted picture and record, and a file on a paired device. */
+/**
+ * A message the transcript holds: two images, each its fitted picture and
+ * record, and a file on a paired device.
+ */
 const sent: UserContentBlock[] = [
   { type: 'text', text: 'Compare **before** ' },
   { type: 'image', source: { type: 'ref', ref: FITTED, mediaType: 'image/png' } },
@@ -68,7 +71,10 @@ function composerHost(refused: Set<string> = new Set()) {
   return { host, claims }
 }
 
-/** A document with each capsule as its file's name, to compare documents whose capsules have other ids. */
+/**
+ * A document with each capsule as its file's name, to compare documents whose
+ * capsules have other ids.
+ */
 function named(doc: ReturnType<typeof parseUserMarkdown>): unknown {
   return JSON.parse(JSON.stringify(doc, (key, value: unknown) =>
     key === 'capsule' && typeof value === 'object' && value && 'name' in value ? value.name : value))
@@ -77,7 +83,8 @@ function named(doc: ReturnType<typeof parseUserMarkdown>): unknown {
 test('a sent message copies as its Markdown with each file by name, and Demi\'s own form holds each file as the message does', () => {
   const clipboard = messageClipboard(sentDocument())
   expect(clipboard.plain).toBe('Compare **before** before.png with after.png, notes in notes.md')
-  // The original, not the picture fitted for the model, and the device by its id.
+  // The original, not the picture fitted for the model, and the device by its
+  // id.
   expect(clipboard.message).toEqual(copied)
   expect(clipboard.image).toBeNull()
   expect(readCopiedMessage(JSON.stringify(clipboard.message))).toEqual(copied)
@@ -114,7 +121,8 @@ test('a copy of a lone file offers its picture under the file\'s name for when t
   // Under its own name, not the one a web browser gives every pasted picture.
   expect(lone.claims.map(({ picture }) => [picture?.name, picture?.size])).toEqual([['before.png', picture.size]])
 
-  // A picture belongs to a copy of one file only; a device file the composer cannot take is its name.
+  // A picture belongs to a copy of one file only; a device file the composer
+  // cannot take is its name.
   const { host, claims } = composerHost(new Set(['/Users/alex/notes.md']))
   const pasted = pasteMessage(copied, picture, host)
   expect(claims.map((claim) => claim.picture)).toEqual([null, null])
@@ -137,7 +145,10 @@ function pastedIntoEmptyComposer(paste: (schema: Editor['schema']) => Slice): st
   }
 }
 
-/** A task brief an agent wrote with a heredoc: its text ends with a line break, and a code block stands in it. */
+/**
+ * A task brief an agent wrote with a heredoc: its text ends with a line break,
+ * and a code block stands in it.
+ */
 const BRIEF = 'Fix the login test.\n\n```sh\nbun test auth\n```\n\nThen report.\n'
 
 test('a copy holds no blank line before its first line or after its last, in each of its forms', () => {

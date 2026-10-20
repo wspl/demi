@@ -109,7 +109,8 @@ test('a live view adds the characters beyond those shown, or its tail anew', () 
     [2, 'two\n', 8, true, 'two\n'],
     // A count behind the one shown is no continuation.
     [9, 'one\ntwo\n', 8, true, 'one\ntwo\n'],
-    // An astral character is one: the new "😀!" is two characters and three UTF-16 units.
+    // An astral character is one: the new "😀!" is two characters and three
+    // UTF-16 units.
     [3, 'a😀b😀!', 5, false, '😀!'],
   ]
   for (const [shown, tail, chars, anew, text] of cases) {
@@ -164,7 +165,8 @@ test('a command shows under its running call, and in the dock once the call retu
   // Once the root's call returns, its command joins the dock.
   state.history = held([call('call-1', 'completed')])
   expect(dock.value.map((item) => item.id)).toEqual(['stored', 'root', 'child', 'orphan'])
-  // A model that reuses a call's id: the latest call and the latest command are the ones that run.
+  // A model that reuses a call's id: the latest call and the latest command are
+  // the ones that run.
   const again = terminal({ id: 'again', title: 'R2', phase: 'running', toolUseId: 'call-1' })
   state.terminals = [rootCommand, again]
   expect(commandOf(undefined, 'call-1')?.id).toBe('again')
@@ -216,7 +218,10 @@ test('the dock and the rows follow every change to a child, its transcript and t
   expect(row.value).toBeUndefined()
 })
 
-/** `items`, counting each element a reader reads in `reads[label]`, under the store's reactive proxy. */
+/**
+ * `items`, counting each element a reader reads in `reads[label]`, under the
+ * store's reactive proxy.
+ */
 function counted<T>(items: T[], reads: Record<string, number>, label: string): T[] {
   reads[label] = 0
   return new Proxy(items, {
@@ -317,7 +322,8 @@ test('the prompt line opens the terminal once, and again only when it starts ane
   // The first frame opens with the prompt, then the output.
   const first = terminalWrite(null, 'one\n', 4, prompt)
   expect(first).toEqual({ reset: false, text: `${prompt}one\n` })
-  // A frame that adds output writes only what it adds: the prompt is not part of the count.
+  // A frame that adds output writes only what it adds: the prompt is not part
+  // of the count.
   expect(terminalWrite({ output: 'one\n', chars: 4 }, 'one\ntwo\n', 8, prompt)).toEqual({ reset: false, text: 'two\n' })
   // After a gap the tail shows anew, under the prompt again.
   expect(terminalWrite({ output: 'one\ntwo\n', chars: 8 }, 'ninety\n', 100, prompt))
@@ -337,7 +343,8 @@ test('a shell row runs while its call runs, and after it returned until its comm
   // The command's end arrives: exited, or stopped.
   expect(shellRowRunning('completed', { ...command, phase: 'exited' })).toBe(false)
   expect(shellRowRunning('completed', { ...command, phase: 'aborted' })).toBe(false)
-  // A call that returned with no command the page knows of is done, failed or not.
+  // A call that returned with no command the page knows of is done, failed or
+  // not.
   expect(shellRowRunning('completed', undefined)).toBe(false)
   expect(shellRowRunning('error', undefined)).toBe(false)
 })
@@ -356,14 +363,17 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
   const command = terminal({ id: 'cmd', title: 'Watch', phase: 'running', toolUseId: 'call-1' })
   // It runs on: no end yet, whatever the call stored.
   expect(commandEndMark(shellRowEnd(returned, command))).toBeNull()
-  // A stop waits for its runner's word: the row says so, also while the call watches.
+  // A stop waits for its runner's word: the row says so, also while the call
+  // watches.
   expect(commandEndMark(shellRowEnd(returned, { ...command, stopping: true }))).toEqual({ kind: 'stopping' })
   expect(commandEndMark(shellRowEnd({ ...returned, status: 'executing' }, { ...command, stopping: true })))
     .toEqual({ kind: 'stopping' })
-  // A start that waits for its offline Host says which, also while the call watches.
+  // A start that waits for its offline Host says which, also while the call
+  // watches.
   expect(commandEndMark(shellRowEnd({ ...returned, status: 'executing' }, { ...command, waitingFor: 'MacBook Pro' })))
     .toEqual({ kind: 'waiting', host: 'MacBook Pro' })
-  // Its end arrives in a frame: exit 1 is Failed, a stop is Stopped, exit 0 is nothing.
+  // Its end arrives in a frame: exit 1 is Failed, a stop is Stopped, exit 0 is
+  // nothing.
   expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'exited', exitCode: 1 })))
     .toEqual({ kind: 'failed', exitCode: 1 })
   expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'aborted' }))).toEqual({ kind: 'stopped' })
@@ -396,9 +406,11 @@ test('a reloaded page times a running command from the start the server reported
   expect(later.startedAt).toBe(command.startedAt)
   const ended = followFrame(later, { ...frame, status: 'exited', exitCode: 0, runningMs: 100_000 }, undefined, loadedAt + 8_200)
   expect(shellRowTime({ ...call, status: 'completed' }, ended)).toEqual({ kind: 'ran', ms: 100_000 })
-  // A call that returned with its command ended, after a reload with no frame, times it by its stored view.
+  // A call that returned with its command ended, after a reload with no frame,
+  // times it by its stored view.
   const view: ShellToolView = { kind: 'shell', status: 'exited', exitCode: 1, commandId: '17', runningMs: 47_000, idleMs: 0, chunks: [], viewTruncated: false }
   expect(shellRowTime({ ...call, status: 'completed', view }, undefined)).toEqual({ kind: 'ran', ms: 47_000 })
-  // One whose stored view saw it still running, and whose end the page never saw, has no time to tell.
+  // One whose stored view saw it still running, and whose end the page never
+  // saw, has no time to tell.
   expect(shellRowTime({ ...call, status: 'completed', view: { ...view, status: 'running' } }, undefined)).toBeNull()
 })

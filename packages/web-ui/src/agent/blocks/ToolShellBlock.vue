@@ -39,7 +39,9 @@ const media = computed(() => splitMedia(toolMedia(props.block.output, title.valu
 // guard refused, shows its result's text as the failure.
 const errorText = computed(() => (storedShellView(props.block) ? undefined : getToolErrorText(props.block)))
 const { started, end, elapsedMs, running } = useShellRow(() => props.block)
-/** Above the output: how long it has run, or how it ended and after how long. */
+/**
+ * Above the output: how long it has run, or how it ended and after how long.
+ */
 const statusLine = computed(() => commandStatusLine(end.value, elapsedMs.value))
 /** While the call runs, its command's output as it comes. */
 const liveOutput = computed(() =>
@@ -53,11 +55,15 @@ const terminalOutputText = computed(
 // Only the user opens the row, while the call runs as after it returned.
 const isOpen = defineModel<boolean>('open', { default: false })
 
-/** How many lines the command shows until a click shows it whole: the template's `line-clamp-2`. */
+/**
+ * How many lines the command shows until a click shows it whole: the template's
+ * `line-clamp-2`.
+ */
 const COMMAND_LINES = 2
 
 const commandText = ref<InstanceType<typeof CodeText>>()
-// Whether the command takes more lines than it shows clamped; only then is it a toggle.
+// Whether the command takes more lines than it shows clamped; only then is it a
+// toggle.
 const commandOverflows = ref(false)
 const commandWhole = ref(false)
 
@@ -129,7 +135,9 @@ function toggleCommand(): void {
           @layout="measureCommand"
         />
       </div>
-      <!-- Above the output, which scrolls under it as it follows the newest line. -->
+      <!--
+        Above the output, which scrolls under it as it follows the newest line.
+      -->
       <div v-if="statusLine" class="mt-1 px-3 text-xs leading-5 text-fg-subtle">{{ statusLine }}</div>
     </template>
 

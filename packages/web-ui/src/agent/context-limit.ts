@@ -5,8 +5,8 @@ import { t } from './locales/text'
 
 /**
  * One model's context limit as the model menu changes it: the user's, for every
- * conversation with that model. Null
- * tokens remove the limit, so the model uses its full window.
+ * conversation with that model. Null tokens remove the limit, so the model uses
+ * its full window.
  */
 export interface ContextLimitChange {
   providerId: string
@@ -14,13 +14,19 @@ export interface ContextLimitChange {
   tokens: number | null
 }
 
-/** One option of the Context row: the window it gives, and the limit it stores, null for the full window. */
+/**
+ * One option of the Context row: the window it gives, and the limit it stores,
+ * null for the full window.
+ */
 export interface ContextLimitOption {
   window: number
   tokens: number | null
 }
 
-/** The window Demi uses for `model`: the user's limit on it, or its context window; null when unknown. */
+/**
+ * The window Demi uses for `model`: the user's limit on it, or its context
+ * window; null when unknown.
+ */
 export function contextWindowInUse(model: ModelInfo | null | undefined): number | null {
   return model?.contextLimit ?? model?.contextWindow ?? null
 }
@@ -42,7 +48,10 @@ export function contextLimitOptions(model: ModelInfo): ContextLimitOption[] {
   ]
 }
 
-/** One option of a subagent profile's Context: its label, and the tokens the profile stores, null for the user's limit. */
+/**
+ * One option of a subagent profile's Context: its label, and the tokens the
+ * profile stores, null for the user's limit.
+ */
 export interface ProfileContextOption {
   label: string
   tokens: number | null
@@ -50,10 +59,12 @@ export interface ProfileContextOption {
 
 /**
  * A subagent profile's Context options on `model`
- * (`crates/agent-server/src/server/tree/profiles.rs`): Default, the user's
- * limit on the model, with the window it gives now; then the Context row's
- * options, the full window stored as its own size. None for a model without a
- * Context row.
+ * (`crates/agent-server/src/server/tree/profiles.rs`):
+ *
+ * - Default, the user's limit on the model, with the window it gives now
+ * - the Context row's options, the full window stored as its own size
+ *
+ * None for a model without a Context row.
  */
 export function profileContextOptions(model: ModelInfo): ProfileContextOption[] {
   const options = contextLimitOptions(model)

@@ -34,7 +34,9 @@ function listen(bindings: readonly { id: string; keys: string }[] = APP_SHORTCUT
   stop = () => scope.stop()
 }
 
-/** Presses a key on the window: `taken` when the focused control used it first. */
+/**
+ * Presses a key on the window: `taken` when the focused control used it first.
+ */
 function press(code: string, modifiers: { meta?: boolean; shift?: boolean } = {}, taken = false): void {
   const event = Object.assign(new Event('keydown', { cancelable: true }), {
     key: code.replace('Key', '').toLowerCase(),

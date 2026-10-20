@@ -11,10 +11,13 @@ import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slice
 
 // What a composer takes in: whatever is pasted or dropped, from Finder, a web
 // page, another app or Demi's own transcript, becomes text in the user dialect
-// or a capsule as it enters. Files and images whose bytes the page can read
-// become capsules, as a pasted screenshot does; an image it cannot read becomes
-// its link; rich text keeps the dialect's formats, which the schema's parse
-// rules are, and every other element becomes its text.
+// or a capsule as it enters.
+//
+// - Files and images whose bytes the page can read become capsules, as a pasted
+//   screenshot does.
+// - An image it cannot read becomes its link.
+// - Rich text keeps the dialect's formats, which the schema's parse rules are,
+//   and every other element becomes its text.
 
 /**
  * The attribute an image of the dialect, `![alt](target)`, carries in the
@@ -24,15 +27,24 @@ import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slice
  */
 export const MESSAGE_IMAGE_ATTRIBUTE = 'data-message-image'
 
-/** How long the page tries to read another site's image before it takes its link instead. */
+/**
+ * How long the page tries to read another site's image before it takes its link
+ * instead.
+ */
 const IMAGE_READ_TIMEOUT_MS = 10_000
 
 export interface IntakeOptions {
-  /** Whether the composer carries the capsule's file, as it carries one cut from this message. */
+  /**
+   * Whether the composer carries the capsule's file, as it carries one cut from
+   * this message.
+   */
   carries: (id: string) => boolean
   /** Where the next files or pasted content land, before they are taken. */
   land: (at: number) => void
-  /** Files pasted, or a paste long enough to be one; they land where `land` said. */
+  /**
+   * Files pasted, or a paste long enough to be one; they land where `land`
+   * said.
+   */
   files: (files: File[]) => void
   /**
    * A copied message in Demi's own form, pasted with the picture a copy of a
@@ -45,11 +57,17 @@ export interface IntakeOptions {
    * said, each file uploaded as a pasted one is.
    */
   content: (markdown: string, files: File[]) => void
-  /** An image's bytes, when the page can read them; `readImage` unless a test says otherwise. */
+  /**
+   * An image's bytes, when the page can read them; `readImage` unless a test
+   * says otherwise.
+   */
   readImage?: (src: string) => Promise<File | null>
 }
 
-/** A picture's file name, as a web browser names a pasted screenshot: `image.png`, `image.jpg`. */
+/**
+ * A picture's file name, as a web browser names a pasted screenshot:
+ * `image.png`, `image.jpg`.
+ */
 function imageName(mediaType: string): string {
   const subtype = mediaType.split('/')[1]?.split(/[+;]/)[0] ?? 'png'
   return `image.${subtype === 'jpeg' ? 'jpg' : subtype}`
@@ -91,7 +109,10 @@ function inCode($pos: ResolvedPos): boolean {
   return !!$pos.parent.type.spec.code
 }
 
-/** Whether parsed HTML holds anything of the dialect beyond its text: a format, a link, code, an image or a capsule. */
+/**
+ * Whether parsed HTML holds anything of the dialect beyond its text: a format,
+ * a link, code, an image or a capsule.
+ */
 function holdsFormatting(slice: Slice): boolean {
   let formatted = false
   slice.content.descendants((node) => {
@@ -148,7 +169,10 @@ function prepareHtml(html: string): PreparedHtml {
   return { source: html, html: page.body.innerHTML, images, preformatted }
 }
 
-/** The text an image the page could not read leaves: its address when it is a web address, else nothing. */
+/**
+ * The text an image the page could not read leaves: its address when it is a
+ * web address, else nothing.
+ */
 function imageLink(src: string): string {
   try {
     const url = new URL(src, document.baseURI)
@@ -161,10 +185,16 @@ function imageLink(src: string): string {
 
 function intakePlugin(options: IntakeOptions): Plugin {
   const readBytes = options.readImage ?? readImage
-  /** The HTML ProseMirror last read from a paste or a drop, as `prepareHtml` made it ready. */
+  /**
+   * The HTML ProseMirror last read from a paste or a drop, as `prepareHtml`
+   * made it ready.
+   */
   let prepared: PreparedHtml | null = null
 
-  /** The HTML of `transfer` as ProseMirror read it; null when it read the plain text instead. */
+  /**
+   * The HTML of `transfer` as ProseMirror read it; null when it read the plain
+   * text instead.
+   */
   function preparedFor(transfer: DataTransfer): PreparedHtml | null {
     return prepared?.source === transfer.getData('text/html') ? prepared : null
   }
@@ -210,7 +240,9 @@ function intakePlugin(options: IntakeOptions): Plugin {
     options.land(view.state.selection.from)
   }
 
-  /** Puts content in at `at`, the cursor after it, or in place of the selection. */
+  /**
+   * Puts content in at `at`, the cursor after it, or in place of the selection.
+   */
   function insert(view: EditorView, content: Slice, at: number | null): void {
     const tr = view.state.tr
     if (at === null) {
@@ -289,7 +321,10 @@ function intakePlugin(options: IntakeOptions): Plugin {
     return true
   }
 
-  /** What a paste brings: files, a copied message, a paste long enough to be a file, or what `take` reads. */
+  /**
+   * What a paste brings: files, a copied message, a paste long enough to be a
+   * file, or what `take` reads.
+   */
   function paste(view: EditorView, event: ClipboardEvent, slice: Slice): boolean {
     const transfer = event.clipboardData
     if (!transfer) {
@@ -297,7 +332,8 @@ function intakePlugin(options: IntakeOptions): Plugin {
     }
     const code = inCode(view.state.selection.$from)
     const pasted = dataTransferFiles(transfer)
-    // A copied message comes back with its files where they stood; code takes text alone.
+    // A copied message comes back with its files where they stood; code takes
+    // text alone.
     const copied = code ? null : transferCopiedMessage(transfer)
     if (copied) {
       landAtSelection(view)

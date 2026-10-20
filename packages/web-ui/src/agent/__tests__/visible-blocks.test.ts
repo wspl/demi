@@ -24,7 +24,8 @@ test('the transcript hides what the reader never sees, usage, resumes, the conte
 })
 
 test('a compaction shows at its marker, where it was triggered, not at its boundary', () => {
-  // The user compacted after a2: the summary goes in before a2, the marker after it.
+  // The user compacted after a2: the summary goes in before a2, the marker
+  // after it.
   const blocks: Block[] = [
     user('u1'),
     text('a1'),

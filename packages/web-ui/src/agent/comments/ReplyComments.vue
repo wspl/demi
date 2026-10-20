@@ -21,21 +21,34 @@ import { cardContent, pageToRead, readKey, type ReplyAsking, type ShownSideQuest
 
 /**
  * The comments and side questions on a transcript's replies, drawn over the
- * list `root` holds: each comment's text tinted and underlined, a sent one
- * dimmer, a comment mark in the reply's right margin at its line, the card that
- * shows a comment under the pointer or pinned by a click, and the box a new one
- * is written in under its selection; each side question's words in purple, its
- * card set into the reply after the block holding the words' end, folded into a
- * purple mark in the margin. A comment or a side question on a picture outlines
- * the picture in its color, its margin mark at the picture's top. A reply is
- * found by its text block's id (`data-reply-text`), so the marks follow the
- * rows the list draws as it scrolls; a row it does not draw shows none.
+ * list `root` holds.
+ *
+ * A comment is drawn as:
+ *
+ * - its text tinted and underlined, a sent one dimmer
+ * - a comment mark in the reply's right margin at its line
+ * - the card that shows a comment under the pointer or pinned by a click
+ * - the box a new one is written in under its selection
+ *
+ * A side question is drawn as its words in purple, and its card set into the
+ * reply after the block holding the words' end, folded into a purple mark in
+ * the margin.
+ *
+ * A comment or a side question on a picture outlines the picture in its color,
+ * its margin mark at the picture's top.
+ *
+ * A reply is found by its text block's id (`data-reply-text`), so the marks
+ * follow the rows the list draws as it scrolls. A row it does not draw shows
+ * none.
  */
 const props = defineProps<{
   /** The element the list's rows stand in, which this layer covers. */
   root: HTMLElement | null
   commenting: ReplyCommenting
-  /** The comments the transcript's messages sent, which show dimmer and take no edit. */
+  /**
+   * The comments the transcript's messages sent, which show dimmer and take no
+   * edit.
+   */
   sent: readonly MessageComment[]
   /** The transcript's side questions; absent where it takes none. */
   asking?: ReplyAsking
@@ -61,7 +74,9 @@ const CARD_WIDTH = 300
 
 const phone = usePhone()
 const width = ref(0)
-/** Too narrow for a margin: each line's marks collapse into a mark at its end. */
+/**
+ * Too narrow for a margin: each line's marks collapse into a mark at its end.
+ */
 const narrow = computed(() => width.value > 0 && width.value < 640)
 
 const marked = computed<MarkedComment[]>(() => [
@@ -73,10 +88,16 @@ function replyRoot(blockId: string): HTMLElement | null {
   return props.root?.querySelector<HTMLElement>(`[data-reply-text="${CSS.escape(blockId)}"] .markdown-body`) ?? null
 }
 
-/** What a comment, a side question or the box stands on: words, or a picture by its place. */
+/**
+ * What a comment, a side question or the box stands on: words, or a picture by
+ * its place.
+ */
 type Placed = { blockId: string; quote: string; picture?: unknown } & TextAnchor
 
-/** The live range of `item` as its reply renders now: its words, or the picture it names, whole. */
+/**
+ * The live range of `item` as its reply renders now: its words, or the picture
+ * it names, whole.
+ */
 function liveRange(item: Placed): Range | null {
   const at = replyRoot(item.blockId)
   if (!at)
@@ -91,7 +112,10 @@ function liveRange(item: Placed): Range | null {
   return range
 }
 
-/** `item`'s live range while the reply still holds what it quotes: its words, or its picture, which `liveRange` checks. */
+/**
+ * `item`'s live range while the reply still holds what it quotes: its words, or
+ * its picture, which `liveRange` checks.
+ */
 function heldRange(item: Placed): Range | null {
   const range = liveRange(item)
   return range && (item.picture || range.toString() === item.quote) ? range : null
@@ -99,14 +123,23 @@ function heldRange(item: Placed): Range | null {
 
 // --- The box under a selection, a new comment or a side question.
 
-/** The box: on words, or on a picture (`picture`), which it outlines as a comment's. */
+/**
+ * The box: on words, or on a picture (`picture`), which it outlines as a
+ * comment's.
+ */
 const box = shallowRef<{ kind: 'comment' | 'ask'; blockId: string; quote: string; picture: boolean; at: number } & TextAnchor | null>(null)
 const boxText = ref('')
-/** While the box's picture is being kept: the box stays open with its text meanwhile, and after a failure. */
+/**
+ * While the box's picture is being kept: the box stays open with its text
+ * meanwhile, and after a failure.
+ */
 const boxBusy = ref(false)
 const keepPicture = useKeepPicture()
 
-/** Opens the box on `anchor`, whose `at` is where it stands in the block's reading order. */
+/**
+ * Opens the box on `anchor`, whose `at` is where it stands in the block's
+ * reading order.
+ */
 function openBox(kind: 'comment' | 'ask', blockId: string, anchor: TextAnchor & { at: number }, quote: string, picture = false): void {
   window.getSelection()?.removeAllRanges()
   closeCard()
@@ -126,7 +159,8 @@ async function sendBox(text: string, now = false): Promise<void> {
   const placed = { blockId: opened.blockId, start: opened.start, end: opened.end, quote: opened.quote }
   let picture: MediaSource | null = null
   if (opened.picture) {
-    // The box keeps its text until the picture is kept; a failure leaves both, and says why.
+    // The box keeps its text until the picture is kept; a failure leaves both,
+    // and says why.
     boxBusy.value = true
     try {
       const at = replyRoot(opened.blockId)
@@ -135,7 +169,8 @@ async function sendBox(text: string, now = false): Promise<void> {
         throw new Error('The picture is no longer in the reply.')
       picture = await pictureSource(image, keepPicture)
     } catch (error) {
-      // A failure not about what was typed is a toast; the box keeps the text to send again.
+      // A failure not about what was typed is a toast; the box keeps the text
+      // to send again.
       if (box.value === opened)
         reportError(t(opened.kind === 'ask' ? 'ask.pictureFailed' : 'comments.pictureFailed'), error, { userVisible: true })
       return
@@ -162,10 +197,9 @@ async function sendBox(text: string, now = false): Promise<void> {
 
 /**
  * Comment for the selection in the reply `reply`, the text block `blockId`
- * whose rendered text is `root`; disabled while the reply is still being
- * written, read where the tool is drawn, so it turns enabled as the reply
- * ends under a selection that stays. None for a selection the reply does
- * not hold.
+ * whose rendered text is `root`. It is disabled while the reply is still being
+ * written, read where the tool is drawn, so it turns enabled as the reply ends
+ * under a selection that stays. None for a selection the reply does not hold.
  */
 function selectionTools(reply: { blockId: string; root: HTMLElement }, streaming: () => boolean): ContextMenuEntry[] {
   const selection = window.getSelection()
@@ -173,15 +207,18 @@ function selectionTools(reply: { blockId: string; root: HTMLElement }, streaming
     return []
   const range = selection.getRangeAt(0)
   const at = reply.root.querySelector<HTMLElement>('.markdown-body')
-  // A selection reaching into a side question's card is the card's, which asks nothing again.
+  // A selection reaching into a side question's card is the card's, which asks
+  // nothing again.
   if (at && [...at.querySelectorAll('[data-ask-host]')].some((host) => range.intersectsNode(host)))
     return []
   const anchor = at ? anchorOf(at, range) : null
   if (!at || !anchor)
     return []
-  // The quote is read as the mark is checked against it (`measure`), so the two agree.
+  // The quote is read as the mark is checked against it (`measure`), so the two
+  // agree.
   const quote = rangeOf(at, anchor)?.toString() ?? range.toString()
-  // Read where the tool is drawn: it turns enabled as the reply ends under a selection that stays.
+  // Read where the tool is drawn: it turns enabled as the reply ends under a
+  // selection that stays.
   const tool = (kind: 'comment' | 'ask') => ({
     icon: kind === 'comment' ? MessageSquarePlus : MessageCircleQuestionMark,
     label: kind === 'comment' ? t('comments.comment') : t('ask.ask'),
@@ -196,8 +233,8 @@ function selectionTools(reply: { blockId: string; root: HTMLElement }, streaming
 }
 
 /**
- * Comment and Ask for the picture `image` of the reply `reply`, the text
- * block `blockId` whose rendered text is `root`; disabled while the reply is
+ * Comment and Ask for the picture `image` of the reply `reply`, the text block
+ * `blockId` whose rendered text is `root`. They are disabled while the reply is
  * being written, as for its words. None for a picture the reply does not hold,
  * as one in a side question's card.
  */
@@ -269,10 +306,14 @@ function remove(id: string): void {
   }
 }
 
-// --- Side questions: each card in the reply, folded into the margin's mark, or opened again.
+// --- Side questions: each card in the reply, folded into the margin's mark, or
+// opened again.
 
 const questions = computed(() => props.asking?.questions ?? [])
-/** Each card's place in its reply, an element set after the block holding the end of its words. */
+/**
+ * Each card's place in its reply, an element set after the block holding the
+ * end of its words.
+ */
 const hosts = new Map<string, HTMLElement>()
 /** The side question under the pointer, whose words deepen. */
 const hoveredAsk = ref<string | null>(null)
@@ -297,7 +338,10 @@ function hostOf(id: string): HTMLElement {
   return host
 }
 
-/** The reply's block that holds the end of `range`: a direct child of its rendered text. */
+/**
+ * The reply's block that holds the end of `range`: a direct child of its
+ * rendered text.
+ */
 function blockOf(at: HTMLElement, range: Range): Element | null {
   let node: Node | null = range.endContainer
   while (node && node.parentNode !== at)
@@ -306,11 +350,11 @@ function blockOf(at: HTMLElement, range: Range): Element | null {
 }
 
 /**
- * Sets each card after the block holding the end of its words, once its row
- * is drawn and unless it is folded: the cards of one block follow it in the
- * order they were asked. A card already in its place is not touched, so a
- * measurement that finds them placed changes nothing, and the list's
- * mutation observer, which measures again, comes to rest.
+ * Sets each card after the block holding the end of its words, once its row is
+ * drawn and unless it is folded. The cards of one block follow it in the order
+ * they were asked. A card already in its place is not touched, so a measurement
+ * that finds them placed changes nothing, and the list's mutation observer,
+ * which measures again, comes to rest.
  */
 function placeHosts(placed: readonly { question: ShownSideQuestion; range: Range | null }[]): void {
   const after = new Map<Element, HTMLElement[]>()
@@ -345,9 +389,9 @@ function scrollParent(element: HTMLElement | null): HTMLElement | null {
 }
 
 /**
- * Folds a card keeping the reader's line where it is: the asked line stays
- * put while it is in view; scrolled off above, it comes to the top of the
- * view rather than the text below jumping under the reader.
+ * Folds a card keeping the reader's line where it is. The asked line stays put
+ * while it is in view; scrolled off above, it comes to the top of the view
+ * rather than the text below jumping under the reader.
  */
 async function fold(question: ShownSideQuestion): Promise<void> {
   const scroller = scrollParent(props.root)
@@ -363,7 +407,10 @@ async function fold(question: ShownSideQuestion): Promise<void> {
   scroller.scrollTop += after - target
 }
 
-/** The words or the margin's mark clicked: the card, open again, comes into view and takes the focus. */
+/**
+ * The words or the margin's mark clicked: the card, open again, comes into view
+ * and takes the focus.
+ */
 async function reveal(question: ShownSideQuestion): Promise<void> {
   if (question.folded)
     props.asking?.fold(question.id, false)
@@ -391,16 +438,25 @@ watch(questions, (shown) => {
 
 const layer = ref<HTMLElement>()
 const markers = shallowRef<MarkerGroup[]>([])
-/** The outline of each picture a comment, a side question or the box stands on, over the list. */
+/**
+ * The outline of each picture a comment, a side question or the box stands on,
+ * over the list.
+ */
 const outlines = shallowRef<{ key: string; kind: MarkKind; top: number; left: number; width: number; height: number }[]>([])
 const boxSpot = shallowRef<Spot | null>(null)
 /** Each mark's live range, for the pointer to find it. */
-/** Each mark's words, static (`liveOf`): a move of the list in the page leaves them where they are. */
+/**
+ * Each mark's words, static (`liveOf`): a move of the list in the page leaves
+ * them where they are.
+ */
 let hits: { id: string; range: StaticRangeInit }[] = []
 let askHits: { id: string; range: StaticRangeInit }[] = []
 const owner = Symbol('reply-comments')
 
-/** Under the range's last line, its left edge kept inside the list for a box `boxWidth` wide. */
+/**
+ * Under the range's last line, its left edge kept inside the list for a box
+ * `boxWidth` wide.
+ */
 function spotUnder(words: Range | StaticRangeInit, base: DOMRect, boxWidth: number): Spot {
   const range = liveOf(words) ?? document.createRange()
   const rects = [...range.getClientRects()]
@@ -445,7 +501,8 @@ function measure(): void {
   }
   const open = card.value?.ids ?? sheet.value?.ids ?? []
   for (const comment of marked.value) {
-    // A block that no longer holds the text or the picture it quotes shows no mark.
+    // A block that no longer holds the text or the picture it quotes shows no
+    // mark.
     const range = heldRange(comment)
     if (!range)
       continue
@@ -457,7 +514,8 @@ function measure(): void {
     nextHits.push({ id: comment.id, range: staticOf(range) })
     groupAt(at(range, comment.picture)).comments.push(comment)
   }
-  // As a comment's: words or a picture the block no longer holds show no mark, and no card.
+  // As a comment's: words or a picture the block no longer holds show no mark,
+  // and no card.
   const placed = questions.value.map((question) => ({ question, range: heldRange(question) }))
   placeHosts(placed)
   for (const { question, range } of placed) {
@@ -529,7 +587,8 @@ function onPointerLeave(): void {
 }
 
 function onClick(event: MouseEvent): void {
-  // A picture's click opens it in the viewer, as anywhere; its card shows under the pointer and from its mark.
+  // A picture's click opens it in the viewer, as anywhere; its card shows under
+  // the pointer and from its mark.
   if (!window.getSelection()?.isCollapsed || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card], a, button, img'))
     return
   const asking = askAt(event.clientX, event.clientY)
@@ -616,7 +675,8 @@ onBeforeUnmount(() => {
   hosts.clear()
 })
 
-// A side question that left the list, as a branch switch hides it, takes its place in the reply with it.
+// A side question that left the list, as a branch switch hides it, takes its
+// place in the reply with it.
 watch(questions, (shown) => {
   for (const [id, host] of hosts) {
     if (!shown.some((question) => question.id === id)) {
@@ -630,7 +690,10 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
 </script>
 
 <template>
-  <!-- What stands over the replies: the margin's comment marks, the card and the box. -->
+  <!--
+    What stands over the replies: the margin's comment marks, the card and the
+    box.
+  -->
   <div ref="layer" data-reply-comments class="pointer-events-none absolute inset-0 z-20">
     <div
       v-for="frame in outlines"

@@ -27,7 +27,9 @@ export function useStreamReveal(
   )
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  /** Shows `text` up to `end`, the part not shown before as a step when `fade`. */
+  /**
+   * Shows `text` up to `end`, the part not shown before as a step when `fade`.
+   */
   function show(end: number, text: string, fade = true): void {
     const start = alignShown(shown.value, text).length
     const now = performance.now()
@@ -37,7 +39,8 @@ export function useStreamReveal(
   }
 
   // Whether the text was streaming when it last changed: the end of a stream
-  // fades what remains, a text that changes outside one (read whole, edited) shows as it is.
+  // fades what remains, a text that changes outside one (read whole, edited)
+  // shows as it is.
   let live = toValue(streaming)
 
   function step(): void {

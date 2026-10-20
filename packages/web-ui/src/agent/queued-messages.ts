@@ -17,7 +17,10 @@ export interface QueuedRenderBlock {
   automation?: AutomationMark
 }
 
-/** The queue's messages as the list shows them, under its divider: a message row for each entry, drawn from its content. */
+/**
+ * The queue's messages as the list shows them, under its divider: a message row
+ * for each entry, drawn from its content.
+ */
 export function queuedMessagesToRenderBlocks(queue: readonly QueuedMessage[]): QueuedRenderBlock[] {
   return queue.map((item) => ({
     type: 'queued_message' as const,

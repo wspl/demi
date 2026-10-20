@@ -47,7 +47,8 @@ test('a child’s relative links and images read against its directory, and open
   })
   expect(html).toContain('<a href="/slots/2/src/cookie.ts" data-file-link class="icon-link">')
   expect(html).toContain('<img src="/raw?path=/slots/2/out/chart.png" alt="chart" data-host-file="/slots/2/out/chart.png" />')
-  // The same message of the conversation's own agent reads against the conversation's.
+  // The same message of the conversation's own agent reads against the
+  // conversation's.
   expect(renderMarkdown('[cookie](src/cookie.ts)', { files: conversation })).toContain('<a href="/work/src/cookie.ts"')
 
   childMessageFiles(conversation, '/slots/2').open?.({ path: '/slots/2/src/cookie.ts', line: 3 })

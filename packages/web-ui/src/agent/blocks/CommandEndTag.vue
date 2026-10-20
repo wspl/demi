@@ -6,11 +6,13 @@ import RunEndTag from './RunEndTag.vue'
 import { t } from '../locales/text'
 
 /**
- * A row's mark of a command that went wrong, after its title: red Failed
- * with the exit code in its tooltip, grey Stopping… while a stop waits for
- * the command's runner to end it, grey Waiting for MacBook Pro while its
- * start waits for its offline Host, grey Stopped, or grey Lost with why in
- * its tooltip.
+ * A row's mark of a command that went wrong, after its title:
+ *
+ * - red Failed, with the exit code in its tooltip
+ * - grey Stopping… while a stop waits for the command's runner to end it
+ * - grey Waiting for MacBook Pro while its start waits for its offline Host
+ * - grey Stopped
+ * - grey Lost, with why in its tooltip
  */
 const props = defineProps<{ mark: CommandEndMark }>()
 

@@ -7,7 +7,10 @@ export interface CachedConversation {
   opening: Promise<void>
 }
 
-/** Keeps opened conversations alive across navigation until explicitly invalidated. */
+/**
+ * Keeps opened conversations alive across navigation until explicitly
+ * invalidated.
+ */
 export class ConversationCache {
   private readonly entries = shallowReactive(new Map<string, CachedConversation>())
 

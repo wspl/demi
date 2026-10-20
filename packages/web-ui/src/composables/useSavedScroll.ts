@@ -9,7 +9,10 @@ const scrollPositionSchema = z.object({
 })
 type ScrollPosition = z.infer<typeof scrollPositionSchema>
 
-/** Restore a scroll viewport by location key, optionally anchored to stable content. */
+/**
+ * Restore a scroll viewport by location key, optionally anchored to stable
+ * content.
+ */
 export function useSavedScroll(
   viewport: Ref<HTMLElement | undefined>,
   key: () => string
@@ -75,7 +78,8 @@ export function useSavedScroll(
 
     onCleanup(() => {
       disposed = true
-      // Content may already have changed; preserve the last scroll event's snapshot.
+      // Content may already have changed; preserve the last scroll event's
+      // snapshot.
       finishRestoration()
       element.removeEventListener('scroll', save)
       element.removeEventListener('wheel', finishRestoration)
@@ -96,7 +100,8 @@ export function useSavedScroll(
 
     restore()
     frame = requestAnimationFrame(restore)
-    // Allow initial fonts and folded content to settle without overwriting the saved position.
+    // Allow initial fonts and folded content to settle without overwriting the
+    // saved position.
     observer = new ResizeObserver(restore)
     for (const child of element.children) {
       observer.observe(child)
@@ -118,7 +123,8 @@ export function savedScrollPosition(key: string): ScrollPosition | null {
     )
     return saved.success ? saved.data : null
   } catch {
-    // Storage may be unavailable, or hold text that is not JSON; start at the top.
+    // Storage may be unavailable, or hold text that is not JSON; start at the
+    // top.
     return null
   }
 }

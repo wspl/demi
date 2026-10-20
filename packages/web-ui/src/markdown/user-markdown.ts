@@ -36,7 +36,8 @@ const dialect = markdownReader({
     reflink() {
       return undefined
     },
-    // A bare URL is a link only with `http` or `https`: not `www.` or an email address.
+    // A bare URL is a link only with `http` or `https`: not `www.` or an email
+    // address.
     url(src) {
       return /^https?:\/\//i.test(src) ? false : undefined
     },
@@ -59,7 +60,10 @@ const MARK_ORDER = ['link', 'bold', 'italic', 'strike', 'code']
 
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/
 
-/** The fence a line opens a code block with: its indent, its run of backticks or tildes, and the info string after it. */
+/**
+ * The fence a line opens a code block with: its indent, its run of backticks or
+ * tildes, and the info string after it.
+ */
 function fenceOf(line: string): { indent: number; fence: string; info: string } | null {
   const open = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line)
   // A backtick fence's info string has no backtick: "```a`b" is text.
@@ -80,7 +84,10 @@ interface CodeBlock {
   lines: string[]
 }
 
-/** A message's lines, cut into runs of text and fenced code blocks; a fence left open runs to the end. */
+/**
+ * A message's lines, cut into runs of text and fenced code blocks; a fence left
+ * open runs to the end.
+ */
 function splitBlocks(markdown: string): (TextBlock | CodeBlock)[] {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
   const blocks: (TextBlock | CodeBlock)[] = []
@@ -102,7 +109,8 @@ function splitBlocks(markdown: string): (TextBlock | CodeBlock)[] {
       if (close && close[1]![0] === open.fence[0] && close[1]!.length >= open.fence.length) {
         break
       }
-      // A fence indented by n spaces takes up to n spaces off each of its lines.
+      // A fence indented by n spaces takes up to n spaces off each of its
+      // lines.
       code.lines.push(lines[index]!.replace(new RegExp(`^ {0,${open.indent}}`), ''))
     }
     blocks.push(code)
@@ -229,7 +237,8 @@ export function plainUserMarkdown(text: string): string {
 function codeBlockMarkdown(block: JSONContent): string {
   const text = (block.content ?? []).map((node) => node.text ?? '').join('').replaceAll(ATTACHMENT_MARK, '')
   const info = String(block.attrs?.['language'] ?? '')
-  // A backtick fence cannot carry a backtick in its info string; a tilde fence can.
+  // A backtick fence cannot carry a backtick in its info string; a tilde fence
+  // can.
   const char = info.includes('`') ? '~' : '`'
   const fence = char.repeat(Math.max(3, longestRun(text, char) + 1))
   return `${fence}${info}\n${text ? `${text}\n` : ''}${fence}`
@@ -280,7 +289,8 @@ function paragraphMarkdown<Attachment>(content: readonly JSONContent[], attachme
     }
   }
   endLine()
-  // A line of text that looks like a fence would open one: its first fence character is escaped.
+  // A line of text that looks like a fence would open one: its first fence
+  // character is escaped.
   return lines.map((each) => {
     const open = fenceOf(each)
     return open ? `${each.slice(0, open.indent)}\\${each.slice(open.indent)}` : each
@@ -408,7 +418,8 @@ function writeRun(run: readonly JSONContent[], escape: boolean): string {
       keep += 1
     }
     close(open.length - keep)
-    // A mark that goes on longer opens first, so it can stay open past the shorter ones.
+    // A mark that goes on longer opens first, so it can stay open past the
+    // shorter ones.
     const opening = marks
       .filter((mark) => !open.some((each) => markKey(each) === markKey(mark)))
       .sort((a, b) =>
@@ -461,7 +472,10 @@ function imageMarkdown(node: JSONContent): string {
   return `![${alt}](${destination(String(node.attrs?.['src'] ?? ''), node.attrs?.['title'])})`
 }
 
-/** Code as written between backticks: a fence longer than any run inside, padded where an edge would be read away. */
+/**
+ * Code as written between backticks: a fence longer than any run inside, padded
+ * where an edge would be read away.
+ */
 function codeSpan(text: string): string {
   const fence = '`'.repeat(longestRun(text, '`') + 1)
   const pad = text.startsWith('`') || text.endsWith('`')
@@ -544,7 +558,10 @@ export function typedFormat(
   }
 }
 
-/** The info string of the code block a line of text opens, or null for a line that opens none. */
+/**
+ * The info string of the code block a line of text opens, or null for a line
+ * that opens none.
+ */
 export function fenceInfo(line: string): string | null {
   return fenceOf(line)?.info ?? null
 }
@@ -554,7 +571,10 @@ export function closesFence(line: string): boolean {
   return FENCE_CLOSE.test(line)
 }
 
-/** The ranges of bare URLs in a run of plain text, which the editor shows as links. */
+/**
+ * The ranges of bare URLs in a run of plain text, which the editor shows as
+ * links.
+ */
 export function bareUrls(text: string): { from: number; to: number; href: string }[] {
   const ranges: { from: number; to: number; href: string }[] = []
   let offset = 0

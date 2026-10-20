@@ -1,12 +1,11 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A message the backend refused shows Not Delivered under it with the
-// cause, and, for a failure inside the backend, the request ID the user
-// quotes; the failure carries no button, and the message's own hover actions
-// offer Copy, Edit and Delete, and the dock Retry while sending again can
-// deliver one. A Vue app on a happy-dom page; a
-// few ms besides the page's start.
+// A message the backend refused shows Not Delivered under it with the cause
+// and, for a failure inside the backend, the request ID the user quotes. The
+// failure carries no button. The message's own hover actions offer Copy, Edit
+// and Delete, and the dock Retry while sending again can deliver one. A Vue app
+// on a happy-dom page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -24,7 +23,10 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-/** What the rows asked for, in order: Edit or Delete by the message's id, or the dock's Retry. */
+/**
+ * What the rows asked for, in order: Edit or Delete by the message's id, or the
+ * dock's Retry.
+ */
 let asked: string[] = []
 
 async function mount(render: () => ReturnType<typeof h>): Promise<HTMLElement> {

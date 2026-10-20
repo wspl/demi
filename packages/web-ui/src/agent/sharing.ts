@@ -4,13 +4,15 @@ import { errorCode, reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
 import { t } from './locales/text'
 
-/** What a share holds: the conversation, or the answer that the text block `blockId` ends. */
+/**
+ * What a share holds: the conversation, or the answer that the text block
+ * `blockId` ends.
+ */
 export type ShareTarget = { kind: 'conversation' } | { kind: 'answer'; blockId: string }
 
 /** A share the conversation has, as its state lists it. */
 export type ExistingShare = { kind: 'conversation'; token: string } | { kind: 'answer'; token: string; blockId: string }
 
-/** A share's link. */
 export interface ShareLink {
   token: string
   url: string
@@ -18,9 +20,13 @@ export interface ShareLink {
 
 /** What the host does for the share dialog, over the owner's share routes. */
 export interface ShareService {
-  /** The link of the share `token`, for a share the conversation holds already. */
+  /**
+   * The link of the share `token`, for a share the conversation holds already.
+   */
   link(token: string): string
-  /** The conversation's or the answer's share: the existing one, or a new one. */
+  /**
+   * The conversation's or the answer's share: the existing one, or a new one.
+   */
   create(target: ShareTarget): Promise<ShareLink>
   /** Moves the conversation's share to now under the same token. */
   update(token: string): Promise<ShareLink>
@@ -33,7 +39,10 @@ export interface AnswerShare {
   start: () => void
 }
 
-/** Whether `existing`, a share or a target, is the share of `target`: the conversation's, or the answer's of that block. */
+/**
+ * Whether `existing`, a share or a target, is the share of `target`: the
+ * conversation's, or the answer's of that block.
+ */
 export function holdsTarget(existing: ShareTarget, target: ShareTarget): boolean {
   return existing.kind === target.kind && (existing.kind === 'conversation' || (target.kind === 'answer' && existing.blockId === target.blockId))
 }
@@ -52,18 +61,20 @@ export type SharePhase =
 export type ShownShare = { target: ShareTarget } & SharePhase
 
 /**
- * The flow of the share dialog, one for a session. `start(target)` opens the
- * dialog at once: on the share the conversation has already, or on a new one it
- * makes there, Creating link… until its link stands, already copied. A failure
- * to make it stays in the dialog with Try Again (`retry`); the dialog's Copy
- * Link, Update Link and Stop Sharing act on the share shown, and their failures
- * are toasts. The host's `service` answers each step; absent, nothing can be
- * shared.
+ * The flow of the share dialog, one for a session.
  *
- * `start` and `retry` run inside the click that asks for the link: they put
- * the link on the clipboard there, as an item whose text is still being
- * made, since Safari lets a page write the clipboard only from a click and
- * not after the request it waits for.
+ * - `start(target)` opens the dialog at once: on the share the conversation has
+ *   already, or on a new one it makes there, Creating link… until its link
+ *   stands, already copied.
+ * - A failure to make it stays in the dialog with Try Again (`retry`).
+ * - The dialog's Copy Link, Update Link and Stop Sharing act on the share
+ *   shown, and their failures are toasts.
+ * - The host's `service` answers each step; absent, nothing can be shared.
+ *
+ * `start` and `retry` run inside the click that asks for the link: they put the
+ * link on the clipboard there, as an item whose text is still being made, since
+ * Safari lets a page write the clipboard only from a click and not after the
+ * request it waits for.
  */
 export function useShare(service: () => ShareService | undefined, existing: () => readonly ExistingShare[]) {
   /** The share the dialog shows; kept while it fades out. */
@@ -71,7 +82,10 @@ export function useShare(service: () => ShareService | undefined, existing: () =
   const isOpen = ref(false)
   const { copy, copyWhenMade, copied } = useCopy(() => (shown.value?.status === 'ready' ? shown.value.url : undefined))
 
-  /** Makes the share of `target` in the dialog and copies its link once it stands. */
+  /**
+   * Makes the share of `target` in the dialog and copies its link once it
+   * stands.
+   */
   function make(host: ShareService, target: ShareTarget): void {
     const attempt: ShownShare = { target, status: 'creating' }
     shown.value = attempt
@@ -79,7 +93,8 @@ export function useShare(service: () => ShareService | undefined, existing: () =
     void copyWhenMade(made.then((link) => link.url))
     made.then(
       (link) => {
-        // A later Share replaced what the dialog shows: this answer is no one's.
+        // A later Share replaced what the dialog shows: this answer is no
+        // one's.
         if (shown.value === attempt) {
           shown.value = { target, status: 'ready', token: link.token, url: link.url }
         }

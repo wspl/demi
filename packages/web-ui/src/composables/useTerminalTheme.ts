@@ -30,7 +30,10 @@ export interface TerminalTheme {
   brightWhite: string
 }
 
-/** Dark: body text on `--surface`. Brights are lighter, still clear of the ground. */
+/**
+ * Dark: body text on `--surface`. Brights are lighter, still clear of the
+ * ground.
+ */
 const darkTheme: TerminalTheme = {
   background: '#171717',
   foreground: '#d4d4d4',
@@ -57,7 +60,9 @@ const darkTheme: TerminalTheme = {
   brightWhite: '#f5f5f5',
 }
 
-/** Light: brights are darker and more saturated, not washed toward the paper. */
+/**
+ * Light: brights are darker and more saturated, not washed toward the paper.
+ */
 const lightTheme: TerminalTheme = {
   background: '#f9fafb',
   foreground: '#404550',
@@ -93,7 +98,10 @@ export function cssColorToRgba(color: string, alpha: number): string {
   return `rgba(${Number(match[1])}, ${Number(match[2])}, ${Number(match[3])}, ${alpha})`
 }
 
-/** How a span is drawn: its color as `rgb(r, g, b)`, and whether it is italic and bold. */
+/**
+ * How a span is drawn: its color as `rgb(r, g, b)`, and whether it is italic
+ * and bold.
+ */
 interface ProbedStyle {
   color: string
   italic: boolean
@@ -115,7 +123,8 @@ function probeStyles<T>(root: Element, values: readonly T[], dress: (probe: HTML
     root.appendChild(probe)
     return probe
   })
-  // Read while the probes are in the page: a removed element has no computed style.
+  // Read while the probes are in the page: a removed element has no computed
+  // style.
   const computed = probes.map((probe) => {
     const style = getComputedStyle(probe)
     return { color: style.color, italic: style.fontStyle === 'italic', bold: Number(style.fontWeight) >= 600 }
@@ -134,14 +143,20 @@ function probeStyles<T>(root: Element, values: readonly T[], dress: (probe: HTML
   })
 }
 
-/** CSS colors as `rgb(r, g, b)`, whatever notation each is written in (`probeStyles`). */
+/**
+ * CSS colors as `rgb(r, g, b)`, whatever notation each is written in
+ * (`probeStyles`).
+ */
 function resolveCssColors(root: Element, values: readonly string[]): string[] {
   return probeStyles(root, values, (probe, value) => {
     probe.style.color = value
   }).map((style) => style.color)
 }
 
-/** A CSS `rgb()` color as the escape sequence that sets it as the foreground, or nothing for a color it cannot read. */
+/**
+ * A CSS `rgb()` color as the escape sequence that sets it as the foreground, or
+ * nothing for a color it cannot read.
+ */
 export function cssColorToAnsiForeground(color: string): string {
   const match = color.match(RGB)
   if (!match)

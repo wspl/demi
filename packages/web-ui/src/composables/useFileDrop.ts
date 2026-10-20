@@ -7,23 +7,33 @@ export function transferHasFiles(transfer: DataTransfer | null | undefined): boo
 }
 
 export interface FileDropOptions {
-  /** Whether drops are taken now; while false a drag passes by as it would over any element. */
+  /**
+   * Whether drops are taken now; while false a drag passes by as it would over
+   * any element.
+   */
   enabled?: MaybeRefOrGetter<boolean>
-  /** Each move of the drag over the target, for a target that picks a spot under the pointer. */
+  /**
+   * Each move of the drag over the target, for a target that picks a spot under
+   * the pointer.
+   */
   over?: (event: DragEvent) => void
-  /** The drag is no longer over the target: it left, or it dropped, just before `drop`. */
+  /**
+   * The drag is no longer over the target: it left, or it dropped, just before
+   * `drop`.
+   */
   leave?: () => void
   drop: (event: DragEvent) => void
 }
 
 /**
  * A drag carrying files over `target`: whether one is there, where it moves,
- * when it goes, and its drop, taken as a copy. Every element under the pointer sends its
- * own enter and leave, so the drag is over while any element it entered is
- * still inside the target: an element removed under the pointer never sends
- * its leave. (VueUse's `useDropZone` counts enters against leaves instead,
- * and stays lit once a row it entered is gone, as a tree's rows go when a
- * folder under the drag opens.)
+ * when it goes, and its drop, taken as a copy.
+ *
+ * Every element under the pointer sends its own enter and leave, so the drag is
+ * over while any element it entered is still inside the target: an element
+ * removed under the pointer never sends its leave. (VueUse's `useDropZone`
+ * counts enters against leaves instead, and stays lit once a row it entered is
+ * gone, as a tree's rows go when a folder under the drag opens.)
  */
 export function useFileDrop(
   target: MaybeRefOrGetter<HTMLElement | null | undefined>,

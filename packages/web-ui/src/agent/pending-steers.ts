@@ -48,7 +48,10 @@ export interface DeliveryFailureRow {
   submission: PendingSubmissionState
 }
 
-/** A session-level failure, told at the tail of the transcript, in the tail row's place. */
+/**
+ * A session-level failure, told at the tail of the transcript, in the tail
+ * row's place.
+ */
 export interface SessionFailureRow {
   type: 'session_failure'
   id: 'session-failure'
@@ -70,9 +73,15 @@ export interface StepsNotSharedRow {
 export type MessageListBlock =
   HeldBlock | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
   PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow | StepsNotSharedRow |
-  /** A message on its way; `startsTurn` when it is a steer that starts the turn, which reads as the user's next message. */
+  /**
+   * A message on its way; `startsTurn` when it is a steer that starts the turn,
+   * which reads as the user's next message.
+   */
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState; startsTurn: boolean } |
-  /** The edge of a window that does not reach its transcript's start or end, which shows its next page coming. */
+  /**
+   * The edge of a window that does not reach its transcript's start or end,
+   * which shows its next page coming.
+   */
   { type: 'history_edge'; id: 'history-before' | 'history-after' }
 
 export function pendingSteersToRenderBlocks(

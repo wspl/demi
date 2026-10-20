@@ -5,10 +5,12 @@ import { windowNameInSentence } from '../settings/window-name'
 
 /**
  * The neutral line an agent's move to another account reads as
- * (`crates/backend-providers/src/llm/rotation.rs`): "alex@example.com reached its 5-hour
- * limit, resetting at 9:00 PM. Continuing with sam@example.com.", the
- * window named in the viewer's language as a sentence names it, the reset in
- * their time zone, and each part the block does not know left out.
+ * (`crates/backend-providers/src/llm/rotation.rs`): "alex@example.com reached
+ * its 5-hour limit, resetting at 9:00 PM. Continuing with sam@example.com."
+ *
+ * The line names the window in the viewer's language as a sentence names it,
+ * and the reset in their time zone. It leaves out each part the block does not
+ * know.
  */
 export function accountSwitchText(
   block: Pick<AccountSwitchBlock, 'from' | 'to' | 'window' | 'resetsAt'>,

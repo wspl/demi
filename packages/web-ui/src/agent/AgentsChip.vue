@@ -20,8 +20,10 @@ const label = computed(() => agentsChipLabel(props.agents))
 </script>
 
 <template>
-  <!-- The chip is its window's own control: a press on it is not one outside the session's windows
-       (`window-stack.ts`). -->
+  <!--
+    The chip is its window's own control: a press on it is not one outside the
+    session's windows (`window-stack.ts`).
+  -->
   <SessionDockChip
     v-bind="{ [KEEPS_WINDOWS]: '' }"
     v-if="label"

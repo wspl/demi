@@ -32,7 +32,10 @@ declare global {
       steps: Vue.ShallowRef<{ start: number; end: number; at: number }[]>
       /** The source of each render, in order. */
       renders: string[]
-      /** Shows `text`, as the stream's next step does, and waits for the page to follow. */
+      /**
+       * Shows `text`, as the stream's next step does, and waits for the page to
+       * follow.
+       */
       show(text: string, streaming?: boolean): Promise<void>
     }
   }
@@ -67,7 +70,10 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await browser?.close()
   })
 
-  /** A page with a reply rendering a block at a time, its text empty and streaming. */
+  /**
+   * A page with a reply rendering a block at a time, its text empty and
+   * streaming.
+   */
   async function page(): Promise<Page> {
     const opened = await browser.newPage()
     // A page of an origin, as the renderer's modules read the page's storage.
@@ -110,7 +116,10 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     return opened
   }
 
-  /** An essay of `count` paragraphs, as a model writes one, each numbered to the same width. */
+  /**
+   * An essay of `count` paragraphs, as a model writes one, each numbered to the
+   * same width.
+   */
   function essay(count: number): string {
     return Array.from({ length: count }, (_, n) => `Paragraph ${String(n).padStart(4, '0')} weighs **the matter** at some length, as an essay does, and goes on.`).join('\n\n')
   }

@@ -195,7 +195,8 @@ test('Regenerate sends the message unchanged without the editor; a lost answer l
   }
   const request = unchangedEditRequest(block, { epoch: 'epoch', revision: 4 })
   await regenerateMessage(host, request)
-  // Sent as it is, an image alone without a line of text added, and never shown in the editor.
+  // Sent as it is, an image alone without a line of text added, and never shown
+  // in the editor.
   expect(requests[0]!.content).toEqual(block.content)
   expect(phases).toEqual(['regenerating'])
   expect(host.get()).toEqual({ phase: 'uncertain', request, regenerate: true })

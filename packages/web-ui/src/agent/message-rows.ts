@@ -11,12 +11,17 @@ import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
 import { getVisibleBlocks } from './visible-blocks'
 import { workGrouping } from './work-groups'
 
-/** What a transcript list shows its rows from, as `AgentMessageList` takes it. */
+/**
+ * What a transcript list shows its rows from, as `AgentMessageList` takes it.
+ */
 export interface MessageRowsSource {
   conversationId: string
   blocks: readonly Block[]
   pendingCalls?: readonly PendingCall[]
-  /** When the agent began to wait for the model's answer, as the server tells it; null when it waits for none. */
+  /**
+   * When the agent began to wait for the model's answer, as the server tells
+   * it; null when it waits for none.
+   */
   waitingSince?: number | null
   pendingSteers: readonly PendingSteerMessage[]
   queue: readonly QueuedMessage[]
@@ -28,12 +33,17 @@ export interface MessageRowsSource {
   failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
-  /** The waiting messages whose Recall is on its way, by id, which show nowhere. */
+  /**
+   * The waiting messages whose Recall is on its way, by id, which show nowhere.
+   */
   removing?: readonly string[]
   atStart: boolean
   atEnd: boolean
   latest: boolean
-  /** The runs of steps a share does not hold, each after the row of the block it follows. */
+  /**
+   * The runs of steps a share does not hold, each after the row of the block it
+   * follows.
+   */
   stepsNotShared?: readonly StepsNotSharedRow[]
 }
 
@@ -58,7 +68,10 @@ export interface MessageRows {
   footerIds: ComputedRef<Set<string>>
 }
 
-/** A recovery this page asked for: the record it continues from, and the blocks the transcript showed at the press. */
+/**
+ * A recovery this page asked for: the record it continues from, and the blocks
+ * the transcript showed at the press.
+ */
 interface Recovery {
   record: string
   shown: ReadonlySet<string>
@@ -67,31 +80,35 @@ interface Recovery {
 /**
  * The rows a transcript list shows and what closes them, derived from the
  * conversation's state: the transcript's blocks with the run of steps grouped,
- * then the tail, the tail row under them, and the footers. A row is named by
- * `rowKey`, which it keeps as it changes form: the message being sent and the
- * message confirmed, a run from its first step to its end. Whatever replaces a
- * row of another name takes its key (`keyOf`): the step that ends a wait, the
- * Requesting row of a Continue, the answer that follows thinking without text.
- * A run's row holds the steps that ended; a step that still runs is a row of
- * its own under it, in the tail row's place, and once it ended the turn waits
- * for the model in a Requesting row under the run. The messages that wait, the
- * steers and the queue, stay below the turn: the tail row stands above them,
- * and its kind is read from the transcript alone.
+ * then the tail, the tail row under them, and the footers.
  *
- * Continue after a Stop and Resume after an error take the place of the
- * record they continue from: from the press, the record's row is the
- * Requesting row, until the turn shows what comes after it, or the request
- * is refused and the record shows again. A step that comes after it joins
- * the run above, as the backend stores it, and the Requesting row gives
- * way: the one change that shrinks the list, which the user asked for.
+ * A row is named by `rowKey`, which it keeps as it changes form: the message
+ * being sent and the message confirmed, a run from its first step to its end.
+ * Whatever replaces a row of another name takes its key (`keyOf`): the step
+ * that ends a wait, the Requesting row of a Continue, the answer that follows
+ * thinking without text.
+ *
+ * A run's row holds the steps that ended. A step that still runs is a row of
+ * its own under it, in the tail row's place, and once it ended the turn waits
+ * for the model in a Requesting row under the run.
+ *
+ * The messages that wait, the steers and the queue, stay below the turn: the
+ * tail row stands above them, and its kind is read from the transcript alone.
+ *
+ * Continue after a Stop and Resume after an error take the place of the record
+ * they continue from. From the press, the record's row is the Requesting row,
+ * until the turn shows what comes after it, or the request is refused and the
+ * record shows again. A step that comes after it joins the run above, as the
+ * backend stores it, and the Requesting row gives way: the one change that
+ * shrinks the list, which the user asked for.
  */
 export function useMessageRows(source: () => MessageRowsSource): MessageRows {
-  // The transcript as plain data: a block that changes is replaced, as is
-  // the list that holds it (`applyTranscriptPatches`), so a new list is the
-  // one change to follow, and reading each block through a reactive proxy
-  // would track every field of a long transcript at every change. A list
-  // made from a reactive one holds proxies of the blocks it kept, so each
-  // block is unwrapped too, which keeps an unchanged block the same object.
+  // The transcript as plain data: a block that changes is replaced, as is the
+  // list that holds it (`applyTranscriptPatches`), so a new list is the one
+  // change to follow. Reading each block through a reactive proxy would track
+  // every field of a long transcript at every change. A list made from a
+  // reactive one holds proxies of the blocks it kept, so each block is
+  // unwrapped too, which keeps an unchanged block the same object.
   const blocks = computed(() => toRaw(source().blocks).map(toRaw))
   const visibleBlocks = computed(() => getVisibleBlocks(blocks.value))
 
@@ -150,7 +167,8 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
       elsewhere: new Set([...undelivered.value].flatMap(([id, place]) => place === 'end' ? [] : [id])),
     })
   })
-  // The calls the model is writing are the newest steps of the work: each is a row of its own after its run.
+  // The calls the model is writing are the newest steps of the work: each is a
+  // row of its own after its run.
   const pendingCallRows = computed(() => tail.value.turn.filter((block) => block.type === 'pending_call'))
   const otherTurnBlocks = computed(() => tail.value.turn.filter((block) => block.type !== 'pending_call'))
   // Until the turn shows something it did not show at the press, the
@@ -240,7 +258,8 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
       const sent = rowMessageId(row)
       return sent === undefined ? [row] : [...before.get(sent) ?? [], row]
     })
-    // One whose message shows in no row after all stands at the end of the transcript.
+    // One whose message shows in no row after all stands at the end of the
+    // transcript.
     const present = new Set([...sharedRows.value, ...tailRows].flatMap((row) => rowMessageId(row) ?? []))
     const unplaced = [...before].flatMap(([sent, list]) => present.has(sent) ? [] : list)
     return [

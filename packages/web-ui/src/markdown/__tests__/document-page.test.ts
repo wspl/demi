@@ -17,7 +17,10 @@ import type { renderMarkdownDocument as Render } from '../document'
 declare global {
   interface Window {
     renderMarkdownDocument: typeof Render
-    /** Renders `markdown` into the page's document, at a width of 600 px, and waits for its images. */
+    /**
+     * Renders `markdown` into the page's document, at a width of 600 px, and
+     * waits for its images.
+     */
     show(markdown: string, theme: 'light' | 'dark'): Promise<string[]>
   }
 }
@@ -45,7 +48,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     if (!build.success)
       throw new AggregateError(build.logs, 'The page did not build')
     script = await build.outputs[0]!.text()
-    // The product's stylesheet as the web app's build makes it, Tailwind's preflight first.
+    // The product's stylesheet as the web app's build makes it, Tailwind's
+    // preflight first.
     const styles = fileURLToPath(new URL('../../styles/', import.meta.url))
     const compiler = await compile(`@import 'tailwindcss';\n@import './base.css';`, { base: styles, onDependency: () => {} })
     css = compiler.build([])
@@ -55,7 +59,10 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await browser?.close()
   })
 
-  /** A page with an empty document; `system` is the color scheme the system asks for. */
+  /**
+   * A page with an empty document; `system` is the color scheme the system asks
+   * for.
+   */
   async function page(system: 'light' | 'dark' = 'light'): Promise<Page> {
     const opened = await browser.newPage({ colorScheme: system })
     await opened.route('https://demi.test/', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
@@ -76,7 +83,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
       window.show = async (markdown, theme) => {
         const rendered = render(markdown, { path: '/work/README.md', root: '/work' }, theme)
         article.innerHTML = rendered.html
-        // A Host image's address, as the File view gives it: here the route's, by its file's name.
+        // A Host image's address, as the File view gives it: here the route's,
+        // by its file's name.
         for (const image of article.querySelectorAll('img[data-host-file]'))
           image.setAttribute('src', `https://img.test/${image.getAttribute('data-host-file')!.split('/').pop()}`)
         await Promise.all([...article.querySelectorAll('img')].map((image) => image.decode().catch(() => {})))
@@ -86,7 +94,10 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     return opened
   }
 
-  /** Where each image of the document stands, relative to the document, by its alt text. */
+  /**
+   * Where each image of the document stands, relative to the document, by its
+   * alt text.
+   */
   async function boxes(opened: Page): Promise<Record<string, { left: number; top: number; width: number; height: number; src: string }>> {
     return opened.evaluate(() => {
       const article = document.querySelector('article')!.getBoundingClientRect()
@@ -113,7 +124,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
       '</p>',
     ].join('\n'))
     const { Demi: logo, License: license, Release: release, CI: ci } = await boxes(opened)
-    // 72 px high, as wide as its proportions make it, its middle at the document's.
+    // 72 px high, as wide as its proportions make it, its middle at the
+    // document's.
     expect({ width: logo!.width, height: logo!.height }).toEqual({ width: 240, height: 72 })
     expect(Math.abs(logo!.left + logo!.width / 2 - WIDTH / 2)).toBeLessThanOrEqual(1)
     expect([license, release, ci].map((badge) => [badge!.width, badge!.height])).toEqual([[210, 20], [102, 20], [90, 20]])

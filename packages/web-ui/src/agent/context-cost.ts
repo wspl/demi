@@ -5,9 +5,8 @@ import { t } from './locales/text'
 /**
  * A conversation's cost as the context card shows it
  * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the backend's `GET
- * /conversations/:id/cost`,
- * which the page reads with the conversation as it opens and to which it
- * adds each `cost` frame while the conversation is open.
+ * /conversations/:id/cost`, which the page reads with the conversation as it
+ * opens and to which it adds each `cost` frame while the conversation is open.
  */
 export interface ConversationCostView {
   /** The number of the conversation's ledger rows the cost includes. */
@@ -17,7 +16,10 @@ export interface ConversationCostView {
   calls: CostCall[]
 }
 
-/** The cost of a conversation that has no ledger row yet, as one the page just created. */
+/**
+ * The cost of a conversation that has no ledger row yet, as one the page just
+ * created.
+ */
 export const NO_COST: ConversationCostView = {
   rows: 0,
   totals: {
@@ -64,7 +66,10 @@ function addPrices(a: CostPrice, b: CostPrice): CostPrice {
   }
 }
 
-/** `cost` with the row `addition` adds: its totals, its agent's price and its call. */
+/**
+ * `cost` with the row `addition` adds: its totals, its agent's price and its
+ * call.
+ */
 export function addCost(cost: ConversationCostView, addition: CostAddition): ConversationCostView {
   const totals: CostTotals = {
     inputTokens: cost.totals.inputTokens + addition.totals.inputTokens,
@@ -88,12 +93,12 @@ export function addCost(cost: ConversationCostView, addition: CostAddition): Con
 }
 
 /**
- * What a `cost` frame is to the cost the page holds, by the rows each
- * counts: `next` when its row follows
- * the held ones and the page adds it, `held` when the cost includes it
- * already, as a frame that crossed the read, and `gap` when rows before it
- * are missing, as frames lost while the connection was down, and the page
- * reads the cost again.
+ * What a `cost` frame is to the cost the page holds, by the rows each counts:
+ *
+ * - `next` when its row follows the held ones, and the page adds it
+ * - `held` when the cost includes it already, as a frame that crossed the read
+ * - `gap` when rows before it are missing, as frames lost while the connection
+ *   was down, and the page reads the cost again
  */
 export function costStep(cost: ConversationCostView, addition: CostAddition): 'next' | 'held' | 'gap' {
   if (addition.rows <= cost.rows)
@@ -101,12 +106,18 @@ export function costStep(cost: ConversationCostView, addition: CostAddition): 'n
   return addition.rows === cost.rows + 1 ? 'next' : 'gap'
 }
 
-/** The tokens of a call's prompt: uncached, written to the cache and read from it. */
+/**
+ * The tokens of a call's prompt: uncached, written to the cache and read from
+ * it.
+ */
 function prompt(call: Pick<CostCall, 'inputTokens' | 'cacheWriteTokens' | 'cacheReadTokens'>): number {
   return call.inputTokens + call.cacheWriteTokens + call.cacheReadTokens
 }
 
-/** The share of a call's prompt the vendor read from its cache; 0 for an empty prompt. */
+/**
+ * The share of a call's prompt the vendor read from its cache; 0 for an empty
+ * prompt.
+ */
 export function callHitRate(call: CostCall): number {
   const whole = prompt(call)
   return whole === 0 ? 0 : call.cacheReadTokens / whole
@@ -126,9 +137,9 @@ export function hitRate(calls: readonly CostCall[]): number | null {
 export const CHART_CALLS = 4
 
 /**
- * The most recent turn calls the chart draws, and the cache hit rate counts:
- * a long conversation's whole run would crowd the plot past reading, and
- * what a user checks is whether the cache serves the conversation now.
+ * The most recent turn calls the chart draws, and the cache hit rate counts. A
+ * long conversation's whole run would crowd the plot past reading, and what a
+ * user checks is whether the cache serves the conversation now.
  */
 export const RECENT_CALLS = 50
 
@@ -141,7 +152,10 @@ export function recentCalls(calls: readonly CostCall[]): { calls: readonly CostC
   return { calls: calls.slice(before), before }
 }
 
-/** Whether the conversation made any call: a conversation with none has no Cost section. */
+/**
+ * Whether the conversation made any call: a conversation with none has no Cost
+ * section.
+ */
 export function hasCost(cost: ConversationCostView | null): cost is ConversationCostView {
   if (cost === null)
     return false
@@ -159,10 +173,10 @@ export interface ProfileRow {
 }
 
 /**
- * The Profiles part's rows: the main conversation first, for scale, then
- * the sum of each enabled profile's subagents, largest first. A subagent
- * started with no profile, or with one not in `enabled` (since disabled or
- * deleted), has no row; with no profile row there is no part, and no row.
+ * The Profiles part's rows: the main conversation first, for scale, then the
+ * sum of each enabled profile's subagents, largest first. A subagent started
+ * with no profile, or with one not in `enabled` (since disabled or deleted),
+ * has no row. With no profile row there is no part, and no row.
  */
 export function profileRows(agents: readonly AgentCost[], enabled: readonly string[]): ProfileRow[] {
   const sums = new Map<string, number>()

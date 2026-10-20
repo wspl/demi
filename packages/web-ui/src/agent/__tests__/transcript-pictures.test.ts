@@ -10,7 +10,9 @@ import { createdAt, model } from './agent-harness'
 // viewer steps through: the images the messages show, a Host image by its file,
 // the user's attached files and the media tools returned.
 
-/** The Host's kept files, which a message's Host images show; never read here. */
+/**
+ * The Host's kept files, which a message's Host images show; never read here.
+ */
 const contents: FileContents = {
   url: (path) => `/raw?path=${path}`,
   describe: () => new Promise(() => {}),

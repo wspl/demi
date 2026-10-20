@@ -5,7 +5,9 @@ export function fastServiceTier(model: ModelInfo | null | undefined): ModelServi
   return model?.serviceTiers?.find((tier) => tier.fast) ?? null
 }
 
-/** Fast Mode is on when the session's tier is the selected model's Fast tier. */
+/**
+ * Fast Mode is on when the session's tier is the selected model's Fast tier.
+ */
 export function isFastMode(
   model: ModelInfo | null | undefined,
   serviceTierId: string | null | undefined

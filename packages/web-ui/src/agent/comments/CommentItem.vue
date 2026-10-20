@@ -16,7 +16,10 @@ import CommentBox from './CommentBox.vue'
 const props = defineProps<{
   text: string
   sent: boolean
-  /** The text it is about, shown above it where the list stands away from the reply. */
+  /**
+   * The text it is about, shown above it where the list stands away from the
+   * reply.
+   */
   quote?: string
 }>()
 

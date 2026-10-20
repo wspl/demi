@@ -28,7 +28,8 @@ test('a code the page has no words for reads the neutral line, and the vendor’
   const vendor = 'OpenAI API request failed with HTTP 401: {"error":{"message":"Insufficient balance."}}'
   expect(failureSource(vendor, 'insufficient_quota_xyz', { source: 'http', httpStatus: 401 })).toEqual({ raw: vendor, headers: null, detail: null })
   expect(failureSource(vendor, 'usage_limit', { source: 'stream', upstream: '{"a":1}' })).toEqual({ raw: '{\n  "a": 1\n}', headers: null, detail: null })
-  // Demi's own failure needs no source line; one the page has no words for keeps its text.
+  // Demi's own failure needs no source line; one the page has no words for
+  // keeps its text.
   expect(failureSource('The turn was interrupted.', 'interrupted', undefined)).toEqual({ raw: null, headers: null, detail: null })
   expect(failureSource('An older release’s words.', null, undefined)).toEqual({ raw: null, headers: null, detail: 'An older release’s words.' })
 })
@@ -53,10 +54,10 @@ test('an http record shows its status and the vendor’s reason first, and its h
   expect(failureSource('x', 'permission_denied', { source: 'http', upstream: empty })).toEqual({ raw: 'HTTP 403', headers: null, detail: null })
 })
 
-// A 403 says the vendor knows the credential and refuses the request, so
-// the record never sends the user to sign in again, and an API key entry's
-// refused credential is its key, never a sign-in; the vendor's own words
-// stay under Provider Response.
+// A 403 says the vendor knows the credential and refuses the request, so the
+// record never sends the user to sign in again. An API key entry's refused
+// credential is its key, never a sign-in. The vendor's own words stay under
+// Provider Response.
 test('a key entry’s 403 is a refused request and its 401 a refused key, with the vendor’s text below', () => {
   const now = new Date(2026, 9, 17, 21, 42)
   const onKey = { retryAt: null, signedOut: null, notExposed: null, deviceOffline: null, credential: 'api_key' } as const

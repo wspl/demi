@@ -29,13 +29,15 @@ afterEach(() => {
 test('typing selects the first row from the top whose name starts with the query, case ignored', () => {
   const { typeSelect, selected, type } = setup()
   type('pa')
-  // `package.json` and `packages` both start with `pa`; the first shown wins over `Pages`.
+  // `package.json` and `packages` both start with `pa`; the first shown wins
+  // over `Pages`.
   expect(selected).toEqual(['package.json', 'package.json'])
   type('ckages')
   expect(selected.at(-1)).toBe('packages')
   expect(typeSelect.prefix('packages')).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
   type('x')
-  // Nothing starts with `packagesx`: the selection stays, and the query shows as unmatched.
+  // Nothing starts with `packagesx`: the selection stays, and the query shows
+  // as unmatched.
   expect(selected.at(-1)).toBe('packages')
   expect(typeSelect.query.value).toBe('packagesx')
   expect(typeSelect.matched.value).toBe(false)

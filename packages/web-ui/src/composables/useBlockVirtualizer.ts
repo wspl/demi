@@ -36,7 +36,10 @@ function drawnRows(range: Range, rows: readonly Pick<VirtualItem, 'start' | 'end
   return Array.from({ length: last - first + 1 }, (_, index) => first + index)
 }
 
-/** The rows that lie in the view, by first and last index; the view's first row when none does. */
+/**
+ * The rows that lie in the view, by first and last index; the view's first row
+ * when none does.
+ */
 function rowsInView(rows: readonly Pick<VirtualItem, 'start' | 'end'>[], view: { offset: number, height: number }): Pick<Range, 'startIndex' | 'endIndex'> {
   const firstAfter = rows.findIndex((row) => row.end > view.offset)
   const startIndex = Math.max(0, firstAfter)
@@ -96,7 +99,10 @@ export interface ScrollAnchor {
   scrollTop: number
 }
 
-/** The row in view as the list follows it: where it starts in the list, which rows added or removed above it move. */
+/**
+ * The row in view as the list follows it: where it starts in the list, which
+ * rows added or removed above it move.
+ */
 interface ViewAnchor extends ScrollAnchor {
   start: number
 }
@@ -122,11 +128,17 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   options: BlockVirtualizerOptions<Block> = {},
 ) {
   const keyOf = options.keyOf ?? ((block: Block) => block.id)
-  /** The heights the list measured when it was last shown, by row key, until it measures them again. */
+  /**
+   * The heights the list measured when it was last shown, by row key, until it
+   * measures them again.
+   */
   const heightCache = new Map<string, number>(persistedState?.heightCache ?? [])
 
   const scrollOffset = ref(0)
-  /** How far the list's end lies below the view, as of the last scroll or growth. */
+  /**
+   * How far the list's end lies below the view, as of the last scroll or
+   * growth.
+   */
   const endDistance = ref(0)
   /**
    * How far below the view's top the last block brought into view starts
@@ -153,13 +165,13 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     }
   }
   /**
-   * The rows `drawnRows` draws for where the view is, as a key. The
-   * virtualizer works its rows out again only when its own range of rows in
-   * view, its count or its options change, never as the view moves within a
-   * row taller than it, where the rows drawn beyond the view do change; so
-   * the range extractor is made anew whenever this does. It follows the
-   * scroll offset the list reads and each change the virtualizer announces,
-   * its measurements and the view's size among them.
+   * The rows `drawnRows` draws for where the view is, as a key. The virtualizer
+   * works its rows out again only when its own range of rows in view, its count
+   * or its options change, never as the view moves within a row taller than it,
+   * where the rows drawn beyond the view do change. So the range extractor is
+   * made anew whenever this does. It follows the scroll offset the list reads
+   * and each change the virtualizer announces, its measurements and the view's
+   * size among them.
    */
   const drawn = computed((): string => {
     void scrollOffset.value
@@ -171,7 +183,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     return drawnRows({ ...rowsInView(rows, at), overscan: OVERSCAN, count: rows.length }, rows, at).join()
   })
 
-  /** A range extractor of its own for the rows `key` names, so the virtualizer draws them (`drawn`). */
+  /**
+   * A range extractor of its own for the rows `key` names, so the virtualizer
+   * draws them (`drawn`).
+   */
   function extractorFor(key: string): (range: Range) => number[] {
     return (range) => {
       void key
@@ -224,11 +239,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
 
   /**
-   * Where the list starts when it first has rows, before any is measured:
-   * where the reader left it, or its end. `restoreScroll` then puts the
-   * scroller there and corrects for the rows' real heights; a list that
-   * rendered at its top first would mount a screen of rows only to replace
-   * them, which costs as much as the rows the reader sees.
+   * Where the list starts when it first has rows, before any is measured: where
+   * the reader left it, or its end. `restoreScroll` then puts the scroller
+   * there and corrects for the rows' real heights. A list that rendered at its
+   * top first would mount a screen of rows only to replace them, which costs as
+   * much as the rows the reader sees.
    */
   function placement(): number {
     const anchor = persistedState?.anchor
@@ -240,7 +255,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   const virtualItems = computed(() => virtualizer.value.getVirtualItems())
   const totalSize = computed(() => virtualizer.value.getTotalSize())
 
-  /** The row elements the virtualizer watches, whose later changes of size its resize observer reports. */
+  /**
+   * The row elements the virtualizer watches, whose later changes of size its
+   * resize observer reports.
+   */
   const watched = new WeakSet<HTMLElement>()
 
   /**
@@ -270,20 +288,26 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   let touchStartY = 0
   let furthestDistanceSinceDisengage = 0
 
-  // The reader opened or folded something: until the fold ends, the view
+  // The reader opened or folded something. Until the fold ends, the view
   // neither follows the end nor corrects for the row's new height, so the row
   // they acted on stays put and what follows it moves, as a browser keeps a
-  // <details> the reader opens in place. Then the list is at its end or not
-  // by where it is: it follows only when its end is in view, as scrolling
-  // there re-engages it. The nearness that keeps following while the reader
-  // scrolls does not decide it, since a row opened at the end grows below the
-  // view by less than that, and following would pull its steps up under the
-  // reader the next time the list grows. A click that changed no row's
-  // height, such as on a copy button, leaves following as it was, and the
-  // view catches up with what arrived while it held.
+  // <details> the reader opens in place.
+  //
+  // Then the list is at its end or not by where it is: it follows only when its
+  // end is in view, as scrolling there re-engages it. The nearness that keeps
+  // following while the reader scrolls does not decide it, since a row opened
+  // at the end grows below the view by less than that, and following would pull
+  // its steps up under the reader the next time the list grows.
+  //
+  // A click that changed no row's height, such as on a copy button, leaves
+  // following as it was, and the view catches up with what arrived while it
+  // held.
   let readerLayoutUntil = 0
   let readerLayoutTimer: ReturnType<typeof setTimeout> | undefined
-  /** The rows the reader acted on while the view holds, each with its height when first acted on. */
+  /**
+   * The rows the reader acted on while the view holds, each with its height
+   * when first acted on.
+   */
   const readerRows = new Map<HTMLElement, number>()
   function holdsView(): boolean {
     return performance.now() < readerLayoutUntil
@@ -323,14 +347,15 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
 
   /**
-   * Brings the block `id` into view where `revealOffset` places it, in the
-   * part of the view `coveredBottom` pixels of the dock leave visible, and
-   * stops following the end, as a search result opened at a message asks;
-   * false while the list has no such block, such as before its history
-   * arrives. A row not measured yet is placed by its estimated height, and
-   * placed again by its real one once it is measured. With `part`, a
-   * selector of an element inside the row, such as a step of an open run,
-   * that element is what `revealOffset` places, once the row draws it.
+   * Brings the block `id` into view where `revealOffset` places it, in the part
+   * of the view `coveredBottom` pixels of the dock leave visible, and stops
+   * following the end, as a search result opened at a message asks. False while
+   * the list has no such block, such as before its history arrives.
+   *
+   * A row not measured yet is placed by its estimated height, and placed again
+   * by its real one once it is measured. With `part`, a selector of an element
+   * inside the row, such as a step of an open run, that element is what
+   * `revealOffset` places, once the row draws it.
    */
   function reveal(id: string, coveredBottom = 0, part?: string): boolean {
     const index = blocks.value.findIndex((block) => block.id === id)
@@ -353,7 +378,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     return !!revealing?.part && performance.now() <= revealing.part.until
   }
 
-  /** Where the element `part` names stands inside the row at `index` as drawn; null while the row does not draw it. */
+  /**
+   * Where the element `part` names stands inside the row at `index` as drawn;
+   * null while the row does not draw it.
+   */
   function partBox(index: number, part: string): { top: number, height: number } | null {
     const row = scrollContainer.value?.querySelector(`[data-index="${index}"]`)
     const found = row?.querySelector(part)
@@ -369,7 +397,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       return
     const view = el.clientHeight - coveredBottom
     const box = part === undefined ? null : partBox(index, part)
-    // A part stands where the rule places it, its row starting above it by as much.
+    // A part stands where the rule places it, its row starting above it by as
+    // much.
     revealRoom = box ? revealOffset(box.height, view) - box.top : revealOffset(size, view)
     // The room applies at once, to this scroll and to the virtualizer's
     // corrections of it while the rows around it are measured.

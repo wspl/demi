@@ -6,12 +6,18 @@ import { closeOpenInlineMarkdown, wrapSteps, type RevealStep } from '../ui/strea
 interface Block<T> {
   /** Where its text starts in the reply's. */
   start: number
-  /** Its text: fixed for a settled block, the rest of the reply for the last one. */
+  /**
+   * Its text: fixed for a settled block, the rest of the reply for the last
+   * one.
+   */
   text: () => string
   /** Its render, set up in `scope`, which ends with the block. */
   html: ComputedRef<string>
   scope: EffectScope
-  /** What shows of it: the render its nodes are of, and what `describe` found in them. */
+  /**
+   * What shows of it: the render its nodes are of, and what `describe` found in
+   * them.
+   */
   shown: { html: string; nodes: ChildNode[]; found: T } | null
 }
 
@@ -29,9 +35,15 @@ export interface MarkdownBlocksOptions<T> {
    * changes.
    */
   render: (source: () => string) => () => string
-  /** What the page needs of a block's nodes, found each time it renders; `fresh` are those the render added. */
+  /**
+   * What the page needs of a block's nodes, found each time it renders; `fresh`
+   * are those the render added.
+   */
   describe: (nodes: readonly ChildNode[], fresh: readonly ChildNode[]) => T
-  /** Called after each change of the page with what `describe` found in each block, in order. */
+  /**
+   * Called after each change of the page with what `describe` found in each
+   * block, in order.
+   */
   rendered: (found: readonly T[]) => void
 }
 
@@ -62,12 +74,16 @@ const renderedAs = new WeakMap<ChildNode, string>()
  */
 export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
   const blocks = shallowRef<Block<T>[]>([])
-  /** The settled blocks' text, which the reply's text starts with while it streams; null while it renders whole. */
+  /**
+   * The settled blocks' text, which the reply's text starts with while it
+   * streams; null while it renders whole.
+   */
   let settledText: string | null = null
 
   function newBlock(start: number, text: () => string, last: boolean): Block<T> {
     const scope = effectScope(true)
-    // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
+    // Closers apply to finished text too: an aborted stream leaves the same
+    // half-open markers.
     const source = last ? () => text() + closeOpenInlineMarkdown(text()) : text
     const html = scope.run(() => computed(options.render(source)))!
     return { start, text, html, scope, shown: null }
@@ -93,7 +109,8 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
       settledText = null
       return
     }
-    // A text that no longer starts with the settled blocks, rewritten, starts over.
+    // A text that no longer starts with the settled blocks, rewritten, starts
+    // over.
     const continues = settledText !== null && text.startsWith(settledText)
     const settled = continues ? blocks.value.slice(0, -1) : []
     const from = continues ? settledText!.length : 0
@@ -111,7 +128,10 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
     replace([...settled, lastBlock(start)])
   }
 
-  /** Whether `block` shows its render now, its nodes starting at `at` when given. */
+  /**
+   * Whether `block` shows its render now, its nodes starting at `at` when
+   * given.
+   */
   function showsRender(block: Block<T>, at?: ChildNode | null): boolean {
     const shown = block.shown
     if (!shown || shown.html !== block.html.value)
@@ -120,7 +140,10 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
     return first === undefined || (at === undefined ? first.parentNode === options.root() : first === at)
   }
 
-  /** The nodes of a fresh render of `block`, with the steps fading within it wrapped. */
+  /**
+   * The nodes of a fresh render of `block`, with the steps fading within it
+   * wrapped.
+   */
   function render(block: Block<T>, steps: readonly RevealStep[]): ChildNode[] {
     const holder = document.createElement('div')
     holder.innerHTML = block.html.value

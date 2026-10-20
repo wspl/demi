@@ -1,7 +1,10 @@
 import { computed, nextTick, watch } from 'vue'
 import type { MessageListBlock } from './pending-steers'
 
-/** Blocks the reader authored, at every stage: delivered, queued, steering, still on its way. */
+/**
+ * Blocks the reader authored, at every stage: delivered, queued, steering,
+ * still on its way.
+ */
 const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
   'user',
   'steer',
@@ -12,14 +15,20 @@ const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
 
 /**
  * A message the reader just sent scrolls the transcript to the bottom, even
- * when they had scrolled up to read: the list follows what they did, the way
- * a chat does. The reply that follows is tracked only while they stay at the
+ * when they had scrolled up to read: the list follows what they did, the way a
+ * chat does. The reply that follows is tracked only while they stay at the
  * bottom, which is the scroller's own rule. Every transcript scroller applies
- * this one, so a send reads the same in the product and the gallery. A
- * message read from a page of history, in its light form, was not just
- * sent, wherever the page puts it; nor is a message not delivered, which shows where it was
- * sent once the window that holds that place is read, and was on its way, a row already, when
- * it was sent. A message is named by `keyOf` across its stages, so the server confirming a
+ * this one, so a send reads the same in the product and the gallery.
+ *
+ * A message is not just sent in these cases:
+ *
+ * - a message read from a page of history, in its light form, wherever the page
+ *   puts it
+ * - a message not delivered, which shows where it was sent once the window that
+ *   holds that place is read, and was on its way, a row already, when it was
+ *   sent
+ *
+ * A message is named by `keyOf` across its stages, so the server confirming a
  * message sent is not another send.
  */
 export function useFollowSentMessages(

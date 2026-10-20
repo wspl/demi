@@ -6,5 +6,8 @@ import { lazyChunk } from '../infra/lazy'
 
 const xtermChunk = lazyChunk(() => import('./XtermView.vue'))
 
-/** The terminal for `TerminalView`, its load started as the view is set up; `retry` is a failed load's Retry, which loads the page again. */
+/**
+ * The terminal for `TerminalView`, its load started as the view is set up;
+ * `retry` is a failed load's Retry, which loads the page again.
+ */
 export const useXterm = xtermChunk.use

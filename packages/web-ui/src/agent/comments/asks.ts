@@ -7,10 +7,10 @@ import type { HeldBlock } from '../history'
 import { t } from '../locales/text'
 
 /**
- * Side questions on a reply's words: each a side conversation from the
- * conversation's history through the asked reply, whose card shows each
- * question and its final answer under the block holding the words, and folds
- * into a mark in the margin.
+ * Side questions on a reply's words. Each is a side conversation from the
+ * conversation's history through the asked reply. Its card shows each question
+ * and its final answer under the block holding the words, and folds into a mark
+ * in the margin.
  */
 
 /** A side question as the transcript shows it. */
@@ -31,9 +31,15 @@ export interface ShownSideQuestion {
   /** The small model's title; null until it has one, when the card says Ask. */
   title: string | null
   folded: boolean
-  /** When it was asked: its own blocks start then, after the history it started from. */
+  /**
+   * When it was asked: its own blocks start then, after the history it started
+   * from.
+   */
   askedAt: string
-  /** Its transcript as the page holds it, by pages: the history it started from, then its own turns. */
+  /**
+   * Its transcript as the page holds it, by pages: the history it started from,
+   * then its own turns.
+   */
   history: HeldTranscript
   /** What the backend knows of its failures, by their blocks. */
   failures: Readonly<Record<string, ProviderFailureFacts>>
@@ -57,12 +63,18 @@ export interface NewSideQuestion {
  * transcript takes none, as a share's page or a subagent's.
  */
 export interface ReplyAsking {
-  /** The side questions whose block the transcript's current path holds, in the order they were asked. */
+  /**
+   * The side questions whose block the transcript's current path holds, in the
+   * order they were asked.
+   */
   questions: readonly ShownSideQuestion[]
   ask: (question: NewSideQuestion) => void
   followUp: (id: string, text: string) => void
   retry: (id: string) => void
-  /** × folds the card into the margin's mark; the mark or the words open it again. */
+  /**
+   * × folds the card into the margin's mark; the mark or the words open it
+   * again.
+   */
   fold: (id: string, folded: boolean) => void
   /**
    * Reads a page of its transcript: its latest for a card the page holds
@@ -72,8 +84,8 @@ export interface ReplyAsking {
   read: (id: string, at: 'latest' | 'before') => void
   /**
    * ↗: the whole side conversation, its steps included, in the window a
-   * subagent's opens in, which the session view keeps; a list shown on its
-   * own leaves it out and ↗ does nothing.
+   * subagent's opens in, which the session view keeps. A list shown on its own
+   * leaves it out and ↗ does nothing.
    */
   openFull?: (id: string) => void
 }
@@ -81,7 +93,9 @@ export interface ReplyAsking {
 /** One question and its answer as the card shows them. */
 export interface CardTurn {
   question: string
-  /** The one status line while the answer is being made; null once it answers. */
+  /**
+   * The one status line while the answer is being made; null once it answers.
+   */
   status: string | null
   answer: string
   streaming: boolean
@@ -112,10 +126,12 @@ export function ownBlocks(question: ShownSideQuestion): readonly HeldBlock[] | n
 }
 
 /**
- * The page to read for the card of `question`: the latest when the page
- * holds none of its transcript, the one before when what it holds starts
- * after the first question; none once it holds the first question, or while
- * the question is on its way and its transcript arrives on the socket.
+ * The page to read for the card of `question`:
+ *
+ * - the latest, when the page holds none of its transcript
+ * - the one before, when what it holds starts after the first question
+ * - none, once it holds the first question, or while the question is on its way
+ *   and its transcript arrives on the socket
  */
 export function pageToRead(question: ShownSideQuestion): 'latest' | 'before' | null {
   const window = latestWindow(question.history)
@@ -135,10 +151,10 @@ export function readKey(question: ShownSideQuestion): string | null {
 
 /**
  * The card of `question` from its transcript: each of its own messages, the
- * first shown as the question the user typed, with the last text its turn
- * wrote as the answer; while the last turn works, before its answer starts,
- * the one status line names what it does, the call it runs or that it
- * thinks. Before the page holds its first message, the question alone.
+ * first shown as the question the user typed, with the last text its turn wrote
+ * as the answer. While the last turn works, before its answer starts, the one
+ * status line names what it does, the call it runs or that it thinks. Before
+ * the page holds its first message, the question alone.
  */
 export function cardContent(question: ShownSideQuestion): CardContent {
   const own = (ownBlocks(question) ?? []).filter((block) => block.type !== 'response')
@@ -171,15 +187,19 @@ export function cardContent(question: ShownSideQuestion): CardContent {
 }
 
 /**
- * The side question's conversation as its full window shows it: its own
- * turns only, the first message drawn as the user's question with its
- * quote, the asked picture for one about a picture, without the
- * instruction the model reads, the history before it being the
- * conversation's own. The questions were typed in a plain field and show as
- * typed, as a comment's words do, never read as Markdown.
+ * The side question's conversation as its full window shows it: its own turns
+ * only.
+ *
+ * - The first message is drawn as the user's question with its quote, the asked
+ *   picture for one about a picture.
+ * - Neither the instruction the model reads nor the history before it, which is
+ *   the conversation's own, is shown.
+ * - The questions were typed in a plain field and show as typed, as a comment's
+ *   words do, never read as Markdown.
  */
 export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
-  // The first shows as a comment does: the quoted words or a small copy of the picture, the question under it.
+  // The first shows as a comment does: the quoted words or a small copy of the
+  // picture, the question under it.
   const first = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => ({
     ...block,
     content: [],
@@ -188,7 +208,8 @@ export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
       quote: question.quote, ...(question.picture ? { picture: question.picture } : {}), text: question.question,
     }],
   })
-  // A follow-up's text is the field's plain text, which the bubble reads as a message's Markdown.
+  // A follow-up's text is the field's plain text, which the bubble reads as a
+  // message's Markdown.
   const followUp = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => ({
     ...block,
     content: block.content.map((part) => (part.type === 'text' ? { ...part, text: plainUserMarkdown(part.text) } : part)),

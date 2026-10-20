@@ -17,8 +17,9 @@ const emit = defineEmits<{
   scrollToBottom: []
 }>()
 
-// What waits for a decision stands over the dock's top and takes no room in it, so a panel the
-// dock opened keeps its size and place under it; the surface keeps the transcript clear of it.
+// What waits for a decision stands over the dock's top and takes no room in it,
+// so a panel the dock opened keeps its size and place under it. The surface
+// keeps the transcript clear of it.
 const coverRef = ref<HTMLElement>()
 const { height: coverHeight } = useElementSize(coverRef, { width: 0, height: 0 }, { box: 'border-box' })
 const surfaceCover = inject(sessionCoverKey, null)
@@ -33,12 +34,14 @@ onBeforeUnmount(() => {
   }
 })
 
-// The composer's cards stand here, above the chips, so the chips sit directly on the input.
+// The composer's cards stand here, above the chips, so the chips sit directly
+// on the input.
 const cardsRef = ref<HTMLElement>()
 provide(dockCardsKey, cardsRef)
 
-// The scroll control belongs to the row of chips, at its other end: with chips it stands level
-// with them; without, it floats where that row would be, above what waits over the composer.
+// The scroll control belongs to the row of chips, at its other end. With chips
+// it stands level with them; without, it floats where that row would be, above
+// what waits over the composer.
 const chipsRef = ref<HTMLElement>()
 const composerRef = ref<HTMLElement>()
 const { height: chipsHeight } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'border-box' })
@@ -53,15 +56,24 @@ const scrollBottom = computed(() =>
 </script>
 
 <template>
-  <!-- What stands over the composer stacks at one 8px step: the cards, the chips, the composer.
-       The chips sit directly on the composer and nothing comes between them; a card stands
-       above the chips. A part that is not there takes no room, so the next one moves up by the
-       same step. A press in the dock, on the composer or its empty space, closes the newest
-       window as one on the transcript does; only the Agents and Running chips keep it. -->
+  <!--
+    What stands over the composer stacks at one 8px step: the cards, the chips,
+    the composer.
+
+    - The chips sit directly on the composer, and nothing comes between them.
+    - A card stands above the chips.
+    - A part that is not there takes no room, so the next one moves up by the
+      same step.
+    - A press in the dock, on the composer or its empty space, closes the newest
+      window as one on the transcript does. Only the Agents and Running chips
+      keep it.
+  -->
   <div class="relative">
-    <!-- The scroll control is the chips row's control at its right end, so it takes no room in
-         the dock; it shows only away from the scroll bottom, where it covers nothing the user
-         reads last. -->
+    <!--
+      The scroll control is the chips row's control at its right end, so it
+      takes no room in the dock. It shows only away from the scroll bottom,
+      where it covers nothing the user reads last.
+    -->
     <span
       class="pointer-events-none absolute right-0 z-20 inline-flex size-hit"
       :style="{ bottom: scrollBottom }"
@@ -86,16 +98,22 @@ const scrollBottom = computed(() =>
         />
       </Transition>
     </span>
-    <!-- What waits for the user's decision sits over the chips, below the transcript, and over the
-         lower part of an open panel. -->
+    <!--
+      What waits for the user's decision sits over the chips, below the
+      transcript, and over the lower part of an open panel.
+    -->
     <div v-if="$slots.above" ref="coverRef" class="absolute inset-x-0 bottom-full pb-2">
       <slot name="above" />
     </div>
-    <!-- The composer's cards, such as the offline primary Host's: each brings its own step under
-         it. -->
+    <!--
+      The composer's cards, such as the offline primary Host's. Each brings its
+      own step under it.
+    -->
     <div ref="cardsRef" class="flex flex-col" />
-    <!-- Chips read from the left. A chip renders nothing while it has nothing to say, so the row
-         shows only while it holds an element. -->
+    <!--
+      Chips read from the left. A chip renders nothing while it has nothing to
+      say, so the row shows only while it holds an element.
+    -->
     <div ref="chipsRef" class="hidden items-center gap-1.5 pb-2 has-[>*]:flex">
       <slot name="chips" />
     </div>

@@ -3,7 +3,10 @@ import { markdownReader } from './reader'
 
 const reader = markdownReader()
 
-/** Tokens that stand on lines of their own, which a line of plain text sets apart with a space. */
+/**
+ * Tokens that stand on lines of their own, which a line of plain text sets
+ * apart with a space.
+ */
 const BLOCKS = new Set(['paragraph', 'heading', 'code', 'blockquote', 'list', 'list_item', 'table', 'hr', 'space', 'html'])
 
 /**

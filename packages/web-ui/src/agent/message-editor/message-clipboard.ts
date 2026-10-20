@@ -22,7 +22,10 @@ export interface MessageCopy {
 export function useMessageClipboard() {
   const mediaAddress = useMediaAddress()
 
-  /** Where a capsule's picture loads from, as an address any page can follow; null for a file without one. */
+  /**
+   * Where a capsule's picture loads from, as an address any page can follow;
+   * null for a file without one.
+   */
   function pictureAddress(capsule: MessageCapsule): string | null {
     const image = capsule.image
     if (!image) {
@@ -31,7 +34,10 @@ export function useMessageClipboard() {
     return new URL(typeof image === 'string' ? image : mediaAddress(image), document.baseURI).href
   }
 
-  /** The message as HTML for mail, documents and chat apps: its formatting, each picture an image, every other file its name. */
+  /**
+   * The message as HTML for mail, documents and chat apps: its formatting, each
+   * picture an image, every other file its name.
+   */
   function htmlSerializer(schema: Schema): DOMSerializer {
     const base = DOMSerializer.fromSchema(schema)
     return new DOMSerializer({

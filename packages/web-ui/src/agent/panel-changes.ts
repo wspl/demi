@@ -3,8 +3,8 @@ import { Slot, type SlotChange } from '../infra/slot'
 import { removeTabs, type PanelTab } from './panel-tabs'
 
 /**
- * One change of the work panel's tabs. An update sets the fields of `data` it names and
- * removes the null ones.
+ * One change of the work panel's tabs. An update sets the fields of `data` it
+ * names and removes the null ones. /
  */
 export type PanelChange =
   | { type: 'create'; tab: PanelTab; index?: number }
@@ -18,7 +18,10 @@ export interface PanelRead {
   tabs: PanelTab[]
 }
 
-/** What a request of changes answers: the panel's revision once they are in it, and whether they changed it. */
+/**
+ * What a request of changes answers: the panel's revision once they are in it,
+ * and whether they changed it.
+ */
 export interface PanelAnswer {
   revision: number
   changed: boolean
@@ -35,7 +38,10 @@ export interface PanelBackend {
   send(changes: readonly PanelChange[]): Promise<PanelAnswer>
 }
 
-/** `tabs` after `change`, as the backend applies it; a change with nothing to do leaves them. */
+/**
+ * `tabs` after `change`, as the backend applies it; a change with nothing to do
+ * leaves them.
+ */
 export function applyPanelChange(tabs: readonly PanelTab[], change: PanelChange): PanelTab[] {
   const index = (id: string) => tabs.findIndex((tab) => tab.id === id)
   switch (change.type) {
@@ -76,7 +82,10 @@ export function mergeData(data: unknown, fields: Record<string, unknown>): Recor
   return merged
 }
 
-/** The update that turns `before` into `after`: each field that changed, and each removed one as null. */
+/**
+ * The update that turns `before` into `after`: each field that changed, and
+ * each removed one as null.
+ */
 export function dataChanges(before: unknown, after: Record<string, unknown>): Record<string, unknown> {
   const previous: Record<string, unknown> = before !== null && typeof before === 'object' ? { ...before } : {}
   const fields: Record<string, unknown> = {}
@@ -93,23 +102,30 @@ export function dataChanges(before: unknown, after: Record<string, unknown>): Re
   return fields
 }
 
-/** A change of the page's that is not in the panel it read yet, and the request it will go in. */
+/**
+ * A change of the page's that is not in the panel it read yet, and the request
+ * it will go in.
+ */
 interface Unsent {
   change: PanelChange
   shown: SlotChange<PanelTab[]>
 }
 
 /**
- * The work panel's tabs as a page shows them: a slot (`infra/slot`) of the panel it last
- * read, its revision the panel's, with the page's own changes that are not in it yet on
- * top. A change shows at once; the changes made while none is on its way go together, in
- * order, as one request, so Close Others is one request. An answer that changed the panel
- * one revision past the one the page holds is the panel with the request in it; the panel
- * is read only when an answer, or the summary, names a revision past the one the page
- * then holds, which says another change came in between. A change leaves once a panel at
- * least as new as its answer is held, so a panel read after a removal never brings the
- * tab back. A request the backend refuses leaves at once, and the panel shows as the
- * backend has it.
+ * The work panel's tabs as a page shows them: a slot (`infra/slot`) of the
+ * panel it last read, its revision the panel's, with the page's own changes
+ * that are not in it yet on top.
+ *
+ * - A change shows at once. The changes made while none is on its way go
+ *   together, in order, as one request, so Close Others is one request.
+ * - An answer that changed the panel one revision past the one the page holds
+ *   is the panel with the request in it. The panel is read only when an answer,
+ *   or the summary, names a revision past the one the page then holds, which
+ *   says another change came in between.
+ * - A change leaves once a panel at least as new as its answer is held, so a
+ *   panel read after a removal never brings the tab back.
+ * - A request the backend refuses leaves at once, and the panel shows as the
+ *   backend has it.
  */
 export class PanelTabs {
   /** Before the first read the panel is empty, so a change shows over it. */
@@ -154,7 +170,10 @@ export class PanelTabs {
     void this.flush()
   }
 
-  /** Shows `changes` at once and sends them, together, after the changes before them. */
+  /**
+   * Shows `changes` at once and sends them, together, after the changes before
+   * them.
+   */
   change(...changes: PanelChange[]): void {
     this.unsent.push(...changes.map((change) => ({
       change,
@@ -185,7 +204,10 @@ export class PanelTabs {
     }
   }
 
-  /** Takes a panel read anywhere: an older one than the panel held changes nothing. */
+  /**
+   * Takes a panel read anywhere: an older one than the panel held changes
+   * nothing.
+   */
   receive(panel: PanelRead): void {
     this.slot.replace(panel.tabs, { revisions: { '': panel.revision } })
   }
@@ -220,7 +242,8 @@ export class PanelTabs {
           revisions: { '': answer.revision },
           ...(alone ? { value: (tabs: PanelTab[]) => batch.reduce((next, entry) => applyPanelChange(next, entry.change), tabs) } : {}),
         })
-        // Another change came in between, or after: only then is the panel read.
+        // Another change came in between, or after: only then is the panel
+        // read.
         if (read && this.known > this.revision) {
           await this.refresh()
         }
@@ -231,7 +254,10 @@ export class PanelTabs {
   }
 }
 
-/** A panel's selection history, the tab or kind it selected last at its end, which closing tabs changes. */
+/**
+ * A panel's selection history, the tab or kind it selected last at its end,
+ * which closing tabs changes.
+ */
 export interface PanelHistory {
   history: readonly string[]
 }
@@ -250,7 +276,10 @@ function isData(data: unknown): data is Record<string, unknown> {
   return data !== null && typeof data === 'object' && !Array.isArray(data)
 }
 
-/** The tab's next `data`, from its kind: only what changed is sent; a tab gone, or data that is no object, sends nothing. */
+/**
+ * The tab's next `data`, from its kind: only what changed is sent; a tab gone,
+ * or data that is no object, sends nothing.
+ */
 export function updatePanelTab(tabs: PanelTabs, id: string, data: unknown): void {
   const current = tabs.tabs.value.find((tab) => tab.id === id)
   if (!current || !isData(data)) {

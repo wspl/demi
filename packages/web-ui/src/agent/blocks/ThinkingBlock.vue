@@ -10,7 +10,10 @@ const props = defineProps<{
   thinking: string
   isStreaming: boolean
   createdAt: string
-  /** Start of the block after this one — the moment thinking ended. Null while still thinking. */
+  /**
+   * Start of the block after this one — the moment thinking ended. Null while
+   * still thinking.
+   */
   endedAt?: string | null
 }>()
 

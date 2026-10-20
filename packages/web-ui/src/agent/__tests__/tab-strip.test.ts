@@ -11,19 +11,22 @@ test('the selected tab is revealed whole and clear of the fades, and where they 
   expect(revealScroll(view, { left: 400, right: 500 }, 24)).toBe(224)
   // Behind the left edge.
   expect(revealScroll({ ...view, scrollLeft: 500 }, { left: 400, right: 500 }, 24)).toBe(376)
-  // The last tab: the strip's end is as far as it goes, and once there nothing moves.
+  // The last tab: the strip's end is as far as it goes, and once there nothing
+  // moves.
   expect(revealScroll(view, { left: 800, right: 900 }, 24)).toBe(600)
   expect(revealScroll({ ...view, scrollLeft: 600 }, { left: 800, right: 900 }, 24)).toBeNull()
-  // A view narrower than the tab with its fades: the tab shows whole, its end included, and the
-  // fades shrink to the room beside it, so none lies over it.
+  // A view narrower than the tab with its fades: the tab shows whole, its end
+  // included, and the fades shrink to the room beside it, so none lies over it.
   const narrow = { scrollLeft: 340, clientWidth: 129, scrollWidth: 600 }
   const middle = { left: 323, right: 411 }
   expect(revealScroll(narrow, middle, 24)).toBe(323)
   expect(revealScroll({ ...narrow, scrollLeft: 290 }, middle, 24)).toBeNull()
   expect(fadeRoom(129, { left: middle.left - 290, right: middle.right - 290 }, false)).toEqual({ before: 33, after: 8 })
-  // A tab the strip scrolls in from an edge leaves that fade no room on its way.
+  // A tab the strip scrolls in from an edge leaves that fade no room on its
+  // way.
   expect(fadeRoom(129, { left: -4, right: 84 }, true)).toEqual({ before: 0, after: 45 })
-  // The user scrolled the selected tab under an edge, or out of view either way: both edges fade as for any tab.
+  // The user scrolled the selected tab under an edge, or out of view either
+  // way: both edges fade as for any tab.
   const free = { before: Number.POSITIVE_INFINITY, after: Number.POSITIVE_INFINITY }
   expect(fadeRoom(129, { left: -4, right: 84 }, false)).toEqual(free)
   expect(fadeRoom(129, { left: -120, right: -20 }, false)).toEqual(free)

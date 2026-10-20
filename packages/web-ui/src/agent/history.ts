@@ -19,7 +19,10 @@ export function latestBlocks(history: HeldTranscript): HeldBlock[] {
   return latestWindow(history)?.blocks ?? []
 }
 
-/** A block to bring into view and mark for a moment, in the transcript of the agent `node`, the root's for null. */
+/**
+ * A block to bring into view and mark for a moment, in the transcript of the
+ * agent `node`, the root's for null.
+ */
 export interface TranscriptReveal {
   node: string | null
   blockId: string
@@ -37,7 +40,10 @@ export function shownWindow<B extends Held>(history: HeldTranscript<B>, shownAt:
     ?? { start: 0, blocks: [] }
 }
 
-/** Where a window stands in its transcript: whether it reaches the start, the end, and is the latest. */
+/**
+ * Where a window stands in its transcript: whether it reaches the start, the
+ * end, and is the latest.
+ */
 export function windowEdges<B extends Held>(
   history: HeldTranscript<B>,
   window: TranscriptWindow<B>,
@@ -46,9 +52,9 @@ export function windowEdges<B extends Held>(
 }
 
 /**
- * Where the page next to `window` on `side` is read from: the index of the window's
- * item at that edge and its id, which the page must still hold there; none where the
- * window reaches the transcript's start or end.
+ * Where the page next to `window` on `side` is read from: the index of the
+ * window's item at that edge and its id, which the page must still hold there;
+ * none where the window reaches the transcript's start or end. /
  */
 export function pageBeside<B extends Held>(
   history: HeldTranscript<B>,
@@ -63,7 +69,9 @@ export function pageBeside<B extends Held>(
   return { index: side === 'before' ? window.start : windowEnd(window) - 1, edge: edge.id }
 }
 
-/** A whole transcript held at once, as a gallery specimen or a test gives it. */
+/**
+ * A whole transcript held at once, as a gallery specimen or a test gives it.
+ */
 export function wholeHistory(blocks: HeldBlock[]): HeldTranscript {
   return { length: blocks.length, windows: [{ start: 0, blocks }] }
 }

@@ -16,7 +16,10 @@ export type BlobUrl = (ref: string, mediaType: string) => string
 
 const blobUrlKey: InjectionKey<BlobUrl> = Symbol('blob-url')
 
-/** Tells every component below where blobs load from; the app's root says it once. */
+/**
+ * Tells every component below where blobs load from; the app's root says it
+ * once.
+ */
 export function provideBlobUrl(url: BlobUrl): void {
   provide(blobUrlKey, url)
 }
@@ -33,7 +36,10 @@ export function useMediaUrl(source: () => MediaSource | undefined): Readonly<Ref
   })
 }
 
-/** Where any media source loads from, for a component that reads addresses outside its render, such as a copy. */
+/**
+ * Where any media source loads from, for a component that reads addresses
+ * outside its render, such as a copy.
+ */
 export function useMediaAddress(): (source: MediaSource) => string {
   const blobUrl = inject(blobUrlKey, null)
   if (!blobUrl) {

@@ -40,87 +40,138 @@ import ContextCost from './ContextCost.vue'
 import { type CostState, hasCost } from './context-cost'
 
 /**
- * The composer's context meter: a ring of how full the next request is, as
- * the backend estimates it. A click on it opens a card, on a phone a sheet, as the model
- * selector's does; a click outside, another click on the ring or Escape closes it, and
- * resting the pointer on the ring opens nothing but its tip, Context and the figure the
- * card's header shows. The card holds the estimate against the window, a header that opens
- * and closes the list of rows, a bar of what fills the context, the rows largest first
- * while the list is open, and the room before compaction with Compact; then what the
- * conversation cost, whose caption opens and closes its details; then the usage limits of
- * the conversation's account, and last the instructions the model holds, each of which
- * opens where it is written. One part stands open at most: opening one closes the other.
- * While the usage or the window is unknown the card holds the cost and the usage limits,
- * and with no limits there is no meter, cost or none.
+ * The composer's context meter: a ring of how full the next request is, as the
+ * backend estimates it.
+ *
+ * A click on the ring opens a card, on a phone a sheet, as the model selector's
+ * does. A click outside, another click on the ring, or Escape closes it.
+ * Resting the pointer on the ring opens nothing but its tip, Context and the
+ * figure the card's header shows.
+ *
+ * The card holds, in order:
+ *
+ * 1. the estimate against the window
+ * 2. a header that opens and closes the list of rows
+ * 3. a bar of what fills the context
+ * 4. the rows, largest first, while the list is open
+ * 5. the room before compaction, with Compact
+ * 6. what the conversation cost, whose caption opens and closes its details
+ * 7. the usage limits of the conversation's account
+ * 8. last, the instructions the model holds, each of which opens where it is
+ *    written
+ *
+ * One part stands open at most: opening one closes the other.
+ *
+ * While the usage or the window is unknown, the card holds the cost and the
+ * usage limits. With no limits, there is no meter, cost or none.
  */
 const props = defineProps<{
   usage?: ContextUsage | null
   isCompacting?: boolean
-  /** Why Compact cannot run now apart from the usage, such as a running turn. */
+  /**
+   * Why Compact cannot run now apart from the usage, such as a running turn.
+   */
   unavailableReason?: string | null
-  /** The unfinished turn failed for its size, so Compact runs at any share (`refusedForSize`). */
+  /**
+   * The unfinished turn failed for its size, so Compact runs at any share
+   * (`refusedForSize`).
+   */
   sizeRefused?: boolean
   /** The card shows without a click, as a gallery specimen pins it open. */
   pinned?: boolean
-  /** What the newest instructions block holds, in its order; the card lists nothing of them while it holds none. */
+  /**
+   * What the newest instructions block holds, in its order; the card lists
+   * nothing of them while it holds none.
+   */
   instructions?: readonly InstructionEntry[]
-  /** The usage limits of the account the conversation's model runs on; none for a model on an API key. */
+  /**
+   * The usage limits of the account the conversation's model runs on; none for
+   * a model on an API key.
+   */
   limits?: UsageLimits | null
   /**
-   * The meter stands as a segment of a status bar (`StatusBarSegment`): its
+   * The meter stands as a segment of a status bar (`StatusBarSegment`). Its
    * hover background fills the bar's height inside its inset and the segment's
    * width, not a rounded square, and Tab reaches it with the focus ring.
    */
   segment?: boolean
   /**
-   * The conversation's cost, which the host holds while the conversation
-   * is open, read with it and kept current by its frames, or the failure
-   * of its read; none for a card that shows no conversation's cost.
+   * The conversation's cost, which the host holds while the conversation is
+   * open, read with it and kept current by its frames, or the failure of its
+   * read. None for a card that shows no conversation's cost.
    */
   cost?: CostState | null
-  /** The part that stands open, or none, whatever the browser keeps, as a gallery specimen pins it. */
+  /**
+   * The part that stands open, or none, whatever the browser keeps, as a
+   * gallery specimen pins it.
+   */
   expanded?: ContextCardSection | null
-  /** The cost chart's call, by its place among the conversation's, whose tip shows without the pointer, as a gallery specimen pins it. */
+  /**
+   * The cost chart's call, by its place among the conversation's, whose tip
+   * shows without the pointer, as a gallery specimen pins it.
+   */
   costTip?: number | null
-  /** The names of the profiles the conversation's workflow offers now, which the cost's Profiles part shows. */
+  /**
+   * The names of the profiles the conversation's workflow offers now, which the
+   * cost's Profiles part shows.
+   */
   costProfiles?: readonly string[]
 }>()
 
 const emit = defineEmits<{
   compact: []
-  /** Opens where an entry is written: the settings for the personal instructions, the file for a project file. */
+  /**
+   * Opens where an entry is written: the settings for the personal
+   * instructions, the file for a project file.
+   */
   openInstruction: [entry: InstructionEntry]
   /**
-   * The host asks the vendor for the usage limits again, as Settings does:
-   * automatic when the limits showed, otherwise the Refresh usage button.
+   * The host asks the vendor for the usage limits again, as Settings does. The
+   * request is automatic when the limits showed, and otherwise comes from the
+   * Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
   /** Read the cost again after a read that failed. */
   retryCost: []
 }>()
 
-/** Whether the card shows the context's part, the usage limits, or neither, when the meter is not there. */
+/**
+ * Whether the card shows the context's part, the usage limits, or neither, when
+ * the meter is not there.
+ */
 const parts = computed(() => contextCardParts(props.usage ?? null, props.limits ?? null, props.isCompacting === true))
 const rows = computed<ContextCardRow[]>(() => (parts.value.context && props.usage ? contextCardRows(props.usage) : []))
 const instructionList = computed(() => (parts.value.context ? instructionRows(props.instructions ?? []) : []))
 const filled = computed(() => (props.usage ? contextFilled(props.usage) : 0))
-/** What the bar and the shares count against: the window, or what fills a context that has none. */
+/**
+ * What the bar and the shares count against: the window, or what fills a
+ * context that has none.
+ */
 const whole = computed(() => props.usage?.window ?? filled.value)
 const room = computed(() => (props.usage ? untilCompaction(props.usage) : null))
 
 /** On a phone the card is a sheet, which scrolls the details itself. */
 const phone = usePhone()
-/** The ring is a toolbar button's icon, and in a status bar a chip's, at the layout's size. */
+/**
+ * The ring is a toolbar button's icon, and in a status bar a chip's, at the
+ * layout's size.
+ */
 const icons = useIconPx()
 const ringPx = computed(() => (props.segment ? icons.value.chip : icons.value.in28))
 
-/** The part that stands open: a header opens it and closes the other, and the browser keeps the choice. */
+/**
+ * The part that stands open: a header opens it and closes the other, and the
+ * browser keeps the choice.
+ */
 const expanded = props.expanded === undefined ? useContextCardSection() : ref(props.expanded)
 function toggle(section: ContextCardSection): void {
   expanded.value = expanded.value === section ? null : section
 }
 
-/** Whether the card shows: a click opens it; a pinned specimen stays open whatever closes it. */
+/**
+ * Whether the card shows: a click opens it; a pinned specimen stays open
+ * whatever closes it.
+ */
 const clicked = ref(false)
 const open = computed({
   get: () => props.pinned === true || clicked.value,
@@ -141,7 +192,9 @@ const costShown = computed(() => {
   return cost.status === 'failed' || hasCost(cost.cost)
 })
 
-/** Compact is an action of the card, which closes it as a menu's action does. */
+/**
+ * Compact is an action of the card, which closes it as a menu's action does.
+ */
 function compact(close: () => void): void {
   close()
   emit('compact')
@@ -152,7 +205,10 @@ function openEntry(entry: InstructionEntry, close: () => void): void {
   emit('openInstruction', entry)
 }
 
-/** Each row's color in the bar and beside its name; the buffer and the free space are grays. */
+/**
+ * Each row's color in the bar and beside its name; the buffer and the free
+ * space are grays.
+ */
 const ROW_COLORS: Record<ContextRowKind, string> = {
   messages: 'bg-series-1',
   systemPrompt: 'bg-series-2',
@@ -165,7 +221,10 @@ const ROW_COLORS: Record<ContextRowKind, string> = {
   freeSpace: 'bg-overlay/8',
 }
 
-/** The bar's segments: every row but the free space, which is the track left over. */
+/**
+ * The bar's segments: every row but the free space, which is the track left
+ * over.
+ */
 const segments = computed(() => rows.value.filter((row) => row.kind !== 'freeSpace' && whole.value > 0))
 function width(tokens: number): string {
   return `${Math.min(100, (tokens / whole.value) * 100)}%`
@@ -178,10 +237,16 @@ function tokensLabel(tokens: number, estimated: boolean): string {
 const percent = computed(() => contextPercent(props.usage ?? null))
 const ratio = computed(() => contextRatio(props.usage ?? null) ?? 0)
 const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null, props.sizeRefused))
-/** While compacting the card holds no Compact; it has details while anything else is left to show. */
+/**
+ * While compacting the card holds no Compact; it has details while anything
+ * else is left to show.
+ */
 const hasDetails = computed(() => (parts.value.context && !props.isCompacting) || rows.value.length > 0 || costShown.value || parts.value.limits || instructionList.value.length > 0)
 
-/** The ring's tip is Context and the card header's figure; without a usage or a window the ring has none. */
+/**
+ * The ring's tip is Context and the card header's figure; without a usage or a
+ * window the ring has none.
+ */
 const tip = computed(() => contextTip(props.usage ?? null))
 /** The ring's name for a screen reader, which the tip does not carry. */
 const label = computed(() => (percent.value == null ? t('context.window') : t('context.windowUsed', { percent: percent.value })))
@@ -245,11 +310,15 @@ const ringColor = computed(() => {
         </button>
       </template>
       <template #content="{ close }">
-        <!-- On a phone the card is a sheet's content, read at a sheet's size. -->
+        <!--
+          On a phone the card is a sheet's content, read at a sheet's size.
+        -->
         <div data-context-card class="overlay-shell rounded-md text-detail leading-4 text-fg phone:text-[15px] phone:leading-5" :style="{ '--elevation': elevation }">
           <div v-if="parts.context" class="context-card-head">
-            <!-- The header is the list's disclosure, as a Finder disclosure row is;
-                 compacting, while there are rows to list. -->
+            <!--
+              The header is the list's disclosure, as a Finder disclosure row
+              is; compacting, while there are rows to list.
+            -->
             <button
               v-if="!isCompacting || rows.length"
               type="button"
@@ -259,7 +328,10 @@ const ringColor = computed(() => {
             >
               <span v-if="isCompacting" class="min-w-0 truncate text-fg-body">{{ t('context.compacting') }}</span>
               <template v-else-if="usage">
-                <!-- The name gives way on a narrow card; the figure and the chevron stay whole. -->
+                <!--
+                  The name gives way on a narrow card; the figure and the
+                  chevron stay whole.
+                -->
                 <span class="min-w-0 truncate font-medium text-fg-emphasis">{{ t('context.window') }}</span>
                 <span class="ml-auto shrink-0 tabular-nums text-fg-muted">
                   {{ contextFigure(usage) }}
@@ -270,8 +342,10 @@ const ringColor = computed(() => {
             <span v-else-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
           </div>
           <div v-if="hasDetails">
-            <!-- The details scroll when the card would be taller than the room the
-                 page leaves it, as with a long list of instruction files. -->
+            <!--
+              The details scroll when the card would be taller than the room the
+              page leaves it, as with a long list of instruction files.
+            -->
             <div class="w-[22rem] max-w-full phone:w-full" :class="phone ? '' : 'context-details-bounded'">
               <ScrollArea class="min-h-0 flex-1">
                 <div v-if="rows.length" class="px-3 pt-0.5">
@@ -284,7 +358,10 @@ const ringColor = computed(() => {
                       :style="{ width: width(row.tokens) }"
                     />
                   </div>
-                  <!-- The list opens and closes by height, as every disclosure does (Fold). -->
+                  <!--
+                    The list opens and closes by height, as every disclosure
+                    does (Fold).
+                  -->
                   <Fold :open="expanded === 'context'">
                     <ul class="pt-2">
                       <li v-for="row in rows" :key="row.kind" class="context-row">
@@ -296,8 +373,10 @@ const ringColor = computed(() => {
                     </ul>
                   </Fold>
                 </div>
-                <!-- The last line of the context section: its Compact ends where the
-                     figures above it end. -->
+                <!--
+                  The last line of the context section: its Compact ends where
+                  the figures above it end.
+                -->
                 <div v-if="parts.context && !isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-2.5">
                   <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : t('context.untilCompaction', { tokens: formatTokens(room) }) }}</span>
                   <Button
@@ -327,7 +406,10 @@ const ringColor = computed(() => {
                       <TruncatedText :text="limits.accountLabel" />
                     </template>
                     <template #end>
-                      <!-- The click keeps the card open: it only asks, and the answer replaces the windows. -->
+                      <!--
+                        The click keeps the card open: it only asks, and the
+                        answer replaces the windows.
+                      -->
                       <Tooltip :content="t('context.refreshUsage')">
                         <IconButton
                           size="xs"
@@ -379,9 +461,10 @@ const ringColor = computed(() => {
 </template>
 
 <style scoped>
-/* Beside the trigger the details take the room the page leaves the card,
-   less its header row, and scroll in it; a phone's sheet scrolls them
-   itself. */
+/*
+ * Beside the trigger the details take the room the page leaves the card, less
+ * its header row, and scroll in it. A phone's sheet scrolls them itself.
+ */
 .context-details-bounded {
   display: flex;
   flex-direction: column;

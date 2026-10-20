@@ -133,7 +133,8 @@ test('the message keeps the files of its capsules, and the composer carries the 
   const before = { id: 'before' }
   const after = { id: 'after' }
 
-  // The capsule of `after` is deleted: its file leaves the message and stops travelling.
+  // The capsule of `after` is deleted: its file leaves the message and stops
+  // travelling.
   const deleted = arrangeCapsuleFiles([before, after], ['before', 'after'], ['before'])
   expect(deleted).toEqual({ carried: [before, after], stopped: [after], resumed: [] })
 

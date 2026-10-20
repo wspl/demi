@@ -15,11 +15,15 @@ import RelativeTime from '../../ui/RelativeTime.vue'
 const props = defineProps<AnswerActionsSource & {
   content: string
   createdAt: string
-  /** The versions of this answer, first in the footer, as ChatGPT shows them; absent with none. */
+  /**
+   * The versions of this answer, first in the footer, as ChatGPT shows them;
+   * absent with none.
+   */
   versions?: VersionChoice
 }>()
 
-// Copy is the one Copy control, with its own Copied (CopyButton): its action here only holds its place.
+// Copy is the one Copy control, with its own Copied (CopyButton): its action
+// here only holds its place.
 const actions = computed(() => answerActions(props, () => undefined))
 </script>
 

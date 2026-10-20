@@ -30,23 +30,25 @@ const emit = defineEmits<{
 const blocks = computed(() => (props.question ? shownTurns(props.question) : []))
 
 /**
- * Where the list opens: at its start, the user's first question and its
- * quote in view, since a side conversation is short and starts with what
- * the user asked; a taller one the user scrolls down. The list places
- * itself once, when it first has rows, so it is drawn once its first
- * question is held.
+ * Where the list opens: at its start, the user's first question and its quote
+ * in view, since a side conversation is short and starts with what the user
+ * asked. A taller one the user scrolls down. The list places itself once, when
+ * it first has rows, so it is drawn once its first question is held.
  */
 const opening = computed<PersistedScrollState | undefined>(() => {
   const first = blocks.value[0]
   return first && { anchor: { blockId: first.id, anchorIndex: 0, offsetPx: 0, scrollTop: 0 }, heightCache: new Map() }
 })
 
-// The window takes the focus as it opens, as a window macOS opens does, so
-// its Escape is a key typed in it; closed, it gives the focus back to the
-// card's ↗ as the page, drawing no ring, which a key press would otherwise
-// make the browser draw.
+// The window takes the focus as it opens, as a window macOS opens does, so its
+// Escape is a key typed in it. Closed, it gives the focus back to the card's ↗
+// as the page, drawing no ring, which a key press would otherwise make the
+// browser draw.
 const body = ref<HTMLElement | null>(null)
-/** The window's region while it is open, which still holds the focus as it closes. */
+/**
+ * The window's region while it is open, which still holds the focus as it
+ * closes.
+ */
 let region: HTMLElement | null = null
 const focusReturn = useFocusReturn((active) => region?.contains(active) === true)
 watch(body, (shown, was) => {

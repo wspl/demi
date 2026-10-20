@@ -11,12 +11,15 @@ import '@xterm/xterm/css/xterm.css'
 const props = defineProps<{
   output: string
   /**
-   * The live view's count of characters at the end of `output`; absent for
+   * The live view's count of characters at the end of `output`. Absent for
    * output that is whole, such as a transcript's.
    */
   chars?: number
   running?: boolean
-  /** The command's script, which the terminal opens with after a prompt; the page's line, not the output's. */
+  /**
+   * The command's script, which the terminal opens with after a prompt; the
+   * page's line, not the output's.
+   */
   script?: string
 }>()
 
@@ -30,9 +33,15 @@ const { terminalTheme } = useTerminalTheme()
 
 let term: Terminal | undefined
 let fit: FitAddon | undefined
-/** The output the terminal shows, and the live view's count at its end; null before anything. */
+/**
+ * The output the terminal shows, and the live view's count at its end; null
+ * before anything.
+ */
 let shown: TerminalShown | null = null
-/** The theme the terminal draws in, as JSON, so colors that did not change are not drawn again. */
+/**
+ * The theme the terminal draws in, as JSON, so colors that did not change are
+ * not drawn again.
+ */
 let drawnTheme = ''
 /** The prompt line's colors, from the same look at the tokens as the theme. */
 let promptColors: PromptColors | null = null
@@ -137,7 +146,10 @@ function fitToHost(): void {
   }
 }
 
-/** Whether a change of the root's appearance attributes changed a value, not only wrote one. */
+/**
+ * Whether a change of the root's appearance attributes changed a value, not
+ * only wrote one.
+ */
 function appearanceChanged(records: readonly MutationRecord[]): boolean {
   const root = document.documentElement
   return records.some(
@@ -157,7 +169,8 @@ onMounted(() => {
     cursorInactiveStyle: props.running ? 'block' : 'none',
     fontSize: 12,
     lineHeight: 1.4,
-    // The app's code font (`styles/base.css`), which xterm takes as a family list.
+    // The app's code font (`styles/base.css`), which xterm takes as a family
+    // list.
     fontFamily: getComputedStyle(host).getPropertyValue('--font-mono'),
     scrollback: 2000,
   })
@@ -205,7 +218,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <!-- The terminal handles its own pointer: the page's context menu stays off it. -->
+  <!--
+    The terminal handles its own pointer: the page's context menu stays off it.
+  -->
   <div class="h-full min-h-0 w-full px-3 py-2" @contextmenu.stop>
     <div
       ref="hostRef"

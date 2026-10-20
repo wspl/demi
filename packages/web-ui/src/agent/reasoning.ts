@@ -35,7 +35,10 @@ export interface ReasoningState {
   firstEffort: string
 }
 
-/** The charge of an effort, or of thinking off; an effort the table does not name reads as a plain gauge. */
+/**
+ * The charge of an effort, or of thinking off; an effort the table does not
+ * name reads as a plain gauge.
+ */
 export function effortIcon(effort: string): Component {
   return EFFORT_ICONS[effort] ?? Gauge
 }

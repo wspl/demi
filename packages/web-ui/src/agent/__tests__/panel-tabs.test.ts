@@ -34,7 +34,8 @@ test('the panel shows the newest selection it still shows, else its first pinned
   expect(shownSelection(three(['file', 'b']), kinds)).toBe('b')
   expect(selectedTab(three(['file', 'b']), kinds)).toEqual({ id: 'b', kind: 'page', data: { url: 'b' } })
   expect(selectedTab(three(['b', 'file']), kinds)).toBeNull()
-  // A kind turned off, or a tab another page closed, gives way to what was selected before it.
+  // A kind turned off, or a tab another page closed, gives way to what was
+  // selected before it.
   expect(shownSelection(three(['b', 'gone']), kinds)).toBe('b')
   expect(shownSelection(three(['file']), [])).toBe('a')
   expect(pinnedData({}, kinds[1]!)).toBe('f')
@@ -48,7 +49,8 @@ test('closing the shown tab shows the one selected before it, then the first pin
   expect(shownSelection(closedA, kinds)).toBe('c')
   const closedC = removeTabs(closedA, ['c'])
   expect(shownSelection(closedC, kinds)).toBe('file')
-  // Without a selection left, the first pinned tab; a pinned tab is never closed.
+  // Without a selection left, the first pinned tab; a pinned tab is never
+  // closed.
   expect(shownSelection(removeTabs(three(['b']), ['b']), kinds)).toBe('change')
   expect(removeTabs(three(['file']), ['a', 'b', 'c'])).toEqual({ history: ['file'], tabs: [] })
 })

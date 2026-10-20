@@ -12,7 +12,9 @@ import { createPageI18n } from '../../i18n/text'
 
 // The files a message names.
 
-/** The Host's kept files, which a message's Host images show; never read here. */
+/**
+ * The Host's kept files, which a message's Host images show; never read here.
+ */
 const contents: FileContents = {
   url: (path) => `/raw?path=${encodeURIComponent(path)}`,
   describe: () => new Promise(() => {}),
@@ -25,17 +27,25 @@ const files: MessageFiles = {
   open: () => {},
 }
 
-/** The Host images at `paths` as the page shows them once their files are read. */
+/**
+ * The Host images at `paths` as the page shows them once their files are read.
+ */
 function shownImages(...paths: string[]): ReadonlyMap<string, HostImage> {
   return new Map(paths.map((path) => [path, { state: 'shown', src: `/raw?path=${encodeURIComponent(path)}` }]))
 }
 
-/** The icon a message's link wears, with the first word of its text, which a line never parts from it. */
+/**
+ * The icon a message's link wears, with the first word of its text, which a
+ * line never parts from it.
+ */
 function lead(icon: string, word: string): string {
   return `<span class="icon-lead"><span class="message-link-icon" ${icon} aria-hidden="true"></span>${word}</span>`
 }
 
-/** A link of text to a Host file, as a message shows it: the file's icon, then the text, whose one word is `text`. */
+/**
+ * A link of text to a Host file, as a message shows it: the file's icon, then
+ * the text, whose one word is `text`.
+ */
 function fileLink(path: string, text: string, line?: number): string {
   const name = path.split('/').at(-1)
   return `<a href="${path}" data-file-link${line ? ` data-line="${line}"` : ''} class="icon-link">${lead(`data-file-icon="${name}"`, text)}</a>`
@@ -97,7 +107,8 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
     '![chart](out/chart.png) and ![logo](https://example.com/l.png) and ![dot](data:image/png;base64,AAAA) and ![mail](mailto:a@b.c)',
     { files, hostImages: shownImages('/work/out/chart.png') },
   )
-  // A click on any of them shows it large in the media viewer, so none is wrapped in a link.
+  // A click on any of them shows it large in the media viewer, so none is
+  // wrapped in a link.
   expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" />`)
   expect(html).toContain('<img src="https://example.com/l.png" alt="logo" />')
   expect(html).not.toContain('<a ')
@@ -136,7 +147,8 @@ test('without a Host, paths stay text and Host images show their alt text', () =
 })
 
 test('emphasis beside CJK text formats as a CJK writer means it', () => {
-  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as text.
+  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as
+  // text.
   expect(renderMarkdown('**建议：**一组')).toBe('<p><strong>建议：</strong>一组</p>\n')
   expect(renderMarkdown('这是**“扫光”**效果')).toBe('<p>这是<strong>“扫光”</strong>效果</p>\n')
   expect(renderMarkdown('**注意：**これは')).toBe('<p><strong>注意：</strong>これは</p>\n')
@@ -154,7 +166,8 @@ test('inline code that names a file the Host has opens it as a link of words; an
   // Until the Host answers, all of it is code.
   expect(renderMarkdown(reply, { files, codeFiles: null })).not.toContain('data-file-link')
   const html = renderMarkdown(reply, { files, codeFiles: new Set(['/work/src/a.ts', '/work/README.md', '/work/src/b.ts']) })
-  // A link followed by ASCII punctuation keeps no space before it, as any icon link.
+  // A link followed by ASCII punctuation keeps no space before it, as any icon
+  // link.
   const a = `<a href="/work/src/a.ts" data-file-link data-line="42" class="icon-link icon-link-tight">${lead('data-file-icon="a.ts"', 'src')}/a.ts:42</a>`
   expect(html).toBe(`<p>See ${a}, <code>src/gone.ts</code>, ${fileLink('/work/README.md', 'README.md').replace('"icon-link"', '"icon-link icon-link-tight"')}, <code>runner</code> and src/b.ts.</p>\n`)
 })
@@ -182,7 +195,8 @@ test('a link that starts with an icon keeps no space before ASCII punctuation th
   expect(classes('Ask [cwd check](agent:4); then [the notes](notes.md), and [more](agent:5).')).toEqual([
     'agent-link icon-link icon-link-tight', 'icon-link icon-link-tight', 'agent-link icon-link icon-link-tight',
   ])
-  // A word after the link, and full-width punctuation, which carries its own space, keep the link's.
+  // A word after the link, and full-width punctuation, which carries its own
+  // space, keep the link's.
   expect(classes('Ask [cwd check](agent:4) first, and 告诉[负责的 Agent](agent:5)：好。')).toEqual([
     'agent-link icon-link', 'agent-link icon-link',
   ])
@@ -249,7 +263,8 @@ test('an audio block is its inline player, and any other file\'s block the place
   expect(renderMarkdown(block('a8'), { files: withAttachments }))
     .toBe('<p><span class="message-audio" data-attachment-audio="/blobs/8?type=audio%2Fmpeg" data-audio-name="welcome.mp3"></span></p>\n')
   expect(renderMarkdown(block('a3'), { files: withAttachments })).toBe(card('a3'))
-  // Cards on consecutive lines stack, each its own; images that follow each other stand side by side.
+  // Cards on consecutive lines stack, each its own; images that follow each
+  // other stand side by side.
   expect(renderMarkdown(`${block('a3')}\n${block('a7')}`, { files: withAttachments })).toBe(`${card('a3')}${card('a7')}`)
   expect(renderMarkdown(`${block('a1')}\n${block('a2')}`, { files: withAttachments })).toBe(`<p class="media-run">${imageTile}${videoTile}</p>\n`)
 })

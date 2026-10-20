@@ -8,11 +8,13 @@ import type { CredentialKind } from './credential-kinds'
 
 /**
  * The headline of a failed turn: the catalogue's words for its failure code,
- * such as `usage_limit`, and, when the provider names the moment it works
- * again, that moment counted from `now`: “You’ve reached your usage limit.
- * Resets at 9:00 PM.” A code the catalogue has no words for, as a vendor's own,
- * and a failure without a code read “The turn failed.”; what the vendor said
- * shows below it, untranslated.
+ * such as `usage_limit`. When the provider names the moment it works again, the
+ * headline adds that moment counted from `now`: “You’ve reached your usage
+ * limit. Resets at 9:00 PM.”
+ *
+ * A code the catalogue has no words for, as a vendor's own, and a failure
+ * without a code read “The turn failed.” What the vendor said shows below it,
+ * untranslated.
  */
 export function failureHeadline(
   code: string | null | undefined,
@@ -31,14 +33,15 @@ export function failureHeadline(
 }
 
 /**
- * The headline of a failure's record in the transcript: while the vendor
- * has the account the request used signed out, the record says so in its
- * own words, and the dock offers Open Providers; while the device's port
- * the request named is still not exposed, it names the port and the
- * device, and the dock offers Expose Port; for a device that was offline,
- * it names the device; otherwise the code's
- * headline, worded by the credential the entry holds (`credential`, null
- * when the page does not know the entry).
+ * The headline of a failure's record in the transcript:
+ *
+ * - While the vendor has the account the request used signed out, the record
+ *   says so in its own words, and the dock offers Open Providers.
+ * - While the device's port the request named is still not exposed, it names
+ *   the port and the device, and the dock offers Expose Port.
+ * - For a device that was offline, it names the device.
+ * - Otherwise, it is the code's headline, worded by the credential the entry
+ *   holds (`credential`, null when the page does not know the entry).
  */
 export function recordHeadline(
   code: string | null | undefined,
@@ -73,14 +76,16 @@ const httpRecordSchema = z.object({
 })
 
 /**
- * What a failure record shows under its headline: the vendor's response
- * behind Provider Response, for a failure a provider reported; and the
- * record's own text in the body only for a failure the page has no words
- * for that no provider reported, as a record an older release wrote. An
- * `http` record shows what the vendor said first, *HTTP 403* and its body,
- * indented when it is JSON, and its headers apart, which the notice folds
- * under Headers; any other record shows as it arrived, indented when it is
- * JSON.
+ * What a failure record shows under its headline:
+ *
+ * - For a failure a provider reported, the vendor's response behind Provider
+ *   Response.
+ * - For a failure the page has no words for that no provider reported, as a
+ *   record an older release wrote, the record's own text in the body only.
+ *
+ * An `http` record shows what the vendor said first, *HTTP 403* and its body,
+ * indented when it is JSON, and its headers apart, which the notice folds under
+ * Headers. Any other record shows as it arrived, indented when it is JSON.
  */
 export function failureSource(
   message: string,
@@ -107,7 +112,10 @@ export function failureSource(
   return { raw: null, headers: null, detail: worded ? null : message.trim() || null }
 }
 
-/** `upstream` read as an `http` record; null when it is not one, and it then shows as it arrived. */
+/**
+ * `upstream` read as an `http` record; null when it is not one, and it then
+ * shows as it arrived.
+ */
 function parsedHttpRecord(upstream: string): z.infer<typeof httpRecordSchema> | null {
   try {
     const parsed = httpRecordSchema.safeParse(JSON.parse(upstream))
@@ -118,7 +126,10 @@ function parsedHttpRecord(upstream: string): z.infer<typeof httpRecordSchema> | 
   }
 }
 
-/** What the copy button puts on the clipboard: the upstream message and every diagnostic. */
+/**
+ * What the copy button puts on the clipboard: the upstream message and every
+ * diagnostic.
+ */
 export function errorReportText(
   message: string,
   code: string | null | undefined,
@@ -146,7 +157,10 @@ export function errorReportText(
   return lines.join('\n')
 }
 
-/** The provider's response as it arrived, indented when it is JSON, for a reader's eyes. */
+/**
+ * The provider's response as it arrived, indented when it is JSON, for a
+ * reader's eyes.
+ */
 export function prettyUpstream(upstream: string): string {
   try {
     return JSON.stringify(JSON.parse(upstream), null, 2)

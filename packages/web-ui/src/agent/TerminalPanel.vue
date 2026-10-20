@@ -13,7 +13,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** End Command in a running tab's menu: stop that command; a stopping one's tab shows a spinner until it ends. */
+  /**
+   * End Command in a running tab's menu: stop that command; a stopping one's
+   * tab shows a spinner until it ends.
+   */
   abort: [id: string]
 }>()
 const activeId = defineModel<string | null>('activeId', { required: true })
@@ -36,7 +39,8 @@ function terminalOf(id: string): TerminalRecord | undefined {
   return tabs.value.find((terminal) => terminal.id === id)
 }
 
-// An ended command's tab puts it away; a running one's stays until the command is ended.
+// An ended command's tab puts it away; a running one's stays until the command
+// is ended.
 /** A tab's menu: end its command, close its tab once the command has ended. */
 function tabMenu(id: string): () => ContextMenuGroup[] {
   return () => [

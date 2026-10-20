@@ -4,21 +4,30 @@ import { t } from '../locales/text'
 
 /**
  * What a notice row says (`crates/agent-session/src/reports.rs`): what
- * happened, then what it happened to by its title, the notice's object (an
- * imperative title read as the subject reads wrongly), underlined with dots, after a colon; or, for a title that ends the sentence,
- * such as *main agent* in *Message from main agent*, after the words alone. A
- * click on the title brings into view where it came from, as a control of its
- * own; a title nothing can show is plain text. Where it came from may lie in a
+ * happened, then what it happened to by its title.
+ *
+ * The title is the notice's object (an imperative title read as the subject
+ * reads wrongly). It is underlined with dots and comes after a colon, or, for a
+ * title that ends the sentence, such as *main agent* in *Message from main
+ * agent*, after the words alone.
+ *
+ * A click on the title brings into view where it came from, as a control of its
+ * own. A title nothing can show is plain text. Where it came from may lie in a
  * child's transcript, which the Agents window opens on or switches to, so the
  * title is that window's control, as its chip is: a press on it is not one
- * outside the session's windows (`KEEPS_WINDOWS`). On a narrow row the title gives way first, down to a few characters,
- * and then the words, each ending in an ellipsis.
+ * outside the session's windows (`KEEPS_WINDOWS`).
+ *
+ * On a narrow row the title gives way first, down to a few characters, and then
+ * the words, each ending in an ellipsis.
  */
 defineProps<{
   notice: string
   /** What the notice names; none for a notice that names nothing. */
   title?: string | null
-  /** The title stands inside the notice's sentence, with no colon between; the words keep their own spaces. */
+  /**
+   * The title stands inside the notice's sentence, with no colon between; the
+   * words keep their own spaces.
+   */
   inline?: boolean
   /** What follows an inline title in the sentence. */
   after?: string
@@ -52,9 +61,9 @@ defineProps<{
 
 <style scoped>
 /*
- * Only the title shrinks, so the words keep their whole width while the
- * title gives way; the words are capped to leave the title a few
- * characters, and give way too once the row is narrower than that.
+ * Only the title shrinks, so the words keep their whole width while the title
+ * gives way. The words are capped to leave the title a few characters, and give
+ * way too once the row is narrower than that.
  */
 .notice-label {
   --notice-gap: calc(var(--spacing) * 2);
@@ -62,7 +71,10 @@ defineProps<{
   gap: var(--notice-gap);
 }
 
-/* The words of an inline sentence keep their own spaces, as the language writes them. */
+/*
+ * The words of an inline sentence keep their own spaces, as the language writes
+ * them.
+ */
 .notice-label-inline {
   --notice-gap: 0;
 }

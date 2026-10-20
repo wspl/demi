@@ -4,10 +4,13 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
- * A state of the whole session that the reader chose or can leave (archived,
- * no model can send), or one that ends by itself (the Cloud is resetting). It
- * replaces the composer input and offers the one action that leaves the
- * state; a state that ends by itself has none and says it is in progress.
+ * A state of the whole session that the reader chose or can leave (archived, no
+ * model can send), or one that ends by itself (the Cloud is resetting).
+ *
+ * The notice replaces the composer input and offers the one action that leaves
+ * the state. A state that ends by itself has no action and says it is in
+ * progress.
+ *
  * Failures are not notices; they are `ErrorNotice` records in the transcript.
  */
 defineProps<{

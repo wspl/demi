@@ -87,7 +87,10 @@ const agents: MessageAgents = {
 
 const reply = 'Fixed in [cart.ts](src/cart.ts), committed as [Fix the total](commit:3f2a9c1) by [Cart](agent:4) after [Fonts](agent:5) ended; see [the docs](https://example.com/docs).'
 
-/** The reply as a conversation shows it, in a message whose menu is Copy Message; each menu a right-click opens is recorded. */
+/**
+ * The reply as a conversation shows it, in a message whose menu is Copy
+ * Message; each menu a right-click opens is recorded.
+ */
 async function shown(inPanel?: (url: string) => void) {
   const opened: Group[][] = []
   teardown.push(menus.installContextMenus({

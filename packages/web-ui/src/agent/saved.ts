@@ -40,7 +40,9 @@ export function savedLabel(count: number): string {
   return t('composer.saved.count', { count })
 }
 
-/** The key that saves the message for later, ⌘S on macOS and Ctrl+S elsewhere. */
+/**
+ * The key that saves the message for later, ⌘S on macOS and Ctrl+S elsewhere.
+ */
 export function saveForLaterKeys(): string {
   return isMacOS() ? '⌘S' : 'Ctrl+S'
 }

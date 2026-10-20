@@ -13,26 +13,41 @@ import { callHitRate } from './context-cost'
 import { t } from './locales/text'
 
 /**
- * The main conversation's recent turn calls, each at its call's cache hit
- * rate, by its number (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): faint
- * lines at 0, 50 and 100%, the numbers under the plot, a cache miss a red
- * dot, a compaction a grey dashed line between the calls it separates.
+ * The main conversation's recent turn calls, each at its call's cache hit rate,
+ * by its number (`packages/web-ui/src/agent/ContextUsageIndicator.vue`).
+ *
+ * The chart draws:
+ *
+ * - faint lines at 0, 50 and 100%
+ * - the numbers under the plot
+ * - a red dot for a cache miss
+ * - a grey dashed line for a compaction, between the calls it separates
+ *
  * Resting the pointer on the plot, or a tap on a phone, shows the nearest
- * call's tip beside its point where it fits, otherwise above it, never past
- * the card's edges.
+ * call's tip beside its point where it fits, otherwise above it, never past the
+ * card's edges.
  */
 const props = defineProps<{
   /** The calls the chart draws, the conversation's most recent. */
   calls: readonly CostCall[]
-  /** How many of the conversation's turn calls came before them, which their numbers count on from. */
+  /**
+   * How many of the conversation's turn calls came before them. Their numbers
+   * count on from it.
+   */
   before: number
-  /** The call, by its place among all of the conversation's, whose tip shows without the pointer, as a gallery specimen pins it. */
+  /**
+   * The call, by its place among all of the conversation's, whose tip shows
+   * without the pointer, as a gallery specimen pins it.
+   */
   pinnedTip?: number | null
 }>()
 
 /** The plot's height, four rows of the card. */
 const PLOT = 96
-/** The plot's top line below the controls above it, and the labels below the plot: a caption's gap. */
+/**
+ * The gap of one caption: between the plot's top line and the controls above
+ * it, and between the plot and the labels below it.
+ */
 const GAP = 4
 /** The labels' cap height at the caption's size. */
 const CAP = 8
@@ -42,9 +57,9 @@ const HEIGHT = BASELINE + 3
 /** A label this near an end of the plot is anchored to that end. */
 const EDGE = 16
 /**
- * A character's widest advance at the labels' caption size, in pixels, and
- * the room left between two labels: a label between the first and the last
- * stands only where its whole width keeps that room from theirs.
+ * A character's widest advance at the labels' caption size, in pixels, and the
+ * room left between two labels. A label between the first and the last stands
+ * only where its whole width keeps that room from theirs.
  */
 const LABEL_CHAR = 8
 const LABEL_GAP = 6
@@ -74,16 +89,20 @@ const area = computed(() => {
   return `M${first.x.toFixed(1)},${yOf(0)}${line.value.replace('M', 'L')}L${last.x.toFixed(1)},${yOf(0)}Z`
 })
 
-/** Each compaction, halfway between the call before it and the first after it. */
+/**
+ * Each compaction, halfway between the call before it and the first after it.
+ */
 const compactions = computed(() =>
   props.calls.flatMap((call, index) => (call.afterCompaction && index > 0 ? [(xOf(index - 1) + xOf(index)) / 2] : [])),
 )
 const misses = computed(() => props.calls.flatMap((call, index) => (call.miss === null ? [] : [points.value[index]!])))
 
 /**
- * The labels under the plot: the first and last drawn call's numbers in
- * the conversation, the first marked `#`, and the round ones between that
- * fit beside them and each other.
+ * The labels under the plot:
+ *
+ * - the numbers of the first and last drawn call in the conversation, the first
+ *   marked `#`
+ * - the round numbers between them that fit beside them and each other
  */
 const labels = computed(() => {
   const count = props.calls.length
@@ -112,7 +131,10 @@ const labels = computed(() => {
   return [...shown, end]
 })
 
-/** The drawn call under the pointer, or the tap; the pinned one while there is none. */
+/**
+ * The drawn call under the pointer, or the tap; the pinned one while there is
+ * none.
+ */
 const pointed = ref<number | null>(null)
 const pinned = computed(() => {
   const index = props.pinnedTip == null ? -1 : props.pinnedTip - props.before
@@ -174,17 +196,21 @@ const TIP_INSET = 4
 /** The tip's widest, the width of a tooltip's text. */
 const TIP_WIDTH = 320
 const { width: cardWidth } = useElementSize(card, undefined, { box: 'border-box' })
-/** The tip never outgrows the card, so above the point it fits whole, its lines wrapping. */
+/**
+ * The tip never outgrows the card, so above the point it fits whole, its lines
+ * wrapping.
+ */
 const tipWidth = computed(() => (card.value ? Math.min(TIP_WIDTH, Math.max(0, cardWidth.value - 2 * TIP_INSET)) : TIP_WIDTH))
 const tip = useTemplateRef<HTMLElement>('tip')
 const { floatingStyles } = useFloating(reference, tip, {
   placement: 'right',
-  // Within its card, the card is the tip's offset parent; a phone's sheet
-  // moves the card, which a fixed tip would not follow.
+  // Within its card, the card is the tip's offset parent. A phone's sheet moves
+  // the card, which a fixed tip would not follow.
   strategy: computed(() => (card.value ? 'absolute' : 'fixed')),
   middleware: computed(() => [
     offset(12),
-    // Beside the point, so the line under it stays in view; above it when neither side has room.
+    // Beside the point, so the line under it stays in view; above it when
+    // neither side has room.
     flip({ boundary: card.value, crossAxis: false, fallbackPlacements: ['left', 'top'], fallbackStrategy: 'initialPlacement' }),
     shift({ boundary: card.value, padding: TIP_INSET, crossAxis: true }),
   ]),
@@ -248,8 +274,10 @@ watch(shown, () => {
         />
       </g>
     </svg>
-    <!-- The tip lives in its card's own layer: the product's stays within
-         the card, and a gallery specimen's within its specimen. -->
+    <!--
+      The tip lives in its card's own layer. The product's stays within the
+      card, and a gallery specimen's within its specimen.
+    -->
     <Teleport :to="card ?? 'body'">
       <div
         v-if="tipCall && shown !== null"

@@ -11,7 +11,10 @@ export type LiveCallLookup = (toolUseId: string) => TerminalRecord | undefined
 
 const liveCallsKey: InjectionKey<LiveCallLookup> = Symbol('live-calls')
 
-/** Gives the transcript below its calls' commands; a subagent's panel gives its own. */
+/**
+ * Gives the transcript below its calls' commands; a subagent's panel gives its
+ * own.
+ */
 export function provideLiveCalls(lookup: LiveCallLookup): void {
   provide(liveCallsKey, lookup)
 }

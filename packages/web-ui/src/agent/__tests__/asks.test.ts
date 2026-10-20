@@ -10,7 +10,10 @@ const ASKED = '2026-10-18T07:00:00.000Z'
 const before = '2026-10-18T06:50:00.000Z'
 const after = (seconds: number) => new Date(Date.parse(ASKED) + seconds * 1000).toISOString()
 
-/** A user block; the side question's first message's turn is the side question's id. */
+/**
+ * A user block; the side question's first message's turn is the side question's
+ * id.
+ */
 function user(id: string, createdAt: string, text: string, turnId = id): Block {
   return { type: 'user', id, turnId, createdAt, model, content: [{ type: 'text', text }], preamble: null }
 }
@@ -26,7 +29,10 @@ function call(id: string, createdAt: string, description: string): Block {
   }
 }
 
-/** The side question holding `blocks`, the page of its transcript from `start` of `length` blocks. */
+/**
+ * The side question holding `blocks`, the page of its transcript from `start`
+ * of `length` blocks.
+ */
 function question(blocks: Block[], working: boolean, start = 0, length = start + blocks.length): ShownSideQuestion {
   return {
     id: 'side', blockId: 'reply', start: 0, end: 5, quote: 'stale', question: 'Why stale?', title: null, folded: false,
@@ -36,7 +42,10 @@ function question(blocks: Block[], working: boolean, start = 0, length = start +
 
 const FIRST = '> stale\n\nThe user asks this aside…\n\nWhy stale?'
 
-/** The history a side question starts from: the conversation's, older than the question. */
+/**
+ * The history a side question starts from: the conversation's, older than the
+ * question.
+ */
 const history = [user('root-q', before, 'Why is the card wrong?'), text('reply', before, 'The stale cache keeps old totals.')]
 
 // The card shows each of its own questions with the last text its turn
@@ -79,11 +88,11 @@ test('a failed turn offers its record', () => {
   expect(cardContent(question([...history, user('q1', after(1), FIRST, 'side'), failure], true)).failure).toBeNull()
 })
 
-// A long side conversation: its first question, many steps, then
-// follow-ups. The page holds only the latest page, which starts at a
-// follow-up; the card does not take that follow-up for the first question
-// and reads the pages before until it holds the first message, which its
-// turn names, and then shows every question with its answer.
+// A long side conversation: its first question, many steps, then follow-ups.
+// The page holds only the latest page, which starts at a follow-up. The card
+// does not take that follow-up for the first question. It reads the pages
+// before until it holds the first message, which its turn names, and then shows
+// every question with its answer.
 test('a card reads back until it holds its first question, whatever the pages hold', () => {
   const steps = Array.from({ length: 40 }, (_, index) => call(`c${index}`, after(2), `Step ${index}`))
   const whole = [

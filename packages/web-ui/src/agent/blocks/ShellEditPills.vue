@@ -8,10 +8,10 @@ import { callPills, pillSelection, requestFileSelection } from '../../files/requ
 import FileChangePills from './FileChangePills.vue'
 
 /**
- * The files a shell call changed, as pills under its row, as the call's
- * view stores them: what it wrote, removed (struck through) and renamed,
- * but for a file outside its agent's working directory. A pill opens its file in the
- * call's request, at the call's first edit of it; a conversation outside a
+ * The files a shell call changed, as pills under its row, as the call's view
+ * stores them: what it wrote, removed (struck through) and renamed, but for a
+ * file outside its agent's working directory. A pill opens its file in the
+ * call's request, at the call's first edit of it. A conversation outside a
  * project shows none (`crates/agent-store/src/changes.rs`).
  */
 const props = defineProps<{ block: ToolCallBlock }>()

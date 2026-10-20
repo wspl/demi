@@ -41,12 +41,17 @@ export function capsuleOf(node: ProseMirrorNode): MessageCapsule | null {
   return node.type.name === 'attachment' ? node.attrs['capsule'] ?? null : null
 }
 
-/** An image file's picture, from its bytes in the user's blobs; none for a file of another kind. */
+/**
+ * An image file's picture, from its bytes in the user's blobs; none for a file
+ * of another kind.
+ */
 export function blobImage(mediaType: string, sha256: string): ContentMediaSource | undefined {
   return mediaType.startsWith('image/') ? { type: 'ref', ref: sha256, mediaType } : undefined
 }
 
-/** A video file's bytes in the user's blobs; none for a file of another kind. */
+/**
+ * A video file's bytes in the user's blobs; none for a file of another kind.
+ */
 function blobVideo(mediaType: string, sha256: string): ContentMediaSource | undefined {
   return mediaType.startsWith('video/') ? { type: 'ref', ref: sha256, mediaType } : undefined
 }
@@ -54,7 +59,10 @@ function blobVideo(mediaType: string, sha256: string): ContentMediaSource | unde
 /** What is happening to a file the composer is still carrying to the Host. */
 export type MessageTransfer =
   | { phase: 'uploading'; progress: number }
-  /** A pasted message's stored file being attached, which has no progress to tell. */
+  /**
+   * A pasted message's stored file being attached, which has no progress to
+   * tell.
+   */
   | { phase: 'attaching' }
   | { phase: 'failed' }
   /** A file whose bytes and upload are gone, to delete or attach again. */
@@ -69,7 +77,10 @@ export type MessageTransfer =
 export interface TransferContext {
   transfer(id: string): MessageTransfer | undefined
   carries(id: string): boolean
-  /** Uploads a failed file again; absent where the capsule offers no Retry, as in a sent message. */
+  /**
+   * Uploads a failed file again; absent where the capsule offers no Retry, as
+   * in a sent message.
+   */
   retry?(id: string): void
   /**
    * The file as the composer knows it now, which the capsule the document
@@ -91,7 +102,10 @@ const capsuleSchema = z.object({
   path: z.string().optional(),
 })
 
-/** The capsule a pasted node carries, or nothing when it comes from outside the app. */
+/**
+ * The capsule a pasted node carries, or nothing when it comes from outside the
+ * app.
+ */
 export function readCapsule(value: string | null): MessageCapsule | null {
   if (!value) {
     return null
@@ -106,12 +120,18 @@ export function provideTransfers(context: TransferContext): void {
   provide(transferContextKey, context)
 }
 
-/** The transfers beside this editor's capsules; none in a conversation, where every file has arrived. */
+/**
+ * The transfers beside this editor's capsules; none in a conversation, where
+ * every file has arrived.
+ */
 export function useTransfers(): TransferContext | null {
   return inject(transferContextKey, null)
 }
 
-/** A file on its way to a message, as its capsule shows it: an upload, or a file on another device. */
+/**
+ * A file on its way to a message, as its capsule shows it: an upload, or a file
+ * on another device.
+ */
 export function composerCapsule(item: ComposerAttachment): MessageCapsule {
   if (item.kind === 'reference') {
     return { id: item.id, name: item.name, host: item.host, path: item.path }
@@ -124,7 +144,10 @@ export function composerCapsule(item: ComposerAttachment): MessageCapsule {
   }
 }
 
-/** How far a file has come, while it is still on its way; nothing once it has arrived. */
+/**
+ * How far a file has come, while it is still on its way; nothing once it has
+ * arrived.
+ */
 export function composerTransfer(item: ComposerAttachment): MessageTransfer | undefined {
   if (item.kind !== 'file') {
     return undefined
@@ -195,7 +218,10 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
   return capsule
 }
 
-/** A message the session holds as its editor shows it: its Markdown, and a capsule for each file in the order of their marks. */
+/**
+ * A message the session holds as its editor shows it: its Markdown, and a
+ * capsule for each file in the order of their marks.
+ */
 export function contentMessage(content: readonly MessageEditContent[]): { markdown: string; capsules: MessageCapsule[] } {
   const { markdown, files } = splitMessageContent(content)
   return { markdown, capsules: files.map((blocks, index) => contentCapsule(String(index), blocks)) }
@@ -215,7 +241,10 @@ export function imageCapsule(image: { url: string } | { path: string }, src: str
   return { id: `image:${image.url}`, name: alt || (leaf ? decodedTarget(leaf) : 'image'), image: src }
 }
 
-/** A media block's name, when no record names it: the leaf of its address, or its kind. */
+/**
+ * A media block's name, when no record names it: the leaf of its address, or
+ * its kind.
+ */
 function mediaName(block: Extract<MessageEditContent, { type: 'image' | 'video' }>): string {
   const { source } = block
   if (source.type === 'url') {

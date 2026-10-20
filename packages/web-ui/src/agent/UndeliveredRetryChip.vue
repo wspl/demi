@@ -9,8 +9,8 @@ import type { PendingSubmissionState } from './types'
 
 /**
  * The dock's Retry for the messages that were not delivered, before the turn's
- * own control: shown while one of them can be delivered by sending it again,
- * and none otherwise, where each one's Edit is the way on.
+ * own control. It is shown while one of them can be delivered by sending it
+ * again, and not otherwise, where each one's Edit is the way on.
  */
 const props = defineProps<{
   pendingSubmissions: readonly PendingSubmissionState[]

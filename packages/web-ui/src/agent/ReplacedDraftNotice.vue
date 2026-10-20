@@ -8,9 +8,11 @@ import Tooltip from '../ui/Tooltip.vue'
 
 /**
  * The version of the draft that a later save replaced, offered above the
- * composer: its first line, Restore, which exchanges it with the draft, and a
- * control that dismisses it. The row owns the dismiss control's inset from its
- * edges.
+ * composer.
+ *
+ * The notice shows the version's first line, Restore, which exchanges the
+ * version with the draft, and a control that dismisses it. The row owns the
+ * dismiss control's inset from its edges.
  */
 defineProps<{
   /** The replaced version as one line. */
@@ -22,7 +24,10 @@ const emit = defineEmits<{
   dismiss: []
 }>()
 
-/** The sentence around the draft's first line, which stands apart in its own tone. */
+/**
+ * The sentence around the draft's first line, which stands apart in its own
+ * tone.
+ */
 const sentence = computed(() => around('notices.replacedDraft', 'draft'))
 </script>
 
@@ -60,7 +65,10 @@ const sentence = computed(() => around('notices.replacedDraft', 'draft'))
    puts it from its top and bottom: (row height - control height) / 2. */
 .replaced-draft-notice-dismiss {
   display: flex;
-  /* No inline strut, so the Tooltip's wrapper cannot lift the control off center. */
+  /*
+   * No inline strut, so the Tooltip's wrapper cannot lift the control off
+   * center.
+   */
   line-height: 0;
   margin-right: calc((var(--replaced-draft-row-h) - var(--spacing-hit-sm)) / 2);
 }

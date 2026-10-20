@@ -22,33 +22,39 @@ import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
 
 /**
  * The work panel's frame: the pinned tab of each pinned kind, the strip of the
- * user's tabs, and what the selected one shows. Every tab is of a kind a plugin
- * registers; the panel shows it through its kind and knows nothing else about
- * it. A content once shown stays on the page, hidden and told it is not shown,
- * until its tab closes or the panel binds other kinds, as for another
- * conversation.
+ * user's tabs, and what the selected one shows.
  *
- * On a phone it takes the whole screen (SidebarLayout) under one bar of its
- * own: a back button, its chevron alone and named Back to Conversation,
- * which goes back to the conversation as it was, as a swipe from the
- * screen's left edge does (SidebarLayout); the strip; and the strip's
- * controls. The desktop's close control is that back.
+ * Every tab is of a kind a plugin registers. The panel shows it through its
+ * kind and knows nothing else about it. A content once shown stays on the page,
+ * hidden and told it is not shown, until its tab closes or the panel binds
+ * other kinds, as for another conversation.
+ *
+ * On a phone, the panel takes the whole screen (SidebarLayout) under one bar of
+ * its own, with three parts:
+ *
+ * - a back button, its chevron alone and named Back to Conversation, which goes
+ *   back to the conversation as it was, as a swipe from the screen's left edge
+ *   does (SidebarLayout)
+ * - the strip
+ * - the strip's controls
+ *
+ * The desktop's close control is that back.
  */
 const props = withDefaults(defineProps<{
   /** The selection and the user's tabs. */
   panel: PanelState
   /**
-   * Whether the owner has read the tabs, true unless it says not: the tabs
-   * a first read brings were there before the panel showed them, so they
-   * come with no motion; a tab opened or closed after it moves.
+   * Whether the owner has read the tabs, true unless it says not. The tabs a
+   * first read brings were there before the panel showed them, so they come
+   * with no motion. A tab opened or closed after it moves.
    */
   tabsRead?: boolean
   /** The pinned tabs' data, by kind. */
   pinned: PinnedTabs
   kinds: readonly PanelTabKind[]
   /**
-   * The conversation's first send has not created it yet, so it has no
-   * working directory: the body says when files and changes appear.
+   * The conversation's first send has not created it yet, so it has no working
+   * directory. The body says when files and changes appear.
    */
   beforeFirstMessage?: boolean
 }>(), {
@@ -65,9 +71,9 @@ const emit = defineEmits<{
 }>()
 
 /**
- * Each pinned kind with the data its tab shows and its own short title, the
- * title of the data it starts from, such as File's before a file is open, so
- * the strip's label never follows what the tab shows.
+ * Each pinned kind with the data its tab shows and its own short title. The
+ * title is that of the data the tab starts from, such as File's before a file
+ * is open, so the strip's label never follows what the tab shows.
  */
 const pinnedTabs = computed(() =>
   props.kinds.flatMap((kind) => kind.pinned
@@ -100,7 +106,8 @@ function replaceTabs(): void {
     replacing.value = false
   })
 }
-// Kinds bound anew belong to another conversation, or another set of pages: nothing of the old ones stays.
+// Kinds bound anew belong to another conversation, or another set of pages:
+// nothing of the old ones stays.
 watch(() => props.kinds, () => {
   kept.value = keptContents([], selection.value, present.value)
   replaceTabs()
@@ -130,7 +137,10 @@ function closeScope(id: string, scope: TabCloseScope): void {
   emit('closeTabs', tabsToClose(props.panel.tabs, id, scope))
 }
 
-/** A tab's mark as the strip draws it, as an icon of the list of every tab: its spinner, its picture or its kind's mark. */
+/**
+ * A tab's mark as the strip draws it, as an icon of the list of every tab: its
+ * spinner, its picture or its kind's mark.
+ */
 function listMark(mark: Component | null, data: unknown, picture: string | null, busy: boolean): FunctionalComponent {
   return () => busy
     ? h(IndeterminateSpinner, { size: ICON_PX.markIn28 })
@@ -139,7 +149,10 @@ function listMark(mark: Component | null, data: unknown, picture: string | null,
       : mark ? h(mark, { data }) : null
 }
 
-/** Every tab, the pinned ones first, by its mark and title, as the strip's list shows them. */
+/**
+ * Every tab, the pinned ones first, by its mark and title, as the strip's list
+ * shows them.
+ */
 const listedTabs = computed<MenuListItem[]>(() => [
   ...pinnedTabs.value.map((item) => ({
     id: item.kind.kind,
@@ -200,7 +213,10 @@ function reorder(from: number, to: number): void {
       class="flex shrink-0 items-center gap-1"
       :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pl-1 pr-1.5 pt-[var(--safe-top)]' : 'h-11 pl-2 pr-3'"
     >
-      <!-- The chevron alone, as a phone's own back button with no room for a title; its name says where it goes. -->
+      <!--
+        The chevron alone, as a phone's own back button with no room for a
+        title; its name says where it goes.
+      -->
       <IconButton
         v-if="phone"
         :icon="ChevronLeft"
@@ -214,10 +230,14 @@ function reorder(from: number, to: number): void {
         :still="replacing"
         @reorder="reorder"
       >
-        <!-- The pinned tabs lead the strip in one shape whatever is selected: the mark, the kind's own
-             short title and the badge, such as Change's counts, with what the tab shows, such as the
-             open file's name, in the tooltip, so selecting one or opening a file widens nothing. Each
-             is a tab as the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
+        <!--
+          The pinned tabs lead the strip in one shape whatever is selected: the
+          mark, the kind's own short title and the badge, such as Change's
+          counts. What the tab shows, such as the open file's name, goes in the
+          tooltip, so selecting one or opening a file widens nothing. Each is a
+          tab as the strip's own are: a press selects it, as do Enter and Space,
+          and the arrows reach it.
+        -->
         <template v-if="pinnedTabs.length" #leading>
           <Tooltip
             v-for="item in pinnedTabs"
@@ -235,7 +255,10 @@ function reorder(from: number, to: number): void {
             @keydown.space.self.prevent="emit('select', item.kind.kind)"
           >
             <component :is="item.kind.mark" :data="item.data" />
-            <!-- The badge's smaller figures stand on the title's baseline, not centered beside it. -->
+            <!--
+              The badge's smaller figures stand on the title's baseline, not
+              centered beside it.
+            -->
             <span class="flex items-baseline gap-1.5">
               <span>{{ item.label }}</span>
               <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
@@ -255,7 +278,10 @@ function reorder(from: number, to: number): void {
         >
           <template v-if="item.kind" #mark><component :is="item.kind.mark" :data="item.data" /></template>
         </TabItem>
-        <!-- With more tabs than fit, a list of every tab, as VS Code's Show Opened Editors: picking one selects it. -->
+        <!--
+          With more tabs than fit, a list of every tab, as VS Code's Show Opened
+          Editors: picking one selects it.
+        -->
         <template #overflow>
           <Dropdown :overlay-store="appOverlayStore">
             <template #trigger="{ isOpen }">
@@ -283,9 +309,15 @@ function reorder(from: number, to: number): void {
       </Tooltip>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <!-- A host that shows only the strip, as a specimen of it does, fills the body itself. -->
+      <!--
+        A host that shows only the strip, as a specimen of it does, fills the
+        body itself.
+      -->
       <slot>
-      <!-- Each content keeps what it shows while another tab is selected; only the shown one is told it is. -->
+      <!--
+        Each content keeps what it shows while another tab is selected; only the
+        shown one is told it is.
+      -->
       <div
         v-for="content in contents"
         v-show="content.id === selection"

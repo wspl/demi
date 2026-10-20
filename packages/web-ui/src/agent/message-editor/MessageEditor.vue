@@ -24,7 +24,10 @@ const props = withDefaults(
   defineProps<{
     /** The message's Markdown, an attachment mark where each capsule stands. */
     markdown: string
-    /** Its files, in the order of their marks; the document keeps them from there on. */
+    /**
+     * Its files, in the order of their marks; the document keeps them from
+     * there on.
+     */
     attachments?: readonly MessageCapsule[]
     /** A composer that takes no typing for now, such as an edit being sent. */
     disabled?: boolean
@@ -44,9 +47,15 @@ const props = withDefaults(
      * measures it): a message wider than that needs more than one line.
      */
     lineWidth?: number
-    /** Takes the focus once it shows, the cursor at the end; on a phone only when `asked`. */
+    /**
+     * Takes the focus once it shows, the cursor at the end; on a phone only
+     * when `asked`.
+     */
     autofocus?: boolean
-    /** Typing here is what the user just chose, as Edit on a message is: it takes the focus on a phone too. */
+    /**
+     * Typing here is what the user just chose, as Edit on a message is: it
+     * takes the focus on a phone too.
+     */
     asked?: boolean
     /**
      * Counts the messages shown from outside: when it changes, the editor
@@ -67,7 +76,10 @@ const emit = defineEmits<{
    * files of its capsules in the order of their marks.
    */
   change: [markdown: string, attachments: MessageCapsule[]]
-  /** Enter, or ⌘/Ctrl+Enter; `otherWay` for ⌘/Ctrl+Enter outside a code block (`MessageKeyOptions`). */
+  /**
+   * Enter, or ⌘/Ctrl+Enter; `otherWay` for ⌘/Ctrl+Enter outside a code block
+   * (`MessageKeyOptions`).
+   */
   submit: [otherWay: boolean]
   cancel: []
   /**
@@ -99,9 +111,15 @@ const editable = computed(() => !props.disabled)
 const transfers = useTransfers()
 const clipboard = useMessageClipboard()
 
-/** The Markdown the editor last showed or wrote, so the same text coming back as a prop is not shown again. */
+/**
+ * The Markdown the editor last showed or wrote, so the same text coming back as
+ * a prop is not shown again.
+ */
 let shown = props.markdown
-/** Where the next new capsules land: where files were dropped, or where the cursor was. */
+/**
+ * Where the next new capsules land: where files were dropped, or where the
+ * cursor was.
+ */
 let landing: number | null = null
 
 const editor = new Editor({
@@ -130,18 +148,20 @@ const editor = new Editor({
   }),
   content: parseUserMarkdown(props.markdown, props.attachments),
   editable: editable.value,
-  // Formatting as it is typed and pasted text follow the dialect, not tiptap's own rules.
+  // Formatting as it is typed and pasted text follow the dialect, not tiptap's
+  // own rules.
   enableInputRules: false,
   enablePasteRules: false,
   editorProps: {
-    // Read again on every update, so a composer that stops taking typing says so.
+    // Read again on every update, so a composer that stops taking typing says
+    // so.
     attributes: (state) => ({
       class: 'markdown-body message-editor-text',
       ...fieldAttributes(state),
     }),
     // A copy, a cut or a drag holds no blank line before its first line or
-    // after its last, in its HTML as in its text; ProseMirror drags the
-    // copied slice, so text moved within a composer leaves such lines behind.
+    // after its last, in its HTML as in its text. ProseMirror drags the copied
+    // slice, so text moved within a composer leaves such lines behind.
     transformCopied: (slice, view) => trimmedSlice(slice, view.state.schema),
     // Copied text is the Markdown, each file by its name, wherever it is
     // copied from; code copied from inside a code block is the code.
@@ -167,7 +187,10 @@ function takeFocus(): void {
   autofocus({ element: editor.view.dom, focus: () => editor.commands.focus('end') })
 }
 
-/** The focus waits for tiptap to move the editor's page into place, which happens after mounting. */
+/**
+ * The focus waits for tiptap to move the editor's page into place, which
+ * happens after mounting.
+ */
 let focusing: ReturnType<typeof setTimeout> | undefined
 onMounted(() => {
   // On the page at last: how wide the text is can be measured.
@@ -182,8 +205,9 @@ onBeforeUnmount(() => {
 })
 
 watch(editable, (value) => editor.setEditable(value, false))
-// The placeholder and the field's labels are read again on a state update, which a
-// change of the page's language is not: an empty one shows the new words at once.
+// The placeholder and the field's labels are read again on a state update,
+// which a change of the page's language is not: an empty one shows the new
+// words at once.
 watch(() => [props.placeholder, props.label], () => editor.view.dispatch(editor.state.tr))
 // A composer that changes shape, as a paste of many lines opens it, keeps
 // the caret in view: the text scrolled while the composer was one line high,
@@ -230,7 +254,8 @@ function fieldAttributes(state: EditorState): Record<string, string> {
   if (props.disabled) {
     attributes['aria-disabled'] = 'true'
   }
-  // The product checks write in the composer by it, in any language (`browse.md`).
+  // The product checks write in the composer by it, in any language
+  // (`browse.md`).
   attributes['data-composer'] = ''
   return attributes
 }
@@ -310,7 +335,10 @@ function landingPlace(tr: Transaction): number {
   return $at.parent.type.spec.code ? $at.after() : $at.pos
 }
 
-/** Puts files into the message where they were told to land: one change, capsules and all. */
+/**
+ * Puts files into the message where they were told to land: one change,
+ * capsules and all.
+ */
 function insertCapsules(capsules: readonly MessageCapsule[]): void {
   if (!capsules.length || editor.isDestroyed) {
     return
@@ -383,13 +411,18 @@ function dragStart(event: DragEvent): void {
   transfer.setData('text/html', copiedMessageHtml(forms.clipboard.message, html))
 }
 
-/** A link opens as `followMessageLink` says, in the composer on ⌘/Ctrl+click. */
+/**
+ * A link opens as `followMessageLink` says, in the composer on ⌘/Ctrl+click.
+ */
 function click(event: MouseEvent): void {
   followMessageLink(event, editable.value, files())
 }
 
 defineExpose({
-  /** Files are on their way: their capsules land where `event` dropped them, or at the cursor. */
+  /**
+   * Files are on their way: their capsules land where `event` dropped them, or
+   * at the cursor.
+   */
   placeNextFiles(event?: DragEvent): void {
     if (!event) {
       landing = editor.state.selection.to
@@ -425,7 +458,10 @@ defineExpose({
   focus(): void {
     editor.commands.focus()
   },
-  /** Takes the focus as the page gives it, the cursor at the end: not on a phone unless `asked` (`useAutofocus`). */
+  /**
+   * Takes the focus as the page gives it, the cursor at the end: not on a phone
+   * unless `asked` (`useAutofocus`).
+   */
   takeFocus,
 })
 </script>

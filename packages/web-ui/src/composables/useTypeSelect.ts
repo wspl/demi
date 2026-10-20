@@ -11,13 +11,21 @@ import { tryOnScopeDispose } from '@vueuse/core'
 export const TYPE_SELECT_PAUSE_MS = 1000
 
 export interface TypeSelectOptions {
-  /** The names of the rows a query can reach, in the order they show, top first. */
+  /**
+   * The names of the rows a query can reach, in the order they show, top first.
+   */
   names: () => readonly string[]
-  /** Moves the selection, or the keyboard cursor, to the row at this index of `names`. */
+  /**
+   * Moves the selection, or the keyboard cursor, to the row at this index of
+   * `names`.
+   */
   select: (index: number) => void
 }
 
-/** What a query reads of a key: which one, and whether a modifier makes it a shortcut. */
+/**
+ * What a query reads of a key: which one, and whether a modifier makes it a
+ * shortcut.
+ */
 export type TypeSelectKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>
 
 /** Whether `name` starts with `query`, case ignored. */
@@ -60,7 +68,10 @@ export function useTypeSelect(options: TypeSelectOptions) {
       options.select(match.value)
   }
 
-  /** Reads a key; true when the query took it, and the host's own meaning must not run. */
+  /**
+   * Reads a key; true when the query took it, and the host's own meaning must
+   * not run.
+   */
   function keydown(event: TypeSelectKey): boolean {
     if (event.ctrlKey || event.metaKey || event.altKey)
       return false
@@ -86,7 +97,10 @@ export function useTypeSelect(options: TypeSelectOptions) {
     return true
   }
 
-  /** The positions of the live query in `name`, when `name` starts with it; null otherwise. */
+  /**
+   * The positions of the live query in `name`, when `name` starts with it; null
+   * otherwise.
+   */
   function prefix(name: string): number[] | null {
     if (query.value === '' || !startsWith(name, query.value))
       return null

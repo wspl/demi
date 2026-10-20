@@ -17,7 +17,10 @@ export function stepHighlight(index: number, step: 1 | -1, count: number): numbe
   return index > 0 ? index - 1 : count - 1
 }
 
-/** Brings the `index`th row of `root` that `rows` matches into view, scrolling no further than it takes. */
+/**
+ * Brings the `index`th row of `root` that `rows` matches into view, scrolling
+ * no further than it takes.
+ */
 export function revealRow(root: ParentNode | null | undefined, rows: string, index: number): void {
   root?.querySelectorAll(rows)[index]?.scrollIntoView({ block: 'nearest' })
 }

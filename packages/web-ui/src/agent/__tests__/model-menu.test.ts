@@ -3,8 +3,8 @@ import type { ModelInfo, ProviderInfo } from '../../transport/protocol'
 import { modelMenuRows } from '../model-menu'
 import { profileContextChoice, profileContextOptions } from '../context-limit'
 
-// A profile's model is chosen with the composer's own menu, the same items
-// plus Parent's Model at its top: nothing the composer offers for a model is cut
+// A profile's model is chosen with the composer's own menu, the same items plus
+// Parent's Model at its top: nothing the composer offers for a model is cut
 // from the profile's menu.
 
 const providers: ProviderInfo[] = [
@@ -47,9 +47,9 @@ test('the profile menu offers the composer’s items for a model with Fast and c
   ])
 })
 
-// A profile's own Context (`crates/agent-server/src/server/tree/profiles.rs`) offers the Context
-// row's windows after Default, which names the window the user's limit
-// gives; the full window is stored as its own size, never as null.
+// A profile's own Context (`crates/agent-server/src/server/tree/profiles.rs`)
+// offers the Context row's windows after Default, which names the window the
+// user's limit gives; the full window is stored as its own size, never as null.
 test('a profile’s Context offers Default with the user’s window, then the model’s windows, and nothing for a small window', () => {
   expect(profileContextOptions(opus)).toEqual([
     { label: 'Default (500K)', tokens: null },
@@ -79,7 +79,8 @@ test('an incomplete entry\'s models are listed but cannot be chosen, with the ba
   const incomplete: ProviderInfo[] = [
     ...providers,
     { id: 'google', label: 'Google', isAvailable: false, setupReason: reason },
-    // Unavailable for another reason (its key refused): its models stay out of the menu, as before.
+    // Unavailable for another reason (its key refused): its models stay out of
+    // the menu, as before.
     { id: 'broken', label: 'Broken', isAvailable: false },
   ]
   const rows = modelMenuRows(incomplete, { ...models, google: [{ ...gpt, id: 'gemini-flash', name: 'Gemini Flash' }], broken: [gpt] }, null, false)

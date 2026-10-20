@@ -14,7 +14,10 @@ import { useReplySelectionTools } from '../reply-selection'
 import { pictureWords, useKeepPicture } from '../comments/pictures'
 
 const props = withDefaults(defineProps<{
-  /** The text block the reply is, which its selection's tools act on; absent, they offer nothing. */
+  /**
+   * The text block the reply is, which its selection's tools act on; absent,
+   * they offer nothing.
+   */
   blockId?: string
   content: string
   createdAt: string
@@ -43,19 +46,21 @@ const { copy } = useCopy(() => props.content)
 
 /**
  * The answer's menu holds what its footer shows at that moment
- * (`answerActions`); text in the middle of a reply, which has no footer,
- * has none. Its text is the user's to select, and text selected in it goes
- * to another conversation as a quotation.
+ * (`answerActions`). Text in the middle of a reply, which has no footer, has no
+ * menu. The text is the user's to select, and text selected in it goes to
+ * another conversation as a quotation.
  */
 const menu: ContextMenuDeclaration = {
   entries: () => (props.showFooter && !props.isStreaming ? [answerMenuEntries(answerActions(props, copy))] : []),
   text: true,
-  // The page's own tools act on the reply in place and come first; Send to Conversation, which opens a submenu, last.
+  // The page's own tools act on the reply in place and come first; Send to
+  // Conversation, which opens a submenu, last.
   selectionEntries: (text) => [
     ...(tools && props.blockId && root.value ? tools.selection({ blockId: props.blockId, root: root.value }, () => props.isStreaming) : []),
     ...(targets ? [sendEntry(targets, () => quotedWords(text))] : []),
   ],
-  // A picture takes a comment and a side question as words do, and goes to another conversation as a file.
+  // A picture takes a comment and a side question as words do, and goes to
+  // another conversation as a file.
   pictureEntries: (image) => [
     ...(tools && props.blockId && root.value ? tools.picture({ blockId: props.blockId, root: root.value }, image, () => props.isStreaming) : []),
     ...(targets ? [sendEntry(targets, () => pictureWords(image, keepPicture))] : []),

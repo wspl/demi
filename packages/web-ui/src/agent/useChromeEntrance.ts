@@ -4,13 +4,15 @@ import { isOpening, type SessionLoad } from './session-status'
 
 /**
  * Which rows of the transcript are arriving right now, by the keys that name
- * them across their forms (`row-key.ts`). Rows present when the list opens
- * or when a step of the conversation's opening lands are history and do not
- * move. A row that joins
- * afterwards enters once, then is settled, so a virtual row remounted by
- * scrolling stays still, and a row that changes form stays still too, as
- * does a row that takes another's place under its key (`succeedKeys`). A
- * new conversation in the same list starts over from its own history.
+ * them across their forms (`row-key.ts`).
+ *
+ * - Rows present when the list opens or when a step of the conversation's
+ *   opening lands are history and do not move.
+ * - A row that joins afterwards enters once, then is settled, so a virtual row
+ *   remounted by scrolling stays still.
+ * - A row that changes form stays still too, as does a row that takes another's
+ *   place under its key (`succeedKeys`).
+ * - A new conversation in the same list starts over from its own history.
  */
 export function useChromeEntrance(
   keys: () => readonly string[],

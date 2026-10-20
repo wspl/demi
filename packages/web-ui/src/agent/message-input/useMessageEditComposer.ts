@@ -53,7 +53,10 @@ export function useMessageEditComposer(options: {
 }) {
   const uploads = new AttachmentUploadQueue()
   const attachmentError = ref<string | null>(null)
-  /** The edit's files by capsule id: the message's records and media, or an added file's upload once done. */
+  /**
+   * The edit's files by capsule id: the message's records and media, or an
+   * added file's upload once done.
+   */
   const files = shallowRef(new Map<string, MessageEditContent[]>())
   /** The files added to the edit, by capsule id. */
   const added = shallowRef(new Map<string, AddedFile>())
@@ -63,12 +66,18 @@ export function useMessageEditComposer(options: {
   const order = ref<string[]>([])
   const editable = computed(() => options.state()?.phase === 'editing')
   const capsules = computed(() => order.value.map((id) => capsuleOf(id)))
-  /** Why the edit cannot go yet: an upload of its own still running, or one that failed. */
+  /**
+   * Why the edit cannot go yet: an upload of its own still running, or one that
+   * failed.
+   */
   const sendBlockReason = computed(() => attachmentSendBlockReason(
     order.value.flatMap((id) => added.value.get(id)?.transfer?.phase ?? []),
   ))
 
-  /** A file of the edit as its capsule shows it; an added file keeps the picture it was added with. */
+  /**
+   * A file of the edit as its capsule shows it; an added file keeps the picture
+   * it was added with.
+   */
   function capsuleOf(id: string): MessageCapsule {
     const blocks = files.value.get(id)
     const file = added.value.get(id)
@@ -79,7 +88,10 @@ export function useMessageEditComposer(options: {
     return file?.capsule.image ? { ...capsule, image: file.capsule.image } : capsule
   }
 
-  /** Ends what the edit had going: its uploads, and the pictures of its added files. */
+  /**
+   * Ends what the edit had going: its uploads, and the pictures of its added
+   * files.
+   */
   function release(): void {
     uploads.cancelAll()
     for (const file of added.value.values()) {
@@ -90,7 +102,8 @@ export function useMessageEditComposer(options: {
     added.value = new Map()
   }
 
-  // A new edit opens its message; the content is copied, since the edit is persisted apart from the transcript.
+  // A new edit opens its message; the content is copied, since the edit is
+  // persisted apart from the transcript.
   watch(() => options.state()?.request.operationId, () => {
     release()
     attachmentError.value = null
@@ -103,7 +116,10 @@ export function useMessageEditComposer(options: {
   }, { immediate: true })
   onScopeDispose(release)
 
-  /** Writes the edit's content as the editor shows it: its text, and each file that is ready to go. */
+  /**
+   * Writes the edit's content as the editor shows it: its text, and each file
+   * that is ready to go.
+   */
   function publish(): void {
     const state = options.state()
     if (!state) {
@@ -123,7 +139,8 @@ export function useMessageEditComposer(options: {
         uploads.cancel(id)
       }
     }
-    // A file whose upload a deleted capsule stopped starts over; one still uploading goes on.
+    // A file whose upload a deleted capsule stopped starts over; one still
+    // uploading goes on.
     for (const id of ids) {
       if (added.value.get(id)?.transfer && !uploads.has(id)) {
         void uploadFile(id)
@@ -200,7 +217,10 @@ export function useMessageEditComposer(options: {
     }
   }
 
-  /** The upload a file's transfer makes: of its bytes, or of the stored file a paste names, else of its picture. */
+  /**
+   * The upload a file's transfer makes: of its bytes, or of the stored file a
+   * paste names, else of its picture.
+   */
   async function transfer(
     id: string,
     signal: AbortSignal,
@@ -209,7 +229,8 @@ export function useMessageEditComposer(options: {
     const entry = added.value.get(id)!
     const claim = entry.claim
     if (claim) {
-      // A claim that fails for any reason leaves the file one the paste cannot use.
+      // A claim that fails for any reason leaves the file one the paste cannot
+      // use.
       const claimed = await options.claim(claim.file, signal).catch(() => null)
       if (claimed) {
         return claimed
@@ -229,7 +250,10 @@ export function useMessageEditComposer(options: {
     return options.upload(entry.file!, { signal, progress: report })
   }
 
-  /** Takes files into the edit and answers with their capsules, for the editor to put in the message. */
+  /**
+   * Takes files into the edit and answers with their capsules, for the editor
+   * to put in the message.
+   */
   function addFiles(picked: File[]): MessageCapsule[] {
     if (!options.state() || !editable.value) {
       return []
@@ -252,7 +276,10 @@ export function useMessageEditComposer(options: {
     return taken
   }
 
-  /** Puts a file the edit carries without bytes to send under a new capsule id, and answers its capsule. */
+  /**
+   * Puts a file the edit carries without bytes to send under a new capsule id,
+   * and answers its capsule.
+   */
   function keep(content: MessageEditContent): MessageCapsule {
     const id = crypto.randomUUID()
     files.value = new Map(files.value).set(id, [content])

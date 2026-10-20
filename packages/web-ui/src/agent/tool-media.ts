@@ -58,7 +58,10 @@ export function toolMedia(output: readonly ToolResultContentBlock[], name: strin
   })
 }
 
-/** What a command's end report shows of its media, in its notice row, as a call shows its result's. */
+/**
+ * What a command's end report shows of its media, in its notice row, as a call
+ * shows its result's.
+ */
 export function reportMedia(report: CommandReport): ToolMedium[] {
   return toolMedia(report.media ?? [], report.title)
 }

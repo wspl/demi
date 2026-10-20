@@ -1,12 +1,17 @@
-/** Chrome-like tab strip motion: lock the current width, then collapse or grow in flow. */
+/**
+ * Chrome-like tab strip motion: lock the current width, then collapse or grow
+ * in flow.
+ */
 
 import type { InjectionKey } from 'vue'
 import { clamp } from '@demicodes/utils'
 import { prefersReducedMotion } from '../ui/stream-reveal'
 
 /**
- * Provided by a window whose tabs narrow to their icons on a phone (`SessionOverlay`: the Agents and Running
- * windows): there only the selected `TabItem` shows its name, as Chrome's narrowed tabs show the active one's title.
+ * Provided by a window whose tabs narrow to their icons on a phone
+ * (`SessionOverlay`: the Agents and Running windows): there only the selected
+ * `TabItem` shows its name, as Chrome's narrowed tabs show the active one's
+ * title. /
  */
 export const iconTabsKey: InjectionKey<true> = Symbol('icon-tabs')
 
@@ -26,7 +31,8 @@ function measureOpenWidth(tab: HTMLElement): number {
   const prevWidth = tab.style.width
   const prevFlex = tab.style.flex
   const prevMin = tab.style.minWidth
-  // No inline width or flex: the width the strip's sharing gives the tab is what it opens to.
+  // No inline width or flex: the width the strip's sharing gives the tab is
+  // what it opens to.
   tab.style.width = ''
   tab.style.flex = ''
   tab.style.minWidth = ''
@@ -56,7 +62,10 @@ function columnGap(el: HTMLElement): number {
   return stripGap(parent)
 }
 
-/** True while the tab is on its way out and no longer part of the settled layout. */
+/**
+ * True while the tab is on its way out and no longer part of the settled
+ * layout.
+ */
 export function isLeavingTab(tab: Element): boolean {
   return tab.classList.contains(`${TAB_TRANSITION}-leave-active`)
 }
@@ -95,7 +104,8 @@ export function revealScroll(
   const latest = Math.max(0, tab.left - margin)
   const earliest = tab.right + margin - view.clientWidth
   const wanted = clamp(view.scrollLeft, earliest, latest)
-  // The last tab's fade reaches past the strip's end: the end is as far as it goes.
+  // The last tab's fade reaches past the strip's end: the end is as far as it
+  // goes.
   const target = Math.min(wanted, Math.max(0, view.scrollWidth - view.clientWidth))
   return Math.abs(target - view.scrollLeft) < 1 ? null : target
 }
@@ -214,7 +224,10 @@ export function enterTab(el: Element): void {
   tab.style.opacity = ''
 }
 
-/** The width a tab will have once its entrance ends; its current width otherwise. */
+/**
+ * The width a tab will have once its entrance ends; its current width
+ * otherwise.
+ */
 export function settledTabWidth(tab: HTMLElement): number {
   return enterWidths.get(tab) ?? tab.getBoundingClientRect().width
 }
@@ -262,7 +275,9 @@ function lockWidths(tab: HTMLElement): void {
   })
 }
 
-/** After a close, ease remaining tabs from the squeezed width to the new layout. */
+/**
+ * After a close, ease remaining tabs from the squeezed width to the new layout.
+ */
 function releaseStrip(parent: HTMLElement | null): void {
   if (!parent?.children) {
     return
@@ -322,8 +337,8 @@ export function beforeLeaveTab(el: Element): void {
   if (tab.parentElement) {
     leaveParents.set(tab, tab.parentElement)
   }
-  // A closing tab is no tab any more: the selection has passed on, so it fades out as an unselected one and
-  // the strip shows one selected tab throughout.
+  // A closing tab is no tab any more: the selection has passed on, so it fades
+  // out as an unselected one and the strip shows one selected tab throughout.
   tab.setAttribute('aria-selected', 'false')
   tab.style.setProperty('--tab-active', 'var(--tab-row)')
   lockWidths(tab)

@@ -24,14 +24,16 @@ function values(text: string): string[] {
   return [...new Set([...text.matchAll(/\{(\w+)\}/g)].map((found) => found[1]!))].sort()
 }
 
-// The catalogues are typed by their keys, not by what each text is filled with: a translation that
-// drops {span} or renames {count} shows a hole or the name itself in front of a user.
+// The catalogues are typed by their keys, not by what each text is filled with.
+// A translation that drops {span} or renames {count} shows a hole or the name
+// itself in front of a user.
 test('every language fills each text with the values the English one does', () => {
   const english = new Map(texts(en))
   for (const [language, catalogue] of Object.entries(languages)) {
     for (const [key, text] of texts(catalogue)) {
       const source = english.get(key)!
-      // A count is the plural form's own, so a language with one form may leave it out.
+      // A count is the plural form's own, so a language with one form may leave
+      // it out.
       const expected = values(source).filter((name) => name !== 'count')
       expect({ language, key, values: values(text).filter((name) => name !== 'count') })
         .toEqual({ language, key, values: expected })

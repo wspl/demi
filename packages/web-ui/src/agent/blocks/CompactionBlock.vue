@@ -10,7 +10,10 @@ import { formatTokens } from '../../ui/token-count'
  * its error record instead.
  */
 defineProps<{
-  /** The summary's size; unknown only for a marker whose boundary an edit removed. */
+  /**
+   * The summary's size; unknown only for a marker whose boundary an edit
+   * removed.
+   */
   summaryTokens?: number
   running?: boolean
 }>()

@@ -17,14 +17,20 @@ const props = defineProps<{
   selected?: boolean
 }>()
 const transfers = useTransfers()
-/** The file this capsule stands for: as the composer knows it now, or as its node carries it. */
+/**
+ * The file this capsule stands for: as the composer knows it now, or as its
+ * node carries it.
+ */
 const capsule = computed<MessageCapsule | null>(() => props.saved && (transfers?.current(props.saved.id) ?? props.saved))
 /** How far the file is on its way, while the composer still carries it. */
 const transfer = computed(() => {
   const id = capsule.value?.id
   return id && transfers ? transfers.transfer(id) : undefined
 })
-/** A file on another device is not on the conversation's Host, so it opens nothing. */
+/**
+ * A file on another device is not on the conversation's Host, so it opens
+ * nothing.
+ */
 const { opens, open } = useCapsuleOpening(() => props.editable, () => capsule.value?.host ? null : capsule.value?.path)
 </script>
 

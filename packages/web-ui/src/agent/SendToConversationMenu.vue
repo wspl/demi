@@ -16,16 +16,22 @@ import { t as shared } from '../locales/text'
 import { reportError } from '../infra/errors'
 
 /**
- * Send to Conversation's submenu: a search field over every conversation,
- * then, while it is empty, New Conversation and the conversations the user
- * was last active in; once typing pauses, the conversations that match, the
- * archived ones among them, as the search window finds them. Each row is
- * drawn as the sidebar draws it, its status dot before its title and its
- * project after it in secondary text.
+ * Send to Conversation's submenu: a search field over every conversation, with
+ * the rows below it.
+ *
+ * While the field is empty, the rows are New Conversation and the conversations
+ * the user was last active in. Once typing pauses, they are the conversations
+ * that match, the archived ones among them, as the search window finds them.
+ *
+ * Each row is drawn as the sidebar draws it: its status dot before its title
+ * and its project after it in secondary text.
  */
 const props = defineProps<{
   targets: SendTargets
-  /** What goes, read as a conversation is picked; a picture's once the page keeps its bytes. */
+  /**
+   * What goes, read as a conversation is picked; a picture's once the page
+   * keeps its bytes.
+   */
   words: () => CopiedMessage | Promise<CopiedMessage>
 }>()
 
