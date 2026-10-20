@@ -8,15 +8,19 @@ import { fakeFirstPassword, type UsersState } from '../fixtures/users'
 import { productWould } from '../product-would'
 
 /**
- * Settings › Users over a specimen's accounts. Each write waits a beat, as
- * the product's does, then changes the list. Add User…, Reset Password… and
- * Sign-In Code… ask the administrator's confirmation first, as a session not
- * verified in the last five minutes does: any password but `wrong` confirms.
- * Add User… adds a row that has not signed in yet and still has to choose
- * its password (an address another row has is refused); Reset Password… and
- * New Password make a first password and mark the account the same;
- * Change Role…, Cloud Storage… and Disable Account… change the row; and the product would
- * end the sessions of an account signed out, which a toast says.
+ * Settings › Users over a specimen's accounts. Each write waits a beat, as the
+ * product's does, then changes the list.
+ *
+ * - Add User…, Reset Password… and Sign-In Code… ask the administrator's
+ *   confirmation first, as a session not verified in the last five minutes
+ *   does: any password but `wrong` confirms.
+ * - Add User… adds a row that has not signed in yet and still has to choose its
+ *   password (an address another row has is refused).
+ * - Reset Password… and New Password make a first password and mark the account
+ *   the same.
+ * - Change Role…, Cloud Storage… and Disable Account… change the row.
+ * - The product would end the sessions of an account signed out, which a toast
+ *   says.
  */
 const props = defineProps<{
   state: UsersState

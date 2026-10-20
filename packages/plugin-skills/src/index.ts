@@ -1,6 +1,6 @@
-// The `skills` plugin's page (`packages/plugin-sdk/src/index.ts`): its settings section with
-// its sidebar entry, and the types of its state, parameters and results,
-// generated from the plugin's manifest.
+// The `skills` plugin's page (`packages/plugin-sdk/src/index.ts`): its settings
+// section with its sidebar entry, and the types of its state, parameters and
+// results, generated from the plugin's manifest.
 import { WandSparkles } from '@lucide/vue'
 import { definePage } from '@demicodes/plugin-sdk'
 import { t } from './locales/text'

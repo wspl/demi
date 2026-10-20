@@ -1,11 +1,12 @@
 /**
  * A TypeScript program of a Vue project, templates included, built with the
- * Volar and Vue language APIs vue-tsc itself is built on. vue-tsc teaches tsc
- * about .vue files by rewriting tsc.js as Node reads it through
- * fs.readFileSync; Bun's require does not read through fs, so on the Bun
- * runtime this repository runs its toolchain on (bunfig.toml), vue-tsc runs
- * plain tsc and skips every .vue file. The type check builds its program
- * here instead.
+ * Volar and Vue language APIs vue-tsc itself is built on.
+ *
+ * vue-tsc teaches tsc about .vue files by rewriting tsc.js as Node reads it
+ * through fs.readFileSync. Bun's require does not read through fs, so on the
+ * Bun runtime this repository runs its toolchain on (bunfig.toml), vue-tsc
+ * runs plain tsc and skips every .vue file. The type check builds its
+ * program here instead.
  */
 import { dirname } from 'node:path'
 import ts from 'typescript'

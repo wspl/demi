@@ -29,7 +29,6 @@ export interface Slot {
 /** The folder that holds the numbered slots beside the user's checkout. */
 const SLOTS = 'demi-slots'
 
-/** The slot of the checkout at `root`. */
 export function slotNumber(root: string): number {
   const path = resolve(root)
   if (basename(dirname(path)) !== SLOTS) {

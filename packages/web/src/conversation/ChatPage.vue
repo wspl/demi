@@ -226,13 +226,17 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
 const attachments = useMessageAttachments(() => props.id)
 
 /**
- * The Host files the conversation's messages name: images from the files
- * the conversation's service keeps, at the version its file watch keeps
- * current, files opened through the `file` intent while a plugin opens it,
- * at their lines, commits opened through the `commit` intent, and which
- * paths of a reply's inline code are files, from the Host, whose home a
- * `~/` path starts from; and the attachments they deliver, a card's opened
- * through the `attachment` intent while a plugin opens it.
+ * The Host files the conversation's messages name:
+ *
+ * - Images from the files the conversation's service keeps, at the version its
+ *   file watch keeps current.
+ * - Files opened through the `file` intent while a plugin opens it, at their
+ *   lines.
+ * - Commits opened through the `commit` intent.
+ * - Which paths of a reply's inline code are files, from the Host, whose home a
+ *   `~/` path starts from.
+ * - The attachments they deliver, a card's opened through the `attachment`
+ *   intent while a plugin opens it.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value

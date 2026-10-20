@@ -14,12 +14,12 @@ import { inputMessage, localKey, shortcutKeys } from './input'
 import { BLANK_PAGE, cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
- * A tab of the conversation's browser, live: its
- * pictures on a canvas, the viewer's input on its way to the page, and the
- * page's own native controls, dialogs and the browser's menu over it. The view stays mounted
- * while its content is hidden and while no session is open, so its last
- * picture shows at once when the tab is shown again; the page's panel
- * session alone decides which tab a session watches.
+ * A tab of the conversation's browser, live: its pictures on a canvas, the
+ * viewer's input on its way to the page, and the page's own native controls,
+ * dialogs and the browser's menu over it. The view stays mounted while its
+ * content is hidden and while no session is open, so its last picture shows at
+ * once when the tab is shown again. The page's panel session alone decides
+ * which tab a session watches.
  */
 const props = defineProps<{
   /** The page's view, while one is open. */
@@ -241,9 +241,9 @@ function answered(accept: boolean, text: string | undefined): void {
 }
 
 /**
- * The browser's menu the viewer's right click opened, built here from what lies under the click: a
- * link's, a field's, a selection's, or the page's own Back, Forward and
- * Reload.
+ * The browser's menu the viewer's right click opened, built here from what lies
+ * under the click: a link's, a field's, a selection's, or the page's own Back,
+ * Forward and Reload.
  */
 const menu = computed(() => {
   const open = state.value?.menu

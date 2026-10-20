@@ -1,23 +1,28 @@
-// `demi.focusRings({ root, name, shots })`: finds focus indicators the page
-// does not show whole. It walks the page with Tab, and focuses what Tab
-// skips (tabindex -1) through the page, and for each element the keyboard
-// focuses it takes the indicator's box (an outline with its offset, or a
-// crisp ring of box shadow) and reports the part an ancestor cuts off
-// (`overflow` other than visible, `contain: paint`, `clip-path`, the window's
-// edge) and the part an element painted above covers, with how many
-// pixels on which side; an element that is itself under another one is
-// reported as hidden, since its focus is out of sight, not only its
-// indicator. Each offender is photographed with the focus on it. `root`
-// limits the elements checked to those inside it; the page is checked as it
-// stands, so a dialog or a menu is opened first, and one that floats over the
-// page is the only part checked, as it is the only part a person reaches.
+// `demi.focusRings({ root, name, shots })`: finds focus indicators the page does
+// not show whole.
 //
-// A list that keeps the focus and marks its active row with
-// `aria-activedescendant` is read on that row, where its ring shows.
+// It walks the page with Tab, and focuses what Tab skips (tabindex -1) through the
+// page. For each element the keyboard focuses, it takes the indicator's box (an
+// outline with its offset, or a crisp ring of box shadow) and reports:
 //
-// `demi.focusRings.of(locator)` reads the indicator an element shows now,
-// for one a state draws that a walk with Tab does not reach, such as the
-// outline of a selected capsule in a message.
+// - the part an ancestor cuts off (`overflow` other than visible, `contain: paint`,
+//   `clip-path`, the window's edge);
+// - the part an element painted above covers, with how many pixels on which side;
+// - an element that is itself under another one, as hidden, since its focus is out
+//   of sight, not only its indicator.
+//
+// Each offender is photographed with the focus on it.
+//
+// `root` limits the elements checked to those inside it. The page is checked as it
+// stands, so a dialog or a menu is opened first. One that floats over the page is
+// the only part checked, as it is the only part a person reaches.
+//
+// A list that keeps the focus and marks its active row with `aria-activedescendant`
+// is read on that row, where its ring shows.
+//
+// `demi.focusRings.of(locator)` reads the indicator an element shows now, for one a
+// state draws that a walk with Tab does not reach, such as the outline of a
+// selected capsule in a message.
 import type { Locator } from 'playwright'
 import { shot } from './shot'
 import { ringProbe, type RingFinding, type RingProbe, type RingReading } from './focus-rings-probe'

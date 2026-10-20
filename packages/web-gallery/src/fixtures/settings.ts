@@ -101,10 +101,12 @@ export function skillsCalls(): SkillsState {
 export const SKILLS_CALLS_OPEN = ['web-kit'] as const
 
 /**
- * Every state of a skill source and of a skill, pinned at once: sources all
- * on, some on, all off, updating, with an update, failed after a good fetch,
- * failed at the first fetch, and with skipped files; skills on, off, with a
- * warning, of a taken name, and never offered to the agent.
+ * Every state of a skill source and of a skill, pinned at once:
+ *
+ * - Sources: all on, some on, all off, updating, with an update, failed after a
+ *   good fetch, failed at the first fetch, and with skipped files.
+ * - Skills: on, off, with a warning, of a taken name, and never offered to the
+ *   agent.
  */
 export function skillsShowcase(): SkillsState {
   return {
@@ -946,11 +948,14 @@ export function mockProviders(): MockProvider[] {
 /**
  * Entries that are not complete yet
  * (`crates/backend-user-shard/src/provider_settings.rs`), one lacking each part
- * and one lacking two: a vendor entry
- * without its key, a compatible API with an endpoint and a key and no model,
- * a compatible API just added, with no endpoint, key or model, and a
- * subscription nobody has signed in to. None of them has failed, so none is
- * red.
+ * and one lacking two:
+ *
+ * - A vendor entry without its key.
+ * - A compatible API with an endpoint and a key and no model.
+ * - A compatible API just added, with no endpoint, key or model.
+ * - A subscription nobody has signed in to.
+ *
+ * None of them has failed, so none is red.
  */
 export function incompleteProviders(): MockProvider[] {
   return [
@@ -981,11 +986,15 @@ export function incompleteProviders(): MockProvider[] {
  * Whether the entry lacks a part it cannot infer without, as the backend's
  * `ProviderEntry::missing` says and the product shows it from the catalog's
  * `setup` availability (`crates/backend-user-shard/src/provider_settings.rs`):
- * a vendor's key, a compatible API's endpoint, whose key is
- * optional, a subscription's account, and models only where the entry's
- * user keeps its list: a compatible API's, or a vendor's list the user made
- * and emptied. A vendor's own list, and an entry of media alone, which has
- * no text models, never lack them.
+ *
+ * - A vendor's key.
+ * - A compatible API's endpoint, whose key is optional.
+ * - A subscription's account.
+ * - Models, only where the entry's user keeps its list: a compatible API's, or
+ *   a vendor's list the user made and emptied.
+ *
+ * A vendor's own list, and an entry of media alone, which has no text models,
+ * never lack them.
  */
 export function isIncomplete(entry: SettingsProviderEntry): boolean {
   if (entry.kind === 'subscription') {

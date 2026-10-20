@@ -90,7 +90,6 @@ export function lineOf(path: string, pattern: RegExp): RegExpExecArray | null {
   return pattern.exec(readFileSync(path, 'utf8'))
 }
 
-/** Whether `url` answers with a success. */
 export async function answersOk(url: string): Promise<boolean> {
   try {
     const answer = await fetch(url, { signal: AbortSignal.timeout(2_000) })

@@ -3,23 +3,31 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Subprocess, WebSocketOptions } from 'bun'
 
-// The web app contract suite's world: the backend executable on a data
-// directory of its own with the backend's scripted machine manager, real
-// runners, and a stand-in for the user's web browser, which serves the web
-// app's API client and the agent socket and carries the session cookie as a
-// page's requests do. The suite is the regression suite of the contract
-// between the page and the backend: a change on either side that breaks the
-// other fails here. Its requests carry what the user's browser adds to the
-// product page's own, the session cookie and the page's `Origin` wherever a
-// browser sends one, the generated schemas validate every response and frame
-// on arrival as they do in the page, and the model is an Anthropic-compatible
-// endpoint the suite scripts, whose reply can be held until the test releases
-// it, so a turn stays in its provider stream while the test queues, steers or
-// stops. A second page is a second copy of the page's product state in the
-// same stand-in, following its own synchronization channel.
+// The web app contract suite's world. It starts:
+//
+// - The backend executable on a data directory of its own, with the backend's
+//   scripted machine manager.
+// - Real runners.
+// - A stand-in for the user's web browser, which serves the web app's API
+//   client and the agent socket and carries the session cookie as a page's
+//   requests do.
+//
+// The suite is the regression suite of the contract between the page and the
+// backend: a change on either side that breaks the other fails here.
+//
+// Its requests carry what the user's browser adds to the product page's own:
+// the session cookie, and the page's `Origin` wherever a browser sends one.
+// The generated schemas validate every response and frame on arrival as they
+// do in the page.
+//
+// The model is an Anthropic-compatible endpoint the suite scripts, whose
+// reply can be held until the test releases it, so a turn stays in its
+// provider stream while the test queues, steers or stops. A second page is a
+// second copy of the page's product state in the same stand-in, following its
+// own synchronization channel.
 //
 // The backend reconciles with its machine manager when it starts, before it
-// serves, and again when it closes, so the suite starts it with the backend
+// serves, and again when it closes. So the suite starts it with the backend
 // crate's example program `scripted_machines` and stops it before the
 // manager. The program prints the manager's socket path as its first line,
 // which the suite passes as `DEMI_MACHINE_MANAGER_SOCKET`, and serves until

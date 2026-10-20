@@ -92,11 +92,19 @@ function compactionBuffer(window: number): number {
 
 /**
  * The usage the backend reports at `tokens` of `window`, the window in use:
- * Compact is taken from half. Its rows are those a Demi conversation holds:
- * the system prompt with the shell tool, the commands, the instructions
- * of `demoInstructions`, two skills and the execution context, then Messages,
- * the rest; in a window, the compaction buffer and the free space. The
- * frame sends them in this order, and the card sorts them.
+ * Compact is taken from half.
+ *
+ * Its rows are those a Demi conversation holds:
+ *
+ * - the system prompt with the shell tool;
+ * - the commands;
+ * - the instructions of `demoInstructions`;
+ * - two skills;
+ * - the execution context;
+ * - Messages, the rest;
+ * - in a window, the compaction buffer and the free space.
+ *
+ * The frame sends them in this order, and the card sorts them.
  */
 export function usageOf(tokens: number, window: number | null, shape: UsageShape = {}): ContextUsage {
   const estimated = (kind: ContextRow['kind'], tokens: number): ContextRow => ({ kind, tokens, estimated: true })

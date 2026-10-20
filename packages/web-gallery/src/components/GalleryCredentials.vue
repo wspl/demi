@@ -11,14 +11,17 @@ import { DEMO_CREDENTIAL_VALUES, type CredentialState } from '../fixtures/creden
 import { galleryVerification } from '../fixtures/handoff'
 
 /**
- * The Credentials section over a specimen's state. Each write waits a beat,
- * as the product's does; a name another credential has is refused with the
- * backend's message, so the editor shows its error. A saved visible field
- * lists its value, as the backend's list does; the reveal reads the
- * fixture's values, and a value the user typed in the editor is kept for it.
- * The specimen starts unconfirmed, so the first eye asks Confirm It’s You
- * (any password but `wrong` confirms) and every eye in the next five
- * minutes asks nothing.
+ * The Credentials section over a specimen's state:
+ *
+ * - Each write waits a beat, as the product's does.
+ * - A name another credential has is refused with the backend's message, so
+ *   the editor shows its error.
+ * - A saved visible field lists its value, as the backend's list does. The
+ *   reveal reads the fixture's values, and a value the user typed in the
+ *   editor is kept for it.
+ * - The specimen starts unconfirmed, so the first eye asks Confirm It’s You
+ *   (any password but `wrong` confirms) and every eye in the next five
+ *   minutes asks nothing.
  */
 const props = defineProps<{
   state: CredentialState

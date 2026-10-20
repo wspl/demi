@@ -1,8 +1,9 @@
 // One call of `bun browse` (browse.md § A call): runs the script in its
-// scope, prints what it logged and returned, and ends with the report:
-// where and why it failed, if it did, with a screenshot, then the footer.
-// A browser that stops answering ends the call within seconds, whatever
-// the script waits for, and is closed (`hang.ts`).
+// scope, prints what it logged and returned, and ends with the report.
+//
+// The report names where and why the script failed, if it did, with a
+// screenshot, then the footer. A browser that stops answering ends the call
+// within seconds, whatever the script waits for, and is closed (`hang.ts`).
 import { Console } from 'node:console'
 import { writeFileSync } from 'node:fs'
 import { Writable } from 'node:stream'
@@ -34,19 +35,22 @@ export interface Server {
 export interface Outcome {
   exit: number
   /**
-   * What the server does once the call has answered: stays for the next
-   * call; ends with the browser, as `demi.stop` and `demi.down` ask and a
-   * browser that hung needs; or leaves the browser to a new server, since
-   * a script that ran into the call's time limit still runs, and only the
-   * end of the server's process stops it.
+   * What the server does once the call has answered:
+   *
+   * - `stay`: the server stays for the next call.
+   * - `end`: the server ends with the browser, as `demi.stop` and
+   *   `demi.down` ask and a browser that hung needs.
+   * - `leave`: the server ends and leaves the browser to a new server,
+   *   since a script that ran into the call's time limit still runs, and
+   *   only the end of the server's process stops it.
    */
   after: 'stay' | 'end' | 'leave'
 }
 
 /**
- * Names that make a script need the page: a script that uses neither, such
- * as `demi.down()`, starts no browser for nothing. A helper that needs the
- * page starts the browser itself.
+ * Names that make a script need the page. A script that uses none of them,
+ * such as `demi.down()`, starts no browser for nothing. A helper that needs
+ * the page starts the browser itself.
  */
 const USES_PAGE = /\b(page|context|cdp)\b/
 
@@ -157,8 +161,8 @@ async function release(releases: (() => Promise<void>)[], print: (line: string) 
 
 /**
  * The page's state for the report, after a screenshot when the script
- * failed; null when the server has no page; `hung` when the browser does
- * not answer.
+ * failed. Answers null when the server has no page, and `hung` when the
+ * browser does not answer.
  */
 async function reportPage(tool: Tool, failed: boolean, watch: HangWatch): Promise<PageState | null | 'hung'> {
   const page = await tool.browser.existingPage()
@@ -206,11 +210,13 @@ async function scopeOf(tool: Tool, source: string, keep: Keep): Promise<ScriptSc
 
 /**
  * `page`, whose `goto` takes an address relative to the slot's web app.
+ *
  * Playwright resolves relative addresses against a context's `baseURL`,
- * which only a context Playwright creates can have, never the browser's own
- * context that a connection over the DevTools protocol attaches to, and a
- * context Playwright creates would lose the slot's profile; so `goto`
- * resolves them here, and every other member is the page's own.
+ * which only a context Playwright creates can have. It never applies to the
+ * browser's own context that a connection over the DevTools protocol
+ * attaches to, and a context Playwright creates would lose the slot's
+ * profile. So `goto` resolves them here, and every other member is the
+ * page's own.
  */
 function addressed(page: Page, base: string): Page {
   return new Proxy(page, {

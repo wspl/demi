@@ -6,14 +6,19 @@ import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from
 
 // Every control operation is an ordinary HTTP request: one answer, a status and an
 // error the caller can show, visible in the network panel and the backend's log, and
-// retryable. A WebSocket carries only what a request cannot, bytes that flow while the
-// user watches and events the backend pushes; an operation is never a message on a
-// stream that a later message may or may not answer, since a lost answer would look
-// exactly like a slow one and nothing would record that it failed. A page may be half a
-// second from its server per round trip, so one user action costs as few as the work
-// allows: requests that do not depend on each other go out together, an action that
-// changes several things is one request, and an answer that says what happened is not
-// followed by a read.
+// retryable.
+//
+// A WebSocket carries only what a request cannot: bytes that flow while the user
+// watches and events the backend pushes. An operation is never a message on a stream
+// that a later message may or may not answer, since a lost answer would look exactly
+// like a slow one and nothing would record that it failed.
+//
+// A page may be half a second from its server per round trip, so one user action costs
+// as few as the work allows:
+//
+// - Requests that do not depend on each other go out together.
+// - An action that changes several things is one request.
+// - An answer that says what happened is not followed by a read.
 
 /** The header every answer of the backend names its request in. */
 export const REQUEST_ID_HEADER = 'X-Request-Id'
@@ -176,13 +181,16 @@ export function invalidResponse(error: z.ZodError, requestId: string | null = nu
 const AWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
 
 /**
- * Whether a request failed because the backend could not be reached, not
- * because it answered: no answer came (no network, no connection, no answer in
- * time), a proxy in front of the backend said it is away, or the backend said
- * it is shutting down and did not do the request
- * (`crates/backend/src/backend.rs`). Every other answer of the backend's own
- * carries its `{ code, message }` body, so an error with another code is the
- * backend's answer, whatever its status.
+ * Whether a request failed because the backend could not be reached, not because it
+ * answered. It is true when:
+ *
+ * - no answer came (no network, no connection, no answer in time);
+ * - a proxy in front of the backend said it is away;
+ * - the backend said it is shutting down and did not do the request
+ *   (`crates/backend/src/backend.rs`).
+ *
+ * Every other answer of the backend's own carries its `{ code, message }` body, so an
+ * error with another code is the backend's answer, whatever its status.
  */
 function unreachable(error: unknown): boolean {
   if (error instanceof TypeError) {

@@ -1,12 +1,19 @@
 /**
- * A device's signaling socket: the page's introduction to the device's runner, for both of the page's
- * peers with it, `files` and `live` (`crates/runner-direct/src/lib.rs`), each message naming its
- * peer. It carries one offer at a time for each peer and its answer, each side's candidates found after
- * them, and the page's probes of the relay path with their answers; a socket that brings nothing, not
- * even a heartbeat, for as long as the page's sockets may is broken, and a closed or broken socket
- * connects again after the page's reconnect waits. Its close closes the runner's peers, and the backend
- * closes a peer too when the user turns a plugin on or off, which the socket says so that the page offers
- * again at once.
+ * A device's signaling socket: the page's introduction to the device's runner,
+ * for both of the page's peers with it, `files` and `live`
+ * (`crates/runner-direct/src/lib.rs`), each message naming its peer.
+ *
+ * It carries:
+ *
+ * - One offer at a time for each peer, and its answer.
+ * - Each side's candidates found after them.
+ * - The page's probes of the relay path, with their answers.
+ *
+ * A socket that brings nothing, not even a heartbeat, for as long as the page's
+ * sockets may is broken. A closed or broken socket connects again after the
+ * page's reconnect waits. Its close closes the runner's peers. The backend
+ * closes a peer too when the user turns a plugin on or off, which the socket
+ * says so that the page offers again at once.
  */
 import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -62,9 +69,13 @@ export class DeviceSignaling {
 
   /**
    * @param deviceId The paired device the socket introduces the page to.
-   * @param opened Called each time the socket opens: first, and again after it closed.
-   * @param peerClosed Called when the backend closed the runner's peer `peer`, whose introduction is out of date.
-   * @param dropped Called when the socket closed or was taken as broken: the backend closes the runner's peers then, so the page's peers are gone too.
+   * @param opened Called each time the socket opens: first, and again after it
+   *     closed.
+   * @param peerClosed Called when the backend closed the runner's peer `peer`,
+   *     whose introduction is out of date.
+   * @param dropped Called when the socket closed or was taken as broken: the
+   *     backend closes the runner's peers then, so the page's peers are gone
+   *     too.
    */
   constructor(
     private readonly deviceId: string,

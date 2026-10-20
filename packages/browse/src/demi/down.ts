@@ -1,12 +1,17 @@
-// `demi.down(...servers)` and `demi.down({ wipe: true })` (browse.md § What
-// `demi` adds): stops exactly the process groups the slot's state records
-// (the runner, the web app, the gallery, then the backend, which stops its
-// Cloud as it ends), deletes the `.env` that `demi.up` copied, and closes
-// the browser. Naming servers stops only those and keeps the rest, the
-// browser and the account, as a check of a backend that goes away and comes
-// back with `demi.up('backend')` needs. The backend's data and the paired
-// runner's installation stay for the next `demi.up`; `wipe` removes them
-// too. Nothing found by name is ever stopped.
+// `demi.down(...servers)` and `demi.down({ wipe: true })` (browse.md § What `demi`
+// adds): stops the slot's servers.
+//
+// It does three things:
+//
+// - Stops exactly the process groups the slot's state records (the runner, the web
+//   app, the gallery, then the backend, which stops its Cloud as it ends).
+// - Deletes the `.env` that `demi.up` copied.
+// - Closes the browser.
+//
+// Naming servers stops only those and keeps the rest, the browser and the account,
+// as a check of a backend that goes away and comes back with `demi.up('backend')`
+// needs. The backend's data and the paired runner's installation stay for the next
+// `demi.up`; `wipe` removes them too. Nothing found by name is ever stopped.
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { stopGroup } from '../processes'

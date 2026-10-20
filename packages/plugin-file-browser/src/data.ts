@@ -13,8 +13,8 @@ type FileEntry = z.infer<typeof fileEntrySchema>
 
 /**
  * What the File view shows: one file of the conversation's Host, by its
- * absolute path, and the files Back and Forward return to, and the directory it
- * was opened for.
+ * absolute path; the files Back and Forward return to; and the directory it was
+ * opened for.
  */
 export const fileDataSchema = z.object({
   /** Empty while it shows no file. */

@@ -1,9 +1,15 @@
 /**
- * One live view of the conversation's browser: the page's side of the protocol. It keeps what the view shows,
- * hands pictures to a decoder, acknowledges what the viewer saw, and sends
- * the viewer's input while the stream is alive. A view whose stream goes
- * silent for as long as a page socket may is broken, and a view that ends
- * opens again after the page's reconnect waits.
+ * One live view of the conversation's browser: the page's side of the protocol.
+ *
+ * The view:
+ *
+ * - Keeps what it shows.
+ * - Hands pictures to a decoder.
+ * - Acknowledges what the viewer saw.
+ * - Sends the viewer's input while the stream is alive.
+ *
+ * A view whose stream goes silent for as long as a page socket may is broken,
+ * and a view that ends opens again after the page's reconnect waits.
  */
 import { liveViewerMessageSchema, panelReasonSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage, type PanelReason } from '../generated/plugin'
 import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES } from '../generated/plugin'
@@ -33,9 +39,9 @@ export { REFUSED_FRAME, SILENT_STREAM, type LiveConnection } from '@demicodes/pl
 
 /**
  * The reasons of the notices that leave the watched tab without a picture,
- * which the view shows in place of the picture; every other notice the
- * picture still shows through. Each is a
- * reason of the plugin's set, which the page has words for.
+ * which the view shows in place of the picture. Every other notice the picture
+ * still shows through. Each is a reason of the plugin's set, which the page has
+ * words for.
  */
 export type PicturelessReason = typeof LIVE_CAPTURE_UNAVAILABLE | typeof LIVE_CAPTURE_FAILED | typeof LIVE_CAPTURE_STOPPED
 

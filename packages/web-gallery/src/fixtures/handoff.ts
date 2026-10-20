@@ -4,11 +4,14 @@ import type { VerificationHost } from '@demicodes/web-ui/auth/verification'
 import { productWould } from '../product-would'
 
 /**
- * Confirming it is the user as the product's backend would answer, for one
- * specimen: the password `wrong` is refused, any other confirms, as Use
- * Passkey does after the browser's prompt would have been answered; a
- * confirmation holds five minutes. `verified` says whether one holds now;
- * `confirmed` starts the specimen with one.
+ * Confirming it is the user as the product's backend would answer, for
+ * one specimen:
+ *
+ * - The password `wrong` is refused and any other confirms, as Use
+ *   Passkey does after the browser's prompt would have been answered.
+ * - A confirmation holds five minutes.
+ * - `verified` says whether one holds now.
+ * - `confirmed` starts the specimen with one.
  */
 export function galleryVerification(confirmed = false): { host: VerificationHost; verified: () => boolean } {
   let verifiedUntil = confirmed ? Date.now() + 5 * 60_000 : 0

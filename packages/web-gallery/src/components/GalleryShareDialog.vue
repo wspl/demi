@@ -6,14 +6,17 @@ import { useGalleryShares } from '../fixtures/sharing'
 import GalleryDialogFrame from './GalleryDialogFrame.vue'
 
 /**
- * The share dialog as the product opens it: on a share the conversation has
- * (`existing`), with its link, not copied; or, from Open, which stands for
- * Share since only a click may write the clipboard, on a new one (`new`),
- * making its link with Creating link… and then showing it, copied; or on
- * one whose making fails first (`failing`), with Try Again. Copy Link copies, Update
- * Link and Stop Sharing work a beat and answer as the product's backend
- * would; Stop Sharing closes the dialog, and Open makes a new share and
- * shows it.
+ * The share dialog as the product opens it, in one of three states:
+ *
+ * - `existing`: on a share the conversation has, with its link, not copied.
+ * - `new`: from Open, which stands for Share since only a click may write the
+ *   clipboard, on a new share, making its link with Creating link… and then
+ *   showing it, copied.
+ * - `failing`: on one whose making fails first, with Try Again.
+ *
+ * Copy Link copies. Update Link and Stop Sharing work a beat and answer as the
+ * product's backend would. Stop Sharing closes the dialog, and Open makes a new
+ * share and shows it.
  */
 const props = defineProps<{ target: ShareTarget; state: 'existing' | 'new' | 'failing' }>()
 

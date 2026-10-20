@@ -27,11 +27,15 @@ function passkeysAnswer(next: (current: PasskeyDto[]) => PasskeyDto[]): Answer {
 }
 
 /**
- * Adds a passkey to the signed-in account: the session verified first, with the
- * password when one is given, which the backend checks, else as the last five
- * minutes' sign-in left it; then the browser's prompt, then the new credential,
- * which the backend checks and names. Settings › Account and setup's passkey step
- * add one with the password, the offer after a sign-in without.
+ * Adds a passkey to the signed-in account:
+ *
+ * 1. The session is verified first, with the password when one is given, which
+ *    the backend checks, else as the last five minutes' sign-in left it.
+ * 2. The browser's prompt follows.
+ * 3. Then the new credential, which the backend checks and names.
+ *
+ * Settings › Account and setup's passkey step add one with the password, the
+ * offer after a sign-in without.
  */
 export function addPasskey(password: string): Promise<PasskeyAddOutcome>
 export function addPasskey(password: string | null): Promise<PasskeyOfferOutcome>

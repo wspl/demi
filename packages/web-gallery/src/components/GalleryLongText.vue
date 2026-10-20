@@ -12,18 +12,21 @@ import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown, scr
 
 /**
  * One long reply with every kind of block, in several scripts, where a reader
- * judges the rhythm of reading text: as the transcript shows it, as the File
- * view shows the same text saved as a Markdown file, and in a column as
- * narrow as a squeezed transcript. Both set it with one style
- * (`.markdown-body`), so the two read alike.
+ * judges the rhythm of reading text. It shows the text three ways: as the
+ * transcript shows it, as the File view shows the same text saved as a Markdown
+ * file, and in a column as narrow as a squeezed transcript. Both set it with
+ * one style (`.markdown-body`), so the two read alike.
  *
- * Edge Cases holds the rules of rendering rather than reading: a dollar
- * before an amount stays text while math renders, flush against Chinese; Arabic
- * joins and runs right to left in code as in a sentence; a header cell starts
- * where its column does, or as the delimiter row aligns it; in the narrow
- * column an address and a path break, and a long line of code, a wide table and
- * an equation scroll on their own and fade at the side that hides more, with an
- * overlay scrollbar that takes no room.
+ * Edge Cases holds the rules of rendering rather than reading:
+ *
+ * - A dollar before an amount stays text while math renders, flush against
+ *   Chinese.
+ * - Arabic joins and runs right to left in code as in a sentence.
+ * - A header cell starts where its column does, or as the delimiter row aligns
+ *   it.
+ * - In the narrow column an address and a path break, and a long line of code,
+ *   a wide table and an equation scroll on their own and fade at the side that
+ *   hides more, with an overlay scrollbar that takes no room.
  */
 const TEXTS = [...LONG_TEXT_LANGUAGES, 'edge'] as const
 type Text = (typeof TEXTS)[number]

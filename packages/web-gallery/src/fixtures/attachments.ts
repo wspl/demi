@@ -107,9 +107,11 @@ export const audioAttachmentMarkdown = `The voice-over for the intro, in Coral's
 
 /**
  * A reply that delivers files no preview in the reply shows: a card each,
- * stacked, that opens the file in the work panel; the tag in a sentence and
- * a link to an attachment, which are text; a number the conversation does
- * not have; and a recording whose size its record does not carry.
+ * stacked, that opens the file in the work panel. It also holds:
+ *
+ * - the tag in a sentence and a link to an attachment, which are text;
+ * - a number the conversation does not have;
+ * - a recording whose size its record does not carry.
  */
 export const attachmentMarkdown = `The setup guide, the release notes and the build:
 

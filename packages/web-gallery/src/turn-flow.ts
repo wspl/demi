@@ -17,15 +17,23 @@ import { suitePathsUpdate } from './fixtures/subagents'
 import { printLive } from './live-command'
 
 /**
- * `turn` is a full turn from a sent message, whose delivery the server
- * confirms; `undelivered` is a sent message whose delivery fails, until Retry
- * sends it again; `offline` is a message sent while the socket is lost,
- * under Connecting, which goes once the socket is back; `resume` and `retry` recover an aborted or failed tail;
- * `connect` opens over a dropped socket; `stream` is thinking then reply with
- * nothing waited for; `work` is a turn of many steps, thinking without text
- * and commands in a row, one failing, two changing files. Every fixture only changes conversation state,
- * the way the product's runtime does: the transcript's tail row, its faces and
- * the handoff into a block are `web-ui`'s.
+ * The flows a specimen runs:
+ *
+ * - `turn`: a full turn from a sent message, whose delivery the server
+ *   confirms.
+ * - `undelivered`: a sent message whose delivery fails, until Retry sends it
+ *   again.
+ * - `offline`: a message sent while the socket is lost, under Connecting, which
+ *   goes once the socket is back.
+ * - `resume` and `retry`: recover an aborted or failed tail.
+ * - `connect`: opens over a dropped socket.
+ * - `stream`: thinking then reply with nothing waited for.
+ * - `work`: a turn of many steps, thinking without text and commands in a row,
+ *   one failing, two changing files.
+ *
+ * Every fixture only changes conversation state, the way the product's runtime
+ * does: the transcript's tail row, its faces and the handoff into a block are
+ * `web-ui`'s.
  */
 export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue'
 
@@ -832,12 +840,13 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * A steer or a queued message on its way, shown as what it will be from the
-   * send: once the simulated server has answered the messages before it,
-   * it holds this one, a steer in the running turn's steers and a queued
-   * message in the queue, under the id it was sent with; with nothing
-   * running, it is refused and goes as a message, which starts a turn, as
-   * the product sends it. Recall or Send Now pressed meanwhile is carried
-   * out then.
+   * send: once the simulated server has answered the messages before it, it
+   * holds this one, a steer in the running turn's steers and a queued message
+   * in the queue, under the id it was sent with.
+   *
+   * - With nothing running, it is refused and goes as a message, which starts a
+   *   turn, as the product sends it.
+   * - Recall or Send Now pressed meanwhile is carried out then.
    */
   function deliverWaiting(
     content: UserContentBlock[],
@@ -981,12 +990,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /**
-   * The dock's Retry, as the product's: each undelivered message a resend
-   * can deliver goes again with its id, in the order they were sent, as a
-   * new message at the end, once `ready` answers the upload it tries again
-   * for it; this time each arrives. The first starts a turn while nothing
-   * runs, and the rest wait in the queue, as one does while a turn runs or a
-   * message on its way starts one. One a resend cannot deliver stays.
+   * The dock's Retry, as the product's: each undelivered message a resend can
+   * deliver goes again with its id, in the order they were sent, as a new
+   * message at the end, once `ready` answers the upload it tries again for it;
+   * this time each arrives.
+   *
+   * - The first starts a turn while nothing runs, and the rest wait in the
+   *   queue, as one does while a turn runs or a message on its way starts one.
+   * - One a resend cannot deliver stays.
    */
   function retrySubmissions(ready?: (id: string) => Promise<UserContentBlock[]> | undefined): void {
     const again = pendingSubmissions.value.filter((pending) => pending.error !== null && pending.retryable !== false)

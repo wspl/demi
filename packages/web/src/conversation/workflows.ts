@@ -30,15 +30,18 @@ const NONE: WorkflowList = { state: 'nowhere' }
 
 /**
  * The workflows of `place`, as the Workflow menu lists them: read from the
- * conversation's `GET /conversations/:id/workflows`, or a new
- * conversation's `GET /devices/:id/workflows`, and kept with the Host's
- * other files by the directory, subscribed on the file watch to what the
- * answer names, so a workflow added, changed or removed reads the list
- * again, with no polling. A conversation that moves to another directory of
- * the same Host reads that directory's, and lets go of the last. Shown while
- * the calling component lives, and followed while it is on screen. A new
- * conversation's remembered workflow that the list lacks settles to No
- * Subagents.
+ * conversation's `GET /conversations/:id/workflows`, or a new conversation's
+ * `GET /devices/:id/workflows`.
+ *
+ * - They are kept with the Host's other files by the directory, subscribed on
+ *   the file watch to what the answer names, so a workflow added, changed or
+ *   removed reads the list again, with no polling.
+ * - A conversation that moves to another directory of the same Host reads that
+ *   directory's, and lets go of the last.
+ * - They are shown while the calling component lives, and followed while it is
+ *   on screen.
+ * - A new conversation's remembered workflow that the list lacks settles to No
+ *   Subagents.
  */
 export function useConversationWorkflows(conversation: () => Conversation): ComputedRef<WorkflowList> {
   const product = useProduct()

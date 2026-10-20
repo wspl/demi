@@ -133,14 +133,18 @@ const draftV3Schema = z.looseObject({
 })
 
 /**
- * Upgrades the draft database from `oldVersion`: a new one gets its store;
- * one of 0.1.21 (version 1) turns each record's `pendingSend` into the list
- * `pendingSends`; one of version 2 gives each record and each message on
- * its way no comments, which a draft held none of then; one of version 3
- * drops an edit in progress whose message names a file by its path on the
- * Host, which the backend has since numbered, so the rest of the draft
- * stays and the user opens the edit again. A record of another shape stays
- * as it was, and its read reports it.
+ * Upgrades the draft database from `oldVersion`:
+ *
+ * - A new one gets its store.
+ * - One of 0.1.21 (version 1) turns each record's `pendingSend` into the list
+ *   `pendingSends`.
+ * - One of version 2 gives each record and each message on its way no comments,
+ *   which a draft held none of then.
+ * - One of version 3 drops an edit in progress whose message names a file by
+ *   its path on the Host, which the backend has since numbered, so the rest of
+ *   the draft stays and the user opens the edit again.
+ *
+ * A record of another shape stays as it was, and its read reports it.
  */
 function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
   if (oldVersion < 1) {

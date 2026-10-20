@@ -1,11 +1,15 @@
-// The slot's browser (browse.md § One browser per slot): Playwright's
-// Chromium with its own profile in the slot's folder, started by the first
-// call that needs it as a process group of its own, which the slot's
-// state records with its DevTools endpoint. The server reaches it over the
-// DevTools protocol, so a server that ends for changed code leaves the
-// browser, its pages and what was typed in them, and the next server
-// attaches to it again. A browser that crashed or was closed starts again on
-// the next call; `demi.stop`, `demi.down` and the idle timeout stop it.
+// The slot's browser (browse.md § One browser per slot): Playwright's Chromium with its
+// own profile in the slot's folder.
+//
+// The first call that needs the browser starts it as a process group of its own, which the
+// slot's state records with its DevTools endpoint. The server reaches the browser over the
+// DevTools protocol. A server that ends for changed code therefore leaves the browser, its
+// pages and what was typed in them, and the next server attaches to it again.
+//
+// The browser's life:
+//
+// - A browser that crashed or was closed starts again on the next call.
+// - `demi.stop`, `demi.down` and the idle timeout stop it.
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -35,11 +39,13 @@ const NAVIGATION_MS = 30_000
 const DRAW_MS = 2_000
 
 /**
- * The switches the browser starts with: Playwright's own for its Chromium
- * (its `chromiumSwitches`, which it does not export), so the browser and
- * its pictures are those a check with Playwright's launch had: a page in the
- * background or a hidden window keeps its timers and paints, no first-run
- * or update prompt appears, and colours are those of a screenshot.
+ * The switches the browser starts with: Playwright's own for its Chromium (its
+ * `chromiumSwitches`, which it does not export). The browser and its pictures are then
+ * those a check with Playwright's launch had:
+ *
+ * - A page in the background or a hidden window keeps its timers and paints.
+ * - No first-run or update prompt appears.
+ * - Colors are those of a screenshot.
  */
 const SWITCHES = [
   '--disable-field-trial-config',
@@ -120,9 +126,9 @@ export class Browser {
   }
 
   /**
-   * Attaches to the slot's browser when one runs, without starting one;
-   * answers whether the server is attached. A server that starts again
-   * attaches at once, so that the page's logs go on without a gap.
+   * Attaches to the slot's browser when one runs, without starting one, and answers
+   * whether the server is attached. A server that starts again attaches at once, so that
+   * the page's logs go on without a gap.
    */
   async attachRunning(): Promise<boolean> {
     if (this.connected) {
@@ -247,10 +253,9 @@ export class Browser {
   }
 
   /**
-   * Whether the attached browser answers a question of its own within `ms`:
-   * its version, which its process answers at once unless it hangs. True
-   * when none is attached, or when it went away, which the script's own
-   * steps report as they fail.
+   * Answers whether the attached browser replies within `ms` to a question of its own: its
+   * version, which its process answers at once unless it hangs. Answers true when none is
+   * attached, or when it went away, which the script's own steps report as they fail.
    */
   async answers(ms: number): Promise<boolean> {
     if (!this.attached) {
@@ -344,12 +349,11 @@ export class Browser {
   }
 
   /**
-   * Applies `emulation` to every page of an attached browser, and returns
-   * once each page has drawn a frame with it: what a page does on the
-   * change, such as a phone's layer that closes as the page widens and takes
-   * its history entry off, has then begun, and a navigation the script
-   * starts next is no longer cut off by it. Answers the pages; a browser
-   * attached later gets the emulation then.
+   * Applies `emulation` to every page of an attached browser, and answers the pages once
+   * each has drawn a frame with it. Waiting for the frame lets what a page does on the
+   * change begin first, such as a phone's layer that closes as the page widens and takes
+   * its history entry off. A navigation the script starts next is then no longer cut off
+   * by it. A browser attached later gets the emulation then.
    */
   async emulate(emulation: Emulation): Promise<Page[]> {
     if (!this.connected) {
@@ -365,11 +369,13 @@ export class Browser {
   }
 
   /**
-   * A PNG of the page through the server's own session, whose emulation
-   * survives the capture: one taken through another session, as
-   * Playwright's screenshots are, drops the pixel ratio the page emulates.
-   * `clip` is in CSS pixels of the viewport; `scale` multiplies the page's
-   * pixel ratio; `full` takes the whole page.
+   * Takes a PNG of the page through the server's own session, whose emulation survives the
+   * capture. A screenshot through another session, as Playwright's are, drops the pixel
+   * ratio the page emulates.
+   *
+   * - `clip` is in CSS pixels of the viewport.
+   * - `scale` multiplies the page's pixel ratio.
+   * - `full` takes the whole page.
    */
   async capture(options: { clip?: Clip, scale?: number, full?: boolean } = {}): Promise<Buffer> {
     const session = await this.cdp()
@@ -403,11 +409,11 @@ export class Browser {
 
   /**
    * Quits the browser and forgets it; the next call starts a new one.
-   * It is asked to quit as a person quits it, which a signal is not on
-   * macOS: a browser ended by one restores its tabs when it starts again,
-   * which `launch` prevents. A browser that `hung` would answer neither, so
-   * it is killed without a grace period, and no other starts until the
-   * server ends.
+   *
+   * The browser is asked to quit as a person quits it, which a signal is not on macOS: a
+   * browser ended by a signal restores its tabs when it starts again, which `launch`
+   * prevents. A browser that `hung` would answer neither, so it is killed without a grace
+   * period, and no other starts until the server ends.
    */
   async close(options: { hung?: boolean } = {}): Promise<void> {
     const connected = this.connected

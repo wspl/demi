@@ -19,10 +19,16 @@ const TITLE_LOWERCASE = new Set([
 /**
  * A lowercase phrase in title case, as macOS labels are written and the
  * gallery's Writing page says: every word capitalized, and the word after a
- * hyphen, except an article, a coordinating conjunction, `to`, `as` or a
- * short preposition between the first and the last word, and `in` of
- * Built-in and Plug-in. A preposition that belongs to a phrasal verb, such as
- * Sign In, is capitalized by its caller, since no rule tells it apart here.
+ * hyphen.
+ *
+ * These stay lowercase:
+ *
+ * - An article, a coordinating conjunction, `to`, `as` or a short preposition
+ *   between the first and the last word.
+ * - `in` of Built-in and Plug-in.
+ *
+ * A preposition that belongs to a phrasal verb, such as Sign In, is
+ * capitalized by its caller, since no rule tells it apart here.
  */
 export function titleCase(phrase: string): string {
   const words = phrase.split(' ')

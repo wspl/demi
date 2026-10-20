@@ -22,14 +22,16 @@ import { t } from '../locales/text'
 
 /**
  * A simulator, live (`packages/plugin-mobile/src/index.ts`): its pictures on a
- * canvas, in the device's frame, fitted into the tab; a click or a finger
- * on it is a touch, a drag a swipe, the keyboard types; and over it the
- * agent's activity, the note that it is using the device and the ring
- * where it acted. A screen that is off keeps its last picture, dimmed under
- * Screen Off with Wake; a tap or a key wakes it too. The view stays mounted
- * while its tab is hidden, so its last picture shows at once when the tab
- * is shown again; the session watches the device only while its tab is
- * shown.
+ * canvas, in the device's frame, fitted into the tab.
+ *
+ * - A click or a finger on it is a touch, a drag a swipe, and the keyboard types.
+ * - Over it show the agent's activity: the note that it is using the device and the
+ *   ring where it acted.
+ * - A screen that is off keeps its last picture, dimmed under Screen Off with Wake;
+ *   a tap or a key wakes it too.
+ * - The view stays mounted while its tab is hidden, so its last picture shows at
+ *   once when the tab is shown again. The session watches the device only while its
+ *   tab is shown.
  */
 const props = defineProps<{
   session: MobileSession

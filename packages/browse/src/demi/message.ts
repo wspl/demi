@@ -1,16 +1,19 @@
-// `demi.message(text, { files, wait, timeout })`: writes a message in the
-// open conversation's composer, or in a new conversation's, in place of any
-// draft, attaches `files` from this machine as the composer's file picker
-// does, sends it with Enter, and waits for the turn it starts to end: the
-// root's latest ended turn is another than before the message.
-// Subagents and background jobs the turn started are not waited for, though
-// the conversation runs while they do; `demi.turn()` waits for them too.
-// Answers the conversation and how its turn ended. A message the page marks
-// not delivered, or a turn that fails, fails the call at once with what the
-// page says (browse.md § Failures: a step's failure is never silent).
-// A draft that holds files fails the call before anything is written:
-// writing the message in place of the draft would delete their capsules,
-// and the message would go without them, as if it had none.
+// `demi.message(text, { files, wait, timeout })`: writes a message in the open conversation's
+// composer, or in a new conversation's, in place of any draft, attaches `files` from this
+// machine as the composer's file picker does, sends it with Enter, and waits for the turn it
+// starts to end. It answers the conversation and how its turn ended.
+//
+// The turn has ended when the root's latest ended turn is another than before the message.
+// Subagents and background jobs the turn started are not waited for, though the conversation
+// runs while they do; `demi.turn()` waits for them too.
+//
+// The call fails in two cases:
+//
+// - A message the page marks not delivered, or a turn that fails, fails the call at once with
+//   what the page says (browse.md § A call, Failures: a step's failure is never silent).
+// - A draft that holds files fails the call before anything is written. Writing the message in
+//   place of the draft would delete their capsules, and the message would go without them, as
+//   if it had none.
 import type { Locator, Page } from 'playwright'
 import type { Slot } from '../slot'
 import { Failure, type Tool } from '../tool'

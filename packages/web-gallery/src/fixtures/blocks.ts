@@ -528,9 +528,9 @@ function captureText(capture: Capture): string {
 
 /**
  * A shell call whose screenshots it viewed
- * (`crates/command-package-file/src/files.rs`): the output holds each
+ * (`crates/command-package-file/src/files.rs`). The output holds each
  * screenshot's description, from its stderr, and the line `[image n: …]` the
- * runner wrote, then the lines of the media it viewed after them, `after`; the
+ * runner wrote, then the lines of the media it viewed after them, `after`. The
  * result attaches the media after the output, in order, then the lines for
  * those it did not attach.
  */
@@ -1177,10 +1177,12 @@ export const errorTool = toolCall({
 })
 
 /**
- * The calls the end specimens show: commands that succeeded, failed, were
- * stopped, were lost or still run, one with a title too long for a narrow
- * row, looks at them, and calls that ran nothing: the repeat guard's and a
- * refused input's.
+ * The calls the end specimens show:
+ *
+ * - Commands that succeeded, failed, were stopped, were lost or still run, one
+ *   with a title too long for a narrow row.
+ * - Looks at them.
+ * - Calls that ran nothing: the repeat guard's and a refused input's.
  */
 export function commandEndBlocks(): ToolCallBlock[] {
   type End =
@@ -1642,12 +1644,15 @@ export function thoughtAnswerBlocks(): Block[] {
 }
 
 /**
- * Runs that only check a command, and ones that run one too: the agent
- * starts the end-to-end suite and ends its turn; asked, it checks the suite
- * twice; the suite's end report wakes it, a row of its own, and carries the
- * suite's last lines, so the agent answers without a look; asked again, it
- * runs the suite once more and checks the first run's log. The groups read
- * Checked 1 command and Ran 1 command, checked 1 command.
+ * Runs that only check a command, and ones that run one too:
+ *
+ * 1. The agent starts the end-to-end suite and ends its turn.
+ * 2. Asked, it checks the suite twice.
+ * 3. The suite's end report wakes it, a row of its own, and carries the suite's
+ *    last lines, so the agent answers without a look.
+ * 4. Asked again, it runs the suite once more and checks the first run's log.
+ *
+ * The groups read Checked 1 command and Ran 1 command, checked 1 command.
  */
 export function commandLookBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({
@@ -1753,11 +1758,16 @@ export function steppedRunCall(stage: number): (typeof STEPPED_RUN_CALLS)[number
 
 /**
  * A running turn's run at `stage` of `STEPPED_RUN_STAGES`, as the transcript
- * shows it while the run goes: one step runs, its own row; it returned and a
- * second runs under it; the second returned failed and joined the run,
- * Requesting under it while the model is waited for; a third runs under the
- * run; and the answer, after the third joined. Its newest running call is
- * `steppedRunCall`'s.
+ * shows it while the run goes:
+ *
+ * 1. One step runs, its own row.
+ * 2. It returned and a second runs under it.
+ * 3. The second returned failed and joined the run, Requesting under it while
+ *    the model is waited for.
+ * 4. A third runs under the run.
+ * 5. The answer, after the third joined.
+ *
+ * Its newest running call is `steppedRunCall`'s.
  */
 export function steppedRunBlocks(stage: number): Block[] {
   const called = [1, 2, 2, 3, 3][stage]!

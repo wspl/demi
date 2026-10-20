@@ -17,15 +17,19 @@ import { PLUGIN_PAGES } from './generated/pages'
 import { conversationStates } from './states'
 
 /**
- * The plugin pages' host in the product: each
- * plugin's user state from the product state the sync channel keeps, which
- * drops a plugin the user turned off; its conversation states by revision;
- * its calls over the plugin call routes, these calls and the states' reads
- * waiting in the HTTP client while the backend cannot be reached; its user
- * streams; what a conversation's primary Host holds of its packages, from that
- * device's in the product state, and whether that Host is a Cloud that does not
- * run, from the Cloud's state there; and the shell's own services: the
- * conversations' files, intents and panels, and the settings dialog.
+ * The plugin pages' host in the product. It supplies:
+ *
+ * - Each plugin's user state, from the product state the sync channel keeps,
+ *   which drops a plugin the user turned off.
+ * - Its conversation states, by revision.
+ * - Its calls, over the plugin call routes. These calls and the states' reads
+ *   wait in the HTTP client while the backend cannot be reached.
+ * - Its user streams.
+ * - What a conversation's primary Host holds of its packages, from that
+ *   device's in the product state, and whether that Host is a Cloud that does
+ *   not run, from the Cloud's state there.
+ * - The shell's own services: the conversations' files, intents and panels, and
+ *   the settings dialog.
  */
 /**
  * Opens a tab now, in the click that asked for it, and sends it to `url`

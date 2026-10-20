@@ -9,9 +9,13 @@ import { slow } from '../fixtures/slow'
 
 /**
  * Settings › Port Forwarding with a forward in each state of the design's
- * table; every control acts on the specimen's own forwards as the product's
- * do: Add Forward makes one and opens it, a taken name is refused, Try Again
- * finds the port free, and Remove Forward drops it.
+ * table. Every control acts on the specimen's own forwards as the product's
+ * do:
+ *
+ * - Add Forward makes one and opens it.
+ * - A taken name is refused.
+ * - Try Again finds the port free.
+ * - Remove Forward drops it.
  */
 const hosts = ref<ForwardHost[]>(shownAmong([
   { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },

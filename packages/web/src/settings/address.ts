@@ -3,14 +3,17 @@ import { z } from 'zod'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded, type Router } from 'vue-router'
 
 /**
- * Settings' own addresses: `/settings/<section>` over the page settings opened
- * from. Each section the user opens is an entry of the history, so Back returns
- * to the section before, and from the first one closes settings; a reload keeps
- * them open, since the history keeps what each entry says it opened over. A
- * link opens its section over the chat. `/settings` alone is settings with no
- * section chosen: the list of sections on a phone, the first section elsewhere.
- * A section's own page of one thing, such as a device's, is
- * `/settings/<section>/<id>`, a step of the history as a section is.
+ * Settings' own addresses: `/settings/<section>` over the page settings opened from.
+ *
+ * - Each section the user opens is an entry of the history, so Back returns to the
+ *   section before, and from the first one closes settings.
+ * - A reload keeps them open, since the history keeps what each entry says it opened
+ *   over.
+ * - A link opens its section over the chat.
+ * - `/settings` alone is settings with no section chosen: the list of sections on a
+ *   phone, the first section elsewhere.
+ * - A section's own page of one thing, such as a device's, is
+ *   `/settings/<section>/<id>`, a step of the history as a section is.
  */
 export const SETTINGS_ROUTE = 'settings'
 

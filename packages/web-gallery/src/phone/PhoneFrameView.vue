@@ -47,13 +47,20 @@ import { useAgentContext } from '../agent-context'
 const agentContext = useAgentContext()
 
 /**
- * One phone of the Phone page (`GalleryPhoneFrame`): the app frame at a
- * phone's size, live, over the gallery's fixtures, opened on a scene: a
- * turn running, the title sheet, the sidebar, the model picker, a long
- * model name under the composer, the work
- * panel on a Change, a file, its file tree or a browser tab, the Agents or Running window,
- * or Settings. The safe areas are the iPhone 15's, or the iPhone SE's with
- * `?device=se`, which the frame draws its status bar and home indicator over.
+ * One phone of the Phone page (`GalleryPhoneFrame`): the app frame at a phone's
+ * size, live, over the gallery's fixtures, opened on a scene:
+ *
+ * - a turn running;
+ * - the title sheet;
+ * - the sidebar;
+ * - the model picker;
+ * - a long model name under the composer;
+ * - the work panel on a Change, a file, its file tree or a browser tab;
+ * - the Agents or Running window;
+ * - Settings.
+ *
+ * The safe areas are the iPhone 15's, or the iPhone SE's with `?device=se`,
+ * which the frame draws its status bar and home indicator over.
  */
 const route = useRoute()
 const scene = typeof route.query.scene === 'string' ? route.query.scene : 'conversation'

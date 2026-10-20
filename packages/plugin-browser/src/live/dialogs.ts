@@ -1,6 +1,6 @@
 /**
- * A page's JavaScript dialog as a browser shows it: titled with the page's host, answered with
- * Enter and Escape.
+ * A page's JavaScript dialog as a browser shows it: titled with the page's
+ * host, answered with Enter and Escape.
  */
 import type { LiveDialog } from '../generated/plugin'
 import { t } from '../locales/text'

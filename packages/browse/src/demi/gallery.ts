@@ -4,10 +4,10 @@
 //
 // The gallery keeps a theme of its own, light or dark whatever the system's
 // is, so a theme `demi.emulate` sets reaches it only through the gallery's
-// state. The gallery's development server serves that state as a module,
-// and the page's module map holds the instance the gallery runs, so
-// importing it by its address gives the tool that instance; setting its mode
-// changes the theme as the gallery's own menu does, without a reload.
+// state. The gallery's development server serves that state as a module, and
+// the page's module map holds the instance the gallery runs. Importing the
+// module by its address therefore gives the tool that instance, and setting
+// its mode changes the theme as the gallery's own menu does, without a reload.
 import type { Page, Response } from 'playwright'
 import { local, type Slot } from '../slot'
 import { readState } from '../state'

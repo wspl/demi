@@ -8,17 +8,16 @@ import type {
   TranscriptPatch,
 } from '@demicodes/protocol'
 
-/** The server frame of one `type`. */
 export type ServerFrameOf<Type extends ServerFrame['type']> = Extract<ServerFrame, { type: Type }>
 
 /** The facts the backend read out of error blocks, by block id. */
 export type Failures = Record<string, ProviderFailureFacts>
 
 /**
- * What an `ConversationClient` tells its listeners. Most events are the server frame
- * as it arrived; the transcript events carry what the frame brought, which
- * the page applies to the parts of the transcript it holds, and none
- * carries a revision, which the client keeps.
+ * What a `ConversationClient` tells its listeners. Most events are the
+ * server frame as it arrived. The transcript events carry what the frame
+ * brought, which the page applies to the parts of the transcript it holds;
+ * none carries a revision, which the client keeps.
  */
 export type ClientSessionEvent =
   | ServerFrameOf<'opened'>

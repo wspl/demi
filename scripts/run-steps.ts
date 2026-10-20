@@ -1,10 +1,11 @@
 // Runs a package script's commands one after another in the foreground, for
-// the scripts that would otherwise chain them with `&&`. `bun run` passes a
-// stop or an interrupt on to the command it runs only when the script line is
-// a single command: a line with `&&` runs in a shell, which dies on SIGTERM
-// and leaves the command it started running. So such a script is one Bun
-// program that runs its steps through `runSteps`, and stopping the program's
-// process id stops the step that is running.
+// the scripts that would otherwise chain them with `&&`.
+//
+// `bun run` passes a stop or an interrupt on to the command it runs only when
+// the script line is a single command. A line with `&&` runs in a shell,
+// which dies on SIGTERM and leaves the command it started running. So such a
+// script is one Bun program that runs its steps through `runSteps`, and
+// stopping the program's process id stops the step that is running.
 import { constants } from 'node:os'
 
 /** One command of a script, and the directory it runs in. */

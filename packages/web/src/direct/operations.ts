@@ -287,13 +287,17 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
 }
 
 /**
- * A live view's stream on the device's live peer: its `video` channel opens first, then its `stream`
- * channel naming it. The pictures' chunks come on `video`, each message one
- * chunk, and the page's acknowledgements go there; everything else goes on
- * `stream`, whose messages the page joins into whole frames before the view
- * reads them, so that a chunk never falls inside another frame. A live peer
- * that cannot be made, or a refusal, leaves the view to the relay; bytes
- * sent before the channels open wait for them. A channel that fails sets
+ * A live view's stream on the device's live peer: its `video` channel opens
+ * first, then its `stream` channel naming it.
+ *
+ * - The pictures' chunks come on `video`, each message one chunk, and the
+ *   page's acknowledgements go there.
+ * - Everything else goes on `stream`, whose messages the page joins into whole
+ *   frames before the view reads them, so that a chunk never falls inside
+ *   another frame.
+ *
+ * A live peer that cannot be made, or a refusal, leaves the view to the relay;
+ * bytes sent before the channels open wait for them. A channel that fails sets
  * the device's choice to `relay`, where the view reopens; closing the view
  * closes its channels, opening ones included.
  */

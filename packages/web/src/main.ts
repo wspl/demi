@@ -1,12 +1,15 @@
 // The web application's composition root: the app, the router and the
 // account-scoped stores. This package supplies the data, state, services and
 // handlers of the reusable UI in `web-ui` and of each plugin's page; it never
-// holds the UI itself. Product state follows the synchronization channel (a
-// WebSocket), chat uses the conversation client over a WebSocket, and
-// everything else is same-origin REST. It imports no package by a computed
-// name (the plugin page registry is a static list `xtask contracts` writes),
-// no `web-gallery`, and no Node module outside its contract suite, which
-// starts the backend, runner and scripted machine manager processes.
+// holds the UI itself.
+//
+// - Product state follows the synchronization channel (a WebSocket), chat
+//   uses the conversation client over a WebSocket, and everything else is
+//   same-origin REST.
+// - It imports no package by a computed name (the plugin page registry is a
+//   static list `xtask contracts` writes), no `web-gallery`, and no Node
+//   module outside its contract suite, which starts the backend, runner and
+//   scripted machine manager processes.
 
 import { createApp, shallowRef, watch } from 'vue'
 import { until } from '@vueuse/core'

@@ -31,16 +31,21 @@ import GallerySpecimen from './GallerySpecimen.vue'
 /**
  * Every session-level failure, pinned. Each specimen is the product's
  * ChatSession over a fixed state, so what the reader sees here is what the
- * product shows for that state; only a device a failure names toggles, as
- * its runner comes and goes.
+ * product shows for that state; only a device a failure names toggles, as its
+ * runner comes and goes.
  *
- * The rule the specimens demonstrate: a failure is named once, in flow.
- * - No history to keep: the status pane replaces the transcript (Retry lives there).
- * - History in memory: the transcript stays; an ErrorNotice at its tail names the failure (Retry lives there).
- * - The failure is a transcript record: the record itself carries Retry; the dock adds nothing.
+ * The rule the specimens demonstrate is that a failure is named once, in flow:
+ *
+ * - No history to keep: the status pane replaces the transcript (Retry lives
+ *   there).
+ * - History in memory: the transcript stays, and an ErrorNotice at its tail
+ *   names the failure (Retry lives there).
+ * - The failure is a transcript record: the record itself carries Retry, and
+ *   the dock adds nothing.
+ *
  * A lost connection is not a failure: the runtime reconnects on its own. The
  * Connecting tail row is all the reader sees when only the conversation's
- * socket was lost; when the page cannot reach the backend at all, the
+ * socket was lost. When the page cannot reach the backend at all, the
  * connection banner says so and the transcript adds nothing.
  */
 interface SessionCase {

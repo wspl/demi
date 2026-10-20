@@ -8,11 +8,18 @@ import { usePasskeyOffer } from './passkey-offer'
 /**
  * The page a phone's camera opens from a handoff code
  * (`crates/backend-accounts/src/sessions.rs`): the code is after `#`, which a
- * browser never sends to a server. The page takes it off the address, so
- * the history keeps no code, spends it, and loads the page it opens, signed
- * in: a load, since the phone may have been signed out, or in to another
- * account, whose state the page held. A phone signed in to the account
- * keeps its session. The page it opens offers the phone a passkey.
+ * browser never sends to a server.
+ *
+ * The page:
+ *
+ * 1. Takes the code off the address, so the history keeps no code.
+ * 2. Spends it.
+ * 3. Loads the page it opens, signed in.
+ *
+ * It loads the page rather than navigating, since the phone may have been
+ * signed out, or in to another account, whose state the page held. A phone
+ * signed in to the account keeps its session. The page it opens offers the
+ * phone a passkey.
  */
 const router = useRouter()
 const offer = usePasskeyOffer()

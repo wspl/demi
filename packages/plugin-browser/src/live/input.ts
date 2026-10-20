@@ -1,7 +1,7 @@
 /**
- * The viewer's input to a browser tab: the live
- * view's input (the SDK's `pointerInput`, `wheelInput`, `keyInput`) to the
- * watched tab, and the keys the browser's panel keeps for itself.
+ * The viewer's input to a browser tab: the live view's input (the SDK's
+ * `pointerInput`, `wheelInput`, `keyInput`) to the watched tab, and the keys
+ * the browser's panel keeps for itself.
  */
 import { keyInput, type KeyInput, type ViewerInput } from '@demicodes/plugin-sdk'
 import type { LiveViewerMessage } from '../generated/plugin'
@@ -21,10 +21,13 @@ export function localKey(event: KeyInput): boolean {
 export type BrowserShortcut = 'address' | 'back' | 'forward' | 'reload'
 
 /**
- * The browser's shortcut a key is, with the focus in the panel:
- * on a Mac ⌘L focuses the
- * address bar, ⌘[ and ⌘] go Back and Forward and ⌘R reloads; elsewhere
- * Control+L, Alt+Left and Alt+Right, and Control+R or F5, as Chrome has them.
+ * The browser's shortcut a key is, with the focus in the panel, as Chrome has
+ * them:
+ *
+ * - On a Mac: ⌘L focuses the address bar, ⌘[ and ⌘] go Back and Forward, and ⌘R
+ *   reloads.
+ * - Elsewhere: Control+L, Alt+Left and Alt+Right, and Control+R or F5.
+ *
  * Null for a key the page gets.
  */
 export function browserShortcut(event: KeyInput, platform: 'mac' | 'windows' | 'linux' | 'other'): BrowserShortcut | null {

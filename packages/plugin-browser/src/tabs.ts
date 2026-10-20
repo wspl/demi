@@ -22,10 +22,10 @@ import {
 const BIND_TIMEOUT_MS = 310_000
 
 /**
- * A refused call in the words the page shows for it, never the Host's own
- * error text: its reason's, or for an
- * answer whose reason is not one of the plugin's, its HTTP status; a call no
- * answer came for, or whose answer could not be read, says which.
+ * A refused call in the words the page shows for it, never the Host's own error
+ * text: its reason's, or for an answer whose reason is not one of the plugin's,
+ * its HTTP status. A call no answer came for, or whose answer could not be
+ * read, says which.
  */
 function tabsError(error: PluginCallError): BrowserTabsError {
   const reason = panelReasonSchema.safeParse(error.reason)
@@ -43,11 +43,11 @@ function tabsError(error: PluginCallError): BrowserTabsError {
 }
 
 /**
- * The conversation browser's tab list, its tab methods and its `browser`
- * user stream over the plugin, for a
- * panel session, whose effect scope the tab list is followed in. A call
- * still waiting for the backend when the session ends, as the panel closes,
- * is dropped and never sent (`packages/web-ui/src/plugins/page.ts`).
+ * The conversation browser's tab list, its tab methods and its `browser` user
+ * stream over the plugin, for a panel session, whose effect scope the tab list
+ * is followed in. A call still waiting for the backend when the session ends,
+ * as the panel closes, is dropped and never sent
+ * (`packages/web-ui/src/plugins/page.ts`).
  */
 export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: string) => void): BrowserTabsApi {
   const tabs = plugin.state(browserTabsSchema)

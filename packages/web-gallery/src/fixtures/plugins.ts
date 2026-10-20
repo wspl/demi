@@ -215,12 +215,15 @@ export function commitOf(seed: string): string {
 export const GALLERY_EXA_KEY_LENGTH = 16
 
 /**
- * The web plugin over `state`: Sign In answers Exa's sign-in page, which the
- * page opens in a new tab, and the user is signed in as alex@example.com a
- * moment later, as Exa's callback would; Sign Out forgets the sign-in. A key
- * is checked with one search, a beat long: one shorter than
- * {@link GALLERY_EXA_KEY_LENGTH} is refused, as Exa refuses a key copied in
- * part. The key in use follows: the key over the sign-in over neither.
+ * The web plugin over `state`:
+ *
+ * - Sign In answers Exa's sign-in page, which the page opens in a new tab, and
+ *   the user is signed in as alex@example.com a moment later, as Exa's callback
+ *   would.
+ * - Sign Out forgets the sign-in.
+ * - A key is checked with one search, a beat long: one shorter than {@link
+ *   GALLERY_EXA_KEY_LENGTH} is refused, as Exa refuses a key copied in part.
+ * - The key in use follows: the key over the sign-in over neither.
  */
 export function webPlugin(state: WebState): GalleryPlugin {
   const inUse = (): void => {
@@ -280,13 +283,15 @@ export async function openExaSignIn(url: string | Promise<string>): Promise<void
 }
 
 /**
- * The skills plugin over `state`: adding a source fetches it after a beat,
- * updating fetches it again, and a skill turns on unless another on has its
- * name, as the backend's plugin refuses it. A fetch keeps each known skill
- * on or off and starts a new one on, unless another skill on has its name or
- * it is never offered to the agent. A switch is answered after a beat, as
- * the backend writes the change first. Checking for updates finds none: the
- * fixture's repositories never move.
+ * The skills plugin over `state`:
+ *
+ * - Adding a source fetches it after a beat, and updating fetches it again.
+ * - A skill turns on unless another on has its name, as the backend's plugin
+ *   refuses it.
+ * - A fetch keeps each known skill on or off and starts a new one on, unless
+ *   another skill on has its name or it is never offered to the agent.
+ * - A switch is answered after a beat, as the backend writes the change first.
+ * - Checking for updates finds none: the fixture's repositories never move.
  */
 export function skillsPlugin(state: SkillsState): GalleryPlugin {
   const source = (id: string): SourceState => {

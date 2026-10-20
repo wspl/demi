@@ -1,14 +1,20 @@
-// The slot's network (browse.md § What `demi` adds): the browser reaches
-// the web app through this forwarder, which passes each of the page's
+// The slot's network (browse.md § What `demi` adds): the browser reaches the
+// web app through this forwarder, which passes each of the page's
 // connections, requests and sockets alike, on to the web server, and adds
-// what `demi.net` sets: latency, a bandwidth limit, an offline spell, a cut,
-// or a stall of connections already open.
+// what `demi.net` sets:
+//
+// - latency;
+// - a bandwidth limit;
+// - an offline spell;
+// - a cut;
+// - a stall of connections already open.
+//
 // The browser's own network emulation cannot do these to a WebSocket, and
 // cannot end a connection without a close.
 //
 // Latency and bandwidth apply to the app's traffic with its backend, the
 // requests and sockets under `/api`, and not to the files the dev server
-// serves: a built app loads a few of them once, while the dev server's
+// serves. A built app loads a few of them once, while the dev server's
 // hundreds of modules would take minutes to load at a far backend's pace.
 import net from 'node:net'
 import type { Conditions } from './state'
@@ -278,7 +284,6 @@ export class Network {
     return [...this.connections.values()].map(describe)
   }
 
-  /** Ends every connection and stops listening. */
   async shutdown(): Promise<void> {
     for (const connection of [...this.connections.values()]) {
       this.close(connection)

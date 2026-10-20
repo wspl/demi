@@ -1,37 +1,47 @@
 /**
  * The page's direct channels (`crates/runner-direct/src/lib.rs`), one per
- * paired device it uses: the device's signaling socket and the choice of
- * path to it, while its runner is connected. A conversation's operations go
- * to the device its summary names as its Host, in the directory the summary
- * names, so they stop going to a device once the conversation moved.
+ * paired device it uses: the device's signaling socket and the choice of path
+ * to it, while its runner is connected. A conversation's operations go to the
+ * device its summary names as its Host, in the directory the summary names, so
+ * they stop going to a device once the conversation moved.
  *
- * The page keeps one choice per device, `relay` or `direct`, from the
- * device's route. Automatic makes a peer and chooses `direct` while it is
- * connected and its last measurement found it no worse than the relay, since
- * a connected peer is not always the better path: across networks the pair
- * may run over a congested or lossy link. Prefer P2P is for a user who knows
- * the direct path suits them, Relay Only for one whose network or policy
- * makes the attempts unwelcome; it makes no peer.
+ * The page keeps one choice per device, `relay` or `direct`, from the device's
+ * route:
  *
- * Each operation chooses as it starts and finishes there, while an open
- * stream or watch reopens on the other path when the choice changes. A
- * channel that closed before it opened while its peer stays connected says
- * nothing about the path and is tried once more. Any other failure sets the
- * choice to `relay` at once and the operation runs again there, a write once,
- * since one that did not finish leaves the file as it was. While the choice
- * is `relay`, the page makes a new peer when the browser's local network
- * permission changes, when it comes back online, when the device's runner
- * connects again, when its signaling socket reconnects, and otherwise after 1,
- * 2, 5 and then every 10 minutes, one attempt at a time. The runners keep the
- * same schedule in Rust (`crates/runner-protocol/src/forward.rs`): the two
- * cannot share code, so both follow its numbers. The relay never closes
- * because the direct channel opened.
+ * - Automatic makes a peer and chooses `direct` while it is connected and its
+ *   last measurement found it no worse than the relay. A connected peer is not
+ *   always the better path: across networks the pair may run over a congested
+ *   or lossy link.
+ * - Prefer P2P is for a user who knows the direct path suits them.
+ * - Relay Only is for one whose network or policy makes the attempts unwelcome;
+ *   it makes no peer.
  *
- * A page measures the two paths only when something reads the result (a
- * peer connecting, the device's page becoming visible, the user asking), so
- * an idle page sends nothing. Latency and loss decide the route; throughput
- * is not measured, since a speed test would move megabytes through the
- * user's server to show a figure nothing acts on.
+ * Each operation chooses as it starts and finishes there, while an open stream
+ * or watch reopens on the other path when the choice changes.
+ *
+ * - A channel that closed before it opened while its peer stays connected says
+ *   nothing about the path and is tried once more.
+ * - Any other failure sets the choice to `relay` at once and the operation runs
+ *   again there, a write once, since one that did not finish leaves the file as
+ *   it was.
+ *
+ * While the choice is `relay`, the page makes a new peer:
+ *
+ * - when the browser's local network permission changes;
+ * - when it comes back online;
+ * - when the device's runner connects again;
+ * - when its signaling socket reconnects;
+ * - otherwise after 1, 2, 5 and then every 10 minutes, one attempt at a time.
+ *
+ * The runners keep the same schedule in Rust
+ * (`crates/runner-protocol/src/forward.rs`): the two cannot share code, so both
+ * follow its numbers. The relay never closes because the direct channel opened.
+ *
+ * A page measures the two paths only when something reads the result (a peer
+ * connecting, the device's page becoming visible, the user asking), so an idle
+ * page sends nothing. Latency and loss decide the route; throughput is not
+ * measured, since a speed test would move megabytes through the user's server
+ * to show a figure nothing acts on.
  */
 import { effectScope, reactive, ref, watch } from 'vue'
 import { z } from 'zod'

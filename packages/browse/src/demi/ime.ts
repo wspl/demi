@@ -1,33 +1,41 @@
 // `demi.ime(text, { into, commit })`: composes text through an input method
-// as a Chinese or Japanese input method does: the field sees a composition
-// grow character by character, then the key that ends it: `commit: 'enter'`
-// (the default) commits the candidate, `'escape'` cancels the composition,
-// and `'none'` leaves it open. `into` (a Playwright locator) is focused
-// first. Each engine gets its own order of events, the one its browser
-// produces on macOS:
+// as a Chinese or Japanese input method does. The field sees a composition
+// grow character by character, then the key that ends it.
+//
+// `commit` chooses the ending key:
+//
+// - `'enter'` (the default) commits the candidate.
+// - `'escape'` cancels the composition.
+// - `'none'` leaves the composition open.
+//
+// `into` (a Playwright locator) is focused first.
+//
+// Each engine gets its own order of events, the one its browser produces on
+// macOS:
 //
 //   Chromium                          WebKit (Safari)
 //   keydown Enter  229 isComposing    compositionend
 //   compositionend                    keydown Enter  229, isComposing false
 //   keyup Enter    13                 keyup Enter    13
 //
-// Playwright types and inserts text but composes none. In Chromium this uses
-// the DevTools protocol's input method events, so the browser itself
-// composes; WebKit's protocol has none, so on a page of `demi.webkit()` the
+// Playwright types and inserts text but composes none. In Chromium this
+// uses the DevTools protocol's input method events, so the browser itself
+// composes. WebKit's protocol has none, so on a page of `demi.webkit()` the
 // events are dispatched in Safari's order and the text is inserted while
-// the composition is open, which is what a page sees of Safari's input
+// the composition is open. That is what a page sees of Safari's input
 // method, though its events are not trusted ones.
 //
 // The ending key's keydown names no native key code. On macOS the protocol
 // takes `nativeVirtualKeyCode` as the Mac key code of the NSEvent the
-// browser builds for the key, and a keydown the page lets through
-// unhandled, as a field keeps a composing key without preventing its
-// default, goes back to the browser's own menus as that NSEvent. 229 is no
-// Mac key: given as one, the browser matched it to its own commands (a
-// plain page's tab went to chrome://settings/help, Chrome's About), and
-// with a menu that opens and closes in the same call its process spun in
-// AppKit's key equivalents and answered nothing more. Playwright's own key
-// presses give no native code either.
+// browser builds for the key. A keydown the page lets through unhandled, as
+// a field keeps a composing key without preventing its default, goes back
+// to the browser's own menus as that NSEvent.
+//
+// 229 is no Mac key. Given as one, the browser matched it to its own
+// commands (a plain page's tab went to chrome://settings/help, Chrome's
+// About). With a menu that opens and closes in the same call, its process
+// spun in AppKit's key equivalents and answered nothing more. Playwright's
+// own key presses give no native code either.
 import type { Locator } from 'playwright'
 import type { Tool } from '../tool'
 

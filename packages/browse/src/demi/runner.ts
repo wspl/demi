@@ -1,12 +1,14 @@
-// `demi.runner({ fresh })`, `demi.runner.stop()` and `demi.runner.start()`
-// (browse.md § What `demi` adds): the slot's runner, a runner of the slot's
-// build for the slot's backend, a device of its own with its installation in
-// the slot's folder. The first `demi.runner()` pairs it the way a person
-// does: Settings › Devices › Add Device, the pairing code the runner printed,
-// Pair Device. `stop` stops it, as a device that goes away, and `start`, or
-// `demi.runner()` again, starts the same runner on the same installation,
-// which keeps the device; `fresh` pairs a new one in its place. `demi.down`
-// stops it and keeps it paired; `demi.down({ wipe: true })` removes it.
+// `demi.runner({ fresh })`, `demi.runner.stop()` and `demi.runner.start()` (browse.md §
+// What `demi` adds): the slot's runner, a runner of the slot's build for the slot's
+// backend, a device of its own with its installation in the slot's folder.
+//
+// - The first `demi.runner()` pairs it the way a person does: Settings › Devices › Add
+//   Device, the pairing code the runner printed, Pair Device.
+// - `stop` stops it, as a device that goes away.
+// - `start`, or `demi.runner()` again, starts the same runner on the same installation,
+//   which keeps the device.
+// - `fresh` pairs a new one in its place.
+// - `demi.down` stops it and keeps it paired; `demi.down({ wipe: true })` removes it.
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { startGroup, stopGroup, type Started } from '../processes'

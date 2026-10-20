@@ -20,20 +20,27 @@ import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, typ
 
 /**
  * A `browser` tab's content. It shows at once what the tab's data says, and
- * what the Host sends replaces it when it arrives: before the browser has the
- * tab, the panel's own background, which says at once what Demi is doing; then
- * a blank page until the browser tab's first picture; an address the user
- * submits shows at once, with the page loading over the picture the tab still
- * shows. The plugin opens, binds and closes the browser tab on the backend;
- * only a failure interrupts, where it happened, with a way on. A tab whose
- * browser tab the browser lost opens again on its address as soon as it is
- * shown, loading as any page does, never saying that the page was closed. A
- * content stays mounted while another tab is selected (`shown` false), so shown
- * again it shows its picture, address and title at once.
+ * what the Host sends replaces it when it arrives:
  *
- * Why: words appear in the same frame as the click that opens the tab, since
- * an empty area would read as Demi doing nothing; the blank page has Chrome's
- * empty-page color in the tab's scheme, so the first picture does not flash.
+ * - Before the browser has the tab: the panel's own background, which says at
+ *   once what Demi is doing.
+ * - Then a blank page until the browser tab's first picture.
+ * - An address the user submits shows at once, with the page loading over the
+ *   picture the tab still shows.
+ *
+ * The plugin opens, binds and closes the browser tab on the backend; only a
+ * failure interrupts, where it happened, with a way on. A tab whose browser tab
+ * the browser lost opens again on its address as soon as it is shown, loading
+ * as any page does, never saying that the page was closed. A content stays
+ * mounted while another tab is selected (`shown` false), so shown again it
+ * shows its picture, address and title at once.
+ *
+ * Two choices have a reason:
+ *
+ * - Words appear in the same frame as the click that opens the tab, since an
+ *   empty area would read as Demi doing nothing.
+ * - The blank page has Chrome's empty-page color in the tab's scheme, so the
+ *   first picture does not flash.
  */
 const props = defineProps<{
   conversation: string
@@ -202,9 +209,8 @@ function history(action: 'back' | 'forward' | 'reload'): void {
 
 /**
  * The browser's own shortcuts, with the focus anywhere in the tab's content:
- * they act here, never in the
- * page, and never reach the page around the panel, whose ⌘R would reload
- * Demi itself.
+ * they act here, never in the page, and never reach the page around the panel,
+ * whose ⌘R would reload Demi itself.
  */
 function shortcut(event: KeyboardEvent): void {
   const action = browserShortcut(event, platform)

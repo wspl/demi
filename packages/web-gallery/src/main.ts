@@ -1,8 +1,9 @@
-// The component catalog's entry: `web-ui` over fixture state, so every
-// control of a specimen acts on that state. It shows each plugin package's
-// page over a fixture page context, from the registry `xtask contracts`
-// generates. It is not a product surface and ships no themes into the
-// product; it imports neither Node nor `web`, and no package imports it.
+// The component catalog's entry: `web-ui` over fixture state, so every control
+// of a specimen acts on that state. It shows each plugin package's page over a
+// fixture page context, from the registry `xtask contracts` generates.
+//
+// It is not a product surface and ships no themes into the product. It imports
+// neither Node nor `web`, and no package imports it.
 
 import { createApp, shallowRef, watch } from 'vue'
 import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'

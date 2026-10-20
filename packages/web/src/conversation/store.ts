@@ -434,11 +434,13 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Keeps everything the conversation shows as its archive flag changes:
-   * archived, it lets its socket go, which the backend would close; brought
-   * back, it connects again from the blocks it holds once the restore lands,
-   * or, opened while archived, starts its session then. Nothing is read again;
-   * a change of its draft held back while it was archived is saved once the
-   * restore lands.
+   *
+   * - Archived, it lets its socket go, which the backend would close.
+   * - Brought back, it connects again from the blocks it holds once the restore
+   *   lands, or, opened while archived, starts its session then.
+   *
+   * Nothing is read again; a change of its draft held back while it was
+   * archived is saved once the restore lands.
    */
   function followArchive(conversation: Conversation): void {
     if (!conversation.archived) {
@@ -1361,13 +1363,16 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads what the page shows of a conversation it opens, all at once: its
-   * transcript, its agents, its hosts, its draft and its cost, and shows
-   * the first step of its opening, the transcript, once it, the draft and
-   * the cost are read, so its context card never shows without its cost:
-   * `runnable`, its session opens next, which the second step shows; otherwise
-   * it stops there. The agents and the hosts join when they arrive; it answers
-   * once the transcript is held, with the hosts' read, which neither the
-   * transcript nor the session's opening waits for.
+   * transcript, its agents, its hosts, its draft and its cost.
+   *
+   * - Once the transcript, the draft and the cost are read, it shows the first
+   *   step of its opening, so the context card never shows without its cost.
+   *   The agents and the hosts join when they arrive.
+   * - If `runnable`, the session opens next, which the second step shows;
+   *   otherwise the opening stops there.
+   *
+   * It answers once the transcript is held, with the hosts' read, which neither
+   * the transcript nor the session's opening waits for.
    */
   async function readOpening(
     conversation: Conversation,
@@ -1491,17 +1496,20 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads the cost of `conversation`, which the page holds while the
-   * conversation is open (`packages/web-ui/src/agent/context-cost.ts`), keeping what
-   * it shows until the answer comes, then adds to the answer the frames
-   * that came meanwhile and that it does not include, and reads again when
-   * an attach said the conversation has more rows than it holds then. A
-   * failed read is shown as one, with Retry. `open` is the signal of the
-   * conversation's stay in the cache, which cancels the read when the
-   * conversation goes or its opening ends; `answer` is the read an opening
-   * sent with the conversation's other reads under that signal, otherwise
-   * the read is sent now. Settles, never failing, once the page holds the
-   * answer or the failure, or the read gave way to a newer one or to the
-   * conversation's going; it leaves `costReads` either way.
+   * conversation is open (`packages/web-ui/src/agent/context-cost.ts`). It
+   * keeps what it shows until the answer comes, then adds to the answer the
+   * frames that came meanwhile and that it does not include, and reads again
+   * when an attach said the conversation has more rows than it holds then. A
+   * failed read is shown as one, with Retry.
+   *
+   * - `open` is the signal of the conversation's stay in the cache, which
+   *   cancels the read when the conversation goes or its opening ends.
+   * - `answer` is the read an opening sent with the conversation's other reads
+   *   under that signal; otherwise the read is sent now.
+   *
+   * It settles, never failing, once the page holds the answer or the failure,
+   * or the read gave way to a newer one or to the conversation's going; it
+   * leaves `costReads` either way.
    */
   function readCost(conversation: Conversation, open: AbortSignal, answer?: Promise<ConversationCostView>): Promise<void> {
     costReads.get(conversation.id)?.controller.abort()
@@ -2626,10 +2634,12 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * The dock's Retry: each message whose delivery failed goes again with its
    * id, in the order they were sent, as a new message at the end, after the
-   * messages on their way: the first is answered next, or queued while a turn
-   * runs or a message on its way starts one, and the rest are queued after it.
-   * A steer the session already holds is not sent again. One a resend cannot
-   * deliver stays where it is, for its Edit.
+   * messages on their way.
+   *
+   * - The first is answered next, or queued while a turn runs or a message on
+   *   its way starts one, and the rest are queued after it.
+   * - A steer the session already holds is not sent again.
+   * - One a resend cannot deliver stays where it is, for its Edit.
    */
   async function retrySends(conversation: Conversation): Promise<void> {
     if (conversation.archived) {
@@ -2872,13 +2882,17 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Edit on a message not delivered: its text, files and comments go back
-   * into the composer, after what it holds, as a paste at its end adds them,
-   * and its row goes, in one step. A file of it that is gone comes back as a
-   * capsule that says so, to remove or attach again; so does each place its
-   * text holds for a file it has none for, and a file it has beyond those
-   * places stands at the end of its text. One sent from the list is listed
-   * again and edited there, as the list's Edit does.
+   * Edit on a message not delivered: its text, files and comments go back into
+   * the composer, after what it holds, as a paste at its end adds them, and its
+   * row goes, in one step.
+   *
+   * - A file of it that is gone comes back as a capsule that says so, to remove
+   *   or attach again.
+   * - So does each place its text holds for a file it has none for.
+   * - A file it has beyond those places stands at the end of its text.
+   *
+   * One sent from the list is listed again and edited there, as the list's Edit
+   * does.
    */
   function editSend(conversation: Conversation, id: string): void {
     const pending = conversation.pendingSends.find((each) => each.id === id)

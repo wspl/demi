@@ -1,17 +1,20 @@
 // `demi.emulate({ viewport, scale, theme, device, locale, timeZone })`: sets
 // the browser's viewport, pixel ratio, theme, a phone Playwright knows
 // (`device: 'iPhone 15'`), locale or time zone, for the pages as they are,
-// without reloading them; what it leaves out stays as it was, and `reset`
-// starts from the defaults. The slot's state keeps them for every later page
-// and browser. In the gallery the theme also sets the gallery's own theme,
-// which it otherwise keeps whatever the system's is. Answers the screen the
-// page now has.
+// without reloading them.
 //
-// The tool is the one owner of these settings (browse.md § Conditions): on
-// every page of the slot's context, Playwright's `setViewportSize` and
-// `emulateMedia({ colorScheme })` are `demi.emulate` under Playwright's
-// names (`routeToEmulate`), since Playwright's own session setting them
-// would be undone by the tool's at the next load.
+// - What a call leaves out stays as it was, and `reset` starts from the
+//   defaults.
+// - The slot's state keeps the settings for every later page and browser.
+// - In the gallery the theme also sets the gallery's own theme, which it
+//   otherwise keeps whatever the system's is.
+// - The call answers the screen the page now has.
+//
+// The tool is the one owner of these settings (browse.md § Other helpers,
+// Conditions). On every page of the slot's context, Playwright's
+// `setViewportSize` and `emulateMedia({ colorScheme })` are `demi.emulate`
+// under Playwright's names (`routeToEmulate`). Playwright's own session
+// setting them would be undone by the tool's at the next load.
 import type { Page } from 'playwright'
 import { screenOf, type Screen } from '../emulation'
 import { readState, updateState, type Emulation } from '../state'

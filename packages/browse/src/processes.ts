@@ -51,10 +51,12 @@ export function startGroup(
 
 /**
  * When process `pid` started, as `ps` prints it in the C locale, or null
- * when no such process runs. Neither Bun nor Node offers a process's start
- * time, and on macOS no file holds it, so this asks `ps`, whose words for
- * the date follow the locale: without a fixed one, a time recorded under
- * one environment never matches the same process read under another.
+ * when no such process runs.
+ *
+ * Neither Bun nor Node offers a process's start time, and on macOS no file
+ * holds it, so this asks `ps`. Its words for the date follow the locale:
+ * without a fixed one, a time recorded under one environment never matches
+ * the same process read under another.
  */
 export function startTime(pid: number): string | null {
   const ps = Bun.spawnSync(['ps', '-o', 'lstart=', '-p', String(pid)], {

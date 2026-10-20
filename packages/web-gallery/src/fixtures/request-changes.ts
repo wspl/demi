@@ -153,12 +153,16 @@ export function uncopiedRequestBlocks(): Block[] {
 }
 
 /**
- * A request whose files are listed as they stand after its last call: the
- * new page, written in /tmp and moved over src/page.ts, is src/page.ts with
- * both edits. What the agent wrote on its way shows nowhere, neither in the
- * list nor as a pill: the check script it left in /tmp, outside its
- * directory, and the scratch notes a later call removed
- * (`crates/agent-store/src/changes.rs`).
+ * A request whose files are listed as they stand after its last call: the new
+ * page, written in /tmp and moved over src/page.ts, is src/page.ts with both
+ * edits.
+ *
+ * What the agent wrote on its way shows nowhere, neither in the list nor as a
+ * pill:
+ *
+ * - the check script it left in /tmp, outside its directory;
+ * - the scratch notes a later call removed
+ *   (`crates/agent-store/src/changes.rs`).
  */
 export function movedRequestBlocks(): Block[] {
   const write = shell('moved-write', 250_000, 'cat > /tmp/page.ts.new <<\'EOF\'\n…\nEOF', 'Write the new page', [
@@ -191,11 +195,14 @@ export function movedRequestBlocks(): Block[] {
 }
 
 /**
- * A request in two runs that removes and renames files: its first run
- * drafts notes and edits the readme, its second removes the notes, the old
- * guide, which was there before, and renames the setup page. The first
- * run's pills keep the notes it made; the second's show them and the old
- * guide struck through and the setup page under its new name; the request
+ * A request in two runs that removes and renames files:
+ *
+ * - Its first run drafts notes and edits the readme.
+ * - Its second run removes the notes, the old guide, which was there before,
+ *   and renames the setup page.
+ *
+ * The first run's pills keep the notes it made. The second's show them and the
+ * old guide struck through and the setup page under its new name. The request
  * lists the readme, the old guide and the renamed page, not the notes
  * (`crates/agent-store/src/changes.rs`).
  */
