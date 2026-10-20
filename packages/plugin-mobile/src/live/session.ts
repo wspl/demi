@@ -7,7 +7,9 @@
  *
  * - Keeps what the view shows.
  * - Sends the viewer's touches and keys.
- * - Follows the agent's activity and the frame of the watched device.
+ * - Follows the agent's activity on the watched device, and keeps each open
+ *   device's last frame with its last picture, so a return to its tab shows
+ *   both at once until a newer frame replaces it.
  * - Watches a device only while one of its tabs is shown in a visible page, so a
  *   device nobody looks at gets its hour.
  */
@@ -58,7 +60,7 @@ export type PictureSink = LivePictureSink<DeviceStream>
 /** The notices that leave the watched device without a picture. */
 export type PicturelessReason = typeof LIVE_CAPTURE_UNAVAILABLE | typeof LIVE_CAPTURE_FAILED
 
-/** The watched device's frame, for the orientation it was drawn for. */
+/** A device's frame, for the orientation it was drawn for. */
 export interface DeviceFrame {
   device: string
   orientation: Orientation
@@ -76,8 +78,11 @@ export interface LiveState {
   watched: string | null
   /** The agent's activity on the watched device. */
   activity: LiveActivity
-  /** The watched device's frame, once the module drew it for the view's size. */
-  frame: DeviceFrame | null
+  /**
+   * Each open device's last frame, as the module drew it for the view's
+   * size while the device was watched; a newer one replaces it.
+   */
+  frames: Record<string, DeviceFrame>
   /** Whether the watched device's screen is off, as the Host says. */
   screenOff: boolean
   pictureless: PicturelessReason | null
@@ -128,7 +133,7 @@ export class MobileSession {
     devices: [],
     watched: null,
     activity: IDLE,
-    frame: null,
+    frames: {},
     screenOff: false,
     pictureless: null,
     ended: null,
@@ -164,7 +169,6 @@ export class MobileSession {
       ended: () => {
         this.state.pictureless = null
         this.state.activity = IDLE
-        this.state.frame = null
         this.state.screenOff = false
         this.state.devices = []
       },
@@ -228,6 +232,12 @@ export class MobileSession {
       case 'state':
         this.link.live()
         this.state.devices = message.devices
+        // A device that closed takes its frame along.
+        for (const device of Object.keys(this.state.frames)) {
+          if (!message.devices.some((listed) => listed.id === device)) {
+            delete this.state.frames[device]
+          }
+        }
         if (this.state.watched !== message.watched) {
           const wanted = this.state.watched
           if (wanted !== null && message.devices.some((device) => device.id === wanted)) {
@@ -255,7 +265,7 @@ export class MobileSession {
         break
       case 'frame':
         if (message.device === this.state.watched) {
-          this.state.frame = {
+          this.state.frames[message.device] = {
             device: message.device,
             orientation: message.orientation,
             pointsWidth: message.pointsWidth,
@@ -358,7 +368,6 @@ export class MobileSession {
     this.state.watched = device
     this.state.activity = IDLE
     this.state.pictureless = null
-    this.state.frame = null
     this.state.screenOff = false
     // The view of the device now watched says the size it shows it at.
     this.screenSize = null
