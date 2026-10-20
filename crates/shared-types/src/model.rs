@@ -1,14 +1,19 @@
 //! Models, the selection a conversation infers with, and token usage.
 //!
+//! # Selection
+//!
 //! A selection is built from a catalog model by one conversion
-//! ([`ProviderModel::selection`](crate::ProviderModel::selection)), which the
-//! backend applies before it sends the catalog to the web app and when a
-//! conversation switches to the model. The conversation keeps its selection: a
-//! changed catalog does not change a running conversation, which keeps its
-//! model's facts until the user selects a model again. The one exception is an
-//! entry with a configured model list, whose facts the backend applies again at
-//! every inference boundary, while the conversation's thinking and tier
-//! choices stay as the user made them.
+//! ([`ProviderModel::selection`](crate::ProviderModel::selection)). The backend
+//! applies it before it sends the catalog to the web app and when a
+//! conversation switches to the model.
+//!
+//! The conversation keeps its selection: a changed catalog does not change a
+//! running conversation, which keeps its model's facts until the user selects a
+//! model again. The one exception is an entry with a configured model list,
+//! whose facts the backend applies again at every inference boundary, while the
+//! conversation's thinking and tier choices stay as the user made them.
+//!
+//! # File types
 //!
 //! The file types a model reads natively come from the input modalities its
 //! catalog gives it, kind by kind, and not from models.dev's single attachment

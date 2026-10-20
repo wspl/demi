@@ -1,19 +1,32 @@
-//! Removing a paired device's runner: the command that does it, which the runner
-//! tells the person at its console once it is paired, and the removal of its
-//! installation's directory with everything in it: the device token, the releases,
-//! the log, and the artifact cache unless `DEMI_ARTIFACTS` named one elsewhere
-//! (which runners of several backends may share).
+//! Removing a paired device's runner: the command that does it, which the
+//! runner tells the person at its console once it is paired, and the removal of
+//! its installation's directory with everything in it.
 //!
-//! `run uninstall` asks the backend, when it can reach it, to revoke the device
-//! (nothing refuses; a backend it cannot reach keeps listing the device, offline,
-//! until the user revokes it), drains the runner, then removes the directory, only
-//! when it holds an installation and is neither the user's home, nor a directory
-//! that contains it, nor a filesystem root: a runner that ran with a mistaken
-//! `DEMI_HOME`, such as the home directory, wrote its state there and still never
-//! removes it ([`kept_whole`]); there it removes only the files it wrote. Revoking
-//! the device in Settings removes the runner too, as `uninstall` does, without
-//! asking again. A runner that was offline learns of a revocation only as a refusal
-//! of its token, which a backend that lost its data would also give, so it stops and
+//! The directory holds the device token, the releases, the log, and the
+//! artifact cache unless `DEMI_ARTIFACTS` named one elsewhere (which runners of
+//! several backends may share).
+//!
+//! # `run uninstall`
+//!
+//! 1. It asks the backend, when it can reach it, to revoke the device. Nothing
+//!    refuses; a backend it cannot reach keeps listing the device, offline,
+//!    until the user revokes it.
+//! 2. It drains the runner.
+//! 3. It removes the directory, only when the directory holds an installation
+//!    and is neither the user's home, nor a directory that contains it, nor a
+//!    filesystem root.
+//!
+//! A runner that ran with a mistaken `DEMI_HOME`, such as the home directory,
+//! wrote its state there and still never removes it ([`kept_whole`]); there it
+//! removes only the files it wrote.
+//!
+//! # Revocation
+//!
+//! Revoking the device in Settings removes the runner too, as `uninstall` does,
+//! without asking again.
+//!
+//! A runner that was offline learns of a revocation only as a refusal of its
+//! token, which a backend that lost its data would also give. So it stops and
 //! logs the removal command rather than removing itself.
 
 use std::{

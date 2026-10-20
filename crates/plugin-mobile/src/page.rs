@@ -1,7 +1,8 @@
 //! The panel's controls (`crates/plugin-mobile/src/lib.rs`): each control runs
 //! the operation the agent's command of the same meaning runs, as a package
-//! call for the conversation's user, and holds no simulator logic. The
-//! panel opens no device of its own; the agent does. Every control operates
+//! call for the conversation's user, and holds no simulator logic.
+//!
+//! The panel opens no device of its own; the agent does. Every control operates
 //! what runs without waking it.
 
 use demi_command_declarations::NativeOperation;

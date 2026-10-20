@@ -1,33 +1,53 @@
-//! Working-tree requests answered in process with gitoxide, so the device needs no
-//! git executable: `git_changes` lists the uncommitted changes under a directory and
-//! `git_show` sends a file as a commit has it. A computation stops at its next check
-//! when the connection closes or after thirty seconds, and a failure in the git
-//! library answers `internal` for that request alone.
+//! Working-tree requests answered in process with gitoxide, so the device needs
+//! no git executable.
 //!
-//! `git_changes` lists what `git status --porcelain --untracked-files=all` lists,
-//! but compares `kind` and the line counts with `head` whatever the index holds (a
-//! path git lists whose content matches `head` is `modified` with 0 and 0). Two cases
-//! differ from git's list: a path git lists twice, a deletion staged in the index and
-//! an untracked file on disk, is one entry, `??`; a path in neither `head` nor the
-//! working tree, added to the index and then deleted from disk, is left out, having
-//! no side to compare.
+//! - `git_changes` lists the uncommitted changes under a directory.
+//! - `git_show` sends a file as a commit has it.
 //!
-//! The first request for a directory walks its whole tree and starts a filesystem
-//! watch (of `.git` too when it lies outside) that records only the paths changed
-//! since. No request waits for the watch to start, since FSEvents can take seconds
-//! when the system is busy; the first that finds it running walks once more, since
-//! the watch saw nothing before it ran. Later requests re-examine the recorded paths
-//! (with the other path of any staged rename, so that the two still pair) and merge
-//! them into the previous result. They walk the whole tree again when `HEAD`, a ref
-//! or `packed-refs` changed, when the index's entries changed (an index that `git
-//! status` only rewrote with fresh file times holds the same entries), when a
-//! `.gitignore` or `.gitattributes` changed, or when more than 100 paths changed,
-//! since a walk over some paths checks every index entry against each of them and
-//! past about a hundred costs more than a whole walk. Ignored paths are not recorded
-//! (the filter subscriptions use), so a build writing 20,000 files under `target/`
-//! leaves nothing to re-examine. A watch that could not be created or failed, lost
-//! events, or a computation that failed or timed out (it had already taken the
-//! recorded paths) makes the next request walk the whole tree.
+//! A computation stops at its next check when the connection closes or after
+//! thirty seconds. A failure in the git library answers `internal` for that
+//! request alone.
+//!
+//! # What `git_changes` lists
+//!
+//! It lists what `git status --porcelain --untracked-files=all` lists, but
+//! compares `kind` and the line counts with `head` whatever the index holds. A
+//! path git lists whose content matches `head` is `modified` with 0 and 0.
+//!
+//! Two cases differ from git's list:
+//!
+//! - A path git lists twice, a deletion staged in the index and an untracked
+//!   file on disk, is one entry, `??`.
+//! - A path in neither `head` nor the working tree, added to the index and then
+//!   deleted from disk, is left out, having no side to compare.
+//!
+//! # The watch and later requests
+//!
+//! The first request for a directory walks its whole tree and starts a
+//! filesystem watch (of `.git` too when it lies outside) that records only the
+//! paths changed since.
+//!
+//! - No request waits for the watch to start, since FSEvents can take seconds
+//!   when the system is busy. The first request that finds it running walks
+//!   once more, since the watch saw nothing before it ran.
+//! - Later requests re-examine the recorded paths, with the other path of any
+//!   staged rename so that the two still pair, and merge them into the previous
+//!   result.
+//! - Ignored paths are not recorded (the filter subscriptions use), so a build
+//!   writing 20,000 files under `target/` leaves nothing to re-examine.
+//!
+//! A later request walks the whole tree again when:
+//!
+//! - `HEAD`, a ref or `packed-refs` changed;
+//! - the index's entries changed (an index that `git status` only rewrote with
+//!   fresh file times holds the same entries);
+//! - a `.gitignore` or `.gitattributes` changed;
+//! - more than 100 paths changed, since a walk over some paths checks every
+//!   index entry against each of them, and past about a hundred that costs more
+//!   than a whole walk;
+//! - the watch could not be created or failed, or lost events;
+//! - a computation failed or timed out (it had already taken the recorded
+//!   paths).
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -849,12 +869,13 @@ async fn interruptible<T: Send + 'static>(
     Err(failure)
 }
 
-/// Finds the repository around `root`; `None` when there is none.
-/// The repository `root` lies in, if any. Running out of open files is no
-/// answer about the directory (`crates/command-sdk/src/descriptors.rs`), but gix gives the answer
-/// "no repository" when it could not open a candidate's files as well (on
-/// Linux, without the cause), so that answer stands only once the runner can
-/// open the directory itself.
+/// Finds the repository `root` lies in, or `None` when there is none.
+///
+/// Running out of open files is no answer about the directory
+/// (`crates/command-sdk/src/descriptors.rs`). But gix gives the answer "no
+/// repository" when it could not open a candidate's files as well (on Linux,
+/// without the cause), so that answer stands only once the runner can open the
+/// directory itself.
 pub(crate) fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
     match gix::discover(root) {
         Ok(repo) => Ok(Some(repo)),
@@ -970,15 +991,19 @@ pub(crate) fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a 
 }
 
 impl Touched {
-    /// Notes what a watch saw. Under the git directory, a moved `HEAD` or
-    /// ref, or a change to what git ignores or how it reads the repository,
-    /// can change what git lists anywhere, so the next walk is whole; a
-    /// written index may, which its entries tell; anything else there, such
-    /// as an object, a log or a lock, changes nothing listed. A `.gitignore`
-    /// or `.gitattributes` makes the next walk whole too. A path git ignores
-    /// changes nothing listed and is not noted, so a build that writes
-    /// thousands of files under `target/` leaves nothing to re-examine;
-    /// events lost below a folder have it re-examined.
+    /// Notes what a watch saw.
+    ///
+    /// - Under the git directory, a moved `HEAD` or ref, or a change to what
+    ///   git ignores or how it reads the repository, can change what git lists
+    ///   anywhere, so the next walk is whole.
+    /// - A written index may change it, which its entries tell.
+    /// - Anything else there, such as an object, a log or a lock, changes
+    ///   nothing listed.
+    /// - A `.gitignore` or `.gitattributes` makes the next walk whole too.
+    /// - A path git ignores changes nothing listed and is not noted, so a build
+    ///   that writes thousands of files under `target/` leaves nothing to
+    ///   re-examine.
+    /// - Events lost below a folder have it re-examined.
     fn record(&mut self, event: &Event, dirs: &GitDirs) {
         let git_dir = &dirs.git_dir;
         let (path, metadata) = match &event.change {

@@ -1,8 +1,9 @@
-//! `timeout DURATION COMMAND…`: runs COMMAND as a part of the job of its own and
-//! stops it as `kill` stops a task once DURATION has passed, with GNU's options,
-//! durations, messages and statuses. The job's shell runs COMMAND as `command`
-//! would; a utility that starts `timeout`, such as `xargs`, starts COMMAND as it
-//! starts any program.
+//! `timeout DURATION COMMAND…`: runs COMMAND as a part of the job of its own
+//! and stops it as `kill` stops a task once DURATION has passed, with GNU's
+//! options, durations, messages and statuses.
+//!
+//! The job's shell runs COMMAND as `command` would. A utility that starts
+//! `timeout`, such as `xargs`, starts COMMAND as it starts any program.
 
 use std::{ffi::OsString, future::Future, io::Write, sync::Arc, time::Duration};
 
@@ -292,13 +293,19 @@ pub(crate) fn not_run(command: &str, reason: &str, not_found: bool, stderr: &mut
     if not_found { 127 } else { 126 }
 }
 
-/// Runs `command`, the run of COMMAND in `scope`, a part of the job of its
-/// own, and stops that part as the options say once the time runs out.
-/// Gives `command`'s own end, or the status a timeout gives: `124`, or `137`
-/// once `KILL` was sent, or with `--preserve-status` COMMAND's own, 128 plus
-/// the signal that stopped it when it gave none. On Windows, where nothing
-/// catches a signal, it is always 128 plus the signal, the status COMMAND
-/// would give on Unix (`crates/runner-shell/src/process_builtins.rs`).
+/// Runs `command`, the run of COMMAND in `scope`, a part of the job of its own,
+/// and stops that part as the options say once the time runs out.
+///
+/// It gives `command`'s own end, or the status a timeout gives:
+///
+/// - `124`;
+/// - `137` once `KILL` was sent;
+/// - with `--preserve-status`, COMMAND's own, 128 plus the signal that stopped
+///   it when it gave none.
+///
+/// On Windows, where nothing catches a signal, the status is always 128 plus
+/// the signal, the status COMMAND would give on Unix
+/// (`crates/runner-shell/src/process_builtins.rs`).
 pub(crate) async fn supervise<E>(
     options: &Options,
     scope: &Scope,

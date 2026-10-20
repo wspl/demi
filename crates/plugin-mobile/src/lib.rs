@@ -1,11 +1,17 @@
-//! The `mobile` plugin (`crates/command-package-mobile/src/lib.rs`): the
-//! `demi mobile` group, every leaf bound to an operation of the
-//! `demi.mobile` command package, which runs it on the Host; the `mobile`
-//! user stream of the live view; the methods behind the panel's controls,
-//! each the operation of the command that does the same; and the `mobile`
-//! kind's tabs on the backend. It is a plugin as the browser is: the commands,
-//! the panel and the Host-side drivers are its own, and nothing in the agent,
-//! the backend or the runner knows a simulator.
+//! The `mobile` plugin (`crates/command-package-mobile/src/lib.rs`).
+//!
+//! The plugin holds:
+//!
+//! - the `demi mobile` group, every leaf bound to an operation of the
+//!   `demi.mobile` command package, which runs it on the Host;
+//! - the `mobile` user stream of the live view;
+//! - the methods behind the panel's controls, each the operation of the command
+//!   that does the same;
+//! - the `mobile` kind's tabs on the backend.
+//!
+//! It is a plugin as the browser is: the commands, the panel and the Host-side
+//! drivers are its own, and nothing in the agent, the backend or the runner
+//! knows a simulator.
 
 mod commands;
 pub mod page;

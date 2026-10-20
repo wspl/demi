@@ -1,11 +1,16 @@
-//! How work running under the runner reaches the backend and the
-//! registration's owner (`crates/runner-protocol/src/wire/mod.rs`, `crates/runner/src/connection/kept.rs`): a callback call registers where its events go, an artifact
-//! download asks where its artifact is, a service asks for its conversation
-//! numbers, and a job makes its execution context live. The handle outlives
-//! each connection, since a job does: work that needs the backend waits for
-//! the next connection while the runner is away, however long it takes, and
-//! fails only once the runner ends. The registration's owner serves the requests and routes
-//! the backend's answers through a [`Relay`].
+//! How work running under the runner reaches the backend and the registration's
+//! owner (`crates/runner-protocol/src/wire/mod.rs`,
+//! `crates/runner/src/connection/kept.rs`):
+//!
+//! - a callback call registers where its events go;
+//! - an artifact download asks where its artifact is;
+//! - a service asks for its conversation numbers;
+//! - a job makes its execution context live.
+//!
+//! The handle outlives each connection, since a job does: work that needs the
+//! backend waits for the next connection while the runner is away, however long
+//! it takes, and fails only once the runner ends. The registration's owner
+//! serves the requests and routes the backend's answers through a [`Relay`].
 
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 

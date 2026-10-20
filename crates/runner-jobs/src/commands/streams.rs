@@ -1,27 +1,43 @@
-//! User streams the backend opens on a resident native service: a `service_open`
-//! names the stream, its command context, the declared operation and two pipes,
-//! `input` (delivered to the invocation as input chunks when it asks for them) and
-//! `output` (its standard output); its standard error goes to the Host log. The
-//! runner starts the invocation in the resident service that holds the
+//! User streams the backend opens on a resident native service.
+//!
+//! A `service_open` names:
+//!
+//! - the stream and its command context;
+//! - the declared operation;
+//! - two pipes: `input`, delivered to the invocation as input chunks when it
+//!   asks for them, and `output`, its standard output. Its standard error goes
+//!   to the Host log.
+//!
+//! The runner starts the invocation in the resident service that holds the
 //! conversation's state, starting the service when needed, and answers
-//! `service_opened` or `service_error`; no bytes move before that answer. The input
-//! pipe ending ends the invocation's input; its completion ends the output pipe,
-//! which is how the backend learns the stream is over; a failing pipe or a closed
-//! connection cancels it. `service_done` carries the exit code and the bounded tail
-//! of standard error, since a one-shot call has no page to tell: its caller learns a
-//! failure and its words from this message, not from a stream that merely ended. The
+//! `service_opened` or `service_error`. No bytes move before that answer. The
 //! runner does not parse what flows through.
+//!
+//! How a stream ends:
+//!
+//! - The input pipe ending ends the invocation's input.
+//! - The invocation's completion ends the output pipe, which is how the backend
+//!   learns the stream is over.
+//! - A failing pipe or a closed connection cancels it.
+//! - `service_done` carries the exit code and the bounded tail of standard
+//!   error. A one-shot call has no page to tell, so its caller learns a failure
+//!   and its words from this message, not from a stream that merely ended.
+//!
+//! # Binding
 //!
 //! A stream invokes its operation with the same package binding as the
 //! conversation's jobs, so it reaches the service that already holds the
 //! conversation's state, and while it is open it leases that service. Its
-//! context names the conversation and a `user` caller with the user's
-//! locale; its cwd is the conversation's directory and its environment is
-//! empty. The same mechanism serves a one-shot user call (the conversation
-//! browser's tab methods): an operation that finishes by itself, with `args`
-//! as a command's invocation has them, a JSON result and no input. Its
-//! failure keeps the bounded standard output as well as the standard error,
-//! so a package whose error document is on stdout reports its cause.
+//! context names the conversation and a `user` caller with the user's locale.
+//! Its cwd is the conversation's directory and its environment is empty.
+//!
+//! # One-shot calls
+//!
+//! The same mechanism serves a one-shot user call (the conversation browser's
+//! tab methods): an operation that finishes by itself, with `args` as a
+//! command's invocation has them, a JSON result and no input. Its failure keeps
+//! the bounded standard output as well as the standard error, so a package
+//! whose error document is on stdout reports its cause.
 
 use std::{
     collections::HashMap,
@@ -493,10 +509,13 @@ impl Bindings {
     }
 
     /// Keeps `lease` for `package` when the package is still bound to the
-    /// release of `digest` and that binding holds no lease yet. Otherwise
-    /// the lease ends here: another release was bound meanwhile, the same
-    /// release was bound again and holds one already, or the connection has
-    /// ended.
+    /// release of `digest` and that binding holds no lease yet.
+    ///
+    /// Otherwise the lease ends here, because:
+    ///
+    /// - another release was bound meanwhile;
+    /// - the same release was bound again and holds one already; or
+    /// - the connection has ended.
     fn hold(&self, package: &str, digest: &str, lease: ServiceLease) {
         let mut bound = self.0.lock().expect("the bindings are intact");
         if let Some(bound) = bound.get_mut(package)

@@ -1,9 +1,10 @@
 //! The live view's protocol where it is not about its source: the frames a user
 //! stream carries, the pictures' header and codec, the viewer's input in the
-//! picture's coordinates, and the messages that pace the pictures. A source's
-//! own protocol, such as the browser's, carries these beside its own messages.
-//! It holds types and their checks only; the Host's side of them is
-//! `live-view`, the page's `@demicodes/web-ui`'s live module.
+//! picture's coordinates, and the messages that pace the pictures.
+//!
+//! A source's own protocol, such as the browser's, carries these beside its own
+//! messages. The crate holds types and their checks only; the Host's side of
+//! them is `live-view`, the page's `@demicodes/web-ui`'s live module.
 //!
 //! - The codec is fixed, H.264 High level 5.1, and the stream does not name it:
 //!   the page asks the user's browser for a decoder before it opens a view.
@@ -146,13 +147,19 @@ impl TryFrom<&str> for SourceId {
     }
 }
 
-/// A video chunk's header, big-endian: the source's ID (ASCII, padded with
-/// zero bytes to 16), the stream generation (u32), the frame's sequence
-/// number (u32), the chunk's index and the frame's chunk count (u16 each),
-/// flags (u8, 1 = key frame), three reserved bytes, the frame's timestamp in
-/// microseconds (f64), and the picture's width and height in pixels (u16
-/// each). Every chunk but a frame's last carries [`VideoHeader::CHUNK_DATA`]
-/// bytes of its data, so a chunk's index places its data in the frame.
+/// A video chunk's header, big-endian:
+///
+/// - the source's ID (ASCII, padded with zero bytes to 16);
+/// - the stream generation (u32);
+/// - the frame's sequence number (u32);
+/// - the chunk's index and the frame's chunk count (u16 each);
+/// - flags (u8, 1 = key frame);
+/// - three reserved bytes;
+/// - the frame's timestamp in microseconds (f64);
+/// - the picture's width and height in pixels (u16 each).
+///
+/// Every chunk but a frame's last carries [`VideoHeader::CHUNK_DATA`] bytes of
+/// its data, so a chunk's index places its data in the frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoHeader {
     pub source: SourceId,

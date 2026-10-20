@@ -1,8 +1,10 @@
-//! The runner's peers (`crates/runner-direct/src/lib.rs`), driven by a page in process
-//! over loopback: making the channel, each operation's protocol, the
-//! limits, closing, giving up, and the addresses offered. Each test runs a
-//! real connection on 127.0.0.1 in tens of milliseconds; the give-up and
-//! heartbeat tests pause the clock.
+//! The runner's peers (`crates/runner-direct/src/lib.rs`), driven by a page in
+//! process over loopback.
+//!
+//! The tests cover making the channel, each operation's protocol, the limits,
+//! closing, giving up, and the addresses offered. Each test runs a real
+//! connection on 127.0.0.1 in tens of milliseconds; the give-up and heartbeat
+//! tests pause the clock.
 
 mod forward;
 mod operations;

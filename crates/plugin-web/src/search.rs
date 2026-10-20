@@ -1,8 +1,9 @@
-//! `demi web search`: one to four queries run at once, their pages merged
-//! in turn, a page found twice listed once, and printed for the model or as
-//! JSON. Nothing of a result is kept: Exa's terms forbid republishing what
-//! it returns, and a stored result would be shown again later, to the same
-//! user or, through a Fork, in another conversation.
+//! `demi web search`: one to four queries run at once, their pages merged in
+//! turn, a page found twice listed once, and printed for the model or as JSON.
+//!
+//! Nothing of a result is kept. Exa's terms forbid republishing what it
+//! returns, and a stored result would be shown again later, to the same user
+//! or, through a Fork, in another conversation.
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};

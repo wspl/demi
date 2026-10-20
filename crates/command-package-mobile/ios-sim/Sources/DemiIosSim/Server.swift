@@ -1,9 +1,11 @@
-// `serve`: one conversation's helper. Each request names its method and
-// its device; replies carry the request's id, a file before its reply in a
-// blob frame. Requests on one device run in turn in their lane, the input,
-// the captures' control and the rest each a lane of its own, so a tap never
-// waits for a slow read of the tree; requests on different devices run at
-// once.
+// `serve`: one conversation's helper.
+//
+// - Each request names its method and its device.
+// - Replies carry the request's id, a file before its reply in a blob frame.
+// - Requests on one device run in turn in their lane: the input, the captures'
+//   control and the rest are each a lane of its own, so a tap never waits for a
+//   slow read of the tree.
+// - Requests on different devices run at once.
 
 import FBControlCore
 import FBSimulatorControl

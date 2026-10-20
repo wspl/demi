@@ -1,9 +1,11 @@
 //! What a medium's header says of it
 //! (`crates/command-package-file/src/files.rs`): an image's size in pixels as a
 //! web browser shows it, and a video's size and length where its container's
-//! header gives them. The handler reads them once, and they travel with the
-//! medium record. Before that, an image is decoded whole, so a picture cut
-//! short is refused rather than shown to the model as its header promises.
+//! header gives them.
+//!
+//! The handler reads them once, and they travel with the medium record. Before
+//! that, an image is decoded whole, so a picture cut short is refused rather
+//! than shown to the model as its header promises.
 
 use std::io::Cursor;
 

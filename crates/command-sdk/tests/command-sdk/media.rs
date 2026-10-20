@@ -1,8 +1,11 @@
-//! The media a handler returns (`crates/runner-jobs/src/commands/command_output.rs`,
-//! `crates/command-protocol/src/lib.rs`): its writer sends
-//! each one as a medium record and its bytes, which the caller's exchange
-//! hands on whole, in its place among the output; an invocation that is no
-//! job's command cannot return one; and the bytes a medium may be.
+//! The media a handler returns
+//! (`crates/runner-jobs/src/commands/command_output.rs`,
+//! `crates/command-protocol/src/lib.rs`):
+//!
+//! - The handler's writer sends each one as a medium record and its bytes,
+//!   which the caller's exchange hands on whole, in its place among the output.
+//! - An invocation that is no job's command cannot return one.
+//! - The bytes a medium may be are bounded.
 
 use std::{
     collections::BTreeMap,

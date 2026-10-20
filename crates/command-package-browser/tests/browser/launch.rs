@@ -64,12 +64,15 @@ async fn start(runtime: Option<Runtime>) -> Started {
     }
 }
 
-/// On Linux Chrome starts with the Chrome runtime: its own environment
-/// names the runtime's libraries and fonts, keeps out the Host's crypto
-/// policy and GIO modules, and it runs without its sandbox and audio
-/// output. Without the runtime, as on macOS and Windows, it has none of
-/// that and keeps its sandbox. The runner's own environment never gets the
-/// variables.
+/// On Linux Chrome starts with the Chrome runtime.
+///
+/// - Its own environment names the runtime's libraries and fonts, and keeps out
+///   the Host's crypto policy and GIO modules.
+/// - It runs without its sandbox and audio output.
+/// - The runner's own environment never gets the variables.
+///
+/// Without the runtime, as on macOS and Windows, Chrome has none of that and
+/// keeps its sandbox.
 // Cost: about 0.1 s; a shell script stands in for Chrome.
 #[tokio::test]
 async fn chrome_alone_starts_with_the_runtime_and_without_its_sandbox() {

@@ -3,17 +3,21 @@
 //! encoding follow the viewer with the least room.
 //!
 //! Nothing reaches a stream through a queue. Its owner publishes who watches
-//! the source and when the source is ready to be captured; each viewer
+//! the source and when the source is ready to be captured. Each viewer
 //! publishes its latest pacing, which supersedes the one before, and wakes the
 //! stream to read it.
 //!
-//! A capture starts only once the owner says the source is ready, so it never
-//! captures at a size it is about to replace, and a new size starts a new
-//! capture. Each size, layout or scale is a new generation for the viewers,
-//! which its first frame announces. A source is captured only while someone
-//! watches it, and key frames are sent only when needed (a new viewer, a
-//! changed source or size, or the page failing to decode), at most two a
-//! second, never on a timer.
+//! # Captures and key frames
+//!
+//! - A capture starts only once the owner says the source is ready, so it never
+//!   captures at a size it is about to replace. A new size starts a new
+//!   capture.
+//! - Each size, layout or scale is a new generation for the viewers, which its
+//!   first frame announces.
+//! - A source is captured only while someone watches it.
+//! - Key frames are sent only when needed (a new viewer, a changed source or
+//!   size, or the page failing to decode), at most two a second, never on a
+//!   timer.
 
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 

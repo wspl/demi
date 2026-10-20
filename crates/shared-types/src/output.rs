@@ -1,25 +1,38 @@
-//! How every `demi` command prints its data: a list
-//! as a table whose columns are aligned by the terminal width of their text,
-//! one object as labelled lines, each value exact, an instant in RFC 3339 UTC.
-//! Commands build their text here rather than each formatting its own.
+//! How every `demi` command prints its data: a list as a table whose columns
+//! are aligned by the terminal width of their text, one object as labelled
+//! lines, each value exact, an instant in RFC 3339 UTC.
 //!
-//! Commands print as the command-line tools agents and people already read
-//! (`kubectl get`, `docker ps`, `gh`) do, so a model needs no new habit.
-//! Stdout holds the data and stderr the rest, so a pipe receives only data:
-//! notes, warnings and progress go to stderr, and an error is one line with
-//! nothing on stdout. A list's first column is the ID the group's `show`
-//! takes, and every ID a list prints, `show` finds (but the root agent, which
-//! `demi agent list` lists for its place in the tree only); a cell holds one
-//! value, and nested data is `show`'s, never a column. A list shows what is
-//! current, with objects kept as history behind `--all`, and an empty list
-//! prints its header row alone. A number is exact, its unit in the column
-//! name, and a relative time is for the web app, not the command line.
-//! `--json` prints the same objects with every field the text shows and
-//! more, in camelCase. Output is the same in a terminal and a pipe and has no
-//! colour, so what the agent reads is what the user sees. Tables and labelled
-//! lines are for Demi's own objects (agents, providers, credentials, Hosts);
-//! a command that prints content, such as a page or a file's text, keeps the
-//! content's own form.
+//! Commands build their text here rather than each formatting its own. They
+//! print as the command-line tools agents and people already read (`kubectl
+//! get`, `docker ps`, `gh`) do, so a model needs no new habit.
+//!
+//! # Streams
+//!
+//! Stdout holds the data and stderr the rest, so a pipe receives only data.
+//! Notes, warnings and progress go to stderr, and an error is one line with
+//! nothing on stdout.
+//!
+//! # Lists
+//!
+//! - A list's first column is the ID the group's `show` takes, and every ID a
+//!   list prints, `show` finds (but the root agent, which `demi agent list`
+//!   lists for its place in the tree only).
+//! - A cell holds one value, and nested data is `show`'s, never a column.
+//! - A list shows what is current, with objects kept as history behind `--all`.
+//! - An empty list prints its header row alone.
+//!
+//! # Values
+//!
+//! - A number is exact, its unit in the column name.
+//! - A relative time is for the web app, not the command line.
+//! - `--json` prints the same objects with every field the text shows and more,
+//!   in camelCase.
+//! - Output is the same in a terminal and a pipe and has no colour, so what the
+//!   agent reads is what the user sees.
+//!
+//! Tables and labelled lines are for Demi's own objects (agents, providers,
+//! credentials, Hosts). A command that prints content, such as a page or a
+//! file's text, keeps the content's own form.
 
 use std::fmt::Write as _;
 

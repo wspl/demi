@@ -22,11 +22,17 @@ fn install(installation: &Path, device: &str) -> PathBuf {
 }
 
 /// Android Studio is found where each system's installer, the user, or
-/// JetBrains Toolbox puts it, a release before a preview, and the device's
-/// art in the first installation that has it; a device name that is a path
-/// finds nothing. Planted defects this catches: a Mac's app looked for
-/// without its `Contents`, the user's own Applications folder left out, or
-/// a name that climbs out of the art's folder. Temporary folders; milliseconds.
+/// JetBrains Toolbox puts it, a release before a preview, and the device's art
+/// in the first installation that has it. A device name that is a path finds
+/// nothing.
+///
+/// Planted defects this catches:
+///
+/// - a Mac's app looked for without its `Contents`;
+/// - the user's own Applications folder left out;
+/// - a name that climbs out of the art's folder.
+///
+/// Cost: temporary folders; milliseconds.
 #[test]
 fn android_studios_art_is_found_where_each_system_installs_it() {
     let root = tempfile::tempdir().unwrap();
@@ -98,15 +104,24 @@ fn a_stable_release_is_taken_before_a_preview_then_the_newer_one() {
     assert_eq!(art::find(&art::installations(System::MacOs, &places), "pixel_10"), Some(newer_art));
 }
 
-/// A layout is read as Android Studio reads it: comments skipped, the
-/// screen's size from the device part, the first layout that shows the
-/// device upright (a landscape one that turns the device is passed over),
-/// the frame's image placed by the parts' positions and cut away over the
-/// screen, a frame clear at the screen's centre its own mask, and the
-/// buttons drawn where the part places them; the art is cropped to what it
-/// shows. Planted defects this catches: the rotated layout taken, the
-/// frame's image left over the screen, or the buttons' places taken from
-/// the art's corner. Images written by the test; milliseconds.
+/// A layout is read as Android Studio reads it:
+///
+/// - comments are skipped;
+/// - the screen's size comes from the device part;
+/// - the first layout that shows the device upright is used (a landscape one
+///   that turns the device is passed over);
+/// - the frame's image is placed by the parts' positions and cut away over the
+///   screen, and a frame clear at the screen's centre is its own mask;
+/// - the buttons are drawn where the part places them;
+/// - the art is cropped to what it shows.
+///
+/// Planted defects this catches:
+///
+/// - the rotated layout taken;
+/// - the frame's image left over the screen;
+/// - the buttons' places taken from the art's corner.
+///
+/// Cost: images written by the test; milliseconds.
 #[test]
 fn a_device_arts_layout_places_the_screen_in_its_frame() {
     let folder = tempfile::tempdir().unwrap();
@@ -145,13 +160,19 @@ fn a_device_arts_layout_places_the_screen_in_its_frame() {
     assert_eq!(art.image.get_pixel(30, 88).0, [200, 0, 0, 255], "the button lies where the part places it");
 }
 
-/// The screen's edge across a corner, read from SystemUI's compiled
-/// drawable: a Pixel 10's spans 196 pixels and passes through its curve's
-/// own points; a Pixel 10 Pro's, drawn the other way round in a viewport of
-/// 34.3 units, spans its 233 pixels. Planted defects this catches: the
-/// viewport's units taken for pixels, the fill read inside out, or the
-/// points out of order. The drawables of the emulator's own overlays; a
-/// millisecond.
+/// The screen's edge across a corner, read from SystemUI's compiled drawable.
+///
+/// A Pixel 10's spans 196 pixels and passes through its curve's own points. A
+/// Pixel 10 Pro's, drawn the other way round in a viewport of 34.3 units, spans
+/// its 233 pixels.
+///
+/// Planted defects this catches:
+///
+/// - the viewport's units taken for pixels;
+/// - the fill read inside out;
+/// - the points out of order.
+///
+/// Cost: the drawables of the emulator's own overlays; a millisecond.
 #[test]
 fn a_corners_shape_is_read_from_systemuis_drawable() {
     let near = |points: &[(f64, f64)], (x, y): (f64, f64), within: f64| {
@@ -225,13 +246,19 @@ fn first_element(bytes: &[u8]) -> usize {
     at
 }
 
-/// The device's compiled drawable is read only as far as its bytes hold:
-/// a stated length other than the bytes', attributes laid on one another
-/// or past their element, and strings that name the same bytes over and
-/// over all fail the read instead of growing it. Planted defects this
-/// catches: the stated length cut to the bytes, 65,535 attributes read
-/// from one, or a string copied once for each name of it. Built bytes;
-/// milliseconds.
+/// The device's compiled drawable is read only as far as its bytes hold.
+///
+/// A stated length other than the bytes', attributes laid on one another or
+/// past their element, and strings that name the same bytes over and over all
+/// fail the read instead of growing it.
+///
+/// Planted defects this catches:
+///
+/// - the stated length cut to the bytes;
+/// - 65,535 attributes read from one;
+/// - a string copied once for each name of it.
+///
+/// Cost: built bytes; milliseconds.
 #[test]
 fn a_compiled_drawable_is_read_no_larger_than_its_bytes() {
     let fixture = include_bytes!("fixtures/rounded_corner.pixel_10.xml").to_vec();

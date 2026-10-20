@@ -1,8 +1,9 @@
-//! `demi skills`: the agent's only way to manage the user's skills, acting
-//! as the page's methods do and failing as they would. Every command but
-//! `list` names the category Manage Skills, so the backend's dispatch runs
-//! it only in a conversation the user allowed it for; the plugin never sees
-//! a permission.
+//! `demi skills`: the agent's only way to manage the user's skills, acting as
+//! the page's methods do and failing as they would.
+//!
+//! Every command but `list` names the category Manage Skills, so the backend's
+//! dispatch runs it only in a conversation the user allowed it for. The plugin
+//! never sees a permission.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;

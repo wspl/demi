@@ -1,8 +1,10 @@
 //! The audio plugin through the JSON loopback over an in-memory Demi, which
-//! answers its audio and its voices: the file checked before a byte
-//! reaches stdout, raw PCM wrapped as WAV, the summary and its warnings,
-//! the voices table, and the words a failure is told in. The whole path
-//! through the backend is the backend's `audio` scenario's.
+//! answers its audio and its voices.
+//!
+//! The tests cover the file checked before a byte reaches stdout, raw PCM
+//! wrapped as WAV, the summary and its warnings, the voices table, and the
+//! words a failure is told in. The whole path through the backend is the
+//! backend's `audio` scenario's.
 
 mod support;
 
@@ -35,12 +37,15 @@ fn made(bytes: &[u8], shape: &str, unsent: Vec<AudioOption>) -> MadeAudio {
     }
 }
 
-/// The file goes to stdout as it came, and a line says its length and
-/// format, read from the file, with the model, the entry, the voice and
-/// the cost; the call's options reach the Providers service.
-/// Planted defects this catches: the length or format taken from the
-/// format asked rather than the file; the voice or cost left out of the
-/// line; an option dropped on its way to the service.
+/// The file goes to stdout as it came, and a line says its length and format,
+/// read from the file, with the model, the entry, the voice and the cost. The
+/// call's options reach the Providers service.
+///
+/// Planted defects this catches:
+///
+/// - the length or format taken from the format asked rather than the file;
+/// - the voice or cost left out of the line;
+/// - an option dropped on its way to the service.
 #[test]
 fn the_audio_goes_to_stdout_with_a_line_that_says_what_came_back() {
     local(async {
@@ -77,14 +82,17 @@ fn the_audio_goes_to_stdout_with_a_line_that_says_what_came_back() {
     });
 }
 
-/// Raw PCM is written as a WAV file of its shape, whose length the line
-/// reads from it; asking MP3 of a vendor that makes only WAV is a warning,
-/// not a failure.
-/// Planted defects this catches: PCM written without a header, which no
-/// player opens and the check refuses; the header's rate or size wrong,
-/// which the length shows; stereo written as mono; PCM that ends inside a
-/// sample written on; the format mismatch told as a failure, which throws
-/// away a paid file.
+/// Raw PCM is written as a WAV file of its shape, whose length the line reads
+/// from it. Asking MP3 of a vendor that makes only WAV is a warning, not a
+/// failure.
+///
+/// Planted defects this catches:
+///
+/// - PCM written without a header, which no player opens and the check refuses;
+/// - the header's rate or size wrong, which the length shows;
+/// - stereo written as mono;
+/// - PCM that ends inside a sample written on;
+/// - the format mismatch told as a failure, which throws away a paid file.
 #[test]
 fn raw_pcm_is_wrapped_as_wav() {
     local(async {
@@ -133,12 +141,16 @@ fn raw_pcm_is_wrapped_as_wav() {
     });
 }
 
-/// Each option the shape took no field for is a warning, with where to say
-/// it instead; a length off by more than a second from the one sent is a
-/// warning, and none is told for a length that was not sent.
-/// Planted defects this catches: an unsent option left untold, so the
-/// agent believes the piece is instrumental; a length warning for a length
-/// the vendor never received; a length mismatch left untold.
+/// Each option the shape took no field for is a warning, with where to say it
+/// instead. A length off by more than a second from the one sent is a warning,
+/// and none is told for a length that was not sent.
+///
+/// Planted defects this catches:
+///
+/// - an unsent option left untold, so the agent believes the piece is
+///   instrumental;
+/// - a length warning for a length the vendor never received;
+/// - a length mismatch left untold.
 #[test]
 fn what_the_shape_does_not_take_and_a_different_length_are_warnings() {
     local(async {
@@ -190,12 +202,15 @@ fn a_file_that_is_not_audio_fails_and_writes_nothing() {
     });
 }
 
-/// The voices are a table with whose each is; an entry that lists none, and
-/// a search that matches none, say so on stderr; the model and the search
-/// reach the service.
-/// Planted defects this catches: the account's voices not told from the
-/// vendor's; an entry that lists none shown as an empty table without a
-/// word, which reads as an account without voices.
+/// The voices are a table with whose each is. An entry that lists none, and a
+/// search that matches none, say so on stderr. The model and the search reach
+/// the service.
+///
+/// Planted defects this catches:
+///
+/// - the account's voices not told from the vendor's;
+/// - an entry that lists none shown as an empty table without a word, which
+///   reads as an account without voices.
 #[test]
 fn the_voices_are_listed_and_an_entry_that_lists_none_says_so() {
     local(async {

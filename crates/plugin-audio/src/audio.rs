@@ -1,10 +1,16 @@
-//! What `demi audio` does: reads the call's text or prompt; asks the
-//! Providers service for the audio; wraps raw PCM as WAV; checks that
-//! what came back is audio this reads, before a byte reaches stdout;
-//! writes it, and says what came back, with a warning for each option the
-//! entry's API has no field for, a format the vendor does not make, and a
-//! length that differs from the one asked. It also lists a speech model's
-//! voices and the audio models. A failure is told in the design's words.
+//! What `demi audio` does:
+//!
+//! 1. It reads the call's text or prompt.
+//! 2. It asks the Providers service for the audio.
+//! 3. It wraps raw PCM as WAV.
+//! 4. It checks that what came back is audio this reads, before a byte reaches
+//!    stdout.
+//! 5. It writes the audio, and says what came back, with a warning for each
+//!    option the entry's API has no field for, a format the vendor does not
+//!    make, and a length that differs from the one asked.
+//!
+//! It also lists a speech model's voices and the audio models. A failure is
+//! told in the design's words.
 
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{

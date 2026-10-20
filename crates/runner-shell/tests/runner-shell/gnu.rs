@@ -215,13 +215,16 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
-/// An error of the operating system that uutils gives no message of its own
-/// is worded as the system words it, as GNU's `ls` does, never as Rust's
-/// debug form: on Windows `ls /c/Users` printed `unknown io error:
-/// '/c/Users', 'Os { code: 123, kind: InvalidFilename, message: "The
-/// filename, directory name, or volume label syntax is incorrect." }'`. A
-/// name longer than any file system allows gives such an error everywhere.
-/// Runs in about 0.01 s.
+/// An error of the operating system that uutils gives no message of its own is
+/// worded as the system words it, as GNU's `ls` does, never as Rust's debug
+/// form.
+///
+/// On Windows `ls /c/Users` printed `unknown io error: '/c/Users', 'Os { code:
+/// 123, kind: InvalidFilename, message: "The filename, directory name, or
+/// volume label syntax is incorrect." }'`. A name longer than any file system
+/// allows gives such an error everywhere.
+///
+/// Cost: about 0.01 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ls_words_an_error_without_a_message_of_its_own_as_the_system_does() {
     let root = fixture();
@@ -359,13 +362,18 @@ async fn permission_and_file_system_utilities_take_paths_in_the_jobs_directory()
     }
 }
 
-/// On Windows, which has no Unix mode or owner, `chmod` and `chown` check
-/// what GNU's check and fail as GNU's do, a missing operand, an invalid
-/// mode, an unknown user or group or a missing file, while a valid change
-/// succeeds and changes nothing; `stat` takes GNU's directives with their
-/// flags and widths, `-f` included, and shows the mode `ls -l` shows.
-/// Before, `chmod` and `chown` succeeded silently whatever they were given,
-/// and `stat` failed on `%04a`, `%A` and `-f`. Runs in about 0.05 s.
+/// On Windows, which has no Unix mode or owner, `chmod` and `chown` check what
+/// GNU's check and fail as GNU's do: a missing operand, an invalid mode, an
+/// unknown user or group or a missing file. A valid change succeeds and changes
+/// nothing.
+///
+/// `stat` takes GNU's directives with their flags and widths, `-f` included,
+/// and shows the mode `ls -l` shows.
+///
+/// Before, `chmod` and `chown` succeeded silently whatever they were given, and
+/// `stat` failed on `%04a`, `%A` and `-f`.
+///
+/// Cost: about 0.05 s.
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn permission_utilities_and_stat_answer_as_gnus_do_on_windows() {
@@ -593,13 +601,15 @@ async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
-/// A utility that walks a folder prints each path it builds as GNU's does,
-/// on every system: the folder as the user gave it, then the names below it
-/// joined with `/`, so on Windows `d\sub` prints its file as `d\sub/g`.
+/// A utility that walks a folder prints each path it builds as GNU's does, on
+/// every system: the folder as the user gave it, then the names below it joined
+/// with `/`. So on Windows `d\sub` prints its file as `d\sub/g`.
+///
 /// Before, `ls -R` headed a subfolder and `cp -rv` named each source by its
-/// absolute path on every system; on Windows every walk joined names with
-/// `\`, and `du` and `rm -rv` printed absolute paths too. Runs in about
-/// 0.1 s.
+/// absolute path on every system. On Windows every walk joined names with `\`,
+/// and `du` and `rm -rv` printed absolute paths too.
+///
+/// Cost: about 0.1 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn walking_utilities_print_the_paths_they_build_as_gnus_do() {
     let setup = "mkdir -p d/sub && echo x > d/f && echo x > d/sub/g";
@@ -639,12 +649,14 @@ async fn walking_utilities_print_the_paths_they_build_as_gnus_do() {
     expect_cases(setup, &cases).await;
 }
 
-/// A recursive `chmod` or `chown` on Windows that cannot read a child
-/// reports it, unless `-f`, goes on with the rest and ends with 1, as GNU's
-/// walk does; before, it skipped the child silently and ended with 0. The
-/// child is a name ending in a dot, which Windows lists but cannot open by
-/// its plain path, so the test makes it through a `\\?\` path. Runs in
-/// about 0.05 s.
+/// A recursive `chmod` or `chown` on Windows that cannot read a child reports
+/// it, unless `-f`, goes on with the rest and ends with 1, as GNU's walk does.
+/// Before, it skipped the child silently and ended with 0.
+///
+/// The child is a name ending in a dot, which Windows lists but cannot open by
+/// its plain path, so the test makes it through a `\\?\` path.
+///
+/// Cost: about 0.05 s.
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_permission_walk_on_windows_reports_a_child_it_cannot_read() {
@@ -707,12 +719,15 @@ async fn cp_links_to_its_sources_as_gnus_cp_does() {
 }
 
 /// A utility's file operand `/dev/null` and `/dev/zero` are the devices on
-/// every system, Windows included, as in Git Bash: `/dev/null` reads
-/// nothing and takes what is written, `/dev/zero` reads zeros. Before, on
-/// Windows each named a missing file. A utility that reads the operand's
-/// metadata first (cat, head, tail, diff, rg, ls, du, cp's source) still
-/// fails on Windows, which gives the null device none, and is left out.
-/// Runs in about 0.1 s.
+/// every system, Windows included, as in Git Bash. `/dev/null` reads nothing
+/// and takes what is written, and `/dev/zero` reads zeros. Before, on Windows
+/// each named a missing file.
+///
+/// A utility that reads the operand's metadata first (cat, head, tail, diff,
+/// rg, ls, du, cp's source) still fails on Windows, which gives the null device
+/// none, and is left out.
+///
+/// Cost: about 0.1 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dev_null_and_dev_zero_are_devices_for_utilities() {
     expect_cases(
@@ -742,21 +757,28 @@ async fn dev_null_and_dev_zero_are_devices_for_utilities() {
 }
 
 /// A utility whose reader has closed the pipe ends with 141 and nothing on
-/// stderr, as SIGPIPE ends GNU's in a shell: `diff` panicked, `cmp` and the
-/// coreutils printed "Broken pipe" and exited 1 or 2, and `du`'s walk
-/// reported its printer's end as "sending on a closed channel". Each
-/// output is well over 128 KiB, what a 64 KiB pipe and `head`'s first read
-/// of up to 64 KiB take together, so the writer still has bytes to write
-/// once its reader is gone, however the threads are scheduled: `sort` sorts
-/// `l2 l1` (244 KB), since `l1` alone (122 KB) fit in the pipe after `head`'s
-/// read and often ended with 0 on Linux; `cmp -l` lists each differing
-/// byte, so it compares `l1` with `l0`, which differs in every zero
-/// (1.7 MB), not with `l2`, which differs in one byte a line (30 KB). On
-/// Linux, `cat`'s splice path grew its output pipe to 1 MiB before it found
-/// splice off in a job, so `cat l1 l1 l1` (366 KB) fit and ended with 0.
-/// `rg 0 .` searches its files in parallel: before, its workers' end on the
-/// closed pipe panicked the walk (`rg: utility thread panicked`). Runs in
-/// about 1.7 s; the `rg` case added 0.7 s.
+/// stderr, as SIGPIPE ends GNU's in a shell.
+///
+/// Before, `diff` panicked, `cmp` and the coreutils printed "Broken pipe" and
+/// exited 1 or 2, and `du`'s walk reported its printer's end as "sending on a
+/// closed channel".
+///
+/// Each output is well over 128 KiB, what a 64 KiB pipe and `head`'s first read
+/// of up to 64 KiB take together, so the writer still has bytes to write once
+/// its reader is gone, however the threads are scheduled:
+///
+/// - `sort` sorts `l2 l1` (244 KB), since `l1` alone (122 KB) fit in the pipe
+///   after `head`'s read and often ended with 0 on Linux.
+/// - `cmp -l` lists each differing byte, so it compares `l1` with `l0`, which
+///   differs in every zero (1.7 MB), not with `l2`, which differs in one byte a
+///   line (30 KB).
+/// - On Linux, `cat`'s splice path grew its output pipe to 1 MiB before it
+///   found splice off in a job, so `cat l1 l1 l1` (366 KB) fit and ended with
+///   0.
+/// - `rg 0 .` searches its files in parallel. Before, its workers' end on the
+///   closed pipe panicked the walk (`rg: utility thread panicked`).
+///
+/// Cost: about 1.7 s; the `rg` case added 0.7 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_closed_pipe_ends_utilities_quietly_as_sigpipe_does() {
     let setup = "seq -f '%060g' 1 2000 > l1; seq -f '%060g' 2001 4000 > l2; tr 0 1 < l1 > l0; \
@@ -799,17 +821,24 @@ async fn diff_reports_binary_files_as_gnu_diff_does() {
     .await;
 }
 
-/// `grep` treats a file as GNU grep 3.12 does in a UTF-8 locale: a NUL
-/// anywhere in what it has read of a file makes the file binary before any
-/// of its lines is printed, and a selected line that is not UTF-8 is held
-/// back while the others print. Without `-I` each such file that matches
-/// gets `binary file matches` on stderr; `-I` skips a file with a NUL as
-/// one without a match and drops the lines that are not UTF-8 silently.
-/// Before, a matching line before the NUL printed, and under `-I` a line
-/// that was not UTF-8 printed raw, which made a job's whole stdout binary.
-/// The file with a NUL is `zeroed`, as `nul` names a device on Windows.
-/// `five` takes the literal fast path, `f.ve` the line-at-a-time one. The
-/// expected outputs are GNU grep 3.12's. Runs in about 0.05 s.
+/// `grep` treats a file as GNU grep 3.12 does in a UTF-8 locale:
+///
+/// - A NUL anywhere in what it has read of a file makes the file binary before
+///   any of its lines is printed.
+/// - A selected line that is not UTF-8 is held back while the others print.
+/// - Without `-I`, each such file that matches gets `binary file matches` on
+///   stderr.
+/// - `-I` skips a file with a NUL as one without a match and drops the lines
+///   that are not UTF-8 silently.
+///
+/// Before, a matching line before the NUL printed, and under `-I` a line that
+/// was not UTF-8 printed raw, which made a job's whole stdout binary.
+///
+/// The file with a NUL is `zeroed`, as `nul` names a device on Windows. `five`
+/// takes the literal fast path, `f.ve` the line-at-a-time one. The expected
+/// outputs are GNU grep 3.12's.
+///
+/// Cost: about 0.05 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grep_treats_binary_files_as_gnu_grep_does() {
     let setup = "printf 'five\\n\\377 five\\nfive again\\n' > enc; printf 'five\\nsix\\n\\0\\n' > zeroed; \

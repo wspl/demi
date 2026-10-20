@@ -1,10 +1,12 @@
 //! A hardware keyboard's keys as USB HID usages (HID Usage Tables § 10,
-//! Keyboard/Keypad Page), which a simulator takes: the viewer's keys by
-//! their `KeyboardEvent.code`, and the characters `type` types on a US
-//! layout, with Shift where the character needs it. Text a US keyboard
-//! cannot type goes in as the device's platform allows
-//! (`crates/command-package-mobile/src/operations.rs`), the agent's and the
-//! viewer's alike.
+//! Keyboard/Keypad Page), which a simulator takes.
+//!
+//! - The viewer's keys map by their `KeyboardEvent.code`.
+//! - The characters `type` types map on a US layout, with Shift where the
+//!   character needs it.
+//! - Text a US keyboard cannot type goes in as the device's platform allows
+//!   (`crates/command-package-mobile/src/operations.rs`), the agent's and the
+//!   viewer's alike.
 
 use std::sync::Arc;
 

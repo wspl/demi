@@ -147,11 +147,12 @@ pub enum PortMessage {
         ask: ImageAsk,
     },
     /// Asks for one video through an entry's account, for the request's
-    /// conversation and the agent that called the command; answered once
-    /// the vendor took the job, which the request then follows with
-    /// [`PortMessage::VideoProgress`]. A request has one job at most, and
-    /// it ends with the request: stopped before its video, it is cancelled
-    /// at the vendor where the vendor can cancel one.
+    /// conversation and the agent that called the command.
+    ///
+    /// The port answers once the vendor took the job, which the request then
+    /// follows with [`PortMessage::VideoProgress`]. A request has one job at
+    /// most, and it ends with the request: stopped before its video, it is
+    /// cancelled at the vendor where the vendor can cancel one.
     MakeVideo {
         ask: VideoAsk,
     },

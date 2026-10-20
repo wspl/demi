@@ -1,11 +1,20 @@
 #![cfg_attr(windows, feature(windows_process_extensions_inherit_handles))]
-//! The runner: the execution host's program. It turns a device into an execution
-//! target: it registers with the backend, performs Host filesystem and process
-//! operations, and owns shell jobs; under a root command's name it is the command
-//! alias that forwards one command line to it. The backend keeps agent sessions,
-//! provider selection and conversation history. This crate composes the `runner-*`
-//! crates and owns the installation (state, lock, pairing, removal, updates,
-//! starting with the computer), the backend connection and the Host log.
+//! The runner: the execution host's program.
+//!
+//! The runner turns a device into an execution target. It registers with the
+//! backend, performs Host filesystem and process operations, and owns shell
+//! jobs. Under a root command's name it is the command alias that forwards one
+//! command line to it.
+//!
+//! The backend keeps agent sessions, provider selection and conversation
+//! history. This crate composes the `runner-*` crates and owns:
+//!
+//! - the installation (state, lock, pairing, removal, updates, starting with
+//!   the computer);
+//! - the backend connection;
+//! - the Host log.
+//!
+//! # Threads
 //!
 //! Control work is kept apart from the work it controls, so that a burst of
 //! requests, a slow disk or a busy job never stops the runner from reading its
@@ -21,32 +30,52 @@
 //!   at a time)             and utility)
 //! ```
 //!
-//! The runner never refuses, drops or fails a request because others are in
-//! flight: work that lasts as long as its caller wants is paced by its own
-//! backpressure, bounded Host work waits for a slot, and a process that runs out of
-//! open files waits for one (`command-sdk`'s `descriptors`). Every job, stream and
-//! request shares one table of open files (a job's login shell alone can hold a
-//! hundred while it loads nvm), so the runner raises its own limit at its start, and
-//! every process it starts gets back the limit the runner was started with, because
-//! some programs misbehave with a high one (`runner-process`'s `process`).
-//!
-//! On a Cloud the runner is an ordinary process under init in the sandbox: it
-//! decodes the boot file the machine manager wrote, fails on missing or invalid
-//! credentials and never falls back to pairing, and never updates itself, since its
-//! release is the image's. Boot, mounts and network are the manager's, and
-//! the runner never boots as PID 1, since init belongs to the image.
-//!
 //! The control runtime is single-threaded because its state belongs to one
-//! registration and one connection: plain `&mut` ownership then needs no
-//! locks, tests run deterministically on a paused clock, and the byte paths
-//! wait on IO rather than CPU. CPU and blocking work leave the thread through
-//! `Admission`, whose semaphores are the load limits. Shell work has its own
-//! runtime because each interpreter unit and utility needs an OS thread
-//! (builtins and utilities do synchronous IO, utilities keep state in
-//! thread-locals, and pipeline stages run at once): a stage blocked writing a
-//! full pipe waits for a sibling, so in one bounded pool shared with short
-//! control work a full pool would deadlock them. A command alias serves one
-//! invocation on a current-thread runtime.
+//! registration and one connection:
+//!
+//! - Plain `&mut` ownership then needs no locks.
+//! - Tests run deterministically on a paused clock.
+//! - The byte paths wait on IO rather than CPU.
+//!
+//! CPU and blocking work leave the thread through `Admission`, whose semaphores
+//! are the load limits.
+//!
+//! Shell work has its own runtime because each interpreter unit and utility
+//! needs an OS thread: builtins and utilities do synchronous IO, utilities keep
+//! state in thread-locals, and pipeline stages run at once. A stage blocked
+//! writing a full pipe waits for a sibling, so in one bounded pool shared with
+//! short control work a full pool would deadlock them.
+//!
+//! A command alias serves one invocation on a current-thread runtime.
+//!
+//! # Load
+//!
+//! The runner never refuses, drops or fails a request because others are in
+//! flight:
+//!
+//! - Work that lasts as long as its caller wants is paced by its own
+//!   backpressure.
+//! - Bounded Host work waits for a slot.
+//! - A process that runs out of open files waits for one (`command-sdk`'s
+//!   `descriptors`).
+//!
+//! Every job, stream and request shares one table of open files (a job's login
+//! shell alone can hold a hundred while it loads nvm). So the runner raises its
+//! own limit at its start, and every process it starts gets back the limit the
+//! runner was started with, because some programs misbehave with a high one
+//! (`runner-process`'s `process`).
+//!
+//! # On a Cloud
+//!
+//! On a Cloud the runner is an ordinary process under init in the sandbox:
+//!
+//! - It decodes the boot file the machine manager wrote, fails on missing or
+//!   invalid credentials and never falls back to pairing.
+//! - It never updates itself, since its release is the image's.
+//! - Boot, mounts and network are the manager's, and the runner never boots as
+//!   PID 1, since init belongs to the image.
+//!
+//! # Crates
 //!
 //! The runner is one executable built from seven crates, so that a change to
 //! one part recompiles only that part and what composes it, and a test of one
@@ -447,13 +476,15 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     };
     #[cfg(windows)]
     let (resolved, unresolved): (_, Option<String>) = (own, None);
-    // The device environment (`crates/runner/src/environment.rs`), without the
-    // names that configure the runner or belong to whatever started it,
-    // which no program it starts is meant to read. Nor the entries Windows
-    // names `=C:` and the like, which are no variables but the current
-    // directory cmd.exe keeps for each drive: a runner whose starter passed
-    // them on handed them to every command, which refuses a name with `=`
-    // ("invalid environment variable name \"=C:\"").
+    // The device environment (`crates/runner/src/environment.rs`), without two
+    // kinds of names:
+    //
+    // - The names that configure the runner or belong to whatever started it,
+    //   which no program it starts is meant to read.
+    // - The entries Windows names `=C:` and the like, which are no variables
+    //   but the current directory cmd.exe keeps for each drive. A runner whose
+    //   starter passed them on handed them to every command, which refuses a
+    //   name with `=` ("invalid environment variable name \"=C:\"").
     let mut env: BTreeMap<_, _> = resolved
         .into_iter()
         .filter(|(name, _)| !name.starts_with("DEMI_") && !name.starts_with('='))
@@ -687,12 +718,15 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
 }
 
 /// Makes `directory` when it is missing and removes everything in it, which
-/// stays. A Cloud pinned to a base from before the image made the directory
-/// has only its parent, `/var/lib/demi`, which is the `demi` user's and
-/// private to it, so the directory made in it is private too. What cannot go
-/// is logged, since a file left behind only takes space; a directory that
-/// cannot be made is logged too, and the first temporary file fails with its
-/// reason.
+/// stays.
+///
+/// A Cloud pinned to a base from before the image made the directory has only
+/// its parent, `/var/lib/demi`, which is the `demi` user's and private to it,
+/// so the directory made in it is private too.
+///
+/// What cannot go is logged, since a file left behind only takes space. A
+/// directory that cannot be made is logged too, and the first temporary file
+/// fails with its reason.
 async fn prepare_temporary(directory: &Path) {
     let directory = directory.to_owned();
     let emptied = tokio::task::spawn_blocking(move || {

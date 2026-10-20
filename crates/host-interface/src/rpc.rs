@@ -1,21 +1,27 @@
-//! The rpc handler interface (`crates/plugin-interface/src/lib.rs`): a
-//! handler receives its call as data ([`RpcInvocation`]) and acts only
-//! through a port whose every operation is one request and one reply, so a
-//! process of its own could serve the same calls over a wire.
+//! The rpc handler interface (`crates/plugin-interface/src/lib.rs`): a handler
+//! receives its call as data ([`RpcInvocation`]) and acts only through a port
+//! whose every operation is one request and one reply, so a process of its own
+//! could serve the same calls over a wire.
 //!
-//! The port offers no Host operations. A handler resolves what it acts on
-//! from the invocation's context (the `demi agent` handlers find their
-//! conversation's tree and node there), and one that must reach a Host goes
-//! through the conversation's host access with the conversation that context
-//! names. The ids of the relayed pipes let it hand the call's stdin and
-//! stdout to a job it starts on another device, so those bytes flow between
-//! the two devices through the backend's pipes without passing through the
-//! handler. A stdout write waits until the calling process has read enough.
+//! # The port
 //!
-//! A handler ends with an exit status. Its error is a runtime error, worded
-//! as GNU tools word theirs: the command's path (which the dispatcher writes
+//! The port offers no Host operations. A handler resolves what it acts on from
+//! the invocation's context (the `demi agent` handlers find their
+//! conversation's tree and node there). One that must reach a Host goes through
+//! the conversation's host access with the conversation that context names.
+//!
+//! The ids of the relayed pipes let a handler hand the call's stdin and stdout
+//! to a job it starts on another device. Those bytes then flow between the two
+//! devices through the backend's pipes without passing through the handler. A
+//! stdout write waits until the calling process has read enough.
+//!
+//! # Errors
+//!
+//! A handler ends with an exit status. Its error is a runtime error, worded as
+//! GNU tools word theirs: the command's path (which the dispatcher writes
 //! once), the object it concerns when there is one, and the reason, with an
 //! operating-system error as `strerror` words it and no prefix of Demi's own.
+//!
 //! A command that takes several values handles each in order, writes one such
 //! line for each that fails, goes on with the others, and exits 1 when any
 //! failed, as `cat a missing b` does.

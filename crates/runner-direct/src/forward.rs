@@ -1,10 +1,12 @@
-//! A forwarded TCP connection over a data channel of a peer between two
-//! runners (`crates/runner-direct/src/pairs.rs`): the Listen On
-//! runner opens the channel with the forward's header, the Connect To
-//! runner connects to the forward's address, and each side carries its TCP
-//! connection's bytes both ways. A side whose program ended its writing
-//! says `{ end: true }`, and the other ends its own writing to its program,
-//! as TCP's half-close does; the channel closes once both have.
+//! A forwarded TCP connection over a data channel of a peer between two runners
+//! (`crates/runner-direct/src/pairs.rs`).
+//!
+//! - The Listen On runner opens the channel with the forward's header.
+//! - The Connect To runner connects to the forward's address.
+//! - Each side carries its TCP connection's bytes both ways.
+//! - A side whose program ended its writing says `{ end: true }`, and the other
+//!   ends its own writing to its program, as TCP's half-close does.
+//! - The channel closes once both sides have ended.
 
 use bytes::BytesMut;
 use demi_runner_protocol::direct::{MESSAGE_BYTES, WriteEnd};

@@ -46,20 +46,28 @@ pub fn built_program(name: &str) -> PathBuf {
     current_program(directory, name)
 }
 
-/// The program `name` in `directory`, built from the sources as they are
-/// now. Cargo builds with a test only the programs of the test's own
-/// package, so after `cargo test --test backend` the `demi-runner` beside
-/// the test is whatever an earlier build left: a test that started it would
-/// fail as a runner of another wire, or pass on its old behavior. Cargo
-/// writes beside each program it places the files it was built from, its
-/// dep-info `<name>.d`; a program older than one of them is stale, as Cargo
-/// itself judges it, and this panics at once with what it saw, the program's
-/// and the newest source's times, and the build that renews it. Call it on
-/// the test's own thread: a panic in a task the test does not await leaves
-/// whoever waits on that task waiting. Neither Cargo's
-/// `CARGO_BIN_EXE_<name>`, which only covers the test's own package, nor its
-/// artifact dependencies, unstable (`-Z bindeps`), can make Cargo build
-/// another package's program for a test.
+/// The program `name` in `directory`, built from the sources as they are now.
+///
+/// Cargo builds with a test only the programs of the test's own package. So
+/// after `cargo test --test backend` the `demi-runner` beside the test is
+/// whatever an earlier build left: a test that started it would fail as a
+/// runner of another wire, or pass on its old behavior.
+///
+/// Neither Cargo's `CARGO_BIN_EXE_<name>`, which only covers the test's own
+/// package, nor its artifact dependencies, unstable (`-Z bindeps`), can make
+/// Cargo build another package's program for a test.
+///
+/// Cargo writes beside each program it places the files it was built from, its
+/// dep-info `<name>.d`. A program older than one of them is stale, as Cargo
+/// itself judges it.
+///
+/// Call it on the test's own thread: a panic in a task the test does not await
+/// leaves whoever waits on that task waiting.
+///
+/// # Panics
+///
+/// Panics at once when the program is stale, with what it saw (the program's
+/// and the newest source's times) and the build that renews it.
 pub fn current_program(directory: &Path, name: &str) -> PathBuf {
     let program = directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
     if let Some(problem) = staleness(&program) {

@@ -1,13 +1,17 @@
-//! One peer (`crates/runner-direct/src/lib.rs`): a WebRTC connection
-//! the backend introduced, with a page that offered, with another runner
-//! that offered, or with another runner this one offers to
-//! (`crates/runner-direct/src/pairs.rs`). Whichever role it
-//! has, it owns its UDP sockets, its str0m connection and its channels; it
-//! learns the addresses the internet sees its sockets at and offers them to
-//! the other side, and checks the candidates the other side trickles. It
-//! gives up when it has not connected within [`CONNECT_TIMEOUT`], and ends
-//! when its connection fails or the runner closes it. Its end closes its
-//! sockets and ends its channels' work.
+//! One peer (`crates/runner-direct/src/lib.rs`): a WebRTC connection the
+//! backend introduced, with a page that offered, with another runner that
+//! offered, or with another runner this one offers to
+//! (`crates/runner-direct/src/pairs.rs`).
+//!
+//! Whichever role it has, a peer:
+//!
+//! - owns its UDP sockets, its str0m connection and its channels;
+//! - learns the addresses the internet sees its sockets at and offers them to
+//!   the other side, and checks the candidates the other side trickles;
+//! - gives up when it has not connected within [`CONNECT_TIMEOUT`], and ends
+//!   when its connection fails or the runner closes it.
+//!
+//! Its end closes its sockets and ends its channels' work.
 
 use std::collections::{HashMap, HashSet};
 use std::future::poll_fn;

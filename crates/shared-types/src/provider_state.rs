@@ -1,9 +1,10 @@
-//! What the product shows about a provider entry besides its catalog: the
-//! wire format it speaks, whether its credential is usable, whether it can
-//! run, and its subscription accounts (`crates/provider-common/src/lib.rs`,
-//! `crates/backend-providers/src/vault/entries.rs`). The backend reads the
-//! states when it answers and never
-//! stores them, so they accept unknown fields.
+//! What the product shows about a provider entry besides its catalog: the wire
+//! format it speaks, whether its credential is usable, whether it can run, and
+//! its subscription accounts (`crates/provider-common/src/lib.rs`,
+//! `crates/backend-providers/src/vault/entries.rs`).
+//!
+//! The backend reads the states when it answers and never stores them, so they
+//! accept unknown fields.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

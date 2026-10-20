@@ -1,21 +1,33 @@
 //! What the runner keeps through a connection loss: its jobs with their
-//! directories and execution contexts, and the requests its jobs' commands make of
-//! the backend. A connection serves them while it lasts; without one, the jobs run
-//! on however long it takes, their commands' requests wait for the next
-//! connection, and the messages the runner would have sent about them are not
-//! queued, since the next connection reads what it needs from the kept output. A
-//! laptop whose Wi-Fi drops for two minutes in the middle of a test suite therefore
-//! delivers the suite's end and its output to the conversation as if the
-//! connection had never dropped.
+//! directories and execution contexts, and the requests its jobs' commands make
+//! of the backend.
 //!
-//! Only the runner's end stops them: a backend that refuses the runner (the device
-//! was revoked or removed) has them stopped as a stop does, since nobody will read
-//! them again, and a runner that ends (a crash, an update, a Cloud's stop) loses
-//! its jobs, whose shell work runs in its process. The hello lists the jobs with
-//! the runner's instance, a number each start draws, so that the backend tells a
-//! runner that kept its jobs from one that started anew; a job the backend has no
-//! command for is stopped. The runner notices a loss itself: it pings the backend
-//! and counts a connection unanswered for `RUNNER_PING_TIMEOUT` as lost.
+//! A connection serves them while it lasts. Without one:
+//!
+//! - the jobs run on however long it takes;
+//! - their commands' requests wait for the next connection;
+//! - the messages the runner would have sent about them are not queued, since
+//!   the next connection reads what it needs from the kept output.
+//!
+//! A laptop whose Wi-Fi drops for two minutes in the middle of a test suite
+//! therefore delivers the suite's end and its output to the conversation as if
+//! the connection had never dropped.
+//!
+//! # What stops them
+//!
+//! Only the runner's end stops them:
+//!
+//! - A backend that refuses the runner (the device was revoked or removed) has
+//!   them stopped as a stop does, since nobody will read them again.
+//! - A runner that ends (a crash, an update, a Cloud's stop) loses its jobs,
+//!   whose shell work runs in its process.
+//!
+//! The hello lists the jobs with the runner's instance, a number each start
+//! draws, so that the backend tells a runner that kept its jobs from one that
+//! started anew. A job the backend has no command for is stopped.
+//!
+//! The runner notices a loss itself: it pings the backend and counts a
+//! connection unanswered for `RUNNER_PING_TIMEOUT` as lost.
 
 use std::sync::Arc;
 

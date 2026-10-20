@@ -1,29 +1,45 @@
 //! Builds and embeds the iOS helper on Apple silicon
-//! (`crates/command-package-mobile/src/ios/mod.rs`):
-//! `demi-ios-sim`, the Swift package in `ios-sim/` linking idb's v1.7.6
-//! libraries, and idb's guest bridge `SimulatorFrameworkBridge-iOS`, built
-//! from the same release's source with Xcode and XcodeGen, both downloads
-//! pinned by their SHA-256. The helper is signed ad hoc; the bridge keeps
-//! the signature its build gives it. Both go, with the stub frameworks the
-//! helper loads from beside itself and idb's MIT notice
-//! (`ios-sim/LICENSE-idb`, which a release's third-party notices carry too),
-//! into a tar archive compressed with zstd, which the program carries.
+//! (`crates/command-package-mobile/src/ios/mod.rs`), and prepares the Android
+//! helper on every target.
+//!
+//! # The iOS helper
+//!
+//! The build produces two things:
+//!
+//! - `demi-ios-sim`, the Swift package in `ios-sim/` linking idb's v1.7.6
+//!   libraries.
+//! - idb's guest bridge `SimulatorFrameworkBridge-iOS`, built from the same
+//!   release's source with Xcode and XcodeGen.
+//!
+//! Both downloads are pinned by their SHA-256. The helper is signed ad hoc; the
+//! bridge keeps the signature its build gives it.
+//!
+//! Both go, with the stub frameworks the helper loads from beside itself and
+//! idb's MIT notice (`ios-sim/LICENSE-idb`, which a release's third-party
+//! notices carry too), into a tar archive compressed with zstd, which the
+//! program carries.
 //!
 //! idb's libraries are built for macOS on arm64 only, so only an
 //! `aarch64-apple-darwin` build carries the helper. Every build of it,
-//! development or release, builds the helper here, keeping the downloads
-//! and the Swift and Xcode builds under the target directory's `ios-sim/`.
-//! A Mac without Xcode or its iOS SDK builds no helper and says why; then
-//! `demi mobile list` says iOS needs Xcode. A release build sets
+//! development or release, builds the helper here, keeping the downloads and
+//! the Swift and Xcode builds under the target directory's `ios-sim/`.
+//!
+//! A Mac without Xcode or its iOS SDK builds no helper and says why. Then `demi
+//! mobile list` says iOS needs Xcode. A release build sets
 //! `DEMI_MOBILE_IOS_HELPER=required`, which makes that an error.
 //!
-//! On every target it also compiles the part of the Android Emulator's
-//! gRPC interface the Android driver uses (`android/`), with protox, so no
-//! `protoc` is needed, and fetches the Android helper, openatx's `u2.jar`
-//! (MIT), pinned by its SHA-256, which the program carries as it is
-//! (`crates/command-package-mobile/src/android/mod.rs`). A build that cannot
-//! fetch it carries none and
-//! says why; `DEMI_MOBILE_ANDROID_HELPER=required` makes that an error.
+//! # The Android helper
+//!
+//! On every target the build also:
+//!
+//! - compiles the part of the Android Emulator's gRPC interface the Android
+//!   driver uses (`android/`), with protox, so no `protoc` is needed;
+//! - fetches the Android helper, openatx's `u2.jar` (MIT), pinned by its
+//!   SHA-256, which the program carries as it is
+//!   (`crates/command-package-mobile/src/android/mod.rs`).
+//!
+//! A build that cannot fetch it carries none and says why;
+//! `DEMI_MOBILE_ANDROID_HELPER=required` makes that an error.
 
 use std::{
     env, fs,

@@ -1,20 +1,33 @@
-//! Jobs and raw processes: the registration owns the job table, which outlives each
-//! connection, and routes each job's input, signals, following and end to it; a raw
-//! process ends with the connection that started it. A job keeps its output in its
-//! directory (`kept_output`) and sends the backend bounded views of it in
-//! `job_output` messages: the first `JOB_VIEW_BYTES` of each stream, then, while the
-//! backend follows the job, its newest bytes at most every `JOB_LIVE_INTERVAL`,
-//! otherwise only how far a stream grew, every `JOB_GROWTH_INTERVAL`. A job's last
-//! output leaves before `job_exit`. What goes beyond the first view never slows the
-//! job: a message that finds the connection's queue full waits for the stream's next
-//! interval and then carries the newest bytes. When a stream went beyond what the
-//! backend received, the backend reads the rest from the kept output, and when that
-//! read fails it keeps the first bytes, a line counting the bytes left out and the
-//! newest bytes, so the end of a build's log, where it says what failed, still shows.
+//! Jobs and raw processes: the registration owns the job table, which outlives
+//! each connection, and routes each job's input, signals, following and end to
+//! it. A raw process ends with the connection that started it.
 //!
-//! A job or process whose live stdin the runner has not taken, `INPUT_QUEUE` frames
-//! deep, is cancelled, because routing a message never waits for work that does not
-//! read its input.
+//! # Output views
+//!
+//! A job keeps its output in its directory (`kept_output`) and sends the
+//! backend bounded views of it in `job_output` messages:
+//!
+//! - the first `JOB_VIEW_BYTES` of each stream;
+//! - then, while the backend follows the job, its newest bytes at most every
+//!   `JOB_LIVE_INTERVAL`;
+//! - otherwise only how far a stream grew, every `JOB_GROWTH_INTERVAL`.
+//!
+//! A job's last output leaves before `job_exit`.
+//!
+//! What goes beyond the first view never slows the job: a message that finds
+//! the connection's queue full waits for the stream's next interval and then
+//! carries the newest bytes.
+//!
+//! When a stream went beyond what the backend received, the backend reads the
+//! rest from the kept output. When that read fails, it keeps the first bytes, a
+//! line counting the bytes left out and the newest bytes, so the end of a
+//! build's log, where it says what failed, still shows.
+//!
+//! # Input
+//!
+//! A job or process whose live stdin the runner has not taken, `INPUT_QUEUE`
+//! frames deep, is cancelled, because routing a message never waits for work
+//! that does not read its input.
 
 use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
@@ -353,8 +366,9 @@ impl JobTable {
     }
 
     /// Stops every job as a stop does, first with `TERM`
-    /// (`crates/runner-shell/src/job.rs`). [`kill_jobs`] ends what
-    /// remains.
+    /// (`crates/runner-shell/src/job.rs`).
+    ///
+    /// [`kill_jobs`] ends what remains.
     ///
     /// [`kill_jobs`]: Self::kill_jobs
     pub fn stop_jobs(&self) {

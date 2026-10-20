@@ -1,10 +1,10 @@
 //! The file system watches of one backend connection: one watch per path and
-//! reach, shared by everything that follows it. The working tree's changes
-//! (`git`) and the subscriptions (`subscriptions`) of the same tree learn from
-//! one watch, which stops when the last of them lets it go.
+//! reach, shared by everything that follows it.
 //!
-//! A tree's watch also covers its repository's `.git` when that lies
-//! outside it, as the working tree's changes need.
+//! The working tree's changes (`git`) and the subscriptions (`subscriptions`)
+//! of the same tree learn from one watch, which stops when the last of them
+//! lets it go. A tree's watch also covers its repository's `.git` when that
+//! lies outside it, as the working tree's changes need.
 
 use std::{
     collections::HashMap,

@@ -1,10 +1,12 @@
 //! Release publication (`crates/xtask/src/native/package.rs`): a directory of
-//! verified files and the record that describes them, published once. Every
-//! file is copied into a stage beside the directory and checked against its
-//! declared size and SHA-256 as it is copied, and the stage becomes the
-//! directory in one rename. A release is immutable: one already in place is
-//! accepted only when its record and every file are the ones being published.
-//! However publication ends, its stage is gone.
+//! verified files and the record that describes them, published once.
+//!
+//! Every file is copied into a stage beside the directory and checked against
+//! its declared size and SHA-256 as it is copied, and the stage becomes the
+//! directory in one rename. However publication ends, its stage is gone.
+//!
+//! A release is immutable: one already in place is accepted only when its
+//! record and every file are the ones being published.
 
 use std::path::{Component, Path, PathBuf};
 

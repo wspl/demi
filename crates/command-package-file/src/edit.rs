@@ -1,33 +1,43 @@
-//! `file.edit`: SEARCH/REPLACE blocks for
-//! one or several files, or `--old` and `--new` for one, matched against the
-//! files as they were, written together, and reported as the files now
-//! read.
+//! `file.edit`: SEARCH/REPLACE blocks for one or several files, or `--old` and
+//! `--new` for one, matched against the files as they were, written together,
+//! and reported as the files now read.
 //!
-//! It is the way an agent changes the files of its task, made to do in one
-//! call what models otherwise write a Python script for (exact replacement,
-//! checked, over several files, with a build after), but failing loudly where
+//! It is the way an agent changes the files of its task, made to do in one call
+//! what models otherwise write a Python script for (exact replacement, checked,
+//! over several files, with a build after), but failing loudly where
 //! `str.replace` changes nothing silently, and recording every change.
 //!
-//! The change travels on stdin rather than in arguments because a quoted
-//! heredoc passes text byte for byte, while an argument needs escaping (a
-//! model that edited a function with `--old $'…'` wrote each quote as `\x27`)
-//! and a command substitution drops the text's last newlines. `--old` and
-//! `--new` stay for a one-line change, and with them the command reads no
-//! stdin, so the input of a loop around it stays the loop's. A SEARCH matches
-//! text anywhere in the file, part of a line included, as Claude Code's Edit
-//! matches its `old_string`; an empty SEARCH creates its file and fails when
-//! the file exists, so an edit never overwrites a file it did not read. A
-//! SEARCH line of seven dots stands for any run of lines, so the agent names
-//! a function by its first and last lines; seven, because a line of three is
-//! Python's `...`, a placeholder in many files.
+//! # Input
 //!
-//! A SEARCH must match exactly once, and every block of every file is matched
-//! against the files as they were, so nothing is written unless all matched,
-//! and a write that fails restores what was written before it. An error names
-//! the file by its full path, the block, the rule and that nothing was
-//! written, so the agent knows what to fix and that no file changed. A text
-//! with a line that is exactly a marker, or seven dots, cannot be written as
-//! a block; `--old` and `--new`, or `demi file patch`, write it.
+//! The change travels on stdin rather than in arguments. A quoted heredoc
+//! passes text byte for byte, while an argument needs escaping (a model that
+//! edited a function with `--old $'…'` wrote each quote as `\x27`) and a
+//! command substitution drops the text's last newlines.
+//!
+//! `--old` and `--new` stay for a one-line change. With them the command reads
+//! no stdin, so the input of a loop around it stays the loop's.
+//!
+//! # Matching
+//!
+//! - A SEARCH matches text anywhere in the file, part of a line included, as
+//!   Claude Code's Edit matches its `old_string`.
+//! - An empty SEARCH creates its file and fails when the file exists, so an
+//!   edit never overwrites a file it did not read.
+//! - A SEARCH line of seven dots stands for any run of lines, so the agent
+//!   names a function by its first and last lines. Seven, because a line of
+//!   three is Python's `...`, a placeholder in many files.
+//! - A SEARCH must match exactly once, and every block of every file is matched
+//!   against the files as they were.
+//!
+//! # Writing and errors
+//!
+//! - Nothing is written unless all blocks matched, and a write that fails
+//!   restores what was written before it.
+//! - An error names the file by its full path, the block, the rule and that
+//!   nothing was written, so the agent knows what to fix and that no file
+//!   changed.
+//! - A text with a line that is exactly a marker, or seven dots, cannot be
+//!   written as a block. `--old` and `--new`, or `demi file patch`, write it.
 
 use std::{
     borrow::Cow,
@@ -336,11 +346,12 @@ impl<'a> File<'a> {
     }
 
     /// The replacement `block`, the `number`th of the file at `path`, makes:
-    /// its REPLACE in place of the one place its SEARCH's text occurs,
-    /// written with the file's own line endings. An empty REPLACE of a
-    /// SEARCH that ends a line takes the line ending too, so no blank line
-    /// is left. Occurrences are counted as `str::match_indices` finds them,
-    /// so overlapping ones count as one.
+    /// its REPLACE in place of the one place its SEARCH's text occurs, written
+    /// with the file's own line endings.
+    ///
+    /// An empty REPLACE of a SEARCH that ends a line takes the line ending too,
+    /// so no blank line is left. Occurrences are counted as
+    /// `str::match_indices` finds them, so overlapping ones count as one.
     fn replacement(&self, number: usize, block: &Block, path: &Path) -> Result<Replacement, FileError> {
         let lines = text_lines(&block.search);
         // Blank lines alone match too many places to name one.

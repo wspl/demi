@@ -3,12 +3,18 @@
 //! turns it into CDP events. Keys and buttons held down are this viewer's own:
 //! its end releases only them.
 //!
+//! # Merging
+//!
 //! The page takes the newest input, never a backlog. Chrome answers an event
 //! only once the renderer handled it and a trackpad sends a wheel turn per
-//! frame, so input arriving while the tab is busy is merged: consecutive wheel
-//! turns with the same modifiers become one with summed deltas, consecutive
-//! moves with the same buttons the latest one; any other input ends the merge
-//! and goes in order.
+//! frame, so input arriving while the tab is busy is merged:
+//!
+//! - consecutive wheel turns with the same modifiers become one with summed
+//!   deltas;
+//! - consecutive moves with the same buttons become the latest one;
+//! - any other input ends the merge and goes in order.
+//!
+//! # Details
 //!
 //! - Mobile mode sends touch events directly: Chrome's mouse-to-touch
 //!   conversion makes CDP mouse calls never return.

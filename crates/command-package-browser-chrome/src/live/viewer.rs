@@ -1,13 +1,15 @@
 //! One viewer of the conversation's browser: one invocation of `browser.live`,
 //! from the page's `hello` until either side ends it.
 //!
-//! The viewer's input and the agent's are not exclusive: both reach the page in
-//! the order they arrive and the operation lock orders only agent commands, so
+//! The viewer's input and the agent's are not exclusive. Both reach the page in
+//! the order they arrive, and the operation lock orders only agent commands, so
 //! interleaving is expected (a `fill` may type into the field the user clicked
 //! meanwhile). Held keys and buttons are tracked per source, and a source's end
-//! releases only what it holds. For a `user` caller `open`, `goto`, `back`,
-//! `forward` and `reload` answer without waiting for the page to load: a user
-//! waits in the panel, not in a script.
+//! releases only what it holds.
+//!
+//! For a `user` caller `open`, `goto`, `back`, `forward` and `reload` answer
+//! without waiting for the page to load: a user waits in the panel, not in a
+//! script.
 
 use std::{future::Future, sync::Arc, time::Duration};
 

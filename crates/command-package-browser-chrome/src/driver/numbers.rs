@@ -1,10 +1,12 @@
-//! A conversation's tab numbers. The
-//! service draws them from the conversation's `tab` sequence in the backend
-//! eight at a time (`crates/command-protocol/src/numbers.rs`), so most
-//! tabs take theirs without waiting; a number it never uses is a gap.
-//! Since a tab's id outlasts each browser of the conversation, so do the
-//! record of the tabs closed on purpose and the count that numbers the tab
-//! lists, which only grows within the conversation.
+//! A conversation's tab numbers.
+//!
+//! The service draws them from the conversation's `tab` sequence in the backend
+//! eight at a time (`crates/command-protocol/src/numbers.rs`), so most tabs
+//! take theirs without waiting. A number it never uses is a gap.
+//!
+//! A tab's id outlasts each browser of the conversation, so do the record of
+//! the tabs closed on purpose and the count that numbers the tab lists, which
+//! only grows within the conversation.
 
 use std::{
     collections::VecDeque,

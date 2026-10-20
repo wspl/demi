@@ -1,28 +1,40 @@
-//! How bytes move between the runner and the backend: pipes, and the frames of a
-//! pipe's byte stream (data, idle, end). The same framing is a pipe's on every path,
-//! the relay's HTTP as much as a direct channel, so a pipe moves between them
-//! without a second definition.
+//! How bytes move between the runner and the backend: pipes, and the frames of
+//! a pipe's byte stream (data, idle, end).
 //!
-//! A pipe from the runner is a content pipe, one finite thing (a file, kept output,
-//! edit copies, media), sent as the body of `PUT /api/pipes/:id`; or a stream pipe,
-//! bytes that must arrive as they are written (a service stream's output, a job's
-//! input and output passed on while it runs), sent over a WebSocket at the same
-//! path. The difference is a TLS edge in front of the backend such as Cloudflare's:
-//! it holds a request's body until it ends or passes about 2 MB, but passes
-//! WebSocket messages as they come, so the live browser view of a still page, whose
-//! frames are small, showed nothing for minutes while its pictures waited in a body.
+//! The same framing is a pipe's on every path, the relay's HTTP as much as a
+//! direct channel, so a pipe moves between them without a second definition.
 //!
-//! A pipe the runner reads is a `GET` whose response streams. The same edge ends a
-//! response that sends nothing for about 100 seconds, its head included (a command
-//! waiting silently, or a stop waiting for an absent runner, broke their pipes with
-//! a 524), so the backend answers at once and frames the body. Only the end frame
-//! ends the pipe: a body that stops without one is a broken pipe, never an ordinary
-//! end. Idle frames keep the response alive and never reach the reader, and a stream
-//! pipe's WebSocket pings after the same idle time.
+//! # Pipes from the runner
 //!
-//! The runner's HTTP client speaks HTTP/2 where the edge offers it, so a concurrent
-//! pipe costs no new connection, which through a proxy and a TLS edge costs two or
-//! three round trips.
+//! A pipe from the runner is one of two kinds:
+//!
+//! - A content pipe: one finite thing (a file, kept output, edit copies,
+//!   media), sent as the body of `PUT /api/pipes/:id`.
+//! - A stream pipe: bytes that must arrive as they are written (a service
+//!   stream's output, a job's input and output passed on while it runs), sent
+//!   over a WebSocket at the same path.
+//!
+//! The difference is a TLS edge in front of the backend such as Cloudflare's.
+//! It holds a request's body until it ends or passes about 2 MB, but passes
+//! WebSocket messages as they come. The live browser view of a still page,
+//! whose frames are small, showed nothing for minutes while its pictures waited
+//! in a body.
+//!
+//! # Pipes the runner reads
+//!
+//! A pipe the runner reads is a `GET` whose response streams. The same edge
+//! ends a response that sends nothing for about 100 seconds, its head included:
+//! a command waiting silently, or a stop waiting for an absent runner, broke
+//! their pipes with a 524. So the backend answers at once and frames the body.
+//!
+//! - Only the end frame ends the pipe. A body that stops without one is a
+//!   broken pipe, never an ordinary end.
+//! - Idle frames keep the response alive and never reach the reader.
+//! - A stream pipe's WebSocket pings after the same idle time.
+//!
+//! The runner's HTTP client speaks HTTP/2 where the edge offers it, so a
+//! concurrent pipe costs no new connection, which through a proxy and a TLS
+//! edge costs two or three round trips.
 
 use std::time::Duration;
 

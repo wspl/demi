@@ -1,9 +1,12 @@
-//! The simulators' live view on the Host: one
-//! invocation of `mobile.live` per view of a conversation's page. A device
-//! is a source of the shared live view: viewers of one device share its
-//! capture, its pictures are the screen turned upright, and the viewer's
-//! input reaches it as touches and keys in the order it arrives, beside the
-//! agent's, whose activity the view shows.
+//! The simulators' live view on the Host: one invocation of `mobile.live` per
+//! view of a conversation's page.
+//!
+//! A device is a source of the shared live view:
+//!
+//! - Viewers of one device share its capture.
+//! - Its pictures are the screen turned upright.
+//! - The viewer's input reaches it as touches and keys in the order it arrives,
+//!   beside the agent's, whose activity the view shows.
 
 use std::{
     collections::HashMap,
@@ -382,12 +385,13 @@ impl Deliver for DeviceInput {
     }
 }
 
-/// The finger's step a touch or a mouse's press, drag and release makes,
-/// noting where it is in `held`: the first contact is the finger, as a
-/// simulator takes one.
-/// A wheel turn at `at` as the swipe that scrolls the screen as far: the
-/// finger moves against the turn, as a page follows a wheel, and stops at
-/// the screen's edge. A touch screen has no wheel of its own.
+/// The finger's step a touch or a mouse's press, drag and release makes, noting
+/// where it is in `held`: the first contact is the finger, as a simulator takes
+/// one.
+///
+/// A wheel turn at `at` is the swipe that scrolls the screen as far: the finger
+/// moves against the turn, as a page follows a wheel, and stops at the screen's
+/// edge. A touch screen has no wheel of its own.
 fn scroll(screen: Screen, at: Points, delta_x: f64, delta_y: f64) -> Option<(Points, Points)> {
     let to = Points {
         x: (at.x - delta_x).clamp(0.0, screen.points.x),

@@ -1,18 +1,25 @@
-//! The installation's job directories: each shell job keeps its kept output, its
-//! media and its recorded edits in `<job root>/job-<random>/`, private to its user.
-//! The job root is `jobs/` of a paired device's installation state; a Cloud's is
-//! `/var/lib/demi/jobs` on its system image, since its installation state is in
-//! `/run/demi`, which every boot makes anew and whose memory the kept output of a
-//! few busy jobs could outgrow.
+//! The installation's job directories: each shell job keeps its kept output,
+//! its media and its recorded edits in `<job root>/job-<random>/`, private to
+//! its user.
 //!
-//! A job's directory lasts until the backend has what it needs of the job: it sends
-//! `job_release` once it has read the job's end, the kept output when it needed it,
-//! the media it did not hold and the edit copies. A connection loss keeps every
-//! directory for the next connection, with the job's exit once it ended; one whose
-//! job the backend has no command for is removed with the job. A runner removes
-//! every directory in its job root when it starts: what a runner that ended without
-//! cleanup left. So the Host keeps nothing of a command once it has ended, which is
-//! why a conversation release has no files to remove.
+//! The job root is `jobs/` of a paired device's installation state. A Cloud's
+//! is `/var/lib/demi/jobs` on its system image, since its installation state is
+//! in `/run/demi`, which every boot makes anew and whose memory the kept output
+//! of a few busy jobs could outgrow.
+//!
+//! # Lifetime
+//!
+//! - A job's directory lasts until the backend has what it needs of the job.
+//!   The backend sends `job_release` once it has read the job's end, the kept
+//!   output when it needed it, the media it did not hold and the edit copies.
+//! - A connection loss keeps every directory for the next connection, with the
+//!   job's exit once it ended. A directory whose job the backend has no command
+//!   for is removed with the job.
+//! - A runner removes every directory in its job root when it starts: what a
+//!   runner that ended without cleanup left.
+//!
+//! So the Host keeps nothing of a command once it has ended, which is why a
+//! conversation release has no files to remove.
 
 use std::collections::HashMap;
 use std::io;
@@ -190,11 +197,12 @@ impl JobDirectories {
         }
     }
 
-    /// The jobs whose directories are kept, as a hello lists them: each
-    /// one's end once it ended, its streams' lengths, how many media it
-    /// keeps and, while it runs, the tasks that outlive its script.
-    /// `running` names the jobs that run, also one whose directory is not
-    /// made yet.
+    /// The jobs whose directories are kept, as a hello lists them.
+    ///
+    /// For each job the list has its end once it ended, its streams' lengths,
+    /// how many media it keeps and, while it runs, the tasks that outlive its
+    /// script. `running` names the jobs that run, also one whose directory is
+    /// not made yet.
     pub fn kept(&self, running: &[String]) -> Vec<wire::KeptJob> {
         let jobs = self.lock();
         let mut kept: Vec<wire::KeptJob> = jobs

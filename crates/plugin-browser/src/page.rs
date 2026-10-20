@@ -1,15 +1,17 @@
 //! The conversation browser's tab list and tab methods: each runs the operation
 //! the agent's `demi browser` command runs, as a package call for the
-//! conversation's user, and holds no browser logic. The tab list is the
-//! plugin's conversation state, which the browser package's messages mark
-//! changed; listing never wakes a stopped Cloud and is no activity. Closing,
-//! moving and stopping a tab operate the browser without waking it; opening a
-//! tab is work the user starts. Opening and closing browser tabs for panel tabs
-//! is the panel's work ([`crate::panel`]), through the same operations.
+//! conversation's user, and holds no browser logic.
+//!
+//! The tab list is the plugin's conversation state, which the browser package's
+//! messages mark changed. Listing never wakes a stopped Cloud and is no
+//! activity. Closing, moving and stopping a tab operate the browser without
+//! waking it; opening a tab is work the user starts. Opening and closing
+//! browser tabs for panel tabs is the panel's work ([`crate::panel`]), through
+//! the same operations.
 //!
 //! - A user waits in the panel, not in a script, so for a `user` caller `open`,
 //!   `goto`, `back`, `forward` and `reload` answer once their work started, and
-//!   name the number of the last tab list before the request: the page ends its
+//!   name the number of the last tab list before the request. The page ends its
 //!   loading only on a list numbered after it.
 //! - `stop` runs `browser.stop`, which only a `user` caller reaches: the agent
 //!   waits for its commands rather than stopping a load, so `demi browser` has

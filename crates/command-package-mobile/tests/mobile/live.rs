@@ -161,13 +161,18 @@ async fn the_view_reports_the_agents_activity_and_keeps_reading_the_page() {
     }
 }
 
-/// The view says the agent uses a device from the start of its command on
-/// it until three seconds after its last one ends, a running command
-/// keeping it on, and marks where the agent taps; the panel's controls are
-/// the user's and show neither (`crates/command-package-mobile/src/live.rs`). Planted
-/// defects this catches: the note only while input is delivered, a panel
-/// control shown as the agent's, and a linger the agent's next command does
-/// not renew. One fake device, a paused clock.
+/// The view says the agent uses a device from the start of its command on it
+/// until three seconds after its last one ends, a running command keeping it
+/// on, and marks where the agent taps. The panel's controls are the user's and
+/// show neither (`crates/command-package-mobile/src/live.rs`).
+///
+/// Planted defects this catches:
+///
+/// - the note only while input is delivered;
+/// - a panel control shown as the agent's;
+/// - a linger the agent's next command does not renew.
+///
+/// Cost: one fake device, a paused clock.
 #[tokio::test(start_paused = true)]
 async fn the_agent_uses_a_device_until_three_seconds_after_its_last_command() {
     let mobile = Mobile::start().await;
@@ -214,12 +219,17 @@ async fn the_agent_uses_a_device_until_three_seconds_after_its_last_command() {
     assert!(!activity().active);
 }
 
-/// The view gets the device's frame for the size it lays the device out
-/// at, once for each size and orientation, and again when the device
-/// turns, its buttons on the edges they turned to; a device without a
-/// frame installed gets the frame the view draws. Planted defects this catches: a
-/// frame drawn again for a size the view has, and one that stays upright
-/// when the device turns. One fake device, milliseconds.
+/// The view gets the device's frame for the size it lays the device out at,
+/// once for each size and orientation, and again when the device turns, its
+/// buttons on the edges they turned to. A device without a frame installed gets
+/// the frame the view draws.
+///
+/// Planted defects this catches:
+///
+/// - a frame drawn again for a size the view has;
+/// - a frame that stays upright when the device turns.
+///
+/// Cost: one fake device, milliseconds.
 #[tokio::test]
 async fn the_view_gets_the_frame_for_its_size_and_again_when_the_device_turns() {
     let mobile = Mobile::start().await;
@@ -282,12 +292,14 @@ async fn recording_is(page: &mut Page, wanted: bool) {
     }
 }
 
-/// The user's input on a device reaches it while the agent's `wait` on the
-/// same device runs, which holds nothing the input waits for
-/// (`crates/command-package-mobile/src/live.rs`). Planted defect this catches:
-/// one turn for every
-/// command on a device, which kept the panel's Home waiting for the
-/// agent's five-minute wait. One fake device, a paused clock.
+/// The user's input on a device reaches it while the agent's `wait` on the same
+/// device runs, which holds nothing the input waits for
+/// (`crates/command-package-mobile/src/live.rs`).
+///
+/// Planted defect this catches: one turn for every command on a device, which
+/// kept the panel's Home waiting for the agent's five-minute wait.
+///
+/// Cost: one fake device, a paused clock.
 #[tokio::test(start_paused = true)]
 async fn the_users_input_does_not_wait_for_the_agents_wait() {
     let mobile = Mobile::start().await;

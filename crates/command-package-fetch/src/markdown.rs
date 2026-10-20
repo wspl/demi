@@ -1,10 +1,14 @@
-//! HTML to Markdown: what a reader of the page never sees is removed first,
-//! since a page can hide instructions there, and each relative link and
-//! image source is made absolute against the page's URL, so the model can
-//! fetch it; then htmd converts the rest, headings, lists, links, tables
-//! and code included, leaving out what holds no text: an image's inline
-//! data, of which only its alt text stays, and a link with nothing to read,
-//! such as an icon's.
+//! HTML to Markdown.
+//!
+//! 1. What a reader of the page never sees is removed first, since a page can
+//!    hide instructions there.
+//! 2. Each relative link and image source is made absolute against the page's
+//!    URL, so the model can fetch it.
+//! 3. htmd converts the rest: headings, lists, links, tables and code.
+//!
+//! The conversion leaves out what holds no text: an image's inline data, of
+//! which only its alt text stays, and a link with nothing to read, such as an
+//! icon's.
 
 use std::rc::Rc;
 

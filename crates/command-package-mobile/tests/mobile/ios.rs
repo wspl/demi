@@ -1,8 +1,7 @@
 //! The iOS driver against a helper the test plays
-//! (`crates/command-package-mobile/src/ios/mod.rs`): the
-//! connection `demi-ios-sim serve` speaks, its end with the conversation's
-//! last device, its captures' pictures, and a recording too large for one
-//! frame of it.
+//! (`crates/command-package-mobile/src/ios/mod.rs`): the connection
+//! `demi-ios-sim serve` speaks, its end with the conversation's last device,
+//! its captures' pictures, and a recording too large for one frame of it.
 
 use std::{
     collections::HashMap,
@@ -270,13 +269,19 @@ async fn the_helper_ends_when_the_conversations_last_device_closes() {
 }
 
 /// Two devices of one conversation, watched at once, each show their own
-/// pictures: the helper they share tells captures apart by number alone,
-/// so the numbers are the helper's, not each device's; and the encoder's
-/// key frame reaches the page with an SPS that says the stream has no
-/// reordering, so a still screen's only picture paints. Planted defects
-/// this catches: captures numbered per device, whose second takes the
-/// first one's pictures, and a key frame passed as the encoder made it.
-/// One fake helper, two views, milliseconds.
+/// pictures.
+///
+/// - The helper they share tells captures apart by number alone, so the numbers
+///   are the helper's, not each device's.
+/// - The encoder's key frame reaches the page with an SPS that says the stream
+///   has no reordering, so a still screen's only picture paints.
+///
+/// Planted defects this catches:
+///
+/// - captures numbered per device, whose second takes the first one's pictures;
+/// - a key frame passed as the encoder made it.
+///
+/// Cost: one fake helper, two views, milliseconds.
 #[tokio::test]
 async fn devices_sharing_a_helper_each_show_their_own_pictures() {
     let helper = FakeHelper::new(0);
@@ -345,12 +350,16 @@ async fn a_recording_larger_than_a_frame_is_saved_whole() {
 }
 
 /// The view gets the frame the helper draws for a model whose frame Xcode
-/// installed, at the page's pixel ratio, with the screen's place and
-/// corners, and the drawn frame with the screen's corners for one without.
-/// Planted defects this catches: the helper's camelCase answer read with
-/// snake_case fields, which loses every frame and gives the drawn frame square
-/// corners; the pixel ratio not passed to the helper. One fake helper, one
-/// view, milliseconds.
+/// installed, at the page's pixel ratio, with the screen's place and corners.
+/// For a model without one, it gets the drawn frame with the screen's corners.
+///
+/// Planted defects this catches:
+///
+/// - the helper's camelCase answer read with snake_case fields, which loses
+///   every frame and gives the drawn frame square corners;
+/// - the pixel ratio not passed to the helper.
+///
+/// Cost: one fake helper, one view, milliseconds.
 #[tokio::test]
 async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
     let helper = FakeHelper::new(0);
@@ -389,14 +398,20 @@ async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
     }
 }
 
-/// The viewer's typing reaches an iPhone's focused field as the characters
-/// it is, in any layout and from any input method: a German keyboard's ü
-/// and a Chinese input method's 東京 are added to the end of the field's
-/// value through accessibility, as a simulator takes no text into its
-/// pasteboard, and what a US keyboard types is typed. Planted defects this
-/// catches: the key's US character typed instead of ü, the composed text
-/// refused, or the field's value replaced rather than added to. One fake
-/// helper, milliseconds.
+/// The viewer's typing reaches an iPhone's focused field as the characters it
+/// is, in any layout and from any input method.
+///
+/// A German keyboard's ü and a Chinese input method's 東京 are added to the end
+/// of the field's value through accessibility, as a simulator takes no text
+/// into its pasteboard. What a US keyboard types is typed.
+///
+/// Planted defects this catches:
+///
+/// - the key's US character typed instead of ü;
+/// - the composed text refused;
+/// - the field's value replaced rather than added to.
+///
+/// Cost: one fake helper, milliseconds.
 #[tokio::test]
 async fn the_viewers_typing_in_any_layout_or_input_method_reaches_an_iphones_field() {
     let helper = FakeHelper::new(0);
@@ -499,10 +514,12 @@ async fn a_simulator_is_off_from_its_lock_until_the_next_input() {
 
 /// Wake pressed twice in a row on a simulator that is off turns it on and
 /// leaves it on: the second Wake waits for the first's press and finds the
-/// screen on, so one side button is pressed, not two. Planted defect this
-/// catches: each Wake reading the screen's state while the other's press
-/// is on its way, which turns the screen on and off again. One fake
-/// helper, milliseconds.
+/// screen on, so one side button is pressed, not two.
+///
+/// Planted defect this catches: each Wake reading the screen's state while the
+/// other's press is on its way, which turns the screen on and off again.
+///
+/// Cost: one fake helper, milliseconds.
 #[tokio::test]
 async fn a_double_wake_on_a_simulator_presses_the_side_button_once() {
     let helper = FakeHelper::new(0);

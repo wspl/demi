@@ -1,9 +1,10 @@
 //! What Demi does inside an emulator over adb
-//! (`crates/command-package-mobile/src/android/mod.rs`): the
-//! UI tree with its display rotation, a field's text and the clipboard
-//! through openatx's `u2.jar`, which `demi-mobile` carries and runs with
-//! `app_process` as a shell process, not an installed app; appearance and
-//! recording through the shell.
+//! (`crates/command-package-mobile/src/android/mod.rs`):
+//!
+//! - the UI tree with its display rotation, a field's text and the clipboard,
+//!   through openatx's `u2.jar`, which `demi-mobile` carries and runs with
+//!   `app_process` as a shell process, not an installed app;
+//! - appearance and recording, through the shell.
 
 use std::{
     path::Path,

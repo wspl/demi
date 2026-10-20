@@ -1,9 +1,12 @@
-//! The iOS helper's protocol (`crates/command-package-mobile/src/ios/mod.rs`): `demi-ios-sim serve`
-//! speaks over its standard input and output in the live view's framing, a
-//! four-byte big-endian length, a kind and the payload. Requests and their
-//! replies are JSON, as are the events the helper sends unasked; a capture's
-//! pictures are video frames, and a reply that carries a file, a PNG or an
-//! MP4, comes after its bytes in a blob frame.
+//! The iOS helper's protocol (`crates/command-package-mobile/src/ios/mod.rs`):
+//! `demi-ios-sim serve` speaks over its standard input and output in the live
+//! view's framing, a four-byte big-endian length, a kind and the payload.
+//!
+//! - Requests and their replies are JSON, as are the events the helper sends
+//!   unasked.
+//! - A capture's pictures are video frames.
+//! - A reply that carries a file, a PNG or an MP4, comes after its bytes in a
+//!   blob frame.
 //!
 //! ```text
 //! demi-mobile                         demi-ios-sim serve

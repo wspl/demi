@@ -1,9 +1,12 @@
 //! The Android driver against a stub emulator
-//! (`crates/command-package-mobile/src/android/mod.rs`): the
-//! emulator's own gRPC interface, served here on a local port, which takes
-//! only calls signed with the key the driver put into its key directory;
-//! and a scripted helper inside it. What the commands print and what
-//! reaches the emulator, in the emulator panel's pixels.
+//! (`crates/command-package-mobile/src/android/mod.rs`).
+//!
+//! The test serves the emulator's own gRPC interface on a local port. It takes
+//! only calls signed with the key the driver put into its key directory. A
+//! scripted helper stands inside it.
+//!
+//! The tests check what the commands print and what reaches the emulator, in
+//! the emulator panel's pixels.
 
 use std::{
     path::Path,
@@ -823,13 +826,18 @@ async fn a_host_without_the_emulator_says_how_to_install_it() {
     assert!(message.contains("no Android emulator; install the Android SDK's emulator package (sdkmanager \"emulator\")"), "{message}");
 }
 
-/// An AVD that is shut down boots, is driven over the emulator's gRPC
-/// interface with signed tokens, and shuts down as it closes: taps in
-/// panel pixels, keys as a hardware keyboard's, a field's text through
-/// the helper, the dark appearance and a quarter turn. Planted defects
-/// this catches: a call without the token (the stub refuses it), a touch
-/// in screenshot pixels, Back sent to an iPhone's code path. A stub
-/// emulator on a local port; under a second.
+/// An AVD that is shut down boots, is driven over the emulator's gRPC interface
+/// with signed tokens, and shuts down as it closes: taps in panel pixels, keys
+/// as a hardware keyboard's, a field's text through the helper, the dark
+/// appearance and a quarter turn.
+///
+/// Planted defects this catches:
+///
+/// - a call without the token (the stub refuses it);
+/// - a touch in screenshot pixels;
+/// - Back sent to an iPhone's code path.
+///
+/// Cost: a stub emulator on a local port; under a second.
 #[tokio::test]
 async fn an_avd_boots_and_is_driven_over_its_signed_grpc_interface() {
     let (mobile, sdk) = start(false).await;
@@ -905,14 +913,21 @@ async fn an_avd_boots_and_is_driven_over_its_signed_grpc_interface() {
     assert!(sdk.heard().contains(&"guest closed".to_owned()));
 }
 
-/// A device held sideways shows its screen sideways, and a tap at a point
-/// of that picture reaches the emulator at the same place on the glass,
-/// in the panel's own portrait pixels, whether the app stays portrait, as
-/// a launcher does, or turns with the device, as Settings does: Sign Up's
-/// centre is panel pixel 300,1050 either way. Planted defects this
-/// catches: the touch sent in the display's pixels, which lands elsewhere
-/// on a turned display, or the turn taken the other way round. A stub
-/// emulator, under a second.
+/// A device held sideways shows its screen sideways, and a tap at a point of
+/// that picture reaches the emulator at the same place on the glass, in the
+/// panel's own portrait pixels.
+///
+/// This holds whether the app stays portrait, as a launcher does, or turns with
+/// the device, as Settings does: Sign Up's centre is panel pixel 300,1050
+/// either way.
+///
+/// Planted defects this catches:
+///
+/// - the touch sent in the display's pixels, which lands elsewhere on a turned
+///   display;
+/// - the turn taken the other way round.
+///
+/// Cost: a stub emulator, under a second.
 #[tokio::test]
 async fn a_sideways_device_is_tapped_where_its_picture_shows() {
     let (mobile, sdk) = start(true).await;
@@ -940,17 +955,24 @@ async fn a_sideways_device_is_tapped_where_its_picture_shows() {
     assert_eq!(touches, ["touch 300,1050 down", "touch 300,1050 down"]);
 }
 
-/// The screenshot is the size `open`, `inspect` and `rotate` print, upright
-/// and sideways, for a Pixel 10's 1080 × 2424 screen that the emulator
-/// states only in the list emulators up to at least 36.6 send: the size the
-/// emulator's own rule gives, 698 × 1568, drawn by the emulator in one call;
-/// and the screenshot's far corner is tapped at the panel's. An emulator
-/// that draws another size is scaled here to the same size. Planted
-/// defects this catches: the screen's size guessed when the emulator's map
-/// is empty (1080 × 2400, printed 706 wide beside a 698-pixel picture), a
-/// size rounded rather than cut down (699 beside 698), a box the emulator
-/// fits otherwise (698 × 1566), or the emulator's picture passed on at a
-/// size the coordinates are not in. A stub emulator, under a second.
+/// The screenshot is the size `open`, `inspect` and `rotate` print, upright and
+/// sideways, for a Pixel 10's 1080 × 2424 screen that the emulator states only
+/// in the list emulators up to at least 36.6 send.
+///
+/// - The size is the one the emulator's own rule gives, 698 × 1568, drawn by
+///   the emulator in one call.
+/// - The screenshot's far corner is tapped at the panel's.
+/// - An emulator that draws another size is scaled here to the same size.
+///
+/// Planted defects this catches:
+///
+/// - the screen's size guessed when the emulator's map is empty (1080 × 2400,
+///   printed 706 wide beside a 698-pixel picture);
+/// - a size rounded rather than cut down (699 beside 698);
+/// - a box the emulator fits otherwise (698 × 1566);
+/// - the emulator's picture passed on at a size the coordinates are not in.
+///
+/// Cost: a stub emulator, under a second.
 #[tokio::test]
 async fn the_screenshot_is_the_size_every_coordinate_is_in() {
     let (mobile, sdk) = start(true).await;
@@ -1028,14 +1050,22 @@ async fn live_frame(mobile: &Mobile) -> (Page, Value) {
     (page, serde_json::to_value(&frame).unwrap())
 }
 
-/// The drawn frame follows the corners the emulator's system UI paints into
-/// its picture: a Pixel 10's drawable reaches 196 pixels along each edge
-/// where its display reports a radius of 132, through the drawable's own
-/// curve; where the drawable does not read, the corner is the circle of the
-/// reported radius. The points are the screen's, 2.625 pixels each.
-/// Planted defects this catches: the circle drawn while the drawable reads,
-/// a fixed radius, corners in pixels, or the APK read once for each
-/// drawable. A stub emulator; milliseconds.
+/// The drawn frame follows the corners the emulator's system UI paints into its
+/// picture.
+///
+/// A Pixel 10's drawable reaches 196 pixels along each edge where its display
+/// reports a radius of 132, through the drawable's own curve. Where the
+/// drawable does not read, the corner is the circle of the reported radius. The
+/// points are the screen's, 2.625 pixels each.
+///
+/// Planted defects this catches:
+///
+/// - the circle drawn while the drawable reads;
+/// - a fixed radius;
+/// - corners in pixels;
+/// - the APK read once for each drawable.
+///
+/// Cost: a stub emulator; milliseconds.
 #[tokio::test]
 async fn the_drawn_frame_follows_the_corners_the_emulators_system_ui_draws() {
     let (mobile, sdk) = start(true).await;
@@ -1074,12 +1104,15 @@ async fn the_drawn_frame_follows_the_corners_the_emulators_system_ui_draws() {
     assert_eq!(frame["corners"]["topLeft"], json!({ "kind": "round", "radius": 132.0 / 2.625 }));
 }
 
-/// The corners come from the APK the device resolves SystemUI's drawable
-/// to: where that is an overlay the shell may not read, they are the
-/// circles of the reported radius, never the curve of the same-named
-/// drawable a lower layer holds. Planted defect this catches: an
-/// unreadable overlay passed over for SystemUI's own drawable. A stub
-/// emulator; milliseconds.
+/// The corners come from the APK the device resolves SystemUI's drawable to.
+/// Where that is an overlay the shell may not read, they are the circles of the
+/// reported radius, never the curve of the same-named drawable a lower layer
+/// holds.
+///
+/// Planted defect this catches: an unreadable overlay passed over for
+/// SystemUI's own drawable.
+///
+/// Cost: a stub emulator; milliseconds.
 #[tokio::test]
 async fn corners_come_from_the_overlay_the_device_resolves_them_to_or_are_its_radius() {
     let (mobile, sdk) = start(true).await;
@@ -1096,15 +1129,26 @@ async fn corners_come_from_the_overlay_the_device_resolves_them_to_or_are_its_ra
     assert_eq!(read, ["apk files /vendor/overlay/SystemUIGoogle__auto_generated_rro_vendor.apk res/drawable/rounded_corner_top.xml res/drawable/rounded_corner_bottom.xml"]);
 }
 
-/// Reading the screen's corners never holds up the view: while the device
-/// has not answered, the view gets the screen's size at once, without a
-/// frame, and as a page does, says the size it shows the screen at, upon
-/// which the first key frame comes; the viewer's typing reaches the device
-/// and closing the device lets the read go; the drawn frame follows once
-/// the corners are known. Planted defects this catches: the screen's size
-/// sent only with the frame, which holds the picture back until the
-/// corners are read; the corners read in the view's loop; or a read left
-/// running after its device closed. A stub emulator; milliseconds.
+/// Reading the screen's corners never holds up the view.
+///
+/// While the device has not answered:
+///
+/// - the view gets the screen's size at once, without a frame;
+/// - as a page does, the view says the size it shows the screen at, upon which
+///   the first key frame comes;
+/// - the viewer's typing reaches the device, and closing the device lets the
+///   read go.
+///
+/// The drawn frame follows once the corners are known.
+///
+/// Planted defects this catches:
+///
+/// - the screen's size sent only with the frame, which holds the picture back
+///   until the corners are read;
+/// - the corners read in the view's loop;
+/// - a read left running after its device closed.
+///
+/// Cost: a stub emulator; milliseconds.
 #[tokio::test]
 async fn the_view_goes_on_while_the_screens_corners_are_read() {
     let (mobile, sdk) = start(true).await;
@@ -1197,14 +1241,21 @@ fn write_art(folder: &Path) {
     mask.save(folder.join("mask.png")).unwrap();
 }
 
-/// Where the Host has Android Studio's art for the AVD's device, the
-/// emulator wears that frame as Android Studio draws it: the frame's image
-/// around the screen and never over it, the mask over the screen's corner,
-/// sized to the view's room with its screen the picture's 1080 × 2400
-/// pixels scaled alike, and turned with the picture. Planted defects this
-/// catches: the frame's image left over the picture, the mask left out, the
-/// screen placed by the art's own size, or the frame not turned. A stub
-/// emulator and a 148 × 290 art; under a second.
+/// Where the Host has Android Studio's art for the AVD's device, the emulator
+/// wears that frame as Android Studio draws it.
+///
+/// The frame's image goes around the screen and never over it, with the mask
+/// over the screen's corner. It is sized to the view's room with its screen the
+/// picture's 1080 × 2400 pixels scaled alike, and turned with the picture.
+///
+/// Planted defects this catches:
+///
+/// - the frame's image left over the picture;
+/// - the mask left out;
+/// - the screen placed by the art's own size;
+/// - the frame not turned.
+///
+/// Cost: a stub emulator and a 148 × 290 art; under a second.
 #[tokio::test]
 async fn an_emulator_wears_android_studios_frame_where_the_host_has_its_art() {
     let (mobile, sdk) = start(true).await;
@@ -1267,13 +1318,18 @@ async fn text_a_us_keyboard_cannot_type_is_pasted_and_the_clipboard_put_back() {
     assert_eq!(since(&sdk, from), expected);
 }
 
-/// The viewer's own typing in a layout other than a US keyboard's, and an
-/// input method's composed text, reach the focused field as the characters
-/// they are: a German keyboard's ü, on the key a US keyboard has [ on, is
-/// pasted and its release sends nothing; 東京 from a Chinese input method
-/// is pasted. Planted defects this catches: the key's US character typed
-/// instead, or the composed text refused. A stub emulator and a viewer,
-/// milliseconds.
+/// The viewer's own typing in a layout other than a US keyboard's, and an input
+/// method's composed text, reach the focused field as the characters they are.
+///
+/// A German keyboard's ü, on the key a US keyboard has [ on, is pasted and its
+/// release sends nothing. 東京 from a Chinese input method is pasted.
+///
+/// Planted defects this catches:
+///
+/// - the key's US character typed instead;
+/// - the composed text refused.
+///
+/// Cost: a stub emulator and a viewer, milliseconds.
 #[tokio::test]
 async fn the_viewers_typing_in_any_layout_or_input_method_reaches_the_field() {
     let (mobile, sdk) = start(true).await;
@@ -1309,12 +1365,14 @@ async fn the_viewers_typing_in_any_layout_or_input_method_reaches_the_field() {
     assert_eq!(since(&sdk, from), expected);
 }
 
-/// A finger or a key the driver holds down is released when what holds it
-/// fails or is cancelled: Shift after a key the emulator refuses, the
-/// finger after a swipe's refused move, and the finger of a long press
-/// the agent interrupts. Planted defect this catches: the release sent
-/// only on success, which leaves Shift or a finger down for every later
-/// input. A stub emulator, milliseconds.
+/// A finger or a key the driver holds down is released when what holds it fails
+/// or is cancelled: Shift after a key the emulator refuses, the finger after a
+/// swipe's refused move, and the finger of a long press the agent interrupts.
+///
+/// Planted defect this catches: the release sent only on success, which leaves
+/// Shift or a finger down for every later input.
+///
+/// Cost: a stub emulator, milliseconds.
 #[tokio::test]
 async fn a_held_finger_or_key_is_released_when_its_command_fails_or_is_cancelled() {
     let (mobile, sdk) = start(true).await;
@@ -1355,13 +1413,19 @@ async fn inspecting_while_another_client_holds_the_ui_automation_says_so() {
     assert!(since(&sdk, from).iter().all(|line| !line.starts_with("touch")), "{:?}", since(&sdk, from));
 }
 
-/// An element is tapped at its own place on the glass in every
-/// orientation, whether the app turns with the device or stays portrait:
-/// Sign Up's centre, display pixel 300,1050, is that panel pixel on a
-/// portrait display, and turned with the display otherwise; the emulator's
-/// touches take the panel's own pixels. Planted defect this catches: a
-/// turn taken the wrong way round for one orientation, or a touch sent in
-/// display pixels. A stub emulator, under a second.
+/// An element is tapped at its own place on the glass in every orientation,
+/// whether the app turns with the device or stays portrait.
+///
+/// Sign Up's centre, display pixel 300,1050, is that panel pixel on a portrait
+/// display, and turned with the display otherwise. The emulator's touches take
+/// the panel's own pixels.
+///
+/// Planted defects this catches:
+///
+/// - a turn taken the wrong way round for one orientation;
+/// - a touch sent in display pixels.
+///
+/// Cost: a stub emulator, under a second.
 #[tokio::test]
 async fn an_element_is_tapped_at_its_place_on_the_glass_in_every_orientation() {
     let (mobile, sdk) = start(true).await;
@@ -1407,12 +1471,17 @@ async fn a_lost_picture_stream_lets_the_helper_go_and_leaves_the_emulator_up() {
     assert!(std::fs::read_to_string(mobile.home().join("mobile/booted.json")).unwrap().contains(AVD));
 }
 
-/// An emulator Demi started is Demi's from the moment its process runs: a
-/// boot that fails, as one that never says where it listens, ends that
-/// process by its id and start and leaves no record; one whose process
-/// does not end stays in the record, to be shut down later. Planted
-/// defects this catches: the record written only once the boot finished,
-/// or a failed launch left running. A stub SDK, milliseconds.
+/// An emulator Demi started is Demi's from the moment its process runs. A boot
+/// that fails, as one that never says where it listens, ends that process by
+/// its id and start and leaves no record. One whose process does not end stays
+/// in the record, to be shut down later.
+///
+/// Planted defects this catches:
+///
+/// - the record written only once the boot finished;
+/// - a failed launch left running.
+///
+/// Cost: a stub SDK, milliseconds.
 #[tokio::test]
 async fn a_failed_boot_ends_the_process_it_started_or_stays_demis() {
     let (mobile, sdk) = start(false).await;
@@ -1437,11 +1506,15 @@ async fn a_failed_boot_ends_the_process_it_started_or_stays_demis() {
 }
 
 /// The end of an emulator's process, which is not this program's child, is
-/// heard as it happens; ending one by its id and start ends it, and leaves
-/// alone another process the id names now. Planted defects this catches:
-/// an end that only a later file change reveals, which never comes, or a
-/// signal sent to whatever process has the id. `sleep` processes, half a
-/// second.
+/// heard as it happens. Ending one by its id and start ends it, and leaves
+/// alone another process the id names now.
+///
+/// Planted defects this catches:
+///
+/// - an end that only a later file change reveals, which never comes;
+/// - a signal sent to whatever process has the id.
+///
+/// Cost: `sleep` processes, half a second.
 #[tokio::test]
 async fn an_emulators_process_is_ended_and_its_end_heard_as_it_happens() {
     let mut brief = tokio::process::Command::new("sleep").arg("0.5").spawn().unwrap();
@@ -1583,12 +1656,15 @@ async fn a_stale_pid_file_stops_only_demis_own_helper() {
     assert!(kill < start, "{commands:?}");
 }
 
-/// While another UI automation client, such as Appium, holds the
-/// emulator's, Demi's helper cannot start, and what needs it fails saying
-/// so: Android refuses a second client rather than handing it over, so
-/// Demi takes the connection back only once the other client let it go.
-/// Planted defect this catches: the helper's start-up failure reported as
-/// a broken helper. A stub adb server, milliseconds.
+/// While another UI automation client, such as Appium, holds the emulator's,
+/// Demi's helper cannot start, and what needs it fails saying so. Android
+/// refuses a second client rather than handing it over, so Demi takes the
+/// connection back only once the other client let it go.
+///
+/// Planted defect this catches: the helper's start-up failure reported as a
+/// broken helper.
+///
+/// Cost: a stub adb server, milliseconds.
 #[tokio::test]
 async fn the_helper_says_when_another_client_holds_the_ui_automation() {
     use demi_mobile::android::{Adb, guest::U2};
@@ -1645,13 +1721,19 @@ async fn an_encoder_that_is_not_ciscos_build_is_refused() {
     assert_eq!(asked[0], asked[1], "the second use asks for the same file again");
 }
 
-/// An emulator's display that turns off, by the panel's Lock here, is told
-/// to the view as Android announces it, and the viewer's Wake turns it on
-/// with the wake key, never the power key, which would turn a lit one off.
-/// Planted defects this catches: Lock sent as the emulator's own Power key,
-/// which an Android 16 guest ignores; a display that went dark with the
-/// view showing its picture as though it were on; and Wake sent as the
-/// power key. A stub emulator, milliseconds.
+/// An emulator's display that turns off, by the panel's Lock here, is told to
+/// the view as Android announces it. The viewer's Wake turns it on with the
+/// wake key, never the power key, which would turn a lit one off.
+///
+/// Planted defects this catches:
+///
+/// - Lock sent as the emulator's own Power key, which an Android 16 guest
+///   ignores;
+/// - a display that went dark with the view showing its picture as though it
+///   were on;
+/// - Wake sent as the power key.
+///
+/// Cost: a stub emulator, milliseconds.
 #[tokio::test]
 async fn the_view_says_when_an_emulators_display_turns_off_and_wake_turns_it_on() {
     let (mobile, sdk) = start(true).await;

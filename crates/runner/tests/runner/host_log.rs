@@ -1,10 +1,12 @@
-//! The Host log (`crates/runner/src/host_log.rs`) as `log_read` answers it: a page
-//! holds what its cursor, limit and source ask for; the numbering carries
-//! across a restart and past a torn line; and long lines fill the newer
-//! file, which then replaces the older one, while a cursor still reads every
-//! line once, a page at a time. The runner's own lines join the log as it
-//! runs, so the tests ask for the lines they wrote into its files before it
-//! started, by source or by cursor.
+//! The Host log (`crates/runner/src/host_log.rs`) as `log_read` answers it:
+//!
+//! - A page holds what its cursor, limit and source ask for.
+//! - The numbering carries across a restart and past a torn line.
+//! - Long lines fill the newer file, which then replaces the older one, while a
+//!   cursor still reads every line once, a page at a time.
+//!
+//! The runner's own lines join the log as it runs, so the tests ask for the
+//! lines they wrote into its files before it started, by source or by cursor.
 
 use std::{collections::BTreeMap, path::Path, time::Duration};
 

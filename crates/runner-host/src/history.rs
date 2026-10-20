@@ -1,9 +1,15 @@
-//! A repository's history, answered in process with gitoxide for the Change view's
-//! Commits mode: the local branches (most recently committed first), a branch's
-//! first-parent log by pages, and one commit's files against its first parent (a
-//! merge compares with its first parent, as GitHub and VS Code show it) with the
-//! branches it is on. A commit is named by an id or an abbreviation of at least 7 hex
-//! digits; one that names two commits is `ambiguous`.
+//! A repository's history, answered in process with gitoxide for the Change
+//! view's Commits mode.
+//!
+//! It answers:
+//!
+//! - the local branches, most recently committed first;
+//! - a branch's first-parent log, by pages;
+//! - one commit's files against its first parent, with the branches it is on. A
+//!   merge compares with its first parent, as GitHub and VS Code show it.
+//!
+//! A commit is named by an id or an abbreviation of at least 7 hex digits; one
+//! that names two commits is `ambiguous`.
 
 use std::{
     cell::RefCell,
@@ -311,11 +317,12 @@ fn commit_file(
     }))
 }
 
-/// The local branches whose history holds `id`, the checked-out one first,
-/// then most recently committed first. Commit times say nothing of
-/// ancestry, as a rebase or a skewed clock shows, so each walk goes until it
-/// finds `id`; one that ends without it has seen only commits that cannot
-/// lead to it, which later walks skip.
+/// The local branches whose history holds `id`, the checked-out one first, then
+/// most recently committed first.
+///
+/// Commit times say nothing of ancestry, as a rebase or a skewed clock shows,
+/// so each walk goes until it finds `id`. A walk that ends without it has seen
+/// only commits that cannot lead to it, which later walks skip.
 fn containing(repo: &gix::Repository, id: ObjectId, interrupt: &AtomicBool) -> Result<Vec<String>, GitError> {
     let current = current_branch(repo)?;
     let unrelated: Rc<RefCell<HashSet<ObjectId>>> = Rc::default();

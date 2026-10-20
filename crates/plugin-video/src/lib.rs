@@ -1,8 +1,8 @@
-//! The `video` plugin: the
-//! `demi video` group, which asks the port's Providers service for one
-//! video's job, says on stderr how the job moves, checks the MP4 that
-//! comes back, writes it to stdout, and says what came back and what the
-//! result did not honour.
+//! The `video` plugin: the `demi video` group.
+//!
+//! The group asks the port's Providers service for one video's job, says on
+//! stderr how the job moves, checks the MP4 that comes back, writes it to
+//! stdout, and says what came back and what the result did not honour.
 
 mod commands;
 mod video;

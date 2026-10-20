@@ -9,7 +9,7 @@
 //! - Linux runs without the sandbox: it needs unprivileged user namespaces,
 //!   which Ubuntu 23.10 and later restrict, and Chrome refuses it as root. A
 //!   compromised renderer then has the rights of the runner's user, which the
-//!   agent already has through its shell; a Cloud runs inside gVisor besides.
+//!   agent already has through its shell. A Cloud runs inside gVisor besides.
 //! - The browser's toolbar and address-bar WebUI are disabled: they are not
 //!   agent pages and must not consume renderers.
 //! - Time zone, languages and color scheme are the user's, taken from the
@@ -102,12 +102,14 @@ impl Runtime {
     }
 }
 
-/// Chrome's switches beside the ones the driver owns (profile, debugging
-/// port, extension, sandbox): chromiumoxide's defaults without
-/// `enable-automation` and `lang`, headless without hidden scrollbars, in
-/// the user's color scheme. With the runtime, a desktop Host's audio
-/// plugins would load beside its older libraries, and the live view
-/// carries no sound: Chrome has no audio output.
+/// Chrome's switches beside the ones the driver owns (profile, debugging port,
+/// extension, sandbox).
+///
+/// They are chromiumoxide's defaults without `enable-automation` and `lang`,
+/// headless without hidden scrollbars, in the user's color scheme.
+///
+/// With the runtime, a desktop Host's audio plugins would load beside its older
+/// libraries, and the live view carries no sound: Chrome has no audio output.
 fn switches(
     version: &str,
     color_scheme: ColorScheme,
@@ -170,13 +172,15 @@ fn switches(
     switches
 }
 
-/// Blink's settings for every page and worker, which Chrome takes from its
-/// last `blink-settings` switch only. The preferred color scheme is the
-/// user's, whatever the Host's appearance: `prefers-color-scheme` follows
-/// it, and Chrome paints an empty page in it, `#121212` in the dark one
-/// (measured with the pinned Chrome on a dark Mac told to be light, and the
-/// other way round). A headless Linux browser also reports no hover and a
-/// coarse pointer, and pages would take their touch styles.
+/// Blink's settings for every page and worker, which Chrome takes from its last
+/// `blink-settings` switch only.
+///
+/// - The preferred color scheme is the user's, whatever the Host's appearance.
+///   `prefers-color-scheme` follows it, and Chrome paints an empty page in it,
+///   `#121212` in the dark one (measured with the pinned Chrome on a dark Mac
+///   told to be light, and the other way round).
+/// - A headless Linux browser also reports no hover and a coarse pointer, and
+///   pages would take their touch styles.
 fn blink_settings(color_scheme: ColorScheme) -> String {
     // Blink's `PreferredColorScheme`: 0 is dark, 1 light.
     let scheme = match color_scheme {
@@ -215,12 +219,14 @@ fn desktop_user_agent(version: &str) -> String {
 }
 
 /// Configures Chrome's switches, the user's locale and color scheme, and the
-/// capture extension
-/// on a profile about to be launched; the extension dials `capture` and
-/// encodes with the live protocol's codec. With `runtime`, which a Linux
-/// Host starts Chrome with, Chrome finds the runtime through its own
-/// environment and runs without its sandbox: the sandbox needs user
-/// namespaces, which Ubuntu restricts, and Chrome refuses it as root.
+/// capture extension on a profile about to be launched.
+///
+/// The extension dials `capture` and encodes with the live protocol's codec.
+///
+/// With `runtime`, which a Linux Host starts Chrome with, Chrome finds the
+/// runtime through its own environment and runs without its sandbox. The
+/// sandbox needs user namespaces, which Ubuntu restricts, and Chrome refuses it
+/// as root.
 pub async fn configure(
     builder: BrowserConfigBuilder,
     profile: &Path,

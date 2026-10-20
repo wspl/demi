@@ -273,11 +273,12 @@ async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
     }
 }
 
-/// The file beside the socket that the runner keeps locked while it runs. A
-/// refused connection looks the same whether the runner is busy or gone, so a
-/// client that is refused checks the lock and waits while it is held, and
-/// fails at once otherwise; the system releases the lock when the runner
-/// exits, even by crashing.
+/// The file beside the socket that the runner keeps locked while it runs.
+///
+/// A refused connection looks the same whether the runner is busy or gone. A
+/// client that is refused therefore checks the lock: it waits while the lock is
+/// held, and fails at once otherwise. The system releases the lock when the
+/// runner exits, even by crashing.
 #[cfg(unix)]
 pub const ALIVE: &str = "ipc.alive";
 

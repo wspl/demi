@@ -1,14 +1,21 @@
 //! The `demi-browser` tests that read the whole process table of this test
-//! process, in its own binary: each counts every Chrome the test process
-//! started and every descendant left behind, so a Chrome another test of
-//! the same process runs at the same time reads as theirs. In the `browser`
-//! binary, whose tests run in parallel, they failed whenever their neighbours
-//! had a browser open. Here they also take turns (`ONE_AT_A_TIME`).
+//! process, in their own binary.
+//!
+//! Each counts every Chrome the test process started and every descendant left
+//! behind, so a Chrome another test of the same process runs at the same time
+//! reads as theirs. In the `browser` binary, whose tests run in parallel, they
+//! failed whenever their neighbours had a browser open. Here they also take
+//! turns (`ONE_AT_A_TIME`).
+//!
 //! They start the pinned Chrome for Testing and are ignored unless asked for:
-//! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
-//! demi-runner/test-fixtures --test browser-processes -- --include-ignored`,
-//! on Linux with `DEMI_TEST_CHROME_RUNTIME=<directory>` too, the pinned
-//! Chrome runtime unpacked.
+//!
+//! ```text
+//! DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
+//! demi-runner/test-fixtures --test browser-processes -- --include-ignored
+//! ```
+//!
+//! On Linux also set `DEMI_TEST_CHROME_RUNTIME=<directory>`, the pinned Chrome
+//! runtime unpacked.
 #![cfg(unix)]
 // The service is `Send` and `Sync` deeper than the trait solver's default 128
 // steps, as in the library (`src/lib.rs`).

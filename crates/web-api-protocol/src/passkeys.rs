@@ -2,9 +2,9 @@
 //! Settings › Account adds to, renames and removes from.
 //!
 //! WebAuthn's options and the browser's answers are JSON whose shape the
-//! WebAuthn standard owns: the backend decodes and encodes them as
-//! `webauthn-rs` types, and their schemas, which the web app's types come
-//! from, mirror the standard's JSON dictionaries, so the page hands them to
+//! WebAuthn standard owns. The backend decodes and encodes them as
+//! `webauthn-rs` types. Their schemas, which the web app's types come from,
+//! mirror the standard's JSON dictionaries, so the page hands them to
 //! `PublicKeyCredential.parseRequestOptionsFromJSON` and takes them from
 //! `PublicKeyCredential.toJSON()` as they are.
 

@@ -1,6 +1,7 @@
 //! The way to a tab's debugging owner: the owner of the debugging connections
-//! of `cdp` commands, one per calling agent, and of the events they record. The
-//! first `cdp` command on the tab starts the owner; it ends with the tab.
+//! of `cdp` commands, one per calling agent, and of the events they record.
+//!
+//! The first `cdp` command on the tab starts the owner; it ends with the tab.
 //! Closing the tab first releases every connection, and a timeout's diagnostics
 //! name the other agents whose connections are open.
 

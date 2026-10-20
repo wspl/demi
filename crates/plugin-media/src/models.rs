@@ -1,8 +1,11 @@
-//! The `models` command of a media group: the models of the plugin's kind as a
-//! table, newest first, or one model as labelled lines with its prices and its
-//! entries as tables under their keys, and all of it as JSON with `--json`
-//! (`crates/shared-types/src/output.rs`). Notes, such as an entry whose models could
-//! not be listed, go to stderr.
+//! The `models` command of a media group (`crates/shared-types/src/output.rs`).
+//!
+//! - The models of the plugin's kind print as a table, newest first.
+//! - One model prints as labelled lines, with its prices and its entries as
+//!   tables under their keys.
+//! - `--json` prints all of it as JSON.
+//!
+//! Notes, such as an entry whose models could not be listed, go to stderr.
 
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{EntryStatus, MediaModel, PluginError, PluginPort};

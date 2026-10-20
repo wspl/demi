@@ -1,9 +1,12 @@
-//! The `file-browser` plugin: its identity,
-//! its page package, and the `attachment` panel kind its page shows. Its
-//! page, `@demicodes/plugin-file-browser`, shows the work panel's File view
-//! over the product's file routes (`crates/xtask/src/contracts/registry.rs`), and an
-//! attachment's stored copy in a tab of the `attachment` kind, which the
-//! page opens for an attachment block's card.
+//! The `file-browser` plugin: its identity, its page package, and the
+//! `attachment` panel kind its page shows.
+//!
+//! Its page, `@demicodes/plugin-file-browser`, shows:
+//!
+//! - the work panel's File view over the product's file routes
+//!   (`crates/xtask/src/contracts/registry.rs`);
+//! - an attachment's stored copy in a tab of the `attachment` kind, which the
+//!   page opens for an attachment block's card.
 
 use std::rc::Rc;
 

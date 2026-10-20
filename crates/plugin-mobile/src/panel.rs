@@ -1,10 +1,14 @@
 //! The `mobile` kind's tabs on the backend (`crates/plugin-mobile/src/lib.rs`):
-//! one tab for each device the conversation has open on its own Host, added
-//! when the agent opens it and removed when it closes, is lost or goes with
-//! the package's state on the Host; closing a tab closes its device, as
-//! `demi mobile close` does. A device the agent opens on an attached Host
-//! has no tab: the panel shows the conversation's Host's devices alone. One
-//! conversation's work runs one piece at a time.
+//! one tab for each device the conversation has open on its own Host.
+//!
+//! - A tab is added when the agent opens the device.
+//! - A tab is removed when the device closes, is lost, or goes with the
+//!   package's state on the Host.
+//! - Closing a tab closes its device, as `demi mobile close` does.
+//! - A device the agent opens on an attached Host has no tab: the panel shows
+//!   the conversation's Host's devices alone.
+//!
+//! One conversation's work runs one piece at a time.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

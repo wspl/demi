@@ -1,19 +1,30 @@
-//! The `demi web` group: `search` runs in the plugin, against Exa; `fetch`
-//! runs `fetch.get` of the `demi.fetch` package on the Host, its arguments
-//! declared from the `command-package-fetch-protocol` types.
+//! The `demi web` group.
 //!
-//! The two run in different places on purpose. `search` calls a search vendor
-//! with the user's account, whose token never leaves the backend. `fetch`
-//! reads a page as `curl` on the Host would, through the Host's network,
-//! proxy and VPN, reaching what the Host reaches, `localhost` and the intranet
-//! included, and never through the backend, which would otherwise fetch
-//! addresses for anyone who asks. One group holds both, bound leaf by leaf,
-//! so the model finds them as one capability; a deployment without the
-//! `demi.fetch` package leaves the whole group out. Neither asks the user for
-//! permission: a search spends the user's own search account or the anonymous
-//! allowance, and a fetch does what the agent's `curl` already may. No small
-//! model reads a page first: the agent reads what it fetched and decides what
-//! matters, so nothing is lost on the way.
+//! - `search` runs in the plugin, against Exa.
+//! - `fetch` runs `fetch.get` of the `demi.fetch` package on the Host, its
+//!   arguments declared from the `command-package-fetch-protocol` types.
+//!
+//! # Why they run in different places
+//!
+//! - `search` calls a search vendor with the user's account, whose token never
+//!   leaves the backend.
+//! - `fetch` reads a page as `curl` on the Host would, through the Host's
+//!   network, proxy and VPN, reaching what the Host reaches, `localhost` and
+//!   the intranet included. It never goes through the backend, which would
+//!   otherwise fetch addresses for anyone who asks.
+//!
+//! One group holds both, bound leaf by leaf, so the model finds them as one
+//! capability. A deployment without the `demi.fetch` package leaves the whole
+//! group out.
+//!
+//! # Permissions and reading
+//!
+//! Neither asks the user for permission: a search spends the user's own search
+//! account or the anonymous allowance, and a fetch does what the agent's `curl`
+//! already may.
+//!
+//! No small model reads a page first: the agent reads what it fetched and
+//! decides what matters, so nothing is lost on the way.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_fetch_protocol::{

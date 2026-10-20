@@ -1,10 +1,11 @@
 //! The body of every JSON error, and the one list of the codes it carries.
 //!
 //! A situation has one code on every route: an archived conversation that
-//! refuses an operation always answers `conversation_archived`. A `message` is
-//! for the log and the developer; the page words what the user sees from the
-//! `code` and its `params`, so no server path or operator command reaches the
-//! user.
+//! refuses an operation always answers `conversation_archived`.
+//!
+//! A `message` is for the log and the developer. The page words what the user
+//! sees from the `code` and its `params`, so no server path or operator command
+//! reaches the user.
 
 use std::collections::BTreeMap;
 

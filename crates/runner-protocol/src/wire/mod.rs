@@ -1,8 +1,10 @@
 //! The runner wire: MessagePack frames over the runner's WebSocket, which the
-//! runner opens outbound to the backend. Both ends decode every message into these
-//! types and validate it at entry ([`decode`]); a message that fails closes the
-//! connection, since its sender broke the protocol, and the closing side names the
-//! message's type and the decoding error in the close frame's reason ([`refusal`]).
+//! runner opens outbound to the backend.
+//!
+//! Both ends decode every message into these types and validate it at entry
+//! ([`decode`]). A message that fails closes the connection, since its sender
+//! broke the protocol, and the closing side names the message's type and the
+//! decoding error in the close frame's reason ([`refusal`]).
 //!
 //! ```text
 //!   runner                                              backend
@@ -13,31 +15,47 @@
 //!     | <------------------------- hello_ok or hello_error    |
 //! ```
 //!
-//! A hello for a device that already has a connection is more often the same runner
-//! coming back than a second one, since a network that drops a connection without
-//! closing it leaves the backend holding a socket nobody answers. So the backend
-//! pings the held connection and waits up to 5 seconds: one that answers keeps the
-//! device and the new hello is refused with `already_connected`; one that does not
-//! is closed and the new hello answered (a connection whose liveness checks are
-//! paused, as a Cloud's are while it is checkpointed, counts as answering). A laptop
-//! whose Wi-Fi blinked reconnects within about 5 seconds instead of being refused
-//! until the heartbeat gives the old socket up.
+//! # A second hello
 //!
-//! A connection's end ends everything it carries. The backend's work for it, such as
-//! an `rpc` handler committing its change, gets [`END_GRACE`] to finish and the rest
-//! is aborted, and only then is the device offline and a new hello for it answered:
-//! otherwise a `demi browser` call whose handler waits for the very device its
+//! A hello for a device that already has a connection is more often the same
+//! runner coming back than a second one, since a network that drops a
+//! connection without closing it leaves the backend holding a socket nobody
+//! answers. So the backend pings the held connection and waits up to 5 seconds:
+//!
+//! - A connection that answers keeps the device, and the new hello is refused
+//!   with `already_connected`. A connection whose liveness checks are paused,
+//!   as a Cloud's are while it is checkpointed, counts as answering.
+//! - A connection that does not answer is closed, and the new hello is
+//!   answered.
+//!
+//! A laptop whose Wi-Fi blinked reconnects within about 5 seconds instead of
+//! being refused until the heartbeat gives the old socket up.
+//!
+//! # A connection's end
+//!
+//! A connection's end ends everything it carries. The backend's work for it,
+//! such as an `rpc` handler committing its change, gets [`END_GRACE`] to finish
+//! and the rest is aborted. Only then is the device offline and a new hello for
+//! it answered.
+//!
+//! Otherwise a `demi browser` call whose handler waits for the very device its
 //! connection served would keep that connection from ending, and every new
 //! connection of the device would wait behind it until the backend restarted.
 //!
+//! # Message size
+//!
 //! A message is at most [`MAX_MESSAGE_BYTES`], eight times the largest regular
-//! message (a 5,000-file working tree list, a shell command as long as a model can
-//! write, about 0.5 MiB each). One connection carries everything, so a message in
-//! flight holds up the rest: at 4 MiB it still leaves within the 30-second write
-//! deadline on an uplink of a little over 1 Mbit/s, and a full inbound queue of
-//! eight stays within 32 MiB. Bulk bytes therefore never travel in a message: file
-//! contents and command IO go through pipes ([`PipeFrame`]). A full queue never
-//! closes the connection, only a message that breaks the protocol does.
+//! message (a 5,000-file working tree list, a shell command as long as a model
+//! can write, about 0.5 MiB each).
+//!
+//! One connection carries everything, so a message in flight holds up the rest.
+//! At 4 MiB a message still leaves within the 30-second write deadline on an
+//! uplink of a little over 1 Mbit/s, and a full inbound queue of eight stays
+//! within 32 MiB.
+//!
+//! Bulk bytes therefore never travel in a message: file contents and command IO
+//! go through pipes ([`PipeFrame`]). A full queue never closes the connection,
+//! only a message that breaks the protocol does.
 
 mod encoding;
 mod kept;

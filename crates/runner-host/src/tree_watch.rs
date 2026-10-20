@@ -1,33 +1,42 @@
-//! The platform's file system watches (`crates/runner-host/src/subscriptions.rs`, `crates/runner-host/src/git.rs`), each numbering the events it receives as it receives
-//! them (`crate::numbers`); reading a file changes nothing. A watch reaches
-//! one of three ways:
+//! The platform's file system watches
+//! (`crates/runner-host/src/subscriptions.rs`,
+//! `crates/runner-host/src/git.rs`), each numbering the events it receives as
+//! it receives them (`crate::numbers`). Reading a file changes nothing.
 //!
-//! - **A tree**, everything below each of its trees. On macOS it is one
-//!   FSEvents stream whatever the trees' size, which leaves out up to eight
-//!   large folders git ignores: notify's recommended backend there is
-//!   kqueue, which the vendored `tail` selects and which holds a descriptor
-//!   for every file of a tree, more than a repository and the usual limit of
-//!   256 allow; with kqueue selected, notify builds no FSEvents watcher. On
-//!   Linux it is inotify on each folder git does not ignore; elsewhere
-//!   notify's recommended backend.
-//! - **A node**, one file or folder alone: on macOS a kqueue of its own,
-//!   watched again under its name when a rename replaces it; elsewhere
+//! A watch reaches one of three ways:
+//!
+//! - **A tree**: everything below each of its trees.
+//!   - On macOS it is one FSEvents stream whatever the trees' size, which
+//! leaves out up to eight large folders git ignores. notify's recommended
+//! backend there is kqueue, which the vendored `tail` selects and which holds a
+//! descriptor for every file of a tree, more than a repository and the usual
+//! limit of 256 allow. With kqueue selected, notify builds no FSEvents watcher.
+//!   - On Linux it is inotify on each folder git does not ignore.
+//!   - Elsewhere it is notify's recommended backend.
+//! - **A node**: one file or folder alone. On macOS it is a kqueue of its own,
+//!   watched again under its name when a rename replaces it. Elsewhere it is
 //!   notify on its folder, or on the folder of a file.
-//! - **Entries**, a folder and its entries' contents: on macOS an FSEvents
-//!   stream over the folder, never over its parent's tree; elsewhere notify
-//!   on the folder.
+//! - **Entries**: a folder and its entries' contents. On macOS it is an
+//!   FSEvents stream over the folder, never over its parent's tree. Elsewhere
+//!   it is notify on the folder.
 //!
 //! A tree in a repository says of each path whether git ignores it, by the
 //! repository's rules (`crate::ignore`).
 //!
-//! On macOS a file or folder outside the working tree is watched alone with kqueue,
-//! never through a stream over its parent's whole tree, at most `MAX_SINGLE_WATCHES`
-//! of them (a `folder_details` subscription there is an FSEvents stream over that
-//! folder alone, since kqueue does not see its entries' contents change). kqueue
-//! sees its own node removed or renamed, not a folder above it, so outside the
-//! working tree a rename of a folder above a subscription goes unseen until the node
-//! itself changes. FSEvents can take seconds to start a stream when the system is
-//! busy, so `fs_subscribe` does not wait for it: `live`, with its `since`, says when
+//! # Outside the working tree
+//!
+//! On macOS a file or folder outside the working tree is watched alone with
+//! kqueue, never through a stream over its parent's whole tree, at most
+//! `MAX_SINGLE_WATCHES` of them. A `folder_details` subscription there is an
+//! FSEvents stream over that folder alone, since kqueue does not see its
+//! entries' contents change.
+//!
+//! kqueue sees its own node removed or renamed, not a folder above it. Outside
+//! the working tree, a rename of a folder above a subscription therefore goes
+//! unseen until the node itself changes.
+//!
+//! FSEvents can take seconds to start a stream when the system is busy, so
+//! `fs_subscribe` does not wait for it: `live`, with its `since`, says when
 //! changes from then on are covered.
 
 use std::path::{Path, PathBuf};
@@ -279,13 +288,15 @@ mod platform {
         _folders: Option<FolderAdder>,
     }
 
-    /// Adds the watches of the folders a tree gains, off notify's own
-    /// thread, which would wait for itself. The thread receives an explicit
-    /// stop message: it must not wait for all folder-event senders to
-    /// disappear, since the watcher it owns owns one of those senders. Its
-    /// queue is bounded; if it fills, the watch reports failure rather than
-    /// silently missing new folders. Failure to start the thread is a watch
-    /// failure too.
+    /// Adds the watches of the folders a tree gains, off notify's own thread,
+    /// which would wait for itself.
+    ///
+    /// - The thread receives an explicit stop message: it must not wait for all
+    ///   folder-event senders to disappear, since the watcher it owns owns one
+    ///   of those senders.
+    /// - Its queue is bounded. If it fills, the watch reports failure rather
+    ///   than silently missing new folders.
+    /// - Failure to start the thread is a watch failure too.
     struct FolderAdder {
         added: mpsc::SyncSender<FolderChange>,
         thread: Option<std::thread::JoinHandle<()>>,
@@ -527,12 +538,14 @@ fn from_flags(path: PathBuf, flags: fsevent_sys::FSEventStreamEventFlags) -> Raw
 const ARRIVALS_KEPT: usize = 65_536;
 
 /// The file each path flagged as come, gone or renamed was, by device and
-/// inode, as one stream last saw it. FSEvents keeps a file's creation in
-/// its flags for as long as writes to it come without a pause, so a log a
-/// build creates and then appends to says on every write that it came
-/// (measured: 120 of 120 writes, 250 ms apart, over 30 s). A path still
-/// holding the file last seen there has not come, gone or been renamed
-/// since, so its folder's listing is not read again for a write in place.
+/// inode, as one stream last saw it.
+///
+/// FSEvents keeps a file's creation in its flags for as long as writes to it
+/// come without a pause, so a log a build creates and then appends to says on
+/// every write that it came (measured: 120 of 120 writes, 250 ms apart, over 30
+/// s). A path still holding the file last seen there has not come, gone or been
+/// renamed since, so its folder's listing is not read again for a write in
+/// place.
 #[cfg(target_os = "macos")]
 #[derive(Default)]
 struct Arrivals {

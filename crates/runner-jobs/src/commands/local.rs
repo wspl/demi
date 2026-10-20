@@ -167,12 +167,14 @@ impl Listener {
         #[cfg(windows)]
         {
             let endpoint = format!(r"\\.\pipe\demi-{}", uuid::Uuid::new_v4().simple());
-            // Only the account the runner runs as may connect, from any of
-            // its sessions: an elevated one, such as an SSH logon of an
-            // administrator, and a desktop one alike. Remote clients are
-            // rejected, and first-instance creation prevents taking over an
-            // existing pipe. Invocation context secrets are checked by the
-            // command dispatcher independently of transport access.
+            // Only the account the runner runs as may connect, from any of its
+            // sessions: an elevated one, such as an SSH logon of an
+            // administrator, and a desktop one alike.
+            //
+            // Remote clients are rejected, and first-instance creation prevents
+            // taking over an existing pipe. Invocation context secrets are
+            // checked by the command dispatcher independently of transport
+            // access.
             let access = pipe_access::account_only()?;
             let socket = pipe_access::create(
                 tokio::net::windows::named_pipe::ServerOptions::new()
@@ -225,12 +227,13 @@ impl Listener {
     }
 }
 
-/// Who may open the local endpoint's pipe on Windows: the account the
-/// runner runs as, whatever session it opens it from, and no one else.
-/// Without it the pipe took the default access of the runner's token, which
-/// for an administrator's elevated session, such as an SSH logon, grants the
-/// Administrators group rather than the account: `run.ps1 uninstall` from a
-/// desktop window, which holds the group only to deny, failed with "Access
+/// Who may open the local endpoint's pipe on Windows: the account the runner
+/// runs as, whatever session it opens it from, and no one else.
+///
+/// Without it the pipe took the default access of the runner's token. For an
+/// administrator's elevated session, such as an SSH logon, that grants the
+/// Administrators group rather than the account. `run.ps1 uninstall` from a
+/// desktop window, which holds the group only to deny, then failed with "Access
 /// is denied. (os error 5)" on a runner started over SSH.
 #[cfg(windows)]
 mod pipe_access {

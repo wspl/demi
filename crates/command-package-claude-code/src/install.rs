@@ -1,8 +1,9 @@
 //! The Claude Code CLI on the machine that runs it
-//! (`crates/command-package-claude-code/src/lib.rs`): the release's executable
-//! for this machine, which the runner
-//! installs as the package's artifact `Claude Code`, and the versions of it
-//! the runner has. Nothing here downloads or looks for the CLI.
+//! (`crates/command-package-claude-code/src/lib.rs`).
+//!
+//! It covers the release's executable for this machine, which the runner
+//! installs as the package's artifact `Claude Code`, and the versions of it the
+//! runner has. Nothing here downloads or looks for the CLI.
 
 use demi_command_package_claude_code_protocol::{ErrorCode, Installed, Release, Status};
 use demi_command_protocol::{ArtifactForm, ArtifactInstall};

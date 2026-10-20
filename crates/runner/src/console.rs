@@ -1,24 +1,31 @@
-//! The runner's console: its standard output and error, where it writes the lines
-//! for the person at the terminal, among them the pairing code and result the
-//! installers read (`demi_runner_protocol::console`). A runner started in the
-//! background writes it to its installation's log itself (`runner.log`, rotated at
-//! 10 MiB to `runner.log.1`) rather than the installer redirecting it, so what a
-//! runner printed before a crash survives and a person who closed the terminal
-//! early finds the lines there. The log holds pairing codes, so it is private to its
-//! owner, and the Host log never holds one.
+//! The runner's console: its standard output and error, where it writes the
+//! lines for the person at the terminal, among them the pairing code and result
+//! the installers read (`demi_runner_protocol::console`).
+//!
+//! A runner started in the background writes it to its installation's log
+//! itself (`runner.log`, rotated at 10 MiB to `runner.log.1`) rather than the
+//! installer redirecting it. What a runner printed before a crash survives, and
+//! a person who closed the terminal early finds the lines there. The log holds
+//! pairing codes, so it is private to its owner, and the Host log never holds
+//! one.
+//!
+//! # Leaving the terminal
 //!
 //! A runner started with `run --log` leaves its terminal first of all
-//! ([`leave_terminal`]): a session of its own has no controlling terminal, so
-//! Ctrl-C at the installer or a closed SSH connection never reaches the runner or
-//! its jobs. A process that leads its process group cannot make a session; it asks
-//! whether it still has a terminal (opening `/dev/tty` fails with `ENXIO` only when
-//! it has none) and if so starts itself again in a session of its own, made between
-//! fork and exec so that nothing of the installation is open yet, and exits 0.
+//! ([`leave_terminal`]). A session of its own has no controlling terminal, so
+//! Ctrl-C at the installer or a closed SSH connection never reaches the runner
+//! or its jobs.
+//!
+//! A process that leads its process group cannot make a session. It asks
+//! whether it still has a terminal (opening `/dev/tty` fails with `ENXIO` only
+//! when it has none) and, if so, starts itself again in a session of its own,
+//! made between fork and exec so that nothing of the installation is open yet,
+//! and exits 0.
 //!
 //! The installer leaves this to the runner and never turns on the shell's job
-//! control (`set -m`): with `curl … | sh`, a shell turning it off again hands the
-//! terminal back to curl's already ended process group, and dash fails with exit
-//! code 2 after the runner has started.
+//! control (`set -m`). With `curl … | sh`, a shell turning it off again hands
+//! the terminal back to curl's already ended process group, and dash fails with
+//! exit code 2 after the runner has started.
 
 use std::{
     fmt::Display,

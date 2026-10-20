@@ -10,6 +10,8 @@
 //!   downloads/  uploads/
 //! ```
 //!
+//! # Directories
+//!
 //! - The runtime directory is Chrome's temporary directory. Its singleton
 //!   socket's path has a limit (108 bytes on Linux), so it lives in the short
 //!   `/tmp`, not in the service's `TMPDIR`, which can be any length.
@@ -24,17 +26,25 @@
 //!   reports. Linux crash reports follow the profile through
 //!   `CHROME_CONFIG_HOME`.
 //!
+//! # Cleanup after a crash
+//!
 //! No Chrome outlives its service. When a service ends without retiring (crash,
-//! kill, missed shutdown deadline), three rules cover it: the lock file the
-//! operating system releases whenever the service ends; on Linux the
-//! parent-death signal (`driver::process`); and a sweep at the next start,
-//! limited to its own user's directories. The sweep first takes the lock of
-//! each runtime directory: one it can take belongs to no running service, so
-//! its marked processes, profile and directory are removed; a held one belongs
-//! to another service (an upgrade's previous release) and is never touched.
-//! Then it removes profiles whose runtime directory is gone. A lock file takes
-//! its name only once it is held, so a sweep in another service finds either no
-//! lock or a held one.
+//! kill, missed shutdown deadline), three rules cover it:
+//!
+//! 1. The lock file, which the operating system releases whenever the service
+//!    ends.
+//! 2. On Linux, the parent-death signal (`driver::process`).
+//! 3. A sweep at the next start, limited to its own user's directories.
+//!
+//! The sweep works as follows:
+//!
+//! - It first takes the lock of each runtime directory. One it can take belongs
+//!   to no running service, so its marked processes, profile and directory are
+//!   removed. A held one belongs to another service (an upgrade's previous
+//!   release) and is never touched.
+//! - Then it removes profiles whose runtime directory is gone.
+//! - A lock file takes its name only once it is held, so a sweep in another
+//!   service finds either no lock or a held one.
 
 
 use std::{
@@ -189,12 +199,14 @@ pub struct DirectoryBases {
 }
 
 impl DirectoryBases {
-    /// This Host's. On Unix the runtime directories go in `/tmp`, whatever
-    /// the service's own temporary directory is, and the profiles in the
-    /// service's `TMPDIR` when it names a directory, otherwise in `/var/tmp`,
-    /// which is on disk on Linux, macOS and the Cloud. On Windows both are
-    /// the system's temporary directory, where one directory holds a whole
-    /// environment.
+    /// This Host's directory bases.
+    ///
+    /// - On Unix the runtime directories go in `/tmp`, whatever the service's
+    ///   own temporary directory is. The profiles go in the service's `TMPDIR`
+    ///   when it names a directory, otherwise in `/var/tmp`, which is on disk
+    ///   on Linux, macOS and the Cloud.
+    /// - On Windows both are the system's temporary directory, where one
+    ///   directory holds a whole environment.
     pub fn host() -> Self {
         if cfg!(unix) {
             let profiles = std::env::var_os("TMPDIR")
@@ -216,11 +228,13 @@ impl DirectoryBases {
 }
 
 /// One environment's directories, removed when dropped until
-/// [`Self::keep_until_retired`]: the runtime directory, Chrome's temporary
-/// directory, which holds the environment's lock and on Unix a link to the
-/// profile; and on Unix the profile, a directory of its own with Chrome's
-/// user data, the downloads and the uploads. On Windows the runtime
-/// directory is the profile.
+/// [`Self::keep_until_retired`].
+///
+/// - The runtime directory is Chrome's temporary directory. It holds the
+///   environment's lock and, on Unix, a link to the profile.
+/// - On Unix the profile is a directory of its own with Chrome's user data, the
+///   downloads and the uploads.
+/// - On Windows the runtime directory is the profile.
 struct EnvironmentDirectories {
     runtime: tempfile::TempDir,
     profile: Option<tempfile::TempDir>,
@@ -229,13 +243,16 @@ struct EnvironmentDirectories {
 }
 
 impl EnvironmentDirectories {
-    /// Makes an environment's directories in `bases`, each readable only by
-    /// its user, since every user shares the bases on Unix. The runtime
-    /// directory comes first with its lock held, whose file takes the name
-    /// the sweep opens only once it is held, so that a sweep running
-    /// meanwhile, in another service of the same user, leaves it alone. On
-    /// Unix the link comes next, then the profile it names, so that a
-    /// running environment's profile always has its runtime directory.
+    /// Makes an environment's directories in `bases`, each readable only by its
+    /// user, since every user shares the bases on Unix.
+    ///
+    /// 1. The runtime directory comes first with its lock held, whose file
+    ///    takes the name the sweep opens only once it is held, so that a sweep
+    ///    running meanwhile, in another service of the same user, leaves it
+    ///    alone.
+    /// 2. On Unix the link comes next.
+    /// 3. Then comes the profile the link names, so that a running
+    ///    environment's profile always has its runtime directory.
     fn create(bases: &DirectoryBases) -> Result<Self> {
         let runtime = private_directory(&bases.runtime, RUNTIME_PREFIX, 6)?;
         let staged = runtime.path().join(STAGED_LOCK);
@@ -1218,10 +1235,13 @@ mod tests {
 
     /// Another service of the same user may sweep at any moment, also while
     /// this one makes an environment's directories, and takes none: a new
-    /// environment's lock is held before the sweep can find it. Three sweeps
-    /// race the making of 4,000 environments; with the lock file named
-    /// before it was held, they took one in each of 20 runs, and with only
-    /// one sweep and 2,000 environments in 13 of 20. About 0.4 s.
+    /// environment's lock is held before the sweep can find it.
+    ///
+    /// Three sweeps race the making of 4,000 environments. With the lock file
+    /// named before it was held, they took one in each of 20 runs, and with
+    /// only one sweep and 2,000 environments in 13 of 20.
+    ///
+    /// Cost: about 0.4 s.
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn a_sweep_takes_no_environment_being_made() {
         let temporary = tempfile::tempdir().unwrap();

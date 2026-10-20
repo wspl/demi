@@ -199,11 +199,12 @@ pub(crate) fn switch(
 }
 
 /// Source `id` of `sources` after a fetch: the new commit's skills and no
-/// failure. `blobs` names each file's bytes, which the fetch put. A skill
-/// whose name the source had stays on or off as it was; a new one starts on
-/// unless it sets `disable-model-invocation`. Either is on only while no
-/// other skill that is on, in another source or earlier in the commit, has
-/// its name.
+/// failure. `blobs` names each file's bytes, which the fetch put.
+///
+/// - A skill whose name the source had stays on or off as it was.
+/// - A new skill starts on unless it sets `disable-model-invocation`.
+/// - Either is on only while no other skill that is on, in another source or
+///   earlier in the commit, has its name.
 pub(crate) fn fetched(
     sources: &Sources,
     id: &str,

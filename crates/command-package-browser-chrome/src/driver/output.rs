@@ -2,10 +2,12 @@
 //! result is rendered as text and as `--json`; neither is parsed from the
 //! other.
 //!
-//! A truncated JSON result stays complete, valid JSON saying `truncated: true`;
-//! one that cannot shrink fails with `result_too_large`, never printing a
-//! prefix. A script never learns an artifact's path by parsing stdout, since a
-//! page must not be able to cause file reads by forging output text: `--json`
+//! A truncated JSON result stays complete, valid JSON saying `truncated: true`.
+//! One that cannot shrink fails with `result_too_large`, never printing a
+//! prefix.
+//!
+//! A script never learns an artifact's path by parsing stdout, since a page
+//! must not be able to cause file reads by forging output text. `--json`
 //! screenshots and probes name their files in the result.
 
 use serde_json::Value;

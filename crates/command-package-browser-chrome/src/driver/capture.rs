@@ -1,33 +1,41 @@
 //! The loopback socket the capture extension connects to: the module starts and
-//! steers tab captures over it, and receives their encoded frames. It binds
-//! before Chrome starts, since the extension learns its address from its own
-//! files, and accepts only this environment's token. One owner task, the
-//! capture channel, keeps the extension's connection and routes the captures on
-//! it, and recreates the extension when it cannot work: Chrome may never start
-//! it, or end its document, and the extension never dials again by itself.
+//! steers tab captures over it, and receives their encoded frames.
+//!
+//! The socket binds before Chrome starts, since the extension learns its
+//! address from its own files, and accepts only this environment's token.
+//!
+//! One owner task, the capture channel, keeps the extension's connection and
+//! routes the captures on it. It recreates the extension when it cannot work:
+//! Chrome may never start it, or end its document, and the extension never
+//! dials again by itself.
+//!
+//! # Rules
 //!
 //! - The extension works in an offscreen document, which Chrome lists as a
-//!   background page, so it never enters the tab registry. Frames travel over
-//!   the socket, not CDP: base64 and JSON would inflate them, they would share
-//!   the connection that carries the agent's commands, and CDP messages are
-//!   limited.
+//!   background page, so it never enters the tab registry.
+//! - Frames travel over the socket, not CDP. Base64 and JSON would inflate
+//!   them, they would share the connection that carries the agent's commands,
+//!   and CDP messages are limited.
 //! - The encoder runs without a content hint: the screen-content mode a `text`
 //!   hint selects ignores the bit rate and keeps every picture blurred.
 //! - The extension runs outside this process, so a message that does not decode
-//!   fails that connection and is logged; it is never dropped silently.
+//!   fails that connection and is logged. It is never dropped silently.
 //! - Stopping a capture invalidates its queued restart, and the Host alone owns
-//!   retries and backoff: the extension reports a failed or silent capture and
+//!   retries and backoff. The extension reports a failed or silent capture and
 //!   releases it, and never starts a replacement that could outlive the Host's
 //!   owner.
+//!
+//! # Chrome defects the module works around
+//!
 //! - Chrome can keep a request that rejects every later capture after aborting
-//!   stream creation; recreating the extension releases it, interrupting
+//!   stream creation. Recreating the extension releases it, interrupting
 //!   pictures but no page, document or form state.
 //! - The pinned Chrome labels Linux software capture's BT.601 samples as
-//!   BT.709; the extension corrects exactly that case, re-verified at each
+//!   BT.709. The extension corrects exactly that case, re-verified at each
 //!   upgrade.
-//! - A CPU that reports SME without SVE cannot capture (Chrome's GPU process
-//!   dies on every capture and takes the tabs with it; seen on OrbStack from
-//!   2.2.3 on M4): `unavailable` checks first, and the view keeps tabs and
+//! - A CPU that reports SME without SVE cannot capture: Chrome's GPU process
+//!   dies on every capture and takes the tabs with it (seen on OrbStack from
+//!   2.2.3 on M4). `unavailable` checks first, and the view keeps tabs and
 //!   input and says why.
 
 use std::{collections::HashMap, future::Future, pin::Pin, time::Duration};
@@ -121,13 +129,16 @@ impl Gated {
     }
 }
 
-/// Keeps a page's captures and its resizes apart. Chrome's HiDPI tab capture
-/// raises the device scale factor of a page smaller than its capture until
-/// the page fills it: a page resized to 1000 × 800 pixels under a capture of
-/// 1600 × 1200 rendered at up to 1.5 times its pixel ratio, and the capture
-/// that replaced the old one could take such a picture as its first. So a
-/// resize waits until Chrome has released every capture of the page, and no
-/// capture starts until the resize ends.
+/// Keeps a page's captures and its resizes apart.
+///
+/// Chrome's HiDPI tab capture raises the device scale factor of a page smaller
+/// than its capture until the page fills it. A page resized to 1000 × 800
+/// pixels under a capture of 1600 × 1200 rendered at up to 1.5 times its pixel
+/// ratio, and the capture that replaced the old one could take such a picture
+/// as its first.
+///
+/// So a resize waits until Chrome has released every capture of the page, and
+/// no capture starts until the resize ends.
 #[derive(Debug)]
 pub struct CaptureGate(watch::Sender<Gated>);
 
@@ -355,12 +366,14 @@ impl CaptureChannel {
         let _ended = self.requests.send(ChannelRequest::Retry).await;
     }
 
-    /// Captures the tab of CDP `target` at `width` × `height` pixels, once
-    /// the extension has connected, which it does as Chrome starts; an
-    /// extension that does not connect in time is recreated for the next
-    /// attempt, and none starts once even a recreation failed, until
-    /// [`CaptureChannel::retry`]. `hold` lasts until Chrome released the
-    /// capture.
+    /// Captures the tab of CDP `target` at `width` × `height` pixels, once the
+    /// extension has connected, which it does as Chrome starts.
+    ///
+    /// - An extension that does not connect in time is recreated for the next
+    ///   attempt.
+    /// - None starts once even a recreation failed, until
+    ///   [`CaptureChannel::retry`].
+    /// - `hold` lasts until Chrome released the capture.
     pub async fn start(
         &self,
         target: &str,

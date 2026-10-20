@@ -1,8 +1,9 @@
-//! The iOS driver: the Host's iOS simulators through
-//! `demi-ios-sim`, the helper `demi-mobile` carries. A one-shot helper lists,
-//! boots and shuts down simulators; each conversation that opens an iOS
-//! device gets a helper of its own, which its devices share and which ends
-//! with the last of them.
+//! The iOS driver: the Host's iOS simulators through `demi-ios-sim`, the helper
+//! `demi-mobile` carries.
+//!
+//! A one-shot helper lists, boots and shuts down simulators. Each conversation
+//! that opens an iOS device gets a helper of its own, which its devices share
+//! and which ends with the last of them.
 
 mod helper;
 #[cfg(target_os = "macos")]

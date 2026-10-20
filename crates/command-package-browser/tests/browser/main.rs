@@ -1,12 +1,19 @@
 //! The tests of `demi-browser`: the built executable serving its operations,
-//! conversation release, and the browser. Most browser tests start the
-//! pinned Chrome for Testing and are ignored unless asked for:
-//! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
-//! demi-runner/test-fixtures --test browser -- --include-ignored`, on Linux
-//! with `DEMI_TEST_CHROME_RUNTIME=<directory>` too, the pinned Chrome
-//! runtime unpacked. They run
-//! in parallel; the ones that read the whole process table of the test
-//! process are the `browser-processes` binary.
+//! conversation release, and the browser.
+//!
+//! Most browser tests start the pinned Chrome for Testing and are ignored
+//! unless asked for:
+//!
+//! ```text
+//! DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
+//! demi-runner/test-fixtures --test browser -- --include-ignored
+//! ```
+//!
+//! On Linux also set `DEMI_TEST_CHROME_RUNTIME=<directory>`, the pinned Chrome
+//! runtime unpacked.
+//!
+//! The tests run in parallel. The ones that read the whole process table of the
+//! test process are the `browser-processes` binary.
 
 // The service is `Send` and `Sync` deeper than the trait solver's default 128
 // steps, as in the library (`src/lib.rs`).

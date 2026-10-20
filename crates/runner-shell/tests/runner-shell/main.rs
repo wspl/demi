@@ -13,13 +13,17 @@ mod utilities;
 // check: the tests here share one shell runtime and run together, as a
 // runner's jobs do, and a tighter bound fails them on a loaded machine.
 
-/// Whether `actual`, what a utility or builtin printed on standard error,
-/// says what `expected` says: the same text, or on Windows, which words the
-/// system's own errors, the same lines with Windows' reason where a line
-/// ends in the reason of a Unix error after GNU's prefix, as
-/// `diff: nope: The system cannot find the file specified.` stands for
-/// `diff: nope: No such file or directory`. The reason never shows Rust's
-/// `(os error N)`.
+/// Whether `actual`, what a utility or builtin printed on standard error, says
+/// what `expected` says.
+///
+/// The two say the same when they are the same text. On Windows, which words
+/// the system's own errors, they also say the same when the lines match except
+/// for the reason: where a line ends in the reason of a Unix error after GNU's
+/// prefix, Windows' reason stands for it, as `diff: nope: The system cannot
+/// find the file specified.` stands for `diff: nope: No such file or
+/// directory`.
+///
+/// The reason never shows Rust's `(os error N)`.
 fn same_errors(expected: &str, actual: &str) -> bool {
     const UNIX_REASONS: &[&str] = &[
         "No such file or directory",

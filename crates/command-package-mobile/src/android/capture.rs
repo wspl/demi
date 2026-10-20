@@ -1,10 +1,11 @@
 //! One capture of the live view for an emulator
-//! (`crates/command-package-mobile/src/android/mod.rs`):
-//! the emulator's pictures at the size the view asked for, which the
-//! emulator scales and turns upright, encoded with OpenH264 as H.264,
-//! Annex B, in real time. The emulator sends a picture only when its screen
-//! changed, so a still screen sends no frame; a key frame asked for is sent
-//! at once, of the picture as it is.
+//! (`crates/command-package-mobile/src/android/mod.rs`): the emulator's
+//! pictures at the size the view asked for, which the emulator scales and turns
+//! upright, encoded with OpenH264 as H.264, Annex B, in real time.
+//!
+//! The emulator sends a picture only when its screen changed, so a still screen
+//! sends no frame. A key frame asked for is sent at once, of the picture as it
+//! is.
 
 use std::{
     sync::{Arc, Condvar, Mutex},

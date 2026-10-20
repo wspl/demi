@@ -1,12 +1,19 @@
 //! The operation every browser command runs as, and the failures it ends in.
 //!
+//! # Deadline and cancellation
+//!
 //! An operation has one deadline across startup, registry lookup, page work and
-//! result collection; no step restarts it. Every wait, driver call, stdin, file
-//! write and output respond to cancellation, and listeners, temporary tabs and
-//! files are cleaned up the same way on success, failure, timeout and
-//! cancellation; a late event cannot complete a cancelled invocation.
-//! Cancellation releases held keys and buttons but undoes no submitted form or
-//! page script, and closes no unrelated tab.
+//! result collection; no step restarts it.
+//!
+//! - Every wait, driver call, stdin, file write and output respond to
+//!   cancellation.
+//! - Listeners, temporary tabs and files are cleaned up the same way on
+//!   success, failure, timeout and cancellation.
+//! - A late event cannot complete a cancelled invocation.
+//! - Cancellation releases held keys and buttons but undoes no submitted form
+//!   or page script, and closes no unrelated tab.
+//!
+//! # Failures
 //!
 //! A failure does not prove an action never happened, so nothing is replayed:
 //! connection loss after input delivery is `outcome_unknown`. A follow-up

@@ -1,10 +1,14 @@
-//! The service registry (`crates/runner-command-packages/src/registry.rs`): a
-//! service stays while a lease or a conversation holds it, or while it cannot
-//! say what it holds; a failed release retires it; a service that fails
-//! reports its exit status and the end of its standard error. A service
-//! starts from the Host image's copy of its executable when that copy
-//! matches (§ Preinstalled artifacts). A program's install from its own
-//! source asks the backend nothing (§ The artifacts stream).
+//! The service registry (`crates/runner-command-packages/src/registry.rs`):
+//!
+//! - A service stays while a lease or a conversation holds it, or while it
+//!   cannot say what it holds.
+//! - A failed release retires it.
+//! - A service that fails reports its exit status and the end of its standard
+//!   error.
+//! - A service starts from the Host image's copy of its executable when that
+//!   copy matches (§ Preinstalled artifacts).
+//! - A program's install from its own source asks the backend nothing (§ The
+//!   artifacts stream).
 
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,

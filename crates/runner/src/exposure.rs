@@ -1,15 +1,19 @@
-//! The requests the backend makes for the user to this device's exposed
-//! ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`), for as long as its connection lasts: the
-//! runner makes each to `127.0.0.1:<port>`, or `https://localhost:<port>`
-//! connected to 127.0.0.1, with its own HTTP client, the method, path,
-//! headers and body as given, and streams the answer back, its status and
-//! headers in `http_answered` and its body through the request's answer
-//! pipe. Which ports are exposed is the backend's to decide: it sends no
-//! request to any other.
+//! The requests the backend makes for the user to this device's exposed ports
+//! (`crates/backend-user-shard/src/shard/exposed_ports.rs`), for as long as its
+//! connection lasts.
+//!
+//! The runner makes each request to `127.0.0.1:<port>`, or
+//! `https://localhost:<port>` connected to 127.0.0.1, with its own HTTP client,
+//! the method, path, headers and body as given. It streams the answer back: its
+//! status and headers in `http_answered` and its body through the request's
+//! answer pipe.
+//!
+//! Which ports are exposed is the backend's to decide: it sends no request to
+//! any other.
 //!
 //! The answer pipe opens before the request goes out, so the pipe is never
-//! waiting for its source while a slow service thinks, and its end is the
-//! request's: when the backend ends the pipe, its caller stopped waiting,
+//! waiting for its source while a slow service thinks. Its end is the
+//! request's: when the backend ends the pipe, its caller stopped waiting, and
 //! the runner abandons the request and closes its connection to the port,
 //! before the answer's head or after.
 

@@ -3,11 +3,12 @@
 //!
 //! A number the model reads, such as the browser's tab `t7`, is never given
 //! twice in a conversation. The service cannot keep the count: its state ends
-//! with each browser restart, conversation release and Cloud stop. The
-//! backend keeps it, and advances the sequence by `count` in its own
-//! transaction before it answers, so a number it gave out is never given
-//! again whether or not the service uses it; a service that reserves ahead
-//! leaves gaps, never repeats.
+//! with each browser restart, conversation release and Cloud stop.
+//!
+//! The backend keeps the count. It advances the sequence by `count` in its own
+//! transaction before it answers, so a number it gave out is never given again
+//! whether or not the service uses it. A service that reserves ahead leaves
+//! gaps, never repeats.
 //!
 //! ```text
 //! Service                        Runner                          Backend

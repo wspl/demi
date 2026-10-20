@@ -2,15 +2,18 @@
 //!
 //! Every in-process write of the job, in its subshells, functions, background
 //! tasks and process substitutions alike, passes through the job's edit
-//! recorder. Opened regular files are registered with their identity so that
-//! cloned descriptors, a utility's stdout and shell descriptor duplication keep
-//! their association with the path; a write to an old descriptor after its
-//! path was replaced is not attributed to the file now there. An external
-//! program's stdout or stderr redirected into a file goes through a
-//! runner-owned pipe that forwards into the registered file through the same
-//! recorder, and the child completes only after those streams have drained,
-//! a forwarding error failing it. What it writes through its other inherited
-//! descriptors stays outside tracking.
+//! recorder:
+//!
+//! - Opened regular files are registered with their identity, so that cloned
+//!   descriptors, a utility's stdout and shell descriptor duplication keep
+//!   their association with the path. A write to an old descriptor after its
+//!   path was replaced is not attributed to the file now there.
+//! - An external program's stdout or stderr redirected into a file goes through
+//!   a runner-owned pipe that forwards into the registered file through the
+//!   same recorder. The child completes only after those streams have drained,
+//!   a forwarding error failing it.
+//! - What an external program writes through its other inherited descriptors
+//!   stays outside tracking.
 
 use std::{
     collections::HashMap,

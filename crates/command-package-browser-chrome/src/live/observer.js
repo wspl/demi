@@ -1,9 +1,14 @@
-// The live view's page observer. It runs in an isolated world of each watched
-// tab's documents, where the page can neither see nor call it, and reports
-// through the world's own binding: the cursors of the visible page and the one
-// under the viewer's pointer, the page's native form controls, and text the
-// page copies. The module calls `globalThis.demiLive` to apply a viewer's
-// choice to a control.
+// The live view's page observer.
+//
+// It runs in an isolated world of each watched tab's documents, where the page
+// can neither see nor call it. It reports through the world's own binding:
+//
+// - the cursors of the visible page and the one under the viewer's pointer;
+// - the page's native form controls;
+// - text the page copies.
+//
+// The module calls `globalThis.demiLive` to apply a viewer's choice to a
+// control.
 (() => {
   if (globalThis.demiLive) return;
   const report = message => {
@@ -22,14 +27,16 @@
   };
   const top = window === window.top;
 
-  // The cursors of the visible page. Each frame
-  // reports where each cursor applies, so the view resolves the cursor under
-  // its pointer without asking: a region is an element whose cursor differs
-  // from its parent's, in document order,
-  // so a later region over an earlier one wins as a child's cursor does. A
-  // region of `auto` leaves the cursor to the browser, which this observer
-  // resolves for the point the viewer's pointer is at: a text cursor over
-  // text, as a local browser does.
+  // The cursors of the visible page.
+  //
+  // Each frame reports where each cursor applies, so the view resolves the
+  // cursor under its pointer without asking. A region is an element whose
+  // cursor differs from its parent's, in document order, so a later region over
+  // an earlier one wins as a child's cursor does.
+  //
+  // A region of `auto` leaves the cursor to the browser, which this observer
+  // resolves for the point the viewer's pointer is at: a text cursor over text,
+  // as a local browser does.
   const EDITABLE = 'textarea, input:not([type]), input[type=text], input[type=search], input[type=url], input[type=tel], input[type=email], input[type=password], input[type=number]';
   const MAX_REGIONS = 2000;
   // A cursor list falls back to its last keyword, the one every browser has.

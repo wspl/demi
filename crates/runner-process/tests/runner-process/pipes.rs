@@ -235,11 +235,16 @@ fn response_head(length: usize) -> Vec<u8> {
 }
 
 /// A pipe's reader passes on only the bytes of its data frames, however the
-/// frames arrive, and ends as the end frame says (`crates/runner-protocol/src/wire/pipe_frames.rs`): a whole pipe's end ends its bytes, a broken one's is the cause's
-/// error, and a body that stops without an end frame, as an edge that cuts
-/// a response does, is a broken pipe. Before, the frames reached the
-/// reader's output as bytes, and a cut body read as a whole one. Each case
-/// is a local server's one answer; about 0.01 s.
+/// frames arrive, and ends as the end frame says
+/// (`crates/runner-protocol/src/wire/pipe_frames.rs`):
+///
+/// - A whole pipe's end ends its bytes.
+/// - A broken one ends on error.
+/// - A body that stops without an end frame, as an edge that cuts a response
+///   does, is a broken pipe.
+///
+/// Before, the frames reached the reader's output as bytes, and a cut body read
+/// as a whole one. Each case is a local server's one answer; about 0.01 s.
 #[tokio::test]
 async fn a_pipes_reader_passes_only_data_on_and_ends_as_its_end_frame_says() {
     let whole = [
@@ -302,12 +307,14 @@ async fn a_pipes_reader_passes_only_data_on_and_ends_as_its_end_frame_says() {
     .unwrap();
 }
 
-/// A stream pipe that has nothing to send pings its socket after 30 s
-/// without a message, so an edge that ends a connection silent for 100 s,
-/// as Cloudflare's does, keeps a still page's live view (`crates/runner-protocol/src/wire/pipe_frames.rs`). The clock is paused once the first message is
-/// through, so the wait costs nothing; the pause comes only then, since a
-/// paused clock also runs past the connection's opening deadline while its
-/// bytes are in flight.
+/// A stream pipe that has nothing to send pings its socket after 30 s without a
+/// message, so an edge that ends a connection silent for 100 s, as Cloudflare's
+/// does, keeps a still page's live view
+/// (`crates/runner-protocol/src/wire/pipe_frames.rs`).
+///
+/// The clock is paused once the first message is through, so the wait costs
+/// nothing. The pause comes only then, since a paused clock also runs past the
+/// connection's opening deadline while its bytes are in flight.
 #[tokio::test]
 async fn a_quiet_stream_pipe_pings_its_socket_after_30_seconds() {
     use tokio_tungstenite::tungstenite::Message;

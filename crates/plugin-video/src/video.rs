@@ -1,9 +1,14 @@
-//! What `demi video` does: reads the call's prompt and its frames and
-//! references from the Host the command runs on; asks the Providers
-//! service for the video's job and names it on stderr at once; says each
-//! change of the job's state; checks that what came back is an MP4 and
-//! writes it to stdout; and says what came back, with a warning for each
-//! option the result did not honour or the entry's API has no field for.
+//! What `demi video` does:
+//!
+//! 1. It reads the call's prompt and its frames and references from the Host
+//!    the command runs on.
+//! 2. It asks the Providers service for the video's job and names it on stderr
+//!    at once.
+//! 3. It says each change of the job's state.
+//! 4. It checks that what came back is an MP4 and writes it to stdout.
+//! 5. It says what came back, with a warning for each option the result did not
+//!    honour or the entry's API has no field for.
+//!
 //! A failure is told in the design's words.
 
 use demi_host_interface::RpcInvocation;

@@ -266,12 +266,15 @@ fn stream_bytes(records: &[KeptRecord], stream: OutputStream) -> Vec<u8> {
         .collect()
 }
 
-/// A shell job keeps every read of its output, and sends the backend the
-/// first `JOB_VIEW_BYTES` of each stream and, unfollowed, how long a stream
-/// grew beyond them with its newest `JOB_VIEW_BYTES`, the last of which
-/// leaves before its end; its end gives each stream's length, and its
-/// directory lasts until its release
-/// (`crates/runner-jobs/src/tasks.rs`).
+/// A shell job keeps every read of its output
+/// (`crates/runner-jobs/src/tasks.rs`). It sends the backend:
+///
+/// - the first `JOB_VIEW_BYTES` of each stream;
+/// - unfollowed, how long a stream grew beyond them with its newest
+///   `JOB_VIEW_BYTES`, the last of which leaves before its end.
+///
+/// Its end gives each stream's length, and its directory lasts until its
+/// release.
 #[tokio::test]
 async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
     let root = tempfile::tempdir().unwrap();
@@ -470,13 +473,19 @@ async fn written(directories: &JobDirectories, bytes: usize) {
     .unwrap_or_else(|_| panic!("the job's stdout never held {bytes} bytes"));
 }
 
-/// While the backend follows a job, the job sends the newest bytes beyond
-/// each stream's first `JOB_VIEW_BYTES`: at once when following starts, then
-/// at most one message every `JOB_LIVE_INTERVAL`, each of at most
-/// `JOB_LIVE_BYTES`, and its last output before its exit; unfollowed, how
-/// long a stream grew with its newest `JOB_VIEW_BYTES` (`crates/runner-jobs/src/tasks.rs`). About half a
-/// second: the job prints a line every 10 ms for that long, so that its
-/// output spans a few intervals.
+/// While the backend follows a job, the job sends the newest bytes beyond each
+/// stream's first `JOB_VIEW_BYTES` (`crates/runner-jobs/src/tasks.rs`):
+///
+/// - at once when following starts;
+/// - then at most one message every `JOB_LIVE_INTERVAL`, each of at most
+///   `JOB_LIVE_BYTES`;
+/// - its last output before its exit.
+///
+/// Unfollowed, it sends how long a stream grew with its newest
+/// `JOB_VIEW_BYTES`.
+///
+/// Cost: about half a second. The job prints a line every 10 ms for that long,
+/// so that its output spans a few intervals.
 #[tokio::test]
 async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     let root = tempfile::tempdir().unwrap();

@@ -1,7 +1,7 @@
 // Captures the tabs the live view watches and encodes them as H.264.
-// The live view module on this Host
-// drives it over a loopback socket that accepts only this environment's token,
-// and names the live protocol's codec.
+//
+// The live view module on this Host drives it over a loopback socket that
+// accepts only this environment's token, and names the live protocol's codec.
 import { socket as address, codec } from './config.js';
 
 // A frame's header, big-endian: capture (u32), sequence (u32), flags (u8,
@@ -138,11 +138,12 @@ function stop(id) {
 
 // Reconfiguring the same sides keeps the stream: its next frame is a delta
 // frame, so a new budget or a still picture's refinement costs no key frame.
+//
 // No content hint: with `text` Chrome's software H.264 encoder runs its
 // screen-content mode, whose rate control ignores the budget. Measured on
-// scrolling text at 1072 x 1824, it kept every delta frame near 2 KiB and
-// 39.7 dB PSNR at 20 and at 70 Mbps alike, while the default mode spends the
-// budget: 47 dB at 70 Mbps, 38 dB at 10.
+// scrolling text at 1072 x 1824, it kept every delta frame near 2 KiB and 39.7
+// dB PSNR at 20 and at 70 Mbps alike, while the default mode spends the budget:
+// 47 dB at 70 Mbps, 38 dB at 10.
 function configure(state, still) {
   state.encoder.configure({
     codec,
@@ -158,11 +159,15 @@ function configure(state, still) {
   state.still = still;
 }
 
-// Encode the latest picture when it changed, a key frame is due, or it has
-// stood still long enough to send once more at higher quality, while the
-// viewers' windows have room for it: the module says how many frames past the
-// newest they had may come, and a picture that comes meanwhile replaces the
-// one waiting. A frame in the encoder counts as sent.
+// Encode the latest picture when any of these holds:
+//
+// - it changed;
+// - a key frame is due;
+// - it has stood still long enough to send once more at higher quality.
+//
+// Encode only while the viewers' windows have room for it: the module says how
+// many frames past the newest they had may come, and a picture that comes
+// meanwhile replaces the one waiting. A frame in the encoder counts as sent.
 function encode(state) {
   if (!state.latest || state.sequence + state.encoding - state.ack >= state.window) return;
   if (socket.bufferedAmount > 1024 * 1024) return;

@@ -239,12 +239,15 @@ fn listed(root: &Path) -> Vec<String> {
     names
 }
 
-/// Five conversations that start Claude Code at once after a deploy share
-/// one download of its executable instead of five copies that fill the
-/// disk, and each gets the one published file. An install joins the
-/// download as it is first polled, and the download is held until all have
-/// joined, so polling each once makes them concurrent however fast the
-/// machine. Cost: a few small files.
+/// Five conversations that start Claude Code at once after a deploy share one
+/// download of its executable instead of five copies that fill the disk, and
+/// each gets the one published file.
+///
+/// An install joins the download as it is first polled, and the download is
+/// held until all have joined, so polling each once makes them concurrent
+/// however fast the machine.
+///
+/// Cost: a few small files.
 #[tokio::test]
 async fn concurrent_installs_of_one_artifact_share_one_download() {
     let root = tempfile::tempdir().unwrap();

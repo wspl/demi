@@ -1,8 +1,10 @@
-//! A declared command runs as a builtin of the job's shell: each invocation
-//! goes to the handler the job supplies, with the job's context, its root,
-//! its arguments and its standard input, and its output and exit code come
-//! back to the script (`crates/runner-shell/src/lib.rs`). The programs the job
-//! starts find the job's context.
+//! A declared command runs as a builtin of the job's shell
+//! (`crates/runner-shell/src/lib.rs`).
+//!
+//! Each invocation goes to the handler the job supplies, with the job's
+//! context, its root, its arguments and its standard input. Its output and exit
+//! code come back to the script. The programs the job starts find the job's
+//! context.
 
 use std::{
     collections::BTreeMap,

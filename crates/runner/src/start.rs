@@ -1,15 +1,18 @@
-//! `run start`: starts the installation's runner in the background again, as the
-//! installer does, and returns once it is connected or has said why it cannot. A
-//! runner already running is left as it is; an installation registered with the
-//! service manager has the manager start it (`crate::autostart`).
+//! `run start`: starts the installation's runner in the background again, as
+//! the installer does, and returns once it is connected or has said why it
+//! cannot.
+//!
+//! A runner already running is left as it is. An installation registered with
+//! the service manager has the manager start it (`crate::autostart`).
 //!
 //! The runner starts in a session of its own, so Ctrl-C while `run start` waits
-//! never reaches it (`crate::console`). `run start` and the installers read pairing
-//! codes and the connection's outcome from where the log ended when they began
-//! waiting, and first ask a runner they find running, through its management
-//! endpoint, to write its current state to the log again. The lines come from the
-//! runner alone, so they never compose them, and a pairing code reaches no channel
-//! but the log.
+//! never reaches it (`crate::console`).
+//!
+//! `run start` and the installers read pairing codes and the connection's
+//! outcome from where the log ended when they began waiting, and first ask a
+//! runner they find running, through its management endpoint, to write its
+//! current state to the log again. The lines come from the runner alone, so
+//! they never compose them, and a pairing code reaches no channel but the log.
 
 use std::{
     io,

@@ -1,8 +1,10 @@
 //! The limits a user may set on the context window Demi uses for a model.
-//! The steps and their lookups are generated
-//! into `@demicodes/protocol`, so the model menu offers what a session
-//! applies. A limit replaces the model's window wherever Demi uses the window
-//! for itself, the compaction thresholds and the usage indicator, and changes
+//!
+//! The steps and their lookups are generated into `@demicodes/protocol`, so the
+//! model menu offers what a session applies.
+//!
+//! A limit replaces the model's window wherever Demi uses the window for
+//! itself, the compaction thresholds and the usage indicator. It changes
 //! nothing a vendor receives or enforces: the request limits and the check that
 //! a reported usage can belong to one request still follow the model's own
 //! window.
@@ -72,11 +74,12 @@ pub fn offers_context(window: u32, tokens: u32) -> bool {
 }
 
 /// The window Demi uses for a session on a model whose context window is
-/// `window`: the profile's own Context `own` when its subagent's profile
-/// set one, else the user's `limit`; either while the window offers it,
-/// else the full window. A profile's choice of the full window is the
-/// window's own size, which no limit equals, so it gives the full window
-/// whatever the user's limit is.
+/// `window`: the profile's own Context `own` when its subagent's profile set
+/// one, else the user's `limit`. Either holds while the window offers it, else
+/// the full window.
+///
+/// A profile's choice of the full window is the window's own size, which no
+/// limit equals, so it gives the full window whatever the user's limit is.
 pub fn session_context_window(window: u32, own: Option<u32>, limit: Option<u32>) -> u32 {
     effective_context_window(window, own.or(limit))
 }

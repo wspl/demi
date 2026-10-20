@@ -1,16 +1,19 @@
-//! The Host's open devices (`crates/command-package-mobile/src/operations.rs`): which
-//! conversation has each simulator open and under which handle, at most
-//! [`MAX_DEVICES`] a conversation, never one device in two conversations;
-//! and when each ends. A device Demi booted shuts down when its
-//! conversation closes it or is released, or an hour after nobody watched
-//! it and no command used it; one the user booted is only let go. The
-//! program's end shuts nothing down: the simulators Demi booted are kept
-//! ([`Booted`]), and the next program gives each still booted the hour.
+//! The Host's open devices (`crates/command-package-mobile/src/operations.rs`):
+//! which conversation has each simulator open and under which handle, and when
+//! each ends.
 //!
-//! One owner changes the registry: opening and closing take turns on one
-//! lock, so a device is never opened twice nor closed while it opens. The
-//! plugin hears of each change of a conversation's devices, when it
-//! happens.
+//! A conversation has at most [`MAX_DEVICES`] devices, and no device is in two
+//! conversations.
+//!
+//! - A device Demi booted shuts down when its conversation closes it or is
+//!   released, or an hour after nobody watched it and no command used it.
+//! - A device the user booted is only let go.
+//! - The program's end shuts nothing down: the simulators Demi booted are kept
+//!   ([`Booted`]), and the next program gives each still booted the hour.
+//!
+//! One owner changes the registry: opening and closing take turns on one lock,
+//! so a device is never opened twice nor closed while it opens. The plugin
+//! hears of each change of a conversation's devices, when it happens.
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},

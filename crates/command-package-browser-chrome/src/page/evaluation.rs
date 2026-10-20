@@ -1,6 +1,9 @@
-//! Read-only evaluation. Chrome's own side-effect checking enforces it; telling
-//! the agent is no enforcement, so a script or getter that needs a side effect
-//! fails, and there is never a fallback to an unrestricted `Runtime.evaluate`.
+//! Read-only evaluation, enforced by Chrome's own side-effect checking.
+//!
+//! Telling the agent is no enforcement, so a script or getter that needs a side
+//! effect fails, and there is never a fallback to an unrestricted
+//! `Runtime.evaluate`.
+//!
 //! All bound elements must share one frame document, since Chrome cannot bind
 //! remote objects from separate execution contexts into one read-only
 //! expression.

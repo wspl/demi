@@ -302,11 +302,12 @@ async fn exchange(
 }
 
 /// Reads the call's stdout pipe `reference` to its end into `output`, and
-/// reports how the pipe ended. A failure of the pipe itself, such as a
-/// stdout handed to a job on another device that went away, also ends the
-/// call on the backend, whose exit then ends it with the cause on stderr
-/// (`crates/host-interface/src/rpc.rs`); only a failure to write the output
-/// ends it here.
+/// reports how the pipe ended.
+///
+/// A failure of the pipe itself, such as a stdout handed to a job on another
+/// device that went away, also ends the call on the backend, whose exit then
+/// ends it with the cause on stderr (`crates/host-interface/src/rpc.rs`). Only
+/// a failure to write the output ends it here.
 async fn download(
     pipes: &PipeClient,
     connection: &mpsc::Sender<wire::Frame>,

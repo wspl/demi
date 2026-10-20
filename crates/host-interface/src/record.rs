@@ -1,11 +1,14 @@
 //! One command's record: the model's view, which its looks read, and the pages'
 //! view (`crates/agent-tools/src/result.rs`,
-//! `crates/agent-server/src/server/tree/live.rs`). Every shell environment
-//! keeps its commands in these; a record does not know what ran the script.
+//! `crates/agent-server/src/server/tree/live.rs`).
 //!
-//! Stream byte views cut only between characters. The model's merged view
-//! advances past whole lines, repeating an unfinished line until its newline
-//! or the command's end. Tails are the last [`TAIL_CHARS`] characters.
+//! Every shell environment keeps its commands in these; a record does not know
+//! what ran the script.
+//!
+//! - Stream byte views cut only between characters.
+//! - The model's merged view advances past whole lines, repeating an unfinished
+//!   line until its newline or the command's end.
+//! - Tails are the last [`TAIL_CHARS`] characters.
 
 use std::sync::Arc;
 
@@ -361,12 +364,13 @@ impl CommandRecord {
         running
     }
 
-    /// Marks a running command as being stopped: it runs until its runner
-    /// says that it ended (`crates/runner-shell/src/job.rs`). True
-    /// when the pages' view changed.
-    /// Shows the command waiting for its Host, the device `host` names,
-    /// while its start waits for that device's runner, or running again
-    /// once it does not, with `None`. Whether the view changed.
+    /// Marks a running command as being stopped: it runs until its runner says
+    /// that it ended (`crates/runner-shell/src/job.rs`). Returns true when the
+    /// pages' view changed.
+    ///
+    /// Shows the command waiting for its Host, the device `host` names, while
+    /// its start waits for that device's runner, or running again once it does
+    /// not, with `None`. Returns whether the view changed.
     pub fn mark_waiting(&mut self, host: Option<String>) -> bool {
         let phase = match (&self.phase, host) {
             (Phase::Running, Some(host)) => Phase::Waiting { host },
@@ -386,11 +390,14 @@ impl CommandRecord {
         running
     }
 
-    /// The model's status: each stream's output since the model's last view,
-    /// at most `max_output_bytes` of it (all of it when zero), and its tail;
-    /// once the command ended, its whole output and how much of each stream
-    /// the model had seen. The view moves only the model's positions. `hint`
-    /// and `outliving` are what the command's job says while it runs
+    /// The model's status: each stream's output since the model's last view, at
+    /// most `max_output_bytes` of it (all of it when zero), and its tail.
+    ///
+    /// Once the command ended, the status holds its whole output and how much
+    /// of each stream the model had seen. The view moves only the model's
+    /// positions.
+    ///
+    /// `hint` and `outliving` are what the command's job says while it runs
     /// ([`CommandState::Running`]).
     pub fn status(
         &mut self,

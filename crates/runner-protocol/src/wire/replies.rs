@@ -1,10 +1,13 @@
-//! The replies of fs and working-tree calls: `fs_ok { id, readAt, op,
-//! result }` and `git_ok { id, readAt, op, result }`, where `op` names the
-//! call and decides the type of `result`, and `readAt` is the Host's number
-//! taken as the runner received the call, before it read anything
-//! (`crates/runner-host/src/subscriptions.rs`). Their serde is written by hand, because
-//! the keys follow the message tag in the order `id`, `readAt`, `op`,
-//! `result`, and `op` must be read before `result` can be decoded.
+//! The replies of fs and working-tree calls: `fs_ok { id, readAt, op, result }`
+//! and `git_ok { id, readAt, op, result }`.
+//!
+//! - `op` names the call and decides the type of `result`.
+//! - `readAt` is the Host's number taken as the runner received the call,
+//!   before it read anything (`crates/runner-host/src/subscriptions.rs`).
+//!
+//! Their serde is written by hand, because the keys follow the message tag in
+//! the order `id`, `readAt`, `op`, `result`, and `op` must be read before
+//! `result` can be decoded.
 
 use std::fmt;
 use std::marker::PhantomData;

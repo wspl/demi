@@ -1,8 +1,8 @@
-//! A conversation's cost as the context card shows it:
-//! the token and price
-//! totals of its ledger rows, each agent's price and the main
-//! conversation's turn calls with their cache misses. `GET
-//! /api/conversations/:id/cost` answers them whole, and the `cost` frame
+//! A conversation's cost as the context card shows it: the token and price
+//! totals of its ledger rows, each agent's price and the main conversation's
+//! turn calls with their cache misses.
+//!
+//! `GET /api/conversations/:id/cost` answers them whole, and the `cost` frame
 //! carries what one new row adds to them.
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};

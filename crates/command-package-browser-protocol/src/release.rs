@@ -1,8 +1,9 @@
-//! The pinned Chrome for Testing release, and the Chrome runtime release
-//! Linux Hosts start it with. Nothing resolves a moving channel: a release
-//! names each platform's archive, and the runtime's archives, by URL, size
-//! and digest, which `demi browser install` downloads
-//! (`crates/xtask/src/browser.rs`,
+//! The pinned Chrome for Testing release, and the Chrome runtime release Linux
+//! Hosts start it with.
+//!
+//! Nothing resolves a moving channel. A release names each platform's archive,
+//! and the runtime's archives, by URL, size and digest, which `demi browser
+//! install` downloads (`crates/xtask/src/browser.rs`,
 //! `crates/command-package-browser-chrome/src/driver/installation.rs`).
 
 use std::collections::BTreeMap;

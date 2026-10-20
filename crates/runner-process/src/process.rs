@@ -402,12 +402,13 @@ pub fn child_limit(resource: rlimit::Resource) -> io::Result<(u64, u64)> {
     }
 }
 
-/// The runner's own file mode creation mask, which a process it starts
-/// inherits unless its job's `umask` set another. Nothing in the runner
-/// changes it (`crates/runner-shell/src/process_builtins.rs`), so it is read
-/// once: from `/proc` on Linux, elsewhere by setting a strict mask and
-/// restoring the old one, which the runner does as it starts, before any job
-/// runs.
+/// The runner's own file mode creation mask, which a process it starts inherits
+/// unless its job's `umask` set another.
+///
+/// Nothing in the runner changes it
+/// (`crates/runner-shell/src/process_builtins.rs`), so it is read once: from
+/// `/proc` on Linux, elsewhere by setting a strict mask and restoring the old
+/// one, which the runner does as it starts, before any job runs.
 #[cfg(unix)]
 pub fn umask() -> u32 {
     static UMASK: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
@@ -440,13 +441,16 @@ pub fn umask() -> u32 {
     0o022
 }
 
-/// Gives a process the runner starts its attributes before it runs its
-/// program: the open-file limits the runner was started with, the ones it
-/// would have from a terminal (`crates/command-sdk/src/descriptors.rs`), and what its job's
-/// `umask` and `ulimit` set (`crates/runner-shell/src/process_builtins.rs`).
+/// Gives a process the runner starts its attributes before it runs its program:
+///
+/// - the open-file limits the runner was started with, the ones it would have
+///   from a terminal (`crates/command-sdk/src/descriptors.rs`);
+/// - what its job's `umask` and `ulimit` set
+///   (`crates/runner-shell/src/process_builtins.rs`).
+///
 /// A program that uses `select()`, or that closes every descriptor up to its
-/// limit, misbehaves with the runner's raised limit. Each call adds a hook,
-/// so a command needs one call.
+/// limit, misbehaves with the runner's raised limit. Each call adds a hook, so
+/// a command needs one call.
 #[cfg(unix)]
 pub fn set_attributes(command: &mut std::process::Command, attributes: &ChildAttributes) {
     use std::os::unix::process::CommandExt;
@@ -537,25 +541,31 @@ pub fn start_blocking<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Resu
 /// How long a start waits, in all, for its program to stop being busy.
 const BUSY_WAIT: Duration = Duration::from_secs(1);
 
-/// When a failed process start is tried again.
+/// When a failed process start is tried again:
 ///
 /// - Out of open files, always: another descriptor will close
 ///   (`demi_command_sdk::descriptors`).
-/// - While its program is busy (`ETXTBSY`), for at most `BUSY_WAIT`. Linux
-///   refuses to run a file that any process holds open for writing, and the
-///   runner causes that itself. It writes files that it then runs, such as a
-///   service executable it has just copied into its cache or a script a job
-///   has just written, while other threads start processes. Starting a
-///   process forks the runner, and the child holds a copy of every descriptor
-///   the runner had open, the one writing that file too, until it runs its
-///   own program. Close-on-exec closes the copy only then, and Linux has no
-///   close-on-fork, so nothing the writer does can prevent the copy. A start
-///   of the file in that moment fails although the runner has closed it. The
-///   failure is inherent to fork and exec from threads on Linux, and it is
-///   bounded: every child the runner forks runs its program at once (std's
-///   and process-wrap's spawns; nothing in the runner forks otherwise), so the
-///   copy lasts from a fork to its exec. A program still busy after
-///   `BUSY_WAIT` is open for writing elsewhere, and the start fails with it.
+/// - While its program is busy (`ETXTBSY`), for at most `BUSY_WAIT`. A program
+///   still busy after `BUSY_WAIT` is open for writing elsewhere, and the start
+///   fails with it.
+///
+/// # Why a busy program
+///
+/// Linux refuses to run a file that any process holds open for writing, and the
+/// runner causes that itself. It writes files that it then runs, such as a
+/// service executable it has just copied into its cache or a script a job has
+/// just written, while other threads start processes.
+///
+/// Starting a process forks the runner, and the child holds a copy of every
+/// descriptor the runner had open, the one writing that file too, until it runs
+/// its own program. Close-on-exec closes the copy only then, and Linux has no
+/// close-on-fork, so nothing the writer does can prevent the copy. A start of
+/// the file in that moment fails although the runner has closed it.
+///
+/// The failure is inherent to fork and exec from threads on Linux, and it is
+/// bounded: every child the runner forks runs its program at once (std's and
+/// process-wrap's spawns; nothing in the runner forks otherwise), so the copy
+/// lasts from a fork to its exec.
 #[derive(Default)]
 struct StartRetry {
     backoff: Backoff,
@@ -752,11 +762,12 @@ pub fn kill(child: &mut dyn ChildWrapper) -> io::Result<()> {
     }
 }
 
-/// Sends signal number `signal` to `target` as kill(2) takes it: a process
-/// ID, or the negative of a process group's ID; signal 0 asks only whether
-/// it exists. A number no signal has is `EINVAL`, and a target no process
-/// has `ESRCH`, as are 0 and -1, which kill(2) takes for the caller's group
-/// and every process.
+/// Sends signal number `signal` to `target` as kill(2) takes it: a process ID,
+/// or the negative of a process group's ID. Signal 0 asks only whether it
+/// exists.
+///
+/// A number no signal has is `EINVAL`, and a target no process has `ESRCH`, as
+/// are 0 and -1, which kill(2) takes for the caller's group and every process.
 #[cfg(unix)]
 pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
     use rustix::process::{self as system, Pid};
@@ -776,12 +787,14 @@ pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
 }
 
 /// Windows has no signals (`crates/runner-shell/src/process_builtins.rs`):
-/// signal 0 asks whether the process `target` runs, and any other ends it
-/// with `TerminateProcess` and the exit status 128 plus the signal, the
-/// status a shell gives a process that signal ended on Unix. A negative
-/// target, a process group on Unix, is `InvalidInput`, as Windows has no
-/// process groups; a target no process has is `NotFound`, worded as
-/// kill(2)'s `ESRCH`.
+///
+/// - Signal 0 asks whether the process `target` runs.
+/// - Any other signal ends the process with `TerminateProcess` and the exit
+///   status 128 plus the signal, the status a shell gives a process that signal
+///   ended on Unix.
+/// - A negative target, a process group on Unix, is `InvalidInput`, as Windows
+///   has no process groups.
+/// - A target no process has is `NotFound`, worded as kill(2)'s `ESRCH`.
 #[cfg(windows)]
 pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
@@ -877,16 +890,25 @@ pub struct Stray {
     started: u64,
 }
 
-/// The processes a stop of job `job` signals one by one (`crates/runner-shell/src/job.rs`): of the runner's user, the runner aside,
-/// and outside the job's process groups, whose ids `grouped` holds, each
-/// one that carries the job's id in its environment, each of `known` that
-/// still runs, and every descendant, by parent process id, of those and of
-/// the groups' members. sysinfo reads each environment, from
-/// `/proc/<pid>/environ` on Linux and with `KERN_PROCARGS2` on macOS, which
-/// shows none for Apple's own programs: such a program that called `setsid`
-/// is found as its parent's descendant while the parent runs. Reading the
-/// whole process table takes milliseconds, so it runs off the runtime's
-/// threads, and before the groups take the signal, while the tree is whole.
+/// The processes a stop of job `job` signals one by one
+/// (`crates/runner-shell/src/job.rs`).
+///
+/// They are processes of the runner's user, the runner aside and outside the
+/// job's process groups, whose ids `grouped` holds:
+///
+/// - each one that carries the job's id in its environment;
+/// - each of `known` that still runs;
+/// - every descendant, by parent process id, of those and of the groups'
+///   members.
+///
+/// sysinfo reads each environment, from `/proc/<pid>/environ` on Linux and with
+/// `KERN_PROCARGS2` on macOS, which shows none for Apple's own programs. Such a
+/// program that called `setsid` is found as its parent's descendant while the
+/// parent runs.
+///
+/// Reading the whole process table takes milliseconds, so it runs off the
+/// runtime's threads, and before the groups take the signal, while the tree is
+/// whole.
 #[cfg(unix)]
 pub fn job_strays(job: &str, grouped: &std::collections::HashSet<i32>, known: &[Stray]) -> Vec<Stray> {
     use std::collections::{HashMap, HashSet};

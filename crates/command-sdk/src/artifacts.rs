@@ -1,8 +1,9 @@
-//! The artifacts stream (`crates/command-protocol/src/artifacts.rs`): the
-//! handler asks the runner to install an artifact for one of its
-//! invocations, following how its download goes if it likes, or which
-//! artifacts of a line the Host has, through its [`Artifacts`], and uses
-//! only the paths the runner answers.
+//! The artifacts stream (`crates/command-protocol/src/artifacts.rs`), through
+//! the handler's [`Artifacts`].
+//!
+//! The handler asks the runner to install an artifact for one of its
+//! invocations, following how its download goes if it likes, or which artifacts
+//! of a line the Host has. It uses only the paths the runner answers.
 
 use std::path::PathBuf;
 

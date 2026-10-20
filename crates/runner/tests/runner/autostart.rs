@@ -1,10 +1,13 @@
 //! Starting with the computer (`crates/runner/src/autostart.rs`):
-//! the runner of an installer's installation keeps its registration with
-//! the system's service manager and removes it last as it goes; its exit
-//! status says whether a new start may cure what ended it; `run start`
-//! has the manager start the runner; where no registration can be made the
-//! hello says why; and the runner sets what a terminal would have. The
-//! manager's commands go to the harness's stand-in, which records them.
+//!
+//! - The runner of an installer's installation keeps its registration with the
+//!   system's service manager and removes it last as it goes.
+//! - Its exit status says whether a new start may cure what ended it.
+//! - `run start` has the manager start the runner.
+//! - Where no registration can be made, the hello says why.
+//! - The runner sets what a terminal would have.
+//!
+//! The manager's commands go to the harness's stand-in, which records them.
 
 #![cfg(any(target_os = "macos", target_os = "linux"))]
 
@@ -101,12 +104,17 @@ async fn exit_code(host: &mut Host) -> Option<i32> {
     host.process.exit_code()
 }
 
-/// Each start makes sure of the registration: the first writes it and has
-/// the manager load it, one that finds it in place changes nothing, and
-/// one that finds it naming another installation writes and loads it
-/// again. It runs the installation's launcher with `run --log`, at login,
-/// and again after a failure, every 10 s at most. Before the rule, a
+/// Each start makes sure of the registration:
+///
+/// - The first start writes it and has the manager load it.
+/// - One that finds it in place changes nothing.
+/// - One that finds it naming another installation writes and loads it again.
+///
+/// The registration runs the installation's launcher with `run --log`, at
+/// login, and again after a failure, every 10 s at most. Before the rule, a
 /// runner wrote none.
+///
+/// Cost: about a second, since the runner starts three times.
 // About a second: the runner starts three times.
 #[tokio::test]
 async fn a_runner_keeps_its_installations_registration_with_the_service_manager() {
@@ -332,12 +340,16 @@ async fn a_runner_that_cannot_register_says_why_in_its_hello() {
     .unwrap();
 }
 
-/// The runner the service manager did not start, such as the installer's,
-/// hands the installation over once its registration works: it asks the
-/// manager to start the installation's runner, says so in its log, where
-/// the installer and `run start` read it, and exits 0; the manager's runner,
-/// which `DEMI_SUPERVISED` names, connects and keeps it. Before the rule,
-/// the installer's runner ran unsupervised until the next login.
+/// The runner the service manager did not start, such as the installer's, hands
+/// the installation over once its registration works. It asks the manager to
+/// start the installation's runner, says so in its log, where the installer and
+/// `run start` read it, and exits 0.
+///
+/// The manager's runner, which `DEMI_SUPERVISED` names, connects and keeps it.
+/// Before the rule, the installer's runner ran unsupervised until the next
+/// login.
+///
+/// Cost: about a second, since two runners start.
 // About a second: two runners start.
 #[tokio::test]
 async fn a_runner_the_manager_did_not_start_hands_over_to_the_managers() {
@@ -462,14 +474,18 @@ async fn device_environment(host: &mut Host) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// The device environment is the user's login environment, whoever
-/// started the runner: what the login shell's files set reaches a process
-/// the runner starts, `SHELL` names the shell in the hello, and on macOS
-/// `LANG` is set to UTF-8 when the shell leaves it unset, from a region the
-/// system has no locale for (`en_CN`) the first of its language. A login
-/// shell that fails or takes too long leaves the runner's own environment,
-/// and the log says why. Before the rule, a runner a service manager
-/// started gave its jobs launchd's bare `PATH`.
+/// The device environment is the user's login environment, whoever started the
+/// runner:
+///
+/// - What the login shell's files set reaches a process the runner starts.
+/// - `SHELL` names the shell in the hello.
+/// - On macOS `LANG` is set to UTF-8 when the shell leaves it unset, from a
+///   region the system has no locale for (`en_CN`) the first of its language.
+/// - A login shell that fails or takes too long leaves the runner's own
+///   environment, and the log says why.
+///
+/// Before the rule, a runner a service manager started gave its jobs launchd's
+/// bare `PATH`.
 // About two seconds: the runner starts three times, one shell waiting out
 // a shortened limit.
 #[tokio::test]

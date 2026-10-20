@@ -1,23 +1,38 @@
-//! The `skills` plugin: the user's skill sources, fetched from git and
-//! pinned to a commit, whose skills the user turns on one by one and which
-//! every Host the user's jobs run on receives as a directory; the skills a
-//! repository carries; and the catalog of both, which reaches the model as
-//! a context block. Nothing else in Demi knows skills.
+//! The `skills` plugin.
 //!
-//! A source never changes by itself: its skills change only when the user
-//! adds, updates or removes it or turns its skills on or off. A new skill
-//! starts on, except one whose name another skill that is on has, and one
-//! that sets `disable-model-invocation`, which the agent is never offered,
-//! so on it would only install its files on every Host and take its name from
-//! another skill. Two skills that are on never share a name, which an update
-//! cannot break either, since a skill stays on only under the name it was on
-//! with.
+//! The plugin holds:
 //!
-//! Every skill that is on is installed on each Host the user's jobs run on,
-//! so the bounds of a fetch bound what a Host keeps. A skill's path in the
-//! catalog is its directory on a Host, the same on every Host, so a target
-//! switch changes no path: the new Host receives the directory when its first
-//! job needs it.
+//! - the user's skill sources, fetched from git and pinned to a commit, whose
+//!   skills the user turns on one by one and which every Host the user's jobs
+//!   run on receives as a directory;
+//! - the skills a repository carries;
+//! - the catalog of both, which reaches the model as a context block.
+//!
+//! Nothing else in Demi knows skills.
+//!
+//! # Which skills are on
+//!
+//! A source never changes by itself: its skills change only when the user adds,
+//! updates or removes it or turns its skills on or off.
+//!
+//! A new skill starts on, with two exceptions:
+//!
+//! - A skill whose name another skill that is on has.
+//! - A skill that sets `disable-model-invocation`, which the agent is never
+//!   offered. On, it would only install its files on every Host and take its
+//!   name from another skill.
+//!
+//! Two skills that are on never share a name, which an update cannot break
+//! either, since a skill stays on only under the name it was on with.
+//!
+//! # Hosts
+//!
+//! Every skill that is on is installed on each Host the user's jobs run on, so
+//! the bounds of a fetch bound what a Host keeps.
+//!
+//! A skill's path in the catalog is its directory on a Host, the same on every
+//! Host, so a target switch changes no path: the new Host receives the
+//! directory when its first job needs it.
 //!
 //! The plugin writes to no Host, sends no credential when it fetches, and never
 //! blocks the shard thread: git runs on the blocking pool.

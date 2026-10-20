@@ -1,16 +1,23 @@
-//! Demi's one download of a file over HTTP: resumed into a staging file the
-//! caller names after a break or a stall, without an overall deadline, its
-//! progress told to the caller, its redirects followed here so the caller
-//! decides each hop's headers, and its bytes decoded and checked whole once
-//! complete. Copies of local files are checked the same way.
+//! Demi's one download of a file over HTTP.
+//!
+//! The downloader:
+//!
+//! - resumes into a staging file the caller names, after a break or a stall,
+//!   without an overall deadline;
+//! - tells its progress to the caller;
+//! - follows redirects here, so the caller decides each hop's headers;
+//! - decodes and checks the bytes whole once complete.
+//!
+//! Copies of local files are checked the same way.
 //!
 //! Every file Demi fetches over HTTP goes through it (a command executable, a
 //! runner update, a Cloud image's software, a file `demi web fetch` saves, a
-//! vendor's video, an attachment `demi attachment download` fetches), so a
-//! fix for a slow or broken link helps them all. A stream, such as a model's
-//! answer, a command's pipe or a live view, is not a download. The downloader
-//! only reports the bytes received and the size when known; the caller
-//! decides what to show.
+//! vendor's video, an attachment `demi attachment download` fetches), so a fix
+//! for a slow or broken link helps them all. A stream, such as a model's
+//! answer, a command's pipe or a live view, is not a download.
+//!
+//! The downloader only reports the bytes received and the size when known; the
+//! caller decides what to show.
 
 use std::{path::Path, time::Duration};
 
@@ -238,25 +245,42 @@ const SILENT_PAUSE: Duration = Duration::from_secs(1);
 /// whole file and break before its end, before the download gives up on it.
 const WHOLE_BREAKS: u32 = 3;
 
-/// Downloads `download` into the file at `staging`, which keeps the bytes
-/// as served, continuing from the bytes
-/// the file holds with a Range request, so a download that broke off, in
-/// this call or an earlier one, does not start again. The content coding
-/// the bytes were sent in is recorded beside the file as the download
-/// starts, and is what [`Received`] names, whatever a later answer
-/// without a body says. A server that answers the whole file, or a range
-/// that does not start where the file ends, starts the file again; one
-/// that answers the whole file and breaks before its end three times in a
-/// row fails the download. A connection that breaks off after bytes
-/// arrived, or that delivers none for `patience.stall` after some, is
-/// given up and a new one resumes at once, since a new connection often
-/// takes a better path than one that stalled. New connections that deliver
-/// nothing are opened again, a second apart, until `patience.silence` has
-/// passed without a byte; then the download fails with the last cause. A
-/// download stopped so, or cancelled, or refused at an address its caller
-/// renews, keeps its staging file for a later one; any other failure, such as a refusal or more bytes than the limit,
-/// removes it. `progress` hears how many bytes the file holds after each
-/// piece, and of how many when the server says.
+/// Downloads `download` into the file at `staging`, which keeps the bytes as
+/// served.
+///
+/// # Resuming
+///
+/// The download continues from the bytes the file holds with a Range request,
+/// so a download that broke off, in this call or an earlier one, does not start
+/// again.
+///
+/// - The content coding the bytes were sent in is recorded beside the file as
+///   the download starts, and is what [`Received`] names, whatever a later
+///   answer without a body says.
+/// - A server that answers the whole file, or a range that does not start where
+///   the file ends, starts the file again.
+/// - A server that answers the whole file and breaks before its end three times
+///   in a row fails the download.
+///
+/// # Stalls
+///
+/// A connection that breaks off after bytes arrived, or that delivers none for
+/// `patience.stall` after some, is given up and a new one resumes at once,
+/// since a new connection often takes a better path than one that stalled.
+///
+/// New connections that deliver nothing are opened again, a second apart, until
+/// `patience.silence` has passed without a byte. Then the download fails with
+/// the last cause.
+///
+/// # The staging file
+///
+/// - A download stopped so, or cancelled, or refused at an address its caller
+///   renews, keeps its staging file for a later one.
+/// - Any other failure, such as a refusal or more bytes than the limit, removes
+///   it.
+///
+/// `progress` hears how many bytes the file holds after each piece, and of how
+/// many when the server says.
 pub async fn download(
     client: &(impl Fetch + ?Sized),
     download: Download<'_>,

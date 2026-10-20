@@ -1,9 +1,11 @@
-//! One driver per platform, behind one interface:
-//! the Host's simulators, boot and shutdown, and for an open device its
-//! frames as H.264, its input, its UI tree, its screen's size and
-//! orientation. Every coordinate here is a point of the screen turned
-//! upright, as the picture shows it; the commands map them to screenshot
-//! pixels.
+//! One driver per platform, behind one interface.
+//!
+//! The interface covers the Host's simulators, boot and shutdown, and for an
+//! open device its frames as H.264, its input, its UI tree, and its screen's
+//! size and orientation.
+//!
+//! Every coordinate here is a point of the screen turned upright, as the
+//! picture shows it. The commands map them to screenshot pixels.
 
 use std::sync::Arc;
 

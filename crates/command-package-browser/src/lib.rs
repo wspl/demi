@@ -16,8 +16,10 @@
 //!    <- stdout, stderr, exit status -> shell result and media handling
 //! ```
 //!
+//! # Rules
+//!
 //! - The conversation and the invoking agent come from the command context,
-//!   which a script cannot change; a command has no `--conversation`,
+//!   which a script cannot change. A command has no `--conversation`,
 //!   `--session`, `--profile` or `--cdp-url`.
 //! - A conversation has one environment per Host where its shell runs, and a
 //!   command never reaches the one on another Host (its handle is
@@ -30,13 +32,17 @@
 //!   batch language or REPL of its own (Bash composes the commands), and a
 //!   second shell or model-tool loop.
 //! - Where Codex's browser API and Playwright differ, Codex's verified normal
-//!   behavior decides; an obvious defect of the reference is not adopted.
+//!   behavior decides. An obvious defect of the reference is not adopted.
 //!
-//! It is a program of its own: it hosts no runner connection, defines no part
-//! of the agent's command tree, stores no conversation, and is never linked
-//! into the runner.
+//! # Boundaries
 //!
-//! Its runtime is multi-threaded because several conversations' browsers must
+//! The package is a program of its own: it hosts no runner connection, defines
+//! no part of the agent's command tree, stores no conversation, and is never
+//! linked into the runner.
+//!
+//! # Runtime
+//!
+//! The runtime is multi-threaded because several conversations' browsers must
 //! make progress at once, and the Chrome DevTools connection decodes large
 //! messages (a screenshot is megabytes of base64 JSON) on whichever worker
 //! polls it. Owner tasks take the place of locks, so a thread per conversation

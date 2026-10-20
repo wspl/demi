@@ -26,13 +26,17 @@ pub enum Request {
         user: UserId,
         invocation: Box<RpcInvocation>,
     },
-    /// A node is about to send a provider request, and the plugin, a
-    /// context source, may add a context block: `seen` holds the text of its own blocks the model
-    /// receives, oldest first, `cwd` is the node's working directory and
-    /// `paths` how its Host writes paths (`crates/runner-shell/src/lib.rs`).
-    /// `project` is what the plugin's project search last found in the
-    /// conversation's project directory, for a plugin that declares one;
-    /// none until a search answered.
+    /// A node is about to send a provider request, and the plugin, a context
+    /// source, may add a context block.
+    ///
+    /// The request carries:
+    ///
+    /// - `seen`: the text of its own blocks the model receives, oldest first.
+    /// - `cwd`: the node's working directory.
+    /// - `paths`: how its Host writes paths (`crates/runner-shell/src/lib.rs`).
+    /// - `project`: what the plugin's project search last found in the
+    ///   conversation's project directory, for a plugin that declares one; none
+    ///   until a search answered.
     Context {
         user: UserId,
         conversation: ConversationId,
@@ -45,11 +49,13 @@ pub enum Request {
         project: Option<Value>,
     },
     /// The plugin declares a project search: it searches `directory`, the
-    /// conversation's project directory, on its primary Host, with the
-    /// port's reads, and answers what it found and what tells of a change
-    /// to it. The backend keeps the answer, searches again when the runner
-    /// says one of `watch` changed or the Host comes online again, and gives
-    /// what it holds to each context request (`crates/backend-host-access/src/plugin_files.rs`).
+    /// conversation's project directory, on its primary Host, with the port's
+    /// reads, and answers what it found and what tells of a change to it.
+    ///
+    /// The backend keeps the answer. It searches again when the runner says one
+    /// of `watch` changed or the Host comes online again, and gives what it
+    /// holds to each context request
+    /// (`crates/backend-host-access/src/plugin_files.rs`).
     ProjectSearch {
         user: UserId,
         conversation: ConversationId,
@@ -82,11 +88,12 @@ pub enum Request {
         tab: PanelTab,
     },
     /// The command package the plugin's commands bind said `message` about
-    /// `conversation`, from a service on one of the conversation's Hosts. The
-    /// package says so the moment its state changes and the plugin never asks
-    /// whether it did: no job's end, reconnect or timer makes a plugin read a
-    /// Host again. What a message says is for the package and its plugin to
-    /// agree; the runner and the backend only carry it, and a plugin hears
+    /// `conversation`, from a service on one of the conversation's Hosts.
+    ///
+    /// The package says so the moment its state changes and the plugin never
+    /// asks whether it did: no job's end, reconnect or timer makes a plugin
+    /// read a Host again. What a message says is for the package and its plugin
+    /// to agree. The runner and the backend only carry it, and a plugin hears
     /// only the package its commands bind.
     PackageMessage {
         user: UserId,

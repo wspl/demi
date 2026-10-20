@@ -1,15 +1,16 @@
-//! The pictures a device's encoder makes, as the live view needs them:
-//! each one shown as soon as it arrives.
+//! The pictures a device's encoder makes, as the live view needs them: each one
+//! shown as soon as it arrives.
 //!
 //! A simulator's screen that does not change sends no frames after its key
-//! frame. An H.264 decoder that does not know a stream has no reordering
-//! holds pictures back until later ones arrive: for an SPS without
+//! frame. An H.264 decoder that does not know a stream has no reordering holds
+//! pictures back until later ones arrive: for an SPS without
 //! `bitstream_restriction`, Chromium's waits for as many as the level allows
 //! (about 14 at an iPhone's size), and a still screen never paints.
-//! VideoToolbox, which says no reordering only by sending none, writes no
-//! VUI at all, so each SPS of a key frame gains one that says so. No crate
-//! the workspace has writes an SPS, and the ones that read one do not tell
-//! where its VUI begins; this is the little of H.264 that takes.
+//!
+//! VideoToolbox, which says no reordering only by sending none, writes no VUI
+//! at all, so each SPS of a key frame gains one that says so. No crate the
+//! workspace has writes an SPS, and the ones that read one do not tell where
+//! its VUI begins; this is the little of H.264 that takes.
 
 use bytes::{BufMut, Bytes, BytesMut};
 

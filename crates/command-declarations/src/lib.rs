@@ -4,49 +4,64 @@
 //!
 //! One implementation serves the runner, which parses argv and answers
 //! `--help`, and the backend, which renders the model's capability index and
-//! checks registrations, so no second set of rules exists to drift from a
-//! declaration. A leaf's input is the JSON Schema that schemars derives from
-//! one Rust argument type: the schema a runner enforces and the type a
-//! handler decodes are one definition, and the declaration is data that
-//! serializes as the manifest node a runner receives. clap parses argv; the
-//! `jsonschema` validator checks what clap cannot express and arguments that
-//! arrive as JSON, both reporting in clap's shape.
+//! checks registrations. No second set of rules exists to drift from a
+//! declaration. Argument validation is `jsonschema` over the declaration's
+//! schema at both ends, through one check and one wording.
 //!
-//! The input subset is what the runner can enforce: it sees only the schema,
-//! so a rule the schema cannot state is a rule it cannot check. Hence no
-//! `default` (validation never fills in a missing value; the handler does),
-//! no transform, no `null` (argv has no spelling for it), and no nested
-//! object or union (argv has no syntax to fill them). The argument type
-//! decodes with serde's derived rules only, so every value the schema
-//! accepts decodes; a handler that cannot decode one has a declaration bug,
-//! not a usage error. Length bounds count Unicode scalar values at both ends
-//! (`𝄞` is one), the rule JSON Schema gives.
+//! The crate holds no handlers (`host-interface` pairs declarations with them),
+//! reads no stdin and does no other IO.
 //!
-//! Declarations are separate from handlers: the host-interface command set
+//! # One definition of an input
+//!
+//! A leaf's input is the JSON Schema that schemars derives from one Rust
+//! argument type. The schema a runner enforces and the type a handler decodes
+//! are one definition, and the declaration is data that serializes as the
+//! manifest node a runner receives.
+//!
+//! clap parses argv. The `jsonschema` validator checks what clap cannot express
+//! and arguments that arrive as JSON, both reporting in clap's shape.
+//!
+//! # The input subset
+//!
+//! The input subset is what the runner can enforce: it sees only the schema, so
+//! a rule the schema cannot state is a rule it cannot check. Hence:
+//!
+//! - no `default` (validation never fills in a missing value; the handler
+//!   does);
+//! - no transform;
+//! - no `null` (argv has no spelling for it);
+//! - no nested object or union (argv has no syntax to fill them).
+//!
+//! The argument type decodes with serde's derived rules only, so every value
+//! the schema accepts decodes. A handler that cannot decode one has a
+//! declaration bug, not a usage error. Length bounds count Unicode scalar
+//! values at both ends (`𝄞` is one), the rule JSON Schema gives.
+//!
+//! # Declarations and handlers
+//!
+//! Declarations are separate from handlers. The host-interface command set
 //! pairs the tree with one handler per `rpc` leaf, and everything that reads
-//! the tree sees declarations only, so a manifest needs no handler and a
-//! runner never holds one. A group or `--help` invocation prints help
-//! without running a handler or reading stdin; help is generated from the
-//! declaration, which carries no examples that could fall out of sync.
+//! the tree sees declarations only, so a manifest needs no handler and a runner
+//! never holds one.
+//!
+//! A group or `--help` invocation prints help without running a handler or
+//! reading stdin. Help is generated from the declaration, which carries no
+//! examples that could fall out of sync.
+//!
+//! # Native operations
 //!
 //! A tree is generic over how its native commands name their operation. A
-//! declaration names the package and the operation ([`NativeOperation`]); the
+//! declaration names the package and the operation ([`NativeOperation`]). The
 //! manifest a runner receives pins each to the descriptor that serves it
 //! ([`Binding`]), and [`Node::pin`] turns the one into the other.
 //!
-//! A group may declare permission categories, and a leaf names the one it
-//! needs as its `permission`, and the input field that may bring a host
-//! into the conversation as its `bringsHost`: the declaration is all a
-//! command does about permissions, which the backend's dispatch checks
-//! before a handler runs.
+//! # Permissions
 //!
-//! This crate is the one implementation of argv parsing, help and the input
-//! subset: the runner parses argv and renders `--help` with it, and the backend
-//! renders the model's capability index and checks registrations with it.
-//! Argument validation is `jsonschema` over the declaration's schema at both
-//! ends, through one check and one wording. It holds no handlers
-//! (`host-interface` pairs declarations with them), reads no stdin and does no
-//! other IO.
+//! A group may declare permission categories. A leaf names the one it needs as
+//! its `permission`, and the input field that may bring a host into the
+//! conversation as its `bringsHost`. The declaration is all a command does
+//! about permissions, which the backend's dispatch checks before a handler
+//! runs.
 
 mod help;
 mod input;
@@ -72,19 +87,24 @@ pub const MAX_DEPTH: usize = 32;
 /// The most bytes a command's body read from its standard input may hold.
 pub const MAX_STDIN_BODY: usize = 1024 * 1024;
 
-/// The most characters a group's index entry holds. Registration refuses a
-/// longer one, and a top-level group without one, since a group the index
-/// does not name is one the model never finds. An entry is the most important
-/// text a capability has: a model that does not see from it that the
-/// capability fits the task never asks for its help. It says in three
-/// sentences or fewer what the group does, in the third person and in the
-/// words of the task, not of the implementation; when to use it, as the
-/// situations a user would describe; and when not to, where a common
-/// alternative is better. It gives reasons and situations, never capital
-/// letters or "you must": a newer model follows emphasis too eagerly and
-/// reaches for the capability where it does not fit. A plugin never writes
-/// free text into the system prompt, nor orders its entries: the renderer
-/// does.
+/// The most characters a group's index entry holds.
+///
+/// Registration refuses a longer one, and a top-level group without one, since
+/// a group the index does not name is one the model never finds.
+///
+/// An entry is the most important text a capability has: a model that does not
+/// see from it that the capability fits the task never asks for its help. An
+/// entry says:
+///
+/// - in three sentences or fewer, what the group does, in the third person and
+///   in the words of the task, not of the implementation;
+/// - when to use it, as the situations a user would describe;
+/// - when not to, where a common alternative is better.
+///
+/// It gives reasons and situations, never capital letters or "you must": a
+/// newer model follows emphasis too eagerly and reaches for the capability
+/// where it does not fit. A plugin never writes free text into the system
+/// prompt, nor orders its entries: the renderer does.
 pub const MAX_INDEX_ENTRY: usize = 600;
 
 /// The keyword beside a field's `pattern` that says what the pattern stands
@@ -146,11 +166,13 @@ pub struct Group<B = Binding> {
     pub subcommands: Vec<Node<B>>,
 }
 
-/// One power over Demi itself that a user allows for a conversation. It is
-/// what the user decides on, so it never changes meaning while a grant of it
-/// may exist: a group that needs a broader power declares a new category. A
-/// leaf of a `native` command names none, since it runs on the Host, where it
-/// can act only on the Host and never on Demi itself, and its dispatch on the
+/// One power over Demi itself that a user allows for a conversation.
+///
+/// It is what the user decides on, so it never changes meaning while a grant of
+/// it may exist: a group that needs a broader power declares a new category.
+///
+/// A leaf of a `native` command names none. It runs on the Host, where it can
+/// act only on the Host and never on Demi itself, and its dispatch on the
 /// runner has no grants to check.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -1,6 +1,12 @@
-//! The runner's child processes and their IO: starting and reaping processes, standard IO, the way
-//! to the backend and its pipes, lines and tails of streams, private state files, line
-//! counts of a change, the local command client, and the job shell contract.
+//! The runner's child processes and their IO.
+//!
+//! The crate holds:
+//!
+//! - starting and reaping processes, and standard IO;
+//! - the way to the backend and its pipes;
+//! - lines and tails of streams;
+//! - private state files, and line counts of a change;
+//! - the local command client, and the job shell contract.
 //!
 //! The crate knows nothing of the backend connection, jobs, commands, services
 //! or the shell that implements the job shell contract.

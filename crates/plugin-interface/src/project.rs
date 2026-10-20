@@ -1,7 +1,7 @@
 //! The directories a project's instruction files and workflows are searched in
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`): the working
 //! directory and each directory above it up to the root of its git repository,
-//! the nearest that holds `.git`; outside a repository, the working directory
+//! the nearest that holds `.git`. Outside a repository, the working directory
 //! alone.
 //!
 //! A Host's paths are walked and joined in its own form ([`HostPaths`]): on

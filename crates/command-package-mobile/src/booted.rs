@@ -1,10 +1,11 @@
-//! The simulators Demi booted (`crates/command-package-mobile/src/devices.rs`), kept in
-//! `<installation>/mobile/booted.json` across the program's ends: a
-//! `demi-mobile` that stops, updates or is killed shuts nothing down, and
-//! the next one gives each simulator still booted from Demi's boot the
-//! hour without a watcher or a command. Each entry names the boot by its
-//! mark (`driver::Simulator::boot`), so a simulator the user shut down and
-//! booted again is the user's.
+//! The simulators Demi booted (`crates/command-package-mobile/src/devices.rs`),
+//! kept in `<installation>/mobile/booted.json` across the program's ends.
+//!
+//! A `demi-mobile` that stops, updates or is killed shuts nothing down. The
+//! next one gives each simulator still booted from Demi's boot the hour without
+//! a watcher or a command. Each entry names the boot by its mark
+//! (`driver::Simulator::boot`), so a simulator the user shut down and booted
+//! again is the user's.
 
 use std::{
     io,

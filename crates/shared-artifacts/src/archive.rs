@@ -1,8 +1,9 @@
 //! Archive installation: a verified zip archive, or a tar archive compressed
 //! with zstd, unpacked into a directory named by its SHA-256, beside a receipt
-//! that lets a later process trust the files without downloading them again. A
-//! runner installs a command package's resources into its artifact cache and
-//! the Cloud image build into the image, with the same steps
+//! that lets a later process trust the files without downloading them again.
+//!
+//! A runner installs a command package's resources into its artifact cache, and
+//! the Cloud image build installs into the image, with the same steps
 //! (`crates/runner-command-packages/src/cache.rs`,
 //! `cloud-guest-image/rootfs/packages.txt`).
 
@@ -67,12 +68,12 @@ async fn receipt(directory: &Path) -> Result<Option<Receipt>, Error> {
     Ok(Some(receipt))
 }
 
-/// The entry of the installation of `archive` at `directory` that the
-/// installer published, trusted unread: the receipt there names the
-/// archive. None when nothing is at `directory`; another receipt is an
-/// error. For a directory only its installer writes, such as a runner's
-/// private cache, where reading the whole entry at each use would cost
-/// every start.
+/// The entry of the installation of `archive` at `directory` that the installer
+/// published, trusted unread: the receipt there names the archive.
+///
+/// It returns None when nothing is at `directory`; another receipt is an error.
+/// Use it for a directory only its installer writes, such as a runner's private
+/// cache, where reading the whole entry at each use would cost every start.
 pub async fn recorded(directory: &Path, archive: &Archive) -> Result<Option<PathBuf>, Error> {
     let Some(receipt) = receipt(directory).await? else {
         return Ok(None);
@@ -207,11 +208,12 @@ async fn publish_installation(
 }
 
 /// Installs into `root`, as [`install_archive`] does once the archive is
-/// written, the files of `archive` that a copy unpacked elsewhere holds,
-/// named by that copy's `entry`, so that [`installed`] accepts them. For a
-/// test given an installed release's entry, such as the Chrome suite's
-/// `DEMI_TEST_CHROME`: nothing is downloaded, and the files are hard links
-/// where the system allows them, copies otherwise.
+/// written, the files of `archive` that a copy unpacked elsewhere holds, named
+/// by that copy's `entry`, so that [`installed`] accepts them.
+///
+/// It is for a test given an installed release's entry, such as the Chrome
+/// suite's `DEMI_TEST_CHROME`. Nothing is downloaded, and the files are hard
+/// links where the system allows them, copies otherwise.
 #[cfg(feature = "testing")]
 pub async fn install_unpacked(
     root: &Path,

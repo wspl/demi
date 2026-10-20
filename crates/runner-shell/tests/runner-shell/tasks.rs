@@ -1,8 +1,11 @@
-//! A job's background tasks and `timeout` (`crates/runner-shell/src/work.rs`): `$!` names a task by an id above every process ID, which
-//! `kill`, `wait` and `jobs -p` take; `kill` stops the whole task, and
-//! `wait` gives bash's statuses; `timeout` stops its command as `kill` stops
-//! a task, with GNU's statuses; `disown` and `nohup` keep a task in its job,
-//! which names the tasks that outlive its script.
+//! A job's background tasks and `timeout` (`crates/runner-shell/src/work.rs`):
+//!
+//! - `$!` names a task by an id above every process ID, which `kill`, `wait`
+//!   and `jobs -p` take.
+//! - `kill` stops the whole task, and `wait` gives bash's statuses.
+//! - `timeout` stops its command as `kill` stops a task, with GNU's statuses.
+//! - `disown` and `nohup` keep a task in its job, which names the tasks that
+//!   outlive its script.
 
 #[cfg(unix)]
 use demi_runner_process::job_shell::ShellJob;
@@ -88,12 +91,16 @@ async fn background_tasks_have_ids_that_kill_and_wait_take() {
     assert_eq!(errors, "wait: pid 4194305 is not a child of this shell\n");
 }
 
-/// `kill` on a task stops the subshell and everything it started: the
-/// program the subshell's program started in the background is gone too,
-/// where bash's `kill` would signal the subshell alone. A process ID or a
-/// process group's negative ID signals that process or group, after `--` or
-/// not. Before, `$!` was empty and `kill -- -N` read `-N` as a signal.
-/// About 0.1 s.
+/// `kill` on a task stops the subshell and everything it started: the program
+/// the subshell's program started in the background is gone too, where bash's
+/// `kill` would signal the subshell alone.
+///
+/// A process ID or a process group's negative ID signals that process or group,
+/// after `--` or not.
+///
+/// Before, `$!` was empty and `kill -- -N` read `-N` as a signal.
+///
+/// Cost: about 0.1 s.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn kill_stops_a_task_with_everything_it_started() {
@@ -114,8 +121,9 @@ async fn kill_stops_a_task_with_everything_it_started() {
     gone(child.trim().parse().unwrap()).await;
 }
 
-/// A task that ignores `TERM` runs on; `KILL` ends it, and `wait` gives
-/// 137. About 0.1 s.
+/// A task that ignores `TERM` runs on; `KILL` ends it, and `wait` gives 137.
+///
+/// Cost: about 0.1 s.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn kill_dash_nine_ends_a_task_that_ignores_term() {
@@ -193,12 +201,17 @@ async fn timeout_stops_its_command_with_gnus_statuses() {
     }
 }
 
-/// On Windows, where a process has no signals, `kill` and `timeout` end
-/// what they would signal and give the status that signal gives on Unix: a
-/// task's id ends the task's shell work and its Job Object's processes, a
-/// process ID ends that process, and a negative process group ID fails.
-/// Before, `kill` was Git's `kill.exe`, which knows no task id, and
-/// `timeout` was Windows' `timeout.exe`, which waits for a key. About 0.3 s.
+/// On Windows, where a process has no signals, `kill` and `timeout` end what
+/// they would signal and give the status that signal gives on Unix:
+///
+/// - a task's id ends the task's shell work and its Job Object's processes;
+/// - a process ID ends that process;
+/// - a negative process group ID fails.
+///
+/// Before, `kill` was Git's `kill.exe`, which knows no task id, and `timeout`
+/// was Windows' `timeout.exe`, which waits for a key.
+///
+/// Cost: about 0.3 s.
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn kill_and_timeout_end_what_they_signal_with_unix_statuses_on_windows() {
@@ -245,12 +258,15 @@ async fn kill_and_timeout_end_what_they_signal_with_unix_statuses_on_windows() {
 
 /// On Windows `kill` of a task and a `timeout` that runs out end the whole
 /// process tree of what they stop, every process of its Job Objects: here a
-/// program the task's program started, which killing that program alone
-/// would leave running. The grandchild writes its process ID once it runs;
-/// the script then waits until that process is gone, which within the
-/// hang guard it is only if the Job Object was ended. About 4 s: two
-/// PowerShell starts, and `timeout`'s 3 s, which must outlast PowerShell's
-/// start so that it runs out once the grandchild runs.
+/// program the task's program started, which killing that program alone would
+/// leave running.
+///
+/// The grandchild writes its process ID once it runs. The script then waits
+/// until that process is gone, which within the hang guard it is only if the
+/// Job Object was ended.
+///
+/// Cost: about 4 s. Two PowerShell starts, and `timeout`'s 3 s, which must
+/// outlast PowerShell's start so that it runs out once the grandchild runs.
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn kill_and_timeout_end_a_tasks_whole_process_tree_on_windows() {
@@ -282,12 +298,13 @@ async fn kill_and_timeout_end_a_tasks_whole_process_tree_on_windows() {
     assert_eq!(output, "task 143\ntree gone\ntimeout 124\ntree gone\n", "{errors}");
 }
 
-/// Starts `script` as the runner starts a job, with the system's programs
-/// on `PATH`, reads its output until `ready`, waits until the job names the
-/// tasks that keep it running after its script, and stops it with `TERM`;
-/// a task that runs on keeps the job from ending within the hang guard.
-/// Gives what it printed and those tasks; the process whose ID the script
-/// wrote to `leader` is gone.
+/// Starts `script` as the runner starts a job, with the system's programs on
+/// `PATH`, reads its output until `ready`, waits until the job names the tasks
+/// that keep it running after its script, and stops it with `TERM`.
+///
+/// A task that runs on keeps the job from ending within the hang guard. The
+/// function gives what the job printed and those tasks; the process whose ID
+/// the script wrote to `leader` is gone.
 #[cfg(unix)]
 async fn stopped_after_its_script(script: &str, ready: &str) -> (String, Vec<String>) {
     let root = tempfile::tempdir().unwrap();
@@ -342,12 +359,16 @@ async fn disown_keeps_a_task_in_its_job() {
     assert_eq!(outliving, [task]);
 }
 
-/// `nohup` runs its command ignoring `HUP`, as a process of the job: the
-/// command survives the `HUP` it sends itself, the job runs on after its
-/// script while the command does and names it, and stopping the job stops
-/// the command, so no process is left. The Host's own `nohup` does this; a
-/// command that started a session of its own would run on past the stop
-/// and hold the job until the hang guard. About 0.05 s.
+/// `nohup` runs its command ignoring `HUP`, as a process of the job:
+///
+/// - The command survives the `HUP` it sends itself.
+/// - The job runs on after its script while the command does, and names it.
+/// - Stopping the job stops the command, so no process is left.
+///
+/// The Host's own `nohup` does this. A command that started a session of its
+/// own would run on past the stop and hold the job until the hang guard.
+///
+/// Cost: about 0.05 s.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn nohup_keeps_a_task_in_its_job_and_ignores_hup() {

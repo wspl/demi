@@ -1,30 +1,44 @@
 //! Subscriptions: what one client, the backend's connection or a page's direct
-//! `watch`, subscribed to of a Host's files, each followed through the connection's
-//! shared watches (`crate::watches`) and reported by its id alone: the runner never
-//! sends a path or content. For example, a page keeps `src/app.ts`'s text and the
-//! working tree's changes list; the agent edits the file and runs `cargo check`,
-//! which writes 20,000 files under the ignored `target/`: two subscriptions are
-//! reported changed, once each, and nothing for `target/`.
+//! `watch`, subscribed to of a Host's files.
 //!
-//! One owner task per client keeps the subscriptions; the watches' threads match what
-//! they receive against an index of the subscriptions that follow them and note the
-//! ids that changed, so a change nobody subscribed to costs a lookup and sends
-//! nothing. Changes are gathered for `WATCH_GATHER` and each subscription is sent at
-//! most once per batch, with the highest number it saw, which is why a batch names no
-//! paths and needs no size limit. Starting and stopping a shared platform watch run
-//! on the blocking pool, never on the control thread, so the last subscriber
-//! releases its watch without waiting for a join, and closing also ends a watch still
-//! being started, so neither a late start nor a direct channel leaves one behind.
+//! Each subscription is followed through the connection's shared watches
+//! (`crate::watches`) and reported by its id alone: the runner never sends a
+//! path or content.
 //!
-//! An ignored path changes no `worktree` subscription (`crate::ignore`), but a `file`
-//! or `folder` subscription inside an ignored folder, such as a log under `target/` a
-//! page shows, changes as any other. A git directory concerns only its own
-//! repository: in a checkout with nested repositories a commit in `src/v8` changes
-//! `src/v8`'s subscriptions and none of `src`'s. When the platform says it dropped
-//! events, the subscriptions the drop concerns changed, reported as any change:
-//! FSEvents' `MustScanSubDirs` names a folder and only the subscriptions under it;
-//! the other flags and inotify's overflow concern every subscription on that stream;
-//! a drop outside the working tree changes nothing inside it.
+//! For example, a page keeps `src/app.ts`'s text and the working tree's changes
+//! list. The agent edits the file and runs `cargo check`, which writes 20,000
+//! files under the ignored `target/`. Two subscriptions are reported changed,
+//! once each, and nothing for `target/`.
+//!
+//! # How changes are matched
+//!
+//! - One owner task per client keeps the subscriptions.
+//! - The watches' threads match what they receive against an index of the
+//!   subscriptions that follow them and note the ids that changed, so a change
+//!   nobody subscribed to costs a lookup and sends nothing.
+//! - Changes are gathered for `WATCH_GATHER`, and each subscription is sent at
+//!   most once per batch, with the highest number it saw. That is why a batch
+//!   names no paths and needs no size limit.
+//! - Starting and stopping a shared platform watch run on the blocking pool,
+//!   never on the control thread, so the last subscriber releases its watch
+//!   without waiting for a join. Closing also ends a watch still being started,
+//!   so neither a late start nor a direct channel leaves one behind.
+//!
+//! # What counts as a change
+//!
+//! - An ignored path changes no `worktree` subscription (`crate::ignore`), but
+//!   a `file` or `folder` subscription inside an ignored folder, such as a log
+//!   under `target/` a page shows, changes as any other.
+//! - A git directory concerns only its own repository: in a checkout with
+//!   nested repositories a commit in `src/v8` changes `src/v8`'s subscriptions
+//!   and none of `src`'s.
+//! - When the platform says it dropped events, the subscriptions the drop
+//!   concerns changed, reported as any change:
+//!   - FSEvents' `MustScanSubDirs` names a folder and only the subscriptions
+//! under it.
+//!   - The other flags and inotify's overflow concern every subscription on
+//! that stream.
+//!   - A drop outside the working tree changes nothing inside it.
 
 use crate::git::GitDirs;
 use std::{

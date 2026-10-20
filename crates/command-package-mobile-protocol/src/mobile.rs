@@ -1,9 +1,11 @@
-//! The `mobile.*` operations: their limits, the
-//! values they share, their failures, and each operation's input and
-//! result. Inputs are the flat argument objects a command's flags and
-//! positionals make; results are what `--json` prints. Every coordinate an
-//! input takes or a result gives is a pixel of the device's screenshot,
-//! whose long side is at most [`SCREENSHOT_LONG_SIDE`].
+//! The `mobile.*` operations: their limits, the values they share, their
+//! failures, and each operation's input and result.
+//!
+//! - Inputs are the flat argument objects a command's flags and positionals
+//!   make.
+//! - Results are what `--json` prints.
+//! - Every coordinate an input takes or a result gives is a pixel of the
+//!   device's screenshot, whose long side is at most [`SCREENSHOT_LONG_SIDE`].
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

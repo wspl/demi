@@ -1,27 +1,32 @@
-//! The `browser` kind's tabs on the backend: a panel tab added for each tab the
-//! agent opens and each tab a page opens, beside its opener; a browser tab
-//! opened again for a panel tab whose browser lost it, or that failed to open,
-//! once its content asks; the browser's tab closed with its panel tab, and gone
-//! ones marked. One conversation's work runs one piece at a time, so a change
-//! is never based on what was read before an earlier change of the same
-//! conversation: the plugin never adds a panel tab for a browser tab it is
-//! opening for a panel tab, and never marks a tab closed on a list read before
-//! the tab opened.
+//! The `browser` kind's tabs on the backend:
+//!
+//! - A panel tab is added for each tab the agent opens and each tab a page
+//!   opens, beside its opener.
+//! - A browser tab is opened again for a panel tab whose browser lost it, or
+//!   that failed to open, once its content asks.
+//! - The browser's tab is closed with its panel tab, and gone ones are marked.
+//!
+//! One conversation's work runs one piece at a time, so a change is never based
+//! on what was read before an earlier change of the same conversation. The
+//! plugin never adds a panel tab for a browser tab it is opening for a panel
+//! tab, and never marks a tab closed on a list read before the tab opened.
+//!
+//! # Rules
 //!
 //! - A tab id is used once per conversation, so a tab the user closed never
 //!   comes back, and a tab is added once however often the list is read. Adding
 //!   does not select; only a raised `shows` does.
 //! - A page's tab goes right after its opener, behind the tabs that opener
-//!   opened before, as Chrome places them; the agent's go at the end.
+//!   opened before, as Chrome places them. The agent's go at the end.
 //!   `openedBy` keeps this in the panel tab's data so a reload keeps the order.
 //! - A tab closed on purpose (the browser's list of closed tabs says so) is
-//!   removed; a tab lost with the browser stays, marked `closed`, and opens
+//!   removed. A tab lost with the browser stays, marked `closed`, and opens
 //!   again on its address when shown, as Chrome reloads a discarded tab. On
 //!   `package_lost` every panel tab is marked lost without reading the Host,
 //!   whose browser is gone.
 //! - A Host that cannot be reached for a moment changes no tab: the browser may
 //!   still run there.
-//! - `shows` is the agent's decision that the user sees a tab: `show` only
+//! - `shows` is the agent's decision that the user sees a tab. `show` only
 //!   raises the count in the browser's list, and the panel applies a count once
 //!   per page, so the user's own selection after it stands.
 
@@ -114,13 +119,17 @@ impl Work {
             .clone()
     }
 
-    /// Opens a browser tab for the panel tab `id`, unless it shows one: one
-    /// that failed to open, which Retry opens again, and one whose browser
-    /// tab the browser lost, shown again.
-    /// Answers the browser tab the panel tab shows now; none when the panel
-    /// no longer has it or it could not open one, which its data says: any
-    /// step that fails is the tab's `failure`, which its content shows with
-    /// Retry.
+    /// Opens a browser tab for the panel tab `id`, unless it shows one.
+    ///
+    /// It opens a tab when the panel tab shows none:
+    ///
+    /// - one that failed to open, which Retry opens again;
+    /// - one whose browser tab the browser lost, shown again.
+    ///
+    /// It answers the browser tab the panel tab shows now. It answers none when
+    /// the panel no longer has the tab or it could not open one, which its data
+    /// says: any step that fails is the tab's `failure`, which its content
+    /// shows with Retry.
     pub async fn bind(
         &self,
         conversation: &ConversationId,
@@ -182,14 +191,16 @@ impl Work {
         Ok(())
     }
 
-    /// Reads the browser's tabs and updates the panel from them: a tab for
-    /// each tab the agent or a page opened, a page's beside its opener's
-    /// (`after_opened`) and the agent's after the others, each bound tab's
-    /// count of the times the agent showed its browser tab when the count rose,
-    /// each bound tab's address and title
-    /// as the list says them, every bound tab whose browser tab
-    /// was closed on purpose removed, and every one whose browser tab was
-    /// lost with the browser marked closed, to open again when shown.
+    /// Reads the browser's tabs and updates the panel from them:
+    ///
+    /// - A tab is added for each tab the agent or a page opened, a page's
+    ///   beside its opener's (`after_opened`) and the agent's after the others.
+    /// - Each bound tab gets the count of the times the agent showed its
+    ///   browser tab, when the count rose.
+    /// - Each bound tab gets its address and title as the list says them.
+    /// - Every bound tab whose browser tab was closed on purpose is removed.
+    /// - Every bound tab whose browser tab was lost with the browser is marked
+    ///   closed, to open again when shown.
     pub async fn sync(
         &self,
         conversation: &ConversationId,
@@ -316,12 +327,15 @@ fn after_opened(order: &[Placed], at: usize) -> usize {
     at + 1 + run
 }
 
-/// Gives the panel tab `id`, with `data`, a browser tab on the address its
-/// user asked for last. A tab whose browser tab opened but whose address could
-/// not load there loads it in that tab again, as a browser's Reload does after
-/// a load that failed; any other opens one on its address. If the user asked
-/// for another address meanwhile, the tab loads that one; if the user closed
-/// the panel tab meanwhile, its browser tab closes.
+/// Gives the panel tab `id`, with `data`, a browser tab on the address its user
+/// asked for last.
+///
+/// - A tab whose browser tab opened but whose address could not load there
+///   loads it in that tab again, as a browser's Reload does after a load that
+///   failed.
+/// - Any other tab opens one on its address.
+/// - If the user asked for another address meanwhile, the tab loads that one.
+/// - If the user closed the panel tab meanwhile, its browser tab closes.
 async fn open_for(
     port: &PluginPort,
     id: &str,

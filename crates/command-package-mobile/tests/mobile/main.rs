@@ -1,8 +1,7 @@
 //! `demi mobile`'s command contract against a scripted driver
 //! (`crates/command-package-mobile/src/operations.rs`,
 //! `crates/command-package-mobile/src/devices.rs`): what each command prints
-//! and what
-//! reaches the device, through the service as the runner calls it.
+//! and what reaches the device, through the service as the runner calls it.
 
 mod commands;
 mod ios;

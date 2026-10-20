@@ -1,8 +1,9 @@
 //! The image plugin through the JSON loopback over an in-memory Demi, which
-//! answers its file reads and its images: the words a failure is told in,
-//! and an edit's images read from the conversation's Host. The whole path
-//! through the backend, with a real device, is the backend's `images`
-//! scenarios'.
+//! answers its file reads and its images.
+//!
+//! The tests cover the words a failure is told in, and an edit's images read
+//! from the conversation's Host. The whole path through the backend, with a
+//! real device, is the backend's `images` scenarios'.
 
 mod support;
 
@@ -223,12 +224,15 @@ fn an_edit_reads_its_images_beside_the_shell_and_names_one_it_cannot_send() {
     });
 }
 
-/// The bytes written are the format asked for, PNG by default, whatever
-/// the vendor sent: Grok's JPEG is written as a PNG, a PNG as JPEG or WebP
-/// on request, and a JPEG asked for with a transparent background is sent
-/// as asked and warns, as a JPEG holds no transparency.
-/// Planted defect this catches: the vendor's bytes passed on as they came,
-/// so a file named fox.png holds a JPEG.
+/// The bytes written are the format asked for, PNG by default, whatever the
+/// vendor sent.
+///
+/// - Grok's JPEG is written as a PNG, and a PNG as JPEG or WebP on request.
+/// - A JPEG asked for with a transparent background is sent as asked and warns,
+///   as a JPEG holds no transparency.
+///
+/// Planted defect this catches: the vendor's bytes passed on as they came, so a
+/// file named fox.png holds a JPEG.
 #[test]
 fn the_image_is_written_in_the_format_asked_for_whatever_the_vendor_sent() {
     local(async {
@@ -345,15 +349,23 @@ fn model(id: &str, vendor: Option<&str>, released: Option<&str>, name: Option<&s
     }
 }
 
-/// The list is a table (`crates/shared-types/src/output.rs`): one row per model with
-/// the entry a call takes now, `-` where nothing is known, columns aligned
-/// by the width a terminal gives them, a CJK name counting two; what is no
-/// data, an entry whose models could not be listed or one that does not
-/// confirm the model, goes to stderr. One model is labelled lines with its
-/// prices and its entries as tables, and `--json` prints the same.
-/// Planted defects this catches: a CJK name that pushes its row out of
-/// line; the entry a call takes named from one used up; a note on stdout;
-/// a fact or a status left out of the page.
+/// The list is a table (`crates/shared-types/src/output.rs`).
+///
+/// - It has one row per model with the entry a call takes now, and `-` where
+///   nothing is known.
+/// - Columns are aligned by the width a terminal gives them, a CJK name
+///   counting two.
+/// - What is no data, an entry whose models could not be listed or one that
+///   does not confirm the model, goes to stderr.
+/// - One model is labelled lines with its prices and its entries as tables, and
+///   `--json` prints the same.
+///
+/// Planted defects this catches:
+///
+/// - a CJK name that pushes its row out of line;
+/// - the entry a call takes named from one used up;
+/// - a note on stdout;
+/// - a fact or a status left out of the page.
 #[test]
 fn the_models_are_a_table_one_model_is_labelled_lines_and_json_prints_the_same() {
     local(async {

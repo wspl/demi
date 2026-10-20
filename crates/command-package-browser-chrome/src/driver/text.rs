@@ -1,9 +1,10 @@
 //! The default text of every browser result: concise readable lines rendered
-//! from the same typed result that `--json` prints. Page content in them is
-//! quoted data: control characters and terminal sequences are escaped, so a
-//! page cannot forge a line of the result. A failure's last line is the error,
-//! because models read the end of a command's output, often through `| tail
-//! -1`.
+//! from the same typed result that `--json` prints.
+//!
+//! Page content in them is quoted data: control characters and terminal
+//! sequences are escaped, so a page cannot forge a line of the result. A
+//! failure's last line is the error, because models read the end of a command's
+//! output, often through `| tail -1`.
 
 use demi_command_protocol::{ArtifactProgress, megabytes};
 use demi_shared_types::output::Table;

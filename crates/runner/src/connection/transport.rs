@@ -1,13 +1,16 @@
-//! The backend WebSocket: one owner task reads messages into a queue of eight and
-//! writes the queued replies. When the queue is full the reader waits, so the
-//! backend's writes wait too; only a message that breaks the protocol closes the
-//! connection (the limits and why: `demi_runner_protocol::wire`). A message the
-//! runner cannot decode ends the connection with a close frame naming its type and
-//! the decoding error. A connection the runner ends on purpose, as a drain or a
-//! stop does, ends in order: the queued messages, a close frame, and up to
-//! `CLOSE_TIMEOUT` for the backend's, so the backend sees the runner leave rather
-//! than lose it. The runner pings the backend and counts a connection it hears
-//! nothing on as lost, as one the network dropped without closing it is.
+//! The backend WebSocket: one owner task reads messages into a queue of eight
+//! and writes the queued replies.
+//!
+//! - When the queue is full the reader waits, so the backend's writes wait too.
+//!   Only a message that breaks the protocol closes the connection (the limits
+//!   and why: `demi_runner_protocol::wire`).
+//! - A message the runner cannot decode ends the connection with a close frame
+//!   naming its type and the decoding error.
+//! - A connection the runner ends on purpose, as a drain or a stop does, ends
+//!   in order: the queued messages, a close frame, and up to `CLOSE_TIMEOUT`
+//!   for the backend's. The backend sees the runner leave rather than lose it.
+//! - The runner pings the backend and counts a connection it hears nothing on
+//!   as lost, as one the network dropped without closing it is.
 
 use std::{io, time::Duration};
 

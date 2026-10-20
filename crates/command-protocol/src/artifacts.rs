@@ -1,13 +1,14 @@
 //! The artifacts stream: a program's requests that the runner install an
 //! artifact for one of its invocations, or say which artifacts of a line it
-//! has, and their answers. Before it answers an install, the runner reports
-//! how its download goes, so a command that installs on purpose can say so in
-//! its own output.
+//! has, and their answers.
+//!
+//! Before it answers an install, the runner reports how its download goes, so a
+//! command that installs on purpose can say so in its own output.
 //!
 //! An artifact is any file the runner installs on its Host for a package: the
 //! package's executable, or software its program needs, such as Chrome for
 //! Testing or the Claude Code CLI. All go through one cache and are reported
-//! the same way; what differs is who asks and where the digest comes from:
+//! the same way. What differs is who asks and where the digest comes from:
 //!
 //! | Artifact | Asked by | Digest from |
 //! | --- | --- | --- |
@@ -24,12 +25,15 @@
 //!   |<-- {id 4, path} --------------|  download, verify, unpack      |
 //! ```
 //!
-//! A program uses only the paths the runner answers; it never downloads or
-//! looks for an artifact itself. A URL the program names cannot change what
-//! runs either: the runner checks the download against the size and SHA-256
-//! the same request gives, whatever the transport. An install request ends
-//! with its invocation, and the runner then cancels the download it waits
-//! for unless another request needs the same artifact.
+//! # Rules
+//!
+//! - A program uses only the paths the runner answers; it never downloads or
+//!   looks for an artifact itself.
+//! - A URL the program names cannot change what runs either: the runner checks
+//!   the download against the size and SHA-256 the same request gives, whatever
+//!   the transport.
+//! - An install request ends with its invocation, and the runner then cancels
+//!   the download it waits for unless another request needs the same artifact.
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;

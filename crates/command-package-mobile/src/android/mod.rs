@@ -1,17 +1,24 @@
-//! The Android driver: the Host's AVDs, booted with
-//! the SDK's emulator without a window; each open emulator's pictures,
-//! touches and keys over its own gRPC interface, with no adb in that path;
-//! its UI tree and a field's text through `u2.jar` inside it, over adb.
+//! The Android driver: the Host's AVDs, booted with the SDK's emulator without
+//! a window.
 //!
-//! Three pixel spaces meet here. The emulator's panel is the screen as the
-//! device is built, portrait. Its pictures show the panel turned as the
-//! device is held, which its sensors say (the picture's rotation). Android
-//! lays its windows out turned as its display is, which follows the
-//! sensors only for an app that allows it (the display's rotation): a
-//! portrait-locked launcher on a device held sideways is drawn sideways in
-//! the picture. Touches and the UI tree are in the display's pixels; the
-//! commands' points are the picture's, upright, divided by the screen's
-//! density.
+//! - Each open emulator's pictures, touches and keys go over its own gRPC
+//!   interface, with no adb in that path.
+//! - Its UI tree and a field's text come through `u2.jar` inside it, over adb.
+//!
+//! # Three pixel spaces
+//!
+//! Three pixel spaces meet here:
+//!
+//! - The emulator's panel is the screen as the device is built, portrait.
+//! - Its pictures show the panel turned as the device is held, which its
+//!   sensors say (the picture's rotation).
+//! - Android lays its windows out turned as its display is, which follows the
+//!   sensors only for an app that allows it (the display's rotation). A
+//!   portrait-locked launcher on a device held sideways is drawn sideways in
+//!   the picture.
+//!
+//! Touches and the UI tree are in the display's pixels. The commands' points
+//! are the picture's, upright, divided by the screen's density.
 
 mod adb;
 pub mod art;
@@ -746,12 +753,13 @@ impl AndroidDevice {
     /// Pastes the clipboard, which holds `text`, at the cursor; returns
     /// once the app took it, so the clipboard may change again.
     async fn paste(&self, text: &str) -> Result<()> {
-        // Control-V goes the way the typed keys go, so the paste lands
-        // between them in order; the helper's own paste would overtake keys
-        // still on their way. The app takes it some time after the
-        // emulator did, and nothing says when: each picture after it, the
-        // focused field's text is read again, until it holds the text once
-        // more.
+        // Control-V goes the way the typed keys go, so the paste lands between
+        // them in order. The helper's own paste would overtake keys still on
+        // their way.
+        //
+        // The app takes the paste some time after the emulator did, and nothing
+        // says when. So after each picture, the focused field's text is read
+        // again, until it holds the text once more.
         let before = self.focused_text().await?;
         let mut drawn = self.drawn.subscribe();
         drawn.borrow_and_update();

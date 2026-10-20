@@ -1,20 +1,27 @@
 //! A tab's viewport: who decides it, its size in CSS pixels, and the pixel
-//! ratio the page renders at. Modes: Web follows the live view's panel and the
-//! viewer's pixel ratio, Mobile emulates a phone, Custom is what the agent set.
+//! ratio the page renders at.
+//!
+//! The modes are:
+//!
+//! - Web follows the live view's panel and the viewer's pixel ratio.
+//! - Mobile emulates a phone.
+//! - Custom is what the agent set.
+//!
+//! # Rules
 //!
 //! - Entering or leaving Mobile reloads the page: a phone's user agent and
 //!   touch reach only what loads after them.
-//! - A tab whose navigation has not committed keeps its size until it commits:
+//! - A tab whose navigation has not committed keeps its size until it commits.
 //!   Chrome holds commands for the page but would resize its window at once,
 //!   and the capture would letterbox the old page.
 //! - Chrome paints a window at its screen's ratio, so the virtual screen's
 //!   ratio is set at run time (`Emulation.updateScreen`) and each tab's metrics
-//!   are pinned to it; a launch flag would fix it for the process's life, and
+//!   are pinned to it. A launch flag would fix it for the process's life, and
 //!   emulating a ratio or capturing larger only upscales a 1x picture on Linux.
 //! - A new viewport is published to capture only after a surface repaint
 //!   ([`paint`]): acknowledged metrics are not yet applied by the compositor.
 //! - A resize ends the tab's capture first, and the next starts when the
-//!   viewport is published: Chrome scales a capture up until it fills, so one
+//!   viewport is published. Chrome scales a capture up until it fills, so one
 //!   that overlapped the change would paint at a higher ratio and a frame names
 //!   no scale factor to drop it by.
 //! - The screen's ratio only rises: when it falls, Chrome keeps painting
@@ -241,11 +248,14 @@ impl BrowserTab {
 
     /// Pins the page's viewport and sizes its window to it plus the browser's
     /// own chrome, so the page never sees an outer size smaller than its inner
-    /// size. Entering or leaving Mobile mode turns the phone's touch and user
-    /// agent on or off. While a navigation of the tab is under way, it waits
-    /// for its document to commit (`committed`). The page's captures end
-    /// first, and none starts until the new viewport is published
-    /// (`CaptureGate`).
+    /// size.
+    ///
+    /// - Entering or leaving Mobile mode turns the phone's touch and user agent
+    ///   on or off.
+    /// - While a navigation of the tab is under way, it waits for its document
+    ///   to commit (`committed`).
+    /// - The page's captures end first, and none starts until the new viewport
+    ///   is published (`CaptureGate`).
     pub async fn set_viewport(&self, viewport: BrowserViewport) -> Result<()> {
         // Chrome holds the page's metrics while a navigation is under way but
         // resizes the window at once: the page would stand at its old size in
@@ -282,12 +292,13 @@ impl BrowserTab {
                 mobile,
             ))
             .await?;
-        // Metrics acknowledgement can precede the compositor's resized surface.
-        // Publish only after it has painted, so capture cannot scale the old one.
-        // A document that replaces the page meanwhile is laid out at the new
-        // metrics from its start, and Chrome may never finish redrawing the
-        // one it left, of a tab nobody captures yet: its screenshot waited
-        // the whole request timeout.
+        // Publishes the viewport only after the page has painted.
+        //
+        // The metrics acknowledgement can precede the compositor's resized
+        // surface, so capture could scale the old one. A document that replaces
+        // the page meanwhile is laid out at the new metrics from its start, and
+        // Chrome may never finish redrawing the one it left, of a tab nobody
+        // captures yet: its screenshot waited the whole request timeout.
         let replaced = async {
             while let Some(Ok(navigated)) = navigations.next().await {
                 if navigated.frame.parent_id.is_none() {

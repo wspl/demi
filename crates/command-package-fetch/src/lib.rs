@@ -1,9 +1,10 @@
-//! The `demi.fetch` package:
-//! `demi web fetch` reads a URL from the Host, as `curl` there would, and
-//! prints a page as Markdown one part at a time, or saves a file that is no
-//! text. It keeps the pages it read on disk for 15 minutes and holds no
-//! conversation state, so the SDK's empty conversation status, release and
-//! close stand, and the service ends with its last lease.
+//! The `demi.fetch` package: `demi web fetch` reads a URL from the Host, as
+//! `curl` there would, and prints a page as Markdown one part at a time, or
+//! saves a file that is no text.
+//!
+//! It keeps the pages it read on disk for 15 minutes and holds no conversation
+//! state, so the SDK's empty conversation status, release and close stand, and
+//! the service ends with its last lease.
 //!
 //! It runs no JavaScript, sends no credential or cookie, and is never linked
 //! into the runner.

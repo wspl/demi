@@ -100,12 +100,15 @@ fn a_failed_write_below_a_file_is_not_an_edit() {
 }
 
 /// Binary is what git calls binary
-/// (`crates/command-package-file/src/files.rs`): a NUL in the first 8 KiB
-/// leaves an edit without contents, marked binary for the Change view to say
-/// why, as does a file over the limit whose first bytes are binary, while a
-/// Latin-1 file is text whose copy is kept as written, for the change view to
-/// show its odd bytes as U+FFFD. Planted defect this catches: a binary edit not
-/// marked, so the view cannot tell it from one over the limits.
+/// (`crates/command-package-file/src/files.rs`).
+///
+/// A NUL in the first 8 KiB leaves an edit without contents, marked binary for
+/// the Change view to say why. So does a file over the limit whose first bytes
+/// are binary. A Latin-1 file is text whose copy is kept as written, for the
+/// change view to show its odd bytes as U+FFFD.
+///
+/// Planted defect this catches: a binary edit not marked, so the view cannot
+/// tell it from one over the limits.
 #[test]
 fn only_binary_edits_have_no_contents() {
     let root = tempfile::tempdir().unwrap();

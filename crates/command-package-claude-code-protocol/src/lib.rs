@@ -1,11 +1,15 @@
-//! The `demi.claude-code` package's contract (`crates/command-package-claude-code/src/lib.rs`):
-//! `claude-code.ensure` installs the Claude Code CLI a release record names and
-//! `claude-code.status` lists the installations. Each writes one JSON document to
-//! stdout, a failure included, because a service stream carries only stdout.
+//! The `demi.claude-code` package's contract
+//! (`crates/command-package-claude-code/src/lib.rs`):
+//!
+//! - `claude-code.ensure` installs the Claude Code CLI a release record names.
+//! - `claude-code.status` lists the installations.
+//!
+//! Each writes one JSON document to stdout, a failure included, because a
+//! service stream carries only stdout.
 //!
 //! A failed invocation's nonzero exit does not discard its document: the
-//! backend validates it and reports its code, message and requested version,
-//! and an output with no document is a service that failed.
+//! backend validates it and reports its code, message and requested version. An
+//! output with no document is a service that failed.
 
 use std::{collections::BTreeMap, path::PathBuf};
 

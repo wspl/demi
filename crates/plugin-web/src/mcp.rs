@@ -1,15 +1,21 @@
 //! The smallest client of Exa's MCP server, for a search signed in or
-//! anonymous: it `initialize`s once per token, keeps the server's
-//! `Mcp-Session-Id`, reads the tools the server lists once per session,
-//! calls `web_search_exa`, or `web_search_advanced_exa` when an option needs
-//! it and the server lists it, reads the answer as JSON or as an event
-//! stream, initializes again when the server forgot the session, and sends a
-//! request the server refused with 401 once more with the token the plugin
-//! host renewed (`crates/backend-plugins/src/oauth.rs`). It takes on nothing else of
-//! MCP: Exa signs a third-party app in only for its MCP server, whose
-//! resource the tokens are issued for, while its REST API accepts API keys
-//! alone, so a signed-in search has to speak to that server, but `demi web
-//! search` stays its own command.
+//! anonymous.
+//!
+//! The client:
+//!
+//! - `initialize`s once per token and keeps the server's `Mcp-Session-Id`;
+//! - reads the tools the server lists once per session;
+//! - calls `web_search_exa`, or `web_search_advanced_exa` when an option needs
+//!   it and the server lists it;
+//! - reads the answer as JSON or as an event stream;
+//! - initializes again when the server forgot the session;
+//! - sends a request the server refused with 401 once more with the token the
+//!   plugin host renewed (`crates/backend-plugins/src/oauth.rs`).
+//!
+//! It takes on nothing else of MCP. Exa signs a third-party app in only for its
+//! MCP server, whose resource the tokens are issued for, while its REST API
+//! accepts API keys alone. A signed-in search therefore has to speak to that
+//! server, but `demi web search` stays its own command.
 
 use std::cell::{Cell, RefCell};
 use std::convert::Infallible;

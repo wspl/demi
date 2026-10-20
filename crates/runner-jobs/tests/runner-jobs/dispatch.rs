@@ -374,13 +374,16 @@ async fn slow_call_pipes(stdout: Vec<u8>, serving: tokio::sync::oneshot::Sender<
     format!("http://{address}/")
 }
 
-/// A call's stdout reaches a process that reads it slowly whole, and the
-/// call exits with the backend's code, after its unused input's upload was
-/// refused as the backend refuses it once the call ended (`crates/host-interface/src/rpc.rs`). Before, the refused upload gave the rest of the
-/// call 15 seconds: `demi image generate … > fox.png` to a slow disk was
-/// cut at a multiple of 64 KiB with `rpc call ended`. The clock is paused
-/// while the process reads nothing, so those seconds pass at once. Costs
-/// about a second: 8 MiB through the local pipes.
+/// A call's stdout reaches a process that reads it slowly whole, and the call
+/// exits with the backend's code, after its unused input's upload was refused
+/// as the backend refuses it once the call ended
+/// (`crates/host-interface/src/rpc.rs`).
+///
+/// Before, the refused upload gave the rest of the call 15 seconds: `demi image
+/// generate … > fox.png` to a slow disk was cut at a multiple of 64 KiB with
+/// `rpc call ended`. The clock is paused while the process reads nothing, so
+/// those seconds pass at once. Cost: about a second, 8 MiB through the local
+/// pipes.
 #[tokio::test]
 async fn a_calls_stdout_reaches_a_slow_process_whole_once_its_input_ended() {
     use tokio::io::AsyncReadExt;
@@ -476,13 +479,18 @@ fn command_context() -> CommandContext {
     }
 }
 
-/// What a native command's run says on its standard error while its
-/// program's install waits on a backend that never says where the program
-/// is: with `--json`, nothing, since its caller reads its standard error as
-/// one JSON document; without, that it installs, once the install has taken
-/// two seconds (`crates/runner-command-packages/src/cache.rs`). The run with
-/// `--json` starts first, so its two seconds have passed when the other
-/// tells. Cost: in process, about two seconds.
+/// What a native command's run says on its standard error while its program's
+/// install waits on a backend that never says where the program is
+/// (`crates/runner-command-packages/src/cache.rs`):
+///
+/// - With `--json`, nothing, since its caller reads its standard error as one
+///   JSON document.
+/// - Without, that it installs, once the install has taken two seconds.
+///
+/// The run with `--json` starts first, so its two seconds have passed when the
+/// other tells.
+///
+/// Cost: in process, about two seconds.
 #[tokio::test]
 async fn a_command_run_with_json_reports_no_install() {
     use demi_command_protocol::{PackageArtifact, PackageDescriptor, host_target, testing::FIXTURE_OPERATIONS};

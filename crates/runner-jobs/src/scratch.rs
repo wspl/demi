@@ -1,21 +1,33 @@
 //! Each conversation's scratch directory, for the files only the agent needs (a
 //! screenshot it looks at, a probe script): `<DEMI_HOME>/scratch/<conversation
-//! id>/`, made at the conversation's first job on the Host. It shows in no pill and
-//! no Change view, and it is still there an hour later, which `/tmp` does not
-//! promise. `DEMI_SCRATCH` names the calling agent's own: the conversation's
-//! directory for the root agent, an `agent-<number>/` folder inside it for each
-//! subagent, so two subagents that both save `shots/before.png` overwrite nothing
-//! of each other's, while the parent still reads what a child saved by the path the
-//! child reports. The runner's hello names the scratch root, so what the backend
-//! writes into a conversation's scratch goes to that directory whatever a job's
-//! environment says.
+//! id>/`, made at the conversation's first job on the Host.
 //!
-//! It goes with the conversation; archiving keeps it. The hello's answer names the
-//! user's conversations that still exist, and the runner removes every scratch
-//! directory not among them ([`Scratch::keep_only`]), so a Host that was offline
-//! when a conversation was deleted cleans up as soon as it connects, with nothing
-//! to remember in between. A backend that cannot read the conversations drops the
-//! connection rather than name none, which would remove every directory.
+//! It shows in no pill and no Change view, and it is still there an hour later,
+//! which `/tmp` does not promise.
+//!
+//! # Who sees which directory
+//!
+//! `DEMI_SCRATCH` names the calling agent's own:
+//!
+//! - the conversation's directory for the root agent;
+//! - an `agent-<number>/` folder inside it for each subagent, so two subagents
+//!   that both save `shots/before.png` overwrite nothing of each other's, while
+//!   the parent still reads what a child saved by the path the child reports.
+//!
+//! The runner's hello names the scratch root, so what the backend writes into a
+//! conversation's scratch goes to that directory whatever a job's environment
+//! says.
+//!
+//! # Lifetime
+//!
+//! The directory goes with the conversation; archiving keeps it. The hello's
+//! answer names the user's conversations that still exist, and the runner
+//! removes every scratch directory not among them ([`Scratch::keep_only`]). A
+//! Host that was offline when a conversation was deleted therefore cleans up as
+//! soon as it connects, with nothing to remember in between.
+//!
+//! A backend that cannot read the conversations drops the connection rather
+//! than name none, which would remove every directory.
 
 use std::{
     collections::HashSet,
@@ -59,11 +71,13 @@ impl Scratch {
         Ok(directory)
     }
 
-    /// Removes the scratch directory of every conversation not in
-    /// `existing`, the directories under the root whose name no existing
-    /// conversation has, and says which it removed. Anything else there,
-    /// such as a file or a link, is left alone, and a directory that cannot
-    /// be removed stays until the next connection tries again.
+    /// Removes the scratch directory of every conversation not in `existing`,
+    /// and says which it removed.
+    ///
+    /// It removes the directories under the root whose name no existing
+    /// conversation has. Anything else there, such as a file or a link, is left
+    /// alone, and a directory that cannot be removed stays until the next
+    /// connection tries again.
     pub async fn keep_only(&self, existing: &[String]) -> io::Result<()> {
         let existing: HashSet<&str> = existing.iter().map(String::as_str).collect();
         let mut entries = match tokio::fs::read_dir(&self.root).await {

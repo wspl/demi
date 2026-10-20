@@ -1,18 +1,25 @@
 //! Standard handles, and the identity of a job's own input.
 //!
-//! A command reading its stdin must know whether it is the job's own input, which
-//! `demi shell input` feeds and which ends only with the job, or a finite one (a
-//! pipe, a file, a heredoc): `demi file view` with no path reads a medium from a
-//! pipe, but alone it would wait for the job to end, so it refuses. The shell's
-//! descriptors do not answer it, since every one is an `OpenFile::Controlled`
-//! wrapping a system file, but the system file does: the runner keeps a copy of the
-//! job's stdin pipe's reading end open for the job's life and names it in
-//! `DEMI_LIVE_INPUT` ([`reference`]: device and inode on Unix, process id and handle
-//! on Windows), and a declared command compares its fd 0 with it ([`is_live`]), a
-//! builtin in the runner and an alias in its own process alike. A job whose stdin
-//! the backend relays from another command has none. A script may change the
-//! variable and misjudge only its own commands' stdin, so it needs no protection,
-//! unlike the command context, which never travels in the environment.
+//! A command reading its stdin must know whether it is the job's own input,
+//! which `demi shell input` feeds and which ends only with the job, or a finite
+//! one (a pipe, a file, a heredoc). `demi file view` with no path reads a
+//! medium from a pipe, but alone it would wait for the job to end, so it
+//! refuses.
+//!
+//! The shell's descriptors do not answer it, since every one is an
+//! `OpenFile::Controlled` wrapping a system file, but the system file does:
+//!
+//! 1. The runner keeps a copy of the job's stdin pipe's reading end open for
+//!    the job's life.
+//! 2. It names that copy in `DEMI_LIVE_INPUT` ([`reference`]: device and inode
+//!    on Unix, process id and handle on Windows).
+//! 3. A declared command compares its fd 0 with it ([`is_live`]), a builtin in
+//!    the runner and an alias in its own process alike.
+//!
+//! A job whose stdin the backend relays from another command has none. A script
+//! may change the variable and misjudge only its own commands' stdin, so it
+//! needs no protection, unlike the command context, which never travels in the
+//! environment.
 
 use std::{collections::BTreeMap, fs::File, io};
 
