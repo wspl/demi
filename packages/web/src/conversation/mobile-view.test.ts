@@ -47,7 +47,7 @@ window.ResizeObserver = class {
 
 await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, nextTick } = await import('vue')
-const { LIVE_CONTROL_FRAME, SQUARE_CORNERS } = await import('@demicodes/plugin-sdk')
+const { LIVE_CONTROL_FRAME, SQUARE_CORNERS, encodeVideo } = await import('@demicodes/plugin-sdk')
 const { drawnFrameBezel } = await import('@demicodes/web-ui/live/drawn-frame')
 const { default: DeviceView } = await import('@demicodes/plugin-mobile/live/DeviceView.vue')
 const { MobileSession } = await import('@demicodes/plugin-mobile/live/session')
@@ -60,9 +60,47 @@ let unmount: (() => void) | null = null
 afterEach(() => {
   unmount?.()
   unmount = null
+  for (const name of DECODING) {
+    Reflect.deleteProperty(globalThis, name)
+  }
   observers.length = 0
   document.body.innerHTML = ''
 })
+
+/** The globals a picture is decoded and painted with, which happy-dom lacks. */
+const DECODING = ['VideoDecoder', 'EncodedVideoChunk', 'requestAnimationFrame'] as const
+
+/**
+ * WebCodecs as the view uses it: each chunk decodes at once to a picture of
+ * the size `size` gives then, painted at the next animation frame, at once.
+ */
+function stubDecoding(size: () => { width: number; height: number }): void {
+  class Chunk {
+    readonly timestamp: number
+    constructor(init: EncodedVideoChunkInit) {
+      this.timestamp = Math.trunc(init.timestamp)
+    }
+  }
+  class Decoder {
+    state: CodecState = 'unconfigured'
+    constructor(private readonly init: VideoDecoderInit) {}
+    configure(): void {
+      this.state = 'configured'
+    }
+    decode(chunk: Chunk): void {
+      const { width, height } = size()
+      // The fields of a VideoFrame the view reads; happy-dom has no VideoFrame to build.
+      this.init.output({ timestamp: chunk.timestamp, displayWidth: width, displayHeight: height, close() {} } as unknown as VideoFrame)
+    }
+    close(): void {
+      this.state = 'closed'
+    }
+  }
+  const values = { VideoDecoder: Decoder, EncodedVideoChunk: Chunk, requestAnimationFrame: (paint: () => void) => (paint(), 1) }
+  for (const name of DECODING) {
+    Object.defineProperty(globalThis, name, { configurable: true, value: values[name] })
+  }
+}
 
 function framed(message: LiveModuleMessage): Uint8Array {
   const json = new TextEncoder().encode(JSON.stringify(message))
@@ -83,6 +121,10 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
       streams.push(handlers)
       return {
         send: (bytes) => {
+          // The view's other frames acknowledge pictures.
+          if (bytes[4] !== LIVE_CONTROL_FRAME) {
+            return
+          }
           sent.push(JSON.parse(new TextDecoder().decode(bytes.subarray(5))) as LiveViewerMessage)
           heard?.()
         },
@@ -128,6 +170,7 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
     sent,
     area,
     canvas,
+    stream: streams[0]!,
     shown: () => sent.filter((message) => message.type === 'shown'),
     /** The next message the view sends of `type`. */
     next: (type: LiveViewerMessage['type']) => new Promise<void>((resolve) => {
@@ -242,4 +285,53 @@ test('under the frame the view draws the picture reaches halfway into its bezel'
   expect(Math.max(...points.map((point) => point.x))).toBeCloseTo(width + half, 1)
   expect(Math.max(...points.map((point) => point.y))).toBeCloseTo(height + half, 1)
   expect(clip).toContain('A')
+})
+
+/**
+ * The device announces its pictures in a new orientation before the first of
+ * them is decoded: the canvas still shows the old picture, so it keeps that
+ * picture's shape, turned toward the new orientation, until the new picture
+ * is painted.
+ *
+ * Planted defect this catches: the view laying out the announced pictures
+ * at once, which stretches the old picture into the new shape.
+ */
+test('a picture keeps its shape, turned, until the device’s pictures in their new orientation are painted', async () => {
+  let size = { width: 800, height: 1600 }
+  stubDecoding(() => size)
+  const view = await viewing()
+  const announce = (generation: number, orientation: 'portrait' | 'landscape-right', points: { width: number; height: number }) => {
+    view.stream.data(framed({
+      type: 'stream', device: 'm1', generation, width: size.width, height: size.height,
+      pointsWidth: points.width, pointsHeight: points.height, orientation, scale: 1,
+    }))
+  }
+  const picture = (generation: number) => {
+    view.stream.data(encodeVideo({
+      source: 'm1', generation, sequence: generation, key: true, timestamp: generation * 1000,
+      width: size.width, height: size.height, data: new Uint8Array([0, 0, 0, 1, 0x65]),
+    }))
+  }
+  announce(1, 'portrait', { width: 400, height: 800 })
+  picture(1)
+  await nextTick()
+  // The placement is in whole pixels: the shape is close to the picture's, not exact.
+  const shape = () => parseFloat(view.canvas.style.width) / parseFloat(view.canvas.style.height)
+  const turned = () => view.canvas.parentElement!.style.transform
+  expect(shape()).toBeCloseTo(0.5, 1)
+  expect(turned()).toBe('')
+
+  size = { width: 1600, height: 800 }
+  announce(2, 'landscape-right', { width: 800, height: 400 })
+  await nextTick()
+  // Announced, not painted: the portrait picture stays portrait, turned a quarter.
+  expect([view.canvas.width, view.canvas.height]).toEqual([800, 1600])
+  expect(shape()).toBeCloseTo(0.5, 1)
+  expect(turned()).toContain('rotate(90deg)')
+
+  picture(2)
+  await nextTick()
+  expect([view.canvas.width, view.canvas.height]).toEqual([1600, 800])
+  expect(shape()).toBeCloseTo(2, 1)
+  expect(turned()).toBe('')
 })
