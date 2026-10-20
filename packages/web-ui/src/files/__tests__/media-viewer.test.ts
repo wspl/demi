@@ -135,3 +135,40 @@ test('the viewer follows its transcript while it is open: a picture added before
   viewer.step(-1)
   expect(viewer.shown.value).toBe(a)
 })
+
+// A page with a work panel shows a medium in its Media tab, which its
+// `reveal` opens; one whose panel has no such tab, as with the file-browser
+// plugin off, shows it in the window. Planted defect: the window opening over
+// a medium the tab shows, or staying shut when no tab opened.
+test('a medium shows in the Media tab the page opens, and in the window while no tab opens', () => {
+  let tab = true
+  const viewer = createMediaViewer(() => PLACE, { reveal: () => tab })
+  viewer.show(shot)
+  expect(viewer.inPanel.value).toBe(true)
+  tab = false
+  viewer.show(other)
+  expect(viewer.inPanel.value).toBe(false)
+  expect(viewer.shown.value).toBe(other)
+})
+
+// After a reload, a Media tab shows the medium it showed, found again by its
+// place in the series the conversation's own transcript offers, once it
+// offers it, and steps through that series. A withdrawn series is not
+// searched. Planted defects: a restore that searches no offered series, or
+// takes the first medium of the key in another row.
+test('a restored Media tab shows its medium again once the transcript offers the series that holds it', () => {
+  const viewer = createMediaViewer(() => PLACE, { reveal: () => true })
+  const place = { key: '/blob/a', row: 'r2' }
+  expect(viewer.restore(place)).toBe(false)
+  const media = [{ ...a, row: 'r1' }, b, { ...a, row: 'r2' }, c]
+  const withdraw = viewer.offer(() => media)
+  expect(viewer.restore(place)).toBe(true)
+  expect(viewer.shown.value).toBe(media[2])
+  expect(viewer.inPanel.value).toBe(true)
+  expect(viewer.position.value).toEqual({ at: 3, of: 4 })
+  viewer.step(1)
+  expect(viewer.shown.value).toBe(c)
+  viewer.close()
+  withdraw()
+  expect(viewer.restore(place)).toBe(false)
+})

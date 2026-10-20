@@ -11,6 +11,7 @@ await import('../../__tests__/vue-components')
 const { createApp, defineComponent, h, nextTick } = await import('vue')
 const { default: SentMessage } = await import('../message-editor/SentMessage.vue')
 const { provideBlobUrl } = await import('../media-source')
+const { provideMediaViewer } = await import('../../files/media-viewer')
 const { ATTACHMENT_MARK: MARK } = await import('../../markdown/user-markdown')
 const { COPIED_MESSAGE_ATTRIBUTE, messageClipboard, readCopiedMessage } = await import('../message-input/copied-message')
 const { parseUserMarkdown } = await import('../../markdown/user-markdown')
@@ -38,6 +39,8 @@ async function mount(markdown: string): Promise<HTMLElement> {
   const app = createApp(defineComponent({
     setup() {
       provideBlobUrl((ref) => `blob:${ref}`)
+      // The page's viewer, which a sent message's pictures open in.
+      provideMediaViewer()
       return () => h(SentMessage, { markdown, attachments: [notes] })
     },
   }))

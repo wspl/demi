@@ -1,7 +1,8 @@
 // The `file-browser` plugin's page (`packages/plugin-sdk/src/index.ts`): the
 // pinned `file` kind and the File view, which opens the `file` intent of the
 // files messages name. The page also has the `attachment` kind, which previews
-// an attachment's copy for the `attachment` intent.
+// an attachment's copy for the `attachment` intent, and the `media` kind, the
+// one Media tab of the conversation's pictures and videos.
 import { defineComponent, h, type PropType } from 'vue'
 import { File } from '@lucide/vue'
 import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demicodes/plugin-sdk'
@@ -10,6 +11,7 @@ import { t } from './locales/text'
 import FileTab from './FileTab.vue'
 import { fileDataSchema, firstFileData, openFile, type FileData } from './data'
 import { attachmentKind } from './attachment'
+import { mediaKind } from './media'
 
 /** The file's own icon once the view shows one, a plain file before. */
 const FileMark = defineComponent({
@@ -32,7 +34,7 @@ export const fileKind: PanelKind<FileData> = {
   },
 }
 
-export const fileBrowserPage = definePage({ plugin: PLUGIN, kinds: [fileKind, attachmentKind] })
+export const fileBrowserPage = definePage({ plugin: PLUGIN, kinds: [fileKind, attachmentKind, mediaKind] })
 
 /** The page the registry imports (`crates/xtask/src/contracts/registry.rs`). */
 export default fileBrowserPage

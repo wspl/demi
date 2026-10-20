@@ -75,6 +75,7 @@ async function ask(source: AttachmentSource, path: string): Promise<void> {
         sha256: attachment.blob,
         width: attachment.width,
         height: attachment.height,
+        ...(attachment.source ? { source: attachment.source } : {}),
       },
     })
   } catch (error) {

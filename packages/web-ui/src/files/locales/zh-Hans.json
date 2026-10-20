@@ -219,5 +219,10 @@
     "play": "播放 {name}",
     "pause": "暂停 {name}",
     "seek": "{name} 的播放位置"
+  },
+  "media": {
+    "previous": "上一个",
+    "next": "下一个",
+    "none": "没有打开的图片或视频。"
   }
 }

@@ -17,7 +17,10 @@
 //!    in that namespace.
 //! 4. The backend reads the media type from the bytes as it does for the user's
 //!    uploads, and stores the record under the next number of the
-//!    conversation's `attachment` sequence.
+//!    conversation's `attachment` sequence, with the file it came from: the
+//!    invocation's device and the file's full path as that Host writes it,
+//!    which the page opens in the copy's place while it can read it
+//!    (`decisions/0003-attachment-opens-its-file.md`).
 //!
 //! The command returns no medium: the attachment is for the user.
 //!
@@ -42,7 +45,9 @@ use std::rc::{Rc, Weak};
 use bytes::Bytes;
 use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
 use demi_backend_blobs::blobs::OPENING_BYTES;
-use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow, StoredAttachment};
+use demi_backend_database::conversation_attachments::{
+    self, AttachmentNumber, AttachmentRow, AttachmentSource, StoredAttachment,
+};
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::{StorageError, sequences};
 use demi_backend_remote_host::collect_pipe;
@@ -312,12 +317,14 @@ async fn store(
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.message)?;
-    let sha256 = match hash {
+    // The full path of the file the Host read, as it writes it, which the
+    // page opens in the copy's place.
+    let (sha256, full_path) = match hash {
         // A file that grew past the limit since the Host looked at its size
         // is refused all the same.
-        FileHash::Hashed { size, sha256 } => {
+        FileHash::Hashed { size, sha256, path } => {
             within_limit(size)?;
-            sha256
+            (sha256, path)
         }
         FileHash::TooLarge { size } => return Err(over_limit(size)),
     };
@@ -363,6 +370,10 @@ async fn store(
         pixels,
         blob,
         node,
+        source: Some(AttachmentSource {
+            host: device.clone(),
+            path: full_path,
+        }),
     };
     let announce = {
         let shard = shard.this();
@@ -382,6 +393,8 @@ pub(crate) struct Unnumbered {
     /// The node of the agent that uploads it; none for a file the user
     /// sends (`conversation_attachments::StoredAttachment`).
     pub(crate) node: Option<NodeId>,
+    /// The file it is copied from; none for a file the user sends.
+    pub(crate) source: Option<AttachmentSource>,
 }
 
 /// Stores `attachment` as the conversation's next one in `db`, its number and
@@ -412,6 +425,7 @@ pub(crate) fn commit(
                     size: attachment.size,
                     pixels: attachment.pixels,
                     blob: attachment.blob,
+                    source: attachment.source,
                 };
                 let stored = StoredAttachment {
                     row,
@@ -501,6 +515,7 @@ mod tests {
             pixels: Some(PixelSize { width: 2, height: 1 }),
             blob: BlobRef::of(name.as_bytes()),
             node: None,
+            source: None,
         }
     }
 

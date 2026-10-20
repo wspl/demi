@@ -3,7 +3,7 @@ import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import { baseName } from '@demicodes/utils'
 import { readCommitHash } from '@demicodes/web-ui/files/history'
 import { productWould } from '../product-would'
-import { galleryAttachment } from './attachments'
+import { GALLERY_HOST, galleryAttachment } from './attachments'
 import { LINKED_COMMIT, sharedHistory } from './history'
 
 /** Whether `path` is a file of the memory tree `root`, as a Host's stat says. */
@@ -13,6 +13,19 @@ function isFile(root: MemoryDirectory, path: string): boolean {
     node = node?.kind === 'directory' ? node.children[part] : undefined
   }
   return node?.kind === 'file'
+}
+
+/**
+ * Which file an attachment opens in place of its copy, as the product
+ * answers: the one it was uploaded from while the gallery's Host is online,
+ * as `online` says, and the workspace has the file.
+ */
+export function galleryAttachmentOrigin(
+  source: MemoryFileSource,
+  online: () => boolean,
+): NonNullable<ConversationFiles['attachmentOrigin']> {
+  return async (_id, { source: origin }) =>
+    origin && origin.host === GALLERY_HOST && online() && isFile(source.root, origin.path) ? origin.path : null
 }
 
 /**
@@ -43,6 +56,7 @@ export function galleryConversationFiles(
     openAttachment,
     home: source.home,
     contents: source.contents,
+    device: GALLERY_HOST,
     attachment: galleryAttachment,
     codeFiles: (paths) => new Set(paths.filter((path) => isFile(source.root, path))),
     open,

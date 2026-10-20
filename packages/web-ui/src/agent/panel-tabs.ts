@@ -157,6 +157,8 @@ function opened(kind: PanelKind<unknown, PanelSession | undefined>, request: Int
       return kind.intents?.web?.(request.payload, current)
     case 'attachment':
       return kind.intents?.attachment?.(request.payload, current)
+    case 'media':
+      return kind.intents?.media?.(request.payload, current)
   }
 }
 

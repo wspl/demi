@@ -1782,9 +1782,11 @@ pub struct OpenedFile {
     pub unchanged: bool,
 }
 
-/// What `fs_hashFile` answers: the bytes hashed and their SHA-256, which
-/// names their blob, or, for a file over the request's limit, its size
-/// alone (`too_large`), none of its bytes read.
+/// What `fs_hashFile` answers: the bytes hashed, their SHA-256, which names
+/// their blob, and the full path of the file read, its symbolic links and
+/// `..` resolved by the Host's file system as that Host writes it; or, for a
+/// file over the request's limit, its size alone (`too_large`), none of its
+/// bytes read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "status",
@@ -1793,16 +1795,20 @@ pub struct OpenedFile {
     deny_unknown_fields
 )]
 pub enum FileHash {
-    Hashed { size: u64, sha256: BlobRef },
+    Hashed {
+        size: u64,
+        sha256: BlobRef,
+        path: String,
+    },
     TooLarge { size: u64 },
 }
 
 impl FileHash {
-    /// The answer for `size` bytes whose SHA-256 is `sha256`, in lowercase
-    /// hexadecimal; anything else is refused.
-    pub fn hashed(size: u64, sha256: String) -> Result<Self, String> {
+    /// The answer for `size` bytes of the file at `path` whose SHA-256 is
+    /// `sha256`, in lowercase hexadecimal; anything else is refused.
+    pub fn hashed(size: u64, sha256: String, path: String) -> Result<Self, String> {
         let sha256 = BlobRef::try_from(sha256)?;
-        Ok(Self::Hashed { size, sha256 })
+        Ok(Self::Hashed { size, sha256, path })
     }
 }
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { IntentPayloads } from '@demicodes/plugin-sdk'
+import { isAbsoluteHostPath, joinPath, type IntentPayloads } from '@demicodes/plugin-sdk'
 
 /**
  * A file the view showed, with the directory its tree was rooted at then
@@ -38,6 +38,15 @@ export const fileDataSchema = z.object({
   tree: z.literal(true).optional(),
 })
 export type FileData = z.infer<typeof fileDataSchema>
+
+/**
+ * The file the view shows for `path`, read from `root`, the directory it was
+ * opened for: a full path as its Host writes it, a Windows one such as
+ * `C:\Users\alex\chart.png` included, is that file.
+ */
+export function shownPath(root: string, path: string): string {
+  return isAbsoluteHostPath(path) ? path : joinPath(root, path)
+}
 
 /** The view as a conversation's panel first shows it: no file, nothing to go back to. */
 export function firstFileData(): FileData {

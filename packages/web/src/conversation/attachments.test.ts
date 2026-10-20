@@ -21,7 +21,13 @@ const { default: StreamedMarkdown } = await import('@demicodes/web-ui/ui/Streame
 const { provideMessageFiles } = await import('@demicodes/web-ui/markdown/message-files')
 const { provideMediaViewer } = await import('@demicodes/web-ui/files/media-viewer')
 const { useProduct } = await import('../state/product')
-const { useMessageAttachments } = await import('./attachments')
+const { attachmentOrigin, useMessageAttachments } = await import('./attachments')
+const { default: MediaView } = await import('@demicodes/web-ui/files/MediaView.vue')
+const { HostFiles } = await import('@demicodes/web-ui/files/file-cache')
+const { keptContents } = await import('@demicodes/web-ui/files/kept-source')
+const { SimulatedWatch } = await import('@demicodes/web-ui/files/memory-source')
+const { WatchChannel } = await import('@demicodes/web-ui/files/watch-channel')
+const { FileBrowserError } = await import('@demicodes/web-ui/files/types')
 
 const CONVERSATION = '6a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 const BLOB = 'b'.repeat(64)
@@ -38,14 +44,32 @@ afterEach(() => {
   channels.restore()
 })
 
-/** Answers the attachment route from `stored`, by number, and keeps the numbers the page asked for; each is `held`, a PNG unless the test says. */
-function stubBackend(stored: Set<string>, held: { name: string; mediaType: string } = { name: 'concept-28.png', mediaType: 'image/png' }): string[] {
+/**
+ * Answers the attachment route from `stored`, by number, and keeps the numbers
+ * the page asked for; each is `held`, a PNG unless the test says. An
+ * attachment's file check (`…/attachments/:id/file`) answers whether its
+ * source's path is in `onHost`, the files of the Host it came from, and is
+ * kept in `checked`.
+ */
+function stubBackend(
+  stored: Set<string>,
+  held: { name: string; mediaType: string; source?: { host: string; path: string } } = { name: 'concept-28.png', mediaType: 'image/png' },
+  onHost: Set<string> = new Set(),
+  checked: string[] = [],
+): string[] {
   const asked: string[] = []
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const { pathname: path } = new URL(String(input), 'http://127.0.0.1:3271')
     const prefix = `/api/conversations/${CONVERSATION}/attachments/`
     if (!path.startsWith(prefix))
       throw new Error(`Unexpected request: ${path}`)
+    const checking = /^(a\d+)\/file$/.exec(path.slice(prefix.length))
+    if (checking) {
+      checked.push(checking[1]!)
+      return stored.has(checking[1]!) && held.source && onHost.has(held.source.path)
+        ? new Response(null, { status: 204 })
+        : Response.json({ requestId: 'req_test000000000002', code: 'not_found', message: 'No file' }, { status: 404 })
+    }
     const id = path.slice(prefix.length)
     asked.push(id)
     return stored.has(id)
@@ -279,6 +303,162 @@ test('a file\'s card opens it in the work panel on a click, and only its Downloa
     expect(opened).toHaveLength(1)
   } finally {
     HTMLAnchorElement.prototype.click = realClick
+    app.unmount()
+    product.stop()
+  }
+}, 2000)
+
+/** Lets the page's answers, the backend's included, land: they land in tasks of their own. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 4; turn++)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/**
+ * The conversation's Host as an attachment's opening asks it: device `dev-1`,
+ * online, whose files hold `present`, which the backend's file check and the
+ * Host's own contents read. No change of `present` is announced.
+ */
+function openingHost(present: Set<string>) {
+  const kept = new HostFiles()
+  const watched = new SimulatedWatch()
+  const contents = keptContents({
+    url: (path) => `/raw?path=${path}`,
+    async describe(path) {
+      if (!present.has(path))
+        throw new FileBrowserError('not-found')
+      return { value: { size: 9, modifiedAt: null, version: null }, readAt: watched.readAt() }
+    },
+  }, { files: kept, watch: new WatchChannel(kept, watched.open) })
+  const host = { conversation: CONVERSATION, device: 'dev-1' as string | null, online: true }
+  return { host, contents }
+}
+
+// An attachment the agent uploaded opens the file it was uploaded from, as it
+// is now, while the conversation's Host is that device, online, and has the
+// file; otherwise its copy. Each opening asks the backend once, with no answer
+// kept from the last, and never while the Host is known offline, a stopped
+// Cloud included, or is another Host. Planted defects this catches: a kept
+// answer, which opens a file deleted since the last opening; asking an offline
+// Host; and opening another Host's file. Its numbers are its own: the page
+// keeps each attachment's record for its lifetime. A few milliseconds.
+test('an attachment\'s card opens its file while the conversation\'s Host has it, and its copy otherwise', async () => {
+  const present = new Set(['/work/report.pdf'])
+  const checked: string[] = []
+  stubBackend(new Set(['a14']), { name: 'report.pdf', mediaType: 'application/pdf', source: { host: 'dev-1', path: '/work/report.pdf' } }, present, checked)
+  const pinia = createPinia()
+  const product = useProduct(pinia)
+  product.start()
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 14 })] }))
+  const { host, contents } = openingHost(present)
+  const files: string[] = []
+  const copies: string[] = []
+  const page = document.createElement('div')
+  document.body.append(page)
+  const app = createApp({
+    setup() {
+      provideMediaViewer()
+      const attachments = useMessageAttachments(() => CONVERSATION)
+      provideMessageFiles(() => ({
+        cwd: '/work',
+        contents,
+        ...(attachments.value ? { attachment: attachments.value } : {}),
+        open: ({ path }) => void files.push(path),
+        openAttachment: (id) => void copies.push(id),
+        attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, host),
+      }))
+      return () => h(StreamedMarkdown, { content: 'The report:\n\n<attachment id="a14" />' })
+    },
+  })
+  app.use(pinia)
+  const shown = changed(page, () => page.querySelector('[data-attachment-card-body][role="button"]') !== null)
+  app.mount(page)
+  await shown
+  const open = async () => {
+    page.querySelector<HTMLElement>('[data-attachment-card-body]')!.click()
+    await settle()
+  }
+  try {
+    await open()
+    expect([files, copies, checked]).toEqual([['/work/report.pdf'], [], ['a14']])
+
+    // Deleted with no notice of it: the next opening asks again.
+    present.delete('/work/report.pdf')
+    await open()
+    expect([files.length, copies, checked.length]).toEqual([1, ['a14'], 2])
+
+    host.online = false
+    present.add('/work/report.pdf')
+    await open()
+    expect([files.length, copies.length, checked.length]).toEqual([1, 2, 2])
+
+    host.online = true
+    host.device = 'dev-2'
+    await open()
+    expect([files.length, copies.length, checked.length]).toEqual([1, 3, 2])
+  } finally {
+    app.unmount()
+    product.stop()
+  }
+}, 2000)
+
+// A picture the agent uploaded opens in the work panel's Media tab beside the
+// reply: the file it was uploaded from while the Host has it, and its copy
+// once the Host is offline, which is then not asked. Planted defects this
+// catches: the tab showing the copy of a file the Host has, and the window
+// opening over the tab. A few milliseconds.
+test('a picture attachment opens in the Media tab, its file while the Host has it and its copy otherwise', async () => {
+  const present = new Set(['/work/chart.png'])
+  const checked: string[] = []
+  stubBackend(new Set(['a15']), { name: 'chart.png', mediaType: 'image/png', source: { host: 'dev-1', path: '/work/chart.png' } }, present, checked)
+  const pinia = createPinia()
+  const product = useProduct(pinia)
+  product.start()
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 15 })] }))
+  const { host, contents } = openingHost(present)
+  let revealed = 0
+  const page = document.createElement('div')
+  document.body.append(page)
+  const app = createApp({
+    setup() {
+      provideMediaViewer({
+        reveal: () => {
+          revealed += 1
+          return true
+        },
+      })
+      const attachments = useMessageAttachments(() => CONVERSATION)
+      provideMessageFiles(() => ({
+        cwd: '/work',
+        contents,
+        ...(attachments.value ? { attachment: attachments.value } : {}),
+        attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, host),
+      }))
+      return () => [
+        h(StreamedMarkdown, { content: 'The chart:\n\n<attachment id="a15" />' }),
+        h(MediaView, { shown: true }),
+      ]
+    },
+  })
+  app.use(pinia)
+  const shown = changed(page, () => page.querySelector('a[data-attachment-id="a15"]') !== null)
+  app.mount(page)
+  await shown
+  const pictureIn = () => page.querySelector('[data-media-view] img')?.getAttribute('src')
+  try {
+    page.querySelector<HTMLElement>('a[data-attachment-id="a15"]')!.click()
+    await settle()
+    expect(revealed).toBe(1)
+    expect(pictureIn()).toBe('/raw?path=/work/chart.png')
+    expect(page.querySelector('[data-media-view]')!.textContent).toContain('chart.png')
+
+    host.online = false
+    page.querySelector<HTMLElement>('a[data-attachment-id="a15"]')!.click()
+    await settle()
+    expect(revealed).toBe(2)
+    expect(pictureIn()).toContain(BLOB)
+    expect(checked).toEqual(['a15'])
+  } finally {
     app.unmount()
     product.stop()
   }

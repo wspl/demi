@@ -1,7 +1,7 @@
 import { computed, inject, provide, type ComputedRef, type InjectionKey } from 'vue'
-import { transcriptRowOf, type MediaSequence, type MediaViewerState } from '../files/media-viewer'
+import { transcriptRowOf, type MediaSequence, type MediaViewerState, type ShownMedium } from '../files/media-viewer'
 import { messagePicture } from './media-run'
-import { HOST_FILE_ATTRIBUTE } from './render'
+import { ATTACHMENT_ID_ATTRIBUTE, HOST_FILE_ATTRIBUTE, attachmentMedium, messageAttachment } from './render'
 import type { MessageAgents } from '../agent/agent-links'
 import { agentMenu } from '../agent/agent-menu'
 import { downloadUrl } from '../files/download'
@@ -54,8 +54,9 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  * one. Other clicks:
  *
  * - A click on an image the message shows, or on an attachment's image or video
- *   or its link, shows it large in `viewer`, where a video plays. `among` gives
- *   the media of the transcript it stands in.
+ *   or its link, shows it large in `viewer`, where a video plays: an
+ *   attachment's file while it opens in place of its copy (`attachmentMedium`).
+ *   `among` gives the media of the transcript it stands in.
  * - An image inside a link follows the link.
  * - A click on an agent's link opens the agent in the Agents window.
  * - A click on a commit's link opens the commit in the Change view.
@@ -75,16 +76,10 @@ export function openMessageLink(
     agents.open(Number(agent.getAttribute('data-agent-link')))
     return
   }
-  const image = target?.closest('a[data-attachment-image]')
-  if (image) {
+  const tile = target?.closest('a[data-attachment-image], a[data-attachment-video]')
+  if (tile) {
     event.preventDefault()
-    viewer.show({ kind: 'image', src: image.getAttribute('href') ?? '', name: image.getAttribute('data-attachment-image') ?? '', row: transcriptRowOf(image) }, among)
-    return
-  }
-  const video = target?.closest('a[data-attachment-video]')
-  if (video) {
-    event.preventDefault()
-    viewer.show({ kind: 'video', src: video.getAttribute('href') ?? '', name: video.getAttribute('data-attachment-video') ?? '', row: transcriptRowOf(video) }, among)
+    viewer.show({ ...tileMedium(tile, files), row: transcriptRowOf(tile) }, among)
     return
   }
   if (target instanceof HTMLImageElement && !target.closest('a')) {
@@ -109,6 +104,23 @@ export function openMessageLink(
   event.preventDefault()
   const line = Number(link.getAttribute('data-line'))
   files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null })
+}
+
+/**
+ * The medium an attachment's tile shows large: the attachment as its number
+ * names it now (`attachmentMedium`), or the copy the tile links while the
+ * page no longer has it.
+ */
+function tileMedium(tile: Element, files: MessageFiles | undefined): ShownMedium {
+  const id = tile.getAttribute(ATTACHMENT_ID_ATTRIBUTE)
+  const lookup = id === null ? undefined : messageAttachment(files, id)
+  const medium = id !== null && lookup?.state === 'found' ? attachmentMedium(id, lookup.attachment, files) : null
+  if (medium)
+    return medium
+  const video = tile.getAttribute('data-attachment-video')
+  return video === null
+    ? { kind: 'image', src: tile.getAttribute('href') ?? '', name: tile.getAttribute('data-attachment-image') ?? '' }
+    : { kind: 'video', src: tile.getAttribute('href') ?? '', name: video }
 }
 
 /**

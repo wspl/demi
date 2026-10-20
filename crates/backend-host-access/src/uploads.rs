@@ -55,6 +55,7 @@ impl dyn HostShard + '_ {
             blob: record.sha256.clone(),
             // The user's file is no agent's upload, which no reply shows.
             node: None,
+            source: None,
         };
         let row = commit(self.tasks(), self.conversation_db(id), numbered, || {}).await?;
         let number = row.number.to_string();

@@ -68,3 +68,15 @@ test('a subagent\'s brief names its pictures as a message does', () => {
   const brief: Block[] = [{ ...base, type: 'user', id: 'u2', turnId: 't2', preamble: null, content: [{ type: 'text', text: 'Look at ![x](out/a.png)' }] }]
   expect(transcriptPictures(brief, { ...context, node: 'child-1' }).map(mediumKey)).toEqual(['file:/work/out/a.png'])
 })
+
+// The Media tab's bar shows the size of every item of the series, so a user's
+// attached file carries the size its message holds, as an attachment carries
+// its record's. Planted defect this catches: the user's picture with no size,
+// which Next onto it shows without one.
+test('a user\'s attached picture carries the size of its file, as the agent\'s attachment does', () => {
+  const pictures = transcriptPictures(blocks, context)
+  expect(pictures.filter((medium) => medium.name.endsWith('.png')).map((medium) => [medium.name, medium.bytes])).toEqual([
+    ['mine.png', 1],
+    ['login.png', 15822],
+  ])
+})
