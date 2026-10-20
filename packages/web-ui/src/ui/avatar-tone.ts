@@ -6,12 +6,14 @@ export type AvatarTone = {
 }
 
 /**
- * Eight muted, desaturated tones that tell accounts apart in a list; none is
- * a saturated blue or purple. White letters read on every one: at the height
- * where the letters of a 24 px avatar sit (31% down the gradient, the top edge
- * of the capitals) the contrast is at least 4.5:1 in both color schemes, the
- * WCAG bar for normal text, since 11 px letters are not large text. The
- * circle's own top edge, which carries no letter, is lighter.
+ * Eight muted, desaturated tones that tell accounts apart in a list; none is a
+ * saturated blue or purple.
+ *
+ * White letters read on every one. At the height where the letters of a 24 px
+ * avatar sit (31% down the gradient, the top edge of the capitals), the contrast
+ * is at least 4.5:1 in both color schemes, the WCAG bar for normal text, since
+ * 11 px letters are not large text. The circle's own top edge, which carries no
+ * letter, is lighter.
  */
 export const HUE_TONES: readonly AvatarTone[] = [
   { name: 'slate', light: ['#757e8e', '#5a6374'], dark: ['#667082', '#4a5262'] },

@@ -9,17 +9,19 @@ import { regionRetry } from './region-retry'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
- * The pane that stands in for a region whose content cannot be shown yet:
- * a loading list, a failed restore, an empty conversation, a missing id.
+ * The pane that stands in for a region whose content cannot be shown yet: a
+ * loading list, a failed restore, an empty conversation, a missing id.
  *
- * Every region uses this one layout, so a failure reads the same in the
- * session pane, a settings list, the sidebar and a dialog body: a glyph for
- * the kind (a spinner while loading), one sentence, an optional detail line,
- * and at most one action. A failed region's action is Retry, and Retry
- * returns the region to loading in the same frame, before the caller's work
- * starts: the failure never stays on screen while it is retried. There is no
- * third state between the two. A failed region announces itself
- * (`role="alert"`); loading and other regions stay polite.
+ * Every region uses this one layout, so a failure reads the same in the session
+ * pane, a settings list, the sidebar and a dialog body: a glyph for the kind (a
+ * spinner while loading), one sentence, an optional detail line, and at most one
+ * action.
+ *
+ * - A failed region's action is Retry, and Retry returns the region to loading in
+ *   the same frame, before the caller's work starts: the failure never stays on
+ *   screen while it is retried. There is no third state between the two.
+ * - A failed region announces itself (`role="alert"`); loading and other regions
+ *   stay polite.
  */
 const props = withDefaults(
   defineProps<{
@@ -37,11 +39,12 @@ const props = withDefaults(
     /** A note's single action; omitted notes offer nothing. */
     action?: TitleText
     /**
-     * A failed region's Retry; without it the failure offers nothing. The
-     * region shows its loading pane from the click until the promise it
-     * returns settles, or, when it returns none, until the caller's status,
-     * label or detail next changes: a caller whose Retry returns nothing
-     * flips its own status to loading at once.
+     * A failed region's Retry; without it the failure offers nothing.
+     *
+     * The region shows its loading pane from the click until the promise it returns
+     * settles, or, when it returns none, until the caller's status, label or detail
+     * next changes. A caller whose Retry returns nothing flips its own status to
+     * loading at once.
      */
     onRetry?: () => unknown
   }>(),

@@ -15,23 +15,30 @@ import { stackAbove } from '../overlay/stacking'
 import { overlayLayerAttributes } from './context-menu'
 
 /**
- * A bottom sheet, as a phone's own apps open a menu or a short choice: it
- * rises from the screen's bottom edge over a scrim, as wide as the screen and
- * at most 90% of its height, its content scrolling inside it. Every phone
- * sheet is this one, a menu's (Popover) and a page's own, such as the
- * conversation's title sheet. It has no heading of its own: a menu sheet has
- * none, as an iOS menu has none, since what it acts on is the control just
- * tapped, still in view above it; a sheet that is a form or a page carries
- * its title in its content.
+ * A bottom sheet, as a phone's own apps open a menu or a short choice.
  *
- * It closes as iOS's and Android's sheets do: a tap on the scrim; a drag down
- * on its grabber, past 30% of its height or flicked
- * (`dragCloses`), else it springs back; a pull down at the top of its
- * scrolled content, which turns into that same drag; Escape, when a store
- * is given to stand in (`overlayStore`; a menu's Popover stands in it
- * itself); and the browser's Back (`useBackClose`). The focus moves into it
- * as it opens and goes back to its opener as it closes. The page behind
- * takes no touch while it is open: the scrim covers it.
+ * It rises from the screen's bottom edge over a scrim, as wide as the screen and
+ * at most 90% of its height, its content scrolling inside it. Every phone sheet
+ * is this one, a menu's (Popover) and a page's own, such as the conversation's
+ * title sheet.
+ *
+ * It has no heading of its own. A menu sheet has none, as an iOS menu has none,
+ * since what it acts on is the control just tapped, still in view above it. A
+ * sheet that is a form or a page carries its title in its content.
+ *
+ * It closes as iOS's and Android's sheets do:
+ *
+ * - A tap on the scrim.
+ * - A drag down on its grabber, past 30% of its height or flicked (`dragCloses`),
+ *   else it springs back.
+ * - A pull down at the top of its scrolled content, which turns into that same
+ *   drag.
+ * - Escape, when a store is given to stand in (`overlayStore`; a menu's Popover
+ *   stands in it itself).
+ * - The browser's Back (`useBackClose`).
+ *
+ * The focus moves into it as it opens and goes back to its opener as it closes.
+ * The page behind takes no touch while it is open: the scrim covers it.
  */
 const props = defineProps<{
   open: boolean

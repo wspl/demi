@@ -34,45 +34,49 @@ import type { Operation } from '../ui/operations'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 /**
- * A plugin's page: the object it declares with
- * `definePage`, and the page context every component of it reaches through
- * `usePage()`. The shell knows a page only through this object, and a page
- * knows the shell only through its context, which `web` supplies over the
- * backend and the gallery over each specimen's fixtures. A component never
- * names a plugin and cannot reach another plugin's state or calls.
+ * A plugin's page: the object it declares with `definePage`, and the page
+ * context every component of it reaches through `usePage()`.
  *
- * - Everything a page shows is pushed to it, or read when a pushed revision
- *   says it changed: no page polls, and none guesses when to read again.
+ * The shell knows a page only through this object, and a page knows the shell
+ * only through its context, which `web` supplies over the backend and the gallery
+ * over each specimen's fixtures. A component never names a plugin and cannot
+ * reach another plugin's state or calls.
+ *
+ * Rules of a page:
+ *
+ * - Everything a page shows is pushed to it, or read when a pushed revision says
+ *   it changed: no page polls, and none guesses when to read again.
  * - A state that does not read is reported, never thrown. A component that
- *   throws while it renders stops updating (in development Vue keeps the DOM
- *   of its last render, so a switch that showed its call pending stays
- *   pending; in a production build the component shows nothing), so the
- *   context keeps the last state that read and says why the latest did not.
- *   An answer that does not read fails its call.
- * - A control waits for its own call, and only for it, never for the state
- *   the call causes, and shows the plugin's state when the call succeeds. A
- *   call is an operation of the page, which goes on when the component that
- *   showed the control goes. A control that only sends input to what the user
- *   watches, such as a simulator's Home, waits for nothing: the picture shows
- *   the effect.
+ *   throws while it renders stops updating. In development Vue keeps the DOM of
+ *   its last render, so a switch that showed its call pending stays pending; in
+ *   a production build the component shows nothing. So the context keeps the
+ *   last state that read and says why the latest did not. An answer that does
+ *   not read fails its call.
+ * - A control waits for its own call, and only for it, never for the state the
+ *   call causes, and shows the plugin's state when the call succeeds. A call is
+ *   an operation of the page, which goes on when the component that showed the
+ *   control goes. A control that only sends input to what the user watches, such
+ *   as a simulator's Home, waits for nothing: the picture shows the effect.
  * - Work panel kinds are data on the page, so the panel knows every kind of
- *   every page the user has on before it opens and an intent can open a kind
- *   while the panel is closed. Intents are the only way a page opens a tab,
- *   and a control that opens one asks first whether any page does and shows
- *   plain text otherwise. What follows from a tab being created or closed,
- *   such as the browser closing its own tab, is the plugin's work on the
- *   backend, never the page's.
+ *   every page the user has on before it opens, and an intent can open a kind
+ *   while the panel is closed.
+ * - Intents are the only way a page opens a tab. A control that opens one asks
+ *   first whether any page does, and shows plain text otherwise.
+ * - What follows from a tab being created or closed, such as the browser closing
+ *   its own tab, is the plugin's work on the backend, never the page's.
  *
  * `web-ui` knows no plugin, no plugin's kind and no plugin's types, imports no
- * Node module, and ships no control-plane transport of its own: it consumes
- * an injected `ConversationClient` and injected plugin services.
+ * Node module, and ships no control-plane transport of its own: it consumes an
+ * injected `ConversationClient` and injected plugin services.
  */
 
 /**
- * What came back for a call that failed, which a page says for a reason it
- * has no words for: the backend's answer, by its status line such as `500
- * Internal Server Error`; none, as for a network failure or a timeout; or an
- * answer the page could not read.
+ * What came back for a call that failed, which a page says for a reason it has no
+ * words for. It is one of:
+ *
+ * - the backend's answer, by its status line such as `500 Internal Server Error`,
+ * - none, as for a network failure or a timeout, or
+ * - an answer the page could not read.
  */
 export type PluginCallAnswer =
   | { type: 'status'; status: string }
@@ -131,17 +135,19 @@ export interface ConversationFileService {
   /** The two sides of one retained edit, by the blobs that hold them. */
   readonly edit: ReadCallChange
   /**
-   * A request of the agent `node` (null for the conversation's own), with
-   * the files its calls changed, as the agent's transcript holds it now:
-   * derived as it is read, never stored (`crates/agent-store/src/changes.rs`).
+   * A request of the agent `node` (null for the conversation's own), with the files
+   * its calls changed, as the agent's transcript holds it now. It is derived as it
+   * is read, never stored (`crates/agent-store/src/changes.rs`).
+   *
    * Null while the transcript does not hold it.
    */
   request(node: string | null, request: string): TranscriptRequest | null
   /**
-   * The calling component shows the working tree under the directory
-   * `directory()` names, read at each change, the conversation's when it
-   * names none: the service follows the Host's reports for it and keeps
-   * `changes` of it current until the component's scope ends.
+   * The calling component shows the working tree under the directory `directory()`
+   * names, read at each change, the conversation's when it names none.
+   *
+   * The service follows the Host's reports for it and keeps `changes` of it current
+   * until the component's scope ends.
    */
   showChanges(directory?: () => string | undefined): void
 }
@@ -172,11 +178,12 @@ export interface PageHost {
   /** Follows the plugin's state of `conversation`, by its revision, until `stop`. */
   followState(plugin: string, conversation: string): StateFeed
   /**
-   * Calls `method` of `plugin` for the user, or for `conversation`, and
-   * answers its JSON result; a refusal rejects with a `PluginCallError`. A
-   * call that cannot reach the backend, as while it restarts, waits until it
-   * can and goes then, so it never rejects for the connection; one whose
-   * `signal` aborts meanwhile rejects with the abort and is never sent.
+   * Calls `method` of `plugin` for the user, or for `conversation`, and answers its
+   * JSON result. A refusal rejects with a `PluginCallError`.
+   *
+   * - A call that cannot reach the backend, as while it restarts, waits until it can
+   *   and goes then, so it never rejects for the connection.
+   * - One whose `signal` aborts meanwhile rejects with the abort and is never sent.
    */
   call(
     plugin: string,
@@ -207,11 +214,12 @@ export interface PageHost {
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
   /**
-   * Opens a web page in a new tab, such as a vendor's sign-in. Called in the
-   * click's handler with the URL or a promise of the URL a call will answer:
-   * the tab opens at once, so no popup blocker stops it, and goes to the URL
-   * when it arrives, or closes when the call fails, whose failure the
-   * returned promise carries.
+   * Opens a web page in a new tab, such as a vendor's sign-in.
+   *
+   * Call it in the click's handler with the URL or a promise of the URL a call will
+   * answer. The tab opens at once, so no popup blocker stops it, and goes to the URL
+   * when it arrives, or closes when the call fails, whose failure the returned
+   * promise carries.
    */
   openLink(url: string | Promise<string>): Promise<void>
   overlays: OverlayStore
@@ -274,9 +282,10 @@ export interface PageContext {
   files(conversation: string): ConversationFileService
   /**
    * The page's operation of the plugin's `action` on what `key` names, such as
-   * `operation('set_source_enabled', source)` for a skill source's switch. A control given it shows
-   * the call working whenever it is drawn, its component gone and drawn again included, and a press
-   * while it runs starts nothing.
+   * `operation('set_source_enabled', source)` for a skill source's switch.
+   *
+   * A control given it shows the call working whenever it is drawn, its component
+   * gone and drawn again included, and a press while it runs starts nothing.
    */
   operation(action: string, key: string): Operation
 }
@@ -300,9 +309,11 @@ export interface PanelKind<Data, Session = undefined> {
   title(data: Data, tab: KindTab<Session>): string
   /**
    * What makes a tab of a kind that is not pinned the one it is, such as an
-   * attachment's number: an intent whose new data has the key of a tab the
-   * strip holds selects that tab instead of adding another. Without it, each intent adds a tab, as a
-   * browser opens each link in a tab of its own.
+   * attachment's number: an intent whose new data has the key of a tab the strip
+   * holds selects that tab instead of adding another.
+   *
+   * Without it, each intent adds a tab, as a browser opens each link in a tab of its
+   * own.
    */
   key?(data: Data): string
   /** The strip's mark. Props: `data`. */
@@ -318,10 +329,12 @@ export interface PanelKind<Data, Session = undefined> {
    */
   busy?(data: Data, tab: KindTab<Session>, id: string): boolean
   /**
-   * The tab's content. Props: `conversation`, `session`, `tabId`, `data`, and
-   * `shown`, whether the tab is the panel's selection. Emits `update` with
-   * the tab's next `data`, and `close` to have the panel close the tab as its
-   * user would.
+   * The tab's content.
+   *
+   * - Props: `conversation`, `session`, `tabId`, `data`, and `shown`, whether the
+   *   tab is the panel's selection.
+   * - Emits `update` with the tab's next `data`, and `close` to have the panel close
+   *   the tab as its user would.
    */
   content: Component
   /**
@@ -443,10 +456,11 @@ function unreadable(reason: string, error: z.ZodError): PluginCallError {
 }
 
 /**
- * `raw` read with `schema` while the calling scope lives: the last state that read, null
- * while there is none, and why the latest did not read, until one does. A
- * state that does not read never reaches the page's components, and the
- * last one that read stays shown.
+ * `raw` read with `schema` while the calling scope lives: the last state that read,
+ * null while there is none, and why the latest did not read, until one does.
+ *
+ * A state that does not read never reaches the page's components, and the last one
+ * that read stays shown.
  */
 function readState<T>(raw: () => unknown, schema: z.ZodType<T>) {
   const value = shallowRef<T | null>(null)
@@ -514,10 +528,11 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
 }
 
 /**
- * The readers of one plugin's user state over one host that cannot read it
- * now. The refusal is one fact however many components read the state: it
- * is told once, when the first reader stops reading, and told again only
- * after every reader read again or went.
+ * The readers of one plugin's user state over one host that cannot read it now.
+ *
+ * The refusal is one fact however many components read the state. It is told once,
+ * when the first reader stops reading, and told again only after every reader read
+ * again or went.
  */
 class UserStateRefusals {
   private refusing = 0

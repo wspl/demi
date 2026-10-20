@@ -19,11 +19,12 @@ import {
 export type Action<A extends unknown[] = []> = (...args: A) => unknown
 
 /**
- * An action on one target, such as removing project `app`: `{ action:
- * 'remove', target: 'project:app' }`. Operations that exclude each other on
- * one target, such as a dialog's Save and Delete, name the same `group`:
- * while one of them runs, the others start nothing. Without a group an
- * operation is a group of its own.
+ * An action on one target, such as removing project `app`: `{ action: 'remove',
+ * target: 'project:app' }`.
+ *
+ * Operations that exclude each other on one target, such as a dialog's Save and
+ * Delete, name the same `group`: while one of them runs, the others start nothing.
+ * Without a group an operation is a group of its own.
  */
 export interface Operation {
   action: string
@@ -36,11 +37,13 @@ function isPromise(value: unknown): value is Promise<unknown> {
 }
 
 /**
- * The running operations of a page, by their group and target, and how many
- * run on each target. The page has one (`operations`), so a control drawn
- * again, in a menu or a dialog opened again, finds its operation running;
- * nothing a control unmounts stops or forgets one. Every operation settles,
- * since a request carries its timeout (`apiRequest`).
+ * The running operations of a page, by their group and target, and how many run on
+ * each target.
+ *
+ * The page has one (`operations`), so a control drawn again, in a menu or a dialog
+ * opened again, finds its operation running. Nothing a control unmounts stops or
+ * forgets one. Every operation settles, since a request carries its timeout
+ * (`apiRequest`).
  */
 export function createOperations() {
   /** The action that runs, by its group and target. */
@@ -82,12 +85,13 @@ export function createOperations() {
   }
 
   /**
-   * Starts `operation` with `run`, unless it is blocked; its work is the
-   * promise or promises `run` returns, and it runs until they all settle.
-   * Answers when it settled, or null when nothing started. A start of the
-   * same operation from inside `run`, as when a button's handler calls the
-   * store that starts it, joins it: its `run` is called and its work is
-   * part of the one operation.
+   * Starts `operation` with `run`, unless it is blocked. Its work is the promise or
+   * promises `run` returns, and it runs until they all settle.
+   *
+   * Answers when it settled, or null when nothing started. A start of the same
+   * operation from inside `run`, as when a button's handler calls the store that
+   * starts it, joins it: its `run` is called and its work is part of the one
+   * operation.
    */
   function start(operation: Operation, run: () => unknown): Promise<void> | null {
     const slot = slotOf(operation)
@@ -167,10 +171,11 @@ export const operations = createOperations()
 const rowTargetKey: InjectionKey<() => string | undefined> = Symbol('rowTarget')
 
 /**
- * Makes the component a row of `target`: it shows the spinner while any
- * operation on its target runs (`operations.onTarget`), and the row actions
- * inside it of the same target, its icon buttons and the items of a menu
- * opened from it, leave the spinner to it.
+ * Makes the component a row of `target`: it shows the spinner while any operation on
+ * its target runs (`operations.onTarget`).
+ *
+ * The row actions inside it of the same target, its icon buttons and the items of a
+ * menu opened from it, leave the spinner to it.
  */
 export function provideRowTarget(target: () => string | undefined): ComputedRef<boolean> {
   provide(rowTargetKey, target)
@@ -189,18 +194,21 @@ function listenersOf(value: unknown): Function | Function[] | null {
 }
 
 /**
- * The pressing of one control bound to `operation`, as Button, IconButton
- * and MenuItem press. `press(listener, ...args)` starts the operation with
- * the control's listener, through Vue's error handling as any event
- * handler's, so a rejection is reported as one; it starts nothing while the
- * operation's group runs on its target. `running` is while the operation
- * runs, whenever the control is drawn; `blocked` while it or another of its
- * group does. `showsSpinner` is false for a row action (`rowAction`) in a
- * row of the same target, which shows it instead.
+ * The pressing of one control bound to `operation`, as Button, IconButton and
+ * MenuItem press.
  *
- * A control given no operation is the target of its own: its press waits
- * while the control stays, for a control whose target lives as long as it
- * does, such as a specimen's.
+ * - `press(listener, ...args)` starts the operation with the control's listener,
+ *   through Vue's error handling as any event handler's, so a rejection is
+ *   reported as one. It starts nothing while the operation's group runs on its
+ *   target.
+ * - `running` is while the operation runs, whenever the control is drawn.
+ * - `blocked` is while it or another of its group does.
+ * - `showsSpinner` is false for a row action (`rowAction`) in a row of the same
+ *   target, which shows it instead.
+ *
+ * A control given no operation is the target of its own: its press waits while the
+ * control stays, for a control whose target lives as long as it does, such as a
+ * specimen's.
  */
 export function useOperationControl(operation: () => Operation | undefined, rowAction: boolean) {
   const instance = getCurrentInstance()

@@ -5,15 +5,20 @@ import { LANGUAGES, type Language } from './languages'
  * The page's text: each package keeps a catalogue per language, and reads it
  * through the one vue-i18n instance the app creates, under a scope of its own
  * (`ui` for this package, `plugins.<id>` for a plugin's), so no two packages'
- * keys meet. A package brings its own text, a plugin's included, so the shell
- * knows none of it; a large package splits its catalogue by folder, so the text
- * of one area is found beside its components. Keys name the place and the
- * meaning, `settings.general.language`, never the English words, so rewording
- * English keeps the key, and a new text is written in every language with the
- * change that adds it. A count uses the catalogue's plural forms; Chinese,
- * Japanese and Korean have a single one. Numbers, sizes, dates, times, ages and lists
- * are formatted with `Intl` in the chosen language by the existing formatters
- * (`ui/dates.ts`), never by hand in a component.
+ * keys meet.
+ *
+ * - A package brings its own text, a plugin's included, so the shell knows none
+ *   of it.
+ * - A large package splits its catalogue by folder, so the text of one area is
+ *   found beside its components.
+ * - Keys name the place and the meaning, `settings.general.language`, never the
+ *   English words, so rewording English keeps the key.
+ * - A new text is written in every language with the change that adds it.
+ * - A count uses the catalogue's plural forms; Chinese, Japanese and Korean have
+ *   a single one.
+ * - Numbers, sizes, dates, times, ages and lists are formatted with `Intl` in the
+ *   chosen language by the existing formatters (`ui/dates.ts`), never by hand in
+ *   a component.
  */
 
 /**
@@ -83,11 +88,11 @@ function rebuild(): void {
 }
 
 /**
- * The page's one instance, speaking `language`, with every catalogue
- * defined; the app installs it (`app.use`) and names the language on the
- * document with `setPageLanguage`. Web and the gallery call it first
- * thing as they start; a text read before, as a test reads one, is
- * English.
+ * The page's one instance, speaking `language`, with every catalogue defined.
+ *
+ * The app installs it (`app.use`) and names the language on the document with
+ * `setPageLanguage`. Web and the gallery call it first thing as they start. A text
+ * read before, as a test reads one, is English.
  */
 export function createPageI18n(language: Language) {
   const created = page()
@@ -118,11 +123,11 @@ export function setPageLanguage(language: Language): void {
 }
 
 /**
- * The text of the catalogue `catalogue` under `scope`, which no other package
- * uses. A module that defines its scope again replaces the earlier
- * catalogue, as a hot reload of its `text.ts` does; nothing tells such a
- * module from another that claims the scope, so the scopes' names are the
- * packages' to keep apart.
+ * The text of the catalogue `catalogue` under `scope`, which no other package uses.
+ *
+ * A module that defines its scope again replaces the earlier catalogue, as a hot
+ * reload of its `text.ts` does. Nothing tells such a module from another that
+ * claims the scope, so the scopes' names are the packages' to keep apart.
  */
 export function defineText<Schema extends object>(scope: string, catalogue: Catalogue<Schema>): Text<Schema> {
   const replaced = catalogues.has(scope)
@@ -150,10 +155,11 @@ export function defineText<Schema extends object>(scope: string, catalogue: Cata
 }
 
 /**
- * The text at `path` among every package's, `plugins.skills.permissions.…`,
- * filled with `named`; null when no catalogue has it. For a text whose
- * package the caller does not know, as a plugin's category, which the plugin
- * words under its own id.
+ * The text at `path` among every package's, `plugins.skills.permissions.…`, filled
+ * with `named`; null when no catalogue has it.
+ *
+ * It serves a text whose package the caller does not know, as a plugin's category,
+ * which the plugin words under its own id.
  */
 export function findText(path: string, named: NamedValue = {}): string | null {
   const { global } = page()

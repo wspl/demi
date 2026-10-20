@@ -10,12 +10,15 @@ import type { TitleText } from '../ui/ui-text'
 import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigation'
 
 /**
- * A list beside the thing it selects, inside one settings page. Wide hosts show
- * both; narrow ones show the list, then the detail as a page of its own. In the
- * settings dialog the detail takes over the dialog's one navigation bar, whose back
- * button names the page it returns to, and the page's title steps aside; elsewhere
- * the split draws its own back row. The list has no surface of its own, so it reads
- * as a rail beside the page, not a nested page.
+ * A list beside the thing it selects, inside one settings page.
+ *
+ * - Wide hosts show both. Narrow ones show the list, then the detail as a page of
+ *   its own.
+ * - In the settings dialog the detail takes over the dialog's one navigation bar,
+ *   whose back button names the page it returns to, and the page's title steps
+ *   aside. Elsewhere the split draws its own back row.
+ * - The list has no surface of its own, so it reads as a rail beside the page,
+ *   not a nested page.
  */
 defineProps<{
   /** Title of the open detail, for the narrow back row. */

@@ -15,20 +15,22 @@ export interface PointerDragHandlers {
 const DRAGGING_CLASS = 'is-dragging'
 
 /**
- * Follows the pointer from a press on `event.currentTarget` until it is
- * released, as a divider, a window's title bar or its edge is dragged.
+ * Follows the pointer from a press on `event.currentTarget` until it is released,
+ * as a divider, a window's title bar or its edge is dragged.
  *
- * The element captures the pointer, so the drag survives leaving it, the
- * page's window and iframes; while it lasts the document wears the drag's
- * cursor everywhere and selects no text. Moves are coalesced to one report a
- * frame, and the last one is reported on release, so what follows ends
- * exactly under the pointer. Release, cancel, lost capture and the window
- * losing focus all end the drag the same way; Escape ends it as cancelled,
- * and no other Escape handler acts on that key. Every listener, the frame and
- * the capture are released when it ends.
+ * - The element captures the pointer, so the drag survives leaving it, the page's
+ *   window and iframes.
+ * - While it lasts, the document wears the drag's cursor everywhere and selects no
+ *   text.
+ * - Moves are coalesced to one report a frame, and the last one is reported on
+ *   release, so what follows ends exactly under the pointer.
+ * - Release, cancel, lost capture and the window losing focus all end the drag the
+ *   same way. Escape ends it as cancelled, and no other Escape handler acts on
+ *   that key.
+ * - Every listener, the frame and the capture are released when it ends.
  *
- * Returns what ends the drag early, as a release does: the control calls it
- * when it unmounts mid-drag.
+ * Returns what ends the drag early, as a release does: the control calls it when
+ * it unmounts mid-drag.
  */
 export function startPointerDrag(event: PointerEvent, handlers: PointerDragHandlers): () => void {
   const target = event.currentTarget

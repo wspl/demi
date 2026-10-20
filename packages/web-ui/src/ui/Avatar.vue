@@ -4,12 +4,14 @@ import { accountDisplayName, accountInitials } from '../auth/account-display'
 import { hueToneOf } from './avatar-tone'
 
 /**
- * An account's avatar: a circle with its initials, until pictures arrive. The
- * background is a muted tone the account id picks from eight, so one person
- * has the same tone in every place and people tell apart in a list. The
- * letters are white and semibold, in the rounded face where the system has one
- * (Safari's `ui-rounded`), else the UI font. 24 px is the sidebar's and the
- * settings rail's, 32 px the phone sidebar's, Settings' and the user list's.
+ * An account's avatar: a circle with its initials, until pictures arrive.
+ *
+ * - The background is a muted tone the account id picks from eight, so one person
+ *   has the same tone in every place and people tell apart in a list.
+ * - The letters are white and semibold, in the rounded face where the system has
+ *   one (Safari's `ui-rounded`), else the UI font.
+ * - 24 px is the sidebar's and the settings rail's, 32 px the phone sidebar's,
+ *   Settings' and the user list's.
  */
 const props = defineProps<{
   /** The account id, which picks the tone. */

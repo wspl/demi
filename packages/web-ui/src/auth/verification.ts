@@ -27,10 +27,11 @@ export interface Verification {
 }
 
 /**
- * The confirmation Hand Off to Your Phone, an administrator's Sign-In Code…
+ * The confirmation that Hand Off to Your Phone, an administrator's Sign-In Code…
  * and the actions that ask it share: the password, red with Required or the
- * host's sentence under it, or Use Passkey where the host offers one. A
- * dismissed browser prompt says nothing; `verified` runs once the host
+ * host's sentence under it, or Use Passkey where the host offers one.
+ *
+ * A dismissed browser prompt says nothing. `verified` runs once the host
  * confirmed.
  */
 /** How many confirmation steps the page has made, which names each one's operations. */
@@ -97,10 +98,10 @@ export function useVerification(host: () => VerificationHost, verified: () => vo
 }
 
 /**
- * An action that asks Confirm It’s You (`VerifyDialog.vue`) only when its
- * host answers `needsVerification`, as the backend does for a browser not
- * confirmed in the last five minutes: the page shows the dialog while
- * `message` is set, and settles it with the dialog's answer.
+ * An action that asks Confirm It’s You (`VerifyDialog.vue`) only when its host
+ * answers `needsVerification`, as the backend does for a browser not confirmed in
+ * the last five minutes. The page shows the dialog while `message` is set, and
+ * settles it with the dialog's answer.
  */
 export interface Confirmation {
   /** What the open dialog asks the confirmation for; null while it asks none. */

@@ -39,11 +39,14 @@ export function treeBlock(rows: readonly TreeRow[], path: string): { first: numb
 }
 
 /**
- * Where a tree's viewport scrolls to bring a row into view, or null when it
- * is in view already. Once a row reaches the top its ancestors pin above it,
- * one slot per level under the caption (`captionPx`), so a row above the
- * view, or under them, comes to rest in the slot just below them: the slot
- * its own pinned copy takes. A row below the view comes up to its bottom edge.
+ * Where a tree's viewport scrolls to bring a row into view, or null when it is in
+ * view already.
+ *
+ * - Once a row reaches the top, its ancestors pin above it, one slot per level
+ *   under the caption (`captionPx`).
+ * - So a row above the view, or under them, comes to rest in the slot just below
+ *   them: the slot its own pinned copy takes.
+ * - A row below the view comes up to its bottom edge.
  */
 export function revealTreeRow(
   view: { scrollTop: number; clientHeight: number },
@@ -69,14 +72,17 @@ export interface StickyTreeStack {
 
 /**
  * The directory rows to pin at the top for a viewport scrolled to `scrollTop`.
+ *
  * Level by level, the row under the stack's next slot names the chain of
  * directories it sits in (itself included when it is an open directory with
- * rows under it); the chain's directory for that level pins while its own
- * row has scrolled under the slot and its last row has not, so a directory's
- * name stays in sight while the tree scrolls through it and goes once it is
- * past. A row outside the pinned chain ends the stack. As the deepest pinned
- * directory's last row scrolls under the stack, the stack rides up with it
- * instead of vanishing.
+ * rows under it).
+ *
+ * - The chain's directory for that level pins while its own row has scrolled
+ *   under the slot and its last row has not, so a directory's name stays in
+ *   sight while the tree scrolls through it and goes once it is past.
+ * - A row outside the pinned chain ends the stack.
+ * - As the deepest pinned directory's last row scrolls under the stack, the
+ *   stack rides up with it instead of vanishing.
  */
 export function stickyTreeRows(
   rows: readonly TreeRow[],
@@ -151,12 +157,16 @@ export function stickyTreeRows(
 export type TreeKeyEffect = { kind: 'cursor'; path: string } | { kind: 'activate'; path: string }
 
 /**
- * A key pressed in a tree whose keyboard cursor is on `cursor` (null for
- * none yet), as WAI-ARIA's tree does it: Up and Down move the cursor a row,
- * from the first row when there is none; Home and End to the first and the
- * last. Right unfolds a folded directory; Left folds an unfolded one, and
- * from any other row goes to its directory. Enter activates the cursor's
- * row. Null for a key the tree leaves alone.
+ * A key pressed in a tree whose keyboard cursor is on `cursor` (null for none
+ * yet), as WAI-ARIA's tree does it:
+ *
+ * - Up and Down move the cursor a row, from the first row when there is none.
+ * - Home and End move it to the first and the last.
+ * - Right unfolds a folded directory.
+ * - Left folds an unfolded one, and from any other row goes to its directory.
+ * - Enter activates the cursor's row.
+ *
+ * Null for a key the tree leaves alone.
  */
 export function treeKeyEffect(rows: readonly TreeRow[], cursor: string | null, key: string): TreeKeyEffect | null {
   if (rows.length === 0)

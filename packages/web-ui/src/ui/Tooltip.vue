@@ -64,23 +64,25 @@ import type { SentenceText } from './ui-text'
 
 /**
  * Tooltip copy, one style everywhere:
- * - An action: the verb alone, sentence case, no article, no period. The
- *   object is left out when the control sits on the thing it acts on (a row's
- *   Archive, a message's Copy, a model's Edit), and named only when the control
- *   is away from it or would be ambiguous (Add project, New folder, Stop all
- *   agents). A toggle names the action it will take, not the state (Unpin,
- *   Hide hidden files).
+ *
+ * - An action: the verb alone, sentence case, no article, no period. The object
+ *   is left out when the control sits on the thing it acts on (a row's Archive, a
+ *   message's Copy, a model's Edit), and named only when the control is away from
+ *   it or would be ambiguous (Add project, New folder, Stop all agents). A toggle
+ *   names the action it will take, not the state (Unpin, Hide hidden files).
  * - The control's aria-label is the same text; when the tooltip follows state
  *   (Copied), the label follows with it.
  * - A reason (why a control is disabled or unavailable) is a full sentence and
  *   may be long: "Fork is available after this message completes."
  *
- * A tip shows as the pointer rests on its trigger, after a delay, and only
- * once the pointer moved there: a trigger that slides under a pointer at rest,
- * as a new tab does under a pointer that rests on the strip, shows none. A
- * press on the trigger hides the tip until the pointer leaves, so a click
- * never brings one. Keyboard focus shows it as well, but focus a click gave
- * does not. A touch shows none.
+ * A tip shows as the pointer rests on its trigger, after a delay, and only once
+ * the pointer moved there. A trigger that slides under a pointer at rest, as a new
+ * tab does under a pointer that rests on the strip, shows none.
+ *
+ * - A press on the trigger hides the tip until the pointer leaves, so a click
+ *   never brings one.
+ * - Keyboard focus shows it as well, but focus a click gave does not.
+ * - A touch shows none.
  */
 defineOptions({
   inheritAttrs: false,
@@ -110,10 +112,11 @@ const props = withDefaults(defineProps<{
    */
   warmMs?: number
   /**
-   * Chooses the side the tip opens on, each time it is positioned, from the
-   * trigger, the tip itself and the side it is on now; the tip then never
-   * flips by itself, since the chooser knows the room better. For a card
-   * that is sized to the room it has on a side.
+   * Chooses the side the tip opens on, each time it is positioned, from the trigger,
+   * the tip itself and the side it is on now.
+   *
+   * The tip then never flips by itself, since the chooser knows the room better. It
+   * serves a card that is sized to the room it has on a side.
    */
   placeBy?: (context: { reference: HTMLElement; floating: HTMLElement; placement: Placement }) => Placement
   /** A tip of the `overlay` slot that has room for a line of facts, such as what an agent runs on, not a few sentences. */

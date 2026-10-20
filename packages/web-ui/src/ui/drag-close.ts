@@ -1,10 +1,12 @@
 /**
  * How a drag on a bottom sheet (`Sheet.vue`), the sidebar's drawer or the
- * full-screen work panel (`finger-drag.ts`) ends, as iOS's and Android's
- * end theirs: a flick toward closing closes it however short the pull, a
- * flick back keeps it, and
- * otherwise it closes once pulled past 30% of its size and springs back
- * short of that.
+ * full-screen work panel (`finger-drag.ts`) ends, as iOS's and Android's end
+ * theirs.
+ *
+ * - A flick toward closing closes it however short the pull.
+ * - A flick back keeps it.
+ * - Otherwise it closes once pulled past 30% of its size and springs back short
+ *   of that.
  */
 
 /** The share of its size a slow pull must pass to close it. */
@@ -29,10 +31,11 @@ export function dragCloses(pulled: number, size: number, velocity: number): bool
 }
 
 /**
- * The speed of a drag along one axis as the finger lifts at `liftAt`, from
- * its recent samples (`at`, the newest last), in px per ms. It is the speed
- * over the last 80 ms before the lift, the time the finger stood still
- * before it included: a flick held still before the lift has stopped.
+ * The speed of a drag along one axis as the finger lifts at `liftAt`, from its
+ * recent samples (`at`, the newest last), in px per ms.
+ *
+ * It is the speed over the last 80 ms before the lift, the time the finger stood
+ * still before it included: a flick held still before the lift has stopped.
  */
 export function dragVelocity(samples: readonly { at: number; t: number }[], liftAt: number): number {
   const last = samples.at(-1)

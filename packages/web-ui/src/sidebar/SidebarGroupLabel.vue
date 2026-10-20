@@ -6,13 +6,18 @@ import ConversationDot from './ConversationDot.vue'
 import type { SidebarConversation } from './types'
 
 /**
- * A group's label, Conversations or Projects, which folds the group under it as Finder's
- * sidebar sections do: the label and the chevron after it are one button. The chevron, in the
- * label's faint color, shows while the pointer is over the label or the keyboard is on the button,
- * and always on a phone, which has no hover. While the group is folded, a conversation the fold
- * hides that waits for the user puts its dot between the label and the chevron, so the chevron,
- * hidden at rest, leaves no gap. The `action` slot holds the group's button at the label's end,
- * such as New conversation, which shows on hover.
+ * A group's label, Conversations or Projects, which folds the group under it as
+ * Finder's sidebar sections do: the label and the chevron after it are one
+ * button.
+ *
+ * - The chevron, in the label's faint color, shows while the pointer is over the
+ *   label or the keyboard is on the button, and always on a phone, which has no
+ *   hover.
+ * - While the group is folded, a conversation the fold hides that waits for the
+ *   user puts its dot between the label and the chevron, so the chevron, hidden
+ *   at rest, leaves no gap.
+ * - The `action` slot holds the group's button at the label's end, such as New
+ *   conversation, which shows on hover.
  */
 defineProps<{
   label: string

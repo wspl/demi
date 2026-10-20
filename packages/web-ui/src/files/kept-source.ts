@@ -1,11 +1,14 @@
 /**
- * A file source that keeps what it read: the reads a host makes, each a request, over the Host's
- * kept files (`HostFiles`), whose entries the source's watch keeps current.
- * A view shows an entry through the source and sees it replaced in place
- * when it is read again; a one-shot read answers from what is current, and
- * reads otherwise. The source's own writes edit the listings they change as
- * their answers tell, without listing them again: the Host's watch reports
- * the write, and the folder is listed once for it.
+ * A file source that keeps what it read: the reads a host makes, each a
+ * request, over the Host's kept files (`HostFiles`), whose entries the source's
+ * watch keeps current.
+ *
+ * - A view shows an entry through the source and sees it replaced in place when
+ *   it is read again.
+ * - A one-shot read answers from what is current, and reads otherwise.
+ * - The source's own writes edit the listings they change as their answers
+ *   tell, without listing them again: the Host's watch reports the write, and
+ *   the folder is listed once for it.
  */
 import { reactive } from 'vue'
 import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'
@@ -170,10 +173,11 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
 }
 
 /**
- * The working tree's uncommitted changes as a host reads them, each a
- * request with the Host's number before it read. Each read names the
- * version it holds, `held`, and answers unchanged when the Host's answer is
- * still that one.
+ * The working tree's uncommitted changes as a host reads them, each a request with
+ * the Host's number before it read.
+ *
+ * Each read names the version it holds, `held`, and answers unchanged when the
+ * Host's answer is still that one.
  */
 export interface ChangeReads {
   /** The list of changes, or why there is none. */
@@ -282,12 +286,14 @@ export interface HistoryReads {
 const FULL_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
- * The history of the repository the working tree under `root` is in, kept
- * like its files: each part follows the repository's `head`, which a
- * commit, a checkout or a new branch changes, so a view shows it again at
- * once (`packages/web-ui/src/files/history.ts`); a file's sides at a commit's
- * full id never change, and are read once. Outside a repository the `head`
- * it follows changes when one is made there.
+ * The history of the repository the working tree under `root` is in, kept like
+ * its files.
+ *
+ * - Each part follows the repository's `head`, which a commit, a checkout or a
+ *   new branch changes, so a view shows it again at once
+ *   (`packages/web-ui/src/files/history.ts`).
+ * - A file's sides at a commit's full id never change, and are read once.
+ * - Outside a repository, the `head` it follows changes when one is made there.
  */
 export function keptHistory(reads: HistoryReads, root: string, options: KeptSourceOptions): CommitHistorySource {
   const { files } = options

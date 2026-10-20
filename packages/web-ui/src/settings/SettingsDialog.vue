@@ -24,19 +24,23 @@ import type {
 } from './types'
 
 /**
- * The settings surface: one large dialog with a section rail and one page at a time.
- * The rail sits on the page surface, the page on the dialog surface, so the two read
- * as the app's own sidebar and content. Layout follows the dialog width, not the viewport.
- * On a phone (`usePhone`) or in a container narrower than 28rem the dialog fills the
- * window (Dialog's xl size) and reads as iOS Settings does, one thing at a time and
- * never the rail beside a page: the rail is a list of the sections, and a section
- * slides over it as a page of its own with a back button to the list, and slides
- * away again. This holds at every width below 768 px, not only below 28rem
- * (the `wide:` variant of `base.css`, which the pages inside use too).
+ * The settings surface: one large dialog with a section rail and one page at a
+ * time.
  *
- * The rail's filter finds sections and the settings they hold (`SettingsEntry`); a
- * setting found opens its section with its row highlighted. Escape in the filter
- * clears it before it closes anything.
+ * The rail sits on the page surface, the page on the dialog surface, so the two
+ * read as the app's own sidebar and content. Layout follows the dialog width, not
+ * the viewport.
+ *
+ * On a phone (`usePhone`) or in a container narrower than 28rem, the dialog fills
+ * the window (Dialog's xl size) and reads as iOS Settings does, one thing at a
+ * time and never the rail beside a page. The rail is a list of the sections, and
+ * a section slides over it as a page of its own with a back button to the list,
+ * and slides away again. This holds at every width below 768 px, not only below
+ * 28rem (the `wide:` variant of `base.css`, which the pages inside use too).
+ *
+ * The rail's filter finds sections and the settings they hold (`SettingsEntry`);
+ * a setting found opens its section with its row highlighted. Escape in the
+ * filter clears it before it closes anything.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -105,10 +109,11 @@ function back(): void {
 }
 
 /**
- * Narrow, the list and the page are two panes on one spot: the page waits
- * off the right edge, slides in over the list when a section is picked, and
- * the list steps back a little as iOS Settings' does. A pane out of sight is
- * `invisible` once it has moved, so neither focus nor a reader reaches it.
+ * Narrow, the list and the page are two panes on one spot. The page waits off the
+ * right edge, slides in over the list when a section is picked, and the list steps
+ * back a little as iOS Settings' does. A pane out of sight is `invisible` once it
+ * has moved, so neither focus nor a reader reaches it.
+ *
  * Wide, they stand side by side and nothing moves.
  */
 const PANE = 'transition-[translate,visibility] duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none'
@@ -120,15 +125,17 @@ const filtered = computed(() => filterSettings(shownSections.value, query.value)
 const rail = ref<InstanceType<typeof ScrollArea>>()
 
 /**
- * Shows the open section's row once, when it opens, as a sidebar does: a
- * dialog that opens on a section lower in the list scrolls just far enough
- * to show it, and a list that fits stays at its top. Nothing scrolls while
- * the row is whole in view, so a click on a visible row never moves the list.
- * After that the list stays where the user scrolls it: the sections are
- * listed again whenever what they show changes, such as a device coming
- * online, and that must not pull the list back to the open row. The row is
- * scrolled inside the rail's scroller alone, which ends below the filter, so
- * it never lands under it.
+ * Shows the open section's row once, when it opens, as a sidebar does: a dialog
+ * that opens on a section lower in the list scrolls just far enough to show it,
+ * and a list that fits stays at its top.
+ *
+ * - Nothing scrolls while the row is whole in view, so a click on a visible row
+ *   never moves the list.
+ * - After that the list stays where the user scrolls it. The sections are listed
+ *   again whenever what they show changes, such as a device coming online, and
+ *   that must not pull the list back to the open row.
+ * - The row is scrolled inside the rail's scroller alone, which ends below the
+ *   filter, so it never lands under it.
  */
 let revealed: { viewport: HTMLElement, section: SettingsTab } | null = null
 // `items` is a source too: a section a plugin adds comes after the first draw.
@@ -149,8 +156,10 @@ watch([() => rail.value?.el, shown, narrow, items], ([viewport, section, isNarro
 /**
  * Going back to the list on a narrow dialog shows the section just left, as iOS
  * Settings does. The list keeps the position it had while hidden, which already
- * shows the row; a dialog that opened on the section (an address) never showed the
- * list, so its row is scrolled into view.
+ * shows the row.
+ *
+ * A dialog that opened on the section (an address) never showed the list, so its
+ * row is scrolled into view.
  */
 watch(tab, (now, before) => {
   if (now !== null || !before || !narrow.value)

@@ -8,11 +8,12 @@ import { menuRootKey } from './menu-context'
 import type { ContextMenuEntry } from './context-menu'
 
 /**
- * The row of a text selection's tools (SelectionToolbar), on the overlay
- * surface, a divider between tools as the system's edit menu has. A tool
- * with a submenu opens it from its button, on a phone as a sheet; `holding`
- * says while one is open, so the owner keeps the row where it is. The row
- * takes no press from the selection: a press on it keeps the text selected.
+ * The row of a text selection's tools (SelectionToolbar), on the overlay surface, a
+ * divider between tools as the system's edit menu has.
+ *
+ * - A tool with a submenu opens it from its button, on a phone as a sheet. `holding`
+ *   says while one is open, so the owner keeps the row where it is.
+ * - The row takes no press from the selection: a press on it keeps the text selected.
  */
 defineProps<{
   entries: readonly ContextMenuEntry[]

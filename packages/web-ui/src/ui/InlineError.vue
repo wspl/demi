@@ -7,13 +7,15 @@ import type { SentenceText } from './ui-text'
 
 /**
  * A form's own failure: a rejected sign-in, a wrong code, a value the server
- * refused, a folder that could not be created. It sits directly under the
- * fields it is about, in their width, as a line of text the reader corrects
- * against. It never carries a retry; the form's own submit is the retry.
+ * refused, a folder that could not be created.
  *
- * A failure that is not about the form's input (the request could not reach
- * the server, the save failed for a reason the reader cannot fix here) is not
- * shown inline: it goes to a toast through `reportError`.
+ * It sits directly under the fields it is about, in their width, as a line of
+ * text the reader corrects against. It never carries a retry; the form's own
+ * submit is the retry.
+ *
+ * A failure that is not about the form's input (the request could not reach the
+ * server, the save failed for a reason the reader cannot fix here) is not shown
+ * inline. It goes to a toast through `reportError`.
  */
 withDefaults(
   defineProps<{

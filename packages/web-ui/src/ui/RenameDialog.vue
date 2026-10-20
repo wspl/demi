@@ -9,11 +9,15 @@ import { useAutofocus } from './autofocus'
 import type { HeadlineText, SentenceText } from './ui-text'
 
 /**
- * A new name, asked for as macOS asks in a sheet: the field opens on the
- * current name, selected, so typing replaces it. Rename, or Return, hands over the name trimmed and closes; Cancel or Escape keeps the
- * old one. An empty name cannot be taken, and the field holds at most
- * `maxLength` characters. An unchanged name closes without a rename. The
- * host says a refusal in a toast.
+ * A new name, asked for as macOS asks in a sheet: the field opens on the current
+ * name, selected, so typing replaces it.
+ *
+ * - Rename, or Return, hands over the name trimmed and closes.
+ * - Cancel or Escape keeps the old one.
+ * - An empty name cannot be taken, and the field holds at most `maxLength`
+ *   characters.
+ * - An unchanged name closes without a rename.
+ * - The host says a refusal in a toast.
  */
 const props = defineProps<{
   isOpen: boolean

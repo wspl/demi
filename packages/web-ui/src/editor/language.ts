@@ -30,10 +30,10 @@ const bundledLanguages: readonly { name: RegExp; language: string; load: () => E
 ]
 
 /**
- * The language a file's name selects, as the language data describes it:
- * the one owner of "the language of this name", for a file's colors, the
- * name the File view's bar gives it, and a code fence that names its
- * files' extension. Null for a name no language matches.
+ * The language a file's name selects, as the language data describes it: the one
+ * owner of "the language of this name". It serves a file's colors, the name the
+ * File view's bar gives it, and a code fence that names its files' extension.
+ * Null for a name no language matches.
  */
 function nameLanguage(name: string): LanguageDescription | null {
   const override = nameOverrides[name]

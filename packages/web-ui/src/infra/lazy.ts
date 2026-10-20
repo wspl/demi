@@ -22,10 +22,11 @@ export interface LazyChunk<T> {
 }
 
 /**
- * The chunk `importer` brings, loaded on first use. A load that failed is
- * not tried again in the page: a browser keeps a module that failed to load
- * as failed for the page's life, so a failed load's Retry loads the page
- * again, which keeps a drafted message and the reader's place.
+ * The chunk `importer` brings, loaded on first use.
+ *
+ * A load that failed is not tried again in the page: a browser keeps a module that
+ * failed to load as failed for the page's life, so a failed load's Retry loads the
+ * page again, which keeps a drafted message and the reader's place.
  */
 export function lazyChunk<T>(importer: () => Promise<T>): LazyChunk<T> {
   let loaded: T | null = null

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
- * The agent's activity over a live view (`packages/plugin-mobile/src/index.ts`):
- * while the agent's input is being delivered, a note at the top says so,
- * and a ring marks where it last acted. The view places it over its
- * picture and gives the mark in the overlay's own CSS pixels; any source's
- * view uses it the same way.
+ * The agent's activity over a live view (`packages/plugin-mobile/src/index.ts`).
+ *
+ * - While the agent's input is being delivered, a note at the top says so.
+ * - A ring marks where it last acted.
+ *
+ * The view places it over its picture and gives the mark in the overlay's own CSS
+ * pixels; any source's view uses it the same way.
  */
 defineProps<{
   /** Whether the agent's input is being delivered now. */

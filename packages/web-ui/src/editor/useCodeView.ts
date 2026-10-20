@@ -59,15 +59,18 @@ export function codeViewUpdate(state: EditorState, file: CodeViewFile): Transact
 }
 
 /**
- * A read-only code view in `container` for the component's lifetime: one
- * file's text in the app's code theme, colored by the file's language. A new
- * text replaces the old in place, as an editor reloads a file it has not
- * changed: the lines the user is looking at stay where they are on screen,
- * and the selection and the folds outside what changed stay. The view is
- * built once the language has loaded, because a diff colors its removed
- * lines only as it builds them; `extensions` may be a function, which then
- * builds them at that moment from what the file is then. Returns the view,
- * null until it is built and once it is gone.
+ * A read-only code view in `container` for the component's lifetime: one file's
+ * text in the app's code theme, colored by the file's language.
+ *
+ * A new text replaces the old in place, as an editor reloads a file it has not
+ * changed. The lines the user is looking at stay where they are on screen, and
+ * the selection and the folds outside what changed stay.
+ *
+ * The view is built once the language has loaded, because a diff colors its
+ * removed lines only as it builds them. `extensions` may be a function, which
+ * then builds them at that moment from what the file is then.
+ *
+ * Returns the view, null until it is built and once it is gone.
  */
 export function useCodeView(
   container: Readonly<Ref<HTMLElement | undefined>>,
@@ -109,13 +112,14 @@ export function useCodeView(
     built.value = view
   })
 
-  // Both sides of a diff arrive together and land in one transaction. The
-  // view goes back to the place it was scrolled to, carried through the
-  // change (a later spec's effects map through the earlier one's changes),
-  // as an editor keeps the line at the top of the window where it is when
-  // the file changes above it; the stretches a new version folds or unfolds
-  // above would otherwise move it. A view out of sight, as in a tab not
-  // selected, has no place on screen to keep: its scroll reads as its top.
+  // Both sides of a diff arrive together and land in one transaction. The view goes
+  // back to the place it was scrolled to, carried through the change (a later
+  // spec's effects map through the earlier one's changes), as an editor keeps the
+  // line at the top of the window where it is when the file changes above it. The
+  // stretches a new version folds or unfolds above would otherwise move it.
+  //
+  // A view out of sight, as in a tab not selected, has no place on screen to keep:
+  // its scroll reads as its top.
   watch([() => file.text, () => file.original], () => {
     const view = built.value
     const update = view && codeViewUpdate(view.state, file)

@@ -1,8 +1,12 @@
 /**
- * A repository's history as the Change view's Commits mode shows it: the local branches, a branch's
- * commits by first parents a page at a time, and one commit's files against
- * its first parent. A host serves each as a kept entry it follows, so a
- * commit, a checkout or a new branch made anywhere shows at once.
+ * A repository's history as the Change view's Commits mode shows it:
+ *
+ * - the local branches,
+ * - a branch's commits by first parents a page at a time, and
+ * - one commit's files against its first parent.
+ *
+ * A host serves each as a kept entry it follows, so a commit, a checkout or a new
+ * branch made anywhere shows at once.
  */
 import { failureShown, type Showing } from './file-cache'
 import type { ChangeFile, ChangeSides } from './changes'
@@ -47,10 +51,11 @@ export interface CommitDetails {
 }
 
 /**
- * The history of the repository a working tree is in, each part a kept
- * entry a view shows until it lets go: what a read answers that nothing is
- * there, a branch deleted or a commit the repository lacks, is the answer
- * `gone`.
+ * The history of the repository a working tree is in, each part a kept entry a
+ * view shows until it lets go.
+ *
+ * What a read answers that nothing is there, a branch deleted or a commit the
+ * repository lacks, is the answer `gone`.
  */
 export interface CommitHistorySource {
   showBranches(): Showing<BranchList>
@@ -65,10 +70,12 @@ export interface CommitHistorySource {
 }
 
 /**
- * The full hash of the commit `commit`, an id or an abbreviation, as the
- * history reads it now, as a link's Copy Commit Hash asks; the commit is
- * held only for the read. Rejects with a `FileBrowserError` when the
- * repository has no such commit or it could not be read.
+ * The full hash of the commit `commit`, an id or an abbreviation, as the history
+ * reads it now, as a link's Copy Commit Hash asks. The commit is held only for the
+ * read.
+ *
+ * Rejects with a `FileBrowserError` when the repository has no such commit or it
+ * could not be read.
  */
 export async function readCommitHash(history: CommitHistorySource, commit: string): Promise<string> {
   const showing = history.showCommit(commit)
@@ -115,11 +122,13 @@ export function listsUncommitted(shown: string | null, branches: BranchList | un
 }
 
 /**
- * The branch whose list a linked commit opens in, by the branches it is on, the checked-out one first and
- * then by their last commit: the branch shown when it holds the commit,
- * else the checked-out one, null, else the most recently committed one
- * that holds it; `undefined` when no local branch holds it, which shows the
- * commit alone.
+ * The branch whose list a linked commit opens in, by the branches it is on, the
+ * checked-out one first and then by their last commit:
+ *
+ * 1. The branch shown, when it holds the commit.
+ * 2. Else the checked-out one, null.
+ * 3. Else the most recently committed one that holds it.
+ * 4. `undefined` when no local branch holds it, which shows the commit alone.
  */
 export function linkedCommitBranch(
   shown: string | null,

@@ -8,25 +8,31 @@ import type { FileContents } from './types'
  * The images of a Markdown document the page shows, in the element `root` holds
  * the rendering `html` in.
  *
- * Each Host image of the document (`hostFiles` are their paths) is given the
- * address of its file's version the page keeps, where it stands, so a new
- * version loads in place and nothing else of the document is rendered
- * again; one whose file is still being read, or is not there, shows its alt
- * text in the placeholder box, never as an image without an address, which
- * the web browser draws as a broken picture. A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is
- * written once each of its Host files is read, each candidate at the address
- * of its file's version; a candidate whose file is not there drops out. The
- * image of a `<picture>` takes its address only once each of the picture's
- * sets is written, and keeps its placeholder until then, so the web browser
- * chooses among the sources once and fetches only the candidate it chooses:
- * a dark theme does not also fetch the light logo the image falls back to.
+ * Host images:
  *
- * An image whose bytes do not load, as while the Host is away, or whose file
- * is not there, shows its alt text in a quiet box in its place, as a web
- * browser shows a missing image's description, instead of its broken picture
- * glyph. Each box keeps its image, which tries again when the document is
- * read again (`reload`) and, for a Host image, when its file has a version it
- * has not tried.
+ * - Each Host image of the document (`hostFiles` are their paths) is given the
+ *   address of its file's version the page keeps, where it stands, so a new
+ *   version loads in place and nothing else of the document is rendered again.
+ * - One whose file is still being read, or is not there, shows its alt text in
+ *   the placeholder box, never as an image without an address, which the web
+ *   browser draws as a broken picture.
+ *
+ * Sets of sources:
+ *
+ * - A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is written once
+ *   each of its Host files is read, each candidate at the address of its file's
+ *   version. A candidate whose file is not there drops out.
+ * - The image of a `<picture>` takes its address only once each of the picture's
+ *   sets is written, and keeps its placeholder until then. So the web browser
+ *   chooses among the sources once and fetches only the candidate it chooses: a
+ *   dark theme does not also fetch the light logo the image falls back to.
+ *
+ * An image whose bytes do not load, as while the Host is away, or whose file is
+ * not there, shows its alt text in a quiet box in its place, as a web browser
+ * shows a missing image's description, instead of its broken picture glyph. Each
+ * box keeps its image, which tries again when the document is read again
+ * (`reload`) and, for a Host image, when its file has a version it has not
+ * tried.
  */
 export function useDocumentImages(options: {
   root: () => HTMLElement | undefined

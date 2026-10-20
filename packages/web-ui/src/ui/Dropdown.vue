@@ -12,15 +12,19 @@ import Tooltip from './Tooltip.vue'
 import type { SentenceText } from './ui-text'
 
 /**
- * How wide a dropdown is. `content`: as wide as its trigger, whatever the
- * row. `shrink`: as wide as its trigger while the row has room, and narrower
- * when it has not. `fill`: the row's full width, and narrower as the row
- * narrows. A dropdown that gives way does so at every wrapper around the
- * trigger alike; the trigger keeps within it (`max-w-full`, or `w-full` to
- * fill) and truncates what it holds. Inside the outer wrapper the others
- * grow to it, and a built-in trigger fills them: a dropdown a parent makes
- * wider than its trigger (a settings row that has dropped its control under
- * the label) is that wide throughout.
+ * How wide a dropdown is.
+ *
+ * - `content`: as wide as its trigger, whatever the row.
+ * - `shrink`: as wide as its trigger while the row has room, and narrower when it
+ *   has not.
+ * - `fill`: the row's full width, and narrower as the row narrows.
+ *
+ * A dropdown that gives way does so at every wrapper around the trigger alike.
+ * The trigger keeps within it (`max-w-full`, or `w-full` to fill) and truncates
+ * what it holds. Inside the outer wrapper the others grow to it, and a built-in
+ * trigger fills them: a dropdown a parent makes wider than its trigger (a
+ * settings row that has dropped its control under the label) is that wide
+ * throughout.
  */
 export type DropdownWidth = 'content' | 'shrink' | 'fill'
 

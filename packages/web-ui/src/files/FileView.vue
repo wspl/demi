@@ -15,19 +15,25 @@ import { normalizePath, parentPath } from './paths'
 import type { FileBrowserSource } from './types'
 
 /**
- * One file of a Host, read through its source: the whole path as crumbs
- * from the Host's root, the file itself under its bar (`FileContent`), and
- * beside it the workspace tree with the file selected.
+ * One file of a Host, read through its source: the whole path as crumbs from the
+ * Host's root, the file itself under its bar (`FileContent`), and beside it the
+ * workspace tree with the file selected.
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
- * decides; the host keeps whether it is open, its width, and the Preview or
- * Source choice (v-model), so they hold across files. A click on another file
- * in the tree, a pick from a crumb's menu, or a link in a Markdown document
- * asks the host to show it here; Back and Forward before the crumbs ask for
- * the files shown before and after. A path typed into the crumb row opens
- * that file, or finds that folder in the tree and selects it there; a
- * relative one starts from the workspace. Files
- * dropped on the tree, or uploaded from its menu, list under it until
+ * decides. The host keeps whether it is open, its width, and the Preview or
+ * Source choice (v-model), so they hold across files.
+ *
+ * What asks the host to show another file here:
+ *
+ * - A click on another file in the tree.
+ * - A pick from a crumb's menu.
+ * - A link in a Markdown document.
+ *
+ * Back and Forward before the crumbs ask for the files shown before and after.
+ * A path typed into the crumb row opens that file, or finds that folder in the
+ * tree and selects it there; a relative one starts from the workspace.
+ *
+ * Files dropped on the tree, or uploaded from its menu, list under it until
  * cleared (`FileTree`).
  */
 const props = defineProps<{
@@ -39,10 +45,10 @@ const props = defineProps<{
   /** The file, by absolute path. */
   path: string | null
   /**
-   * The line the file was opened at, 1-based, which the view scrolls to and
-   * marks for a moment as a search result is, in the file's text: Markdown
-   * and SVG show their source for it, as GitHub shows a file's plain text
-   * for a link to a line of it, until Preview is chosen.
+   * The line the file was opened at, 1-based, which the view scrolls to and marks
+   * for a moment as a search result is, in the file's text. Markdown and SVG show
+   * their source for it, as GitHub shows a file's plain text for a link to a line
+   * of it, until Preview is chosen.
    */
   line?: number | null
   /** Whether the host has a file to go back or forward to in this view. */

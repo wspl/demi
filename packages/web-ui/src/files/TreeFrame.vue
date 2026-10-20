@@ -11,27 +11,37 @@ import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
 import { t } from './locales/text'
 
 /**
- * The frame a file view sits in: a header row, and under it the view with a
- * tree at its end. While the view keeps `CONTENT_MIN_WIDTH` beside it, the
- * tree docks there behind a divider that sizes it, and the control at the
- * header's end shows and hides it; the host keeps both (v-model `open` and
- * `width`). A frame too narrow for that hides the tree on its own, and the
- * control then shows it over the view at the same width, until the control,
- * a click on the view beside it or a pick in it (`dismiss`) puts it away.
- * Once the frame is wide enough again, the tree docks if `open`. Showing
- * and hiding by the frame's own control, or by a pick or a click beside a
- * tree over the view, move: a docked tree grows from the end and the view
- * gives way, and a tree over the view slides in from the end. Anything else
- * that shows or hides the tree, such as the frame showing again in a work
- * panel tab selected again, or its width becoming known, shows it at once.
- * A hidden tree stays mounted, so it shows again as it was left, with no
- * reading. The view learns how much of its end a tree shown over it covers,
- * so what it centres, such as an empty state, centres in the space beside
- * the tree.
+ * The frame a file view sits in: a header row, and under it the view with a tree
+ * at its end.
  *
- * In the phone layout (`ui/phone.ts`) the tree never docks: it covers the
- * view's whole width, sliding in from the end, and a pick in it slides it
- * away again.
+ * Wide frame:
+ *
+ * - While the view keeps `CONTENT_MIN_WIDTH` beside it, the tree docks there
+ *   behind a divider that sizes it, and the control at the header's end shows
+ *   and hides it. The host keeps both (v-model `open` and `width`).
+ *
+ * Narrow frame:
+ *
+ * - A frame too narrow for that hides the tree on its own.
+ * - The control then shows it over the view at the same width, until the control,
+ *   a click on the view beside it or a pick in it (`dismiss`) puts it away.
+ * - Once the frame is wide enough again, the tree docks if `open`.
+ *
+ * Motion:
+ *
+ * - Showing and hiding by the frame's own control, or by a pick or a click
+ *   beside a tree over the view, move: a docked tree grows from the end and the
+ *   view gives way, and a tree over the view slides in from the end.
+ * - Anything else that shows or hides the tree shows it at once, such as the
+ *   frame showing again in a work panel tab selected again, or its width
+ *   becoming known.
+ *
+ * A hidden tree stays mounted, so it shows again as it was left, with no
+ * reading. The view learns how much of its end a tree shown over it covers, so
+ * what it centres, such as an empty state, centres in the space beside the tree.
+ *
+ * In the phone layout (`ui/phone.ts`) the tree never docks: it covers the view's
+ * whole width, sliding in from the end, and a pick in it slides it away again.
  */
 const props = defineProps<{
   /** What the tree lists, which names its control: the files of a folder, or the files a change touches. */

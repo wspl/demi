@@ -15,11 +15,12 @@ import {
   type WatchRequest,
 } from '../watch-channel'
 
-// What a page keeps of a Host's files, played against a scripted Host: its reads answer when the
-// test says, each with the Host's number taken when it began, and its watch
-// is the page's `WS …/fs/watch` as the test plays the backend. Every entry
-// kept holds its subscriptions; whether it is current comes from the
-// numbers; only what shows on screen is read.
+// What a page keeps of a Host's files, played against a scripted Host: its reads
+// answer when the test says, each with the Host's number taken when it began, and
+// its watch is the page's `WS …/fs/watch` as the test plays the backend. Every
+// entry kept holds its subscriptions; whether it is current comes from the numbers;
+// only what shows on screen is read.
+//
 // Cost: no I/O, fake timers; a few milliseconds each.
 
 beforeEach(() => {

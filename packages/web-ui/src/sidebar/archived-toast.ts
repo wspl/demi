@@ -7,10 +7,11 @@ function archivedTitle(count: number): HeadlineText {
 }
 
 /**
- * Says that conversations were archived, in a toast whose Undo brings them
- * back, as Gmail and Linear do. Answers the toast's id, which an archive the
- * backend refused for some corrects (`updateArchived`) and one refused for all
- * dismisses.
+ * Says that conversations were archived, in a toast whose Undo brings them back, as
+ * Gmail and Linear do.
+ *
+ * Answers the toast's id, which an archive the backend refused for some corrects
+ * (`updateArchived`) and one refused for all dismisses.
  */
 export function showArchived(count: number, undo: () => void): string {
   return showToast({

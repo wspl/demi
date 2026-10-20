@@ -2,12 +2,13 @@ import { clamp } from '@demicodes/utils'
 import type { PixelSize } from './thumbnail'
 
 /**
- * How a picture is zoomed and moved in its frame, as an image viewer does
- * it: the media viewer's window and the File view's image show it through
- * `ImagePreview`. Sizes and points are in the frame's CSS px, from its top-left
- * corner. A picture's `image` size is its actual size in those px, its pixel
- * size over the display's device pixels per CSS px, and a scale counts from it:
- * 1 is 100%.
+ * How a picture is zoomed and moved in its frame, as an image viewer does it:
+ * the media viewer's window and the File view's image show it through
+ * `ImagePreview`.
+ *
+ * Sizes and points are in the frame's CSS px, from its top-left corner. A
+ * picture's `image` size is its actual size in those px, its pixel size over the
+ * display's device pixels per CSS px, and a scale counts from it: 1 is 100%.
  */
 
 /** The most a picture is enlarged: eight times its actual size. */
@@ -94,10 +95,11 @@ export function zoomAbout(view: ImageView, scale: number, at: FramePoint, image:
 }
 
 /**
- * The scale a turn of the wheel makes of `scale`: `deltaY` px of scrolling
- * down zooms out and up zooms in, by the same factor either way. A
- * trackpad's pinch comes as a wheel with the Control key, in smaller steps,
- * so it counts for more.
+ * The scale a turn of the wheel makes of `scale`: `deltaY` px of scrolling down
+ * zooms out and up zooms in, by the same factor either way.
+ *
+ * A trackpad's pinch comes as a wheel with the Control key, in smaller steps, so it
+ * counts for more.
  */
 export function wheelScale(scale: number, deltaY: number, pinch: boolean): number {
   return scale * Math.exp(-deltaY * (pinch ? 0.01 : 0.002))

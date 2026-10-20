@@ -7,15 +7,34 @@ import { t } from './locales/text'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
- * The page's context menus: one handler at the page's root (`installContextMenus`) takes each `contextmenu` event, the menu key and
- * Shift-F10, and on a phone each long press. Over selected text the menu is the selection's alone, which ends the walk before it starts;
- * elsewhere it walks from the element under the pointer up to the root. On the way it gathers the entries of content the browser's own menu
- * would offer, a link, a picture, a code block, and a link to an object (a file, a commit, an agent), whose group is that object's own menu
- * as the renderer around it answers it (`vLinkMenus`), and it stops at the first object, an element that declares its menu (`vContextMenu`),
- * whose entries come last: an object's menu never holds its container's. Each is a group, innermost first; the menu parts the groups with
- * dividers. A text field, Shift held, and an element that stopped or prevented the event keep the browser's menu; where nothing declares
- * one, no menu opens at all. On a phone a message's text keeps the system's long press, which selects words; the selection's toolbar
- * (`selectionTools`, SelectionToolbar) offers what a menu would.
+ * The page's context menus. One handler at the page's root
+ * (`installContextMenus`) takes each `contextmenu` event, the menu key and
+ * Shift-F10, and on a phone each long press.
+ *
+ * The handler builds the menu in this order:
+ *
+ * 1. Over selected text, the menu is the selection's alone, which ends the walk
+ *    before it starts.
+ * 2. Elsewhere, it walks from the element under the pointer up to the root.
+ * 3. On the way, it gathers the entries of content the browser's own menu would
+ *    offer: a link, a picture, a code block.
+ * 4. It also gathers a link to an object (a file, a commit, an agent), whose group
+ *    is that object's own menu as the renderer around it answers it
+ *    (`vLinkMenus`).
+ * 5. It stops at the first object, an element that declares its menu
+ *    (`vContextMenu`), whose entries come last. An object's menu never holds its
+ *    container's.
+ *
+ * Each result is a group, innermost first; the menu parts the groups with
+ * dividers.
+ *
+ * The browser's menu stays in three cases: a text field, Shift held, and an
+ * element that stopped or prevented the event. Where nothing declares a menu, no
+ * menu opens at all.
+ *
+ * On a phone a message's text keeps the system's long press, which selects words.
+ * The selection's toolbar (`selectionTools`, SelectionToolbar) offers what a menu
+ * would.
  */
 
 /** One row of a context menu: what it says and what choosing it does. */
@@ -144,10 +163,11 @@ function declareLinkMenus(el: Element, value: LinkMenus | null | undefined): voi
 }
 
 /**
- * Declares what the links to objects inside an element, a rendered message
- * whose links are its HTML's, offer: each object's own menu. Unlike an
- * object's menu it ends no walk, so the message around the link still adds
- * its group below.
+ * Declares what the links to objects inside an element, a rendered message whose
+ * links are its HTML's, offer: each object's own menu.
+ *
+ * Unlike an object's menu, it ends no walk, so the message around the link still
+ * adds its group below.
  */
 export const vLinkMenus: Directive<Element, LinkMenus | null | undefined> = {
   mounted: (el, binding) => declareLinkMenus(el, binding.value),
@@ -197,11 +217,13 @@ function inSelectableText(target: Element): boolean {
 }
 
 /**
- * The selection when the pointer is over it, or from the keyboard when it is
- * in `target`: over its selected text, or within its bounds where the
- * browser's own selection takes the point as inside it, a gap between its
- * lines or the margin of a list item included (the caret the point gives
- * lies within it); blank space outside its bounds never is.
+ * The selection when the pointer is over it, or from the keyboard when it is in
+ * `target`.
+ *
+ * The pointer is over it when it is over its selected text, or within its bounds
+ * where the browser's own selection takes the point as inside it: a gap between its
+ * lines or the margin of a list item included (the caret the point gives lies within
+ * it). Blank space outside its bounds never is.
  */
 function selectionUnder(ask: ContextMenuAsk): string | null {
   const selection = window.getSelection()
@@ -239,10 +261,12 @@ function caretAt(point: { x: number; y: number }): { node: Node; offset: number 
 
 /**
  * The selection's menu, which ends the walk: Copy, then what the object around
- * `target` offers for `text`, its selected text, and nothing of the object's
- * own menu. Its rows are read as it opens, from the selection as it is then, so
- * they agree with each other whatever becomes of the selection meanwhile, as
- * when the focus moving into a submenu's field ends it.
+ * `target` offers for `text`, its selected text, and nothing of the object's own
+ * menu.
+ *
+ * Its rows are read as it opens, from the selection as it is then, so they agree with
+ * each other whatever becomes of the selection meanwhile, as when the focus moving
+ * into a submenu's field ends it.
  */
 function selectionMenu(target: Element, text: string, services: ContextMenuServices): ComposedMenu {
   let object: Element | null = target
@@ -307,10 +331,12 @@ function contentGroup(el: Element, services: ContextMenuServices): ContextMenuGr
 }
 
 /**
- * The menu for `ask`: the selection's alone when the pointer is over it;
- * else each content element from the target up gives a group, up to the
- * first object, whose groups end the menu. Null when nothing does, and on a
- * long press when a control comes first that has no menu of its own.
+ * The menu for `ask`: the selection's alone when the pointer is over it. Otherwise
+ * each content element from the target up gives a group, up to the first object,
+ * whose groups end the menu.
+ *
+ * Null when nothing does, and on a long press when a control comes first that has no
+ * menu of its own.
  */
 export function composeContextMenu(ask: ContextMenuAsk, services: ContextMenuServices): ComposedMenu | null {
   const selected = selectionUnder(ask)
@@ -398,10 +424,10 @@ function keyTarget(): Element | null {
 }
 
 /**
- * The root handler: listens on `document` until the returned function is
- * called. A `contextmenu` event reaches it after every element it passes
- * through, so one an element stopped never comes, and one it prevented is
- * left to it.
+ * The root handler: listens on `document` until the returned function is called.
+ *
+ * A `contextmenu` event reaches it after every element it passes through, so one an
+ * element stopped never comes, and one it prevented is left to it.
  */
 export function installContextMenus(root: ContextMenuRoot): () => void {
   const listeners = new AbortController()
@@ -556,13 +582,17 @@ export interface SelectionTools {
 }
 
 /**
- * The tools for the selection `selection` holds, when it holds text inside
- * one object that offers tools for its selected text, as a message does
- * (`selectionEntries`). On the desktop they are those that act in place
- * (`inPlace`), since the right-click menu holds Copy and the rest; on a
- * phone, which has no right-click, every one of the object's, Copy being
- * the system's callout's. Null when there are none, and for any other
- * selection, one across two messages or in a text field included.
+ * The tools for the selection `selection` holds, when it holds text inside one
+ * object that offers tools for its selected text, as a message does
+ * (`selectionEntries`).
+ *
+ * - On the desktop they are those that act in place (`inPlace`), since the
+ *   right-click menu holds Copy and the rest.
+ * - On a phone, which has no right-click, they are every one of the object's,
+ *   Copy being the system's callout's.
+ *
+ * Null when there are none, and for any other selection, one across two messages
+ * or in a text field included.
  */
 export function selectionTools(selection: Selection | null, phone: boolean): SelectionTools | null {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0)

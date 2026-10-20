@@ -18,13 +18,14 @@ export interface MenuListItem {
 }
 
 /**
- * How a Menu lays out the leading slot of its rows, which it alone decides
- * from what its rows are, as macOS's menus do:
- * - A menu whose rows have icons keeps the icon there, and a checked row
- *   shows its check at the trailing end.
- * - A menu whose rows have no icons has no icon column; when a row can be
- *   checked, the check takes the leading slot, and every other row keeps
- *   the slot's width empty so labels align.
+ * How a Menu lays out the leading slot of its rows, which it alone decides from
+ * what its rows are, as macOS's menus do:
+ *
+ * - A menu whose rows have icons keeps the icon there, and a checked row shows its
+ *   check at the trailing end.
+ * - A menu whose rows have no icons has no icon column. When a row can be checked,
+ *   the check takes the leading slot, and every other row keeps the slot's width
+ *   empty so labels align.
  */
 export interface MenuLayout {
   /** No row has an icon: the leading slot holds no icons. */
@@ -81,10 +82,12 @@ export interface MenuSlotKeyboard {
 export const menuSlotKeyboardKey: InjectionKey<MenuSlotKeyboard> = Symbol('menuSlotKeyboard')
 
 /**
- * What a row gives the menu in its submenu: whether the keyboard opened it,
- * so that menu takes the keys at its first row, and the way back, which
- * closes the submenu and returns the keys to the row (Left Arrow or Escape,
- * as in a macOS menu).
+ * What a row gives the menu in its submenu:
+ *
+ * - whether the keyboard opened it, so that menu takes the keys at its first row,
+ *   and
+ * - the way back, which closes the submenu and returns the keys to the row (Left
+ *   Arrow or Escape, as in a macOS menu).
  */
 export interface MenuSubmenuKeys {
   entered: Readonly<Ref<boolean>>
@@ -160,10 +163,11 @@ export function shouldDismissMenuTree(item: {
 }
 
 /**
- * A menu row's height in the layout the page is in now, live: 28 px, or the
- * menu's own `desktop` height, and on a phone a finger's 44 (`base.css`), in
- * a sheet or beside a field alike. Rows stand 1 px apart, so a list's pitch
- * is one more.
+ * A menu row's height in the layout the page is in now, live: 28 px, or the menu's
+ * own `desktop` height, and on a phone a finger's 44 (`base.css`), in a sheet or
+ * beside a field alike.
+ *
+ * Rows stand 1 px apart, so a list's pitch is one more.
  */
 export function useMenuRowHeight(desktop: () => number | undefined = () => undefined): ComputedRef<number> {
   const phone = usePhone()

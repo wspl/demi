@@ -14,12 +14,14 @@ import SettingsRow from './SettingsRow.vue'
 import type { PasskeyAddOutcome } from './types'
 
 /**
- * Adding a passkey: the account's password first, so a browser left signed
- * in cannot add one, then the browser's own prompt, which the host opens and
- * the password manager answers. An empty password is refused under its
- * field on Continue, a wrong one too, in the host's words; the field turns
- * red until it changes. A dismissed prompt leaves the dialog as it was, for
- * another try; an added passkey closes it, and the list shows it.
+ * Adding a passkey: the account's password first, so a browser left signed in
+ * cannot add one, then the browser's own prompt, which the host opens and the
+ * password manager answers.
+ *
+ * - An empty password is refused under its field on Continue, a wrong one too, in
+ *   the host's words. The field turns red until it changes.
+ * - A dismissed prompt leaves the dialog as it was, for another try.
+ * - An added passkey closes the dialog, and the list shows it.
  */
 const props = defineProps<{
   isOpen: boolean

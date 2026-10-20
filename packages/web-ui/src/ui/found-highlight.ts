@@ -21,14 +21,15 @@ function flash(element: HTMLElement, scroll: boolean): void {
 }
 
 /**
- * Scrolls the element under `root` that `selector` names into view, as
- * every reveal places a block (`reveal.ts`), and marks it for a moment, as
- * System Settings shows a setting its search found and Slack a message a
- * search opened: at once when the element is there, or as soon as the page
- * shows it. A list that places its rows itself, as the virtualized
- * transcript does, has brought it into view already and passes `scroll:
- * false`. Gives up after a few seconds, or when `signal` aborts, for
- * another find or a closed page.
+ * Scrolls the element under `root` that `selector` names into view, as every
+ * reveal places a block (`reveal.ts`), and marks it for a moment, as System
+ * Settings shows a setting its search found and Slack a message a search opened.
+ *
+ * - It acts at once when the element is there, or as soon as the page shows it.
+ * - A list that places its rows itself, as the virtualized transcript does, has
+ *   brought it into view already and passes `scroll: false`.
+ * - It gives up after a few seconds, or when `signal` aborts, for another find or a
+ *   closed page.
  */
 export function highlightFound(
   root: HTMLElement,

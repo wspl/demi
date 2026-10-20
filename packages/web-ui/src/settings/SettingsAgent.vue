@@ -20,12 +20,16 @@ import type { SmallModelChoice } from './types'
 import type { InlineDetailText } from '../ui/inline-detail'
 
 /**
- * How the agent works for the user (`crates/backend-providers/src/llm/small_model.rs`): the small
- * model that writes conversation titles, Automatic or one the user picks with the composer's model
- * menu, and whether small requests stay on the conversation's provider; then what Enter does with a
- * message while the agent works, and whether a stopped turn goes on by itself. Every row is a
- * model. Which entry makes generated media is the order of Settings › Providers and each entry's
- * switches.
+ * How the agent works for the user (`crates/backend-providers/src/llm/small_model.rs`):
+ *
+ * - The small model that writes conversation titles: Automatic or one the user
+ *   picks with the composer's model menu.
+ * - Whether small requests stay on the conversation's provider.
+ * - What Enter does with a message while the agent works.
+ * - Whether a stopped turn goes on by itself.
+ *
+ * Every row is a model. Which entry makes generated media is the order of
+ * Settings › Providers and each entry's switches.
  */
 const props = defineProps<{
   overlayStore: OverlayStore

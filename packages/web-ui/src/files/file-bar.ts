@@ -106,10 +106,11 @@ function facts(shown: ShownFile): string[] {
 }
 
 /**
- * The File view's bar for the file at `path` as the view shows it: a file
- * that is not there names itself and offers nothing; any other its kind and
- * facts, Preview and Source for Markdown and SVG, Copy of its whole text
- * while the page holds all of it, and Download.
+ * The File view's bar for the file at `path` as the view shows it.
+ *
+ * - A file that is not there names itself and offers nothing.
+ * - Any other shows its kind and facts, Preview and Source for Markdown and SVG,
+ *   Copy of its whole text while the page holds all of it, and Download.
  */
 export function fileBar(path: string, shown: ShownFile, languageName: LanguageName): FileBar {
   if (shown.as === 'missing')

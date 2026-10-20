@@ -8,9 +8,11 @@ export interface ButtonIconSpinProps {
 
 /**
  * Turns a button's icons a whole revolution at a time: one per click with
- * `spinOnClick`, and on and on while `spinning`. A revolution always
- * finishes, so work that ends at once still shows a full turn. `icons` names
- * the elements that turn; the button knows which of its elements they are.
+ * `spinOnClick`, and on and on while `spinning`.
+ *
+ * A revolution always finishes, so work that ends at once still shows a full turn.
+ * `icons` names the elements that turn; the button knows which of its elements they
+ * are.
  */
 export function useButtonIconSpin(
   icons: () => readonly Element[],

@@ -42,17 +42,27 @@ const emit = defineEmits<{
 const phone = usePhone()
 const shownTitle = computed(() => conversationTitle(props.conversation.title))
 
-// The row's end holds, in the flow, the marks: the pin, the bolt and the device's mark, each in a
-// box as wide as its glyph (14, 14 and 16px), 6px apart and 6px from the row's end, so the
-// glyphs stand evenly; they are marks, not buttons. Marks and buttons rest in one grey, the ghost
-// button's resting `text-fg-muted`, whatever color the row's text takes; only the button under the
-// pointer darkens and shows its fill, as Finder's eject button does, and a mark never changes on
-// hover. The actions are 24px buttons, side by side,
-// whose 14px glyphs sit 5px inside them: Archive stands over the pin's glyph, or 6px left of the
-// first mark when the row is not pinned, and Unpin left of Archive. The title clears the
-// actions by a margin that leaves 12px before the first button's glyph. A phone row shows no
-// actions, since a tap meant to open the row could land on one; its long press opens its menu,
-// which holds them, so its title and pin stay put, and its marks keep their 32px boxes.
+// The row's end holds, in the flow, the marks: the pin, the bolt and the device's
+// mark, each in a box as wide as its glyph (14, 14 and 16px), 6px apart and 6px
+// from the row's end, so the glyphs stand evenly. They are marks, not buttons.
+//
+// Marks and buttons rest in one grey, the ghost button's resting `text-fg-muted`,
+// whatever color the row's text takes. Only the button under the pointer darkens
+// and shows its fill, as Finder's eject button does, and a mark never changes on
+// hover.
+//
+// The actions are 24px buttons, side by side, whose 14px glyphs sit 5px inside
+// them:
+//
+// - Archive stands over the pin's glyph, or 6px left of the first mark when the
+//   row is not pinned.
+// - Unpin stands left of Archive.
+// - The title clears the actions by a margin that leaves 12px before the first
+//   button's glyph.
+//
+// A phone row shows no actions, since a tap meant to open the row could land on
+// one. Its long press opens its menu, which holds them, so its title and pin stay
+// put, and its marks keep their 32px boxes.
 const MARK_GAP_PX = 6
 const END_INSET_PX = 6
 /** A small icon button (`IconButton` `sm`) is 24px with its glyph centered. */

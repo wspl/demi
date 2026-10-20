@@ -2,11 +2,13 @@ import { expect, test } from 'bun:test'
 import { DRAWN_FRAME_ROOM, SQUARE_CORNERS, drawnFrame, drawnFrameBezel, screenPath, type ScreenCorner, type ScreenCorners } from '../drawn-frame'
 
 // The frame a view draws when the device's own is not installed
-// (`packages/plugin-mobile/src/index.ts`): a body whose bezel is even all
-// round, 4% of the
-// screen's shorter side, concentric with the screen's corners whatever
-// their shape, and each button a bar out of its side, where the fraction of
-// the side puts it. Pure geometry, under a millisecond.
+// (`packages/plugin-mobile/src/index.ts`):
+//
+// - A body whose bezel is even all round, 4% of the screen's shorter side,
+//   concentric with the screen's corners whatever their shape.
+// - Each button a bar out of its side, where the fraction of the side puts it.
+//
+// Cost: pure geometry, under a millisecond.
 
 const screen = { left: 100, top: 50, width: 400, height: 800 }
 

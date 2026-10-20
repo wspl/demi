@@ -3,11 +3,13 @@ import { ExternalLink as ExternalLinkIcon } from '@lucide/vue'
 import { ICON_PX } from './icon-metrics'
 
 /**
- * A link that leaves the app for another site. It reads as a link (muted,
- * underlined on hover) and says so with the outward arrow, so it is never
- * mistaken for a caption. Opens in a new tab without a referrer. It stands
- * in a sentence, so it draws no focus ring: focused from the keyboard it
- * takes its hover look.
+ * A link that leaves the app for another site.
+ *
+ * - It reads as a link (muted, underlined on hover) and says so with the outward
+ *   arrow, so it is never mistaken for a caption.
+ * - It opens in a new tab without a referrer.
+ * - It stands in a sentence, so it draws no focus ring: focused from the keyboard it
+ *   takes its hover look.
  */
 defineProps<{
   href: string

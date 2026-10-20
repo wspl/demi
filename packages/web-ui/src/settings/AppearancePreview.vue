@@ -6,10 +6,14 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import { t } from '../locales/text'
 
 /**
- * What the appearance rows change, at real size: two lines of a reply and a code
- * block rendered by the transcript's own markdown at the chosen text size, the tone's
- * stack of surfaces, and the accent on a primary button and a switch that can be
- * flipped. Everything reads the live tokens.
+ * What the appearance rows change, at real size. It shows:
+ *
+ * - two lines of a reply and a code block rendered by the transcript's own markdown
+ *   at the chosen text size,
+ * - the tone's stack of surfaces, and
+ * - the accent on a primary button and a switch that can be flipped.
+ *
+ * Everything reads the live tokens.
  */
 defineProps<{
   /** Transcript text size in px, applied as the transcript would. */

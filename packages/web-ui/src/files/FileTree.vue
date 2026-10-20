@@ -39,33 +39,40 @@ import { joinPath, normalizePath, parentPath, relativePath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
 
 /**
- * A directory tree over a `FileBrowserSource`, rooted at `root`, on a
- * `Tree`. Each unfolded directory shows its listing as the source keeps it:
- * one unfolded again shows at once, and one read again replaces its rows in
- * place, the folds staying. A click on a directory folds or unfolds it, a
- * click on a file asks the host to open it. The selected row is followed:
- * the folders above it unfold in order as their listings land, and its row
- * is brought into view once it is in (`follow`). A directory being listed spins at
- * its row's end the first time; one that could not be listed, or listed
- * again, wears a red dot on its icon and tells why on hover. The control at
- * the caption's end lists every open directory again, turning while they
- * load.
+ * A directory tree over a `FileBrowserSource`, rooted at `root`, on a `Tree`.
  *
- * A right-click offers what the source can do there: a file's path copies
- * and the file downloads (`fileMenu`), and a
- * directory, or the empty space for the workspace itself, takes files
- * uploaded into it. Files and folders dragged in from the desktop upload
- * where they drop: into the directory under the pointer, the directory of a
- * file under it, or the workspace over the empty space; that place lights
- * while the drag is over it, and a closed directory the drag rests on opens.
- * Names the directory already has wait on a question: Replace or Skip, and
- * Merge once a folder meets a folder. The uploads themselves belong to the
- * source (`uploadsOf`), whose writes have the directories they change listed
- * again.
+ * Browsing:
  *
- * While the source has uploads they list under the tree, fitting their rows
- * up to `UPLOADS_FIT_PX`; the divider between the two sizes the list, which
- * then keeps that height, leaving the tree at least `TREE_MIN_PX`.
+ * - Each unfolded directory shows its listing as the source keeps it: one
+ *   unfolded again shows at once, and one read again replaces its rows in
+ *   place, the folds staying.
+ * - A click on a directory folds or unfolds it, a click on a file asks the host
+ *   to open it.
+ * - The selected row is followed: the folders above it unfold in order as their
+ *   listings land, and its row is brought into view once it is in (`follow`).
+ * - A directory being listed spins at its row's end the first time. One that
+ *   could not be listed, or listed again, wears a red dot on its icon and tells
+ *   why on hover.
+ * - The control at the caption's end lists every open directory again, turning
+ *   while they load.
+ *
+ * Uploading:
+ *
+ * - A right-click offers what the source can do there: a file's path copies and
+ *   the file downloads (`fileMenu`), and a directory, or the empty space for the
+ *   workspace itself, takes files uploaded into it.
+ * - Files and folders dragged in from the desktop upload where they drop: into
+ *   the directory under the pointer, the directory of a file under it, or the
+ *   workspace over the empty space. That place lights while the drag is over it,
+ *   and a closed directory the drag rests on opens.
+ * - Names the directory already has wait on a question: Replace or Skip, and
+ *   Merge once a folder meets a folder.
+ * - The uploads themselves belong to the source (`uploadsOf`), whose writes have
+ *   the directories they change listed again.
+ *
+ * While the source has uploads they list under the tree, fitting their rows up
+ * to `UPLOADS_FIT_PX`. The divider between the two sizes the list, which then
+ * keeps that height, leaving the tree at least `TREE_MIN_PX`.
  */
 defineOptions({ inheritAttrs: false })
 
@@ -175,15 +182,18 @@ function inTree(path: string, root: string): boolean {
 let stopFollowing: (() => void) | null = null
 
 /**
- * Follows `path` as an editor's explorer follows the file it shows: unfolds the
- * root, then each folder above the path in order, each once its parent's
- * listing has put its row in, so no folder opens before the tree knows it is
- * one; once the path's row is in, a directory's own listing opens when
- * `isDirectory`, and the row is brought into view if it is not. The folders
- * opened or closed elsewhere stay as they are. Another path followed meanwhile
- * wins, this one stopping where it was, as does a folder on the way that the
- * user folds; a path outside the root, or the root itself, has no row to
- * follow.
+ * Follows `path` as an editor's explorer follows the file it shows.
+ *
+ * 1. It unfolds the root, then each folder above the path in order, each once
+ *    its parent's listing has put its row in, so no folder opens before the tree
+ *    knows it is one.
+ * 2. Once the path's row is in, a directory's own listing opens when
+ *    `isDirectory`, and the row is brought into view if it is not.
+ *
+ * The folders opened or closed elsewhere stay as they are. The following stops
+ * where it was in two cases: another path followed meanwhile wins, and a folder
+ * on the way that the user folds ends it. A path outside the root, or the root
+ * itself, has no row to follow.
  */
 function follow(path: string | null, isDirectory: boolean): void {
   stopFollowing?.()
@@ -244,10 +254,10 @@ function entriesOf(entry: Listing | undefined): FileBrowserEntry[] {
 }
 
 /**
- * The rows the open directories show, and where each symbolic link among
- * them points. A link to a directory is a directory row whose listing is the
- * link's own path, so it unfolds at any depth, level by level, a link back
- * to a folder above it included.
+ * The rows the open directories show, and where each symbolic link among them
+ * points. A link to a directory is a directory row whose listing is the link's own
+ * path, so it unfolds at any depth, level by level, a link back to a folder above
+ * it included.
  */
 const laidOut = computed(() => {
   const rows: TreeRow[] = []
@@ -326,10 +336,14 @@ function activate(row: TreeRow): void {
 }
 
 /**
- * Expands or opens a link as what its target is now (`readLinkAgain`): a
- * link to a folder expands, any other opens, a target that is gone or
- * cannot be read saying so in the file's place. A tree that lets its
- * listings go meanwhile, for another source or its end, does neither.
+ * Expands or opens a link as what its target is now (`readLinkAgain`):
+ *
+ * - A link to a folder expands.
+ * - Any other opens.
+ * - A target that is gone or cannot be read says so in the file's place.
+ *
+ * A tree that lets its listings go meanwhile, for another source or its end, does
+ * neither.
  */
 async function followLink(row: TreeRow): Promise<void> {
   if (followed.has(row.path))

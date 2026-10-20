@@ -67,16 +67,24 @@ import {
 } from './types'
 
 /**
- * The file and folder chooser, laid out like the Windows open dialog: Back, Forward
- * and Up, then the device and beside it the path from that device's root; places
- * root, with New folder and the hidden-files switch as icons after it; places down
- * the left; a detail list; and a status row that says what is selected or what can
- * be, with the confirm button. Below a phone width the rail becomes a Places menu
- * at the start of the status row, and Forward goes.
+ * The file and folder chooser, laid out like the Windows open dialog.
  *
- * The file browser reads through `source` and owns everything else: where it is, what is
- * selected, the history. The caller decides what a chosen path means. Switching a
- * device is the caller's too: it hears `update:hostId` and hands over another source.
+ * From the top:
+ *
+ * - Back, Forward and Up, then the device and beside it the path from that
+ *   device's root, with New folder and the hidden-files switch as icons after
+ *   it.
+ * - Places down the left, and a detail list.
+ * - A status row that says what is selected or what can be, with the confirm
+ *   button.
+ *
+ * Below a phone width the rail becomes a Places menu at the start of the status
+ * row, and Forward goes.
+ *
+ * The file browser reads through `source` and owns everything else: where it
+ * is, what is selected, the history. The caller decides what a chosen path
+ * means. Switching a device is the caller's too: it hears `update:hostId` and
+ * hands over another source.
  */
 const props = withDefaults(
   defineProps<{

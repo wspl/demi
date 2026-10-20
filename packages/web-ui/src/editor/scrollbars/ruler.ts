@@ -2,10 +2,11 @@ import type { EditorView } from '@codemirror/view'
 import type { RawScrollbarMarker } from './markers'
 
 /**
- * The marks along the editor's right edge, under its vertical scrollbar:
- * where the selection, the find bar's matches and a diff's changes are in the
- * whole text. A diff view gives its changes a lane of their own, left of the
- * other marks. The marks show while the text can scroll.
+ * The marks along the editor's right edge, under its vertical scrollbar: where the
+ * selection, the find bar's matches and a diff's changes are in the whole text.
+ *
+ * A diff view gives its changes a lane of their own, left of the other marks. The
+ * marks show while the text can scroll.
  */
 export interface ScrollbarRuler {
   update(view: EditorView, markers: RawScrollbarMarker[]): void

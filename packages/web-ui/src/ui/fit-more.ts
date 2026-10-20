@@ -2,12 +2,12 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { useEventListener } from '@vueuse/core'
 
 /**
- * "Fit N, count the rest as +N": items that stand on one line, or on a few,
- * of which as many show as leave room for the count of the others. The rule
- * is `fitMore`, pure arithmetic on widths; `useFitMore` is what measures a
- * live box for it. How the count looks is each caller's: the row's
- * pictures a faint number, a tag line a Tag with a tooltip, the changed
- * files a button.
+ * "Fit N, count the rest as +N": items that stand on one line, or on a few, of
+ * which as many show as leave room for the count of the others.
+ *
+ * The rule is `fitMore`, pure arithmetic on widths; `useFitMore` is what measures
+ * a live box for it. How the count looks is each caller's: the row's pictures a
+ * faint number, a tag line a Tag with a tooltip, the changed files a button.
  */
 
 /** What a box holds, as widths in px. */
@@ -31,12 +31,14 @@ export interface FitMore {
 }
 
 /**
- * Which of the items show. Items flow left to right and a line breaks where
- * the next item no longer fits after its neighbours and the gap. When all
- * fit within `rows` lines, all show; otherwise as many show as leave room,
- * within the same lines, for the count of the rest after the last of them.
- * When not even the count fits, nothing shows and nothing is counted. An item
- * wider than a line fits nowhere.
+ * Which of the items show. Items flow left to right and a line breaks where the
+ * next item no longer fits after its neighbours and the gap.
+ *
+ * - When all fit within `rows` lines, all show.
+ * - Otherwise as many show as leave room, within the same lines, for the count of
+ *   the rest after the last of them.
+ * - When not even the count fits, nothing shows and nothing is counted.
+ * - An item wider than a line fits nowhere.
  */
 export function fitMore(input: FitMoreInput): FitMore {
   const { room, widths, gap, countWidth } = input
@@ -85,10 +87,11 @@ export interface FitMoreOptions {
 }
 
 /**
- * How many of a box's items show. Every item shows first, so `measure` reads
- * them all, then the count settles, again whenever the box resizes, the
- * items change or a web font finishes loading (it changes the widths without
- * changing the box).
+ * How many of a box's items show. Every item shows first, so `measure` reads them
+ * all.
+ *
+ * Then the count settles, again whenever the box resizes, the items change or a web
+ * font finishes loading (it changes the widths without changing the box).
  */
 export function useFitMore(options: FitMoreOptions): Ref<number> {
   const shown = ref(options.items().length)

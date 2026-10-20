@@ -16,14 +16,15 @@ const cx = svgSize / 2
 const cy = svgSize / 2
 
 /**
- * The arc grows from a tenth of the ring to 45% and back as it goes round,
- * its tail moving a fifth of a turn while its head moves more than half.
- * Drawn by animating the stroke's dashes, it would move only on the main
- * thread, and stall while the page works, which is when it shows. So the
- * arc is laid of `SEGMENTS` arcs a tenth of the ring long, each in a layer
- * of its own that only turns, which the compositor moves: the first at the
- * tail, the last at the head, the others evenly between, overlapping, so
- * together they draw the one arc, as long as the tail and the head are apart.
+ * The arc grows from a tenth of the ring to 45% and back as it goes round, its
+ * tail moving a fifth of a turn while its head moves more than half.
+ *
+ * Drawn by animating the stroke's dashes, it would move only on the main thread,
+ * and stall while the page works, which is when it shows. So the arc is laid of
+ * `SEGMENTS` arcs a tenth of the ring long, each in a layer of its own that only
+ * turns, which the compositor moves: the first at the tail, the last at the head,
+ * the others evenly between, overlapping, so together they draw the one arc, as
+ * long as the tail and the head are apart.
  */
 const SEGMENTS = 5
 const SEGMENT = 0.1

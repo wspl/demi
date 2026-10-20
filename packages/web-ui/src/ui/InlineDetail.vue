@@ -3,10 +3,11 @@ import { computed } from 'vue'
 import type { InlineDetailText } from './inline-detail'
 
 /**
- * A value followed by its detail on one line (`InlineDetailText`), as a
- * field's trigger and a menu row show them: the value in the line's own
- * text, the detail smaller and in the secondary color. The detail
- * truncates first, inside its brackets, which stay; the value only once
+ * A value followed by its detail on one line (`InlineDetailText`), as a field's
+ * trigger and a menu row show them: the value in the line's own text, the detail
+ * smaller and in the secondary color.
+ *
+ * The detail truncates first, inside its brackets, which stay; the value only once
  * the detail is gone. The two sit on one text baseline: they clip with
  * `overflow: clip`, which keeps an element's text baseline, where
  * `overflow: hidden` would make a flex item align by its bottom edge.

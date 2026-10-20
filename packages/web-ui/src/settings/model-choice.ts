@@ -15,10 +15,12 @@ export interface ModelChoiceLabel {
 }
 
 /**
- * The trigger's label for the model settings `settings`, which a subagent
- * profile and the small model hold: the model with its provider, then its
- * effort, then whether Fast is on. An effort the model no longer offers
- * reads as itself, never as the first one a menu would show.
+ * The trigger's label for the model settings `settings`, which a subagent profile
+ * and the small model hold: the model with its provider, then its effort, then
+ * whether Fast is on.
+ *
+ * An effort the model no longer offers reads as itself, never as the first one a
+ * menu would show.
  */
 export function modelChoiceLabel(
   settings: ModelSettings,

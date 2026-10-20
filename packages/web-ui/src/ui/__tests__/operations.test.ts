@@ -5,12 +5,17 @@ import { dismissToast, toasts } from '../../infra/toast'
 import { operations, provideRowTarget, useOpening, useOperationControl, type Operation } from '../operations'
 
 // What the page does with a control's operation: the page keeps it, not the
-// control, so a control drawn again shows it and a press meanwhile starts
-// nothing; a row shows its target's work; one group's operations exclude each
-// other; and a finished operation answers only where it was started. Controls
-// and rows press and show through the same functions Button, IconButton,
-// MenuItem and SettingsRow use, rendered by Vue over plain objects; a few
-// milliseconds.
+// control.
+//
+// - A control drawn again shows it, and a press meanwhile starts nothing.
+// - A row shows its target's work.
+// - One group's operations exclude each other.
+// - A finished operation answers only where it was started.
+//
+// Controls and rows press and show through the same functions Button, IconButton,
+// MenuItem and SettingsRow use, rendered by Vue over plain objects.
+//
+// Cost: a few milliseconds.
 
 interface Node {
   parent: Node | null

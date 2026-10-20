@@ -1,10 +1,11 @@
 /**
- * Moves that change no layout while they play (FLIP: first, last, invert,
- * play). The caller reads where an element stands, applies the new layout
- * at once, and the element glides from where it stood to where it now is,
- * through its transform alone; what it holds may unroll or roll up through
- * its clip. A long, virtualized page beside it lays out once, when the
- * layout changes, never per frame.
+ * Moves that change no layout while they play (FLIP: first, last, invert, play).
+ *
+ * The caller reads where an element stands, applies the new layout at once, and
+ * the element glides from where it stood to where it now is, through its
+ * transform alone. What it holds may unroll or roll up through its clip. A long,
+ * virtualized page beside it lays out once, when the layout changes, never per
+ * frame.
  */
 
 /** Where `element` is drawn now, its transform included: the start of a glide. */

@@ -2,13 +2,14 @@ import { sliceHead } from '@demicodes/utils'
 import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
- * How a streaming reply's text reaches the reader (the gallery's Streaming
- * Text): a step of about `stepChars` characters at a time, cut on
- * a word, each fading in over `fadeMs`; the steps come faster as text waits,
- * so the view stays about `targetLagMs` behind what has arrived, never more
- * often than every `minStepMs` nor less than every `maxStepMs`. Many steps
- * fading at once read as the text settling a few lines at a time, as
- * Claude's own reply does, rather than as characters typed.
+ * How a streaming reply's text reaches the reader (the gallery's Streaming Text):
+ * a step of about `stepChars` characters at a time, cut on a word, each fading in
+ * over `fadeMs`.
+ *
+ * The steps come faster as text waits, so the view stays about `targetLagMs`
+ * behind what has arrived, never more often than every `minStepMs` nor less than
+ * every `maxStepMs`. Many steps fading at once read as the text settling a few
+ * lines at a time, as Claude's own reply does, rather than as characters typed.
  */
 export const STREAM_PACE = {
   stepChars: 22,
@@ -61,11 +62,12 @@ export function segmentStreamUnits(text: string): string[] {
 }
 
 /**
- * Where the step from `from` ends in `text`: about `stepChars` characters on,
- * at a word's end (a CJK word's too, as `Intl.Segmenter` finds it), never past
- * `ceiling`, the part of `text` safe to show. A cut that would leave markdown
- * half open, which `safe` shortens, backs off to where the construct starts,
- * or takes the whole construct when it starts the step.
+ * Where the step from `from` ends in `text`: about `stepChars` characters on, at a
+ * word's end (a CJK word's too, as `Intl.Segmenter` finds it), never past `ceiling`,
+ * the part of `text` safe to show.
+ *
+ * A cut that would leave markdown half open, which `safe` shortens, backs off to
+ * where the construct starts, or takes the whole construct when it starts the step.
  */
 export function nextStepEnd(text: string, from: number, ceiling: number, safe: (text: string) => string): number {
   let end = from
@@ -95,11 +97,11 @@ const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:
 
 /**
  * About how many characters `source`, a slice of markdown, renders as, line
- * breaks left out: its text without the marks around it, without a code
- * fence's lines, a rule's dashes, and a table's pipes and the row that aligns
- * its columns. A step's fade covers this many rendered characters, so an
- * estimate a mark off fades a neighbouring character a moment early or late
- * and nothing more.
+ * breaks left out: its text without the marks around it, without a code fence's
+ * lines, a rule's dashes, and a table's pipes and the row that aligns its columns.
+ *
+ * A step's fade covers this many rendered characters, so an estimate a mark off
+ * fades a neighbouring character a moment early or late and nothing more.
  */
 export function renderedLength(source: string): number {
   return source.replace(MARKDOWN_SYNTAX, '').length
@@ -113,13 +115,14 @@ export interface StepMark {
 }
 
 /**
- * The marks of `steps`, the steps of `text` still fading, latest first. A
- * step's extent is the rendered length of the text from its start to the
- * end, read in the context of its line, so a step that starts within a line,
- * such as a table's row, counts as the whole line does. As the syntax
- * `renderedLength` leaves out never reads past its own line, the count starts
- * at the line the earliest step starts in: a frame reads the last lines of a
- * reply, never the whole of it.
+ * The marks of `steps`, the steps of `text` still fading, latest first.
+ *
+ * A step's extent is the rendered length of the text from its start to the end,
+ * read in the context of its line, so a step that starts within a line, such as a
+ * table's row, counts as the whole line does. As the syntax `renderedLength`
+ * leaves out never reads past its own line, the count starts at the line the
+ * earliest step starts in: a frame reads the last lines of a reply, never the
+ * whole of it.
  */
 export function stepMarks(text: string, steps: readonly RevealStep[]): StepMark[] {
   const latestFirst = steps.toSorted((a, b) => b.start - a.start)
@@ -254,10 +257,10 @@ export function arrivedSteps(arrivals: readonly TextArrival[], shown: number, no
 const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
 
 /**
- * The elements of a render that paint something of their own around their
- * text: inline code's box, a link's underline and icon, a key's frame, a list
- * item's marker, a quote's bar, a code block's well and language, a table's
- * frame and a row's rules and fill.
+ * The elements of a render that paint something of their own around their text:
+ * inline code's box, a link's underline and icon, a key's frame, a list item's
+ * marker, a quote's bar, a code block's well and language, a table's frame and a
+ * row's rules and fill.
  */
 const OWN_PAINT = 'code, a, kbd, .icon-link, li, blockquote, .code-block, pre, table, tr'
 
@@ -279,29 +282,30 @@ interface Piece {
 }
 
 /**
- * Fades in the text of each step still fading, from the render's end
- * backwards. A step's extent is its rendered length, counted from the end.
+ * Fades in the text of each step still fading, from the render's end backwards. A
+ * step's extent is its rendered length, counted from the end.
  *
- * An element that paints something of its own (`OWN_PAINT`) fades with the
- * step that shows its first character, with the text of that step inside it;
- * its text of later steps fades again inside it, from where the element's
- * fade has got to. So inline code's box comes with its first characters,
- * never as an empty box first, and a list's marker with its item's first
- * word. Other text of a step fades in a span of its own; a code block's
- * text shows with its block, as code is not shown a word at a time.
+ * An element that paints something of its own (`OWN_PAINT`) fades with the step
+ * that shows its first character, with the text of that step inside it. Its text
+ * of later steps fades again inside it, from where the element's fade has got to.
+ * So inline code's box comes with its first characters, never as an empty box
+ * first, and a list's marker with its item's first word.
  *
- * Each fade is an animation of the document's timeline that starts when its
- * step was shown (`performance.now()` and the timeline count from the same
- * origin), so it goes on unbroken through a render, which replaces the spans,
- * and through a move of the text in the page, which a CSS animation would
- * start over: setting up a scroller's bars (`ScrollArea`) appends its
- * content to it again, and the reply's last lines faded in a second time.
+ * Other text of a step fades in a span of its own. A code block's text shows with
+ * its block, as code is not shown a word at a time.
+ *
+ * Each fade is an animation of the document's timeline that starts when its step
+ * was shown (`performance.now()` and the timeline count from the same origin), so
+ * it goes on unbroken through a render, which replaces the spans, and through a
+ * move of the text in the page, which a CSS animation would start over. Setting up
+ * a scroller's bars (`ScrollArea`) appends its content to it again, and the
+ * reply's last lines faded in a second time.
  *
  * The timeline reads the time its frame began, which can be earlier than the
- * `performance.now()` a step was shown at, so the first frame that draws a
- * step may come before its fade starts. Until then the text keeps the fade's
- * first keyframe (`backwards`); without it, that frame painted the text
- * solid, the next one nearly transparent, and it faded in from there.
+ * `performance.now()` a step was shown at, so the first frame that draws a step
+ * may come before its fade starts. Until then the text keeps the fade's first
+ * keyframe (`backwards`); without it, that frame painted the text solid, the next
+ * one nearly transparent, and it faded in from there.
  */
 export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealStep[]): void {
   if (prefersReducedMotion())
@@ -346,12 +350,13 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
     }
   }
 
-  // The painting elements whose first character a fading step shows, each
-  // fading with that step unless an element around it already does. They are
-  // the ancestors of the text nodes those steps start in, so they are found
-  // from those nodes, never by a search of the whole reply; taken in the
-  // order of the page, outermost first, an element's fade is known before
-  // the elements inside it ask whether one around them fades.
+  // The painting elements whose first character a fading step shows, each fading
+  // with that step unless an element around it already does.
+  //
+  // They are the ancestors of the text nodes those steps start in, so they are found
+  // from those nodes, never by a search of the whole reply. They are taken in the
+  // order of the page, outermost first, so an element's fade is known before the
+  // elements inside it ask whether one around them fades.
   const fading = new Map<Element, number>()
   for (const [node, step] of [...firstMarks].reverse()) {
     const painting: Element[] = []

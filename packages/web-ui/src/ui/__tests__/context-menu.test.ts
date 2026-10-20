@@ -1,14 +1,16 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, jest, test } from 'bun:test'
 
-// The page's context menus: one handler at the page's root builds each menu
-// from what is under the pointer, the content's entries innermost first, then
-// the first object's, and opens nothing where nothing declares one. The handler
-// runs on a page of happy-dom, which lays nothing out: the pointer's place is
-// given with each event, and a selection's place by its range's rectangles. A
-// long press's half second runs on bun's fake clock, since its timing is the
-// behavior under test. A few ms a test, besides the start of the page every
-// happy-dom test pays.
+// The page's context menus: one handler at the page's root builds each menu from
+// what is under the pointer, the content's entries innermost first, then the first
+// object's, and opens nothing where nothing declares one.
+//
+// The handler runs on a page of happy-dom, which lays nothing out: the pointer's
+// place is given with each event, and a selection's place by its range's
+// rectangles. A long press's half second runs on bun's fake clock, since its timing
+// is the behavior under test.
+//
+// Cost: a few ms a test, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 await import('../../__tests__/vue-components')

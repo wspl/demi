@@ -64,10 +64,11 @@ export function openingChoice(
 }
 
 /**
- * Selects the device paired from beside a device menu in that menu. The claim
- * answers before the page's device list may carry the device, so the menu
- * selects it once it is among `devices`. Call it in a component's setup: the
- * wait ends with the component.
+ * Selects the device paired from beside a device menu in that menu.
+ *
+ * The claim answers before the page's device list may carry the device, so the menu
+ * selects it once it is among `devices`. Call it in a component's setup: the wait
+ * ends with the component.
  */
 export function usePairedSelection(
   devices: () => readonly WorkspaceDevice[],
@@ -98,12 +99,14 @@ export type DeviceProjectAction = 'add' | 'create'
 /**
  * New Project's button for a directory on a device: Add Project when the
  * directory exists, Create Project when Demi will create it, as the listing the
- * directory field completes from tells (`useDirectoryExistence`). While the
- * listing is on its way, or after it failed, the button keeps what it last
- * said, so it does not flicker as the user types. It starts on Add Project: the
- * form opens on the device's home, which exists. An empty `path` lists nothing,
- * for a form that is closed or not on a device. Call it in a component's setup:
- * the listing it shows goes with the component.
+ * directory field completes from tells (`useDirectoryExistence`).
+ *
+ * - While the listing is on its way, or after it failed, the button keeps what it
+ *   last said, so it does not flicker as the user types.
+ * - It starts on Add Project: the form opens on the device's home, which exists.
+ * - An empty `path` lists nothing, for a form that is closed or not on a device.
+ *
+ * Call it in a component's setup: the listing it shows goes with the component.
  */
 export function useDeviceProjectAction(options: {
   source: () => Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>

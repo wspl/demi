@@ -13,10 +13,12 @@ import { t } from './locales/text'
 
 /**
  * A share's read-only page: what was said in the conversation, its messages and
- * texts, with each run of the agent's work between them as one line that counts
- * its steps, under its title and with nothing that acts on a conversation. A
- * link to a Host's file, a commit or an agent is its text, since the page
- * reaches neither a Host nor the work.
+ * texts, under its title and with nothing that acts on a conversation.
+ *
+ * - Each run of the agent's work between the messages is one line that counts its
+ *   steps.
+ * - A link to a Host's file, a commit or an agent is its text, since the page reaches
+ *   neither a Host nor the work.
  */
 const props = withDefaults(defineProps<{
   /** The conversation's title when shared; null while it was the placeholder. */

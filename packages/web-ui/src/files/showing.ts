@@ -12,10 +12,11 @@ export interface ShownState<T> {
 
 /**
  * Shows the entry at `path` of what `owner` gives, through `open`, while the
- * calling component's scope lives: when either changes, the entry they name
- * now is shown and the last one let go. Nothing shows while either is null,
- * or `open` answers null. It follows the entry only while the component's
- * views are on screen.
+ * calling component's scope lives.
+ *
+ * - When either changes, the entry they name now is shown and the last one let go.
+ * - Nothing shows while either is null, or `open` answers null.
+ * - It follows the entry only while the component's views are on screen.
  */
 export function useShowing<O, T>(
   owner: () => O | null | undefined,
@@ -45,11 +46,12 @@ export interface ShownEntries<T> {
 }
 
 /**
- * Shows the entry at each of `paths` of what `owner` gives, through `open`,
- * while the calling component's scope lives, as `useShowing` shows one: a
- * path that stays keeps its hold, one that leaves is let go, and a new
- * owner shows them all anew. It follows the entries only while the
- * component's views are on screen.
+ * Shows the entry at each of `paths` of what `owner` gives, through `open`, while
+ * the calling component's scope lives, as `useShowing` shows one.
+ *
+ * - A path that stays keeps its hold, and one that leaves is let go.
+ * - A new owner shows them all anew.
+ * - It follows the entries only while the component's views are on screen.
  */
 export function useShowings<O, T>(
   owner: () => O | null | undefined,

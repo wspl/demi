@@ -1,9 +1,11 @@
 /**
  * The live view's frames on the page's side
- * (`packages/plugin-mobile/src/index.ts`): the stream carries bytes, so each
- * message is a length, a kind and a payload. Control messages are JSON in
- * the source's protocol, which decodes them; pictures are the live view's
- * own, in chunks of at most 16 KiB that the page joins and acknowledges.
+ * (`packages/plugin-mobile/src/index.ts`): the stream carries bytes, so each message
+ * is a length, a kind and a payload.
+ *
+ * - Control messages are JSON in the source's protocol, which decodes them.
+ * - Pictures are the live view's own, in chunks of at most 16 KiB that the page
+ *   joins and acknowledges.
  */
 import {
   LIVE_ACK_BYTES,
@@ -128,11 +130,11 @@ export function decodeAcks(payload: Uint8Array): LiveChunkAck[] {
 }
 
 /**
- * A picture's chunks joined into its frame, and the frames handed on in
- * sequence: a direct path delivers chunks out of
- * order, and a frame whose chunks are all in waits only for the frames
- * before it, which the decoder needs first. A key frame needs none before
- * it, and those still waiting behind it are dropped.
+ * A picture's chunks joined into its frame, and the frames handed on in sequence.
+ *
+ * A direct path delivers chunks out of order. A frame whose chunks are all in waits
+ * only for the frames before it, which the decoder needs first. A key frame needs
+ * none before it, and those still waiting behind it are dropped.
  */
 export class LiveFrameAssembler {
   private generation: number | null = null
@@ -233,11 +235,12 @@ export class LiveFrameAssembler {
 }
 
 /**
- * Bytes split at the live view's frames as they arrive, each frame whole
- * with its length, as the direct path needs them to send a frame on the
- * channel its kind goes on. One
- * splitter splits one stream: a frame an ended stream left unfinished is no
- * part of the next.
+ * Bytes split at the live view's frames as they arrive, each frame whole with its
+ * length, as the direct path needs them to send a frame on the channel its kind goes
+ * on.
+ *
+ * One splitter splits one stream: a frame an ended stream left unfinished is no part
+ * of the next.
  */
 export class LiveFrameSplitter {
   private pending: Uint8Array = new Uint8Array(0)

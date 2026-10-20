@@ -9,12 +9,13 @@ import { unifiedDiff } from '../unifiedDiff'
 import { useCodeView } from '../useCodeView'
 
 /**
- * Two versions of one file as a unified diff, read-only: the current text,
- * with each removed stretch shown above what replaced it, and the unchanged
- * stretches between changes folded but for three lines around each change.
- * Focused, it keeps a caret that the arrows move, Shift extends a selection
- * and Mod-f finds. New texts of the file replace the old in place,
- * keeping the place the user is looking at; another file needs another editor.
+ * Two versions of one file as a unified diff, read-only: the current text, with
+ * each removed stretch shown above what replaced it, and the unchanged stretches
+ * between changes folded but for three lines around each change.
+ *
+ * Focused, it keeps a caret that the arrows move, Shift extends a selection and
+ * Mod-f finds. New texts of the file replace the old in place, keeping the place
+ * the user is looking at. Another file needs another editor.
  */
 const props = defineProps<{
   original: string

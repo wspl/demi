@@ -1,8 +1,9 @@
 /**
- * A plugin's user stream as a page holds it: bytes both ways between the page
- * and the plugin's package on the conversation's Host, over the product's
- * WebSocket or a gallery's fixture. What the bytes mean is the plugin's own
- * protocol.
+ * A plugin's user stream as a page holds it: bytes both ways between the page and
+ * the plugin's package on the conversation's Host, over the product's WebSocket or a
+ * gallery's fixture.
+ *
+ * What the bytes mean is the plugin's own protocol.
  */
 
 /** Bytes the page sends: their own buffer, as a socket requires. */

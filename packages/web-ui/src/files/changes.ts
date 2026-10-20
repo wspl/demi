@@ -50,10 +50,12 @@ export interface ChangeSetSource {
    */
   readonly unwatched?: string | null
   /**
-   * Shows both sides of one file until released: empty `original` for an
-   * added file, empty `modified` for a deleted one. A side that is not text
-   * is the answer `binary` or `too-large`. A renamed file names `from`,
-   * its earlier path, whose last committed content is the old side.
+   * Shows both sides of one file until released.
+   *
+   * - `original` is empty for an added file, `modified` for a deleted one.
+   * - A side that is not text is the answer `binary` or `too-large`.
+   * - A renamed file names `from`, its earlier path, whose last committed content
+   *   is the old side.
    */
   showSides(path: string, from?: string): Showing<ChangeSides>
   /**
@@ -83,10 +85,12 @@ export function emptyChangeSetText(source: ChangeSetSource): string {
 }
 
 /**
- * Where a change view's diffs come from: a request of the conversation (the
- * files its calls changed, nothing to do with git) or the repository's
- * commits, its uncommitted changes against its last commit first
- * (`packages/web-ui/src/files/history.ts`).
+ * Where a change view's diffs come from. There are two sources:
+ *
+ * - A request of the conversation: the files its calls changed, nothing to do with
+ *   git.
+ * - The repository's commits, its uncommitted changes against its last commit
+ *   first (`packages/web-ui/src/files/history.ts`).
  */
 export type ChangeMode = 'conversation' | 'commits'
 
@@ -157,13 +161,15 @@ export interface ChangeTreeRow extends TreeRow {
 }
 
 /**
- * The changed files as a tree, as VS Code's Source Control shows changes
- * as a tree (`crates/agent-store/src/changes.rs`): only the
- * folders that hold a changed file, folders first and then files at every
- * level, each sorted by name, and a folder whose only content is one folder
- * joined with it into one row, `src/web/app`. The folders in `folded`, by
- * their path from the root, are closed: their rows stay, what is under
- * them does not.
+ * The changed files as a tree, as VS Code's Source Control shows changes as a
+ * tree (`crates/agent-store/src/changes.rs`).
+ *
+ * - Only the folders that hold a changed file appear, folders first and then
+ *   files at every level, each sorted by name.
+ * - A folder whose only content is one folder is joined with it into one row,
+ *   `src/web/app`.
+ * - The folders in `folded`, by their path from the root, are closed: their rows
+ *   stay, what is under them does not.
  */
 export function changeTreeRows(files: readonly ChangeTreeFile[], folded: ReadonlySet<string>): ChangeTreeRow[] {
   interface Folder {

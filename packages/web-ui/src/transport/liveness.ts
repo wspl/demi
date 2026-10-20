@@ -1,23 +1,39 @@
 /**
  * The liveness of a page's WebSockets to the backend: the synchronization
  * channel, each conversation socket and each live view of the conversation
- * browser. The far end of each sends a heartbeat on a socket that has sent
- * nothing else for a while, 30 seconds at most, so a socket that brings nothing
- * for much longer died without a close, as when a laptop slept and its network
- * dropped. A socket whose opening handshake does not complete within 10 seconds
- * cannot be made. A socket that closes, breaks or cannot be made is tried again
- * after waits that double. Timers stop while a laptop sleeps, and a phone's
- * system cuts a hidden page's connections without a close, so when the page
- * returns (it becomes visible again, the browser shows it from its back-forward
- * cache, a frozen page resumes, or it comes back online), this module checks
- * every socket once the page has read what its sockets hold: what it read may
- * have waited there for minutes, so it asks each open socket whose far end can
- * answer for a `pong` within 5 seconds, and opens again at once each socket
- * still opening from before the page went away. The browser's word that it went
- * offline counts once it has held for a second: then the page says it is
- * offline, and closes no socket, since one that kept its connection, as through
- * a VPN's tunnel, goes on working; coming back online is a return. The page
- * reports why it replaced a socket through its error reports.
+ * browser.
+ *
+ * While the page stays:
+ *
+ * - The far end of each sends a heartbeat on a socket that has sent nothing else
+ *   for a while, 30 seconds at most. So a socket that brings nothing for much
+ *   longer died without a close, as when a laptop slept and its network dropped.
+ * - A socket whose opening handshake does not complete within 10 seconds cannot
+ *   be made.
+ * - A socket that closes, breaks or cannot be made is tried again after waits
+ *   that double.
+ *
+ * When the page returns:
+ *
+ * Timers stop while a laptop sleeps, and a phone's system cuts a hidden page's
+ * connections without a close. So when the page returns (it becomes visible
+ * again, the browser shows it from its back-forward cache, a frozen page resumes,
+ * or it comes back online), this module checks every socket once the page has
+ * read what its sockets hold. What it read may have waited there for minutes, so
+ * the check:
+ *
+ * - asks each open socket whose far end can answer for a `pong` within 5 seconds,
+ *   and
+ * - opens again at once each socket still opening from before the page went away.
+ *
+ * Going offline:
+ *
+ * The browser's word that it went offline counts once it has held for a second.
+ * Then the page says it is offline, and closes no socket, since one that kept its
+ * connection, as through a VPN's tunnel, goes on working. Coming back online is a
+ * return.
+ *
+ * The page reports why it replaced a socket through its error reports.
  */
 import { readonly, ref } from 'vue'
 import { defaultDocument, defaultNavigator, defaultWindow, useDocumentVisibility, useEventListener } from '@vueuse/core'
@@ -75,10 +91,11 @@ let absences = 0
 let lastPing = 0
 
 /**
- * The number of the page's next ping, a return's or a relay probe's: both
- * get their `pong` on the direct channel's signaling socket, so one
- * numbering keeps each answer to the one ping it answers. It stays within
- * the `u32` the wire carries.
+ * The number of the page's next ping, a return's or a relay probe's: both get their
+ * `pong` on the direct channel's signaling socket, so one numbering keeps each answer
+ * to the one ping it answers.
+ *
+ * It stays within the `u32` the wire carries.
  */
 export function nextPingId(): number {
   lastPing = (lastPing % 0xffff_ffff) + 1
@@ -93,11 +110,12 @@ function reportReplaced(name: string, why: string): void {
 }
 
 /**
- * The wait before connecting again after `failures` (one or more)
- * consecutive connections ended or could not be made: a second, then twice
- * as long each time, up to 30 seconds, each shortened by a random part of up
- * to half, so that the pages of all users do not return at once after a
- * restart.
+ * The wait before connecting again after `failures` (one or more) consecutive
+ * connections ended or could not be made.
+ *
+ * - It is a second, then twice as long each time, up to 30 seconds.
+ * - Each is shortened by a random part of up to half, so that the pages of all users
+ *   do not return at once after a restart.
  */
 function reconnectWait(failures: number): number {
   const longest = Math.min(FIRST_WAIT_MS * 2 ** (failures - 1), LONGEST_WAIT_MS)
@@ -105,12 +123,14 @@ function reconnectWait(failures: number): number {
 }
 
 /**
- * Opens a WebSocket to `url`, as every socket of the page opens: one whose
- * opening handshake has not completed within `HANDSHAKE_MS` cannot be made,
- * and is closed, which the web browser reports to its owner as it reports a
- * refused one, with its `close` event. An open socket that the backend
- * closes with a code of its own, or whose connection breaks, is reported
- * under `name`, such as "conversation socket"; one the page closes is not.
+ * Opens a WebSocket to `url`, as every socket of the page opens.
+ *
+ * - One whose opening handshake has not completed within `HANDSHAKE_MS` cannot be
+ *   made, and is closed, which the web browser reports to its owner as it reports
+ *   a refused one, with its `close` event.
+ * - An open socket that the backend closes with a code of its own, or whose
+ *   connection breaks, is reported under `name`, such as "conversation socket".
+ *   One the page closes is not.
  */
 export function openSocket(url: string | URL, name: string): WebSocket {
   const socket = new WebSocket(url)
@@ -183,12 +203,13 @@ export function pingOn(socket: WebSocket): (id: number) => void {
 }
 
 /**
- * Calls `then` once the page has run the tasks that wait already: the
- * messages a browser held for a frozen tab and delivers once it runs again
- * among them, a heartbeat that shows a socket alive included. The browser
- * says so by calling the page idle, which it does only once nothing is
- * queued; where it cannot, as in Safari and in a test, `then` follows the
- * tasks queued before it.
+ * Calls `then` once the page has run the tasks that wait already: the messages a
+ * browser held for a frozen tab and delivers once it runs again among them, a
+ * heartbeat that shows a socket alive included.
+ *
+ * The browser says so by calling the page idle, which it does only once nothing is
+ * queued. Where it cannot, as in Safari and in a test, `then` follows the tasks
+ * queued before it.
  */
 function afterQueuedTasks(then: () => void): void {
   if (defaultWindow && 'requestIdleCallback' in defaultWindow) {
@@ -209,19 +230,22 @@ export interface SilenceWatch {
 }
 
 /**
- * Watches the socket named `name`, such as "conversation socket", from now
- * on and calls `broken` once when it has brought nothing for `SILENCE_MS`,
- * counted from now or from the last `heard`: when the watch's timer ends, or
- * at the page's return when the clock shows that much silence while the
- * timer slept. Either judges only once the page has read the messages
- * waiting for it, so a heartbeat a frozen tab held keeps its socket; a
- * judgement that finds less silence counts on from the last message by the
- * clock. With `ping`, which sends the far end a ping it answers with a
- * `pong` of the same id, the return then asks the socket whether it is
- * alive, as what it read may have waited in the browser since before the
- * page went away, and calls `broken` when the `pong` has not come within
- * `PONG_MS`. Each break is reported under `name`. The socket's owner stops
- * the watch when it lets the socket go, whatever the reason.
+ * Watches the socket named `name`, such as "conversation socket", from now on and
+ * calls `broken` once when it has brought nothing for `SILENCE_MS`, counted from
+ * now or from the last `heard`.
+ *
+ * - The judgement comes when the watch's timer ends, or at the page's return when
+ *   the clock shows that much silence while the timer slept.
+ * - Either judges only once the page has read the messages waiting for it, so a
+ *   heartbeat a frozen tab held keeps its socket. A judgement that finds less
+ *   silence counts on from the last message by the clock.
+ * - With `ping`, which sends the far end a ping it answers with a `pong` of the
+ *   same id, the return then asks the socket whether it is alive, as what it read
+ *   may have waited in the browser since before the page went away. It calls
+ *   `broken` when the `pong` has not come within `PONG_MS`.
+ *
+ * Each break is reported under `name`. The socket's owner stops the watch when it
+ * lets the socket go, whatever the reason.
  */
 export function watchSilence(name: string, broken: () => void, ping?: (id: number) => void): SilenceWatch {
   // The wall clock, which goes on while the machine sleeps.
@@ -334,10 +358,12 @@ export interface ReconnectWait {
 }
 
 /**
- * Calls `connect` once: after the wait for `failures` (one or more)
- * consecutive connections that ended or could not be made, or at the page's
- * return if that comes first. The socket's owner cancels the wait when it
- * connects at once for a reason of its own or lets the socket go.
+ * Calls `connect` once: after the wait for `failures` (one or more) consecutive
+ * connections that ended or could not be made, or at the page's return if that comes
+ * first.
+ *
+ * The socket's owner cancels the wait when it connects at once for a reason of its
+ * own or lets the socket go.
  */
 export function waitToReconnect(failures: number, connect: () => void): ReconnectWait {
   return wait(reconnectWait(failures), connect)
@@ -359,10 +385,9 @@ function wait(ms: number, connect: () => void): ReconnectWait {
 }
 
 /**
- * Calls `connect` once while the backend restarts, which it said as it
- * closed the socket: after one to two seconds, at a random point, so that the
- * pages of all users do not return at once; or at the page's return if that
- * comes first.
+ * Calls `connect` once while the backend restarts, which it said as it closed the
+ * socket: after one to two seconds, at a random point, so that the pages of all users
+ * do not return at once; or at the page's return if that comes first.
  */
 export function waitWhileRestarting(connect: () => void): ReconnectWait {
   return wait(RESTART_WAIT_MS * (1 + Math.random()), connect)
@@ -381,22 +406,29 @@ export function pageWentAway(): void {
 }
 
 /**
- * The page came back: it became visible again, the browser showed it from
- * its back-forward cache, a frozen page resumed, or it came back online.
- * Once it has read what its sockets hold, each socket still opening from
- * before the page went away is abandoned and opened again, each open socket
- * that has brought nothing for `SILENCE_MS` by the clock is broken at once,
- * and each other one watched for the rest of that time by the clock and,
- * where its far end can answer, asked for a `pong`, without which it is
- * broken after `PONG_MS`. Then each closed socket connects without waiting
- * for the rest of its wait, one just broken among them when its owner
- * starts the wait as the break reaches it. An owner that learns of the
- * break through a promise, as a conversation that still opens does, starts
- * its wait once the promises due have run, so the closed sockets are swept
- * once more when the task the check ran in has ended. Resolves once every
- * open socket was judged alive or broken. A return from a later absence
- * checks again: what the earlier check asked was answered, if at all,
- * before the page went away again, and says nothing of the sockets now.
+ * The page came back: it became visible again, the browser showed it from its
+ * back-forward cache, a frozen page resumed, or it came back online.
+ *
+ * Once it has read what its sockets hold:
+ *
+ * 1. Each socket still opening from before the page went away is abandoned and
+ *    opened again.
+ * 2. Each open socket that has brought nothing for `SILENCE_MS` by the clock is
+ *    broken at once.
+ * 3. Each other one is watched for the rest of that time by the clock and, where
+ *    its far end can answer, asked for a `pong`, without which it is broken after
+ *    `PONG_MS`.
+ * 4. Then each closed socket connects without waiting for the rest of its wait,
+ *    one just broken among them when its owner starts the wait as the break
+ *    reaches it.
+ *
+ * An owner that learns of the break through a promise, as a conversation that
+ * still opens does, starts its wait once the promises due have run, so the closed
+ * sockets are swept once more when the task the check ran in has ended.
+ *
+ * Resolves once every open socket was judged alive or broken. A return from a
+ * later absence checks again: what the earlier check asked was answered, if at
+ * all, before the page went away again, and says nothing of the sockets now.
  */
 export function pageReturned(): Promise<void> {
   // One check serves every sign of a return from the same absence that
@@ -446,12 +478,14 @@ export function pendingReturnCheck(): Promise<void> | null {
 }
 
 /**
- * Each socket that waits to connect again connects now: the page's path to
- * a Host changed, as when a direct channel opened or failed
- * (`packages/web/src/direct/index.ts`), and a view its owner just
- * ended for the move connects on the new path; or the page reaches the
- * backend again after it was away, which the synchronization channel
- * learns first.
+ * Each socket that waits to connect again connects now. This happens in two
+ * cases:
+ *
+ * - The page's path to a Host changed, as when a direct channel opened or failed
+ *   (`packages/web/src/direct/index.ts`), and a view its owner just ended for the
+ *   move connects on the new path.
+ * - The page reaches the backend again after it was away, which the
+ *   synchronization channel learns first.
  */
 export function reconnectNow(): void {
   connectWaiting()
@@ -469,10 +503,11 @@ const online = ref(defaultNavigator?.onLine ?? true)
 let offlineHold: ReturnType<typeof setTimeout> | null = null
 
 /**
- * Whether the browser reports a network, as the page counts it: its word
- * that it is offline counts once it has held for `OFFLINE_HOLD_MS`. The
- * connection banner says so while it does not, and the direct channel tries
- * again when it returns (`packages/web/src/direct/index.ts`).
+ * Whether the browser reports a network, as the page counts it: its word that it is
+ * offline counts once it has held for `OFFLINE_HOLD_MS`.
+ *
+ * The connection banner says so while it does not, and the direct channel tries again
+ * when it returns (`packages/web/src/direct/index.ts`).
  */
 export const browserOnline = readonly(online)
 
@@ -516,10 +551,13 @@ export function browserCameOnline(): void {
 export const pageVisibility = readonly(useDocumentVisibility())
 
 /**
- * Follows the page's going away and its return in `window` and `document`,
- * until the answer is called: hidden and visible again, `pagehide` and a
- * `pageshow` from the back-forward cache, `freeze` and `resume`, offline
- * and online.
+ * Follows the page's going away and its return in `window` and `document`, until the
+ * answer is called. It follows:
+ *
+ * - hidden and visible again,
+ * - `pagehide` and a `pageshow` from the back-forward cache,
+ * - `freeze` and `resume`, and
+ * - offline and online.
  */
 export function followPage(window: Pick<Window, 'addEventListener' | 'removeEventListener'>, document: Pick<Document, 'visibilityState' | 'addEventListener' | 'removeEventListener'>): () => void {
   const stops = [

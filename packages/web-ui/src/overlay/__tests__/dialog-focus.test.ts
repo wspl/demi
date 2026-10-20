@@ -2,12 +2,14 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
 
-// A dialog opened on a phone focuses no text field, so the on-screen keyboard
-// does not cover what just opened; the panel takes the focus, so the keys and
-// a screen reader still start inside it. On the desktop it opens on its first
-// field. The dialog is wired as Dialog.vue wires it (`useDialogFocus`) on a
-// happy-dom page, whose width switch is given here. A few milliseconds, besides
-// the start of the page.
+// A dialog opened on a phone focuses no text field, so the on-screen keyboard does
+// not cover what just opened. The panel takes the focus, so the keys and a screen
+// reader still start inside it. On the desktop it opens on its first field.
+//
+// The dialog is wired as Dialog.vue wires it (`useDialogFocus`) on a happy-dom page,
+// whose width switch is given here.
+//
+// Cost: a few milliseconds, besides the start of the page.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 const { useDialogFocus } = await import('../dialogFocus')

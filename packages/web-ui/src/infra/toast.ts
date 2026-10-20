@@ -7,14 +7,17 @@ import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
  * closed, the drop has no field, the send failed off-control. Do not toast a
  * success the page already shows, or stand in for a dialog that does not exist.
  *
- * Its tone says what happened, and its mark follows: `success`, the action did
- * what was asked (Copied); `neutral`, a fact about the request, which neither
- * worked nor failed (a folder outside the workspace); `danger`, it failed. Every
- * toast names its tone, so none claims a success by default.
+ * Its tone says what happened, and its mark follows. Every toast names its tone,
+ * so none claims a success by default.
+ *
+ * - `success`: the action did what was asked (Copied).
+ * - `neutral`: a fact about the request, which neither worked nor failed (a
+ *   folder outside the workspace).
+ * - `danger`: it failed.
  *
  * A toast may offer one action, such as Reload, which closes it.
  *
- * A failure stays until it is closed; any other toast closes by itself after
+ * A failure stays until it is closed. Any other toast closes by itself after
  * `TOAST_DURATION_MS`, or `ACTION_TOAST_DURATION_MS` when it offers an action,
  * counted only while the pointer is not over the toasts.
  */

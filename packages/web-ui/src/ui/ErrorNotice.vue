@@ -12,14 +12,21 @@ import { ICON_PX } from './icon-metrics'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
- * A failure told in the flow of the conversation: a turn that failed, a
- * message that was not delivered, a session that lost its connection.
+ * A failure told in the flow of the conversation: a turn that failed, a message
+ * that was not delivered, a session that lost its connection.
  *
- * One tinted bar, full width where it sits: a sentence, the upstream message
- * under it, the facts on a line of their own, wrapping where it is narrow, a control of the record's own under them
- * (the default slot), the source's payload behind a fold, and its actions,
- * most often one, the first the one to try first, beside a copy control for the support thread. It is a record in the transcript, not a
- * fixture of the dock, so it scrolls with what it describes.
+ * One tinted bar, full width where it sits, holding in order:
+ *
+ * - a sentence,
+ * - the upstream message under it,
+ * - the facts on a line of their own, wrapping where it is narrow,
+ * - a control of the record's own under them (the default slot),
+ * - the source's payload behind a fold, and
+ * - its actions, most often one, the first the one to try first, beside a copy
+ *   control for the support thread.
+ *
+ * It is a record in the transcript, not a fixture of the dock, so it scrolls with
+ * what it describes.
  */
 export interface NoticeAction {
   label: TitleText

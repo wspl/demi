@@ -1,35 +1,39 @@
 import { onBeforeUnmount, watch, type WatchSource } from 'vue'
 
 /**
- * The browser's Back closes the layer on top of a phone's page, a bottom
- * sheet or a full-screen pane, as Back closes one in a phone's own apps.
+ * The browser's Back closes the layer on top of a phone's page, a bottom sheet
+ * or a full-screen pane, as Back closes one in a phone's own apps.
  *
- * A layer that opens adds an entry at the same address to the window's
- * history; Back leaves that entry, which closes the layer, and the page's
- * router, which hears every `popstate` before this module (its listener is
- * older), finds itself at the address it was at. A layer that closes another
- * way, a tap or a drag, takes its entry off itself, through the router's
- * own history so that the router lets that `popstate` pass
+ * A layer that opens adds an entry at the same address to the window's history.
+ * Back leaves that entry, which closes the layer, and the page's router, which
+ * hears every `popstate` before this module (its listener is older), finds
+ * itself at the address it was at.
+ *
+ * A layer that closes another way, a tap or a drag, takes its entry off itself,
+ * through the router's own history so that the router lets that `popstate` pass
  * (`setHistoryTraversal`, which the app gives vue-router's
- * `history.go(delta, false)`); otherwise the router would take the pop for
- * the user's own and start a navigation of its own, cancelling one under way. A navigation
- * the app starts at that moment, such as a row that opens a conversation
- * and closes the drawer, waits for the removal first (`historySettled`,
- * which the app's router awaits before each navigation): pushed before, the
- * new page would land under the entry about to be taken off. A layer that
- * opens at that moment, such as the dialog a menu's row opens as the menu
- * closes, adds its entry after the removal for the same reason.
+ * `history.go(delta, false)`). Otherwise the router would take the pop for the
+ * user's own and start a navigation of its own, cancelling one under way.
  *
- * Every layer the user closes stands here on a phone, the overlay store's
- * menus, popovers and dialogs (`useOverlay`) as well as the sheets, the
- * drawer and the work panel, so Back closes the one opened last, which is
- * the one on top, and leaves the page only once none is open. A layer that
- * closed another way while one above it was still open keeps its entry
- * until Back comes down to it, which then takes it off too, so one Back is
- * never spent on a layer already gone.
+ * Two cases wait for that removal:
  *
- * A page shown inside another, as the gallery's phone frames are, adds no
- * entry: the browser's history and its Back belong to the page around it.
+ * - A navigation the app starts at that moment, such as a row that opens a
+ *   conversation and closes the drawer, waits for the removal first
+ *   (`historySettled`, which the app's router awaits before each navigation).
+ *   Pushed before, the new page would land under the entry about to be taken
+ *   off.
+ * - A layer that opens at that moment, such as the dialog a menu's row opens as
+ *   the menu closes, adds its entry after the removal for the same reason.
+ *
+ * Every layer the user closes stands here on a phone, the overlay store's menus,
+ * popovers and dialogs (`useOverlay`) as well as the sheets, the drawer and the
+ * work panel. So Back closes the one opened last, which is the one on top, and
+ * leaves the page only once none is open. A layer that closed another way while
+ * one above it was still open keeps its entry until Back comes down to it, which
+ * then takes it off too, so one Back is never spent on a layer already gone.
+ *
+ * A page shown inside another, as the gallery's phone frames are, adds no entry:
+ * the browser's history and its Back belong to the page around it.
  */
 
 /** The key of the layer's token in its entry's history state. */

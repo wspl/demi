@@ -8,14 +8,21 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import { stopSentence, type MoveAnswers, type MoveQuestion } from './move-question'
 
 /**
- * The question before a conversation that has messages moves: where it will run, that the files stay
- * where they are, and when the agent learns of it. Move and Tell Agent is the default and moves it and
- * wakes the agent; Move moves it only. While the agent works the first line says what stops and the
- * answers read Stop and Move and Stop, Move and Tell Agent: they stop the work, and the move follows
- * once it is idle. While the host carries the move out, the answer chosen shows that it works and the
- * other cannot be pressed (`answers`); Cancel closes the dialog and the move goes on. `useMoveQuestion`
- * holds its state. It stacks on a directory picker it is asked from, which stays for another choice
- * when the move is cancelled, and replaces the host menu it is asked from.
+ * The question before a conversation that has messages moves: where it will run,
+ * that the files stay where they are, and when the agent learns of it.
+ *
+ * - Move and Tell Agent is the default and moves it and wakes the agent. Move
+ *   moves it only.
+ * - While the agent works, the first line says what stops and the answers read
+ *   Stop and Move and Stop, Move and Tell Agent: they stop the work, and the move
+ *   follows once it is idle.
+ * - While the host carries the move out, the answer chosen shows that it works
+ *   and the other cannot be pressed (`answers`). Cancel closes the dialog and
+ *   the move goes on.
+ * - `useMoveQuestion` holds its state.
+ * - It stacks on a directory picker it is asked from, which stays for another
+ *   choice when the move is cancelled, and replaces the host menu it is asked
+ *   from.
  */
 const props = defineProps<{
   isOpen: boolean

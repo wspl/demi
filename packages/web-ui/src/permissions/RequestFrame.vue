@@ -5,10 +5,14 @@ import { ICON_PX } from '../ui/icon-metrics'
 import type { HeadlineText } from '../ui/ui-text'
 
 /**
- * The card every request of a conversation stands in, pinned above the
- * composer: a mark and the title, which one of how many requests it is while
- * several wait, the request's own body, and its buttons. It is not modal:
- * the transcript and the composer stay usable.
+ * The card every request of a conversation stands in, pinned above the composer. It
+ * holds, in order:
+ *
+ * - a mark and the title, which one of how many requests it is while several wait,
+ * - the request's own body, and
+ * - its buttons.
+ *
+ * It is not modal: the transcript and the composer stay usable.
  */
 defineProps<{
   title: HeadlineText

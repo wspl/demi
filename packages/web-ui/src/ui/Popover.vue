@@ -240,10 +240,11 @@ watch(floatingRef, (el, _prev, onCleanup) => {
 })
 
 /**
- * A panel that held the focus gives it back to its opener when it closes, by
- * a choice, Escape or a click outside on nothing that takes the focus
- * (`useFocusReturn`); a panel that never held it gives none back. A submenu
- * gives the keys back to its own menu (MenuItem).
+ * A panel that held the focus gives it back to its opener when it closes, by a
+ * choice, Escape or a click outside on nothing that takes the focus
+ * (`useFocusReturn`). A panel that never held it gives none back.
+ *
+ * A submenu gives the keys back to its own menu (MenuItem).
  */
 const focusReturn = useFocusReturn(inFamily)
 let heldFocus = false
@@ -292,11 +293,12 @@ if (!nested)
   provide(overlayOwnerKey, overlayId)
 
 /**
- * Escape closes the panel, as it closes a menu or popover on macOS: the
- * innermost one the keys are in, and, with the keys elsewhere on the page,
- * the one on top. An Escape something inside used first, such as a filter
- * it cleared or a type-select it ended (it called preventDefault), closes
- * nothing, and one this panel takes reaches no dialog behind it.
+ * Escape closes the panel, as it closes a menu or popover on macOS: the innermost
+ * one the keys are in, and, with the keys elsewhere on the page, the one on top.
+ *
+ * An Escape something inside used first, such as a filter it cleared or a
+ * type-select it ended (it called preventDefault), closes nothing. One this panel
+ * takes reaches no dialog behind it.
  */
 function closeOnEscape(event: KeyboardEvent): void {
   if (!props.isOpen || event.key !== 'Escape' || !escapeCloses(escapeKey(event)))

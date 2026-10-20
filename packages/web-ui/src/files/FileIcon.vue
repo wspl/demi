@@ -5,10 +5,11 @@ import { ensureFileIconTheme, fileIconTheme, fileIconUrl } from './file-icon-the
 import { fileIconGlyph, fileIconName } from './file-icons'
 
 /**
- * A file or folder glyph from the Material Icon Theme, chosen by name: `src`
- * gets the source folder, `package.json` the Node badge, `App.vue` the Vue mark.
- * Until the theme has loaded, and for a name it does not know, a plain outline
- * that takes the same room.
+ * A file or folder glyph from the Material Icon Theme, chosen by name: `src` gets the
+ * source folder, `package.json` the Node badge, `App.vue` the Vue mark.
+ *
+ * Until the theme has loaded, and for a name it does not know, a plain outline that
+ * takes the same room.
  */
 const props = withDefaults(
   defineProps<{

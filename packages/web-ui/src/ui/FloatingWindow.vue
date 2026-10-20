@@ -21,33 +21,41 @@ import { provideLayerElevation } from '../overlay/layerElevation'
 import type { OverlayStore } from '../overlay/overlayStore'
 
 /**
- * A small window over the page, as Quick Look's and Preview's are on a Mac:
- * it blocks nothing, so the page beside and beneath it stays usable, with no
- * scrim and no focus held inside it.
+ * A small window over the page, as Quick Look's and Preview's are on a Mac: it
+ * blocks nothing, so the page beside and beneath it stays usable, with no scrim
+ * and no focus held inside it.
  *
- * Move and resize: dragging the title bar moves it, and dragging any edge or
- * corner resizes it, with the matching cursor; it stays at least 320 × 240,
- * no larger than the page, and its title bar on the page, also when the
- * browser window shrinks (`clampWindowRect`). The host keeps the box
- * (v-model:rect) and decides where and how large the window opens. A drag captures the pointer (`startPointerDrag`), and Escape during it
- * puts the window back.
+ * Move and resize:
  *
- * Focus: opening moves the focus into the window, and closing gives it back
- * to what had it when the window opened, as long as the focus is still in
- * the window. `activate` does both again when the host shows something new
- * in an open window.
+ * - Dragging the title bar moves it, and dragging any edge or corner resizes it,
+ *   with the matching cursor.
+ * - It stays at least 320 × 240, no larger than the page, and its title bar on
+ *   the page, also when the browser window shrinks (`clampWindowRect`).
+ * - The host keeps the box (v-model:rect) and decides where and how large the
+ *   window opens.
+ * - A drag captures the pointer (`startPointerDrag`), and Escape during it puts
+ *   the window back.
  *
- * It stands in the page's stack of windows (`window-stack.ts`), as the
- * session's windows do: while it is the newest, a press outside every window
- * closes it, except in a place that keeps the windows, such as the work
- * panel (`KEEPS_WINDOWS`), and so does Escape, unless the focus is in a field the user
- * types in, or a menu or a dialog of `overlayStore` is open and takes the
- * key (`useEscapeClose`). The window is not one of the store's layers: a
- * menu opened beside it does not close it, and it does not close a menu.
+ * Focus: opening moves the focus into the window, and closing gives it back to
+ * what had it when the window opened, as long as the focus is still in the
+ * window. `activate` does both again when the host shows something new in an open
+ * window.
  *
- * The title bar holds the `title`, then what the `trailing` slot gives, such
- * as a picture's size, then the close control at the bar's end, as far from
- * its top, bottom and end edges.
+ * Closing: it stands in the page's stack of windows (`window-stack.ts`), as the
+ * session's windows do. While it is the newest:
+ *
+ * - A press outside every window closes it, except in a place that keeps the
+ *   windows, such as the work panel (`KEEPS_WINDOWS`).
+ * - Escape closes it too, unless the focus is in a field the user types in, or a
+ *   menu or a dialog of `overlayStore` is open and takes the key
+ *   (`useEscapeClose`).
+ *
+ * The window is not one of the store's layers: a menu opened beside it does not
+ * close it, and it does not close a menu.
+ *
+ * The title bar holds the `title`, then what the `trailing` slot gives, such as a
+ * picture's size, then the close control at the bar's end, as far from its top,
+ * bottom and end edges.
  */
 const props = defineProps<{
   open: boolean

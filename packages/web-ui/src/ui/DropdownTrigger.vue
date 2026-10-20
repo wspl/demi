@@ -10,25 +10,31 @@ import { pressOnKey } from './button-events'
 import { ICON_PX, useIconPx } from './icon-metrics'
 
 /**
- * `default` is a button; `ghost` a quiet inline chip; `field` a form control
- * that fills its row and shows a value (an icon and a name) the way an input
- * shows text. Each is as wide as what it holds unless it is made wider; then
- * the value stays at the start and the chevron moves to the end, so a
- * stretched button still reads as a picker, not as an action.
+ * The trigger's faces:
  *
- * A `field` may carry a `detail` (InlineDetail): what its value stands
- * for, after it on the same line and baseline, smaller and in the
- * secondary color, such as what Automatic resolves to, `Automatic (Claude
- * Haiku 5.5)`. The field keeps its height; the detail truncates first, and
- * the value only once the detail is gone. Only a field shows a value, so
- * only a field draws a detail.
+ * - `default` is a button.
+ * - `ghost` is a quiet inline chip.
+ * - `field` is a form control that fills its row and shows a value (an icon and a
+ *   name) the way an input shows text.
+ *
+ * Each is as wide as what it holds unless it is made wider. Then the value stays
+ * at the start and the chevron moves to the end, so a stretched button still
+ * reads as a picker, not as an action.
+ *
+ * A `field` may carry a `detail` (InlineDetail): what its value stands for, after
+ * it on the same line and baseline, smaller and in the secondary color, such as
+ * what Automatic resolves to, `Automatic (Claude Haiku 5.5)`. The field keeps its
+ * height; the detail truncates first, and the value only once the detail is gone.
+ * Only a field shows a value, so only a field draws a detail.
  *
  * Where the menu's items have icons of their own, any face shows the chosen
- * item's before its value, as its menu row draws it (ChoiceIcon): `icon`
- * with `indicator` as the row's dot on its corner, or the `icon` slot for an
- * icon drawn otherwise, such as a warning in its place. A Host's glyph
- * (`hostGlyph`) carries its state's dot itself. A choice with no icon of its
- * own stays text.
+ * item's before its value, as its menu row draws it (ChoiceIcon):
+ *
+ * - `icon` with `indicator` as the row's dot on its corner.
+ * - The `icon` slot for an icon drawn otherwise, such as a warning in its place.
+ * - A Host's glyph (`hostGlyph`) carries its state's dot itself.
+ *
+ * A choice with no icon of its own stays text.
  */
 export type DropdownVariant = 'default' | 'ghost' | 'field'
 export type DropdownSize = 'sm' | 'md'

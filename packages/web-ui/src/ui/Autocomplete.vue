@@ -10,16 +10,20 @@ import TextInput from './TextInput.vue'
 import { useMenuRowHeight } from './menu-context'
 
 /**
- * A text field that offers rows to choose from under it, as a browser's
- * address bar does: the caller owns the search and passes the rows, the
- * field owns the keyboard. Typing, Down Arrow or a click opens the list with
- * its first row lit; the arrows move the lit row and wrap, Return chooses it,
- * the pointer moving over a row lights it and a click chooses it. Escape puts
- * the list away and a second Escape is the surrounding dialog's; Tab leaves the
- * field and closes the list. A field that takes the focus holding text offers
- * its rows at once. Every key the list does not take is the field's own.
- * What a row looks like is the `item` slot's; the field keeps the focus and
- * its caret while a row is clicked. Gallery: Dialogs › Add Model.
+ * A text field that offers rows to choose from under it, as a browser's address
+ * bar does: the caller owns the search and passes the rows, the field owns the
+ * keyboard.
+ *
+ * - Typing, Down Arrow or a click opens the list with its first row lit.
+ * - The arrows move the lit row and wrap, Return chooses it, the pointer moving
+ *   over a row lights it and a click chooses it.
+ * - Escape puts the list away and a second Escape is the surrounding dialog's.
+ * - Tab leaves the field and closes the list.
+ * - A field that takes the focus holding text offers its rows at once.
+ * - Every key the list does not take is the field's own.
+ *
+ * What a row looks like is the `item` slot's. The field keeps the focus and its
+ * caret while a row is clicked. Gallery: Dialogs › Add Model.
  */
 defineOptions({ inheritAttrs: false })
 

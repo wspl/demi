@@ -12,13 +12,16 @@ import { limitProblem, limitStep, parseLimit, type LimitEvent, type LimitPhase, 
 import type { HeadlineText, SentenceText, TitleText } from './ui-text'
 
 /**
- * A limit: a whole number from 1, or Unlimited. A field holds the number,
- * and a menu at the row's end chooses Limited or Unlimited, as Xcode's
- * scheme editor pairs a choice with a count. Unlimited asks first in a
- * dialog whose body is the default slot; its Cancel, the default button,
- * keeps the limit. Unlimited hides the field and keeps its number, which
- * Limited shows again as it was. The field commits on Enter or blur and
- * reports text that is no limit through `problem`, as CommitTextInput does.
+ * A limit: a whole number from 1, or Unlimited.
+ *
+ * - A field holds the number, and a menu at the row's end chooses Limited or
+ *   Unlimited, as Xcode's scheme editor pairs a choice with a count.
+ * - Unlimited asks first in a dialog whose body is the default slot; its Cancel,
+ *   the default button, keeps the limit.
+ * - Unlimited hides the field and keeps its number, which Limited shows again as
+ *   it was.
+ * - The field commits on Enter or blur and reports text that is no limit through
+ *   `problem`, as CommitTextInput does.
  */
 const props = defineProps<{
   /** The limit: its number, kept while it is lifted, and whether it is. */

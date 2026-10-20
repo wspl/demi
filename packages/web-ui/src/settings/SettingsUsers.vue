@@ -33,23 +33,30 @@ import { roleLabel, assignableRoles, userActions, type UserAction } from './user
 
 /**
  * Settings › Users, which only the master and admins see, as macOS's Users &
- * Groups or a GitHub organization's People: one row per account with its
- * nickname and email, its role and when it was last active, *Disabled* on a
- * disabled one, *Hasn’t Chosen a Password* on one still to choose its own (new,
- * or reset by an administrator) and *You* on the user's own. A row's ··· menu
- * offers what the user may do to that account and is absent where they may do
- * nothing (a peer or a higher role); on their own row it offers Cloud Storage…
- * alone.
+ * Groups or a GitHub organization's People.
  *
- * Add User… asks the email and the role; the server makes the first password.
- * Reset Password… asks first and makes another. Both end on one last step:
- * the password, with Copy and New Password, beside a sign-in code, which Sign-In
- * Code… shows alone. Those three ask the administrator's own confirmation, as
- * Hand Off to Your Phone does, when the session has not been verified in
- * the last five minutes. Change Role…, Cloud Storage…, Sign Out Everywhere…
- * and Disable Account… ask for one thing or confirm, saying what happens; Enable Account does
- * not ask, since it only undoes. The host carries each out and says itself a
- * refusal it could not hide.
+ * One row per account:
+ *
+ * - It shows its nickname and email, its role and when it was last active.
+ * - *Disabled* marks a disabled account, *Hasn’t Chosen a Password* one still to
+ *   choose its own (new, or reset by an administrator) and *You* the user's own.
+ * - A row's ··· menu offers what the user may do to that account and is absent
+ *   where they may do nothing (a peer or a higher role). On their own row it
+ *   offers Cloud Storage… alone.
+ *
+ * The menu's actions:
+ *
+ * - Add User… asks the email and the role; the server makes the first password.
+ * - Reset Password… asks first and makes another.
+ * - Both end on one last step: the password, with Copy and New Password, beside
+ *   a sign-in code, which Sign-In Code… shows alone. Those three ask the
+ *   administrator's own confirmation, as Hand Off to Your Phone does, when the
+ *   session has not been verified in the last five minutes.
+ * - Change Role…, Cloud Storage…, Sign Out Everywhere… and Disable Account… ask
+ *   for one thing or confirm, saying what happens.
+ * - Enable Account does not ask, since it only undoes.
+ *
+ * The host carries each out and says itself a refusal it could not hide.
  */
 const props = defineProps<{
   host: SettingsUsersHost

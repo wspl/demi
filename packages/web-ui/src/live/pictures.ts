@@ -1,9 +1,9 @@
 /**
- * A live view's pictures on a canvas (`packages/plugin-mobile/src/index.ts`):
- * WebCodecs decodes the Host's H.264 frames in
- * sequence, and the page draws the newest picture it has at the next
- * refresh.
- * Whatever the source, a browser tab or a simulator, its pictures come so.
+ * A live view's pictures on a canvas (`packages/plugin-mobile/src/index.ts`).
+ *
+ * WebCodecs decodes the Host's H.264 frames in sequence, and the page draws the
+ * newest picture it has at the next refresh. Whatever the source, a browser tab or a
+ * simulator, its pictures come so.
  */
 import { LIVE_VIDEO_CODEC } from '@demicodes/protocol'
 import type { LiveVideoFrame } from './frames'

@@ -6,11 +6,13 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
- * A provider's list of models inside its card, as every section of the
- * entry's page shows one, text models and each kind of media alike: a
- * header row with the filter and the list's buttons (`actions`), such as
- * Add Model, then the rows, then, when no row shows, why in plain text,
- * never red, since nothing has failed.
+ * A provider's list of models inside its card, as every section of the entry's page
+ * shows one, text models and each kind of media alike.
+ *
+ * - A header row holds the filter and the list's buttons (`actions`), such as Add
+ *   Model.
+ * - Then come the rows.
+ * - When no row shows, plain text says why, never red, since nothing has failed.
  */
 const props = withDefaults(defineProps<{
   /** The filter's placeholder; without it the list has no header row. */

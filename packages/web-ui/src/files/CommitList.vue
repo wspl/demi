@@ -17,16 +17,20 @@ import { commitMenu } from './object-menus'
 /**
  * One branch's commits under the Change view's files, newest first, as VS
  * Code's commit list shows them beside Source Control
- * (`packages/web-ui/src/files/history.ts`): each one row as high as the file
- * tree's, its summary, then its author and how long ago dimmed at the
- * row's end: a short row drops the author first, then cuts the summary,
- * the age whole; its whole message, id and time in its tooltip. While the
- * list shows the branch checked out it starts with Uncommitted Changes and
- * its count of files (`uncommitted`). Older commits load as the list
- * scrolls to its end, while `more`. A click selects a row, as the arrows do
- * on the row after or before; null is Uncommitted Changes. A commit's row
- * has the commit's menu less Open, which the row already is: Copy Commit
- * Hash (`commitMenu`).
+ * (`packages/web-ui/src/files/history.ts`).
+ *
+ * - Each commit is one row as high as the file tree's: its summary, then its
+ *   author and how long ago, dimmed at the row's end.
+ * - A short row drops the author first, then cuts the summary, then drops the
+ *   age whole.
+ * - A row's tooltip holds its whole message, id and time.
+ * - While the list shows the branch checked out, it starts with Uncommitted
+ *   Changes and its count of files (`uncommitted`).
+ * - Older commits load as the list scrolls to its end, while `more`.
+ * - A click selects a row, as the arrows do on the row after or before. Null is
+ *   Uncommitted Changes.
+ * - A commit's row has the commit's menu less Open, which the row already is:
+ *   Copy Commit Hash (`commitMenu`).
  */
 const props = defineProps<{
   commits: readonly LoggedCommit[]

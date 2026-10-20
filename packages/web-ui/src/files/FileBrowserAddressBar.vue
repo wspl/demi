@@ -19,29 +19,36 @@ import { t } from './locales/text'
 import type { FileBrowserSource } from './types'
 
 /**
- * The whole path as crumbs from the Host's root, each its folder glyph, the
- * root and the home their landmark glyphs, in one of two modes. `navigate`
- * (a file dialog): a crumb jumps there. `browse` (a file view): a crumb opens
- * a menu of what lies beside it, directories unfolding into their own, so
- * another file is a pick away. In both, a click anywhere on the bar but a
- * crumb turns it into a text field with the absolute path, the way the
- * Windows address bar edits, and Enter asks the host to go where it says: a
- * relative path starts from `base`, as a File view's starts from its
- * workspace, and `~` names the source's home. While it is a field it
- * completes the path from the source's listings (`PathInput`): a completed
- * directory keeps the field open on its entries, a completed file goes there
- * as Enter would. `leaf` says what the last crumb is, so a file shows its
- * file glyph.
+ * The whole path as crumbs from the Host's root, each its folder glyph, the root
+ * and the home their landmark glyphs, in one of two modes.
  *
- * A bar too narrow for every name turns crumbs into their glyphs, one at a
- * time from the left, the name kept in a tooltip; the last crumb keeps its
- * name longest. The widest name still shown, when it would be the next to go,
- * is cut short with an ellipsis to fill the room instead, so the bar is never
- * left half empty. When even the glyphs overflow, the middle folders go
- * behind one ellipsis item, as in Finder's path bar, so the first and the
- * last crumbs stay whole and no crumb is ever cut in half at an edge
- * (`fitCrumbs`). The ellipsis lists the folders it stands for: one picked
- * goes there in `navigate` mode, and opens its own crumb's menu in `browse`.
+ * - `navigate` (a file dialog): a crumb jumps there.
+ * - `browse` (a file view): a crumb opens a menu of what lies beside it,
+ *   directories unfolding into their own, so another file is a pick away.
+ *
+ * In both modes, a click anywhere on the bar but a crumb turns it into a text
+ * field with the absolute path, the way the Windows address bar edits, and Enter
+ * asks the host to go where it says. A relative path starts from `base`, as a
+ * File view's starts from its workspace, and `~` names the source's home.
+ *
+ * While it is a field it completes the path from the source's listings
+ * (`PathInput`). A completed directory keeps the field open on its entries, and
+ * a completed file goes there as Enter would. `leaf` says what the last crumb
+ * is, so a file shows its file glyph.
+ *
+ * A bar too narrow for every name fits its crumbs in this order (`fitCrumbs`):
+ *
+ * 1. Crumbs turn into their glyphs, one at a time from the left, the name kept
+ *    in a tooltip. The last crumb keeps its name longest.
+ * 2. The widest name still shown, when it would be the next to go, is cut short
+ *    with an ellipsis to fill the room instead, so the bar is never left half
+ *    empty.
+ * 3. When even the glyphs overflow, the middle folders go behind one ellipsis
+ *    item, as in Finder's path bar, so the first and the last crumbs stay whole
+ *    and no crumb is ever cut in half at an edge.
+ *
+ * The ellipsis lists the folders it stands for. One picked goes there in
+ * `navigate` mode, and opens its own crumb's menu in `browse`.
  */
 const props = withDefaults(
   defineProps<{

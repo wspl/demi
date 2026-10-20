@@ -20,12 +20,14 @@ import type { SettingsNewUser } from './types'
 import { roleDescription, roleLabel } from './users'
 
 /**
- * Add User…: the new account's email and its role; the server makes the
- * first password, which the last step shows. The roles are those below the
- * administrator's own; an admin, who may add only users, sees the role fixed. The
- * host carries the submit out (`onSubmit`, whose promise Add User shows) and
- * its refusal arrives as `error`; an address another account has is said
- * under the email field.
+ * Add User…: the new account's email and its role. The server makes the first
+ * password, which the last step shows.
+ *
+ * - The roles are those below the administrator's own. An admin, who may add only
+ *   users, sees the role fixed.
+ * - The host carries the submit out (`onSubmit`, whose promise Add User shows)
+ *   and its refusal arrives as `error`.
+ * - An address another account has is said under the email field.
  */
 const props = defineProps<{
   isOpen: boolean

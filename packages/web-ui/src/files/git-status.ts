@@ -1,13 +1,18 @@
 /**
  * How VS Code's Git marks a file, from git's two status letters for it (the
  * `XY` of `git status --porcelain`: the index against HEAD, then the working
- * tree against the index). VS Code files a path under one or two of its
- * resource groups, each with a status; its explorer then lets a later group's
- * mark replace an earlier one's, in the order index, untracked, working tree,
- * conflicts. So a staged new file edited again (`AM`) shows the working
- * tree's M, and a staged type change alone (`T `) shows nothing, since VS Code
- * files no index resource for it. The letters are VS Code's own; the words
- * are its words in Demi's sentence style.
+ * tree against the index).
+ *
+ * VS Code files a path under one or two of its resource groups, each with a
+ * status. Its explorer then lets a later group's mark replace an earlier one's,
+ * in the order index, untracked, working tree, conflicts. So:
+ *
+ * - A staged new file edited again (`AM`) shows the working tree's M.
+ * - A staged type change alone (`T `) shows nothing, since VS Code files no
+ *   index resource for it.
+ *
+ * The letters are VS Code's own; the words are its words in Demi's sentence
+ * style.
  */
 import { t } from './locales/text'
 

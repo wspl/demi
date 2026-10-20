@@ -2,8 +2,10 @@
 /**
  * A change's line counts, as every changed file shows them: added in green,
  * removed in red, a zero left out, so a change of no lines shows nothing.
- * `compact` sets them 2px apart, as the strip's Change badge does. `zeros`
- * shows a zero too, as a change summed over files does on GitHub: +10 −0.
+ *
+ * - `compact` sets them 2px apart, as the strip's Change badge does.
+ * - `zeros` shows a zero too, as a change summed over files does on GitHub: +10
+ *   −0.
  */
 defineProps<{ added: number; removed: number; compact?: boolean; zeros?: boolean }>()
 </script>

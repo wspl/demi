@@ -5,14 +5,16 @@ import type { HeadlineText } from './ui-text'
 
 /**
  * A choice the user must make, step by step: on a computer one dialog at the
- * centre of the page over the dimmed page, on a phone the whole screen, as
- * iOS's own setup is. The steps replace each other in place, each a
- * `WizardStep`, which the host names by `step` so a change of step plays the
- * change; the frame stays where it is. A step that cannot be skipped has no
- * close button and Escape and the scrim leave it; a skippable one closes from
- * its corner, by Escape and by the scrim, which `close` tells the host to take
- * as the step's own way out. Choose Your Password and the passkey offer are its
- * steps.
+ * centre of the page over the dimmed page, on a phone the whole screen, as iOS's
+ * own setup is. Choose Your Password and the passkey offer are its steps.
+ *
+ * - The steps replace each other in place, each a `WizardStep`, which the host
+ *   names by `step` so a change of step plays the change. The frame stays where it
+ *   is.
+ * - A step that cannot be skipped has no close button, and Escape and the scrim
+ *   leave it.
+ * - A skippable one closes from its corner, by Escape and by the scrim, which
+ *   `close` tells the host to take as the step's own way out.
  */
 defineProps<{
   isOpen: boolean

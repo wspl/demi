@@ -10,10 +10,11 @@ import { useVerification, type VerificationHost } from './verification'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
- * Confirm It’s You: the step an action that needs the user's own
- * confirmation asks for on its own, as Hand Off to Your Phone does inside
- * its dialog, with the same fields and buttons. `verified` is emitted once
- * the host confirmed, for the action to go on.
+ * Confirm It’s You: the step an action that needs the user's own confirmation asks
+ * for on its own, as Hand Off to Your Phone does inside its dialog, with the same
+ * fields and buttons.
+ *
+ * `verified` is emitted once the host confirmed, for the action to go on.
  */
 const props = defineProps<{
   isOpen: boolean

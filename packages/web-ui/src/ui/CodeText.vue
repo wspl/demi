@@ -4,17 +4,19 @@ import { useResizeObserver } from '@vueuse/core'
 import { textWidth } from './text-width'
 
 /**
- * Code text, such as a command, that wraps at its spaces as an editor's word
- * wrap does: a word that does not fit moves to the next line whole, and only
- * a word longer than the whole line breaks, at any character, filling each
- * line to the edge. A word never breaks at a hyphen or a slash inside it, so
- * `echo` never shows as `ech` and `o`, nor `libatk-bridge2.0` as two names.
- * The text keeps its spaces and line breaks and copies exactly as given.
+ * Code text, such as a command, that wraps at its spaces as an editor's word wrap
+ * does.
  *
- * The caller lays the element out as a block, such as a flex item: the
- * line's width decides which words are longer than a line. `runs` colors
- * runs of the text, as a highlighter gives them, without changing where it
- * wraps.
+ * - A word that does not fit moves to the next line whole.
+ * - Only a word longer than the whole line breaks, at any character, filling each
+ *   line to the edge.
+ * - A word never breaks at a hyphen or a slash inside it, so `echo` never shows
+ *   as `ech` and `o`, nor `libatk-bridge2.0` as two names.
+ * - The text keeps its spaces and line breaks and copies exactly as given.
+ *
+ * The caller lays the element out as a block, such as a flex item: the line's
+ * width decides which words are longer than a line. `runs` colors runs of the
+ * text, as a highlighter gives them, without changing where it wraps.
  */
 const props = defineProps<{
   text: string

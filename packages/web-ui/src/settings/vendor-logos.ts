@@ -1,12 +1,13 @@
 /**
  * The vendors' marks, monochrome SVGs that `VendorMark` paints in the text's
- * color, found by file name: `logos/<vendor>.svg`. `bun xtask logos` keeps
- * models.dev's for every vendor the backend offers; the others are kept by
- * hand, their sources in `logos/hand-kept.txt`. A vendor without a mark shows
- * its initial.
+ * color, found by file name: `logos/<vendor>.svg`.
  *
- * Each mark is a file of its own that the browser loads when a page shows
- * it: inlined, the two hundred marks would add half a megabyte to the bundle.
+ * - `bun xtask logos` keeps models.dev's for every vendor the backend offers.
+ * - The others are kept by hand, their sources in `logos/hand-kept.txt`.
+ * - A vendor without a mark shows its initial.
+ *
+ * Each mark is a file of its own that the browser loads when a page shows it:
+ * inlined, the two hundred marks would add half a megabyte to the bundle.
  */
 const MARKS = import.meta.glob<string>('./logos/*.svg', {
   eager: true,

@@ -1,49 +1,50 @@
 import { PHONE_QUERY, SCREEN_EDGE_PX } from './phone'
 
 /**
- * What a phone's page needs, set up once by the app (`installPhonePage`):
+ * What a phone's page needs, set up once by the app (`installPhonePage`).
  *
- * - With the on-screen keyboard open, the app is exactly what the keyboard
- *   leaves visible, so the composer sits right above it and the transcript's
- *   end stays in view, at every width: an iPhone turned sideways is wider
- *   than the phone layout (`phone.ts`) and has the same keyboard. Chrome's
- *   `interactive-widget=resizes-content` does that itself; Safari on iOS
- *   ignores it, keeps the page its full height under the keyboard and
- *   scrolls the page to show the focused field. So the page's own scroll is
- *   held at 0, and the body, the app's frame (`base.css`), takes the visual
- *   viewport's height and top (`--app-height`, `--app-top`, and
- *   `data-keyboard` on the root, which drops the bottom safe area the
- *   keyboard covers), following it as the keyboard opens, closes, changes
- *   its height or the phone turns. A page zoomed in, as a desktop's pinch
- *   zooms one, keeps its frame: what is visible is then a part of it.
+ * With the on-screen keyboard open, the app is exactly what the keyboard leaves
+ * visible, so the composer sits right above it and the transcript's end stays in
+ * view, at every width: an iPhone turned sideways is wider than the phone layout
+ * (`phone.ts`) and has the same keyboard.
+ *
+ * - Chrome's `interactive-widget=resizes-content` does that itself. Safari on iOS
+ *   ignores it, keeps the page its full height under the keyboard and scrolls the
+ *   page to show the focused field.
+ * - So the page's own scroll is held at 0, and the body, the app's frame
+ *   (`base.css`), takes the visual viewport's height and top (`--app-height`,
+ *   `--app-top`, and `data-keyboard` on the root, which drops the bottom safe area
+ *   the keyboard covers). It follows the viewport as the keyboard opens, closes,
+ *   changes its height or the phone turns.
+ * - A page zoomed in, as a desktop's pinch zooms one, keeps its frame: what is
+ *   visible is then a part of it.
  *
  * While the page is a phone's width, too:
  *
- * - The page never zooms. A pinch zooms nothing but what zooms itself, such
- *   as a picture (`ImagePreview`): `touch-action`, on every element since
- *   WebKit starts each scroller over (`base.css`), keeps it from the page
- *   everywhere but iOS, which ignores it for a pinch and is stopped through
- *   its own gesture events.
- * - The screen's edges are the app's: Safari on iOS, and the installed app,
- *   start their back and forward swipe from a touch within a few px of the
- *   screen's left or right edge, sliding the previous page in under the
- *   app's own controls. A touch that starts within `SCREEN_EDGE_PX` of
- *   either edge has its default prevented, which keeps that swipe from
- *   starting (since iOS 13.4); the app's own gestures there, such as the
- *   drawer's opening drag (SidebarLayout), still see every move. That touch
- *   scrolls nothing, and a prevented touch is no click either, so a tap
- *   there, one that lifts without moving and opened no menu, is given its
- *   click here, and a text field under it the focus, as the browser would
- *   have. Android's own Back, which no page can stop, is the history's
- *   (`overlay/back-close.ts`); Chrome's overscroll navigation is held off
- *   by the page's `overscroll-behavior: none` (`base.css`).
+ * - The page never zooms. A pinch zooms nothing but what zooms itself, such as a
+ *   picture (`ImagePreview`). `touch-action`, on every element since WebKit starts
+ *   each scroller over (`base.css`), keeps it from the page everywhere but iOS,
+ *   which ignores it for a pinch and is stopped through its own gesture events.
+ * - The screen's edges are the app's. Safari on iOS, and the installed app, start
+ *   their back and forward swipe from a touch within a few px of the screen's left
+ *   or right edge, sliding the previous page in under the app's own controls.
+ *   A touch that starts within `SCREEN_EDGE_PX` of either edge has its default
+ *   prevented, which keeps that swipe from starting (since iOS 13.4). The app's
+ *   own gestures there, such as the drawer's opening drag (SidebarLayout), still
+ *   see every move.
+ * - That touch scrolls nothing, and a prevented touch is no click either. So a tap
+ *   there, one that lifts without moving and opened no menu, is given its click
+ *   here, and a text field under it the focus, as the browser would have.
+ * - Android's own Back, which no page can stop, is the history's
+ *   (`overlay/back-close.ts`). Chrome's overscroll navigation is held off by the
+ *   page's `overscroll-behavior: none` (`base.css`).
  *
- * At every width, the viewport tag stays as the page shipped it: its
+ * At every width, the viewport tag stays as the page shipped it. Its
  * `maximum-scale=1` is what keeps Safari on iOS from zooming in on a field it
  * focuses whose text is under 16 px, such as one an extension adds, and a page
- * Safari zoomed stays zoomed, since nothing a page does sets the scale back. So
- * a script that rewrites the tag, removes it or adds a viewport tag of its own
- * after it, as an extension may, finds the page's tag back as it was, and last.
+ * Safari zoomed stays zoomed, since nothing a page does sets the scale back. So a
+ * script that rewrites the tag, removes it or adds a viewport tag of its own after
+ * it, as an extension may, finds the page's tag back as it was, and last.
  */
 
 /** A finger that moves farther than this drags, and is no tap. */
@@ -149,10 +150,12 @@ function giveTap(tap: { x: number; y: number; target: Element }): void {
 }
 
 /**
- * Holds the viewport tag the page shipped with, read as the app starts, before
- * any extension's script runs: puts its words back when they change, and the
- * tag back as the last viewport tag of the head, which is the one a browser
- * follows, when it leaves or another follows it. Null on a page without one.
+ * Holds the viewport tag the page shipped with, read as the app starts, before any
+ * extension's script runs. It puts its words back when they change, and the tag back
+ * as the last viewport tag of the head, which is the one a browser follows, when it
+ * leaves or another follows it.
+ *
+ * Null on a page without one.
  */
 function keepViewportTag(): MutationObserver | null {
   const tag = document.querySelector<HTMLMetaElement>('meta[name="viewport"]')

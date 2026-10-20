@@ -27,14 +27,17 @@ import { profileMissing, profileModelLabel } from './subagent-profiles'
 import type { SettingsSubagentDraft, SettingsSubagentProfile } from './types'
 
 /**
- * The Subagents section (`crates/agent-server/src/server/tree/profiles.rs`): the switch
- * that turns subagents on or off for the user, the two limits, each a
- * number or Unlimited after a warning, which keeps the number, and the
- * user's profiles, each with a switch of its own and an editor. A profile
- * whose model settings name something the catalog no longer offers is
- * marked unavailable with the part that is missing, which the page derives
- * from the catalog it holds. The host saves; the next spawn of every
- * conversation uses a change.
+ * The Subagents section (`crates/agent-server/src/server/tree/profiles.rs`).
+ *
+ * - The switch that turns subagents on or off for the user.
+ * - The two limits, each a number or Unlimited after a warning, which keeps the
+ *   number.
+ * - The user's profiles, each with a switch of its own and an editor. A profile
+ *   whose model settings name something the catalog no longer offers is marked
+ *   unavailable with the part that is missing, which the page derives from the
+ *   catalog it holds.
+ *
+ * The host saves; the next spawn of every conversation uses a change.
  */
 const props = defineProps<{
   /** The Subagents switch. */

@@ -20,50 +20,69 @@ import { useOverlay } from '../composables/useOverlay'
 import type { HeadlineText } from './ui-text'
 
 /**
- * Size: md is the default compact panel, wide fits a settings row beside a
- * long input, lg is an editor, xl is the settings shell, full is a viewer
- * that fills the window.
- * Narrow: where the scrim is narrower than the app's medium breakpoint (the
- * width at which the app's side panes become overlays), an xl or full panel
- * fills the scrim edge to edge with square corners and no margin of scrim,
- * keeping its content inside the device's safe area. Smaller sizes stay
- * floating panels. The scrim, not the viewport, is measured, so a catalog
- * host of phone width shows the same.
- * A flow that the whole screen should hold on a phone, such as a wizard, sets
- * `fillNarrow`: its panel then fills the scrim there whatever its size.
- * Inline (a catalog host provides `overlayInlineKey`): the panel renders in flow at its
- * own size, with no scrim and no centering.
+ * Size:
+ *
+ * - md is the default compact panel.
+ * - wide fits a settings row beside a long input.
+ * - lg is an editor.
+ * - xl is the settings shell.
+ * - full is a viewer that fills the window.
+ *
+ * Narrow: where the scrim is narrower than the app's medium breakpoint (the width
+ * at which the app's side panes become overlays), an xl or full panel fills the
+ * scrim edge to edge with square corners and no margin of scrim, keeping its
+ * content inside the device's safe area. Smaller sizes stay floating panels. The
+ * scrim, not the viewport, is measured, so a catalog host of phone width shows
+ * the same. A flow that the whole screen should hold on a phone, such as a
+ * wizard, sets `fillNarrow`: its panel then fills the scrim there whatever its
+ * size.
+ *
+ * Inline (a catalog host provides `overlayInlineKey`): the panel renders in flow
+ * at its own size, with no scrim and no centering.
+ *
  * Focus: a dialog over the page takes the focus when it opens, keeps Tab inside
  * while it is the top layer, and gives the focus back when it closes
- * (`useDialogFocus`). A dialog pinned open in a catalog host (open as the host first renders it)
- * is no layer, takes no focus and hears no Escape; once closed and opened again there,
- * it behaves as the product's: the top layer, with the focus, and Escape closes it.
- * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
- * Escape and the scrim close only the top, and closing the one beneath takes the
- * stack with it. A menu or dropdown open in a dialog is above it: Escape closes it
- * first and the dialog stays, the next Escape closes the dialog. An Escape a field handled first (it called preventDefault, as a
- * field reverting its edit does) closes nothing.
- * Anchor: centered by default; `top` hangs the panel from a line near the top, for a
- * panel whose height follows its content, such as the search window's list.
+ * (`useDialogFocus`). A dialog pinned open in a catalog host (open as the host
+ * first renders it) is no layer, takes no focus and hears no Escape. Once closed
+ * and opened again there, it behaves as the product's: the top layer, with the
+ * focus, and Escape closes it.
+ *
+ * Nesting:
+ *
+ * - A dialog opened from inside another stacks on it; the one beneath stays.
+ * - Escape and the scrim close only the top, and closing the one beneath takes
+ *   the stack with it.
+ * - A menu or dropdown open in a dialog is above it: Escape closes it first and
+ *   the dialog stays, the next Escape closes the dialog.
+ * - An Escape a field handled first (it called preventDefault, as a field
+ *   reverting its edit does) closes nothing.
+ *
+ * Anchor: centered by default; `top` hangs the panel from a line near the top,
+ * for a panel whose height follows its content, such as the search window's list.
+ *
  * Scrolling: content scrolls as a whole by default. Set `scrollContent` to false
- * when content owns its scroll region: use a `flex min-h-0 flex-col` root,
- * a non-shrinking header and a shrinking ScrollArea for the body.
- * Actions: the `footer` slot holds a dialog's buttons, laid out as a macOS
- * sheet's at the trailing edge, the default button last and rightmost
- * whatever order the caller writes them in, as NSAlert places it: Cancel
- * before Save, and Remove before Cancel where Cancel is the default;
- * `footer-leading` holds what stands apart at the leading
- * edge, a link or a Delete beside Save. The footer stays in place while the
- * content scrolls, and the content above it ends without its own bottom
- * padding. Return presses the default button, the footer's primary one,
- * from anywhere in the panel, except where the focus is on a control Return
- * acts on itself: a button, a link, a multi-line field, or a field's open
- * completion; a dialog without a field opens with the focus on it. An
- * action that destroys is never the default, as Apple's guidelines and
- * NSAlert have it: in a confirmation of one, Cancel is the primary button,
- * so neither Return nor the opening focus destroys, and the action is a
- * danger button, red with no fill, that takes a click. Escape cancels, as
- * the close control does.
+ * when content owns its scroll region: use a `flex min-h-0 flex-col` root, a
+ * non-shrinking header and a shrinking ScrollArea for the body.
+ *
+ * Actions:
+ *
+ * - The `footer` slot holds a dialog's buttons, laid out as a macOS sheet's at the
+ *   trailing edge, the default button last and rightmost whatever order the
+ *   caller writes them in, as NSAlert places it: Cancel before Save, and Remove
+ *   before Cancel where Cancel is the default.
+ * - `footer-leading` holds what stands apart at the leading edge, a link or a
+ *   Delete beside Save.
+ * - The footer stays in place while the content scrolls, and the content above it
+ *   ends without its own bottom padding.
+ * - Return presses the default button, the footer's primary one, from anywhere in
+ *   the panel, except where the focus is on a control Return acts on itself: a
+ *   button, a link, a multi-line field, or a field's open completion. A dialog
+ *   without a field opens with the focus on it.
+ * - An action that destroys is never the default, as Apple's guidelines and
+ *   NSAlert have it. In a confirmation of one, Cancel is the primary button, so
+ *   neither Return nor the opening focus destroys, and the action is a danger
+ *   button, red with no fill, that takes a click.
+ * - Escape cancels, as the close control does.
  */
 const props = defineProps<{
   isOpen: boolean

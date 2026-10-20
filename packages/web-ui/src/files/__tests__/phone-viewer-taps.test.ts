@@ -3,12 +3,15 @@ import { afterEach, expect, test } from 'bun:test'
 
 // On a phone the media viewer covers the screen, so a tap on the empty space
 // beside the picture closes it, while a tap on the picture toggles its actual
-// size and a drag or a swipe beside it does not close. The viewer is
-// MediaViewer on a page of happy-dom 390 px wide with reduced motion, so a
-// swipe steps at once; happy-dom lays nothing out and loads no picture, so the
-// picture's frame is given 358 × 600 px, its box at the page's origin, and the
-// picture 1600 × 800 pixels, which fits at 358 × 179, 210.5 px from the frame's
-// top. A few ms, besides the start of the page every happy-dom test pays.
+// size and a drag or a swipe beside it does not close.
+//
+// The viewer is MediaViewer on a page of happy-dom 390 px wide with reduced
+// motion, so a swipe steps at once. Happy-dom lays nothing out and loads no
+// picture, so the picture's frame is given 358 × 600 px, its box at the page's
+// origin, and the picture 1600 × 800 pixels, which fits at 358 × 179, 210.5 px
+// from the frame's top.
+//
+// Cost: a few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({
   url: 'https://demi.test/',

@@ -34,11 +34,13 @@ import type {
 } from './types'
 
 /**
- * The detail view: sortable columns over the rows of one directory. A click selects,
- * a double click or Enter opens a folder or confirms a file; the arrows move the
- * selection, Backspace goes up. Typing a name selects the first row that starts with
- * it (`useTypeSelect`), Backspace then taking back a letter. In directory mode files
- * are shown but cannot be picked, nor reached by typing.
+ * The detail view: sortable columns over the rows of one directory.
+ *
+ * - A click selects, a double click or Enter opens a folder or confirms a file.
+ * - The arrows move the selection, Backspace goes up.
+ * - Typing a name selects the first row that starts with it (`useTypeSelect`),
+ *   Backspace then taking back a letter.
+ * - In directory mode files are shown but cannot be picked, nor reached by typing.
  */
 /** An entry with the glyph its place on the tree earns, when it earns one. */
 export interface FileBrowserRow extends FileBrowserEntry {
@@ -97,11 +99,13 @@ function pickable(entry: FileBrowserEntry) {
 }
 
 /**
- * Whether a double click opens the row: one that can be picked, or a link,
- * which may lead elsewhere than its row said, and is read again by the browser
- * to act on what it is now. A link shows, and is selected, as what it was
- * listed as: in folder mode, one listed as a file is dimmed, and a double click
- * finds whether it leads to a folder now.
+ * Whether a double click opens the row: one that can be picked, or a link, which
+ * may lead elsewhere than its row said, and is read again by the browser to act on
+ * what it is now.
+ *
+ * A link shows, and is selected, as what it was listed as. In folder mode, one
+ * listed as a file is dimmed, and a double click finds whether it leads to a folder
+ * now.
  */
 function reachable(entry: FileBrowserEntry) {
   return pickable(entry) || entry.link !== undefined

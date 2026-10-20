@@ -41,11 +41,15 @@ import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
 
 /**
- * Top: the app and its entries: New, Search, then the entries the host gives, such as a
- * plugin's settings section, then Archived; each but New and Search opens its settings section. Middle: plain
- * conversations, then every project as a collapsible group of its conversations, with one
- * selection across all of them; the Conversations and Projects groups each fold under their label.
- * Bottom: the account and settings.
+ * The sidebar has three regions:
+ *
+ * - Top: the app and its entries: New, Search, then the entries the host gives, such
+ *   as a plugin's settings section, then Archived. Each but New and Search opens its
+ *   settings section.
+ * - Middle: plain conversations, then every project as a collapsible group of its
+ *   conversations, with one selection across all of them. The Conversations and
+ *   Projects groups each fold under their label.
+ * - Bottom: the account and settings.
  */
 const props = defineProps<{
   account: SidebarAccount
@@ -277,12 +281,14 @@ const SCROLL_IN_LIST: ScrollIntoViewOptions & { container: 'nearest' } = {
 }
 
 /**
- * The entry keyboard focus moves to, or that a key reorders, scrolls into
- * view, clear of the headings that stick above it: the list's heading (the
- * viewport's scroll padding) and, for a project's row, its project header
- * (the row's scroll margin). It scrolls once the update and the entry's
- * glide are done: the TransitionGroup compares each row's place before and
- * after an update, and a scroll in between would read as every row moving.
+ * The entry keyboard focus moves to, or that a key reorders, scrolls into view,
+ * clear of the headings that stick above it: the list's heading (the viewport's
+ * scroll padding) and, for a project's row, its project header (the row's scroll
+ * margin).
+ *
+ * It scrolls once the update and the entry's glide are done: the
+ * TransitionGroup compares each row's place before and after an update, and a
+ * scroll in between would read as every row moving.
  */
 watch(
   () => [list.focusedId.value, list.keyboardNav.value, entries.value] as const,
@@ -539,13 +545,17 @@ function selectProjectConversations(project: SidebarProject): void {
       >demi</span>
     </div>
 
-    <!-- Every block of the sidebar keeps 8px from both edges, so a row's background ends the same
-         distance from the left edge as from the right. The list scrolls in a ScrollArea, whose
-         scrollbar takes no room, so the inset is the same whether the system shows scrollbars or
-         overlays them, and the list scrolls without shifting anything. A row's content
-         starts 10px inside that, so the title, entries, headings, project headers and conversation
-         rows align at one line while a lit row has room around its status dot. Row actions sit 2px
-         inside the row's end, the same as their 2px above and below in the 28px row. -->
+    <!-- Every block of the sidebar keeps 8px from both edges, so a row's background
+         ends the same distance from the left edge as from the right.
+
+         The list scrolls in a ScrollArea, whose scrollbar takes no room, so the inset
+         is the same whether the system shows scrollbars or overlays them, and the list
+         scrolls without shifting anything.
+
+         A row's content starts 10px inside that, so the title, entries, headings,
+         project headers and conversation rows align at one line while a lit row has
+         room around its status dot. Row actions sit 2px inside the row's end, the same
+         as their 2px above and below in the 28px row. -->
     <!-- The entries, all alike: New, Search, then the settings sections a conversation reaches for. -->
     <div class="flex shrink-0 flex-col gap-px px-2">
       <SidebarNavItem

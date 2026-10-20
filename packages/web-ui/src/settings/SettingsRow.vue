@@ -15,34 +15,47 @@ import type { SentenceText } from '../ui/ui-text'
 /**
  * Label and explanation on the left, the control on the right. Icons align with
  * the title. Controls center, or align with the title when detail is present.
- * The row decides by its own content whether the two fit side by side: the
- * label keeps at least 9rem (11rem on a phone), and where the control, at its own
- * width, does not leave that, the control drops under the text, as in iOS
- * Settings, and takes the whole line. The line is a flex-wrap line, so what
- * the text and the control need decides it, in every language and in every
- * plugin's page, with no width written in any row. A title wraps at its words
- * and is cut only where one word is wider than the line. On its own line a
- * field (an element marked `data-field`: a text input, a text area, a slider,
- * a button-style dropdown, a segmented control) stretches across the row, a
- * segmented control's segments sharing the width; every other control (a
- * switch, a button) keeps its size and its right alignment.
- * An inset row belongs to the row above it (an agent's models). A compact row is
- * for lists of like items (models, accounts); an interactive one opens on click
- * without a hover wash. `muted` fades the label side only, so actions stay at
- * full strength. `disabled` mutes the row, blocks its click, and shows
- * `disabledReason` on hover. A navigable row opens a page of its own, as a row
- * of System Settings does: the whole row is its button, and a chevron at its
- * end says so. The `accessory` slot holds such a mark (the chevron, a fold's
- * chevron): it sits in a square as tall as the row at the row's end, so its
- * distance to the row's end equals its distance to the row's top and bottom
- * (the edge-control rule). `statuses` are the row's state, each a label
- * right after the name, after the `tags`. The name tells rows apart, so it
- * keeps its width: where the tags do not fit beside it they move under it
- * (the Writing page's rule for long text). The `below` slot holds what needs
- * the row's whole width, such as an account's usage bars: it takes a line of
- * its own under the name and the controls at every width, from the row's
- * start to its end, and the controls then align with the name's line, as
- * they do beside `detail`.
+ *
+ * Layout:
+ *
+ * - The row decides by its own content whether the two fit side by side. The
+ *   label keeps at least 9rem (11rem on a phone), and where the control, at its
+ *   own width, does not leave that, the control drops under the text, as in iOS
+ *   Settings, and takes the whole line.
+ * - The line is a flex-wrap line, so what the text and the control need decides
+ *   it, in every language and in every plugin's page, with no width written in
+ *   any row.
+ * - A title wraps at its words and is cut only where one word is wider than the
+ *   line.
+ * - On its own line a field (an element marked `data-field`: a text input, a
+ *   text area, a slider, a button-style dropdown, a segmented control) stretches
+ *   across the row, a segmented control's segments sharing the width. Every
+ *   other control (a switch, a button) keeps its size and its right alignment.
+ *
+ * Kinds of row:
+ *
+ * - An inset row belongs to the row above it (an agent's models).
+ * - A compact row is for lists of like items (models, accounts).
+ * - An interactive row opens on click without a hover wash.
+ * - A navigable row opens a page of its own, as a row of System Settings does:
+ *   the whole row is its button, and a chevron at its end says so.
+ *
+ * Properties and slots:
+ *
+ * - `muted` fades the label side only, so actions stay at full strength.
+ * - `disabled` mutes the row, blocks its click, and shows `disabledReason` on
+ *   hover.
+ * - The `accessory` slot holds such a mark (the chevron, a fold's chevron). It
+ *   sits in a square as tall as the row at the row's end, so its distance to the
+ *   row's end equals its distance to the row's top and bottom (the edge-control
+ *   rule).
+ * - `statuses` are the row's state, each a label right after the name, after the
+ *   `tags`. The name tells rows apart, so it keeps its width: where the tags do
+ *   not fit beside it they move under it (the Writing page's rule for long text).
+ * - The `below` slot holds what needs the row's whole width, such as an account's
+ *   usage bars. It takes a line of its own under the name and the controls at
+ *   every width, from the row's start to its end, and the controls then align
+ *   with the name's line, as they do beside `detail`.
  */
 const props = defineProps<{
   label: SentenceText

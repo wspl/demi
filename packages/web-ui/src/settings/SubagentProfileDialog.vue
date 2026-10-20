@@ -32,12 +32,16 @@ import { profileMissing, profileNameProblem } from './subagent-profiles'
 import type { SettingsSubagentDraft } from './types'
 
 /**
- * One subagent profile, created or edited in its own dialog: its name and
- * when to use it, its model, chosen with the composer's own model menu with
- * Parent’s Model at its top, its Context while the model is its own and
- * offers a choice, the instructions it adds to Demi's own, and whether its
- * children may spawn. The host saves; a refusal shows under the fields, and
- * the draft stays.
+ * One subagent profile, created or edited in its own dialog:
+ *
+ * - its name and when to use it,
+ * - its model, chosen with the composer's own model menu with Parent’s Model at
+ *   its top,
+ * - its Context, while the model is its own and offers a choice,
+ * - the instructions it adds to Demi's own, and
+ * - whether its children may spawn.
+ *
+ * The host saves; a refusal shows under the fields, and the draft stays.
  */
 const props = defineProps<{
   isOpen: boolean

@@ -12,11 +12,12 @@ import { menuRootKey } from './menu-context'
 import { closeContextMenu, installContextMenus, showContextMenu, shownContextMenu, type ContextMenuServices } from './context-menu'
 
 /**
- * The page's one context menu, which the app mounts once at its root: it
- * installs the root handler (`installContextMenus`) and draws what it
- * opens, at the pointer, or on a phone as a sheet, standing on the dialog
- * or sheet it opened in (ContextMenuLayer). A chosen row dismisses it
- * itself (`menuRootKey`).
+ * The page's one context menu, which the app mounts once at its root. It installs
+ * the root handler (`installContextMenus`) and draws what it opens, at the pointer,
+ * or on a phone as a sheet, standing on the dialog or sheet it opened in
+ * (ContextMenuLayer).
+ *
+ * A chosen row dismisses it itself (`menuRootKey`).
  */
 const props = defineProps<{
   /**

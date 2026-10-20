@@ -14,12 +14,13 @@ import { ICON_PX } from '../ui/icon-metrics'
 import { resetPhaseLabels } from './reset-phases'
 
 /**
- * The Cloud reset, confirmed and then followed step by step: what it stops,
- * what it keeps, and one status line that is a spinner while a step runs, a
- * check when the Cloud is back, or the failure with Retry Reset. Reset and
- * Retry Reset turn into the spinner at once, before the server answers. A
- * failed reset stays in the dialog, because the dialog is where it was asked
- * for.
+ * The Cloud reset, confirmed and then followed step by step.
+ *
+ * The dialog says what the reset stops and what it keeps. One status line is a
+ * spinner while a step runs, a check when the Cloud is back, or the failure with
+ * Retry Reset. Reset and Retry Reset turn into the spinner at once, before the
+ * server answers. A failed reset stays in the dialog, because the dialog is
+ * where it was asked for.
  */
 const props = defineProps<{
   isOpen: boolean

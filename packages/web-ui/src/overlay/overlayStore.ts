@@ -1,16 +1,21 @@
 import { createStore } from '../store/createStore'
 
 /**
- * Exclusive layers (menu, popover, dialog) dismiss hints and replace each other.
- * A stacked layer is a dialog opened over another dialog: it dismisses hints
- * too, and replaces a menu or popover as an exclusive one does, but keeps the
- * dialog it stands on, and goes when that closes. A dialog a menu row opens,
- * such as Add Device… or a move's question, therefore stays once the menu
- * closes. A nested layer is a menu or popover opened inside another layer (a
- * dropdown in a dialog, a flyout of a menu): it replaces nothing, stands above
- * the layer that holds it, which stays open, and goes when that closes. Escape
- * addresses it first, as macOS closes the innermost open thing first. Hints
- * never cover any of them.
+ * The layers of the overlay store, by how they stack.
+ *
+ * - An exclusive layer (menu, popover, dialog) dismisses hints and replaces each
+ *   other.
+ * - A stacked layer is a dialog opened over another dialog. It dismisses hints
+ *   too, and replaces a menu or popover as an exclusive one does, but keeps the
+ *   dialog it stands on, and goes when that closes. A dialog a menu row opens,
+ *   such as Add Device… or a move's question, therefore stays once the menu
+ *   closes.
+ * - A nested layer is a menu or popover opened inside another layer (a dropdown
+ *   in a dialog, a flyout of a menu). It replaces nothing, stands above the layer
+ *   that holds it, which stays open, and goes when that closes.
+ *
+ * Escape addresses the nested layer first, as macOS closes the innermost open
+ * thing first. Hints never cover any of them.
  */
 export type OverlayLayer = 'exclusive' | 'stacked' | 'nested' | 'hint'
 

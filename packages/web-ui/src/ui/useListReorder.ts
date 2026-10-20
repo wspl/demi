@@ -2,14 +2,17 @@ import { onBeforeUnmount, ref, type Ref } from 'vue'
 import { DRAG_START_PX, dragShift, dragTarget, moved } from './drag-order'
 
 /**
- * Drag to reorder the rows of a vertical list, as a macOS list's rows are:
- * a row pressed on its handle follows the pointer once it moves a few
- * pixels, the other rows step aside to show where it will land, and letting
- * go puts it there; Escape, or the window losing focus, puts it back. The
- * handle also moves its row one place with the Up and Down arrow keys. The
- * rows are the elements of `container` marked `data-reorder-id`, in order;
- * `commit` receives the ids in their new order, and the host's list shows
- * it with its next render.
+ * Drag to reorder the rows of a vertical list, as a macOS list's rows are.
+ *
+ * - A row pressed on its handle follows the pointer once it moves a few pixels.
+ * - The other rows step aside to show where it will land, and letting go puts it
+ *   there.
+ * - Escape, or the window losing focus, puts it back.
+ * - The handle also moves its row one place with the Up and Down arrow keys.
+ *
+ * The rows are the elements of `container` marked `data-reorder-id`, in order.
+ * `commit` receives the ids in their new order, and the host's list shows it with
+ * its next render.
  */
 export function useListReorder(
   container: Readonly<Ref<HTMLElement | undefined>>,

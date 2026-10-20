@@ -16,11 +16,15 @@ export interface SelectionActions {
 
 /**
  * The commands on conversations, one menu wherever they are offered: the
- * sidebar's row menu, and on a phone the title sheet of the conversation
- * shown (ChatSession). One row gets open, rename and copy ID; any count
- * gets pin, archive and delete, which asks first. A conversation enters or
- * leaves a project only through where it runs, so there is no Move To. `shown`:
- * the one target is the conversation shown, which Open would not change.
+ * sidebar's row menu, and on a phone the title sheet of the conversation shown
+ * (ChatSession).
+ *
+ * - One row gets open, rename and copy ID.
+ * - Any count gets pin, archive and delete, which asks first.
+ * - A conversation enters or leaves a project only through where it runs, so
+ *   there is no Move To.
+ *
+ * `shown`: the one target is the conversation shown, which Open would not change.
  */
 export function selectionEntries(
   targets: readonly Pick<SidebarConversation, 'id' | 'pinned'>[],

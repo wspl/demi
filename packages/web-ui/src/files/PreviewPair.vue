@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * A change shown as its two versions side by side, each under its label: the
- * committed one and the working tree's, or a call's before and after. An
- * added file has only the second, a deleted file only the first; the columns
- * stack when the panel is narrow.
+ * committed one and the working tree's, or a call's before and after.
+ *
+ * - An added file has only the second, a deleted file only the first.
+ * - The columns stack when the panel is narrow.
  */
 withDefaults(defineProps<{ before?: string; after?: string }>(), {
   before: 'Committed',

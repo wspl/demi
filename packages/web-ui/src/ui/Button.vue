@@ -25,20 +25,23 @@ const props = withDefaults(
   defineProps<{
     size?: 'xs' | 'sm' | 'md' | 'lg'
     /**
-     * primary: the default button, filled with the accent, which Return
-     * presses in a dialog; in a confirmation whose action destroys
-     * something, that is Cancel. danger: an action that destroys, red text
-     * on a plain face, never the default, as macOS's alerts show it: a
-     * confirmation's answer (Remove, Revoke, Reset Environment), or one
-     * that then asks first (Delete beside Save, Delete Account).
+     * - primary: the default button, filled with the accent, which Return presses
+     *   in a dialog. In a confirmation whose action destroys something, that is
+     *   Cancel.
+     * - danger: an action that destroys, red text on a plain face, never the
+     *   default, as macOS's alerts show it: a confirmation's answer (Remove,
+     *   Revoke, Reset Environment), or one that then asks first (Delete beside
+     *   Save, Delete Account).
      */
     variant?: 'default' | 'primary' | 'ghost' | 'danger'
     disabled?: boolean
     /**
-     * The operation the press starts (`operations.ts`): the button shows the
-     * spinner while it runs, whenever it is drawn, and a press while its
-     * group runs on its target starts nothing. The press's handler returns
-     * the operation's promise; it keeps no flag of its own.
+     * The operation the press starts (`operations.ts`): the button shows the spinner
+     * while it runs, whenever it is drawn, and a press while its group runs on its
+     * target starts nothing.
+     *
+     * The press's handler returns the operation's promise; it keeps no flag of its
+     * own.
      */
     operation?: Operation
     /** Shows the spinner for work the caller's state owns, such as a reset's phases. */
@@ -107,11 +110,13 @@ const sizeClass = computed(() => {
 
 <template>
   <!-- The tip sits on a wrapper so a disabled face can still be hovered. The face itself
-       ignores pointer events, so a parent's click does not fire. It is a Tab stop and takes
-       the focus when clicked, as a native button does, and shows the focus ring only for the
-       keyboard; a disabled or loading one is skipped. A
-       primary button is a dialog's default button: Return presses it, and a dialog without
-       a field opens on it (Dialog). -->
+       ignores pointer events, so a parent's click does not fire.
+
+       It is a Tab stop and takes the focus when clicked, as a native button does, and
+       shows the focus ring only for the keyboard; a disabled or loading one is skipped.
+
+       A primary button is a dialog's default button: Return presses it, and a dialog
+       without a field opens on it (Dialog). -->
   <Tooltip
     :content="tooltipContent"
     :disabled="!tooltipContent"

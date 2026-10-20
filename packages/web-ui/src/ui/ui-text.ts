@@ -1,11 +1,12 @@
 import { t } from './locales/text'
 
 /**
- * The capitalization style of UI text, as macOS writes it. The gallery's
- * Writing page holds the rule, its sources and its examples. A prop or field
- * that carries UI text names its style through one of the four types below,
- * so whoever writes into it knows which style to follow; they are plain
- * strings and nothing checks them. Text that is content rather than UI (a
+ * The capitalization style of UI text, as macOS writes it. The gallery's Writing
+ * page holds the rule, its sources and its examples.
+ *
+ * A prop or field that carries UI text names its style through one of the four
+ * types below, so whoever writes into it knows which style to follow. They are
+ * plain strings and nothing checks them. Text that is content rather than UI (a
  * conversation's title, a file's name, what a model wrote) stays `string`.
  */
 
@@ -15,11 +16,15 @@ export type TitleText = string
 /** Sentence style: a switch or checkbox label, a settings row label, a tooltip, a description, a message. */
 export type SentenceText = string
 
-/** * A headline that is either a fragment or a sentence: an alert's, a toast's
- * or a dialog's title. Title style for a fragment ("Rename Failed"), sentence
- * style with its ending punctuation for a complete sentence ("Remove this
- * project?"). What an empty list says is not one: it is sentence style
- * without a period ("No results").
+/**
+ * A headline that is either a fragment or a sentence: an alert's, a toast's or a
+ * dialog's title.
+ *
+ * - A fragment takes title style ("Rename Failed").
+ * - A complete sentence takes sentence style with its ending punctuation ("Remove
+ *   this project?").
+ * - What an empty list says is not a headline: it is sentence style without a period
+ *   ("No results").
  */
 export type HeadlineText = string
 

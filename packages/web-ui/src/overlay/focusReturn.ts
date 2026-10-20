@@ -3,10 +3,12 @@ import { focusByPage } from '../ui/focus-by-page'
 
 /**
  * What had the focus before it went to nothing, as a press on something that
- * takes no focus (an icon button, a sidebar row) sends it, until anything
- * takes the focus again or the user selects text, where they now are: a
- * message field given the focus back would take the selection away, as a
- * menu opened on selected words and closed would end it.
+ * takes no focus (an icon button, a sidebar row) sends it, until anything takes
+ * the focus again or the user selects text, where they now are.
+ *
+ * A message field given the focus back would take the selection away, as a menu
+ * opened on selected words and closed would end it.
+ *
  * One set of listeners for the whole page.
  */
 const useFocusLostToNothing = createSharedComposable(() => {
@@ -25,13 +27,15 @@ const useFocusLostToNothing = createSharedComposable(() => {
 })
 
 /**
- * Gives the focus back to what opened a layer (a dialog, a menu) when it
- * closes, as WAI-ARIA and macOS do. The opener is what had the focus as the
- * layer opened; when the press that opened it took the focus to nothing, it
- * is what had the focus before that press, such as the message field under
- * the composer's + button. The focus goes back only while the layer holds it
- * (`holds`) or nothing does: a close that put it on another control leaves it
- * there.
+ * Gives the focus back to what opened a layer (a dialog, a menu) when it closes,
+ * as WAI-ARIA and macOS do.
+ *
+ * The opener is what had the focus as the layer opened. When the press that
+ * opened it took the focus to nothing, it is what had the focus before that
+ * press, such as the message field under the composer's + button.
+ *
+ * The focus goes back only while the layer holds it (`holds`) or nothing does: a
+ * close that put it on another control leaves it there.
  */
 export function useFocusReturn(holds: (el: Element) => boolean): {
   /** Remembers the opener; called as the layer opens, before it takes the focus. */

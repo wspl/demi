@@ -16,19 +16,23 @@ import type { StepReach } from './swipe-step'
 import type { PixelSize } from './thumbnail'
 
 /**
- * The page's one media viewer: a small window over the page that the user
- * moves, resizes and closes, while the page stays usable. An image opens fitted
- * to it, and zooms and moves as in an image viewer (`ImagePreview`); a video
- * plays at once in the web browser's player, and closing the viewer stops it.
- * The title bar names the medium and gives its pixel size, and an image's zoom,
- * *1280 × 720 · 150%*. Opening another medium shows it in the same window,
- * fitted.
+ * The page's one media viewer: a small window over the page that the user moves,
+ * resizes and closes, while the page stays usable.
  *
- * On a phone, the medium fills the screen instead, with its close control, and
- * a swipe left or right steps to the next or the previous picture
- * (`ImagePreview`). Since it covers the screen, a tap on the empty space around
- * the medium closes it: beside the picture, in the margin and the line under it,
- * beside a video. The page draws it beside the viewer it provides.
+ * - An image opens fitted to it, and zooms and moves as in an image viewer
+ *   (`ImagePreview`).
+ * - A video plays at once in the web browser's player, and closing the viewer
+ *   stops it.
+ * - The title bar names the medium and gives its pixel size, and an image's
+ *   zoom, *1280 × 720 · 150%*.
+ * - Opening another medium shows it in the same window, fitted.
+ *
+ * On a phone, the medium fills the screen instead, with its close control, and a
+ * swipe left or right steps to the next or the previous picture (`ImagePreview`).
+ * Since it covers the screen, a tap on the empty space around the medium closes
+ * it: beside the picture, in the margin and the line under it, beside a video.
+ *
+ * The page draws it beside the viewer it provides.
  */
 const props = defineProps<{ viewer: MediaViewerState }>()
 
@@ -112,10 +116,10 @@ let stopTap: (() => void) | null = null
 let tapSpoiled = false
 
 /**
- * A press on the phone's full screen that the medium did not take: the
- * picture takes every press on its frame as its gesture (it prevents the
- * press's default), a video's player keeps its own. What is left is empty
- * space, where a tap, never a drag or a pinch, closes the viewer.
+ * A press on the phone's full screen that the medium did not take. The picture
+ * takes every press on its frame as its gesture (it prevents the press's default),
+ * and a video's player keeps its own. What is left is empty space, where a tap,
+ * never a drag or a pinch, closes the viewer.
  */
 function onScreenPress(event: PointerEvent): void {
   if (stopTap) {

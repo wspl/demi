@@ -20,10 +20,11 @@ export interface ConnectionFacts {
 }
 
 /**
- * What the banner says, or null while the page reaches the backend. No
- * network wins, since nothing else can be true of it; a lost channel shows
- * nothing until its first new attempt failed as well, so a blip that the
- * next connection mends never flashes a banner.
+ * What the banner says, or null while the page reaches the backend.
+ *
+ * - No network wins, since nothing else can be true of it.
+ * - A lost channel shows nothing until its first new attempt failed as well, so a
+ *   blip that the next connection mends never flashes a banner.
  */
 export function connectionProblem(facts: ConnectionFacts): ConnectionProblem | null {
   if (!facts.online) {

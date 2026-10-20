@@ -15,10 +15,15 @@ import {
 } from './types'
 
 /**
- * The body of a permission request's card: what the agent asks to do, its
- * category's action or its host's, the command it ran, which subagent ran
- * it, what it allows, and Deny or Allow for This Conversation; a request of
- * a host reads Allow, since a host is allowed for this conversation by
+ * The body of a permission request's card, showing:
+ *
+ * - what the agent asks to do, its category's action or its host's,
+ * - the command it ran,
+ * - which subagent ran it,
+ * - what it allows, and
+ * - Deny or Allow for This Conversation.
+ *
+ * A request of a host reads Allow, since a host is allowed for this conversation by
  * nature.
  */
 const props = defineProps<{

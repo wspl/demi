@@ -7,11 +7,12 @@ import type { ChangeFile, ReadCallChange } from './changes'
 
 /**
  * A request's changes (`crates/agent-store/src/changes.rs`): what one message of
- * the user asked for, from its `user` block to the same agent's next one,
- * and the files its calls changed, as the backend stored them with the
- * request's latest call (`requestFiles`). The page reads the lists it is
- * given and counts nothing: a subagent's changes are in its own
- * transcript, not its parent's.
+ * the user asked for, from its `user` block to the same agent's next one, and
+ * the files its calls changed, as the backend stored them with the request's
+ * latest call (`requestFiles`).
+ *
+ * The page reads the lists it is given and counts nothing: a subagent's changes
+ * are in its own transcript, not its parent's.
  */
 
 /** One edit of a request's file: one segment of one of its calls. */
@@ -179,11 +180,12 @@ export const requestEditSelectionSchema = z.object({
 export type RequestEditSelection = z.infer<typeof requestEditSelectionSchema>
 
 /**
- * What a file pill opens: the file of the request whose edits hold the
- * call `call`'s edit of `path`, at that edit, under the name the file has
- * there now; null once a later call removed it, or for a file the call
- * only removed or renamed. `root` is the directory the call's agent worked
- * in, null for the conversation's own.
+ * What a file pill opens: the file of the request whose edits hold the call
+ * `call`'s edit of `path`, at that edit, under the name the file has there now.
+ *
+ * It is null once a later call removed the file, or for a file the call only
+ * removed or renamed. `root` is the directory the call's agent worked in, null for
+ * the conversation's own.
  */
 export function pillSelection(
   node: string | null,
@@ -206,10 +208,11 @@ export function pillSelection(
 
 /**
  * What the "+N Files" pill opens for the file `path` of the call or run
- * (`crates/agent-store/src/changes.rs`): the file of the
- * request whose list holds it, at All Changes, so it works for a file the
- * request removed too, which a pill alone is no control for; null for a
- * file the request does not list.
+ * (`crates/agent-store/src/changes.rs`): the file of the request whose list holds
+ * it, at All Changes.
+ *
+ * So it works for a file the request removed too, which a pill alone is no control
+ * for. It is null for a file the request does not list.
  */
 export function requestFileSelection(
   node: string | null,
@@ -291,10 +294,11 @@ export function selectionIsBinary(file: RequestFile, index: number | null): bool
 
 /**
  * Whether two readings of a request's files hold the same files and edits.
- * The request is read anew on each frame of a turn, so the same files come
- * as new objects; a view compares them by what they hold and keeps what it
- * shows while a frame changes none of it. They are plain data in the order the backend stored them,
- * so their JSON tells them apart, whatever fields they gain.
+ *
+ * The request is read anew on each frame of a turn, so the same files come as new
+ * objects. A view compares them by what they hold and keeps what it shows while a
+ * frame changes none of it. They are plain data in the order the backend stored
+ * them, so their JSON tells them apart, whatever fields they gain.
  */
 export function sameRequestFiles(a: readonly RequestFile[], b: readonly RequestFile[]): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b)

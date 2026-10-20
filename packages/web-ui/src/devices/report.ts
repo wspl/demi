@@ -17,9 +17,13 @@ export interface DeviceReport {
 
 /**
  * The chip family a person knows a machine's architecture by
- * (`packages/web-ui/src/devices/direct.ts`): Apple silicon for a Mac on
- * ARM, ARM elsewhere, Intel for x86; null for another, which is not shown
- * rather than shown as a code.
+ * (`packages/web-ui/src/devices/direct.ts`):
+ *
+ * - Apple silicon for a Mac on ARM.
+ * - ARM elsewhere.
+ * - Intel for x86.
+ *
+ * It is null for another, which is not shown rather than shown as a code.
  */
 export function chipFamily(os: NonNullable<DeviceReport['os']>): TitleText | null {
   switch (os.arch) {
@@ -45,9 +49,11 @@ export function systemName(report: DeviceReport): string | null {
 
 /**
  * The device's runner against the release the server's runners follow:
- * `current` when it runs it, `outdated` when it runs another, which it
- * replaces as it next connects, `development` on a server without runner
- * releases, as in development; null before the runner reported one.
+ *
+ * - `current`: it runs that release.
+ * - `outdated`: it runs another, which it replaces as it next connects.
+ * - `development`: the server has no runner releases, as in development.
+ * - null: the runner has not reported one yet.
  */
 export type RunnerState = 'current' | 'outdated' | 'development'
 

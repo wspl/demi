@@ -79,9 +79,12 @@ export interface DirectAttempt {
   /** How long it took to connect or to fail. */
   durationMs: number
   /**
-   * `connected` while its channel stands, `failed` when it did not
-   * connect, `busy` when the device's runner refused it for having too many
-   * connections, `dropped` when it connected and later failed.
+   * The state of the direct channel:
+   *
+   * - `connected`: its channel stands.
+   * - `failed`: it did not connect.
+   * - `busy`: the device's runner refused it for having too many connections.
+   * - `dropped`: it connected and later failed.
    */
   outcome: 'connected' | 'failed' | 'busy' | 'dropped'
   /** Where it ended: `connected` for one that connected. */
@@ -208,10 +211,12 @@ function formatLoss(loss: number): string {
 
 /**
  * The Latency row's value, which compares the two paths' latency from this
- * browser's last measurement, the peer's path by its kind: "LAN 2 ms ·
- * Relay 480 ms". A peer's path that lost probes adds its loss, "P2P 620 ms,
- * 10% lost"; without a peer only the relay is given. Null before either
- * path has figures.
+ * browser's last measurement, the peer's path by its kind: "LAN 2 ms · Relay 480
+ * ms".
+ *
+ * - A peer's path that lost probes adds its loss: "P2P 620 ms, 10% lost".
+ * - Without a peer, only the relay is given.
+ * - It is null before either path has figures.
  */
 export function pathsLatency(status: DirectStatus): SentenceText | null {
   const { direct, relay } = status.figures
@@ -227,10 +232,9 @@ export function pathsLatency(status: DirectStatus): SentenceText | null {
 }
 
 /**
- * The sentence the header gives for why the server's path is used, word for
- * word as the design's table gives it; null when the header says nothing
- * more: on Relay Only, which the route below says, and before an attempt
- * has ended.
+ * The sentence the header gives for why the server's path is used, word for word
+ * as the design's table gives it. It is null when the header says nothing more:
+ * on Relay Only, which the route below says, and before an attempt has ended.
  */
 export function reasonSentence(reason: DirectReason): SentenceText | null {
   switch (reason.kind) {
@@ -306,10 +310,12 @@ function ipv4Bytes(address: string): number[] | null {
 }
 
 /**
- * The kind of path the device's address in use names: a loopback address is
- * this computer; a private, link-local or shared one, `100.64/10` included,
- * which VPNs such as Tailscale use, is the local network; any other is the
- * internet.
+ * The kind of path the device's address in use names:
+ *
+ * - A loopback address is this computer.
+ * - A private, link-local or shared one, `100.64/10` included, which VPNs such as
+ *   Tailscale use, is the local network.
+ * - Any other is the internet.
  */
 export function pathKind(address: string): PathKind {
   const ipv6 = ipv4Bytes(address) === null ? ipv6Groups(address) : null

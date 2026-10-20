@@ -1,11 +1,12 @@
 import { h, type FunctionalComponent } from 'vue'
 
 /**
- * A phone browser's tab button as an icon for `IconButton`: a rounded square
- * in the icon's stroke holding how many tabs there are, as Chrome's and
- * Safari's tab buttons draw theirs; with none it is the square alone, never a
- * "0". It is drawn at the size the button gives a Lucide icon, its square as
- * large as a Lucide square in that box and its stroke as thick.
+ * A phone browser's tab button as an icon for `IconButton`: a rounded square in the
+ * icon's stroke holding how many tabs there are, as Chrome's and Safari's tab
+ * buttons draw theirs. With none it is the square alone, never a "0".
+ *
+ * It is drawn at the size the button gives a Lucide icon, its square as large as a
+ * Lucide square in that box and its stroke as thick.
  */
 export function tabCountIcon(count: number): FunctionalComponent<{ size?: number }> {
   return (props) => {

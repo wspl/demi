@@ -17,10 +17,12 @@ const props = withDefaults(defineProps<{
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
   /**
-   * The operation a flip starts (`operations.ts`), such as a plugin's call:
-   * while it runs, whenever the switch is drawn, a spinner stands beside it
-   * and a flip starts nothing. The switch keeps showing `modelValue`, the
-   * state its owner sends once the call is answered.
+   * The operation a flip starts (`operations.ts`), such as a plugin's call: while it
+   * runs, whenever the switch is drawn, a spinner stands beside it and a flip starts
+   * nothing.
+   *
+   * The switch keeps showing `modelValue`, the state its owner sends once the call is
+   * answered.
    */
   operation?: Operation
   /** Takes the value a flip asks for; a promise it returns is the work of the switch's operation. */

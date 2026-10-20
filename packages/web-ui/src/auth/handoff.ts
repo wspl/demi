@@ -19,9 +19,12 @@ export interface HandoffCodeView {
 }
 
 /**
- * What asking for a code came to: the code; the backend asks the user to
- * confirm it is them first, which the confirmation step does; or a failure
- * the dialog says.
+ * What asking for a code came to. It is one of:
+ *
+ * - the code,
+ * - the backend asking the user to confirm it is them first, which the confirmation
+ *   step does, or
+ * - a failure the dialog says.
  */
 export type HandoffStart =
   | { kind: 'code'; code: HandoffCodeView }
@@ -29,9 +32,12 @@ export type HandoffStart =
   | ({ kind: 'failed' } & ShownError)
 
 /**
- * How confirming it is the user ended: confirmed; the password refused,
- * said under its field; the browser's passkey prompt dismissed, which says
- * nothing; or failed, said under the step's fields.
+ * How confirming it is the user ended. It is one of:
+ *
+ * - confirmed,
+ * - the password refused, said under its field,
+ * - the browser's passkey prompt dismissed, which says nothing, or
+ * - failed, said under the step's fields.
  */
 export type HandoffVerifyOutcome =
   | { kind: 'verified' }
@@ -40,9 +46,12 @@ export type HandoffVerifyOutcome =
   | ({ kind: 'failed' } & ShownError)
 
 /**
- * What the dialog says, which the same code flow words for who shows it and
- * who scans it: Hand Off to Your Phone (the user's own phone), an
- * administrator's Sign-In Code… for an account, and Add User's last step.
+ * What the dialog says, which the same code flow words for who shows it and who
+ * scans it. The wordings are:
+ *
+ * - Hand Off to Your Phone (the user's own phone),
+ * - an administrator's Sign-In Code… for an account, and
+ * - Add User's last step.
  */
 export interface HandoffWording {
   /** The dialog's title: a command's name, title style. */

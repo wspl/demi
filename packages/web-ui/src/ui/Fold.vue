@@ -13,10 +13,11 @@ const props = defineProps<{
 
 const opened = ref(props.open)
 /**
- * Whether the panel is drawn open. A first open mounts the content closed and
- * has the browser lay it out so before opening it: content that appears in
- * the same style change that grows its row gives the transition nothing to
- * grow from, and the panel jumped open instead.
+ * Whether the panel is drawn open.
+ *
+ * A first open mounts the content closed and has the browser lay it out so before
+ * opening it. Content that appears in the same style change that grows its row gives
+ * the transition nothing to grow from, and the panel jumped open instead.
  */
 const expanded = ref(props.open)
 const root = useTemplateRef<HTMLElement>('root')

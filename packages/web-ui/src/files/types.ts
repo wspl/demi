@@ -1,10 +1,12 @@
 /**
- * Contracts of the file browser. A host maps its own directory source (the Web API's
- * file endpoints, a prototype's in-memory tree) onto these; the file browser owns navigation,
+ * Contracts of the file browser.
+ *
+ * A host maps its own directory source (the Web API's file endpoints, a
+ * prototype's in-memory tree) onto these. The file browser owns navigation,
  * selection and presentation and never knows where the entries come from.
  *
- * Paths are POSIX: `/` separates segments and `/` is the root. A source for another
- * convention translates at its boundary.
+ * Paths are POSIX: `/` separates segments and `/` is the root. A source for
+ * another convention translates at its boundary.
  */
 import type { Showing } from './file-cache'
 import type { ReadAt } from './watch-channel'
@@ -47,13 +49,15 @@ export interface FileBrowserLink {
 export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; reason: string }
 
 /**
- * Why a directory could not be listed, a file read or written. `kind` picks
- * the copy; `message` is shown as the detail. `exists` is a file an upload
- * was not to replace; `not-repository`, a history read of a folder outside
- * any Git repository. `not-found`, `binary` and `too-large` are what the
- * Host answered of the path, nothing there, a file that is not text, one
- * too large to read as text: the kept files keep each as an answer, never
- * as a failure.
+ * Why a directory could not be listed, a file read or written.
+ *
+ * `kind` picks the copy; `message` is shown as the detail.
+ *
+ * - `exists`: a file an upload was not to replace.
+ * - `not-repository`: a history read of a folder outside any Git repository.
+ * - `not-found`, `binary` and `too-large`: what the Host answered of the path,
+ *   respectively nothing there, a file that is not text, and one too large to
+ *   read as text. The kept files keep each as an answer, never as a failure.
  */
 export interface FileBrowserFailure {
   kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'not-repository' | 'other'
@@ -127,11 +131,12 @@ export interface FileText {
 export type FileBrowserPlatform = 'macos' | 'linux' | 'windows'
 
 /**
- * The directory tree behind one file browser: where it starts, what runs it
- * and how it reads. It keeps what it read (`keptSource`): a view shows an
- * entry with `showListing`, `showText` or `showDescription` and sees it
- * replaced in place when it is read again; a one-shot read answers from what
- * is kept while the Host confirms it.
+ * The directory tree behind one file browser: where it starts, what runs it and how
+ * it reads.
+ *
+ * It keeps what it read (`keptSource`). A view shows an entry with `showListing`,
+ * `showText` or `showDescription` and sees it replaced in place when it is read
+ * again. A one-shot read answers from what is kept while the Host confirms it.
  */
 export interface FileBrowserSource {
   platform: FileBrowserPlatform
@@ -155,11 +160,14 @@ export interface FileBrowserSource {
   contents?: FileContents
   /**
    * Writes `file` to `path` whole, its bytes streamed as they go, making the
-   * directories above it that are missing: `progress` hears how many have
-   * gone, and aborting `signal` stops the upload and leaves `path` as it
-   * was. A `path` already taken rejects with a `FileBrowserError` of kind
-   * `exists` unless `replace`; a directory there is never replaced. Absent
-   * when the source cannot write; the tree then offers no Upload.
+   * directories above it that are missing.
+   *
+   * - `progress` hears how many bytes have gone.
+   * - Aborting `signal` stops the upload and leaves `path` as it was.
+   * - A `path` already taken rejects with a `FileBrowserError` of kind `exists`
+   *   unless `replace`; a directory there is never replaced.
+   *
+   * Absent when the source cannot write; the tree then offers no Upload.
    */
   upload?(path: string, file: File, options: FileUploadOptions): Promise<void>
   /**

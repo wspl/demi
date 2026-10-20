@@ -5,16 +5,22 @@ import { compile } from '@tailwindcss/node'
 import { chromium, type Browser, type Page } from 'playwright'
 import { vueSingleFileComponents, withoutViteGlobs } from '../../__tests__/vue-components'
 
-// A right-click on selected text: it keeps the selection, its menu is the
-// selection's alone wherever over the selected lines it lands, a gap between
-// two list items included, the selection's toolbar steps aside while the menu
-// is open and comes back after it, a selection that went leaves the message's
-// menu, and the toolbar appears once a drag ends, in its place. Selections, hit
-// tests and layout are the browser's, so this runs the product's reply, user
-// message, ContextMenu and SelectionToolbar in a real Chromium with the
-// stylesheet Tailwind builds; happy-dom has none of them. About 4 s: the page's
-// and the stylesheet's builds and the browser's start, shared, and a page per
-// test.
+// A right-click on selected text:
+//
+// - It keeps the selection.
+// - Its menu is the selection's alone wherever over the selected lines it lands, a
+//   gap between two list items included.
+// - The selection's toolbar steps aside while the menu is open and comes back
+//   after it.
+// - A selection that went leaves the message's menu.
+// - The toolbar appears once a drag ends, in its place.
+//
+// Selections, hit tests and layout are the browser's, so this runs the product's
+// reply, user message, ContextMenu and SelectionToolbar in a real Chromium with the
+// stylesheet Tailwind builds; happy-dom has none of them.
+//
+// Cost: about 4 s: the page's and the stylesheet's builds and the browser's start,
+// shared, and a page per test.
 
 declare global {
   interface Window {

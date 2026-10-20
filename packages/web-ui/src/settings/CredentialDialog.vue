@@ -31,20 +31,25 @@ import {
 import type { SettingsCredential, SettingsCredentialDraft } from './types'
 
 /**
- * Creates a credential or edits one, asking no more than a credential is, as
- * the Passwords app's editor does: its name and its note, then one row for
- * each field, its label and its value side by side, with the name an agent
- * reads it by under the label and a ⋯ menu at the row's end that makes it
- * secret or visible and deletes it. Every input starts and ends at the same
- * edges: the cards share one grid of a label column, an input column and the
- * menu's column. A new field is read by a name made from its label; a saved
- * field keeps its name, a visible one shows its value, and a secret one's
- * value left empty keeps the saved one, which the page never has. A credential
- * kept for a while says under its note when it goes, beside Keep Always; one
- * kept always says nothing of it. A problem shows under its input once the
- * user has left it, and Save waits until nothing is wrong. The host saves
- * (`onSave`, whose promise Save shows until it settles); a refusal shows under
- * the fields, and the draft stays.
+ * Creates a credential or edits one, asking no more than a credential is, as the
+ * Passwords app's editor does: its name and its note, then one row for each
+ * field.
+ *
+ * - A row holds the field's label and its value side by side, with the name an
+ *   agent reads it by under the label and a ⋯ menu at the row's end that makes it
+ *   secret or visible and deletes it.
+ * - Every input starts and ends at the same edges: the cards share one grid of a
+ *   label column, an input column and the menu's column.
+ * - A new field is read by a name made from its label. A saved field keeps its
+ *   name, a visible one shows its value, and a secret one's value left empty
+ *   keeps the saved one, which the page never has.
+ * - A credential kept for a while says under its note when it goes, beside Keep
+ *   Always. One kept always says nothing of it.
+ * - A problem shows under its input once the user has left it, and Save waits
+ *   until nothing is wrong.
+ *
+ * The host saves (`onSave`, whose promise Save shows until it settles). A refusal
+ * shows under the fields, and the draft stays.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -153,11 +158,11 @@ const title = computed(() => (props.credential ? t('credentialDialog.edit') : t(
 
 /**
  * The cards' one grid: the label column, the inputs' column and the menu's
- * column, which the top card leaves empty so its inputs end where the fields'
- * do. A phone stacks a row as a settings row drops its control under its
- * label: the label above its input, and a field's label input above its
- * value, with its menu beside the label input; every other input spans the
- * card.
+ * column, which the top card leaves empty so its inputs end where the fields' do.
+ *
+ * A phone stacks a row as a settings row drops its control under its label: the
+ * label above its input, and a field's label input above its value, with its menu
+ * beside the label input. Every other input spans the card.
  */
 const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 phone:grid-cols-1'
 </script>

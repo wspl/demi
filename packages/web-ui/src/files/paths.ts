@@ -99,9 +99,10 @@ export function homePath(path: string, home: string | null | undefined): string 
 
 /**
  * A directory as a list row reads it: its own name first, where it is second.
- * The home is `~` and the root `/`, each with no location; any other
- * directory is its last segment, located by its parent, which `homePath`
- * writes from `~` under the home.
+ *
+ * - The home is `~` and the root `/`, each with no location.
+ * - Any other directory is its last segment, located by its parent, which
+ *   `homePath` writes from `~` under the home.
  */
 export function directoryParts(path: string, home: string | null | undefined): { name: string; location: string } {
   const normalized = normalizePath(path)

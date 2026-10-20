@@ -4,10 +4,11 @@ import ScrollArea from '../ui/ScrollArea.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
- * The page a visitor without a session sees: the product's name and a form
- * on the base surface, a wide intro on the session surface. Below a tablet
- * width the intro hides and the form fills the page. Sign-in and setup are
- * its two forms.
+ * The page a visitor without a session sees: the product's name and a form on
+ * the base surface, and a wide intro on the session surface. Sign-in and setup
+ * are its two forms.
+ *
+ * Below a tablet width the intro hides and the form fills the page.
  */
 defineProps<{
   title: TitleText

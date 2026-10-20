@@ -85,10 +85,11 @@ export function setThemeChoice(choice: ThemeChoice): void {
 }
 
 /**
- * Mirrors the system's mode onto `<html data-theme>` and follows it, never
- * reading or writing the remembered choice: a page with no account of its
- * own, such as a shared conversation's, follows its reader's system, and
- * leaves the product's choice on the same site as it was.
+ * Mirrors the system's mode onto `<html data-theme>` and follows it, never reading or
+ * writing the remembered choice.
+ *
+ * A page with no account of its own, such as a shared conversation's, follows its
+ * reader's system, and leaves the product's choice on the same site as it was.
  */
 export function followSystemTheme(): () => void {
   const media = typeof window.matchMedia === 'function'

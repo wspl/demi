@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { SentenceText, TitleText } from '../ui/ui-text'
 /**
- * A titled card of rows. Rows separate themselves with hairlines. An
- * `actions` slot puts buttons at the end of the title's line, such as Add
- * Device…, centred on it. A `header` slot replaces the title when the group's
- * subject needs its own controls, such as an editable name beside its
- * actions; an `aside` slot puts something beside the card, such as a live
- * preview of what the rows change.
+ * A titled card of rows. Rows separate themselves with hairlines.
+ *
+ * - An `actions` slot puts buttons at the end of the title's line, such as Add
+ *   Device…, centred on it.
+ * - A `header` slot replaces the title when the group's subject needs its own
+ *   controls, such as an editable name beside its actions.
+ * - An `aside` slot puts something beside the card, such as a live preview of what
+ *   the rows change.
  */
 defineProps<{
   title?: TitleText

@@ -5,9 +5,11 @@ import type { SentenceText } from './ui-text'
 
 /**
  * One of a few exclusive choices, each a card with an icon, a title and a line of
- * explanation, for a form that branches on the answer. A radio group, drawn the way
- * modern forms draw it: neutral cards on the surface, the chosen one outlined in the
- * accent with a faint accent wash and its icon in the accent; the text stays neutral.
+ * explanation, for a form that branches on the answer.
+ *
+ * It is a radio group, drawn the way modern forms draw it: neutral cards on the
+ * surface, the chosen one outlined in the accent with a faint accent wash and its
+ * icon in the accent. The text stays neutral.
  */
 export interface ChoiceCardOption<T extends string> {
   value: T

@@ -21,11 +21,13 @@ export type SidebarGroup = (typeof SIDEBAR_GROUPS)[number]
 export type ListLine = ListEntry & { hidden: boolean }
 
 /**
- * Every line the list holds, in display order: plain rows, then each project header and, unless
- * the project is folded, its rows. A folded group hides its lines but keeps the conversation open
- * in the page, which stays under the label even in a folded project, and in Projects its
- * project's header above it, so its place still shows; the hidden lines stay listed so their fold
- * can animate. The keyboard reaches the lines that are not hidden.
+ * Every line the list holds, in display order: plain rows, then each project header
+ * and, unless the project is folded, its rows.
+ *
+ * A folded group hides its lines but keeps the conversation open in the page, which
+ * stays under the label even in a folded project, and in Projects its project's
+ * header above it, so its place still shows. The hidden lines stay listed so their
+ * fold can animate. The keyboard reaches the lines that are not hidden.
  */
 export function listLines(
   plain: readonly SidebarConversation[],

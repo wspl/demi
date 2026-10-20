@@ -20,10 +20,10 @@ const foundLine = StateField.define<DecorationSet>({
 })
 
 /**
- * Scrolls the code view alone to the line a link opened, and nothing around
- * it: CodeMirror's own scrolling also moves every scrolling ancestor, up to
- * the page, so that the line stands at the top of each. Other scrolling, such
- * as the caret's while typing, keeps CodeMirror's.
+ * Scrolls the code view alone to the line a link opened, and nothing around it.
+ * CodeMirror's own scrolling also moves every scrolling ancestor, up to the page,
+ * so that the line stands at the top of each. Other scrolling, such as the caret's
+ * while typing, keeps CodeMirror's.
  */
 const revealInView = EditorView.scrollHandler.of((view, range, { y, yMargin }) => {
   const marked = view.state.field(foundLine)

@@ -2,15 +2,19 @@ import { PHONE_QUERY } from '../ui/phone'
 
 /**
  * The browser's own bars take the color of the page's top, so the top of the
- * screen reads as one: Safari on iOS paints the status bar's band with the
- * page's `theme-color`, in a tab and in the app installed on the Home Screen,
- * and desktop browsers tint their tab bar with it. On a phone the top of
- * every screen is the conversation's bar, on the surface; elsewhere it is the
- * sidebar's, on the base surface. The page's HTML names the default tone's
- * colors for the moment before the app runs; from then on this keeps one
- * `theme-color` tag on the surface the theme, the tone and the width now
- * give, as each changes: the theme and the tone are announced on the root's
- * `data-theme` and `data-tone`, and the width by the phone switch.
+ * screen reads as one.
+ *
+ * - Safari on iOS paints the status bar's band with the page's `theme-color`, in
+ *   a tab and in the app installed on the Home Screen, and desktop browsers tint
+ *   their tab bar with it.
+ * - On a phone the top of every screen is the conversation's bar, on the
+ *   surface. Elsewhere it is the sidebar's, on the base surface.
+ *
+ * The page's HTML names the default tone's colors for the moment before the app
+ * runs. From then on this keeps one `theme-color` tag on the surface the theme,
+ * the tone and the width now give, as each changes: the theme and the tone are
+ * announced on the root's `data-theme` and `data-tone`, and the width by the
+ * phone switch.
  */
 export function followThemeColor(): () => void {
   return followAppearance(() => {

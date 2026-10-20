@@ -18,12 +18,14 @@ import {
 
 /**
  * The first visitor's page on a Demi without accounts: it creates the master
- * account, which manages Demi and every account added later. Owns nothing;
- * the host reports busy, an error, and whether another visitor set Demi up
- * first. Once the account is made, where the server and the browser offer
- * passkeys, the host shows the optional Add a Passkey step: Add Passkey
- * asks the browser for one with the password just entered, and Skip goes on
- * without.
+ * account, which manages Demi and every account added later.
+ *
+ * Owns nothing; the host reports busy, an error, and whether another visitor
+ * set Demi up first.
+ *
+ * Once the account is made, where the server and the browser offer passkeys,
+ * the host shows the optional Add a Passkey step. Add Passkey asks the browser
+ * for one with the password just entered, and Skip goes on without.
  */
 export type SetupPhase = {
   busy?: boolean

@@ -9,21 +9,26 @@ import TextInput from '../ui/TextInput.vue'
 import { isEmail } from './email'
 
 /**
- * Email and password on the auth page, and passkeys where the host offers
- * them. Owns nothing; the host reports busy, error, a lockout and why the
- * user is here.
+ * Email and password on the auth page, and passkeys where the host offers them.
  *
- * While a sign-in runs the fields keep the focus, read-only. A wrong password
- * gives the focus back to the password field with its text selected, as
- * macOS does, so the next try is typed at once; the line under the fields
- * keeps its height either way, so nothing moves. A lockout counts down to its
- * end and keeps Sign In off until then.
+ * Owns nothing; the host reports busy, error, a lockout and why the user is
+ * here.
  *
- * With `passkeys`, the email field offers the browser's passkeys in its
- * autofill (`autocomplete="username webauthn"`, which the host's request
- * with conditional mediation fills), and Sign In with Passkey asks the
- * browser for one; neither needs an email first. A passkey's refusal is the
- * same line under the fields, and leaves the focus where it is.
+ * While a sign-in runs, the fields keep the focus, read-only. A wrong password
+ * gives the focus back to the password field with its text selected, as macOS
+ * does, so the next try is typed at once. The line under the fields keeps its
+ * height either way, so nothing moves. A lockout counts down to its end and
+ * keeps Sign In off until then.
+ *
+ * With `passkeys`:
+ *
+ * - The email field offers the browser's passkeys in its autofill
+ *   (`autocomplete="username webauthn"`, which the host's request with
+ *   conditional mediation fills).
+ * - Sign In with Passkey asks the browser for one. Neither needs an email
+ *   first.
+ * - A passkey's refusal is the same line under the fields, and leaves the
+ *   focus where it is.
  */
 export type EmailLoginPhase = {
   busy?: boolean

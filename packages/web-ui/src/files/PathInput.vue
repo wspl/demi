@@ -14,17 +14,23 @@ import { usePathCompletion, type PathCompletionKind } from './path-completion'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
 
 /**
- * A text field for a Host path that offers the entries of the directory the
- * caret stands in (`usePathCompletion`): a menu under the field, as wide as
- * it, best matches first with the matched letters marked. A row is always
- * selected while it shows, the first when it opens or its rows change; the
- * arrows and the moving pointer move the selection, which is the one lit
- * row, Tab completes it, a click the clicked one; Return is the field's,
- * which submits what it holds; Escape puts the menu away, and Tab is then
- * the focus's and a second Escape the field's. A directory completes as its name and a
- * slash, the menu then listing it; a file completes as its name and is
- * reported (`completeFile`). Every key the menu does not take is the
- * field's own (`keydown`).
+ * A text field for a Host path that offers the entries of the directory the caret
+ * stands in (`usePathCompletion`): a menu under the field, as wide as it, best
+ * matches first with the matched letters marked.
+ *
+ * While the menu shows, a row is always selected, the first when it opens or its
+ * rows change:
+ *
+ * - The arrows and the moving pointer move the selection, which is the one lit
+ *   row.
+ * - Tab completes the selected row, and a click the clicked one.
+ * - Return is the field's, which submits what it holds.
+ * - Escape puts the menu away. Tab is then the focus's and a second Escape the
+ *   field's.
+ *
+ * A directory completes as its name and a slash, the menu then listing it. A
+ * file completes as its name and is reported (`completeFile`). Every key the menu
+ * does not take is the field's own (`keydown`).
  */
 defineOptions({ inheritAttrs: false })
 

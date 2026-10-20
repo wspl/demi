@@ -2,10 +2,12 @@ import { DRAG_THRESHOLD_PX } from './image-zoom'
 
 /**
  * How a swipe steps the media viewer's picture on a phone: the decisions the
- * gesture's owner, `ImagePreview`, asks of it. A swipe left shows the next
- * picture and one right the previous, as in Photos; the picture follows the
- * finger and either settles on the next one or springs back; at the first or
- * the last it stops.
+ * gesture's owner, `ImagePreview`, asks of it.
+ *
+ * - A swipe left shows the next picture and one right the previous, as in Photos.
+ * - The picture follows the finger and either settles on the next one or springs
+ *   back.
+ * - At the first or the last it stops.
  */
 
 /** Which neighbours the picture shown has in its transcript. */

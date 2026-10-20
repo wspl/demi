@@ -2,10 +2,11 @@
 import { t as shared } from '../locales/text'
 
 /**
- * A thin line along the top of what is loading, such as a page that a tab
- * still shows while the next one loads. It shows exactly while `active`: from
- * the frame the user acts in, so an action on a far backend shows at once that
- * it was taken.
+ * A thin line along the top of what is loading, such as a page that a tab still shows
+ * while the next one loads.
+ *
+ * It shows exactly while `active`: from the frame the user acts in, so an action on a
+ * far backend shows at once that it was taken.
  */
 defineProps<{ active: boolean }>()
 </script>

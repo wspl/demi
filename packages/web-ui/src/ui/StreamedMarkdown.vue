@@ -83,10 +83,10 @@ function sameImages(a: ReadonlyMap<string, HostImage>, b: ReadonlyMap<string, Ho
 }
 
 /**
- * A block's render, which follows the highlighter (its arrival and the
- * document's theme) and what it names: its Host images, the files of its
- * code, its agents. It reads its own Host images, so a change of another
- * block's leaves it as it is.
+ * A block's render, which follows the highlighter (its arrival and the document's
+ * theme) and what it names: its Host images, the files of its code, its agents.
+ *
+ * It reads its own Host images, so a change of another block's leaves it as it is.
  */
 function renderBlock(source: () => string): () => string {
   const paths = computed(() => hostImagePaths(source(), renderFiles.value))
@@ -112,11 +112,15 @@ function renderBlock(source: () => string): () => string {
 }
 
 /**
- * The places of a render that components fill: each code block gets its
- * Copy, each link its icon (a file's, a commit's or a web page's), each
- * attachment block that is a card its card, and each agent link its agent's mark
- * and tip. A render replaces them; the component of each place moves into
- * the new one and keeps its state, as a code block's Copied.
+ * The places of a render that components fill:
+ *
+ * - Each code block gets its Copy.
+ * - Each link gets its icon (a file's, a commit's or a web page's).
+ * - Each attachment block that is a card gets its card.
+ * - Each agent link gets its agent's mark and tip.
+ *
+ * A render replaces them; the component of each place moves into the new one and
+ * keeps its state, as a code block's Copied.
  */
 interface Places {
   codeBlocks: HTMLElement[]

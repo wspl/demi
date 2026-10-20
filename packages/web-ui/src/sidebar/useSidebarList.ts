@@ -17,10 +17,26 @@ export interface SidebarListActions {
 }
 
 /**
- * Selection, focus, and keys for the list: click selects and opens, ⌘/Ctrl-click toggles, Shift-click
- * ranges over rows; arrows move the focus and the selection with it, Shift+arrows extend, Space toggles,
- * Enter opens (or folds a project), ←/→ fold and unfold, ⌘A selects all, Esc collapses the selection to
- * the open conversation, F2 renames, ⌘⇧P pins. Focus shows only after keyboard use: Tab into the list or a key in it.
+ * Selection, focus, and keys for the list.
+ *
+ * Pointer:
+ *
+ * - A click selects and opens.
+ * - ⌘/Ctrl-click toggles.
+ * - Shift-click ranges over rows.
+ *
+ * Keyboard:
+ *
+ * - The arrows move the focus and the selection with it. Shift+arrows extend.
+ * - Space toggles.
+ * - Enter opens (or folds a project).
+ * - ←/→ fold and unfold.
+ * - ⌘A selects all.
+ * - Esc collapses the selection to the open conversation.
+ * - F2 renames.
+ * - ⌘⇧P pins.
+ *
+ * Focus shows only after keyboard use: Tab into the list or a key in it.
  */
 export function useSidebarList(
   entries: Ref<ListEntry[]>,
@@ -222,10 +238,11 @@ export function useSidebarList(
   }
 
   /**
-   * Rows that left the list leave the selection too. A selection left empty
-   * collapses to the open conversation once it is listed: a page that loads
-   * opens its conversation before the list arrives, and a list that is
-   * loading again lists nothing for a while.
+   * Rows that left the list leave the selection too.
+   *
+   * A selection left empty collapses to the open conversation once it is listed. A
+   * page that loads opens its conversation before the list arrives, and a list that
+   * is loading again lists nothing for a while.
    */
   function prune(): void {
     const present = new Set(entries.value.map((entry) => entry.id))

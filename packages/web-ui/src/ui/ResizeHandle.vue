@@ -10,20 +10,20 @@ import {
 import { startPointerDrag } from './pointer-drag'
 
 /**
- * The divider between two panes that sizes one of them. It owns nothing but
- * the gesture: the host keeps the size (v-model) and lays the panes out.
+ * The divider between two panes that sizes one of them. It owns nothing but the
+ * gesture: the host keeps the size (v-model) and lays the panes out.
  *
- * Pointer: a press starts a pointer drag (`startPointerDrag`), which keeps
- * the resize cursor on the whole page and reports one size a frame; Escape
- * ends it by putting the size back where it started.
+ * Pointer: a press starts a pointer drag (`startPointerDrag`), which keeps the
+ * resize cursor on the whole page and reports one size a frame; Escape ends it by
+ * putting the size back where it started.
  *
- * Keyboard: the handle is a focusable separator. The arrows along its axis
- * move the edge by `step` (four steps with Shift), Home and End go to the
- * bounds. A double-click returns to `defaultValue` when the host gives one.
+ * Keyboard: the handle is a focusable separator. The arrows along its axis move
+ * the edge by `step` (four steps with Shift), Home and End go to the bounds. A
+ * double-click returns to `defaultValue` when the host gives one.
  *
- * The hit area is 8px wide and straddles the boundary through negative
- * margins, so it takes no room in the layout; the line inside it shows on
- * hover, focus and while dragging.
+ * The hit area is 8px wide and straddles the boundary through negative margins,
+ * so it takes no room in the layout; the line inside it shows on hover, focus and
+ * while dragging.
  */
 const props = withDefaults(
   defineProps<{

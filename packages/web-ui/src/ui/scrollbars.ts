@@ -6,11 +6,12 @@ import {
 } from 'overlayscrollbars'
 
 /**
- * Every scrollbar in the app is OverlayScrollbars' (`ScrollArea`, and the
- * scrollers other libraries own): it floats over the content and takes no
- * room on any system, shows while the pointer is over its scroller, while it
- * scrolls and while its thumb is dragged, then hides. Its look is the
- * `os-theme-demi` theme in base.css.
+ * Every scrollbar in the app is OverlayScrollbars' (`ScrollArea`, and the scrollers
+ * other libraries own). It floats over the content and takes no room on any system,
+ * shows while the pointer is over its scroller, while it scrolls and while its thumb
+ * is dragged, then hides.
+ *
+ * Its look is the `os-theme-demi` theme in base.css.
  */
 
 // A click on the track scrolls a page towards it, as a native bar does.
@@ -37,11 +38,12 @@ export function scrollbarsOptions(axis: ScrollAxis): PartialOptions {
 
 /**
  * Initialisation on an element that scrolls itself and stays the scrolling
- * element: OverlayScrollbars neither wraps nor moves its content, so its
- * padding, its layout and whoever reads its scroll position are unchanged.
- * The bars go into `slot`, an element that does not scroll and whose box is
- * the scroller's, or into the scroller itself, where the library keeps them
- * in place as it scrolls.
+ * element: OverlayScrollbars neither wraps nor moves its content, so its padding,
+ * its layout and whoever reads its scroll position are unchanged.
+ *
+ * The bars go into `slot`, an element that does not scroll and whose box is the
+ * scroller's, or into the scroller itself, where the library keeps them in place
+ * as it scrolls.
  */
 export function scrollbarsTarget(scroller: HTMLElement, slot: HTMLElement = scroller): InitializationTargetObject {
   return {

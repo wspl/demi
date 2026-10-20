@@ -7,11 +7,13 @@ import Tooltip from './Tooltip.vue'
 import type { TitleText } from './ui-text'
 
 /**
- * A `?` button that opens help about the thing beside it in a popover: the
- * button's tooltip and accessible name are `label`, the popover's content
- * the default slot. Escape or a click outside closes it, as the button does
- * a second time. The caller places the button where controls go, such as a
- * settings row's controls; the popover owns its padding.
+ * A `?` button that opens help about the thing beside it in a popover.
+ *
+ * - The button's tooltip and accessible name are `label`, the popover's content the
+ *   default slot.
+ * - Escape or a click outside closes it, as the button does a second time.
+ * - The caller places the button where controls go, such as a settings row's
+ *   controls. The popover owns its padding.
  */
 defineProps<{
   label: TitleText

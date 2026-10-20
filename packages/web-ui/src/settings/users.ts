@@ -49,12 +49,15 @@ export type UserAction =
   | 'enable'
 
 /**
- * What `viewer` may do to `target`, in menu order: nothing to a role not
- * below theirs; to themselves an administrator only sets Cloud Storage,
- * which decides the server's disk, not the account; only the master changes
- * roles; a disabled account refuses every sign-in and has no session to end,
- * so it offers Enable Account instead of Sign-In Code, Sign Out Everywhere
- * and Disable Account.
+ * What `viewer` may do to `target`, in menu order:
+ *
+ * - Nothing to a role not below theirs.
+ * - To themselves, an administrator only sets Cloud Storage, which decides the
+ *   server's disk, not the account.
+ * - Only the master changes roles.
+ * - A disabled account refuses every sign-in and has no session to end, so it
+ *   offers Enable Account instead of Sign-In Code, Sign Out Everywhere and
+ *   Disable Account.
  */
 export function userActions(viewer: SettingsUser, target: SettingsUser): UserAction[] {
   if (viewer.id === target.id) {

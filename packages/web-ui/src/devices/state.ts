@@ -3,9 +3,11 @@ import type { StatusDotTone } from '../ui/StatusDot.vue'
 import type { TitleText } from '../ui/ui-text'
 
 /**
- * Whether a device's runner serves it: online while it is connected,
- * updating while it replaces itself with its server's release, offline
- * otherwise.
+ * Whether a device's runner serves it:
+ *
+ * - online while it is connected,
+ * - updating while it replaces itself with its server's release, and
+ * - offline otherwise.
  */
 export type DeviceState = 'online' | 'updating' | 'offline'
 
@@ -23,9 +25,11 @@ export const DEVICE_STATE_LABEL: Record<DeviceState, TitleText> = {
 }
 
 /**
- * A device's state, with how much of the runner release it moves to its
- * runner has downloaded while that download moves (`crates/runner/src/update.rs`): ahead while it is online, or after its server switched while it
- * updates; null or absent while none moves.
+ * A device's state, with how much of the runner release it moves to its runner has
+ * downloaded while that download moves (`crates/runner/src/update.rs`): ahead while
+ * it is online, or after its server switched while it updates.
+ *
+ * It is null or absent while none moves.
  */
 export interface DeviceStatus {
   state: DeviceState
@@ -33,9 +37,11 @@ export interface DeviceStatus {
 }
 
 /**
- * How a device's state reads beside it, with its download: *Downloading
- * update · 40%* while it is online, *Updating · 26%* while it updates, and
- * its state alone while no download moves.
+ * How a device's state reads beside it, with its download:
+ *
+ * - *Downloading update · 40%* while it is online.
+ * - *Updating · 26%* while it updates.
+ * - Its state alone while no download moves.
  */
 export function deviceStatusLabel(status: DeviceStatus): TitleText {
   const percent = status.downloadPercent

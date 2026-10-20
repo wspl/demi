@@ -12,11 +12,13 @@ import SettingsRow from './SettingsRow.vue'
 import type { SettingsSession, SettingsSessionHost } from './types'
 
 /**
- * The browsers signed in to the account, newest first: each by its browser and
- * system, when it signed in and was last active, the one the user reads in
- * marked This Browser, and the administrator on a browser their sign-in code
- * signed in. Sign Out… beside another asks first, then ends that session at
- * once, its open pages included; this browser's own ends with Sign Out below.
+ * The browsers signed in to the account, newest first.
+ *
+ * - Each shows its browser and system, when it signed in and was last active.
+ * - The one the user reads in is marked This Browser.
+ * - The administrator is marked on a browser their sign-in code signed in.
+ * - Sign Out… beside another browser asks first, then ends that session at once, its
+ *   open pages included. This browser's own ends with Sign Out below.
  */
 const props = defineProps<{
   host: SettingsSessionHost

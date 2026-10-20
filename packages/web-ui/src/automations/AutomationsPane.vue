@@ -10,12 +10,14 @@ import { t } from './locales/text'
 
 /**
  * The main area while it shows the Automations page or one automation: the
- * raised pane a conversation stands in, scrolling as a whole. On a phone it
- * carries the one top bar, with the sidebar's button and the page's title, as a
- * conversation's does; on a page inside it, an automation, the bar goes back
- * instead, as an iOS navigation bar does, and the page names itself. At the
- * top, New Automation is a + at the bar's end, as Reminders and Mail put
- * theirs.
+ * raised pane a conversation stands in, scrolling as a whole.
+ *
+ * - On a phone it carries the one top bar, with the sidebar's button and the
+ *   page's title, as a conversation's does.
+ * - On a page inside it, an automation, the bar goes back instead, as an iOS
+ *   navigation bar does, and the page names itself.
+ * - At the top, New Automation is a + at the bar's end, as Reminders and Mail
+ *   put theirs.
  */
 defineProps<{
   /** The bar's title on a phone. */
