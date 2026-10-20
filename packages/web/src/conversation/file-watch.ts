@@ -30,6 +30,13 @@ export type OpenConversationWatchLink = (conversationId: string, handlers: Watch
 export type OpenAttachedWatchLink = (conversationId: string, deviceId: string, handlers: WatchLinkHandlers) => WatchLink
 
 /**
+ * Follows the device `deviceId`'s state for the page's lifetime: calls
+ * `cameOnline` each time the device comes online, and answers what tells
+ * whether it is online now.
+ */
+export type FollowHost = (deviceId: string, cameOnline: () => void) => () => boolean
+
+/**
  * Reads each message of a watch against its schema and hands it on; one
  * that does not read is for a developer, and ends the connection, which
  * opens again after its wait.
@@ -109,38 +116,60 @@ export const relayAttachedWatchLink: OpenAttachedWatchLink = (conversationId, de
  *
  * Each Host's watch has a connection of its own: the backend's `offline`
  * names no Host, and ends the connection with every subscription on it.
+ *
+ * Each watch opens only while its Host is online, as the device's state from
+ * the synchronization channel holds it, and at once when the device comes
+ * online (`FollowHost`).
  */
 export class ConversationWatch {
   private current: { deviceId: string; channel: WatchChannel } | null = null
   private readonly channels = new Map<string, WatchChannel>()
   private readonly attachedChannels = new Map<string, WatchChannel>()
+  /** Whether each device a watch serves is online, from its follow. */
+  private readonly hosts = new Map<string, () => boolean>()
 
   constructor(
     private readonly conversationId: string,
     private readonly openLink: OpenConversationWatchLink = relayWatchLink,
     private readonly openAttachedLink: OpenAttachedWatchLink = relayAttachedWatchLink,
+    private readonly followHost: FollowHost = () => () => true,
   ) {}
+
+  /** Whether the device `deviceId` is online, following it from the first time it is asked. */
+  private hostOnline(deviceId: string): boolean {
+    let online = this.hosts.get(deviceId)
+    if (!online) {
+      online = this.followHost(deviceId, () => this.online(deviceId))
+      this.hosts.set(deviceId, online)
+    }
+    return online()
+  }
 
   /** The watch of the attached host `deviceId`, whose kept files are `files`. */
   attached(deviceId: string, files: HostFiles): WatchChannel {
     let channel = this.attachedChannels.get(deviceId)
     if (!channel) {
-      channel = new WatchChannel(files, (handlers) => this.openAttachedLink(this.conversationId, deviceId, handlers))
+      channel = new WatchChannel(
+        files,
+        (handlers) => this.openAttachedLink(this.conversationId, deviceId, handlers),
+        undefined,
+        () => this.hostOnline(deviceId),
+      )
       this.attachedChannels.set(deviceId, channel)
     }
     return channel
-  }
-
-  /** The attached host `deviceId` came online, as a stopped Cloud that started: its watch connects at once. */
-  attachedOnline(deviceId: string): void {
-    this.attachedChannels.get(deviceId)?.online()
   }
 
   /** The watch of the conversation's Host, the device `deviceId` whose kept files are `files`. */
   channel(deviceId: string, files: HostFiles): WatchChannel {
     let channel = this.channels.get(deviceId)
     if (!channel) {
-      channel = new WatchChannel(files, (handlers) => this.openLink(this.conversationId, handlers))
+      channel = new WatchChannel(
+        files,
+        (handlers) => this.openLink(this.conversationId, handlers),
+        undefined,
+        () => this.hostOnline(deviceId),
+      )
       this.channels.set(deviceId, channel)
     }
     if (this.current?.deviceId !== deviceId) {
@@ -150,9 +179,14 @@ export class ConversationWatch {
     return channel
   }
 
-  /** The Host came online: a watch waiting to connect again connects now. */
-  online(): void {
-    this.current?.channel.online()
+  /**
+   * The device `deviceId` came online, as a stopped Cloud that started: the
+   * watch of it as the conversation's Host or as an attached host, waiting to
+   * connect again or dormant, connects now.
+   */
+  online(deviceId: string): void {
+    this.channels.get(deviceId)?.online()
+    this.attachedChannels.get(deviceId)?.online()
   }
 
   /**

@@ -149,9 +149,14 @@ interface SentRenewal {
 }
 
 /**
- * One watch of a Host. It connects while it carries a subscription, and again
- * after its reconnect waits when the connection ends, which ends every
- * subscription on it.
+ * One watch of a Host. It connects while it carries a subscription and the
+ * Host is online, and again after its reconnect waits when the connection
+ * ends, which ends every subscription on it.
+ *
+ * While the Host is offline, as its owner holds it (`hostOnline`), the watch
+ * is dormant: it opens nothing, and its owner's `online` when the Host
+ * returns opens it once. Without an owner, as for a simulated Host, the
+ * Host counts as online.
  *
  * A connection that brings nothing, not even a heartbeat, for 75 seconds is
  * broken.
@@ -174,6 +179,7 @@ export class WatchChannel {
     private readonly listener: WatchListener,
     private readonly open: OpenWatchLink,
     private readonly name = 'file watch',
+    private readonly hostOnline: () => boolean = () => true,
   ) {}
 
   /** The watch carries `subscription` from now on: subscribed while open, and each time it opens. */
@@ -246,7 +252,7 @@ export class WatchChannel {
       this.listener.heard(subscriptions)
   }
 
-  /** The Host came online: a watch waiting to connect again connects now. */
+  /** The Host came online: a watch waiting to connect again, or dormant, connects now. */
   online(): void {
     if (this.link || this.carried.size === 0)
       return
@@ -281,8 +287,9 @@ export class WatchChannel {
     })
   }
 
+  /** Opens a connection, unless it carries nothing or its Host is offline, which leaves it dormant until `online`. */
   private connect(): void {
-    if (this.carried.size === 0)
+    if (this.carried.size === 0 || !this.hostOnline())
       return
     let link: WatchLink | null = null
     const current = () => link !== null && this.link === link

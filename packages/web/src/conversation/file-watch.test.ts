@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { HostFiles, SUMMARY_REREAD_MS, type KeptSpec } from '@demicodes/web-ui/files/file-cache'
+import { reportPageErrorsWith, type PageErrorReport } from '@demicodes/web-ui/infra/errors'
 import type { FileWatchMessage, FileWatchRequest } from '../api/generated/web-api'
 import { ConversationWatch, deviceWatch } from './file-watch'
 
@@ -35,10 +36,10 @@ class WatchSocket extends EventTarget {
     this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(message) }))
   }
 
-  /** The backend or the network ends it. */
-  end(): void {
+  /** The backend or the network ends it, with the close the page hears: by default, a break. */
+  end(code = 1006, reason = ''): void {
     this.closed = true
-    this.dispatchEvent(new Event('close'))
+    this.dispatchEvent(new CloseEvent('close', { code, reason }))
   }
 }
 
@@ -133,11 +134,63 @@ test('a watch that closes connects again after its wait, at once when the Host i
 
   first.receive({ type: 'offline' })
   first.end()
-  watch.online()
+  watch.online('d1')
   expect(sockets).toHaveLength(2)
   sockets[1]!.open()
   await flush()
   expect(subscribed(sockets[1]!)).toEqual(subscribed(first))
+})
+
+test('a watch of an offline Host opens nothing and reports nothing until the Host comes online, then opens once', async () => {
+  jest.useFakeTimers()
+  const reports: PageErrorReport[] = []
+  const stopReporting = reportPageErrorsWith(async (report) => {
+    reports.push(report)
+    return null
+  })
+  try {
+    // The device's state the page holds; the test tells the watch when it comes online.
+    const online = new Set<string>()
+    const { files, spec } = kept()
+    const watch = new ConversationWatch('c1', undefined, undefined, (deviceId) => () => online.has(deviceId))
+    files.show(spec('text', '/w/a.ts', watch.channel('d1', files)))
+    await flush()
+    // The page opened with its Host offline, as a stopped Cloud.
+    jest.advanceTimersByTime(30 * 60_000)
+    expect(sockets).toHaveLength(0)
+
+    online.add('d1')
+    watch.online('d1')
+    expect(sockets).toHaveLength(1)
+    const first = sockets[0]!
+    first.open()
+    await flush()
+
+    // The Host stops: the backend says so and closes, before or after the
+    // synchronization channel tells the page.
+    first.receive({ type: 'offline' })
+    first.end(1011, 'host_unreachable')
+    online.delete('d1')
+    jest.advanceTimersByTime(30 * 60_000)
+    await flush()
+    expect(sockets).toHaveLength(1)
+    expect(reports).toEqual([])
+
+    online.add('d1')
+    watch.online('d1')
+    expect(sockets).toHaveLength(2)
+    sockets[1]!.open()
+    await flush()
+    expect(subscribed(sockets[1]!)).toEqual(subscribed(first))
+
+    // A failure of the backend is still reported.
+    sockets[1]!.end(1011, 'internal_error')
+    await flush()
+    expect(reports).toHaveLength(1)
+  } finally {
+    stopReporting()
+    jest.useRealTimers()
+  }
 })
 
 test('a watch that brings nothing, not even a heartbeat, for 75 s is broken and connects again', async () => {
