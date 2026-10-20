@@ -17,6 +17,7 @@ import { agentCompaction, subagentPanelTabs, type SubagentRecord } from './subag
 import { useCallTerminals, type TerminalRecord } from './terminals'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import type { UsageLimits } from './context-usage'
+import type { CostState } from './context-cost'
 import { loadedInstructions } from './instructions'
 import { refusedForSize } from './session-status'
 import { agentMenu } from './agent-menu'
@@ -37,6 +38,11 @@ const props = withDefaults(
      * context card shows; absent, it shows none.
      */
     usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
+    /**
+     * The own cost of a child the panel shows, which its context card shows;
+     * null while its first read is on its way. Absent, the card shows none.
+     */
+    agentCost?: (id: string) => CostState | null
     /**
      * Reads the latest page of a child's transcript, for a child the panel
      * shows and holds none of, unless the session sends it (`streamed`). It
@@ -79,6 +85,8 @@ const emit = defineEmits<{
   refreshLimits: [providerId: string, account: string | null, automatic: boolean]
   /** An instruction in the child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
+  /** Retry in the shown child's context card, after its cost's read failed. */
+  retryAgentCost: [id: string]
 }>()
 /**
  * Whether the panel is open, and the child it shows. None leaves it open,
@@ -296,7 +304,9 @@ function closeTab(id: string): void {
         :size-refused="context?.sizeRefused ?? false"
         :instructions="context?.instructions ?? []"
         :limits="context?.limits ?? null"
+        :cost="agentCost?.(active.id)"
         @compact="emit('compactAgent', active.id)"
+        @retry-cost="emit('retryAgentCost', active.id)"
         @open-instruction="emit('openInstruction', $event)"
         @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null, $event)"
       />

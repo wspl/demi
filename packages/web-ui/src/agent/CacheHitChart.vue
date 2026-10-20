@@ -2,39 +2,38 @@
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import { onClickOutside, useElementSize } from '@vueuse/core'
-import type { CostCall } from '@demicodes/protocol'
+import { niceTicks } from '@demicodes/utils'
 import { pageLanguage } from '../i18n/text'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { showAbove } from '../overlay/stacking'
 import { formatClockAgo } from '../ui/dates'
 import { formatDollars } from '../ui/numbers'
 import { formatTokens } from '../ui/token-count'
-import { callHitRate } from './context-cost'
+import { type CallGroup, callHitRate, hitRate } from './context-cost'
 import { t } from './locales/text'
 
 /**
- * The main conversation's recent turn calls, each at its call's cache hit rate,
- * by its number (`packages/web-ui/src/agent/ContextUsageIndicator.vue`).
+ * The main conversation's recent turn calls, each point a group of
+ * consecutive calls at their cache hit rate, by their numbers
+ * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`).
  *
  * The chart draws:
  *
  * - faint lines at 0, 50 and 100%
- * - the numbers under the plot
- * - a red dot for a cache miss
- * - a grey dashed line for a compaction, between the calls it separates
+ * - round call numbers under the plot
+ * - a red dot for a group with a cache miss
+ * - a grey dashed line for a compaction, before the group of the first call
+ *   after it
  *
  * Resting the pointer on the plot, or a tap on a phone, shows the nearest
- * call's tip beside its point where it fits, otherwise above it, never past the
- * card's edges.
+ * point's tip beside it where it fits, otherwise above it, never past the
+ * card's edges: a call's own, or a group's range, rate, price and misses.
  */
 const props = defineProps<{
-  /** The calls the chart draws, the conversation's most recent. */
-  calls: readonly CostCall[]
-  /**
-   * How many of the conversation's turn calls came before them. Their numbers
-   * count on from it.
-   */
-  before: number
+  /** The groups the chart draws, the conversation's most recent. */
+  groups: readonly CallGroup[]
+  /** The calls of each group; the last may hold fewer. */
+  size: number
   /**
    * The call, by its place among all of the conversation's, whose tip shows
    * without the pointer, as a gallery specimen pins it.
@@ -42,8 +41,8 @@ const props = defineProps<{
   pinnedTip?: number | null
 }>()
 
-/** The plot's height, four rows of the card. */
-const PLOT = 96
+/** The plot's height. */
+const PLOT = 32
 /**
  * The gap of one caption: between the plot's top line and the controls above
  * it, and between the plot and the labels below it.
@@ -56,29 +55,29 @@ const BASELINE = GAP + PLOT + GAP + CAP
 const HEIGHT = BASELINE + 3
 /** A label this near an end of the plot is anchored to that end. */
 const EDGE = 16
-/**
- * A character's widest advance at the labels' caption size, in pixels, and the
- * room left between two labels. A label between the first and the last stands
- * only where its whole width keeps that room from theirs.
- */
-const LABEL_CHAR = 8
-const LABEL_GAP = 6
+/** The plot's width for each label under it, about. */
+const LABEL_EVERY = 60
 
 const wrap = useTemplateRef<HTMLElement>('wrap')
 const { width } = useElementSize(wrap)
 
 function xOf(index: number): number {
-  const count = props.calls.length
+  const count = props.groups.length
   if (count < 2)
     return width.value / 2
   return (index / (count - 1)) * width.value
+}
+
+/** The number of a group's last call in the conversation. */
+function lastOf(group: CallGroup): number {
+  return group.first + group.calls.length - 1
 }
 
 function yOf(rate: number): number {
   return GAP + (1 - rate) * PLOT
 }
 
-const points = computed(() => props.calls.map((call, index) => ({ x: xOf(index), y: yOf(callHitRate(call)) })))
+const points = computed(() => props.groups.map((group, index) => ({ x: xOf(index), y: yOf(hitRate(group.calls) ?? 0) })))
 
 const line = computed(() => points.value.map((point, index) => `${index ? 'L' : 'M'}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(''))
 const area = computed(() => {
@@ -90,71 +89,61 @@ const area = computed(() => {
 })
 
 /**
- * Each compaction, halfway between the call before it and the first after it.
+ * Each compaction, halfway between the group before it and the group of the
+ * first call after it.
  */
 const compactions = computed(() =>
-  props.calls.flatMap((call, index) => (call.afterCompaction && index > 0 ? [(xOf(index - 1) + xOf(index)) / 2] : [])),
+  props.groups.flatMap((group, index) => (index > 0 && group.calls.some((call) => call.afterCompaction) ? [(xOf(index - 1) + xOf(index)) / 2] : [])),
 )
-const misses = computed(() => props.calls.flatMap((call, index) => (call.miss === null ? [] : [points.value[index]!])))
+const misses = computed(() => props.groups.flatMap((group, index) => (group.calls.some((call) => call.miss !== null) ? [points.value[index]!] : [])))
 
 /**
- * The labels under the plot:
- *
- * - the numbers of the first and last drawn call in the conversation, the first
- *   marked `#`
- * - the round numbers between them that fit beside them and each other
+ * The labels under the plot: round call numbers, 1, 2 or 5 times a power of
+ * ten, about one for each `LABEL_EVERY` pixels. A point stands at the middle
+ * of its group's numbers, and a number at its place between the points.
  */
 const labels = computed(() => {
-  const count = props.calls.length
-  if (count === 0)
+  const groups = props.groups
+  if (groups.length === 0)
     return []
-  const at = (x: number, text: string) => {
+  const middle = (index: number) => groups[index]!.first + (props.size - 1) / 2
+  const from = middle(0)
+  const to = groups.length === 1 ? from : middle(groups.length - 1)
+  const count = Math.max(1, Math.round(width.value / LABEL_EVERY))
+  return niceTicks(from, to, count, 1).map((number) => {
+    const x = to === from ? width.value / 2 : ((number - from) / (to - from)) * width.value
     const anchor = x < EDGE ? 'start' : x > width.value - EDGE ? 'end' : 'middle'
-    const x0 = anchor === 'start' ? 0 : anchor === 'end' ? width.value : x
-    const extent = text.length * LABEL_CHAR
-    const left = anchor === 'start' ? x0 : anchor === 'end' ? x0 - extent : x0 - extent / 2
-    return { x: x0, anchor, text, left, right: left + extent }
-  }
-  const first = props.before + 1
-  const last = props.before + count
-  const start = at(xOf(0), `#${first}`)
-  if (count === 1)
-    return [start]
-  const end = at(xOf(count - 1), String(last))
-  const step = count > 30 ? 10 : 5
-  const shown = [start]
-  for (let number = Math.ceil((first + 1) / step) * step; number < last; number += step) {
-    const label = at(xOf(number - first), String(number))
-    if (label.left >= shown.at(-1)!.right + LABEL_GAP && label.right + LABEL_GAP <= end.left)
-      shown.push(label)
-  }
-  return [...shown, end]
+    return { x: anchor === 'start' ? 0 : anchor === 'end' ? width.value : x, anchor, text: String(number) }
+  })
 })
 
 /**
- * The drawn call under the pointer, or the tap; the pinned one while there is
- * none.
+ * The drawn group under the pointer, or the tap; the pinned call's while there
+ * is none.
  */
 const pointed = ref<number | null>(null)
 const pinned = computed(() => {
-  const index = props.pinnedTip == null ? -1 : props.pinnedTip - props.before
-  return index >= 0 && index < props.calls.length ? index : null
+  const first = props.groups[0]?.first
+  if (props.pinnedTip == null || first === undefined)
+    return null
+  const index = Math.floor((props.pinnedTip + 1 - first) / props.size)
+  return index >= 0 && index < props.groups.length ? index : null
 })
 const shown = computed(() => pointed.value ?? pinned.value)
-// A call the drawn ones no longer hold, or one whose place moved as a new
-// call pushed the oldest out, has no tip.
-watch([() => props.calls.length, () => props.before], ([, before], [, earlier]) => {
-  if (pointed.value !== null && (pointed.value >= props.calls.length || before !== earlier))
+// A group the drawn ones no longer hold, or one whose place moved as the
+// window moved on, has no tip.
+watch([() => props.groups.length, () => props.groups[0]?.first], ([length, first], [, earlier]) => {
+  if (pointed.value !== null && (pointed.value >= length || first !== earlier))
     pointed.value = null
 })
 
 function nearest(event: PointerEvent): number | null {
   const box = wrap.value?.getBoundingClientRect()
-  if (!box || props.calls.length === 0)
+  if (!box || props.groups.length === 0)
     return null
   const x = event.clientX - box.left
   let best = 0
-  for (let index = 1; index < props.calls.length; index++) {
+  for (let index = 1; index < props.groups.length; index++) {
     if (Math.abs(xOf(index) - x) < Math.abs(xOf(best) - x))
       best = index
   }
@@ -221,7 +210,16 @@ const elevation = useLayerElevation()
 const z = showAbove()
 
 const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 1 })
-const tipCall = computed(() => (shown.value === null ? null : props.calls[shown.value] ?? null))
+const tipGroup = computed(() => (shown.value === null ? null : props.groups[shown.value] ?? null))
+/** The tip's call, when its group holds one. */
+const tipCall = computed(() => (tipGroup.value?.calls.length === 1 ? tipGroup.value.calls[0]! : null))
+/** The causes of a group's misses, each once. */
+const tipCauses = computed(() => [...new Set(tipGroup.value?.calls.flatMap((call) => (call.miss === null ? [] : [call.miss])) ?? [])])
+/** A group's summed price; none while none of its calls has one. */
+const tipPrice = computed(() => {
+  const prices = tipGroup.value?.calls.flatMap((call) => (call.price === null ? [] : [call.price])) ?? []
+  return prices.length === 0 ? null : prices.reduce((sum, price) => sum + price, 0)
+})
 const now = ref(Date.now())
 watch(shown, () => {
   now.value = Date.now()
@@ -258,7 +256,7 @@ watch(shown, () => {
         :y1="GAP"
         :y2="yOf(0)"
       />
-      <circle v-if="points.length && before === 0" class="cost-chart-first" :cx="points[0]!.x" :cy="points[0]!.y" r="3" />
+      <circle v-if="points.length && groups[0]!.first === 1" class="cost-chart-first" :cx="points[0]!.x" :cy="points[0]!.y" r="3" />
       <template v-for="miss in misses" :key="`miss@${miss.x}`">
         <line class="cost-chart-miss-tick" :x1="miss.x" :x2="miss.x" :y1="yOf(1)" :y2="miss.y" />
         <circle class="cost-chart-miss" :cx="miss.x" :cy="miss.y" r="3.5" />
@@ -267,7 +265,7 @@ watch(shown, () => {
         <line class="stroke-fg-subtle" :x1="points[shown]!.x" :x2="points[shown]!.x" :y1="GAP" :y2="yOf(0)" />
         <circle
           class="cost-chart-cursor"
-          :class="tipCall?.miss ? 'fill-on-danger' : 'fill-on-accent'"
+          :class="tipCauses.length ? 'fill-on-danger' : 'fill-on-accent'"
           :cx="points[shown]!.x"
           :cy="points[shown]!.y"
           r="3"
@@ -280,31 +278,45 @@ watch(shown, () => {
     -->
     <Teleport :to="card ?? 'body'">
       <div
-        v-if="tipCall && shown !== null"
+        v-if="tipGroup"
         ref="tip"
         class="overlay-shell pointer-events-none w-max rounded-md px-2.5 py-1.5 text-[12px] leading-4 text-fg phone:text-[15px] phone:leading-5"
         :style="{ ...floatingStyles, maxWidth: `${tipWidth}px`, '--elevation': elevation, zIndex: z() }"
         role="tooltip"
       >
-        <div class="mb-0.5 font-medium text-fg-emphasis tabular-nums">{{ t('context.cost.request', { number: before + shown + 1 }) }}</div>
-        <div class="mb-1 text-fg-subtle tabular-nums">{{ formatClockAgo(tipCall.startedAt, now) }}</div>
-        <div class="cost-tip-row">
-          <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
-          <span class="font-medium text-fg-emphasis tabular-nums">{{ percent.format(callHitRate(tipCall)) }}</span>
-        </div>
-        <template v-if="tipCall.miss">
-          <div class="mt-1 text-on-danger">{{ t('context.cost.miss', { cause: t(`context.cost.cause.${tipCall.miss}`) }) }}</div>
+        <template v-if="tipCall">
+          <div class="mb-0.5 font-medium text-fg-emphasis tabular-nums">{{ t('context.cost.request', { number: tipGroup.first }) }}</div>
+          <div class="mb-1 text-fg-subtle tabular-nums">{{ formatClockAgo(tipCall.startedAt, now) }}</div>
           <div class="cost-tip-row">
-            <span class="text-fg-subtle">{{ t('context.cost.rewritten') }}</span>
-            <span class="tabular-nums">{{ formatTokens(tipCall.inputTokens + tipCall.cacheWriteTokens) }}</span>
+            <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
+            <span class="font-medium text-fg-emphasis tabular-nums">{{ percent.format(callHitRate(tipCall)) }}</span>
+          </div>
+          <template v-if="tipCall.miss">
+            <div class="mt-1 text-on-danger">{{ t('context.cost.miss', { cause: t(`context.cost.cause.${tipCall.miss}`) }) }}</div>
+            <div class="cost-tip-row">
+              <span class="text-fg-subtle">{{ t('context.cost.rewritten') }}</span>
+              <span class="tabular-nums">{{ formatTokens(tipCall.inputTokens + tipCall.cacheWriteTokens) }}</span>
+            </div>
+          </template>
+          <div v-else-if="tipGroup.first === 1" class="mt-1 text-fg-subtle">{{ t('context.cost.firstRequest') }}</div>
+          <div v-else-if="tipCall.afterCompaction" class="mt-1 text-fg-subtle">{{ t('context.cost.afterCompaction') }}</div>
+          <div v-if="tipCall.price !== null" class="cost-tip-row">
+            <span class="text-fg-subtle">{{ t('context.cost.price') }}</span>
+            <span class="tabular-nums">{{ formatDollars(tipCall.price) }}</span>
           </div>
         </template>
-        <div v-else-if="before + shown === 0" class="mt-1 text-fg-subtle">{{ t('context.cost.firstRequest') }}</div>
-        <div v-else-if="tipCall.afterCompaction" class="mt-1 text-fg-subtle">{{ t('context.cost.afterCompaction') }}</div>
-        <div v-if="tipCall.price !== null" class="cost-tip-row">
-          <span class="text-fg-subtle">{{ t('context.cost.price') }}</span>
-          <span class="tabular-nums">{{ formatDollars(tipCall.price) }}</span>
-        </div>
+        <template v-else>
+          <div class="mb-1 font-medium text-fg-emphasis tabular-nums">#{{ tipGroup.first }}–#{{ lastOf(tipGroup) }}</div>
+          <div class="cost-tip-row">
+            <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
+            <span class="font-medium text-fg-emphasis tabular-nums">{{ percent.format(hitRate(tipGroup.calls) ?? 0) }}</span>
+          </div>
+          <div v-for="cause in tipCauses" :key="cause" class="mt-1 text-on-danger">{{ t('context.cost.miss', { cause: t(`context.cost.cause.${cause}`) }) }}</div>
+          <div v-if="tipPrice !== null" class="cost-tip-row">
+            <span class="text-fg-subtle">{{ t('context.cost.price') }}</span>
+            <span class="tabular-nums">{{ formatDollars(tipPrice) }}</span>
+          </div>
+        </template>
       </div>
     </Teleport>
   </div>

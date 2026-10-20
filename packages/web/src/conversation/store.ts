@@ -5,7 +5,7 @@ import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { NO_COST, addCost, costStep, type ConversationCostView, type CostAddition } from '@demicodes/web-ui/agent/context-cost'
+import { NO_COST, addCost, costStep, type ConversationCostView, type CostAddition, type CostState } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -429,6 +429,7 @@ export const useConversations = defineStore('conversations', () => {
       failures: {},
       contextUsage: null,
       cost: null,
+      subagentCosts: {},
     }
   }
 
@@ -1162,7 +1163,7 @@ export const useConversations = defineStore('conversations', () => {
       subagents: apiRequest(`${path}/subagents`, { signal }).then((response) => readResponse(response, subagentsSchema)),
       hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
       draft: loadDraft(id, signal),
-      cost: readCostOf(id, signal),
+      cost: readCostOf(id, null, signal),
     }
     // The opening that takes them reports their failures; one never taken has nobody to tell.
     for (const read of Object.values(reads)) {
@@ -1303,6 +1304,8 @@ export const useConversations = defineStore('conversations', () => {
           followCost(conversation, next)
         else if (next.type === 'cost_rows')
           followCostRows(conversation, next.rows)
+        else if (next.type === 'subagents' || next.type === 'subagent')
+          readShownCosts(conversation)
         reconcileSubmission(conversation)
       },
     })
@@ -1341,8 +1344,10 @@ export const useConversations = defineStore('conversations', () => {
     conversation.summaries = {}
     conversation.subagents = []
     conversation.lastError = null
-    costReads.get(conversation.id)?.controller.abort()
+    for (const owner of costOwners(conversation))
+      costReads.get(costKey(owner))?.controller.abort()
     conversation.cost = null
+    conversation.subagentCosts = {}
     clearSession(conversation)
   }
 
@@ -1405,7 +1410,7 @@ export const useConversations = defineStore('conversations', () => {
     // opens from it below, as if it had never shown the copy.
     let answered = false
     void reads.unreachable.then(() => openFromCopy(conversation, signal, () => answered))
-    const costRead = readCost(conversation, signal, reads.cost)
+    const costRead = readCost({ conversation, child: null }, signal, reads.cost)
     const [page] = await Promise.all([reads.transcript, draftRead, costRead])
     answered = true
     signal.throwIfAborted()
@@ -1428,6 +1433,7 @@ export const useConversations = defineStore('conversations', () => {
       (listed) => {
         if (!signal.aborted && !sessionOpened()) {
           conversation.subagents = listed.subagents.map(subagentRecord)
+          readShownCosts(conversation)
         }
       },
       (error: unknown) => {
@@ -1459,14 +1465,72 @@ export const useConversations = defineStore('conversations', () => {
         agent.failures = {}
       }
     }
+    // A child's cost is held while its window shows it, and read again when
+    // it shows again.
+    for (const child of dropped) {
+      costReads.get(costKey({ conversation, child }))?.controller.abort()
+      delete conversation.subagentCosts[child]
+    }
+    readShownCosts(conversation)
     cache.get(conversation.id)?.runtime?.showSubagents()
   }
 
   /**
-   * The read of each conversation's cost under way, with the `cost` frames
-   * that came while it was on its way and the most rows an attach said the
-   * conversation has meanwhile. A read leaves it as it settles, whether it
-   * was answered, failed or cancelled.
+   * Reads the own cost of each child the page shows and holds none of, nor
+   * reads: as its window opens, or once the page knows the child's number.
+   */
+  function readShownCosts(conversation: Conversation): void {
+    const entry = cache.get(conversation.id)
+    if (!entry)
+      return
+    for (const child of conversation.shownSubagents) {
+      const owner = { conversation, child }
+      if (child in conversation.subagentCosts || costReads.has(costKey(owner)))
+        continue
+      void readCost(owner, entry.controller.signal)
+    }
+  }
+
+  /**
+   * A cost the page holds: the conversation's, `child` null, or the own cost
+   * of the child `child`, by its id, while its window shows it.
+   */
+  interface CostOwner {
+    conversation: Conversation
+    child: string | null
+  }
+
+  /** The owner's key in `costReads`. */
+  function costKey({ conversation, child }: CostOwner): string {
+    return child === null ? conversation.id : `${conversation.id}/${child}`
+  }
+
+  /** The conversation's cost and each shown child's, which every frame continues. */
+  function costOwners(conversation: Conversation): CostOwner[] {
+    return [{ conversation, child: null }, ...conversation.shownSubagents.map((child) => ({ conversation, child }))]
+  }
+
+  /** The agent whose own cost the owner holds, by its number; null for the conversation's, undefined for a child the page does not know yet. */
+  function agentOf({ conversation, child }: CostOwner): number | null | undefined {
+    return child === null ? null : conversation.subagents.find((agent) => agent.id === child)?.number
+  }
+
+  function heldCost({ conversation, child }: CostOwner): CostState | null {
+    return child === null ? conversation.cost : conversation.subagentCosts[child] ?? null
+  }
+
+  function holdCost({ conversation, child }: CostOwner, state: CostState): void {
+    if (child === null)
+      conversation.cost = state
+    else if (conversation.shownSubagents.includes(child))
+      conversation.subagentCosts[child] = state
+  }
+
+  /**
+   * The read of each held cost under way, by its owner's key, with the
+   * `cost` frames that came while it was on its way and the most rows an
+   * attach said the conversation has meanwhile. A read leaves it as it
+   * settles, whether it was answered, failed or cancelled.
    */
   interface CostRead {
     controller: AbortController
@@ -1475,28 +1539,34 @@ export const useConversations = defineStore('conversations', () => {
   }
   const costReads = new Map<string, CostRead>()
 
-  /** The backend's answer for what the conversation `id` cost (`packages/web-ui/src/agent/context-cost.ts`). */
-  function readCostOf(id: string, signal: AbortSignal): Promise<ConversationCostView> {
-    return apiRequest(`/conversations/${encodeURIComponent(id)}/cost`, { signal })
+  /**
+   * The backend's answer for what the conversation `id` cost, or its agent
+   * `agent` (`packages/web-ui/src/agent/context-cost.ts`).
+   */
+  function readCostOf(id: string, agent: number | null, signal: AbortSignal): Promise<ConversationCostView> {
+    const query = agent === null ? '' : `?agent=${agent}`
+    return apiRequest(`/conversations/${encodeURIComponent(id)}/cost${query}`, { signal })
       .then((response) => readResponse(response, conversationCostSchema))
   }
 
-  /** Retry on a failed read of the cost of `conversation`. */
-  function retryCost(conversation: Conversation): void {
-    if (conversation.cost?.status === 'failed')
-      readCostAgain(conversation)
+  /** Retry on a failed read of the cost of `conversation`, or of its shown child `child`. */
+  function retryCost(conversation: Conversation, child: string | null = null): void {
+    const owner = { conversation, child }
+    if (heldCost(owner)?.status === 'failed')
+      readCostAgain(owner)
   }
 
-  /** Reads the cost of `conversation` again while the page keeps it open; one it let go reads nothing. */
-  function readCostAgain(conversation: Conversation): void {
-    const entry = cache.get(conversation.id)
+  /** Reads the owner's cost again while the page keeps the conversation open; one it let go reads nothing. */
+  function readCostAgain(owner: CostOwner): void {
+    const entry = cache.get(owner.conversation.id)
     if (entry)
-      void readCost(conversation, entry.controller.signal)
+      void readCost(owner, entry.controller.signal)
   }
 
   /**
-   * Reads the cost of `conversation`, which the page holds while the
-   * conversation is open (`packages/web-ui/src/agent/context-cost.ts`). It
+   * Reads the owner's cost, which the page holds while the conversation is
+   * open, a child's while its window shows it
+   * (`packages/web-ui/src/agent/context-cost.ts`). It
    * keeps what it shows until the answer comes, then adds to the answer the
    * frames that came meanwhile and that it does not include, and reads again
    * when an attach said the conversation has more rows than it holds then. A
@@ -1511,57 +1581,72 @@ export const useConversations = defineStore('conversations', () => {
    * or the read gave way to a newer one or to the conversation's going; it
    * leaves `costReads` either way.
    */
-  function readCost(conversation: Conversation, open: AbortSignal, answer?: Promise<ConversationCostView>): Promise<void> {
-    costReads.get(conversation.id)?.controller.abort()
+  function readCost(owner: CostOwner, open: AbortSignal, answer?: Promise<ConversationCostView>): Promise<void> {
+    const key = costKey(owner)
+    const agent = agentOf(owner)
+    // A child the page does not know yet has no number to read by; it is
+    // read once the page knows it (`readShownCosts`).
+    if (agent === undefined)
+      return Promise.resolve()
+    costReads.get(key)?.controller.abort()
     const reading: CostRead = { controller: new AbortController(), frames: [], rows: 0 }
-    costReads.set(conversation.id, reading)
+    costReads.set(key, reading)
     const signal = AbortSignal.any([reading.controller.signal, open])
     // The entry goes as the read settles, or at once as it is cancelled,
     // since an opening's read sent before the conversation was cached may
     // answer later; an entry a newer read replaced stays.
     const release = () => {
       signal.removeEventListener('abort', release)
-      if (costReads.get(conversation.id) === reading)
-        costReads.delete(conversation.id)
+      if (costReads.get(key) === reading)
+        costReads.delete(key)
     }
     signal.addEventListener('abort', release)
-    return (answer ?? readCostOf(conversation.id, signal)).then((cost) => {
+    return (answer ?? readCostOf(owner.conversation.id, agent, signal)).then((cost) => {
       release()
       if (signal.aborted)
         return
-      conversation.cost = { status: 'read', cost }
+      holdCost(owner, { status: 'read', cost })
       for (const frame of reading.frames)
-        followCost(conversation, frame)
-      followCostRows(conversation, reading.rows)
+        followOwnerCost(owner, frame)
+      followOwnerRows(owner, reading.rows)
     }, (error: unknown) => {
       release()
       // A cancelled read belongs to a conversation that went, an opening
       // that ended or a newer read, none of which shows it.
       if (signal.aborted)
         return
-      conversation.cost = { status: 'failed', error: shownError(error) }
+      holdCost(owner, { status: 'failed', error: shownError(error) })
     })
   }
 
+  /** A `cost` frame of `conversation`, which every cost it holds follows. */
+  function followCost(conversation: Conversation, frame: CostAddition): void {
+    for (const owner of costOwners(conversation))
+      followOwnerCost(owner, frame)
+  }
+
   /**
-   * A `cost` frame of `conversation`: held for the read on its way, added
+   * A `cost` frame for the owner's cost: held for the read on its way, added
    * when it follows the cost the page holds, dropped when the cost includes
    * it, and a reason to read the cost again when rows before it are
-   * missing. A page that holds no cost, its read failed, ignores it.
+   * missing. A child's cost adds a frame of that child and counts any other.
+   * An owner that holds no cost, its read failed, ignores it.
    */
-  function followCost(conversation: Conversation, frame: CostAddition): void {
-    const reading = costReads.get(conversation.id)
+  function followOwnerCost(owner: CostOwner, frame: CostAddition): void {
+    const reading = costReads.get(costKey(owner))
     if (reading) {
       reading.frames.push(frame)
       return
     }
-    if (conversation.cost?.status !== 'read')
+    const held = heldCost(owner)
+    const agent = agentOf(owner)
+    if (held?.status !== 'read' || agent === undefined)
       return
-    const step = costStep(conversation.cost.cost, frame)
+    const step = costStep(held.cost, frame)
     if (step === 'next')
-      conversation.cost = { status: 'read', cost: addCost(conversation.cost.cost, frame) }
+      holdCost(owner, { status: 'read', cost: addCost(held.cost, frame, agent) })
     else if (step === 'gap')
-      readCostAgain(conversation)
+      readCostAgain(owner)
   }
 
   /**
@@ -1571,13 +1656,19 @@ export const useConversations = defineStore('conversations', () => {
    * reads the cost again.
    */
   function followCostRows(conversation: Conversation, rows: number): void {
-    const reading = costReads.get(conversation.id)
+    for (const owner of costOwners(conversation))
+      followOwnerRows(owner, rows)
+  }
+
+  function followOwnerRows(owner: CostOwner, rows: number): void {
+    const reading = costReads.get(costKey(owner))
     if (reading) {
       reading.rows = Math.max(reading.rows, rows)
       return
     }
-    if (conversation.cost?.status === 'read' && rows > conversation.cost.cost.rows)
-      readCostAgain(conversation)
+    const held = heldCost(owner)
+    if (held?.status === 'read' && rows > held.cost.rows)
+      readCostAgain(owner)
   }
 
   /** A child as the page holds it before its session says more, from its job. */

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCardCost } from '../fixtures/cost'
 import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
@@ -396,6 +397,8 @@ const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
 const runLines = [workSubagent(), ...gallerySubagents()]
 /** What the children's context cards show and do beside their usage. */
 const agentContext = useAgentContext()
+/** A child's own cost, which its context card shows without Profiles. */
+const agentCost = useCardCost('none', { turns: 60 })
 const runLineVariants: Record<string, string> = {
   'ag-suite': 'running · profile',
   'ag-cookie': 'running · no profile',
@@ -3182,6 +3185,8 @@ onBeforeUnmount(() => {
         </div>
         <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
           <SubagentPanel
+            :agent-cost="() => agentCost.cost.value"
+            @retry-agent-cost="agentCost.retry"
             v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
             :agents="agents"
@@ -3215,6 +3220,8 @@ onBeforeUnmount(() => {
               v-bind="agentCompaction(run)"
               :instructions="[]"
               :limits="agentContext.limits.value"
+              :cost="agentCost.cost.value"
+              @retry-cost="agentCost.retry"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3228,6 +3235,23 @@ onBeforeUnmount(() => {
               v-bind="agentCompaction(runLines[2]!)"
               :instructions="[]"
               :limits="agentContext.limits.value"
+              :cost="agentCost.cost.value"
+              @retry-cost="agentCost.retry"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="while the child's cost is read · the context indicator waits for it">
+            <AgentStatusBar
+              class="w-[46rem]"
+              :run="runLines[2]!"
+              :usage="runLines[2]!.contextUsage"
+              v-bind="agentCompaction(runLines[2]!)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              :cost="null"
+              @retry-cost="agentCost.retry"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3241,6 +3265,8 @@ onBeforeUnmount(() => {
               v-bind="agentCompaction(runLines[2]!)"
               :instructions="[]"
               :limits="agentContext.limits.value"
+              :cost="agentCost.cost.value"
+              @retry-cost="agentCost.retry"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3254,6 +3280,8 @@ onBeforeUnmount(() => {
               v-bind="agentCompaction(runLines[2]!)"
               :instructions="[]"
               :limits="agentContext.limits.value"
+              :cost="agentCost.cost.value"
+              @retry-cost="agentCost.retry"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3267,6 +3295,8 @@ onBeforeUnmount(() => {
               v-bind="agentCompaction(runLines[2]!)"
               :instructions="[]"
               :limits="agentContext.limits.value"
+              :cost="agentCost.cost.value"
+              @retry-cost="agentCost.retry"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3283,6 +3313,8 @@ onBeforeUnmount(() => {
         </div>
         <DockWindowArea v-model:share="dockWindowShare" class="h-[32rem]">
           <SubagentPanel
+            :agent-cost="() => agentCost.cost.value"
+            @retry-agent-cost="agentCost.retry"
             v-model:open="briefOpen"
             v-model:active-id="briefAgentId"
             :agents="briefAgents"
@@ -3375,6 +3407,8 @@ onBeforeUnmount(() => {
             </template>
             <template #overDock>
               <SubagentPanel
+                :agent-cost="() => agentCost.cost.value"
+                @retry-agent-cost="agentCost.retry"
                 v-model:open="coverOpen"
                 v-model:active-id="coverAgentId"
                 :agents="agents"

@@ -4729,18 +4729,20 @@ async function costScene() {
     type: 'cost',
     rows,
     totals: totals(10, price),
-    agent: price === null ? null : { agent, profile: null, price },
-    call: agent === 0 ? call : null,
+    agent,
+    profile: null,
+    call,
   })
   const cost = (rows: number, input: number, price: number) => ({
     rows, totals: totals(input, price), agents: [{ agent: 0, profile: null, price }], calls: [call],
   })
-  const reads: Array<{ answer: ReturnType<typeof deferred<unknown>>, signal: AbortSignal | null }> = []
+  const reads: Array<{ answer: ReturnType<typeof deferred<unknown>>, signal: AbortSignal | null, agent: string | null }> = []
   const answering = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
-    if (!String(input).endsWith(`/conversations/${FIRST}/cost`))
+    const url = new URL(String(input), 'https://demi.test')
+    if (!url.pathname.endsWith(`/conversations/${FIRST}/cost`))
       return answering(input, init)
-    const read = { answer: deferred<unknown>(), signal: init?.signal ?? null }
+    const read = { answer: deferred<unknown>(), signal: init?.signal ?? null, agent: url.searchParams.get('agent') }
     reads.push(read)
     const answer = await read.answer.promise
     return answer instanceof Response ? answer : Response.json(answer)
@@ -4811,6 +4813,52 @@ test('the cost a page holds adds each frame that follows it, drops one it holds 
     cost: { rows: 6, totals: totals(150, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] },
   })
   expect(reads).toHaveLength(2)
+})
+
+// A subagent's context card shows the child's own cost: the page reads it,
+// `?agent=` the child's number, as the child's window opens, adds a frame of
+// that child, counts a frame of any other agent without adding it, reads
+// again past a gap, and lets it go as the window closes
+// (`decisions/0001-agent-cost.md`). Cost: one opening, four reads, no wait.
+test("a shown child reads its own cost, ignores another agent's frame and reads again past a gap", async () => {
+  const { conversation, sockets, opening, store, totals, call, frame, reads } = await costScene()
+  reads[0]!.answer.resolve({ rows: 1, totals: totals(100, 1), agents: [{ agent: 0, profile: null, price: 1 }], calls: [call] })
+  await opening
+  sockets[0]!.receive({
+    type: 'subagent',
+    event: 'started',
+    job: {
+      subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Serve',
+      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+    },
+  })
+  await nextTick()
+  expect(reads).toHaveLength(1)
+
+  store.showSubagents(conversation, ['child'])
+  await waitFor(() => reads.length === 2, () => "the window did not read the child's cost")
+  expect(reads[1]!.agent).toBe('1')
+  reads[1]!.answer.resolve({ rows: 1, totals: totals(0, null), agents: [], calls: [] })
+  await waitFor(() => conversation.subagentCosts['child']?.status === 'read', () => "the child's cost was not kept")
+
+  // The main conversation's row is counted, the child's added.
+  sockets[0]!.receive(frame(2, 0, 0.5), frame(3, 1, 0.25))
+  await nextTick()
+  expect(conversation.subagentCosts['child']).toEqual({
+    status: 'read',
+    cost: { rows: 3, totals: totals(10, 0.25), agents: [{ agent: 1, profile: null, price: 0.25 }], calls: [call] },
+  })
+  // The conversation's cost adds both, and the main conversation's call alone.
+  expect(conversation.cost?.status === 'read' && [conversation.cost.cost.rows, conversation.cost.cost.calls.length]).toEqual([3, 2])
+
+  // Row 4 was lost: row 5 reads both costs again.
+  sockets[0]!.receive(frame(5, 0, 0.5))
+  await waitFor(() => reads.filter((read) => read.agent === '1').length === 2, () => "a gap did not read the child's cost again")
+  expect(reads.filter((read) => read.agent === null)).toHaveLength(2)
+
+  store.showSubagents(conversation, [])
+  expect(reads.at(-1)!.signal?.aborted).toBe(true)
+  expect(conversation.subagentCosts).toEqual({})
 })
 
 // A call that ends while the page's connection is down leaves the cost

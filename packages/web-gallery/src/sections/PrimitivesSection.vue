@@ -39,7 +39,7 @@ import { inDevelopment } from '@demicodes/web-ui/ui/disabled'
 import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { usageAt, usageOf } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
-import { OFFERED_PROFILES, useCardCost } from '../fixtures/cost'
+import { MANY_PROFILES, OFFERED_PROFILES, useCardCost } from '../fixtures/cost'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryWorkingControls from '../components/GalleryWorkingControls.vue'
@@ -148,16 +148,22 @@ const costPlain = useCardCost('plain')
 const costAlone = useCardCost('none')
 const costFailed = useCardCost('profiles', { failing: true })
 const costYoung = useCardCost('none', { turns: 2 })
-const costGiant = useCardCost('profiles', { turns: 1_200 })
+const costShort = useCardCost('profiles', { turns: 12 })
+const costGiant = useCardCost('profiles', { turns: 1_000 })
+const costMany = useCardCost('many')
+const costSubagent = useCardCost('none', { turns: 60 })
+const costUnpriced = useCardCost('none', { turns: 30, priced: false })
 const costEarly = useCardCost('profiles')
 const costWindowless = useCardCost('none', { turns: 12 })
 const costCompacting = useCardCost('profiles')
 // Each call by its place among the conversation's 180; the chart draws the last 50, from #131.
 const costTips = [
-  { variant: 'tip · a call', call: 150, cost: useCardCost('profiles') },
-  { variant: 'tip · a miss, its cause in red', call: 136, cost: useCardCost('profiles') },
-  { variant: 'tip · the first call after a compaction', call: 130, cost: useCardCost('profiles') },
-  { variant: 'tip · near the card’s end, above its point', call: 178, cost: useCardCost('profiles') },
+  { variant: 'tip · a call', call: 20, cost: useCardCost('profiles', { turns: 40 }) },
+  { variant: 'tip · a miss, its cause in red', call: 6, cost: useCardCost('profiles', { turns: 40 }) },
+  { variant: 'tip · the first call after a compaction', call: 30, cost: useCardCost('profiles', { turns: 40 }) },
+  { variant: 'tip · near the card’s end, above its point', call: 38, cost: useCardCost('profiles', { turns: 40 }) },
+  { variant: 'tip · a point of 10 calls: their numbers, rate and price', call: 849, cost: useCardCost('profiles', { turns: 1_000 }) },
+  { variant: 'tip · a point of 10 calls with a miss, its cause in red', call: 678, cost: useCardCost('profiles', { turns: 1_000 }) },
 ]
 const cardTruncated = useCardLimits('a-very-long-account-name.with.many.parts@subdomain.example.com')
 const cardUnlabeled = useCardLimits('')
@@ -1006,7 +1012,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend’s estimate, blue below 70% of the window, orange from 70% and red from 90%. Click it for the card, on a phone tap it for a sheet; a click outside, another click on the ring or Escape closes it, and resting the pointer on it shows only its tip, the word Context and the figure the card’s header shows, such as Context 139K / 1M (13%), and none without a usage or a window. Compact closes the card, as a menu’s action does. The header opens and closes the list of what fills the context, while it compacts too, where it says Compacting; one part of the card stands open at a time, the list or the cost’s details, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window, or at any share after a turn the vendor refused for its size. Under it, once the conversation made a call, what it cost, which the page reads with the conversation as it opens and follows while it is open, so the card shows it the moment it opens: closed, the equivalent API price and the main conversation’s cache hit rate over its last 50 calls side by side, each its value over its label; its caption is a disclosure of its own, and opening it closes the list. Opened, the price by kind of token, the Profiles part (the main conversation, then each profile the conversation’s workflow offers whose subagents made priced calls, a bar under each of its share of the largest), and from the fourth call the chart of the last 50 turn calls’ hit rates by their numbers in the conversation, a miss a red dot, a compaction a grey dashed line. Resting the pointer on the chart, or a tap on a phone, shows the nearest call’s tip beside its point where it fits, otherwise above it, never past the card’s edges: its number, time, rate and price, a miss’s cause in red with the tokens it wrote again, and First request or After compaction in grey. A figure that cannot be computed is left out with its label. Then the usage limits of a subscription account, under a line that ends in a Refresh usage button (its icon turns while the request runs, the windows stay until the answer replaces them, a failure shows the vendor’s words under the line until the next answer, and a click keeps the card open), each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written. While the usage or the window is unknown, as in a conversation just reopened before its session’s estimate or on a model without a window, the card holds the cost and the usage limits, and a model with no limits has no meter, whatever it cost."
+        note="The ring is the backend’s estimate, blue below 70% of the window, orange from 70% and red from 90%. Click it for the card, on a phone tap it for a sheet; a click outside, another click on the ring or Escape closes it, and resting the pointer on it shows only its tip, the word Context and the figure the card’s header shows, such as Context 139K / 1M (13%), and none without a usage or a window. Compact closes the card, as a menu’s action does. The header opens and closes the list of what fills the context, while it compacts too, where it says Compacting; one part of the card stands open at a time, the list or the cost’s details, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window, or at any share after a turn the vendor refused for its size. Under it, once the conversation made a call, what it cost, which the page reads with the conversation as it opens and follows while it is open, so the card shows it the moment it opens: closed, the equivalent API price and the main conversation’s cache hit rate over the calls its chart draws side by side, each its value over its label; its caption is a disclosure of its own, and opening it closes the list. Opened, the caption holds the price, then the price by kind of token two by two, the Profiles part in two columns (the main conversation, then the five profiles the conversation’s workflow offers whose subagents cost the most, a bar under each of its share of the largest), and from the fourth call the chart of the turn calls’ hit rates by their numbers in the conversation: at most 40 points over the last 400 calls, consecutive calls merged into one point as the conversation grows, the groups counted from call 1 so a point never moves, round numbers under it, a point with a miss a red dot, a compaction a grey dashed line. Resting the pointer on the chart, or a tap on a phone, shows the nearest point’s tip beside it where it fits, otherwise above it, never past the card’s edges: a call’s number, time, rate and price, a miss’s cause in red with the tokens it wrote again, and First request or After compaction in grey; a group’s range of numbers, rate, summed price and its misses’ causes. A figure that cannot be computed is left out with its label. Then the usage limits of a subscription account, under a line that ends in a Refresh usage button (its icon turns while the request runs, the windows stay until the answer replaces them, a failure shows the vendor’s words under the line until the next answer, and a click keeps the card open), each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written. While the usage or the window is unknown, as in a conversation just reopened before its session’s estimate or on a model without a window, the card holds the cost and the usage limits, and a model with no limits has no meter, whatever it cost."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">
@@ -1152,7 +1158,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell size="tall">
-            <GallerySpecimen variant="card · Cost opened, the profiles Global Workflow offers; a disabled one and none have no row">
+            <GallerySpecimen variant="card · Cost opened, 180 calls of 5 a point, the profiles Global Workflow offers; a disabled one and none have no row">
               <div class="px-44 pt-[70rem]">
                 <ContextUsageIndicator
                   pinned
@@ -1237,8 +1243,25 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell size="tall">
-            <GallerySpecimen variant="card · Cost opened, 1,200 calls: the chart and its rate are the last 50">
-              <div class="px-44 pt-[62rem]">
+            <GallerySpecimen variant="card · Cost opened, 12 calls: one call a point">
+              <div class="px-44 pt-[50rem]">
+                <ContextUsageIndicator
+                  pinned
+                  expanded="cost"
+                  :usage="usageAt(0.22)"
+                  :instructions="demoInstructions"
+                  :cost="costShort.cost.value"
+                  :cost-profiles="OFFERED_PROFILES"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @retry-cost="costShort.retry"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="tall">
+            <GallerySpecimen variant="card · Cost opened, 1,000 calls: the last 400, 10 a point">
+              <div class="px-44 pt-[50rem]">
                 <ContextUsageIndicator
                   pinned
                   expanded="cost"
@@ -1249,6 +1272,53 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costGiant.retry"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="tall">
+            <GallerySpecimen variant="card · Cost opened, eight profiles: the main conversation and the five that cost the most">
+              <div class="px-44 pt-[50rem]">
+                <ContextUsageIndicator
+                  pinned
+                  expanded="cost"
+                  :usage="usageAt(0.62)"
+                  :instructions="demoInstructions"
+                  :cost="costMany.cost.value"
+                  :cost-profiles="MANY_PROFILES"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @retry-cost="costMany.retry"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="tall">
+            <GallerySpecimen variant="card · Cost opened, a model with no prices: no price by kind, the rate and the chart">
+              <div class="px-44 pt-[50rem]">
+                <ContextUsageIndicator
+                  pinned
+                  expanded="cost"
+                  :usage="usageAt(0.3)"
+                  :cost="costUnpriced.cost.value"
+                  :cost-profiles="OFFERED_PROFILES"
+                  @compact="productWould('Compact the Conversation')"
+                  @retry-cost="costUnpriced.retry"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="tall">
+            <GallerySpecimen variant="card · a subagent’s Cost: no Profiles part">
+              <div class="px-44 pt-[50rem]">
+                <ContextUsageIndicator
+                  pinned
+                  expanded="cost"
+                  :usage="usageAt(0.34)"
+                  :cost="costSubagent.cost.value"
+                  :cost-profiles="[]"
+                  @compact="productWould('Compact the Conversation')"
+                  @retry-cost="costSubagent.retry"
                 />
               </div>
             </GallerySpecimen>

@@ -345,13 +345,13 @@
       "hitRate": "Cache hit rate",
       "loadFailed": "Couldn’t load the cost.",
       "kind": {
-        "input": "Uncached input",
+        "input": "Input",
         "cacheWrite": "Cache write",
         "cacheRead": "Cache read",
-        "output": "Output tokens"
+        "output": "Output"
       },
       "profiles": "Profiles",
-      "mainConversation": "Main conversation",
+      "mainConversation": "Main",
       "request": "Request #{number}",
       "firstRequest": "First request",
       "afterCompaction": "After compaction",

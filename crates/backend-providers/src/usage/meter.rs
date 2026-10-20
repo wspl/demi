@@ -533,7 +533,7 @@ mod tests {
         runtime.run(request.clone()).collect::<Vec<_>>().await;
         runtime.run(request).collect::<Vec<_>>().await;
 
-        let cost = control.conversation_cost(conversation, Vec::new()).await.unwrap();
+        let cost = control.conversation_cost(conversation, Vec::new(), None).await.unwrap();
         let close = |found: Option<f64>, expected: f64| {
             assert!(found.is_some_and(|found| (found - expected).abs() < 1e-9), "{found:?} ≠ {expected}");
         };

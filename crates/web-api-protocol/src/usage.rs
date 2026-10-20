@@ -50,8 +50,18 @@ pub struct UserUsage {
     pub totals: Vec<UsageGroup>,
 }
 
+/// `?agent=` of the cost read: the agent, by its number, whose own cost the
+/// read answers; absent, the whole conversation's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CostQuery {
+    #[serde(default)]
+    pub agent: Option<u64>,
+}
+
 /// `GET /conversations/:id/cost`: the conversation's cost, computed from its
-/// ledger rows when read (`crates/backend-database/src/usage.rs`).
+/// ledger rows when read (`crates/backend-database/src/usage.rs`); with
+/// `?agent=`, that agent's own in the same shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationCost {
@@ -60,15 +70,15 @@ pub struct ConversationCost {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub rows: u64,
     /// Every row of the conversation: every agent, compactions and titles
-    /// included.
+    /// included; or the agent's rows.
     #[garde(dive)]
     pub totals: CostTotals,
     /// Every agent with a priced call, by number, the main conversation
-    /// first.
+    /// first; or the agent alone, once it made one.
     #[garde(dive)]
     pub agents: Vec<AgentCost>,
     /// The main conversation's turn calls that the vendor reported counts
-    /// for, in the order they started.
+    /// for, in the order they started; or the agent's.
     #[garde(dive)]
     pub calls: Vec<CostCall>,
 }

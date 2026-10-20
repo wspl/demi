@@ -22,7 +22,7 @@ const RATE = { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 }
  * past the first 180, a giant conversation compacts every 105 calls and
  * misses every 97th.
  */
-const COMPACTED_BEFORE = new Set([68, 131])
+const COMPACTED_BEFORE = new Set([31, 68, 131])
 const MISSES = new Map<number, CacheMiss>([
   [7, 'not_cached'],
   [75, 'cache_expired'],
@@ -48,11 +48,15 @@ export const GLOBAL_PROFILES: GlobalProfiles = { enabled: true, profiles: demoSu
 /** The profiles Global Workflow offers the card specimens. */
 export const OFFERED_PROFILES: readonly string[] = workflowProfiles({ type: 'default' }, { state: 'nowhere' }, GLOBAL_PROFILES)
 
+/** Eight profiles a workflow offers, more than the Profiles part shows. */
+export const MANY_PROFILES: readonly string[] = ['explore', 'reviewer', 'scout', 'planner', 'tester', 'writer', 'translator', 'designer']
+
 /**
  * A subagent's price as the fixture states it: with profiles, one of them
- * since disabled, which has no row; or without any.
+ * since disabled, which has no row; with each of `MANY_PROFILES`; or without
+ * any.
  */
-const SUBAGENTS: Record<'profiles' | 'plain', AgentCost[]> = {
+const SUBAGENTS: Record<'profiles' | 'many' | 'plain', AgentCost[]> = {
   profiles: [
     { agent: 1, profile: 'explore', price: 1.32 },
     { agent: 2, profile: 'explore', price: 1.32 },
@@ -60,6 +64,7 @@ const SUBAGENTS: Record<'profiles' | 'plain', AgentCost[]> = {
     { agent: 4, profile: 'archivist', price: 0.88 },
     { agent: 5, profile: null, price: 0.56 },
   ],
+  many: MANY_PROFILES.map((profile, index) => ({ agent: index + 1, profile, price: 0.24 + ((index * 5) % 8) * 0.31 })),
   plain: [
     { agent: 1, profile: null, price: 1.32 },
     { agent: 2, profile: null, price: 1.32 },
@@ -69,11 +74,11 @@ const SUBAGENTS: Record<'profiles' | 'plain', AgentCost[]> = {
 
 /**
  * A long conversation's cost: 180 turn calls of the main conversation over
- * three hours and a half, two compactions, three misses of three causes, and
+ * three hours and a half, three compactions, three misses of three causes, and
  * subagents started with profiles, without them, or none; or the first
  * `turns` of it, a conversation just started, or more, a giant one.
  */
-export function costFixture(subagents: 'profiles' | 'plain' | 'none', turns = 180): ConversationCostView {
+export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', turns = 180, priced = true): ConversationCostView {
   const random = sequence(7)
   const calls: CostCall[] = []
   let prompt = 0
@@ -111,6 +116,12 @@ export function costFixture(subagents: 'profiles' | 'plain' | 'none', turns = 18
   const total = main + elsewhere
   const kinds = input * RATE.input + cacheWrite * RATE.cacheWrite + cacheRead * RATE.cacheRead
   const output = Math.max(0, (total * 1e6 - kinds) / RATE.output)
+  if (!priced) {
+    // A model without catalog prices, as a compatible entry's: counts only.
+    for (const call of calls)
+      call.price = null
+  }
+  const unpriced = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
   return {
     rows: calls.length + others.length,
     totals: {
@@ -118,7 +129,7 @@ export function costFixture(subagents: 'profiles' | 'plain' | 'none', turns = 18
       cacheWriteTokens: Math.round(cacheWrite),
       cacheReadTokens: Math.round(cacheRead),
       outputTokens: Math.round(output),
-      price: {
+      price: !priced ? unpriced : {
         total,
         input: (input * RATE.input) / 1e6,
         cacheWrite: (cacheWrite * RATE.cacheWrite) / 1e6,
@@ -126,7 +137,7 @@ export function costFixture(subagents: 'profiles' | 'plain' | 'none', turns = 18
         output: (output * RATE.output) / 1e6,
       },
     },
-    agents: [{ agent: 0, profile: null, price: main }, ...others],
+    agents: priced ? [{ agent: 0, profile: null, price: main }, ...others] : [],
     calls,
   }
 }
@@ -140,12 +151,12 @@ const FAILED_REQUEST = 'req_7f3a9c2e41d84b06'
  * opens. A `failing` specimen's read failed, and Retry reads it, as the
  * product's would once the backend answers.
  */
-export function useCardCost(subagents: 'profiles' | 'plain' | 'none', { failing = false, turns = 180 } = {}) {
+export function useCardCost(subagents: keyof typeof SUBAGENTS | 'none', { failing = false, turns = 180, priced = true } = {}) {
   const cost = ref<CostState>(failing
     ? { status: 'failed', error: { message: 'The backend could not be reached.', requestId: FAILED_REQUEST } }
-    : { status: 'read', cost: costFixture(subagents, turns) })
+    : { status: 'read', cost: costFixture(subagents, turns, priced) })
   function retry(): void {
-    cost.value = { status: 'read', cost: costFixture(subagents, turns) }
+    cost.value = { status: 'read', cost: costFixture(subagents, turns, priced) }
   }
   return { cost, retry }
 }
