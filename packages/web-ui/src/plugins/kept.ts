@@ -1,6 +1,6 @@
 /**
  * Sessions by key that outlive the views that watch them
- * (`decisions/0008-plugin-architecture.md`), such as a device's live view or a
+ * (`docs/decisions/0008-plugin-architecture.md`), such as a device's live view or a
  * conversation's browser.
  *
  * A view watches a session while it shows it and lets go when it stops; what

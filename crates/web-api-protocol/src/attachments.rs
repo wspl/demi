@@ -119,7 +119,7 @@ pub struct ConversationAttachment {
     pub blob: BlobRef,
     /// The file the agent uploaded it from, which the page opens in the
     /// copy's place while the conversation's Host is that device, online,
-    /// and has the file (`decisions/0003-attachment-opens-its-file.md`);
+    /// and has the file (`docs/decisions/0003-attachment-opens-its-file.md`);
     /// absent for a file the user sent, for an upload stored before uploads
     /// kept it, and on a share.
     #[serde(

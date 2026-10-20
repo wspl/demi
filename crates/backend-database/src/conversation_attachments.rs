@@ -13,7 +13,7 @@
 //! - the node of the agent that uploaded it, none for a file the user sent;
 //! - the file an upload was copied from, its device and its full path, which
 //!   the page opens in the copy's place while it can read it
-//!   (`decisions/0003-attachment-opens-its-file.md`); none for a file the user
+//!   (`docs/decisions/0003-attachment-opens-its-file.md`); none for a file the user
 //!   sent, and never in a share's snapshot, which shows only the copy.
 //!
 //! A row is written once, or copied into a Fork's destination, and never

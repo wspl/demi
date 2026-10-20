@@ -4816,7 +4816,7 @@ test('the cost a page holds adds each frame that follows it, drops one it holds 
 // `?agent=` the child's number, as the child's window opens, adds a frame of
 // that child, counts a frame of any other agent without adding it, reads
 // again past a gap, and lets it go as the window closes
-// (`decisions/0001-agent-cost.md`). Cost: one opening, four reads, no wait.
+// (`docs/decisions/0001-agent-cost.md`). Cost: one opening, four reads, no wait.
 test("a shown child reads its own cost, ignores another agent's frame and reads again past a gap", async () => {
   const { conversation, sockets, opening, store, totals, call, frame, reads } = await costScene()
   reads[0]!.answer.resolve({ rows: 1, totals: totals(100, 1), agents: [{ agent: 0, profile: null, price: 1 }], calls: [call] })

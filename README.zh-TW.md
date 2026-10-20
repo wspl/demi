@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/lockup-dark.svg">
-    <img alt="Demi" src="brand/lockup-light.svg" height="72">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/lockup-dark.svg">
+    <img alt="Demi" src="docs/assets/brand/lockup-light.svg" height="72">
   </picture>
 </p>
 

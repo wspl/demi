@@ -35,6 +35,8 @@ The documents here cover only what is not about one module.
   script every agent runs against a browser that stays open
 - [Localization](product/localization.md): the languages, how text is chosen,
   and the glossary
+- [Decision records](decisions/): each new decision that changes what the
+  user sees, a protocol or a module's boundaries, in MADR's minimal template
 - [Add a provider](guides/add-a-provider.md): writing a provider crate for a
   new vendor
 - [Develop on a Mac with Lima](guides/mac-development.md): the machine manager

@@ -162,7 +162,7 @@ pub(super) async fn attachment(
 
 /// `GET /conversations/:id/attachments/:attachment/file`: whether the file the
 /// attachment was uploaded from is there to open in its copy's place
-/// (`decisions/0003-attachment-opens-its-file.md`), asked once each time the
+/// (`docs/decisions/0003-attachment-opens-its-file.md`), asked once each time the
 /// page opens the attachment.
 ///
 /// It answers 204 while the file is a regular file on the conversation's

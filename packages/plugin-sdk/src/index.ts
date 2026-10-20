@@ -68,7 +68,7 @@ export {
 } from '@demicodes/web-ui/plugins/page'
 export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 // What a page keeps live while its plugin is on, apart from the panel
-// (`decisions/0008-plugin-architecture.md`): its stores, which its page
+// (`docs/decisions/0008-plugin-architecture.md`): its stores, which its page
 // context's `store` reaches, its sessions by key that outlive the views
 // watching them, and its disk cache.
 export { definePluginStore, type PluginStore } from '@demicodes/web-ui/plugins/stores'

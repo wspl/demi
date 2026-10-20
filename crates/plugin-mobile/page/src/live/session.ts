@@ -21,7 +21,7 @@
  * - Turns a device's shown picture and frame at once when the viewer rotates
  *   it, until a picture drawn in the orientation the device reports replaces
  *   them, and turns them back if the device refuses
- *   (`decisions/0007-rotation-shows-at-once.md`).
+ *   (`docs/decisions/0007-rotation-shows-at-once.md`).
  */
 import { reactive } from 'vue'
 import { z } from 'zod'

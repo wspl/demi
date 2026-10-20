@@ -9,7 +9,7 @@
 // only what a source alone has stays here, the simulator's frame and buttons.
 // The toolbar's controls each run the operation of the command that does the
 // same and wait for nothing, the picture being the answer; a rotation turns
-// the shown picture at once (`decisions/0007-rotation-shows-at-once.md`).
+// the shown picture at once (`docs/decisions/0007-rotation-shows-at-once.md`).
 import { definePage } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
 import { mobileDeviceKind } from './live/kind'

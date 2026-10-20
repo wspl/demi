@@ -47,7 +47,7 @@ export interface OpeningHost {
 
 /**
  * The Host path of the file attachment `id` was uploaded from, when opening it
- * shows that file (`decisions/0003-attachment-opens-its-file.md`): its Host is
+ * shows that file (`docs/decisions/0003-attachment-opens-its-file.md`): its Host is
  * the conversation's and online, and the backend, asked once for this opening,
  * finds the file there. The backend asks the Host the conversation runs on
  * then, only while it is the attachment's, and never wakes a stopped Cloud

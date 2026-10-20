@@ -1,5 +1,5 @@
 /**
- * A plugin's disk cache (`decisions/0008-plugin-architecture.md`): bytes by key
+ * A plugin's disk cache (`docs/decisions/0008-plugin-architecture.md`): bytes by key
  * in the page's IndexedDB, kept across reloads up to a size per plugin, the
  * least recently used going first. It is a cache: nothing ties it to whether
  * the plugin is on, and a page shows what it read from it only until the

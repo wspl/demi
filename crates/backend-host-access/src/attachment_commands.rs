@@ -20,7 +20,7 @@
 //!    conversation's `attachment` sequence, with the file it came from: the
 //!    invocation's device and the file's full path as that Host writes it,
 //!    which the page opens in the copy's place while it can read it
-//!    (`decisions/0003-attachment-opens-its-file.md`).
+//!    (`docs/decisions/0003-attachment-opens-its-file.md`).
 //!
 //! The command returns no medium: the attachment is for the user.
 //!

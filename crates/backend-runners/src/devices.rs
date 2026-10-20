@@ -8,7 +8,7 @@
 //! down.
 //!
 //! A runner reconnects by itself, so a device whose connection dropped is
-//! returning for a while (`decisions/0011-a-runner-that-drops-is-awaited.md`):
+//! returning for a while (`docs/decisions/0011-a-runner-that-drops-is-awaited.md`):
 //! it counts as online in everything its owner's pages are told, and an
 //! operation that needs it waits for the runner, until the runner is back
 //! or the wait is over. The wait starts the moment the connection fails,

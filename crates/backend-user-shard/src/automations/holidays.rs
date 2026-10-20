@@ -3,7 +3,7 @@
 //! The table was exported once from the `holidays` Python package (MIT,
 //! `LICENSE-holidays` beside it) for every country and region it covers, 2026
 //! through 2077, the end of the package's own Islamic calendar tables
-//! (`decisions/0010-automation-tasks-and-delivery.md`). Nothing fetches
+//! (`docs/decisions/0010-automation-tasks-and-delivery.md`). Nothing fetches
 //! holidays at run time: a day off announced after the export is missing until
 //! the table is exported again. Days a government declares working days on a
 //! weekend are not in it.

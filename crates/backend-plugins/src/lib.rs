@@ -11,7 +11,7 @@
 //! registers the provider families, and a user turns each on or off while the
 //! backend runs.
 //!
-//! A plugin lives while the user has it on (`decisions/0008-plugin-architecture.md`):
+//! A plugin lives while the user has it on (`docs/decisions/0008-plugin-architecture.md`):
 //!
 //! ```text
 //!              on                          off

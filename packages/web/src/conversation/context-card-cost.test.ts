@@ -331,7 +331,7 @@ test('the price by kind leaves out each kind with no price, and with none priced
 // A subagent's card never shows its cost arriving late: while the first read
 // of the child's cost is on its way, the status bar's context indicator
 // waits, and it shows with the cost once the read answers
-// (`decisions/0001-agent-cost.md`). Production: the card opened without its
+// (`docs/decisions/0001-agent-cost.md`). Production: the card opened without its
 // Cost section, which was inserted a moment later.
 test("a running child's context indicator waits for the first read of its cost", async () => {
   const run = {

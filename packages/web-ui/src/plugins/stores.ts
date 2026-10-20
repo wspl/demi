@@ -1,5 +1,5 @@
 /**
- * A plugin's stores (`decisions/0008-plugin-architecture.md`): what a page
+ * A plugin's stores (`docs/decisions/0008-plugin-architecture.md`): what a page
  * keeps live for as long as the user has its plugin on, apart from any panel
  * or conversation the page shows, as Pinia stores the shell holds.
  *
