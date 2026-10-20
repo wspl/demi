@@ -4,7 +4,8 @@
 //
 // - The first `demi.runner()` pairs it the way a person does: Settings › Devices › Add
 //   Device, the pairing code the runner printed, Pair Device.
-// - `stop` stops it, as a device that goes away.
+// - `stop` stops it, as a device that goes away: the backend waits for its runner a
+//   while before it shows the device offline (`crates/backend-runners/src/devices.rs`).
 // - `start`, or `demi.runner()` again, starts the same runner on the same installation,
 //   which keeps the device.
 // - `fresh` pairs a new one in its place.
@@ -62,7 +63,7 @@ async function act(tool: Tool, request: RunnerRequest, backend?: string): Promis
       updateState(slot, (current) => {
         delete current.servers.runner
       })
-      tool.print(`Runner    ${device ?? 'the slot\'s runner'} ${outcome}; the backend shows the device offline`)
+      tool.print(`Runner    ${device ?? 'the slot\'s runner'} ${outcome}; the backend shows the device online while it waits for the runner, then offline`)
       return null
     }
     case 'start': {
