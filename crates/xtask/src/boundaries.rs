@@ -12,7 +12,7 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 /// The document that holds the graph, relative to the workspace root.
-const DOCUMENT: &str = "docs/architecture/crates-and-packages.md";
+const DOCUMENT: &str = "ARCHITECTURE.md";
 /// The heading of the section whose `text` block is the Rust crate graph.
 const HEADING: &str = "\n### Rust crates\n";
 

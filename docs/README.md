@@ -1,109 +1,27 @@
 # Demi documentation
 
-Start with the [overview](overview.md). Each design rule has one authoritative
-document, and the others link to it rather than restate it. The component
-gallery (`bun run web:gallery`) is the reference for components, appearance,
-layout and interaction; these documents do not repeat it.
+The code is the authority on what Demi does: each module's design is in its
+entry comment, the map of the code and the rules across it are in
+[ARCHITECTURE.md](../ARCHITECTURE.md), and the component gallery
+(`bun run web:gallery`) shows every component, look and interaction. The
+documents here cover only what is not about one module.
 
-## What is Demi, and how is the code organized?
+## What is Demi?
 
 - [Overview](overview.md): what Demi is, its system boundary, one conversation end to end, where data and credentials live, and terms.
-- [Crates and packages](architecture/crates-and-packages.md): every Rust crate and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
-- [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
-- [Concurrency](architecture/concurrency.md): the threads of each program, the user shard, locks, blocking work, cancellation and cleanup, and tests and time.
-- [Plugins](architecture/plugins.md): how a capability joins Demi: commands, context, Host directories, Host file reads and a page, the contract every plugin uses in process and over a wire, the plugin host, and the built-in plugins.
-- [Plugin pages](architecture/plugin-pages.md): the web app as a shell that plugins fill: the page object and its context, work panel kinds, intents, the data a page shows, the plugin kit, types, registration and versions.
+- [Comparison](comparison.md): Demi beside other coding agents, also in [简体中文](comparison.zh-CN.md), [繁體中文](comparison.zh-TW.md), [日本語](comparison.ja.md) and [한국어](comparison.ko.md).
 
-## What can users do, and how does the web app talk to the backend?
+## Running a server
 
-- [Product](product/product.md): what Demi is for its user, and where each part of the product is designed:
-  - [Users and instance mode](product/users.md): shared and isolated instances, accounts, roles and sign-in.
-  - [Conversations and projects](product/conversations.md): projects by directory, the sidebar, workflows, titles, finding, reading and saving for later.
-  - [Hosts](product/hosts.md): a device's mark, where a conversation runs, the host menu and the Cloud's settings.
-  - [Turns](product/turns.md): steer or queue, recovering an unfinished turn, following the agent's work and notifications.
-  - [Writing a message](product/composer.md): the composer, input methods and attachments.
-  - [Comments and side questions](product/comments-and-ask.md): commenting on a reply's words and sending the comments with a message; asking about them aside.
-- [Web application](product/web-application.md): the web app's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
-- [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
-  - [Conversations](product/web-api-conversations.md), [Hosts and files](product/web-api-hosts.md), [Accounts and settings](product/web-api-settings.md), [Page synchronization and plugins](product/web-api-sync.md).
-- [Sharing](product/sharing.md): a read-only snapshot of a conversation or one answer behind a random link: what it holds, the share dialog, safety, storage and routes.
-- [Localization](product/localization.md): English, Simplified and Traditional Chinese, Japanese and Korean: what is translated, choosing the language, each package's catalogue, and text from the backend as codes and values.
-- [File previews](product/file-previews.md): preview kinds and viewer choice, the byte path, ending transfers, inert content, [files named in messages](product/file-previews.md#files-named-in-messages), and [media a tool returned](product/file-previews.md#media-a-tool-returned).
+- [Installation](delivery/installation.md): installing a server with one command, its parameters, the HTTPS shapes and the distributions.
+- [Upgrades](delivery/upgrades.md): upgrading a server, rolling back, and [a development build on a server](delivery/upgrades.md#a-development-build-on-a-server).
+- [Cloud setup](cloud/setup.md): deploying the machine manager on Linux.
+- [Cloud images](cloud/images.md): building the Cloud image and accepting it.
 
-## How does the backend serve requests and keep data?
+## Working on Demi
 
-- [Backend](backend/backend.md): the backend binary's modules and runtime model, authentication and ownership, page synchronization, media by reference, failure facts, startup and shutdown, configuration, a development backend with the native programs a developer built, and deployment and user placement.
-- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the one object store for blobs and the published command packages, [retention](backend/storage.md#retention): everything stays while the account does, multi-worker placement, and open durability decisions.
-
-## How does the agent run a conversation?
-
-- [Agent runtime](agent/runtime.md): sessions and turns with what the product supplies, input, the identifiers the model sees, and the tree store.
-- [The shell tool](agent/shell-tool.md): command reports, the `shell` tool's input and window, the `demi shell` commands, results and media, failures, interrupted calls and lost commands.
-- [Transcript](agent/transcript.md): block types, context blocks, replay, media and images, views, patches and versions.
-- [Rendering](agent/rendering.md): the rendering boundary, work groups, calls being written, waiting for the model, and the frame protocol.
-- [Subagents](agent/subagents.md): the session tree, `demi agent` commands, agent messages, results, profiles and persistence.
-- [Compaction](agent/compaction.md): compaction through a session copy, token estimates, request sizes and window switches.
-- [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.
-- [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
-- [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
-- [Instructions](agent/instructions.md): the user's personal instructions and a project's `AGENTS.md` or `CLAUDE.md` files, which files are read, the block the model receives, and what the context card lists.
-- [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
-- [Web search and fetch](agent/web.md): `demi web search` through the user's Exa account, a key or anonymously; `demi web fetch` from the Host; the sign-in and untrusted content.
-- [Generated media](agent/media.md): which entries make images, videos and audio, how a call chooses its entry, and what the agent is told.
-- [Audio generation](agent/audio.md): `demi audio speech`, `music` and `effect` through an OpenAI, Google or ElevenLabs key or a compatible API, one file to stdout.
-- [Video generation](agent/videos.md): `demi video generate` through a Grok subscription, an xAI or Google key or a compatible API, a job waited for within the call, one MP4 to stdout.
-- [Image generation](agent/images.md): `demi image generate` and `edit` through the user's ChatGPT or Grok subscription, one image to stdout, options asked and results checked.
-- [Credentials](agent/credentials.md): named secrets an agent asks the user for and uses on a Host without reading them: requests, fields, keeping, allowances, reading, and Settings › Credentials.
-- [Conversation permissions](agent/permissions.md): the categories of operations on Demi itself, the check every command passes before its handler, the requests a refused command raises, the per-conversation grants, the decision's message to the agent, and the card and needs-you mark.
-
-## Where does work execute, and how do commands run?
-
-- [Sessions and targets](execution/sessions-and-targets.md): target selection, job binding, switching, attached hosts, host access, [shared Cloud coordination](execution/sessions-and-targets.md#coordinate-shared-cloud-activity) and recovery.
-- [Resource lifecycle](execution/resource-lifecycle.md): activity, the idle window and the conversation release.
-- [System prompt](agent/system-prompt.md): what a node's model reads before the conversation: identity, harness guide, tool rules, the capability index each command group writes, and the model's own name; details on demand with `--help`.
-- [Port forwarding](execution/port-forwarding.md): port forwards between the user's Hosts, direct or through the backend.
-- [Port exposure](execution/port-exposure.md): a device's ports the backend's own requests, such as a provider entry's, reach by the device's id.
-- [Direct channel](execution/direct-channel.md): how a page and a paired device's runner talk without the backend in the middle, over WebRTC data channels the backend introduces, and how the page moves between that and the relay.
-- [Runner](execution/runner.md): registration, Host operations, the Host log, [load](execution/runner.md#load), shell jobs, pipes and managed guests.
-- [Commands](execution/commands.md): declarations, input and help, dispatch surfaces and manifests, rpc calls, [external command clients](execution/commands.md#external-command-clients), IO, and the file commands.
-- [Native command execution](execution/native-runtime.md): command packages, installation, resident services, the command context, conversation-scoped state, user streams, the invocation protocol and publication.
-- [Edit tracking](execution/edit-tracking.md): recording what a job edited, the report, its copies as blobs and delivery to the conversation.
-
-## How does the agent use a web browser?
-
-- [Conversation browser](browser/browser.md): browser automation for a conversation and the `demi browser` command reference.
-- [Live view](browser/live-view.md): watching and operating the conversation's browser tabs from the page.
-
-## How does the agent use an iOS or Android simulator?
-
-- [Mobile simulators](mobile/mobile.md): `demi mobile`, the simulator in the work panel, and the iOS and Android drivers.
-
-## How are providers, models and credentials handled?
-
-- [Providers](providers/providers.md): families, vendors and endpoints, the provider contract, the [prompt cache](providers/providers.md#prompt-cache) and the rule that each request extends the previous one, per-account runtimes, the credential vault, login flows and inference admission.
-- [Models](providers/models.md): catalog sources, the catalog cache, request parameters and request limits.
-- [Image, video and audio models](providers/media-models.md): the catalog of image, video and audio models Demi keeps in its repository, its schema versions and how the backend reads it.
-- [Usage and quota](providers/usage-and-quota.md): the usage ledger, the request rate limit and vendor quota.
-- [Claude Code](providers/claude-code.md): the Claude Code CLI package, its version, where it runs, and how the provider talks to it.
-
-## How does Cloud work, and how is it deployed?
-
-- [Managed Cloud hosts](cloud/managed-hosts.md): provisioning, images, save and reset, lifecycle and capacity, isolation, networking and verification.
-- [Cloud images](cloud/images.md): the image artifacts, their contents, import and publication, and local refresh.
-- [Cloud setup](cloud/setup.md): deploying the machine manager on Linux, and acceptance before use.
-
-## How is Demi delivered, built and released?
-
-- [Roadmap](delivery/roadmap.md): dependency order, completion conditions, required evidence and open deployment decisions.
-- [Scenarios](delivery/scenarios.md): backend scenario acceptance, the web app contract suite and real-machine acceptance.
-- [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost, resources and coverage.
-- [Product checks](delivery/browse.md): `bun browse`, which runs an agent's Playwright check script against a browser that stays open, and why every agent extends it.
-- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `bun xtask` packaging, the server release, the release workflow on GitHub's hosted runners, the Chrome for Testing pin, targets per executable and Cloud image refresh.
-- [Installation](delivery/installation.md): installing a server with one command, its parameters for people and agents, the HTTPS shapes, the steps and the distributions.
-- [Upgrades](delivery/upgrades.md): one release on a server, what follows it and how, what crosses releases, the upgrade, its interruptions and rollback, and `demi-server`.
-- [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Rust executables are versioned.
-
-## How do I extend Demi?
-
+- [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost and coverage.
+- [Product checks](delivery/browse.md): `bun browse`, the Playwright check script every agent runs against a browser that stays open.
+- [Localization](product/localization.md): the languages, how text is chosen, and the glossary.
 - [Add a provider](guides/add-a-provider.md): writing a provider crate for a new vendor.
-- [Develop on a Mac with Lima](guides/mac-development.md): an optional setup that runs the machine manager and Clouds in a Lima VM beside a backend on the Mac.
+- [Develop on a Mac with Lima](guides/mac-development.md): the machine manager and Clouds in a Lima VM beside a backend on the Mac.

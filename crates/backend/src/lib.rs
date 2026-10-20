@@ -44,26 +44,6 @@
 //!   stall an async thread (disk IO, password and blob hashing, serializing
 //!   media, read-only conversation reads) runs on Tokio's blocking pool.
 //!
-//! # A deployment with several workers: not built
-//!
-//! The design adds a deployment where each user is pinned to one worker
-//! process, a complete backend for its users, behind an off-the-shelf reverse
-//! proxy that passes `Origin` and `Host` unchanged, and one internal control
-//! service that alone opens `control.sqlite` (the control operations already
-//! take owned, serializable input). Blobs would live in S3, each SQLite owner
-//! would replicate its databases to S3, and a user's Cloud disk generation
-//! would be published, atomically, where the destination can restore it.
-//! Routing hints select placement; authentication still establishes identity.
-//! The rule a build must keep: at most one worker serves a user at a time, so
-//! before another worker takes a user, the worker that owned the user is
-//! fenced, its storage and execution authority ended first, and only then
-//! does the destination gain write access to the user's databases and disks.
-//! A route map alone does not do that: a worker that lost a route can still
-//! be saving a turn while another restores the user's databases from their
-//! replicas, and the two copies diverge. How a worker is fenced, when a
-//! replicated checkpoint is ready for the destination to open, and how a
-//! pairing claim reaches the worker that holds the unclaimed runner are open.
-//!
 //! `Backend::start` is the one composition root: it may construct, inject,
 //! mount and return, and never branches on business state. Each layer of the
 //! backend's crates knows only the layers beneath it:
