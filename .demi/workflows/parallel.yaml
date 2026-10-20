@@ -32,6 +32,8 @@ instructions: |
   - The lead reviews each result, merges it into the branch of the user's own checkout, pushes from there, and deletes the branch, which frees the slot. The implementer ran the checks on the branch rebased onto `feat/demi-next`; when `feat/demi-next` has not moved since, the merge is pushed as it is, and otherwise the lead runs `cargo check` with the workspace selection and `bun run typecheck:web` on the merge, and asks the implementer to rebase only when they fail or the merge conflicts.
   - Deploy only when the user asks for it in this conversation, each time: a merge, a finished batch or an earlier request to deploy is no reason to deploy again.
   - After each merge, and whenever the disk runs low, the lead runs `bun xtask sweep` in the checkout and in every free slot: it keeps the build products the current selections use and removes every other unit and incremental cache under `target/debug`; other target directories, such as `.cache/native-target`, it only lists with their sizes, and the lead removes those no longer needed by hand.
+subagent_instructions: |
+  Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
 profiles:
   - id: implement
     description: "Use to implement a settled design or rework a delivered branch: code, tests and the checks, in the slot the brief names. Not for design decisions or documentation."
@@ -50,7 +52,6 @@ profiles:
       - If the design leaves a question open or the code contradicts it, implement the rest and name the gap in your report; never guess a design.
       - A development tool you need, such as `bun browse`, that lacks something or gets it wrong, you fix yourself in your slot, as a commit of its own on the branch there, and say so in your report.
 
-      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: branch and its commit, what changed per item, tests and that each failed before, checks run, what the acceptance pass should walk, gaps.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
@@ -64,7 +65,6 @@ profiles:
       - Do not decide or recommend a design unless asked; give the facts a decision needs, including the options you found and their trade-offs.
       - Never print secrets: read only the names of environment variables and keys, not their values.
 
-      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: the answer first, then the evidence per point, then open questions.
   - id: rewrite
     description: "Use to rewrite the comments of the paths the brief names to the project's writing and comment standards; it changes no code and no meaning."
@@ -89,7 +89,6 @@ profiles:
       Git: start the branch as the brief says, stage files by name, keep one commit and fold later work into it with `git commit --amend`, never push or merge, never `git stash`.
       Check at the end, after rebasing onto the current `feat/demi-next`: strip the comments from every changed file, old and new, and compare what is left; it must be identical. A change of comments alone cannot break a build or a test, so run no build, type check or test.
 
-      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: branch and commit; how many files and comment blocks changed; how many comments you deleted as restating the code, with three examples; anything you left alone and why.
   - id: review
     description: "Use to review a delivered change before it is merged: reads the branch's diff against the design and the project rules and reports the defects it finds, leaving their weight to the lead; it changes nothing."
@@ -106,7 +105,6 @@ profiles:
       5. Check the tests: each protects a behavior at its boundary, would fail without the fix, waits for events rather than time, and no test asserts a defect or restates the implementation. Say which claimed behavior has no test.
       6. Verify claims you can verify cheaply (run the named tests, grep for leftovers the report says are gone).
 
-      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Report, concisely:
       - Verdict: merge, merge after small fixes, or rework.
       - Design conformance: each rule or example of the design the change implements, one line each, with the file:line that carries it out, or *missing* or *differs* and how.
@@ -131,7 +129,6 @@ profiles:
 
       A development tool you need, such as `bun browse`, that lacks something or gets it wrong, you fix yourself in your slot, as a commit of its own on the branch there, and say so in your report.
 
-      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Report, in English and short:
       - Verdict: accepted, accepted with findings, or not accepted.
       - Each flow you walked: what you did and what happened, passed or failed.
@@ -153,5 +150,4 @@ profiles:
       - Leave things as you found them: remove what you installed or changed for a run, and leave VMs and sandboxes as they were (stopped if they were stopped).
       - Never print secrets.
 
-      Message the lead before your report only with what needs its answer, a question or a blocker; everything else goes in the report.
       Your report, in English and short: the answer first; the timeline or numbers in a table with the setup; the root causes in order of cost, each with its evidence and file:line; the options to fix each with their expected gain; what is measured vs inferred; where the raw results are.
