@@ -181,17 +181,12 @@ fn comment_sources(comments: &[MessageComment]) -> impl Iterator<Item = Source<'
 }
 
 /// The media of a block: a message's or a steer's, its comments' pictures
-/// included, a tool result's, those command reports carry, or those of the
-/// messages a compaction kept.
+/// included, a tool result's, or those command reports carry. The messages
+/// a compaction kept are text alone.
 fn sources(block: &Block) -> Vec<Source<'_>> {
     match block {
         Block::User(user) => comment_sources(&user.comments).chain(content_sources(&user.content)).collect(),
         Block::Steer(steer) => comment_sources(&steer.comments).chain(content_sources(&steer.content)).collect(),
-        Block::CompactionBoundary(boundary) => boundary
-            .kept
-            .iter()
-            .flat_map(|kept| content_sources(&kept.content))
-            .collect(),
         Block::ToolCall(call) => call.output.iter().filter_map(result_source).collect(),
         Block::Wakeup(wakeup) => wakeup
             .reports

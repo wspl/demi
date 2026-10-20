@@ -29,7 +29,7 @@ use demi_provider_common::{ErrorCode, InferenceItem, RequestLimits, ToolDefiniti
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, ContextUsage, EXECUTION_SOURCE, Model, ModelSelection, NodeId, TokenUsage,
-    TurnId, UserContentBlock,
+    TurnId, UserContentBlock, kept_words_budget,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -106,11 +106,6 @@ const SUMMARY_ROOM: u64 = 13_000;
 /// estimated tokens, or this share of the window in use when that is less.
 const KEPT_WORK: u64 = 20_000;
 const KEPT_WORK_PERCENT: u8 = 15;
-
-/// The user's own words a pass keeps: at most this many estimated tokens,
-/// or this share of the window in use when that is less.
-const KEPT_WORDS: u64 = 20_000;
-const KEPT_WORDS_PERCENT: u8 = 10;
 
 /// The window in use for `model`, in tokens: the model's context window, or the
 /// limit the user set on it, as the node answers it
@@ -525,9 +520,7 @@ pub(super) async fn run_pass(
     let budget = window_tokens.map_or(KEPT_WORK, |window| {
         KEPT_WORK.min(share(window, KEPT_WORK_PERCENT))
     });
-    let words = window_tokens.map_or(KEPT_WORDS, |window| {
-        KEPT_WORDS.min(share(window, KEPT_WORDS_PERCENT))
-    });
+    let words = kept_words_budget(window_tokens);
     // The window is read from the replayed blocks as the model receives
     // them; its indices are the view's, which starts at `view.start` in the
     // transcript.
@@ -566,7 +559,7 @@ pub(super) async fn run_pass(
                 .iter()
                 .map(|block| block_tokens(block, &request))
                 .sum::<u64>();
-            (tokens, kept_messages(window, &request, words))
+            (tokens, kept_messages(window, view.start + start, words))
         });
         // The copy holds what it sends by reference, with the bytes the
         // session holds for it.

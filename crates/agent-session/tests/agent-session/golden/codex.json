@@ -7,7 +7,7 @@
       "content": [
         {
           "type": "input_text",
-          "text": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it."
+          "text": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Each kept message starts with its index, which `demi conversation history read` and `open` take. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it."
         }
       ]
     },
@@ -16,7 +16,7 @@
       "content": [
         {
           "type": "input_text",
-          "text": "The release build fails; here is the screen."
+          "text": "[#0]\nThe release build fails; here is the screen. [Image]"
         }
       ]
     },
@@ -25,7 +25,7 @@
       "content": [
         {
           "type": "input_text",
-          "text": "Use the release profile."
+          "text": "[#5]\nUse the release profile."
         }
       ]
     },
@@ -34,7 +34,7 @@
       "content": [
         {
           "type": "input_text",
-          "text": "Fix it, and don't touch the migration files."
+          "text": "[#10]\nFix it, and don't touch the migration files."
         }
       ]
     },

@@ -7,19 +7,19 @@
     },
     {
       "role": "user",
-      "content": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it."
+      "content": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Each kept message starts with its index, which `demi conversation history read` and `open` take. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it."
     },
     {
       "role": "user",
-      "content": "The release build fails; here is the screen."
+      "content": "[#0]\nThe release build fails; here is the screen. [Image]"
     },
     {
       "role": "user",
-      "content": "Use the release profile."
+      "content": "[#5]\nUse the release profile."
     },
     {
       "role": "user",
-      "content": "Fix it, and don't touch the migration files."
+      "content": "[#10]\nFix it, and don't touch the migration files."
     },
     {
       "role": "user",

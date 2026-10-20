@@ -1524,8 +1524,10 @@ CREATE TABLE plugin_oauth_clients (
 /// - the one `0.1.22-dev.20261015T134426Z` deployed, of format 9;
 /// - the one `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees
 ///   of rows. 0.1.22 shipped that one too, before a running command kept its
-///   turn, 0.1.33 the one before a running command kept its call's script, and
-///   0.1.36 the one before an attachment kept the file it was uploaded from.
+///   turn, 0.1.33 the one before a running command kept its call's script,
+///   0.1.36 the one before an attachment kept the file it was uploaded from,
+///   0.1.37 the one before every block named its request, and 0.1.38 the one
+///   before the messages a compaction kept named theirs.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1621,11 +1623,23 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.37.sql"),
             migration: Migration::Code(conversation_from_0_1_37),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.38.sql"),
+            migration: Migration::Code(conversation_from_0_1_38),
+        },
     ],
 };
 
-/// From 0.1.37's conversation schema, of transcript block format 12, to the
-/// current one, of format 13.
+/// From 0.1.38's conversation schema, of transcript block format 13, to the
+/// current one, of format 14: a `compaction_boundary` keeps each of the user's
+/// messages as text that names the message it came from
+/// ([`named_kept_messages`]), and so names no blob of the images it kept.
+fn conversation_from_0_1_38(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    named_kept_messages(transaction)
+}
+
+/// From 0.1.37's conversation schema, of transcript block format 12, to
+/// 0.1.38's, of format 13.
 ///
 /// - Every block names the request it belongs to, by its `user` block
 ///   (`crates/agent-store/src/changes.rs`): a block stored before takes the
@@ -1634,7 +1648,172 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// - A text keeps which of its inline code names a file on the Host, read when
 ///   it is complete. One stored before was never read, and names none.
 fn conversation_from_0_1_37(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    // It reads blocks with the current types (`named_kept_messages`).
+    named_kept_messages(transaction)?;
     with_requests(transaction)
+}
+
+/// Rewrites each stored `compaction_boundary` whose kept messages hold their
+/// content, as transcript block format 13 and every one before kept them, to
+/// keep each as text that names the message it came from, the step of
+/// [`conversation_from_0_1_38`].
+///
+/// A pass kept the newest of the user's messages and steers before its
+/// boundary, those an earlier boundary carried included, so the `n` messages a
+/// boundary kept are the last `n` `user` and `steer` blocks before it on its
+/// path, oldest first. Each is checked against its block's whole content as
+/// the pass took it, its preamble and comments first; only the oldest, which
+/// crossing the pass's budget may have cut to its text, may be text that
+/// starts the block's text. The boundary then keeps those blocks as a pass
+/// would now ([`KeptMessage::of`]), each named by its block's position on the
+/// path, the index `demi conversation history read` takes, and chosen within
+/// the kept words' budget ([`choose_kept`]) of the boundary's model's window:
+/// the limit the user set on it then is not stored.
+///
+/// A boundary that kept more messages than its path holds before it, or one
+/// whose message is not its block's, is corrupt data and fails the migration:
+/// no index is guessed. A path goes back through each row's `follows`, or, in
+/// a schema before the column, through the rows in order of their index
+/// ([`ONE_PATH`]). Each node's positions are computed once, and each message a
+/// boundary names is decoded once. A boundary's list of the blobs it names,
+/// where the database keeps one, is written again: it names none now. Each
+/// step before that reads every block with the current types runs this first,
+/// after [`number_attachments`], and the step finds none left to rewrite.
+fn named_kept_messages(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    use demi_shared_types::{
+        Block, KeptMessage, ModelSelection, UserContentBlock, choose_kept, comments_content, kept_words_budget,
+    };
+
+    /// A kept message as format 13 and before stored it.
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Stored {
+        content: Vec<UserContentBlock>,
+    }
+
+    /// A row's place on its path.
+    struct Place {
+        position: u64,
+        /// Whether the row is a `user` or `steer` block.
+        message: bool,
+        /// The nearest `user` or `steer` row before it on its path.
+        message_before: Option<i64>,
+    }
+
+    let boundaries = transaction
+        .prepare(
+            "SELECT node_id, idx, block FROM blocks
+             WHERE json_extract(block, '$.type') = 'compaction_boundary'
+               AND json_extract(block, '$.kept[0].content') IS NOT NULL
+             ORDER BY node_id, idx",
+        )?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if boundaries.is_empty() {
+        return Ok(());
+    }
+    let with_follows: bool = transaction.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info('blocks') WHERE name = 'follows')",
+        [],
+        |row| row.get(0),
+    )?;
+    let lists_blobs: bool = transaction.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'block_blobs')",
+        [],
+        |row| row.get(0),
+    )?;
+    let follows = if with_follows { "follows" } else { "CASE WHEN idx > 0 THEN idx - 1 END" };
+    let mut shape = transaction.prepare(&format!(
+        "SELECT idx, {follows}, json_extract(block, '$.type') IN ('user', 'steer')
+         FROM blocks WHERE node_id = ?1 ORDER BY idx"
+    ))?;
+    let mut read = transaction.prepare("SELECT block FROM blocks WHERE node_id = ?1 AND idx = ?2")?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    let texts = |content: &[UserContentBlock]| -> String {
+        content
+            .iter()
+            .filter_map(|part| match part {
+                UserContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    // The node read last: each row's place by its index, and the content of
+    // each message a boundary named, as the pass took it.
+    let mut node = String::new();
+    let mut places: HashMap<i64, Place> = HashMap::new();
+    let mut written: HashMap<i64, Vec<UserContentBlock>> = HashMap::new();
+    for (of, index, text) in boundaries {
+        if of != node {
+            node = of;
+            places.clear();
+            written.clear();
+            // A row follows one of a lower index, so each row's place is
+            // known before the rows that follow it.
+            let mut rows = shape.query([&node])?;
+            while let Some(row) = rows.next()? {
+                let (at, follows, message): (i64, Option<i64>, bool) = (row.get(0)?, row.get(1)?, row.get(2)?);
+                let place = match follows {
+                    None => Place { position: 0, message, message_before: None },
+                    Some(follows) => {
+                        let before = places.get(&follows).ok_or_else(|| {
+                            corrupt_text(&format!("row {at} of node {node} follows row {follows}, which is missing"))
+                        })?;
+                        Place {
+                            position: before.position + 1,
+                            message,
+                            message_before: if before.message { Some(follows) } else { before.message_before },
+                        }
+                    }
+                };
+                places.insert(at, place);
+            }
+        }
+        let invalid = |reason: &str| corrupt_text(&format!("the compaction boundary at row {index} of node {node} {reason}"));
+        let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+        let stored: Vec<Stored> = serde_json::from_value(block["kept"].take()).map_err(corrupt)?;
+        let model: ModelSelection = serde_json::from_value(block["model"].clone()).map_err(corrupt)?;
+        let oldest = stored.len() - 1;
+        let mut sources = Vec::with_capacity(stored.len());
+        let mut at = places.get(&index).and_then(|place| place.message_before);
+        for (back, Stored { content }) in stored.iter().rev().enumerate() {
+            let Some(row) = at else {
+                return Err(invalid(&format!("kept {} messages, and its path holds {back} before it", stored.len())));
+            };
+            let source = match written.entry(row) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    let text: String = read.query_row(rusqlite::params![node, row], |row| row.get(0))?;
+                    entry.insert(match demi_shared_types::decode::<Block>(&text).map_err(corrupt)? {
+                        Block::User(user) => user.lead_content().into_iter().chain(user.content).collect(),
+                        Block::Steer(steer) => comments_content(&steer.comments).into_iter().chain(steer.content).collect(),
+                        _ => unreachable!("the row is a message or a steer"),
+                    })
+                }
+            };
+            let place = &places[&row];
+            let whole = content == source;
+            let cut = back == oldest
+                && content.iter().all(|part| matches!(part, UserContentBlock::Text { .. }))
+                && texts(source).starts_with(&texts(content));
+            if !whole && !cut {
+                return Err(invalid(&format!("kept a message that is not the one at {} of its path", place.position)));
+            }
+            sources.push(KeptMessage::of(place.position, source));
+            at = place.message_before;
+        }
+        sources.reverse();
+        let window = u64::from(model.model.context_window);
+        let budget = kept_words_budget((window > 0).then_some(window));
+        block["kept"] = serde_json::to_value(choose_kept(sources, budget)).map_err(corrupt)?;
+        let block: Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
+        update.execute(rusqlite::params![node, index, to_json(&block)])?;
+        if lists_blobs {
+            crate::tree::name_block(transaction, &node, index, &block)?;
+        }
+    }
+    Ok(())
 }
 
 /// From 0.1.36's conversation schema, which 0.1.35 shipped too, to 0.1.37's: an
@@ -2381,8 +2560,10 @@ fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rus
 ///   names in `block_attachments`, each block decoded once.
 fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(SHARES_AS_LISTS)?;
-    // It reads blocks with the current types (`number_attachments`).
+    // It reads blocks with the current types (`number_attachments`,
+    // `named_kept_messages`).
     number_attachments(transaction)?;
+    named_kept_messages(transaction)?;
     let mut blocks = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
     let mut rows = blocks.query([])?;
     while let Some(row) = rows.next()? {
@@ -3192,8 +3373,10 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// A copy that cannot be read stops the migration, which the next open tries
 /// again; one the namespace no longer holds leaves its file named alone.
 fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
-    // It reads blocks with the current types (`number_attachments`).
+    // It reads blocks with the current types (`number_attachments`,
+    // `named_kept_messages`).
     number_attachments(transaction)?;
+    named_kept_messages(transaction)?;
     let nodes = transaction
         .prepare("SELECT DISTINCT node_id FROM blocks")?
         .query_map([], |row| row.get::<_, String>(0))?
@@ -4682,14 +4865,14 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 13.
+-- blocks.block: transcript block format 14.
 -- A node's transcript is a tree of rows (message-editing.md § Versions):
 -- `idx` is a row's number, its place in the order the node's rows were
 -- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
   node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx      INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 13
+  -- blocks.block: transcript block format 14
   block    TEXT NOT NULL,
   -- The row before it on its path; null for a path's first row.
   follows  INTEGER CHECK (follows < idx),
@@ -4771,7 +4954,7 @@ CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 13
+  -- share_blocks.block: transcript block format 14
   block TEXT NOT NULL,
   PRIMARY KEY (token, idx)
 ) STRICT;
@@ -7685,6 +7868,221 @@ mod tests {
             requests("SELECT block FROM share_blocks ORDER BY idx"),
             named(&[None, Some("u1")])
         );
+    }
+
+    /// The conversation schemas 0.1.37 and 0.1.38 shipped, whose boundaries
+    /// kept the user's messages with their media.
+    const KEPT_CONTENT: [&str; 2] = [
+        include_str!("schema/conversation-0.1.37.sql"),
+        include_str!("schema/conversation-0.1.38.sql"),
+    ];
+
+    /// A conversation of `sql`'s schema with two compactions, whose path branches between
+    /// them: rows 0 to 4 and then rows 6 and 7, row 5 an earlier version of
+    /// row 6. The first boundary kept a message with a screenshot and one
+    /// with a file; the second carried the second message, cut to its first
+    /// word, and kept the one after it. `kept` replaces the second boundary's
+    /// kept messages when it is given.
+    fn conversation_with_boundaries(
+        sql: &str,
+        kept: Option<serde_json::Value>,
+    ) -> (tempfile::TempDir, std::path::PathBuf, Connection) {
+        let (directory, path, connection) = database(sql);
+        let model = serde_json::json!({
+            "providerId": "p1",
+            "model": { "id": "m1", "name": "M1", "contextWindow": 1000, "outputLimit": null, "thinking": [], "acceptedExtensions": [] },
+            "thinking": null,
+            "serviceTierId": null,
+        });
+        let screenshot = serde_json::json!({
+            "type": "image",
+            "source": { "type": "ref", "ref": "a".repeat(64), "mediaType": "image/png" },
+        });
+        let file = serde_json::json!({
+            "type": "attachment", "id": "a1", "name": "notes.md", "mediaType": "text/markdown",
+            "sizeBytes": 12, "sha256": "b".repeat(64),
+        });
+        let words = |text: &str| serde_json::json!({ "type": "text", "text": text });
+        let user = |id: &str, content: serde_json::Value| {
+            serde_json::json!({
+                "type": "user", "id": id, "turnId": id, "createdAt": "2026-09-24T12:00:00.000Z", "model": model,
+                "content": content, "preamble": null,
+            })
+        };
+        let text = |id: &str| {
+            serde_json::json!({
+                "type": "text", "id": id, "createdAt": "2026-09-24T12:00:00.000Z", "model": model, "text": "Done.",
+            })
+        };
+        let boundary = |id: &str, kept: serde_json::Value| {
+            serde_json::json!({
+                "type": "compaction_boundary", "id": id, "createdAt": "2026-09-24T12:00:00.000Z", "model": model,
+                "summary": "The user asked for a logo.", "summaryTokens": 8, "kept": kept,
+            })
+        };
+        let first_kept = serde_json::json!([
+            { "content": [words("The logo does not show."), screenshot] },
+            { "content": [words("Use these notes."), file] },
+        ]);
+        let second_kept = kept.unwrap_or_else(|| {
+            serde_json::json!([
+                { "content": [words("Use")] },
+                { "content": [words("Go on.")] },
+            ])
+        });
+        let rows = [
+            (user("u1", serde_json::json!([words("The logo does not show."), screenshot])), None),
+            (text("answer-1"), Some(0)),
+            (user("u2", serde_json::json!([words("Use these notes."), file])), Some(1)),
+            (text("answer-2"), Some(2)),
+            (boundary("b1", first_kept), Some(3)),
+            (user("u3-old", serde_json::json!([words("Go.")])), Some(4)),
+            (user("u3", serde_json::json!([words("Go on.")])), Some(4)),
+            (boundary("b2", second_kept), Some(6)),
+        ];
+        connection
+            .execute(
+                "INSERT INTO nodes (id, number, description, round, started_at, can_spawn, delivered, state, output_revision, leaf)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, '{}', 0, 7)",
+                [],
+            )
+            .unwrap();
+        for (index, (block, follows)) in rows.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', ?1, ?2, ?3)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string(), follows],
+                )
+                .unwrap();
+        }
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO path_runs (node_id, start, first, length) VALUES ('root', 0, 0, 5), ('root', 5, 6, 2);
+                 INSERT INTO block_blobs (node_id, idx, blob) VALUES ('root', 0, '{a}'), ('root', 4, '{a}');",
+                a = "a".repeat(64)
+            ))
+            .unwrap();
+        (directory, path, connection)
+    }
+
+    /// 0.1.37's and 0.1.38's boundaries kept the user's messages with their
+    /// media: once migrated, each kept message is the text of the message it
+    /// came from, a file in it a placeholder, and names that message's
+    /// position on the boundary's path, where a read of the history finds it;
+    /// a boundary names no blob of the images it kept.
+    #[test]
+    fn the_boundaries_of_0_1_37_and_0_1_38_keep_text_that_names_its_message() {
+        for sql in KEPT_CONTENT {
+            the_boundaries_keep_text_that_names_its_message(sql);
+        }
+    }
+
+    fn the_boundaries_keep_text_that_names_its_message(sql: &str) {
+        use demi_shared_types::{Block, KeptMessage, NodeId};
+        let (_directory, path, mut connection) = conversation_with_boundaries(sql, None);
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let kept = |index: i64| -> Vec<KeptMessage> {
+            let text: String = connection
+                .query_row("SELECT block FROM blocks WHERE node_id = 'root' AND idx = ?1", [index], |row| row.get(0))
+                .unwrap();
+            match demi_shared_types::decode::<Block>(&text).unwrap() {
+                Block::CompactionBoundary(boundary) => boundary.kept,
+                other => panic!("not a boundary: {other:?}"),
+            }
+        };
+        let message = |index: u64, text: &str| KeptMessage { index, text: text.to_owned() };
+        assert_eq!(
+            kept(4),
+            [message(0, "The logo does not show. [Image]"), message(2, "Use these notes. [Attachment]")]
+        );
+        // The message after the branch is at position 5 of the path, in row 6.
+        // The second boundary had cut the oldest message it carried to its
+        // first word; it keeps it as the pass now would, whole, as it fits.
+        assert_eq!(kept(7), [message(2, "Use these notes. [Attachment]"), message(5, "Go on.")]);
+        let read = crate::tree::agent_blocks(&connection, &NodeId::try_from("root").unwrap(), 5..6).unwrap();
+        assert!(matches!(read.as_slice(), [Block::User(user)] if user.id.as_str() == "u3"), "{read:?}");
+        let named: Vec<i64> = connection
+            .prepare("SELECT idx FROM block_blobs WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(named, [0]);
+    }
+
+    /// A 0.1.38 boundary kept the user's messages whole, however long: once
+    /// migrated, it keeps them within the kept words' budget of its model's
+    /// window, as a pass now would, the oldest cut to what is left.
+    #[test]
+    fn an_upgraded_boundary_keeps_its_words_within_their_budget() {
+        use demi_shared_types::{Block, KeptMessage, kept_words_budget, text_tokens};
+        let long = format!("Use these notes. {}", "n".repeat(1_000_000));
+        let (_directory, path, mut connection) = conversation_with_boundaries(KEPT_CONTENT[1], None);
+        // The second message holds a megabyte of text, which both boundaries
+        // kept whole.
+        connection
+            .execute(
+                "UPDATE blocks SET block = replace(block, 'Use these notes.', ?1) WHERE idx IN (2, 4)",
+                [&long],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE blocks SET block = json_set(block, '$.kept[0].content[0].text', ?1) WHERE idx = 7",
+                [&long],
+            )
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let text: String = connection
+            .query_row("SELECT block FROM blocks WHERE node_id = 'root' AND idx = 7", [], |row| row.get(0))
+            .unwrap();
+        let Block::CompactionBoundary(boundary) = demi_shared_types::decode::<Block>(&text).unwrap() else {
+            panic!("not a boundary: {text}");
+        };
+        // A 1,000-token window keeps 100 tokens of words: "Go on." whole, and
+        // the second message cut to the rest.
+        let budget = kept_words_budget(Some(1_000));
+        let read: u64 = boundary.kept.iter().map(|kept| text_tokens(&kept.model_text())).sum();
+        assert!(read <= budget, "{read} tokens of {budget}");
+        assert_eq!(boundary.kept[1], KeptMessage { index: 5, text: "Go on.".to_owned() });
+        assert_eq!(boundary.kept[0].index, 2);
+        assert!(long.starts_with(&boundary.kept[0].text) && boundary.kept[0].text.len() > 300, "{:?}", boundary.kept[0]);
+    }
+
+    /// A 0.1.37 or 0.1.38 boundary whose kept message is no message of its
+    /// path fails the migration, which leaves the database as it was: no
+    /// index is guessed. Only the oldest kept message may be cut, and only
+    /// to the start of its message's text.
+    #[test]
+    fn a_0_1_38_boundary_that_kept_a_message_its_path_lacks_fails_the_migration() {
+        let words = |text: &str| serde_json::json!({ "content": [{ "type": "text", "text": text }] });
+        for kept in [
+            // A message the path does not hold where the boundary says.
+            serde_json::json!([words("Use"), words("Stop.")]),
+            // More messages than the path holds before the boundary.
+            serde_json::json!([words("a"), words("b"), words("c"), words("d")]),
+            // The newest message's words with other text before them.
+            serde_json::json!([
+                words("Use"),
+                { "content": [{ "type": "text", "text": "Before." }, { "type": "text", "text": "Go on." }] },
+            ]),
+            // A newer message cut to the start of its text.
+            serde_json::json!([words("Use these notes."), words("Go")]),
+        ] {
+            for sql in KEPT_CONTENT {
+                let (_directory, path, mut connection) = conversation_with_boundaries(sql, Some(kept.clone()));
+
+                assert!(CONVERSATION.apply(&mut connection, &path, &NoBlobs).is_err());
+
+                let version: i32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+                assert_eq!(version, version_of(sql));
+            }
+        }
     }
 
     /// A 0.1.37 ledger row that holds some of its four token counts only is

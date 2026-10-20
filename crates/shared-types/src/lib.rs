@@ -77,6 +77,7 @@ mod context_limit;
 mod failure;
 mod file_types;
 mod ids;
+mod kept;
 mod media;
 mod model;
 #[cfg(feature = "mp4")]
@@ -101,7 +102,7 @@ pub use agent_message::{
 };
 pub use block::{
     AbortBlock, AccountSwitchBlock, AgentMessageBlock, AutomationMark, Block, CodeFile, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock, Entry,
-    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, SIDE_QUESTIONS_SOURCE, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
+    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, SIDE_QUESTIONS_SOURCE, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
     WORKING_DIRECTORY_SOURCE,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
     client_blocks, WakeupPlacement,
@@ -150,6 +151,7 @@ pub use quota::{
     QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,
     SnapshotSource,
 };
+pub use kept::{KeptMessage, choose_kept, kept_words_budget, text_tokens};
 pub use read_at::ReadAt;
 pub use schema::Nullable;
 pub use workflow::WorkflowChoice;

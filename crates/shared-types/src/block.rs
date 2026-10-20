@@ -1350,10 +1350,9 @@ pub struct CompactionBoundaryBlock {
     pub summary: String,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub summary_tokens: u64,
-    /// The user's own messages the pass kept, oldest first, each as the
-    /// content its user message replays.
+    /// The user's own messages the pass kept, oldest first.
     #[garde(dive)]
-    pub kept: Vec<KeptMessage>,
+    pub kept: Vec<crate::KeptMessage>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them
     /// (`crates/provider-claude-code/src/session.rs`); omitted when there are
@@ -1364,16 +1363,6 @@ pub struct CompactionBoundaryBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<Entry>,
-}
-
-/// A message of the user's that a compaction kept beside its summary: a
-/// `user` block's preamble and content, or a `steer` block's content, the
-/// one that crossed the pass's budget cut to its text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct KeptMessage {
-    #[garde(dive)]
-    pub content: Vec<UserContentBlock>,
 }
 
 /// Compaction's estimate of the size of what it summarized. It is appended at
