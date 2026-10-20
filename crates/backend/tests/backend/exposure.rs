@@ -1,4 +1,4 @@
-//! A device's exposed ports (`port-exposure.md`), with a real runner: a
+//! A device's exposed ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`), with a real runner: a
 //! Compatible entry whose endpoint names the user's device by its id
 //! reaches a scripted vendor on the device's 127.0.0.1 once the port is
 //! exposed, and streams its answer; before, the request is refused without

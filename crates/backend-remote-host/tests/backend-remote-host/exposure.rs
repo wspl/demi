@@ -1,5 +1,5 @@
 //! The backend's requests to a device's exposed port over a real runner
-//! (`port-exposure.md` § Exposed ports): the runner's connection to the
+//! (`crates/backend-user-shard/src/shard/exposed_ports.rs`): the runner's connection to the
 //! port lasts as long as the request's caller waits, however long the port
 //! takes, and an answer the relay cannot carry fails with why.
 //!

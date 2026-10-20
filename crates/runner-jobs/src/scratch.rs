@@ -48,7 +48,7 @@ impl Scratch {
     }
 
     /// The scratch directory of `caller` in `conversation`, a conversation
-    /// name the wire checked (`native-runtime.md` § Command context), made
+    /// name the wire checked (`crates/command-protocol/src/invocation.rs`), made
     /// when it is not there.
     pub async fn create(&self, conversation: &str, caller: &CommandCaller) -> io::Result<PathBuf> {
         let mut directory = self.root.join(conversation);

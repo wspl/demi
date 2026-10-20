@@ -207,7 +207,7 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
                 match wire::decode(&bytes).expect("the runner sends valid messages") {
                     // What the cache holds, which the runner reports once
                     // online and after each install; the backend's tests
-                    // follow it (`native-runtime.md` § Installed artifacts).
+                    // follow it (`crates/runner-command-packages/src/cache.rs`).
                     Outbound::Installed { .. } => {}
                     message => return message,
                 }

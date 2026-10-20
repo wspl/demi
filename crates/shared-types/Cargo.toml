@@ -35,7 +35,7 @@ serde_with.workspace = true
 sha2 = "0.10"
 thiserror.workspace = true
 # Terminal widths, which command output aligns its tables by
-# (`output`, `commands.md` § Output).
+# (`output`, `crates/shared-types/src/output.rs`).
 unicode-width = "0.2"
 # The one check that an image's bytes are a whole picture, for the crates
 # that turn on `whole-image`.

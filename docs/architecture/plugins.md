@@ -70,7 +70,7 @@ user, conversation or time arrives through requests.
 | Contribution | Declared | When Demi asks |
 | --- | --- | --- |
 | Identity | Its id, its name and a one-sentence description, which settings show | Never |
-| Packages | Nothing: they are the [command packages](../execution/native-runtime.md) whose operations its commands, streams, page states and methods bind | Never |
+| Packages | Nothing: they are the command packages (`crates/command-protocol/src/lib.rs`) whose operations its commands, streams, page states and methods bind | Never |
 | [Commands](#commands) | Their declarations, as data | Each time the model runs an `rpc` leaf of them |
 | [Context](#prompt-text-and-context) | That the plugin is a context source | Before each provider request of every node |
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
@@ -97,7 +97,7 @@ Writing page has the capitalization rules.
 
 ### Commands
 
-A plugin's commands follow the [command contract](../execution/commands.md):
+A plugin's commands follow the command contract (`crates/command-declarations/src/lib.rs`):
 groups and leaves with help and argument schemas, each leaf bound to an `rpc`
 handler or to a `native` operation of a command package. A `native` leaf runs
 on the Host and never reaches the plugin; an `rpc` leaf reaches the plugin as
@@ -256,7 +256,7 @@ such as for want of permission. A symbolic link at a path is followed; a
 directory's entries name a link as a link. The paths are absolute, as the Host names them. The
 plugin host makes the request through the conversation's host access in the
 form that never wakes a Host, the one a one-shot user call that only looks
-uses ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)):
+uses (`crates/backend-host-access/src/lib.rs`):
 
 - A Cloud that is stopped, or a paired device whose runner is not connected,
   answers that the Host is not running, and the plugin uses what it knew
@@ -289,7 +289,7 @@ again at the next request.
 
 A plugin whose commands bind a command package can use that package's
 operations itself, for a conversation's user, in the two ways the backend
-already offers ([User streams](../execution/native-runtime.md#user-streams)):
+already offers (`crates/runner-jobs/src/commands/streams.rs`):
 
 - **A package call** runs one operation once, with a `user` caller and the
   operation's arguments, and answers its JSON result. For example,
@@ -326,7 +326,7 @@ host access. A plugin never writes a Host's files and never starts a job.
 A plugin whose commands bind a command package hears from that package
 when the state it keeps on a Host changes: the package says so the moment it
 changes, and the plugin never asks whether it did
-([Messages to the plugin](../execution/native-runtime.md#messages-to-the-plugin)).
+(`crates/command-protocol/src/messages.rs`).
 For example, a page in the conversation browser opens a pop-up. The browser
 package writes `{"tabs":"changed"}` for the conversation, and
 `plugin-browser` receives it as a `package_message` request: it marks its
@@ -397,7 +397,7 @@ Each request names its user, since a plugin process would serve every user:
 
 | Request | Carries | Reply |
 | --- | --- | --- |
-| `command` | The [rpc invocation](../execution/commands.md#handle-an-rpc-call) | The exit status |
+| `command` | The rpc invocation (`crates/host-interface/src/rpc.rs`) | The exit status |
 | `context` | The conversation, the node, its working directory, the id of its current input turn, and the text of the source's blocks the model receives | New text, or none |
 | `page_state` | The scope: the user, or one of the user's conversations | The plugin's state of that scope, valid against the scope's declared schema |
 | `page_call` | The method, its parameters, already valid against the method's schema, and the conversation when the page called for one | The result, valid against the method's result schema |
@@ -407,7 +407,7 @@ Each request names its user, since a plugin process would serve every user:
 
 The port is the plugin's side of a request, and every operation is one
 request and one reply, as for an rpc handler
-([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)). Its
+(`crates/host-interface/src/rpc.rs`). Its
 operations are grouped by the service that answers them. A
 conversation's operations need a request about a conversation: a `command`, a
 `context`, a `page_state` or `page_call` of the conversation scope, a
@@ -415,7 +415,7 @@ conversation's operations need a request about a conversation: a `command`, a
 
 | Service | Operations | Requests | Meaning |
 | --- | --- | --- | --- |
-| Command | Stdout, stderr, stdin, live stdin | `command` | The rpc port of the call: its IO. A command that makes an image writes its bytes, which the model views with `demi file view` ([Return media](../execution/commands.md#return-media)) |
+| Command | Stdout, stderr, stdin, live stdin | `command` | The rpc port of the call: its IO. A command that makes an image writes its bytes, which the model views with `demi file view` (`crates/runner-jobs/src/commands/command_output.rs`) |
 | Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
@@ -686,12 +686,12 @@ not use.
 
 | Id | Name | Crate | Contributes | Page package | Design |
 | --- | --- | --- | --- | --- | --- |
-| `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
+| `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | File commands (`crates/command-package-file/src/files.rs`) |
 | `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `calls`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | Conversation browser (`crates/command-package-browser-protocol/src/browser/mod.rs`), Live view (`crates/command-package-browser-chrome/src/live.rs`) |
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
 | `image` | Image Generation | `plugin-image` | The `demi image` group, rpc leaves; Host file reads; the Providers service | None | [Image generation](../agent/images.md) |
-| `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | `packages/web-ui/src/files/ChangeView.vue`, [Edit tracking](../execution/edit-tracking.md) |
+| `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | `packages/web-ui/src/files/ChangeView.vue`, `crates/command-sdk/src/edits.rs` |
 | `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | `packages/web-ui/src/files/FileView.vue` |
 
 Besides the plugins, the components that carry them are:

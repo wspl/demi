@@ -1,4 +1,4 @@
-//! The files the agent gives the user (`commands.md` § Attachment commands):
+//! The files the agent gives the user (`crates/backend-host-access/src/attachment_commands.rs`):
 //! `demi attachment upload` copies files beside the invocation into the
 //! conversation as `a1`, `a2`, …, and a file it cannot copy fails with its own
 //! line while the others are stored; the page reads an attachment by its number
@@ -28,7 +28,7 @@ const HUGE: u64 = 26 * 1024 * 1024;
 // About a second: a real device runs two shell jobs.
 //
 // `demi attachment download` puts an attachment, the agent's own here, where
-// a command needs it (`commands.md` § Attachment commands): the runner
+// a command needs it (`crates/backend-host-access/src/attachment_commands.rs`): the runner
 // fetches it from the backend and writes it under its name; run again, the
 // same file already there is that file, and a number the conversation does
 // not have fails with its own line while the others are written.

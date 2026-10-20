@@ -75,7 +75,7 @@ impl ProviderFailure {
     /// device has not exposed with `port_not_exposed`, which waiting cannot
     /// fix, an offline device with `device_offline`, retried as an
     /// unreachable endpoint is, and a failed request as any unreachable
-    /// endpoint (`port-exposure.md` § Exposed ports).
+    /// endpoint (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
     pub fn transport(label: &str, error: impl Into<SendError>) -> Self {
         let error = match error.into() {
             SendError::Transport(error) => error,
@@ -255,11 +255,11 @@ pub enum ErrorCode {
     /// The credential could not be refreshed.
     AuthRefreshFailed,
     /// The request named a port of one of the user's devices that the
-    /// device has not exposed (`port-exposure.md`): the failure offers
+    /// device has not exposed (`crates/backend-user-shard/src/shard/exposed_ports.rs`): the failure offers
     /// Expose Port, and the agent does not retry it.
     PortNotExposed,
     /// The request named a port of one of the user's devices while the
-    /// device is offline, or a Cloud stopped (`port-exposure.md`): retried
+    /// device is offline, or a Cloud stopped (`crates/backend-user-shard/src/shard/exposed_ports.rs`): retried
     /// as an unreachable endpoint is, and the failure names the device.
     DeviceOffline,
     /// Any other failure the vendor named, with the vendor's own code.

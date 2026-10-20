@@ -1,5 +1,4 @@
-//! The verified artifact cache (`native-runtime.md` § Install artifacts,
-//! § The cache): a miss downloads and verifies, a hit asks nobody, nothing
+//! The verified artifact cache (`crates/runner-command-packages/src/cache.rs`): a miss downloads and verifies, a hit asks nobody, nothing
 //! partial or mismatched is ever published, a download reports how it goes,
 //! and a newer version of a line replaces the older ones no running service
 //! holds.
@@ -158,7 +157,7 @@ impl ArtifactResolver for Expiring {
 /// expired, and that conversation is stopped while the download asks for
 /// the location again: the download asks the conversation still waiting,
 /// rather than the closed stream, and that one gets the file
-/// (`native-runtime.md` § Install artifacts). Cost: a few small files.
+/// (`crates/runner-command-packages/src/cache.rs`). Cost: a few small files.
 #[tokio::test]
 async fn a_shared_download_asks_a_remaining_caller_again_for_its_location() {
     let root = tempfile::tempdir().unwrap();
@@ -277,7 +276,7 @@ async fn concurrent_installs_of_one_artifact_share_one_download() {
 /// A conversation stopped while its stream locates the executable leaves
 /// the download to another one that waits for it: the download asks that
 /// one where the artifact is and goes on, and nothing staged is left
-/// beside the file (`native-runtime.md` § Install artifacts). Cost: a few
+/// beside the file (`crates/runner-command-packages/src/cache.rs`). Cost: a few
 /// small files.
 #[tokio::test]
 async fn cancelling_one_install_leaves_the_shared_download_to_the_others() {
@@ -400,7 +399,7 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
 }
 
 /// An archive's download reports each tenth of its size once, then its
-/// unpacking (`native-runtime.md` § Install artifacts); it is unpacked into
+/// unpacking (`crates/runner-command-packages/src/cache.rs`); it is unpacked into
 /// the cache, which a second install takes unread and reports nothing of.
 #[tokio::test]
 async fn an_archive_reports_its_download_by_tenths_and_is_unpacked_once() {
@@ -558,7 +557,7 @@ impl ArtifactResolver for At {
 /// A download whose connection breaks off halfway resumes on a new one with
 /// a Range request from the bytes it holds, in the content coding the store
 /// serves, and installs the executable those bytes decode to; its staging
-/// file goes once it is checked (`native-runtime.md` § Install artifacts).
+/// file goes once it is checked (`crates/runner-command-packages/src/cache.rs`).
 /// Cost: two local connections and a small file.
 #[tokio::test]
 async fn a_download_that_breaks_off_resumes_from_its_bytes() {
@@ -633,8 +632,7 @@ async fn a_download_that_breaks_off_resumes_from_its_bytes() {
 
 /// A download that sends more bytes than any form of the artifact can have
 /// fails as they arrive, without a declared length to refuse first, rather
-/// than when the body ends: this one never does (`native-runtime.md` §
-/// Downloads). Cost: one local connection.
+/// than when the body ends: this one never does (`crates/shared-artifacts/src/download.rs`). Cost: one local connection.
 #[tokio::test]
 async fn more_bytes_than_the_artifact_can_have_fail_as_they_arrive() {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -668,8 +666,7 @@ async fn more_bytes_than_the_artifact_can_have_fail_as_they_arrive() {
 }
 
 /// A download cancelled midway keeps its staging file for a resume, and an
-/// install of another version of its line removes it (`native-runtime.md`
-/// § Downloads). Cost: one local connection and two small files.
+/// install of another version of its line removes it (`crates/shared-artifacts/src/download.rs`). Cost: one local connection and two small files.
 #[tokio::test]
 async fn a_newer_version_prunes_the_staging_file_of_an_older_one() {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -754,7 +751,7 @@ impl ArtifactResolver for Signed {
 /// A signed URL that expires during a long download is refused when the
 /// download resumes; the address is asked for again and the download
 /// continues from the renewed one with a range, keeping the bytes it had
-/// (`native-runtime.md` § Downloads). Cost: three local connections and
+/// (`crates/shared-artifacts/src/download.rs`). Cost: three local connections and
 /// the first URL's lifetime, a fifth of a second.
 #[tokio::test]
 async fn a_signed_url_that_expires_midway_continues_from_the_renewed_one() {

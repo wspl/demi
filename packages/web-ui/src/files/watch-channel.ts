@@ -200,8 +200,7 @@ export class WatchChannel {
   }
 
   /**
-   * The path to the Host changed (`direct-channel.md` § Choosing the
-   * path): an open watch reopens on the other path at once, as after a
+   * The path to the Host changed (`packages/web/src/direct/index.ts`): an open watch reopens on the other path at once, as after a
    * lost connection but without its wait.
    */
   move(): void {

@@ -329,7 +329,7 @@ impl FileTransfers {
     /// `fs_downloadFile`: the file the backend offers, downloaded into a
     /// staging file beside the destination and put in place as
     /// `fs_writeFile` puts it once its bytes are checked
-    /// (`native-runtime.md` § Downloads).
+    /// (`crates/shared-artifacts/src/download.rs`).
     pub fn download(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
         let Inbound::FsDownloadFile {
             id,

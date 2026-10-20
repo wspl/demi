@@ -690,7 +690,7 @@ async fn a_tar_archive_compressed_with_zstd_installs_as_a_zip_archive_does() {
 
 /// A download whose digest the caller was given over a connection it trusts
 /// follows a redirect, as GitHub serves a release's assets
-/// (`native-runtime.md` § Install artifacts), and is verified all the same.
+/// (`crates/runner-command-packages/src/cache.rs`), and is verified all the same.
 #[tokio::test]
 async fn a_trusted_download_follows_a_redirect() {
     let client = download_client_allowing_http().unwrap();
@@ -748,7 +748,7 @@ async fn raw_server(head: Option<String>, body: &'static [u8]) -> (String, tokio
 /// A connection whose body breaks off before a byte, until the download's
 /// silence has passed, fails it with the cause beneath the layer that saw
 /// it, not only reqwest's *error decoding response body*
-/// (`native-runtime.md` § Downloads). Cost: one local connection.
+/// (`crates/shared-artifacts/src/download.rs`). Cost: one local connection.
 #[tokio::test]
 async fn a_body_that_breaks_off_names_its_cause() {
     let head = "HTTP/1.1 200 OK\r\ncontent-length: 100\r\nconnection: close\r\n\r\n".to_owned();
@@ -775,7 +775,7 @@ async fn a_body_that_breaks_off_names_its_cause() {
 
 /// Connections that deliver nothing are given up once the download's
 /// silence has passed, and the download fails saying so; one that stalls
-/// after bytes would resume instead (`native-runtime.md` § Downloads).
+/// after bytes would resume instead (`crates/shared-artifacts/src/download.rs`).
 /// Cost: a third of a second of a test's patience.
 #[tokio::test]
 async fn connections_that_deliver_nothing_fail_the_download() {
@@ -800,7 +800,7 @@ async fn connections_that_deliver_nothing_fail_the_download() {
 
 /// A server that answers a resumed request with the whole file starts the
 /// staging file again, and the download completes from it
-/// (`native-runtime.md` § Downloads). Cost: two local connections.
+/// (`crates/shared-artifacts/src/download.rs`). Cost: two local connections.
 #[tokio::test]
 async fn a_whole_answer_to_a_resumed_request_starts_the_file_again() {
     use tokio::io::AsyncReadExt as _;
@@ -867,7 +867,7 @@ fn noise(size: usize) -> Vec<u8> {
 
 /// A server that answers each resumed request with the whole file and
 /// breaks before its end fails the download after the third time in a
-/// row, and its staging file goes (`native-runtime.md` § Downloads).
+/// row, and its staging file goes (`crates/shared-artifacts/src/download.rs`).
 /// Cost: four local connections.
 #[tokio::test]
 async fn a_server_that_ignores_ranges_and_breaks_fails_after_three_times() {
@@ -895,7 +895,7 @@ async fn a_server_that_ignores_ranges_and_breaks_fails_after_three_times() {
 /// A download complete in its staging file but not yet checked, as when it
 /// was cancelled before its check, is asked again, answered 416 without a
 /// body or a coding, and checked in the coding its bytes arrived in
-/// (`native-runtime.md` § Downloads). Cost: two local connections.
+/// (`crates/shared-artifacts/src/download.rs`). Cost: two local connections.
 #[tokio::test]
 async fn a_complete_staging_file_keeps_its_coding_through_a_416() {
     let body = noise(16 * 1024);
@@ -924,7 +924,7 @@ async fn a_complete_staging_file_keeps_its_coding_through_a_416() {
 }
 
 /// A resumed answer whose range does not start where the staging file ends
-/// starts the file again (`native-runtime.md` § Downloads). Cost: three
+/// starts the file again (`crates/shared-artifacts/src/download.rs`). Cost: three
 /// local connections.
 #[tokio::test]
 async fn a_range_that_does_not_continue_the_file_starts_it_again() {

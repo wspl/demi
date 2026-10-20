@@ -567,7 +567,7 @@ async fn a_runner_asks_for_its_devices_revocation_and_hears_which_projects_went(
 
 /// A native service's numbers come from its conversation's `tab` sequence,
 /// each once, and only for a conversation of the device's user that reaches
-/// the device (`native-runtime.md` § Conversation numbers).
+/// the device (`crates/command-protocol/src/numbers.rs`).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_runner_reserves_numbers_only_of_its_users_conversations_that_reach_it() {
     let harness = Harness::new();

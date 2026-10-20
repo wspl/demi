@@ -1,7 +1,7 @@
 // What the page logged, requested, and sent or received on its sockets
 // since the tool attached to the browser (browse.md § What `demi` adds), kept
 // in the server so that `demi.log` finds what happened before anyone asked. A page that
-// reaches a runner over a direct channel (`direct-channel.md`) runs its file
+// reaches a runner over a direct channel (`crates/runner-direct/src/lib.rs`) runs its file
 // operations and its file watch on data channels, which no network event
 // shows: a script in the page tells the console about them, and they are
 // kept with the requests and the sockets. A server
@@ -200,7 +200,7 @@ export class Logs {
 /**
  * Runs in the page, so it uses nothing outside itself: tells the console,
  * after `mark`, about each data channel the page opens to a runner
- * (`direct-channel.md` § Operations on the channel). The runner's answer
+ * (`crates/runner-protocol/src/direct.rs`). The runner's answer
  * goes with the requests, as `direct <op> <ok or error code> <path> <ms>
  * ms`; a watch's messages after its header and answer, such as `paths` and
  * `changed`, go with the sockets, as the relay's watch socket's do. A file's

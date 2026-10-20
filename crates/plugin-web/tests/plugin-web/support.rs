@@ -69,7 +69,7 @@ impl Plugged {
         };
         let text = |bytes: Vec<u8>| String::from_utf8(bytes).unwrap();
         // A failure is told as the backend's dispatcher tells it, after the
-        // command's path (`commands.md` § Handle an rpc call).
+        // command's path (`crates/host-interface/src/rpc.rs`).
         let (code, told) = match self.plugin.call(request, self.demi.port()).await {
             Ok(Reply::Exit { code }) => (code, String::new()),
             Err(PluginError::Failed { message }) => {

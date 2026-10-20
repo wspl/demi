@@ -1,4 +1,4 @@
-//! The numbers stream (`native-runtime.md` § Conversation numbers) between a
+//! The numbers stream (`crates/command-protocol/src/numbers.rs`) between a
 //! service's handler and the end that answers it.
 
 use std::{

@@ -1,9 +1,35 @@
-//! The artifacts stream (`native-runtime.md` § The artifacts stream): a
-//! program's requests that the runner install an artifact for one of its
-//! invocations, or say which artifacts of a line it has, and their answers.
-//! Before it answers an install, the runner reports how its download goes,
-//! so a command that installs on purpose can say so in its own output
-//! (§ Install artifacts).
+//! The artifacts stream: a program's requests that the runner install an
+//! artifact for one of its invocations, or say which artifacts of a line it
+//! has, and their answers. Before it answers an install, the runner reports
+//! how its download goes, so a command that installs on purpose can say so in
+//! its own output.
+//!
+//! An artifact is any file the runner installs on its Host for a package: the
+//! package's executable, or software its program needs, such as Chrome for
+//! Testing or the Claude Code CLI. All go through one cache and are reported
+//! the same way; what differs is who asks and where the digest comes from:
+//!
+//! | Artifact | Asked by | Digest from |
+//! | --- | --- | --- |
+//! | a package's executable | the runner, before it starts the program | the pinned descriptor |
+//! | software from its official source | the program, when its user asks | the program's own record, which also names the URL |
+//! | a file the backend chose at run time | the program, during the call that named it | the record the backend gave the call |
+//!
+//! ```text
+//! Service                        Runner                          Backend
+//!   |<-- POST /v1/artifacts --------|  opened after GET /v1/info     |
+//!   |--- {id 4, install: {...}} --->|  cache? image? no              |
+//!   |                               |--- artifact_resolve ---------->|
+//!   |                               |<-- artifact_location ----------|
+//!   |<-- {id 4, path} --------------|  download, verify, unpack      |
+//! ```
+//!
+//! A program uses only the paths the runner answers; it never downloads or
+//! looks for an artifact itself. A URL the program names cannot change what
+//! runs either: the runner checks the download against the size and SHA-256
+//! the same request gives, whatever the transport. An install request ends
+//! with its invocation, and the runner then cancels the download it waits
+//! for unless another request needs the same artifact.
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -25,9 +51,8 @@ pub enum ArtifactForm {
 
 /// An artifact to install for `invocation`: its line's name and its version
 /// for the user, its bytes' SHA-256 and size, its form, and, for software the
-/// program installs from its official source, the URL it downloads from
-/// (`native-runtime.md` § The artifacts stream). Without a URL, the runner
-/// asks the backend where.
+/// program installs from its official source, the URL it downloads from. Without a URL, the runner asks the backend
+/// where.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactInstall {
@@ -156,7 +181,7 @@ pub enum ArtifactProgress {
 impl ArtifactProgress {
     /// The line a command's output says of this point in the install of
     /// `what`, such as `Downloading Chrome for Testing: 12 of 150 MB`
-    /// (`native-runtime.md` § Install artifacts).
+    /// (`crates/runner-command-packages/src/cache.rs`).
     pub fn line(self, what: &str) -> String {
         match self {
             Self::Download { done, total } => format!(

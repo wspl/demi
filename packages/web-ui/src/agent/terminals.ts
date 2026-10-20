@@ -44,7 +44,7 @@ export interface TerminalRecord {
   stopping?: boolean
   /**
    * While it runs: its start waits for its Host, the paired device this
-   * names, to come back (`sessions-and-targets.md` § Host operations), as
+   * names, to come back (`crates/backend-host-access/src/access.rs`), as
    * a live frame said.
    */
   waitingFor?: string

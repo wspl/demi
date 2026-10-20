@@ -286,7 +286,7 @@ const FULL_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
  * The history of the repository the working tree under `root` is in, kept
  * like its files: each part follows the repository's `head`, which a
  * commit, a checkout or a new branch changes, so a view shows it again at
- * once (`edit-tracking.md` § Commits mode); a file's sides at a commit's
+ * once (`packages/web-ui/src/files/history.ts`); a file's sides at a commit's
  * full id never change, and are read once. Outside a repository the `head`
  * it follows changes when one is made there.
  */

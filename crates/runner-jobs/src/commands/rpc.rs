@@ -1,4 +1,4 @@
-//! Application callbacks (`commands.md`): a declared command the backend
+//! Application callbacks (`crates/command-declarations/src/lib.rs`): a declared command the backend
 //! implements runs as a call over the job's connection, with its input and
 //! output on pipes. The connection's owner routes the call's inbound events
 //! to it; the call itself sends its requests.
@@ -288,7 +288,7 @@ async fn exchange(
     };
     // The call's exit and its whole stdout own its lifetime: its input
     // ending, read or unread, ends nothing else, however long the stdout
-    // takes to reach a slow process (`commands.md` § Handle an rpc call).
+    // takes to reach a slow process (`crates/host-interface/src/rpc.rs`).
     // Only an input that cannot be read or sent ends the call early.
     tokio::pin!(complete);
     tokio::select! {
@@ -305,7 +305,7 @@ async fn exchange(
 /// reports how the pipe ended. A failure of the pipe itself, such as a
 /// stdout handed to a job on another device that went away, also ends the
 /// call on the backend, whose exit then ends it with the cause on stderr
-/// (`commands.md` § Handle an rpc call); only a failure to write the output
+/// (`crates/host-interface/src/rpc.rs`); only a failure to write the output
 /// ends it here.
 async fn download(
     pipes: &PipeClient,
@@ -412,7 +412,7 @@ async fn report(
         result = output.send(message) => result.map_err(|_| ServiceError::Cancelled),
     }
 }
-/// A call's relay broke the rpc protocol (`commands.md` § Handle an rpc call).
+/// A call's relay broke the rpc protocol (`crates/host-interface/src/rpc.rs`).
 #[derive(Debug, thiserror::Error)]
 enum RpcError {
     #[error("duplicate RPC pipes")]

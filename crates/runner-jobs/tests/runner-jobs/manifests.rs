@@ -1,6 +1,4 @@
-//! The manifests a connection installs (`commands.md` § Dispatch the same
-//! declaration on each surface; `native-runtime.md` § Keep a service
-//! resident): a job waits only for the manifest its start names, and each
+//! The manifests a connection installs (`crates/runner-jobs/src/commands/mod.rs`; `crates/runner-command-packages/src/registry.rs`): a job waits only for the manifest its start names, and each
 //! package keeps resident only the release the latest manifest naming it
 //! names.
 

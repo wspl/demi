@@ -1,5 +1,4 @@
-//! Where a conversation's work runs (`sessions-and-targets.md` § Resolve a
-//! target): its selection resolved to a device and the directory its work
+//! Where a conversation's work runs (`crates/backend-database/src/selection.rs`): its selection resolved to a device and the directory its work
 //! starts in there, which the control store's one rule owns.
 
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};

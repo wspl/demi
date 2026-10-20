@@ -406,8 +406,7 @@ async fn a_page_that_does_not_answer_in_time_fails() {
 
 /// A file whose first answer arrives compressed and breaks off is asked for
 /// again from its start, uncoded, since its decoded bytes count none the
-/// server sent: never with a range on them (`native-runtime.md` §
-/// Downloads). Cost: a service and two local connections.
+/// server sent: never with a range on them (`crates/shared-artifacts/src/download.rs`). Cost: a service and two local connections.
 #[tokio::test]
 async fn a_compressed_file_that_breaks_off_is_asked_for_again_uncoded() {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};

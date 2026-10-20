@@ -28,8 +28,7 @@ pub enum DeviceKind {
 serde_plain::derive_display_from_serialize!(DeviceKind);
 serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 
-/// How pages reach a paired device (`direct-channel.md` § Choosing the
-/// path): `automatic`, over a direct channel while its path is not worse
+/// How pages reach a paired device (`packages/web/src/direct/index.ts`): `automatic`, over a direct channel while its path is not worse
 /// than the relay's; `direct`, over one whenever it connects, Prefer
 /// P2P; `server`, never over one, Relay Only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -114,12 +113,11 @@ pub enum DeviceState {
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
-/// (`native-runtime.md` § Installed artifacts); `os` and `runner_version`
+/// (`crates/runner-command-packages/src/cache.rs`); `os` and `runner_version`
 /// are the operating system and the runner release its runner last
 /// reported, null before its runner first connected; `mark` is its mark,
 /// null for the Cloud; `direct` is whether
-/// `route` is how pages reach it (`direct-channel.md` § Choosing the
-/// path); `start_command` is what a person types in a terminal on a
+/// `route` is how pages reach it (`packages/web/src/direct/index.ts`); `start_command` is what a person types in a terminal on a
 /// paired device to start its runner again, null for the Cloud;
 /// `autostart_unavailable` is why the device will not start its runner by
 /// itself after a restart, as its runner last reported it, null when it
@@ -309,7 +307,7 @@ impl TryFrom<String> for LogSource {
 }
 
 /// Which of the page's two peers with a device a signaling message is about
-/// (`direct-channel.md` § Making the channel): the one for files and calls,
+/// (`crates/runner-direct/src/lib.rs`): the one for files and calls,
 /// or the one for live views, which the runner makes without SCTP's
 /// congestion window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -345,7 +343,7 @@ pub enum DirectRequest {
         peer: DirectPeer,
     },
     /// A probe of the relay path, which measures it beside the `files`
-    /// peer (`direct-channel.md` § Measuring the paths).
+    /// peer (`packages/web/src/direct/measure.ts`).
     Ping {
         #[garde(skip)]
         id: u32,

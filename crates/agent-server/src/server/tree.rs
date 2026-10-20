@@ -532,8 +532,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Interrupts the tree for a transition of a Host it cannot work
-    /// without, such as a Cloud reset (`sessions-and-targets.md` § How a
-    /// conversation uses a device): its admission is reserved, so no action
+    /// without, such as a Cloud reset (`crates/backend-cloud/src/uses.rs`): its admission is reserved, so no action
     /// starts; the root's running action is stopped as the user's Stop
     /// would stop it, every live child is aborted, and the root's shells
     /// end. The reservation is answered once every action has let go of
@@ -676,7 +675,7 @@ impl<H: HostResolver> Tree<H> {
     /// calls still executing a command whose start waits for its Host, as
     /// for the conversation's offline device. A provider request, a call
     /// that runs or a child at other work is work
-    /// (`sessions-and-targets.md` § Switch the primary target). The
+    /// (`crates/backend-host-access/src/transition.rs`). The
     /// conversation's summary announces it.
     pub fn only_waits(&self) -> bool {
         if !self.works() || !self.starting.borrow().is_empty() {

@@ -164,8 +164,7 @@ async fn serve(
 }
 
 /// Publishes the command packages of the server release whose root is
-/// `release` before the backend accepts requests (`native-runtime.md`
-/// § Publish packages, then source artifacts on demand); a stop signal
+/// `release` before the backend accepts requests (`crates/backend-runners/src/publication.rs`); a stop signal
 /// interrupts it.
 async fn publish(
     settings: &BackendConfig,

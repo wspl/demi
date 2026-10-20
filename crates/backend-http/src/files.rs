@@ -1,7 +1,7 @@
 //! A conversation's files: listings, directories, deletes and file text, a
 //! file's bytes in both directions, and the working tree's changes. Each
 //! reaches the conversation's Host through its host access
-//! (`sessions-and-targets.md` § Host operations), in the user's shard, which
+//! (`crates/backend-host-access/src/access.rs`), in the user's shard, which
 //! also checks that the conversation is the caller's; the bytes of a download
 //! or an upload move here while the shard holds their admission.
 

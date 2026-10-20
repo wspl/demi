@@ -1,5 +1,4 @@
-//! The artifacts a service's program asks for (`native-runtime.md` § The
-//! artifacts stream): each install names the invocation it serves, which
+//! The artifacts a service's program asks for (`crates/command-protocol/src/artifacts.rs`): each install names the invocation it serves, which
 //! the runner started for one job or one stream and registered here with
 //! that work's resolver, so the backend locates the artifact for that work.
 //! An install held by a running service is not removed with its line's
@@ -149,7 +148,7 @@ impl ServiceArtifacts {
 }
 
 /// The official source a program names for software it installs itself
-/// (`native-runtime.md` § The artifacts stream): the runner downloads from it
+/// (`crates/command-protocol/src/artifacts.rs`): the runner downloads from it
 /// directly and asks the backend nothing.
 struct Official(String);
 

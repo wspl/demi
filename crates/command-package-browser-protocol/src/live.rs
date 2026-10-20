@@ -21,8 +21,7 @@ use demi_live_view_protocol::{
 
 use crate::browser::{BrowserCreatedBy, BrowserViewport, DialogType, TabId};
 
-/// The declared operation that serves a view (`native-runtime.md` § User
-/// streams).
+/// The declared operation that serves a view (`crates/runner-jobs/src/commands/streams.rs`).
 pub const OPERATION: &str = "browser.live";
 
 /// The view's arguments: none; the page and the module speak over the stream.

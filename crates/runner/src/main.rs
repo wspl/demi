@@ -461,8 +461,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     };
     let scratch_root = Scratch::new(&directory).root().to_string_lossy().into_owned();
     // The home as its Host names it, so the backend tells a directory that
-    // is the home from another (`sessions-and-targets.md` § Resolve a
-    // target); one that cannot be resolved is reported as it is set.
+    // is the home from another (`crates/backend-database/src/selection.rs`); one that cannot be resolved is reported as it is set.
     let canonical_home = dunce::canonicalize(&home).unwrap_or_else(|_| home.clone());
     let identity = identity(canonical_home.to_string_lossy().into_owned(), scratch_root)?;
     let login_shell = env.get("SHELL").filter(|path| !path.is_empty()).cloned();
@@ -555,7 +554,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         backend,
         log: log.reader(),
         // A Cloud keeps its artifacts on its home image, which its stops,
-        // wakes and resets keep (`native-runtime.md` § The cache).
+        // wakes and resets keep (`crates/runner-command-packages/src/cache.rs`).
         artifacts: artifacts.unwrap_or_else(|| match &boot {
             Some(_) => home.join(".demi").join("artifacts"),
             None => directory.join("artifacts"),
@@ -852,7 +851,7 @@ fn main() {
         // The reader of a command's output went away, as `head` does once it
         // has read its lines: the command ends as a program that writes into
         // a closed pipe ends in a shell, with 141 and nothing on stderr
-        // (`commands.md` § Handle an rpc call).
+        // (`crates/host-interface/src/rpc.rs`).
         Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => 141,
         Err(error) => {
             console::line(format_args!("demi-runner: {error}"));

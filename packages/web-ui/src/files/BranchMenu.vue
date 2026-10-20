@@ -10,7 +10,7 @@ import { t } from './locales/text'
 
 /**
  * The branch the commit list shows, in the Change view's toolbar
- * (`edit-tracking.md` § Commits mode): its name, the checked-out one's at
+ * (`packages/web-ui/src/files/history.ts`): its name, the checked-out one's at
  * first and `HEAD (3f2a9c1)` while HEAD is detached, and a menu of the
  * local branches, most recently committed first, the checked-out one marked
  * and the one shown checked. Choosing one changes only what the list shows:

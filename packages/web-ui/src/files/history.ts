@@ -1,6 +1,5 @@
 /**
- * A repository's history as the Change view's Commits mode shows it
- * (`edit-tracking.md` § Commits mode): the local branches, a branch's
+ * A repository's history as the Change view's Commits mode shows it: the local branches, a branch's
  * commits by first parents a page at a time, and one commit's files against
  * its first parent. A host serves each as a kept entry it follows, so a
  * commit, a checkout or a new branch made anywhere shows at once.
@@ -116,8 +115,7 @@ export function listsUncommitted(shown: string | null, branches: BranchList | un
 }
 
 /**
- * The branch whose list a linked commit opens in (`edit-tracking.md`
- * § Commits mode), by the branches it is on, the checked-out one first and
+ * The branch whose list a linked commit opens in, by the branches it is on, the checked-out one first and
  * then by their last commit: the branch shown when it holds the commit,
  * else the checked-out one, null, else the most recently committed one
  * that holds it; `undefined` when no local branch holds it, which shows the

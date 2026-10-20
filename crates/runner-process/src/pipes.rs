@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long a pipe request that fails on its connection before the backend
 /// received any of it is tried again on new connections, as a download's
-/// connections are (`native-runtime.md` § Downloads): a link through a
+/// connections are (`crates/shared-artifacts/src/download.rs`): a link through a
 /// proxy that fails a request now and then must not end the pipe.
 const RECONNECT_FOR: Duration = Duration::from_secs(60);
 /// The pause between two such attempts.
@@ -37,7 +37,7 @@ pub struct PipeClient {
     backend: Backend,
     http: reqwest::Client,
     /// The client of the files the backend offers for download, which
-    /// keeps their bytes as served (`native-runtime.md` § Downloads).
+    /// keeps their bytes as served (`crates/shared-artifacts/src/download.rs`).
     downloads: reqwest::Client,
     origin: reqwest::Url,
     /// How long a connection may take to open, a stream pipe's WebSocket
@@ -294,7 +294,7 @@ impl PipeClient {
     }
 
     /// Downloads the file the backend offers as `offer` into `staging`,
-    /// resumed after a break or a stall (`native-runtime.md` § Downloads),
+    /// resumed after a break or a stall (`crates/shared-artifacts/src/download.rs`),
     /// then writes its bytes, checked against the offer's size and SHA-256,
     /// into `output`. The staging file is removed either way: a later call
     /// is given a new offer. `progress` hears how many bytes the staging
@@ -392,7 +392,7 @@ impl Reading {
                 Some(wire::PipeFrame::Idle) => continue,
                 Some(wire::PipeFrame::End(Ok(()))) => return Ok(None),
                 // The cause, in the words the backend gave it, stands alone
-                // (`commands.md` § Handle an rpc call).
+                // (`crates/host-interface/src/rpc.rs`).
                 Some(wire::PipeFrame::End(Err(cause))) => return Err(io::Error::other(cause)),
                 None => {}
             }
@@ -507,7 +507,7 @@ fn socket_error(error: tungstenite::Error) -> io::Error {
 /// The backend's refusal of a pipe request, with status `status` and words
 /// `body`, as an IO error. A 409 says why the pipe cannot go on, such as
 /// `build-box is offline: …`, which the command reports as its own error, so
-/// its words stand alone (`commands.md` § Handle an rpc call); another status
+/// its words stand alone (`crates/host-interface/src/rpc.rs`); another status
 /// is a fault of the request, named with the status.
 fn refused(status: reqwest::StatusCode, body: &[u8]) -> io::Error {
     let words = String::from_utf8_lossy(body);

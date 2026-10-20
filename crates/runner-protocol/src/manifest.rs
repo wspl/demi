@@ -1,6 +1,6 @@
 //! The command manifest the backend sends a runner: every root command's
 //! declaration tree, the command packages its commands bind to, and the hash
-//! that identifies the whole (`commands.md` § Manifests).
+//! that identifies the whole (`crates/runner-jobs/src/commands/mod.rs`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 

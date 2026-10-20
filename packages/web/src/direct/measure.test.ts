@@ -3,8 +3,7 @@ import type { DeviceRoute } from '@demicodes/web-ui/devices/direct'
 import type { MeasureClock } from './measure'
 import { DeviceMeter } from './meter'
 
-// The measuring of a device's paths (`direct-channel.md` § Measuring the
-// paths): nothing is probed until something asks, a measurement sends 20
+// The measuring of a device's paths (`packages/web/src/direct/measure.ts`): nothing is probed until something asks, a measurement sends 20
 // probes on each path 100 ms apart and then stops, and Automatic decides
 // from it. Paths and a clock the test plays; no real time passes.
 

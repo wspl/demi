@@ -1,5 +1,4 @@
-//! Artifacts sourced on demand (`native-runtime.md` § Publish packages, then
-//! source artifacts on demand): the first time something needs an artifact
+//! Artifacts sourced on demand (`crates/backend-runners/src/publication.rs`): the first time something needs an artifact
 //! of the server release, a runner asking where a package's executable
 //! downloads from, an installer asking for a runner executable, or the
 //! backend storing ahead for the targets of its Hosts, it is

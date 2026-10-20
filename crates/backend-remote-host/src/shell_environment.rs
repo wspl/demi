@@ -8,7 +8,7 @@
 //! earlier one carries over. A command outlives the environment: its keeper
 //! records it running before its job starts, a disposed environment lets its
 //! jobs run on, and the next environment of its node takes them up again
-//! (`sessions-and-targets.md` § Recovery and persistence).
+//! (`crates/backend-remote-host/src/device_jobs.rs`).
 //!
 //! When a command ends, the keeper stores its whole output before any result
 //! reports the end, so the result and the pages show the same lines. The
@@ -69,8 +69,7 @@ pub trait HostAccess {
     ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 }
 
-/// How a job whose start may wait for its Host (`sessions-and-targets.md`
-/// § Host operations) shows it: waiting for the device it names, and no
+/// How a job whose start may wait for its Host (`crates/backend-host-access/src/access.rs`) shows it: waiting for the device it names, and no
 /// longer waiting with `None`, which the wait awaits before it goes on.
 #[derive(Clone, Copy)]
 pub struct JobWaiting<'a> {
@@ -78,7 +77,7 @@ pub struct JobWaiting<'a> {
 }
 
 /// Keeps what a command leaves when it ends, before its command reads as
-/// ended: the copies of its edits (`edit-tracking.md` § Edit copies), and
+/// ended: the copies of its edits (`crates/agent-store/src/media.rs`), and
 /// its whole output (`crates/agent-server/src/server/shell_output.rs`). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
@@ -93,8 +92,7 @@ pub trait CommandKeeper {
     /// Records that `command` waits to start as the job `job` until its
     /// Host, a paired device whose runner is away, is back, with what it
     /// will send then, so a backend that starts again keeps it waiting and
-    /// sends it once the runner connects (`sessions-and-targets.md` § Host
-    /// operations). A failure to record it is the keeper's to log.
+    /// sends it once the runner connects (`crates/backend-host-access/src/access.rs`). A failure to record it is the keeper's to log.
     fn waiting<'a>(
         &'a self,
         command: &'a CommandId,
@@ -145,8 +143,7 @@ pub struct KeptStart {
     pub interval_ms: Option<u32>,
 }
 
-/// Builds each job's command context (`native-runtime.md` § Command
-/// context).
+/// Builds each job's command context (`crates/command-protocol/src/invocation.rs`).
 pub type ContextSource = Rc<dyn Fn() -> LocalBoxFuture<'static, Result<CommandContext, HostError>>>;
 
 /// What an environment runs with.
@@ -347,13 +344,12 @@ impl RemoteShellEnvironment {
 
     /// Takes up `taken`, which its call started on this environment's Host
     /// before the backend restarted or the environment that ran it let go
-    /// of it (`sessions-and-targets.md` § Recovery and persistence): it is
+    /// of it (`crates/backend-remote-host/src/device_jobs.rs`): it is
     /// followed to its end as if nothing had happened, counting its time
     /// from its start and showing the model only output it has not seen,
     /// and its runner's next hello says whether it went on, ended or was
     /// lost. One whose start was never sent waits for its Host again and
-    /// is sent once its runner connects (`sessions-and-targets.md` § Host
-    /// operations). A command the environment holds already stays as it
+    /// is sent once its runner connects (`crates/backend-host-access/src/access.rs`). A command the environment holds already stays as it
     /// is.
     pub fn adopt(&self, taken: TakenUp) {
         let TakenUp {

@@ -100,8 +100,7 @@ impl Numbers for CountingNumbers {
     }
 }
 
-/// The command context test work carries (`native-runtime.md` § Command
-/// context). Its locale differs from the backend's default, so a command
+/// The command context test work carries (`crates/command-protocol/src/invocation.rs`). Its locale differs from the backend's default, so a command
 /// that reports it shows where it came from.
 pub fn test_command_context() -> CommandContext {
     CommandContext {

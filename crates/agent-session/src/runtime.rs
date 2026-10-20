@@ -120,7 +120,7 @@ pub trait SessionRuntime {
     /// The node's working directory now, where its `shell` calls start,
     /// read as a step starts without reaching its Host: the files a call of
     /// the step changed outside it are left out of what the conversation
-    /// shows (`edit-tracking.md` § Within the working directory). None when
+    /// shows (`crates/agent-store/src/changes.rs`). None when
     /// it cannot be read, as by default, and then the step's files all
     /// show.
     fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {

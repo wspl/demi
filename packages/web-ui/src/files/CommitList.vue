@@ -17,7 +17,7 @@ import { commitMenu } from './object-menus'
 /**
  * One branch's commits under the Change view's files, newest first, as VS
  * Code's commit list shows them beside Source Control
- * (`edit-tracking.md` § Commits mode): each one row as high as the file
+ * (`packages/web-ui/src/files/history.ts`): each one row as high as the file
  * tree's, its summary, then its author and how long ago dimmed at the
  * row's end: a short row drops the author first, then cuts the summary,
  * the age whole; its whole message, id and time in its tooltip. While the

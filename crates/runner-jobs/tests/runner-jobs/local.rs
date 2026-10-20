@@ -119,8 +119,7 @@ async fn private_endpoint_streams_binary_input_on_demand_and_joins_cancelled_cal
 }
 
 /// A refused client waits while the runner holds its lock, and fails at once
-/// when the runner has stopped or crashed (`commands.md` § External command
-/// clients). The clock is paused: the client's pauses between attempts and
+/// when the runner has stopped or crashed (`crates/runner-process/src/command_client.rs`). The clock is paused: the client's pauses between attempts and
 /// the test's deadlines pass as soon as nothing else can happen, so "at once"
 /// is within a second of that clock and "waits" is half a second of it,
 /// however loaded the machine.

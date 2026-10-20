@@ -23,14 +23,13 @@ export interface IntentPayloads {
   /**
    * A commit of the repository a message's agent worked in, by its id or an
    * abbreviation of it, as a `commit:3f2a9c1` link names it
-   * (`edit-tracking.md` § Commits mode). `root` is the directory the view
+   * (`packages/web-ui/src/files/history.ts`). `root` is the directory the view
    * opens for, the working directory of the agent that wrote the link;
    * absent, the conversation's.
    */
   commit: { commit: string; root?: string }
   /**
-   * An attachment of the conversation (`commands.md` § Attachment
-   * commands) that is no image, video or audio, as its block's card opens
+   * An attachment of the conversation (`crates/backend-host-access/src/attachment_commands.rs`) that is no image, video or audio, as its block's card opens
    * it: its number, its file's name and size in bytes, and where its stored
    * copy loads from.
    */

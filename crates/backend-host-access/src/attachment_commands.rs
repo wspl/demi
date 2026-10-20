@@ -1,5 +1,5 @@
-//! The product's `demi attachment` group (`commands.md` § Attachment
-//! commands): `upload` copies files of the Host into the conversation as
+//! The product's `demi attachment` group: `upload` copies files of the Host
+//! into the conversation as
 //! attachments `a1`, `a2`, …, which the agent's messages then deliver as
 //! `<attachment id="a3" />` blocks. The runner of the invocation's Host, the conversation's
 //! primary Host or an attached one a `demi host shell` job runs on, first
@@ -14,9 +14,18 @@
 //! no medium: the attachment is for the user. `download` writes attachments
 //! of the conversation, the user's or the agent's, into the invocation's
 //! directory: the runner downloads each from this backend as every file
-//! Demi downloads, resumed after a break (`native-runtime.md` § Downloads),
+//! Demi downloads, resumed after a break (`crates/shared-artifacts/src/download.rs`),
 //! and takes the first free name, the same bytes under the name being that
 //! file.
+//!
+//! An attachment is a copy of the file's bytes as they were when the command
+//! ran, and nothing changes or removes it afterwards, so a message shows it
+//! whatever becomes of the file, the Host or the conversation. Its number and
+//! its record are stored in one transaction, and a Fork's destination keeps
+//! its source's attachments, since its history names them. A send writes
+//! nothing to a Host: the model reads an image, a video or a PDF from the
+//! message itself, and fetches a file with `download` only for a command that
+//! works on it, which never replaces a file.
 
 use std::rc::{Rc, Weak};
 

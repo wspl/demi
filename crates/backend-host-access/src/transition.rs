@@ -1,12 +1,43 @@
-//! The transitions that end a conversation's target
-//! (`sessions-and-targets.md` § Switch the primary target, § Lifecycle
-//! access): a target switch, an archive and a detach. Each runs while the
-//! conversation is held for it (`hold_for_transition`): the idle tree
-//! reserved by the shard, the file transfers, user streams and the one-shot
-//! calls admitted like them ended, and the file gate reserved. It sends the
-//! conversation release to the devices it leaves, then commits, whether the
-//! devices took the release or not (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The shard's `transition` is the one entry every change of a
-//! conversation goes through.
+//! The transitions that end a conversation's target: a target switch, an
+//! archive and a detach. Each runs while the conversation is held for it
+//! (`hold_for_transition`): the idle tree reserved by the shard, the file
+//! transfers, user streams and the one-shot calls admitted like them ended,
+//! and the file gate reserved. It sends the conversation release to the
+//! devices it leaves, then commits, whether the devices took the release or
+//! not (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The
+//! shard's `transition` is the one entry every change of a conversation goes
+//! through.
+//!
+//! A switch, in order:
+//!
+//! ```text
+//! 1. validate the destination and the user's ownership
+//! 2. reserve the idle tree            (shard)
+//! 3. end transfers, streams and the one-shot calls like them; await them
+//! 4. reserve file admission; send the release to the device it leaves, when
+//!    that device's runner is connected
+//! 5. commit the target and attachment changes against the expected selection
+//! 6. advance the execution-context revision, release the reservations,
+//!    admit transfers and streams again against the new selection
+//! ```
+//!
+//! Concurrent changes cannot both replace the same expected selection: the
+//! loser is refused as busy or conflicting, so work is never dispatched
+//! against an ambiguous target. Turn admission uses the tree's lifecycle
+//! boundary, not the root's displayed phase, which would miss a running
+//! child. A tree whose every running node waits only for its offline primary
+//! device counts as idle: the switch fails those operations, which were
+//! never sent. Commands already running on an offline device do not block a
+//! switch away from it; their jobs hold the file gate on that Host, which the
+//! switch leaves, and their runner keeps them until it is back.
+//!
+//! The device a switch leaves stays attached, its commands starting in the
+//! conversation's directory there, and the incoming device leaves the
+//! attachment set; a switch of directory on the same device adds no
+//! duplicate. Files do not move, and a path keeps referring to its original
+//! device. If the database commit fails after the release, the old selection
+//! stays and the conversation browser starts fresh at its next open: the
+//! state of its tabs cannot be rolled back.
 
 use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
@@ -52,11 +83,11 @@ pub enum ChangeRefusal {
     DeviceNotFound,
     /// The destination is on a device whose runner never reported its
     /// home, so whether it is a project's directory is unknown
-    /// (`sessions-and-targets.md` § Resolve a target).
+    /// (`crates/backend-database/src/selection.rs`).
     #[error("The device has not connected yet; connect it, then move the conversation there")]
     DeviceHomeUnknown,
     /// The destination's device is not connected, so its directory cannot
-    /// be resolved (`sessions-and-targets.md` § Resolve a target).
+    /// be resolved (`crates/backend-database/src/selection.rs`).
     #[error("{0}")]
     DeviceOffline(String),
     /// The destination names no directory on its Host.
@@ -151,8 +182,7 @@ impl dyn HostShard + '_ {
     }
 
     /// Holds the conversation for the changes an agent asked for, once the
-    /// shard reserved its idle tree (`sessions-and-targets.md` § Switch the
-    /// primary target): as [`hold_for_transition`](Self::hold_for_transition)
+    /// shard reserved its idle tree: as [`hold_for_transition`](Self::hold_for_transition)
     /// does, except that it waits for the Host operations that hold the file
     /// gate to end, since nobody is there to retry a refusal.
     pub async fn hold_when_free(

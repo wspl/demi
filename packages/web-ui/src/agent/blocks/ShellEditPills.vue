@@ -12,7 +12,7 @@ import FileChangePills from './FileChangePills.vue'
  * view stores them: what it wrote, removed (struck through) and renamed,
  * but for a file outside its agent's working directory. A pill opens its file in the
  * call's request, at the call's first edit of it; a conversation outside a
- * project shows none (`edit-tracking.md` § What the conversation shows).
+ * project shows none (`crates/agent-store/src/changes.rs`).
  */
 const props = defineProps<{ block: ToolCallBlock }>()
 const select = useEditSelection()

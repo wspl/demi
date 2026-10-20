@@ -48,13 +48,12 @@ pub struct ProductState {
     /// which may be another server's, as in development.
     pub install_commands: InstallCommands,
     /// The STUN servers the page's peers ask for the address the internet
-    /// sees the browser at (`DEMI_STUN_URLS`, `direct-channel.md` § Making
-    /// the channel); none keeps direct channels to one network.
+    /// sees the browser at (`DEMI_STUN_URLS`, `crates/runner-direct/src/lib.rs`); none keeps direct channels to one network.
     pub stun_urls: Vec<StunUrl>,
     /// The runner release paired devices follow, the one the backend's
     /// `runners/` names; none for a backend without runner releases, as in
     /// development, whose runners are development builds
-    /// (`direct-channel.md` § What the user sees).
+    /// (`packages/web-ui/src/devices/direct.ts`).
     pub runner_release: Option<String>,
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,

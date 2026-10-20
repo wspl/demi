@@ -1,17 +1,41 @@
-//! The verified artifact cache (`native-runtime.md` § Install artifacts,
-//! § The cache): a `file` as one file per digest, published only once its
-//! size and SHA-256 match what the runner was given, and an `archive`
-//! unpacked into a directory per digest with a receipt; both reused unread
-//! from then on. Beside each entry a record names its line and version, so
-//! the cache answers which artifacts of a line it has and removes a line's
-//! older ones once a newer one is installed, except those a running service
-//! holds. An install reports how its download goes, at each tenth of the
-//! artifact's size and as it unpacks an archive, to whoever follows it
-//! (§ Install artifacts). Before it downloads an artifact, it takes the copy the Host's image
-//! preinstalled (§ Preinstalled artifacts), which it checks the same way the
-//! first time the process needs it. Concurrent installs of one digest in
-//! this process share one download, which lives while any of them waits
-//! for it; runners that share the cache publish one copy of each artifact.
+//! The verified artifact cache: a `file` as one file per digest, published
+//! only once its size and SHA-256 match what the runner was given, and an
+//! `archive` (a zip or `.tar.zst`, told apart by its first bytes) unpacked
+//! into a directory per digest with a receipt; both reused unread from then
+//! on. Beside each entry a record names its line (the package and the name,
+//! the versions of one thing) and version, so the cache answers which
+//! artifacts of a line it has and removes a line's older ones once a newer
+//! one is installed, except those a running service holds: a Host keeps one
+//! Claude Code CLI, one Chrome and one executable of each package, however
+//! often each is updated, beside what still runs. An install reports how its
+//! download goes, at each tenth of the artifact's size and as it unpacks an
+//! archive, to whoever follows it. Concurrent installs of one digest in this
+//! process share one download, which lives while any of them waits for it;
+//! runners that share the cache publish one copy of each artifact.
+//!
+//! Every download checks the size and SHA-256 the runner was given over its
+//! authenticated connection, so no URL's scheme or host changes what runs, and
+//! no partial or mismatched file is ever executed.
+//!
+//! Only publication writes the cache, so an entry is verified once, as it is
+//! published, and a later use does not read it again: hashing it per service
+//! start would read the whole executable. A damaged entry fails the install
+//! rather than being repaired. The image's copy lies outside the runner's
+//! private cache, so it is checked as a download is, once per runner process,
+//! and never relied on: a copy that does not match is logged and passed over,
+//! since the backend locates every artifact it grants, so a damaged image
+//! costs a download, not a command. The runner does not ask what kind of Host
+//! it runs on; a directory that does not exist (every paired device) is
+//! silently no copy.
+//!
+//! The cache is `artifacts/` in a paired device's installation state; a
+//! Cloud's is on its home image, which stops, wakes and resets keep, so a
+//! download made once stays until a newer one replaces it. Runners of one
+//! user may share a directory: publication under a digest, and of an archive
+//! under a lock beside it, lets two installs of one artifact each download it
+//! but publish one copy; each removes only what its own services do not hold,
+//! so runners of different releases that share a cache can remove each
+//! other's older versions, which they then download again.
 
 use std::{
     collections::HashMap,
@@ -44,7 +68,7 @@ use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
 type Checked = HashMap<String, Option<PathBuf>>;
 
 /// How many redirects an artifact's download follows, as GitHub's release
-/// downloads need (`native-runtime.md` § Install artifacts).
+/// downloads need.
 const REDIRECTS: usize = 10;
 
 /// The suffix of an entry's line record, beside the entry.
@@ -52,7 +76,7 @@ const LINE: &str = ".line.json";
 
 /// The prefix of a download's staging file, `.download-<sha256>`, which
 /// keeps its bytes for a resume, beside its coding record, the line it is
-/// of and its lock (`native-runtime.md` § Downloads).
+/// of and its lock (`crates/shared-artifacts/src/download.rs`).
 const STAGING: &str = ".download-";
 
 /// The suffix of the record of a staging file's line, beside it.
@@ -158,7 +182,7 @@ impl Reported {
 }
 
 /// Locates a shared download's artifact by the resolver of the first
-/// caller still waiting (`native-runtime.md` § Install artifacts): the one
+/// caller still waiting: the one
 /// that started the download may have left by the time an expired URL or a
 /// retry asks again, and a caller that leaves while its resolver answers
 /// hands the question to the next.
@@ -235,8 +259,7 @@ pub struct ArtifactCache {
     holds: Holds,
     /// The installs in progress, by digest, which concurrent callers share.
     installs: Mutex<HashMap<String, InFlight>>,
-    /// What the cache holds, which the connection reports to the backend
-    /// (`native-runtime.md` § Installed artifacts).
+    /// What the cache holds, which the connection reports to the backend.
     contents: watch::Sender<Vec<HostArtifact>>,
 }
 
@@ -531,8 +554,8 @@ impl ArtifactCache {
     }
 
     /// Waits for the install of `sha256` in progress, or starts it with
-    /// `start` when none is (`native-runtime.md` § Install artifacts:
-    /// concurrent callers share one download per digest). The install
+    /// `start` when none is: concurrent callers share one download per
+    /// digest. The install
     /// lives while any caller waits for it: one caller's cancellation only
     /// leaves it, and the last one's drops it, which cancels the token it
     /// was started with and so removes what it staged. It locates the
@@ -661,8 +684,7 @@ impl ArtifactCache {
 
     /// Removes the other artifacts of `wanted`'s line that no running
     /// service holds, and the staging files of its other versions that no
-    /// install of this cache is downloading (`native-runtime.md` §
-    /// Downloads). A removal that fails, as of a file in use on Windows, is
+    /// install of this cache is downloading (`crates/shared-artifacts/src/download.rs`). A removal that fails, as of a file in use on Windows, is
     /// left for a later install; an image's copy is only forgotten.
     async fn remove_older(&self, wanted: &Wanted<'_>) {
         self.remove_older_staging(wanted).await;
@@ -850,8 +872,7 @@ impl ArtifactCache {
     /// another tenth of its size. A URL's bytes arrive as they are served,
     /// in their content coding, into a staging file beside the cache that
     /// keeps them across broken connections and attempts, and are decoded
-    /// and checked once complete (`native-runtime.md` § Install
-    /// artifacts); bytes that fail the check are removed.
+    /// and checked once complete; bytes that fail the check are removed.
     async fn fetch(
         &self,
         line: &Line,

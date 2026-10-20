@@ -181,8 +181,7 @@ pub struct Done {
     pub usage: Option<TokenUsage>,
 }
 
-/// Downloads `url` as Demi's one download (`native-runtime.md` §
-/// Downloads): resumed after a break or a stall, without an overall
+/// Downloads `url` as Demi's one download (`crates/shared-artifacts/src/download.rs`): resumed after a break or a stall, without an overall
 /// deadline. The entry's `key` headers go only to an address of the origin
 /// of the entry's `endpoint`, never to another host's, a storage bucket's or
 /// a redirect's to another origin, which each get the request without them

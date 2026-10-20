@@ -168,8 +168,7 @@ pub async fn download(
         return Err(too_large());
     }
     let bytes = match kind {
-        // A file that arrived is Demi's one download (`native-runtime.md` §
-        // Downloads), resumed after a break or a stall: the answer started
+        // A file that arrived is Demi's one download (`crates/shared-artifacts/src/download.rs`), resumed after a break or a stall: the answer started
         // it, and the download continues it.
         Kind::File | Kind::Unknown if status.is_success() => {
             // The client decodes every coding it knows, so the bytes kept

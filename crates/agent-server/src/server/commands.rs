@@ -370,7 +370,7 @@ pub(super) struct Invoked<H: HostResolver, A> {
     /// names is read against.
     pub(super) cwd: String,
     /// The command's path, which a failure of one of several values
-    /// begins with (`commands.md` § Handle an rpc call).
+    /// begins with (`crates/host-interface/src/rpc.rs`).
     pub(super) command: String,
     pub(super) json: bool,
     pub(super) args: A,
@@ -604,7 +604,7 @@ pub(super) async fn out(port: &RpcPort, text: String) -> Result<u8, RpcError> {
 
 /// Arguments a verb refuses, such as options that do not go together or an
 /// empty message: a usage error, which the dispatcher tells with the leaf's
-/// usage, exit 2 (`commands.md` § Parse input and render help).
+/// usage, exit 2 (`crates/command-declarations/src/parse.rs`).
 pub(super) fn refuse(reason: &str) -> Result<u8, RpcError> {
     Err(RpcError::Usage(reason.to_owned()))
 }

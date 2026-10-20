@@ -703,7 +703,7 @@ pub enum ShellStatus {
         #[garde(skip)]
         stopping: bool,
         /// The name of the paired device whose runner its start waits for
-        /// (`sessions-and-targets.md` § Host operations): the pages show
+        /// (`crates/backend-host-access/src/access.rs`): the pages show
         /// *Waiting for MacBook Pro*. Present only then.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]

@@ -1,5 +1,4 @@
-//! Forwarded connections between two runners (`port-forwarding.md` § The
-//! path of a connection): a real peer between two runners in process on
+//! Forwarded connections between two runners (`crates/runner-direct/src/pairs.rs`): a real peer between two runners in process on
 //! 127.0.0.1, one channel per TCP connection, and the pairs' schedule,
 //! which runs on a paused clock with peers the test makes.
 

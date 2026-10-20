@@ -2,8 +2,7 @@ import { t } from './locales/text'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
- * How this page reaches a paired device, and why not directly
- * (`direct-channel.md` § What the user sees): the device's route, what the
+ * How this page reaches a paired device, and why not directly: the device's route, what the
  * page's attempts saw and what it measures of both paths, which the
  * device's page shows, and the reason it gives from them.
  */
@@ -98,8 +97,7 @@ export interface DirectAttempt {
 }
 
 /**
- * One path's figures from a measurement (`direct-channel.md` § Measuring
- * the paths), in milliseconds; `loss` is a share from 0 to 1, null for the
+ * One path's figures from a measurement (`packages/web/src/direct/measure.ts`), in milliseconds; `loss` is a share from 0 to 1, null for the
  * relay, which runs over TCP and loses nothing.
  */
 export interface PathFigures {
@@ -265,7 +263,7 @@ export function addressWithPort(inUse: { address: string; port: number }): strin
 export const DEVICE_PATHS = ['thisComputer', 'localNetwork', 'internet', 'relay'] as const
 /** The path the page uses for a device: a P2P one of its kind, or the relay. */
 export type DevicePath = (typeof DEVICE_PATHS)[number]
-/** The kind of path a P2P connection runs on (`direct-channel.md` § What the user sees). */
+/** The kind of path a P2P connection runs on. */
 export type PathKind = Exclude<DevicePath, 'relay'>
 
 /** Each path as its label names it, wherever the path is named: "Connected via LAN". */

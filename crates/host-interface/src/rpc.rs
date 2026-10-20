@@ -2,6 +2,23 @@
 //! handler receives its call as data ([`RpcInvocation`]) and acts only
 //! through a port whose every operation is one request and one reply, so a
 //! process of its own could serve the same calls over a wire.
+//!
+//! The port offers no Host operations. A handler resolves what it acts on
+//! from the invocation's context (the `demi agent` handlers find their
+//! conversation's tree and node there), and one that must reach a Host goes
+//! through the conversation's host access with the conversation that context
+//! names. The ids of the relayed pipes let it hand the call's stdin and
+//! stdout to a job it starts on another device, so those bytes flow between
+//! the two devices through the backend's pipes without passing through the
+//! handler. A stdout write waits until the calling process has read enough.
+//!
+//! A handler ends with an exit status. Its error is a runtime error, worded
+//! as GNU tools word theirs: the command's path (which the dispatcher writes
+//! once), the object it concerns when there is one, and the reason, with an
+//! operating-system error as `strerror` words it and no prefix of Demi's own.
+//! A command that takes several values handles each in order, writes one such
+//! line for each that fails, goes on with the others, and exits 1 when any
+//! failed, as `cat a missing b` does.
 
 use std::{collections::BTreeMap, rc::Rc};
 
@@ -17,7 +34,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 use crate::JobCaller;
 
 /// One `rpc` call: the leaf it names, its validated arguments, and the
-/// invoking process's surroundings (`commands.md` § Handle an rpc call).
+/// invoking process's surroundings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RpcInvocation {
@@ -110,7 +127,7 @@ pub enum RpcError {
     /// its handler refuses: the message alone, such as `--lines and --tail
     /// do not go together`, which the dispatcher that knows the leaf puts
     /// in clap's shape with the leaf's usage ([`CommandSet::tell`],
-    /// `commands.md` § Parse input and render help); the caller receives
+    /// `crates/command-declarations/src/parse.rs`); the caller receives
     /// that text as it is, with exit status 2.
     ///
     /// [`CommandSet::tell`]: crate::CommandSet::tell

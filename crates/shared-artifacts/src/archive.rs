@@ -3,8 +3,7 @@
 //! beside a receipt that lets a later process trust the files without
 //! downloading them again. A runner installs a command
 //! package's resources into its artifact cache and the Cloud image build
-//! into the image, with the same steps (`native-runtime.md` § Install the
-//! selected package, `images.md` § Root filesystem contents).
+//! into the image, with the same steps (`crates/runner-command-packages/src/cache.rs`, `images.md` § Root filesystem contents).
 
 use std::{
     fs::File,

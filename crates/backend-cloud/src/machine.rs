@@ -459,8 +459,7 @@ impl dyn CloudShard {
         Ok(machine)
     }
 
-    /// Takes the Cloud's admission (`sessions-and-targets.md` § Host
-    /// operations): it wakes a stopped Cloud, joins a boot under way, or
+    /// Takes the Cloud's admission (`crates/backend-host-access/src/access.rs`): it wakes a stopped Cloud, joins a boot under way, or
     /// waits for a running reset to finish, holding nothing while it waits,
     /// since a reset reserves what it would hold. An operation that waited
     /// for a reset that failed fails with it. Dropping the future at any
@@ -851,8 +850,7 @@ impl dyn CloudShard {
     /// Takes over the user's Cloud `device`, whose sandbox the machine
     /// manager reported running as the backend started: it runs, and its
     /// runner connects again by itself, so a same-release restart stops no
-    /// Cloud and no command on one (`sessions-and-targets.md` § Recovery and
-    /// persistence). One that finds no capacity is saved and stopped.
+    /// Cloud and no command on one (`crates/backend-remote-host/src/device_jobs.rs`). One that finds no capacity is saved and stopped.
     /// When a Cloud found running completed its boot, on Tokio's clock: its
     /// record's time counted back from now. A Cloud without one, and one
     /// whose boot the clock now puts in the future, count from now.

@@ -1,5 +1,5 @@
-//! Work through a conversation on paired devices (`sessions-and-targets.md`,
-//! `commands.md`, `crates/runner/src/main.rs`, `edit-tracking.md`): the model's shell tool
+//! Work through a conversation on paired devices (`crates/backend-host-access/src/lib.rs`,
+//! `crates/runner-jobs/src/commands/mod.rs`, `crates/runner/src/main.rs`, `crates/command-sdk/src/edits.rs`): the model's shell tool
 //! runs where the conversation works, and the files it makes stay with the
 //! target they were made on. A switch moves the work and leaves the
 //! departed device reachable through `demi host shell`, whose pipes carry
@@ -1239,8 +1239,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         .unwrap_or_else(|| panic!("{shown}"));
     // The second stop's error goes to its stderr and what it says of the
     // other command to its stdout: separate streams, which reach the job
-    // apart and keep no order between them (`commands.md` § Deliver IO and
-    // release an invocation), so its lines are compared sorted.
+    // apart and keep no order between them (`crates/runner-jobs/src/commands/command_output.rs`), so its lines are compared sorted.
     let mut second = second.lines().collect::<Vec<_>>();
     second.sort_unstable();
     assert_eq!(

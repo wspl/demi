@@ -3,8 +3,7 @@ import { DeviceDirect, RETRY_MS, type Choice } from './device'
 import type { DirectAttempt } from '@demicodes/web-ui/devices/direct'
 import type { DirectPeer } from './peer'
 
-// The page's choice of path to a device (`direct-channel.md` § Choosing the
-// path), with peers and a clock the test plays: direct while a peer is
+// The page's choice of path to a device (`packages/web/src/direct/index.ts`), with peers and a clock the test plays: direct while a peer is
 // connected, back to the relay at once when it fails, and the attempts
 // again, at once for each reason and otherwise after the waits.
 

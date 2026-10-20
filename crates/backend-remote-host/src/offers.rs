@@ -1,5 +1,5 @@
 //! Files the backend offers a device's runner for download
-//! (`native-runtime.md` § Downloads): an attachment `demi attachment
+//! (`crates/shared-artifacts/src/download.rs`): an attachment `demi attachment
 //! download` writes on a Host is one. Unlike a pipe's bytes, an offer's stay whole while its call lasts, so
 //! the runner's download resumes from any byte after a break or a stall; the
 //! offer goes when the call that made it ends.
@@ -75,7 +75,7 @@ impl Drop for Offer {
 /// The answer to a runner's `GET` of an offer's `bytes` from byte `from` on:
 /// the whole for 0, the rest as 206 for a download that resumes, and 416
 /// with the size for a byte past the end, as the downloader expects
-/// (`native-runtime.md` § Downloads).
+/// (`crates/shared-artifacts/src/download.rs`).
 #[cfg(feature = "edge")]
 pub fn offer_response(bytes: Bytes, from: u64) -> axum::response::Response {
     use axum::http::{StatusCode, header};

@@ -36,7 +36,7 @@ pub fn pauses() -> u64 {
 
 /// One counter per conversation and sequence, each from 1: what the
 /// backend's sequences give a service whose conversations are new
-/// (`native-runtime.md` § Conversation numbers).
+/// (`crates/command-protocol/src/numbers.rs`).
 #[derive(Default)]
 struct Counters(HashMap<(String, ServiceSequence), u64>);
 
@@ -113,7 +113,7 @@ pub fn artifacts_from(
 /// Opens the messages stream of the service `client` drives and takes every
 /// message with `take`, as a runner's connection takes it, until the service
 /// ends it. A runner opens it before any call, and a service's message waits
-/// until it is open (`native-runtime.md` § Messages to the plugin).
+/// until it is open (`crates/command-protocol/src/messages.rs`).
 pub async fn answer_messages(
     client: &Client,
     take: impl Fn(PluginMessage) + Send + Sync + 'static,
@@ -199,8 +199,7 @@ impl ServiceProcess {
     /// Asks the service to shut down, and waits for its connection to end and
     /// its process to exit. A service that answered may exit before this
     /// side's closing frames reach it, so a connection that ends because the
-    /// service closed its side is not a failure (`native-runtime.md`
-    /// § Invoke and retire a service).
+    /// service closed its side is not a failure (`crates/runner-command-packages/src/lib.rs`).
     pub async fn shutdown(mut self) -> Result<ExitStatus, ServiceError> {
         self.client.shutdown().await?;
         let status = self.child.wait().await?;

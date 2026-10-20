@@ -542,7 +542,7 @@ async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
 /// as the relay's since the runner counts once for its process: a change
 /// after a direct read is numbered above it, a direct read after it not
 /// below it, and the relay's read of the file names the same epoch
-/// (`direct-channel.md` § Operations on the channel). A second or two: the
+/// (`crates/runner-protocol/src/direct.rs`). A second or two: the
 /// runner starts its watch.
 #[tokio::test]
 async fn a_direct_watch_and_text_order_reads_and_changes_with_the_relays_numbers() {

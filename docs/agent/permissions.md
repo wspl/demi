@@ -86,7 +86,7 @@ for a conversation: Manage Skills covers adding, updating and removing skill
 sources and turning skills on or off, not each of these on its own.
 
 A category is declared with the commands that need it, in the
-[command declarations](../execution/commands.md#declare-a-command), so a
+command declarations (`crates/command-declarations/src/lib.rs`), so a
 plugin's group and a product's own group declare one the same way. A group
 declares the categories its leaves use, and a leaf that needs one names it as
 its `permission`:
@@ -116,7 +116,7 @@ category no longer in it shows its id.
 
 Every `rpc` call passes one check in the backend's dispatch, after the call is
 bound to its job and its arguments are validated, and before its handler runs
-([Dispatch](../execution/commands.md#dispatch-the-same-declaration-on-each-surface)).
+(`crates/runner-jobs/src/commands/mod.rs`).
 The check is the same for a plugin's command, the product's `demi host` and
 the agent runtime's `demi agent`; no handler takes part in it, and a handler
 never sees a permission.
@@ -226,7 +226,7 @@ message then names the subagent that asked.
 
 A host is allowed on its own: the list of hosts a conversation may reach
 grows one host at a time, by the user's answer to the agent that asked
-([Hosts a conversation may reach](../execution/sessions-and-targets.md#hosts-a-conversation-may-reach)).
+(`crates/backend-database/src/conversation_index.rs`).
 A leaf whose argument names a host or a device declares that
 argument as `bringsHost`; the check resolves it
 once, by the name it has in

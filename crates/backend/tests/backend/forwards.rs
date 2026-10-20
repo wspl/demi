@@ -1,4 +1,4 @@
-//! Port forwards between the user's Hosts (`port-forwarding.md`), with
+//! Port forwards between the user's Hosts (`crates/backend-user-shard/src/shard/port_forwards.rs`), with
 //! real runners: the Listen On runner listens on 127.0.0.1 only and
 //! carries each connection's bytes both ways, over the relay or over a
 //! direct peer between the two runners; a taken port says so until Try

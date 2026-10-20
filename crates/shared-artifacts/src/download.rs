@@ -1,9 +1,16 @@
-//! Demi's one download of a file over HTTP (`native-runtime.md` §
-//! Downloads): resumed into a staging file the caller names after a break or
-//! a stall, without an overall deadline, its progress told to the caller,
-//! its redirects followed here so the caller decides each hop's headers,
-//! and its bytes decoded and checked whole once complete. Copies of local
-//! files are checked the same way.
+//! Demi's one download of a file over HTTP: resumed into a staging file the
+//! caller names after a break or a stall, without an overall deadline, its
+//! progress told to the caller, its redirects followed here so the caller
+//! decides each hop's headers, and its bytes decoded and checked whole once
+//! complete. Copies of local files are checked the same way.
+//!
+//! Every file Demi fetches over HTTP goes through it (a command executable, a
+//! runner update, a Cloud image's software, a file `demi web fetch` saves, a
+//! vendor's video, an attachment `demi attachment download` fetches), so a
+//! fix for a slow or broken link helps them all. A stream, such as a model's
+//! answer, a command's pipe or a live view, is not a download. The downloader
+//! only reports the bytes received and the size when known; the caller
+//! decides what to show.
 
 use std::{path::Path, time::Duration};
 
@@ -232,7 +239,7 @@ const SILENT_PAUSE: Duration = Duration::from_secs(1);
 const WHOLE_BREAKS: u32 = 3;
 
 /// Downloads `download` into the file at `staging`, which keeps the bytes
-/// as served (`native-runtime.md` § Downloads), continuing from the bytes
+/// as served, continuing from the bytes
 /// the file holds with a Range request, so a download that broke off, in
 /// this call or an earlier one, does not start again. The content coding
 /// the bytes were sent in is recorded beside the file as the download

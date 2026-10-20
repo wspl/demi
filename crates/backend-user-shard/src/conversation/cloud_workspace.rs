@@ -1,5 +1,5 @@
 //! A workspace on the user's Cloud: a new project directory there, made through
-//! the Cloud's machine access (`sessions-and-targets.md` § Every way to a Host),
+//! the Cloud's machine access (`crates/backend-host-access/src/lib.rs`),
 //! which wakes a stopped Cloud.
 
 use demi_backend_database::workspaces::{WorkspaceCreation, WorkspaceRecord, new_workspace_id};

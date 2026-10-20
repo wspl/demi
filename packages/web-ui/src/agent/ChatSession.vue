@@ -195,7 +195,7 @@ const props = withDefaults(defineProps<{
   /**
    * Whether calls and folded runs show the files they changed as pills; the
    * product shows none for a conversation outside a project
-   * (`edit-tracking.md` § What the conversation shows). Absent, they show.
+   * (`crates/agent-store/src/changes.rs`). Absent, they show.
    */
   filePills?: boolean
 }>(), {

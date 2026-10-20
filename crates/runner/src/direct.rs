@@ -1,4 +1,4 @@
-//! A connection's direct channels (`direct-channel.md`): a page reaches the runner
+//! A connection's direct channels (`crates/runner-direct/src/lib.rs`): a page reaches the runner
 //! without the backend in the middle, over WebRTC data channels the backend
 //! introduces and authorizes. The runner carries out each channel's operation as it
 //! carries out the backend's request for the same thing (`demi_runner_host`), with

@@ -344,7 +344,7 @@ impl Shard {
     /// What `lost` names, kept on `device`, ended without its package
     /// saying so: each plugin of such a package with panel tabs in a
     /// conversation that reaches the device hears it, for that conversation
-    /// (`native-runtime.md` § Messages to the plugin).
+    /// (`crates/command-protocol/src/messages.rs`).
     pub(crate) async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>) {
         self.cli_package_lost(device, &lost);
         let panelled = match self

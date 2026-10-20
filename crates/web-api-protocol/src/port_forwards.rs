@@ -1,4 +1,4 @@
-//! The user's port forwards (`port-forwarding.md`): what Settings › Port
+//! The user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`): what Settings › Port
 //! Forwarding and `demi host forward` read and send, and the rules a name
 //! and an address follow wherever they arrive.
 
@@ -99,7 +99,7 @@ impl JsonSchema for ForwardAddress {
 /// A forward as the page and `demi host forward list` see it: its fields,
 /// and what its Listen On runner last announced of it, null while that
 /// runner has said nothing, as when it is offline or the forward does not
-/// listen (`port-forwarding.md` § What the user sees).
+/// listen (`crates/runner-protocol/src/forward.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PortForwardDto {

@@ -1,5 +1,4 @@
-//! One channel's operation (`direct-channel.md` § Operations on the
-//! channel): what the runner supplies to carry it out, and how a channel
+//! One channel's operation (`crates/runner-protocol/src/direct.rs`): what the runner supplies to carry it out, and how a channel
 //! carries its answer, its bytes and its end.
 
 use std::future::Future;
@@ -83,7 +82,7 @@ pub struct StreamRequest {
 
 /// What the runner supplies to carry out each operation, the same functions
 /// as its answers to the backend's requests for the same thing
-/// (`direct-channel.md` § Operations on the channel). Each future runs on
+/// (`crates/runner-protocol/src/direct.rs`). Each future runs on
 /// the peers' thread, and ends, dropped, when its channel closes.
 pub trait Operations: Send + Sync + 'static {
     /// A file's bytes from `offset`, `length` of them or to its end.
@@ -113,8 +112,7 @@ pub trait Operations: Send + Sync + 'static {
     /// page's, the peer's close and the runner's.
     fn stream_activity(&self, conversation: &str, name: &str) -> BoxFuture<'static, StreamActivity>;
     /// A connection of forward `forward` that the runner of device `from`
-    /// opened over its peer (`port-forwarding.md` § The path of a
-    /// connection): the runner's connection to the forward's address, as
+    /// opened over its peer (`crates/runner-direct/src/pairs.rs`): the runner's connection to the forward's address, as
     /// its Connect To; refused when this runner connects no forward of that
     /// id whose other end is `from`.
     fn forward(&self, forward: String, from: String) -> Answer<crate::Forwarded>;

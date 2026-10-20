@@ -1,7 +1,7 @@
-//! One peer (`direct-channel.md` § Making the channel): a WebRTC connection
+//! One peer (`crates/runner-direct/src/lib.rs`): a WebRTC connection
 //! the backend introduced, with a page that offered, with another runner
 //! that offered, or with another runner this one offers to
-//! (`port-forwarding.md` § The path of a connection). Whichever role it
+//! (`crates/runner-direct/src/pairs.rs`). Whichever role it
 //! has, it owns its UDP sockets, its str0m connection and its channels; it
 //! learns the addresses the internet sees its sockets at and offers them to
 //! the other side, and checks the candidates the other side trickles. It
@@ -49,8 +49,7 @@ const SCTP_BUFFER: usize = 4 * QUEUE_BYTES;
 const LIVE_SCTP_BUFFER: usize = 4 * VIDEO_QUEUE_BYTES;
 /// The least a live views' peer's SCTP congestion window ever is: far
 /// beyond what any path carries in a round trip, so the window never limits
-/// what the views' own rate control sends (`direct-channel.md` § Making the
-/// channel).
+/// what the views' own rate control sends (`crates/runner-direct/src/lib.rs`).
 const LIVE_CONGESTION_WINDOW: u32 = 64 * 1024 * 1024;
 /// A live views' peer resends a lost chunk after this long at the least, at
 /// first and at the most, where SCTP's defaults wait a second at the least.
@@ -95,7 +94,7 @@ pub(crate) enum Behaviour {
 }
 
 /// Where a peer is: connecting, connected, or ended, with why a direct
-/// path failed when it failed (`port-forwarding.md` § What the user sees).
+/// path failed when it failed (`crates/runner-protocol/src/forward.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PeerStatus {
     Connecting,
@@ -642,8 +641,7 @@ impl Served {
                 }
             }
             // The other side's probe channel carries no operation: each
-            // message goes back as it came (`direct-channel.md` § Measuring
-            // the paths).
+            // message goes back as it came (`packages/web/src/direct/measure.ts`).
             Event::ChannelOpen(id, label) if label == PROBE_LABEL => {
                 self.probes.insert(id);
             }
@@ -856,7 +854,7 @@ impl Served {
 }
 
 /// The probe channel's settings, unordered and never retransmitted, as the
-/// page's (`direct-channel.md` § Measuring the paths).
+/// page's (`packages/web/src/direct/measure.ts`).
 pub(crate) fn probe_config() -> ChannelConfig {
     ChannelConfig {
         label: PROBE_LABEL.into(),

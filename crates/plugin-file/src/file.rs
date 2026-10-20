@@ -1,6 +1,6 @@
 //! The `demi file` group: every leaf runs a `file.*` operation of the
 //! `demi.file` package beside the file, its arguments declared from the
-//! `command-package-file-protocol` types (`commands.md` § File commands).
+//! `command-package-file-protocol` types (`crates/command-package-file/src/files.rs`).
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ViewArgs};

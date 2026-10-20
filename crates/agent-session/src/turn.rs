@@ -560,8 +560,7 @@ async fn run_tools(
             });
             // Where the step's calls start: a call's files are judged
             // against it once its result is stored, whatever directory the
-            // node works in by then (`edit-tracking.md` § Within the working
-            // directory).
+            // node works in by then (`crates/agent-store/src/changes.rs`).
             let started_in = s.runtime.directory().await;
             let turn = s.read(SessionCore::turn);
             let invocations = step
@@ -623,8 +622,7 @@ async fn run_tools(
 }
 
 /// `view` with the lists the conversation shows of the shell call that
-/// `at` finds in the transcript (`edit-tracking.md` § What the conversation
-/// shows): its own files, its run's and its request's, within the working
+/// `at` finds in the transcript (`crates/agent-store/src/changes.rs`): its own files, its run's and its request's, within the working
 /// directory, counted from the edit copies in the conversation's blob
 /// namespace. The call's own files are judged against `started_in`, the
 /// directory it started in; with none they keep the marks `view` has, as a

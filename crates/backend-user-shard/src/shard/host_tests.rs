@@ -118,7 +118,7 @@ mod host_commands {
                 let run = async |leaf: &str, args: Value| {
                     let port = MemoryPort::new();
                     // A failure is the dispatcher's to tell after the
-                    // command's path (`commands.md` § Handle an rpc call).
+                    // command's path (`crates/host-interface/src/rpc.rs`).
                     let code = commands
                         .dispatch(invocation(leaf, args), port.port(CancellationToken::new()))
                         .await;

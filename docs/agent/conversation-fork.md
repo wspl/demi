@@ -154,7 +154,7 @@ root; failures do not publish an empty or partial conversation.
 
 Attachments keep their original content and timestamps. The destination's
 blocks reference the same blobs of the same user's namespace, media and edit
-copies alike ([Edit copies](../execution/edit-tracking.md#edit-copies)), while
+copies alike (`crates/agent-store/src/media.rs`), while
 its transcript rows stay independent, so a Fork copies no bytes. It copies the
 `command_outputs` rows of the commands its copied blocks name, so
 `demi shell output` reads their output in the destination too

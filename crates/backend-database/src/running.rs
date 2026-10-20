@@ -4,8 +4,7 @@
 //! row, and the control database's `running_jobs` index of their jobs by
 //! device, written before each job starts and deleted with its command's
 //! end. A backend that starts again reads them to take the commands up when
-//! their runners connect (`sessions-and-targets.md` § Recovery and
-//! persistence).
+//! their runners connect (`crates/backend-remote-host/src/device_jobs.rs`).
 
 use std::collections::BTreeMap;
 
@@ -48,7 +47,7 @@ pub struct RunningCommand {
     /// look or a report moves.
     pub places: BTreeMap<NodeId, Seen>,
     /// What it starts once its Host is back, while its start waits for it
-    /// and was never sent (`sessions-and-targets.md` § Host operations).
+    /// and was never sent (`crates/backend-host-access/src/access.rs`).
     pub unsent: Option<UnsentStart>,
 }
 
@@ -229,7 +228,7 @@ pub struct RecordedJob {
 impl ControlService {
     /// Records that the job `job` of a command of `conversation` runs on
     /// `device`, before it starts, or, while it is not `sent`, that it waits
-    /// to start there (`sessions-and-targets.md` § Host operations).
+    /// to start there (`crates/backend-host-access/src/access.rs`).
     pub async fn record_running_job(
         &self,
         job: String,

@@ -113,7 +113,7 @@ pub fn module(header: &str) -> String {
         ),
         (
             "DIRECT_MESSAGE_BYTES",
-            "The most bytes of one binary message on a direct channel (`direct-channel.md`).",
+            "The most bytes of one binary message on a direct channel (`crates/runner-direct/src/lib.rs`).",
             count(direct::MESSAGE_BYTES),
         ),
         (
@@ -207,7 +207,7 @@ pub fn module(header: &str) -> String {
     source.push('\n');
     push_doc(
         &mut source,
-        Some("The label of a direct channel's probe channel, on which the runner sends back each message (`direct-channel.md` § Measuring the paths)."),
+        Some("The label of a direct channel's probe channel, on which the runner sends back each message (`packages/web/src/direct/measure.ts`)."),
         0,
     );
     writeln!(source, "export const DIRECT_PROBE_LABEL = {:?}", direct::PROBE_LABEL).expect("writing to a string");

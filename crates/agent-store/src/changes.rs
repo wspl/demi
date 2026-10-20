@@ -1,14 +1,30 @@
 //! What the conversation shows of a transcript's work, computed once as a
-//! block is stored and kept with it (`rendering.md` § Work groups,
-//! `edit-tracking.md` § What the conversation shows): the run of steps each
-//! block belongs to, and for each shell call its own files, its run's and
-//! its request's. The session applies them to the blocks it writes and the
-//! conversation database's migration to the blocks it stored before, with
-//! this one code, so a page counts and derives nothing.
+//! block is stored and kept with it (`rendering.md` § Work groups): the run
+//! of steps each block belongs to, and for each shell call its own files, its
+//! run's and its request's. The session applies them to the blocks it writes
+//! and the conversation database's migration to the blocks it stored before,
+//! with this one code, so a page counts and derives nothing. The list is in
+//! the block because it is small and read each time the conversation is
+//! shown; the contents behind a diff are blobs the list names, which the page
+//! fetches when a file is opened, since a transcript is loaded whole and a
+//! file may be megabytes.
+//!
+//! A request is what one message of the user asked for: it starts at a
+//! `user` block and holds every block of the same agent up to the next one.
+//! What wakes the agent without the user asking (a steer, command reports, an
+//! agent's message, a resume) starts no request and belongs to the one it
+//! continues. A request belongs to one agent: a subagent's changes show in
+//! its own transcript under its own requests, never under its parent's.
 //!
 //! A list is a function of the blocks up to its call: where a run or a
 //! request starts is decided by the blocks before it, and later blocks only
-//! end it.
+//! end it, while an edit or a regenerate removes the later blocks whole. So a
+//! stored list never changes, except that calls of one step may return in any
+//! order: a call's lists are final once every call before it has returned.
+//! Only what the agent changed in its working directory is shown (the
+//! directory its commands start in); a file the request created and removed
+//! is not in its list, which shows what the request left behind, while a
+//! call's own pills always show what that call did.
 
 use std::collections::{HashMap, HashSet};
 
@@ -376,7 +392,7 @@ fn reported(view: &ShellToolView) -> Vec<&EditedFile> {
 }
 
 /// A call's own files, its record of what it did that later lists are
-/// made from and its pills show (`edit-tracking.md` § The report): the
+/// made from and its pills show (`crates/command-protocol/src/edits.rs`): the
 /// files its job wrote, then each path it removed as `deleted` and each it
 /// renamed, but to a path it wrote, as `renamed` with the old path. Each is
 /// marked `outside` when it is outside `directory`, the working directory
@@ -491,8 +507,7 @@ impl Planned {
 
 /// Plans the lists of the shell call at `index` of `blocks` whose view is
 /// `view`, from the blocks before it: the call's own files, its run's and
-/// its request's up to it, without the files outside the working directory
-/// (`edit-tracking.md` § Within the working directory). The call's own
+/// its request's up to it, without the files outside the working directory. The call's own
 /// files are judged against `directory`, the one it started in, once: the
 /// earlier calls' files keep the marks they were stored with, and with no
 /// directory, as for a list made again of a stored transcript or of a

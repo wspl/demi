@@ -116,8 +116,7 @@ const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases")
 /// target and its program, and a server release that holds it, whose
 /// descriptor every backend publishes into its own object store and whose
 /// files hold the program's compressed copy, which a backend stores when a
-/// runner first needs it (`native-runtime.md` § Backend deployment
-/// configuration). Each test process computes the digest and writes the
+/// runner first needs it (`crates/backend-runners/src/publication.rs`). Each test process computes the digest and writes the
 /// release once: both read the whole program, most of a second for
 /// `demi-browser`.
 pub struct Built {
@@ -318,7 +317,7 @@ pub struct Harness {
     /// ones.
     user_streams: Option<Vec<Stream>>,
     /// What the native fixture's plugin heard of its package, in order
-    /// (`native-runtime.md` § Messages to the plugin).
+    /// (`crates/command-protocol/src/messages.rs`).
     pub package_heard: Arc<tokio::sync::watch::Sender<Vec<PackageHeard>>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
@@ -337,7 +336,7 @@ pub struct Harness {
     /// The management socket an upgrade names the next runner release on.
     pub manage_socket: Option<PathBuf>,
     /// The root of a server release whose command packages the backends
-    /// publish (`native-runtime.md` § Backend deployment configuration),
+    /// publish (`crates/backend-runners/src/publication.rs`),
     /// instead of a package the workspace built.
     pub server_release: Option<PathBuf>,
     /// Counts what reaches the object store of every backend this harness
@@ -594,8 +593,7 @@ impl Harness {
 
     /// Attaches `device` to the conversation `id` as the attach does,
     /// written to the control database: the conversation's agents attach
-    /// devices, and the page has no route for it (`sessions-and-targets.md`
-    /// § Attached hosts).
+    /// devices, and the page has no route for it (`crates/backend-database/src/conversation_index.rs`).
     pub fn attach(&self, id: &str, device: &str) {
         let control = self.control_database();
         control

@@ -112,7 +112,7 @@ pub struct FamilyArgs {
     pub credential: FamilyCredential,
     /// The entry's client on the backend's shared services, for the
     /// provider's own requests such as its directory and quota probes
-    /// (`port-exposure.md` § What is shared). A runtime gets the entry's
+    /// (`crates/provider-common/src/client.rs`). A runtime gets the entry's
     /// client on the shard it runs on instead.
     pub http: demi_provider_common::ProviderHttp,
     /// The shared services' client itself, for what a family reads that is

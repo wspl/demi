@@ -78,7 +78,7 @@ pub struct Registered {
     pub management: Arc<Management>,
     pub services: ServiceHandle,
     /// What the artifact cache holds, which each connection reports
-    /// (`native-runtime.md` § Installed artifacts).
+    /// (`crates/runner-command-packages/src/cache.rs`).
     pub cached: watch::Receiver<Vec<wire::HostArtifact>>,
     pub dispatcher: Arc<Dispatcher>,
     /// Where the current connection publishes its live contexts.
@@ -151,7 +151,7 @@ struct Owner<'r> {
     /// Whether this connection asked the backend to revoke the device.
     revoke_asked: bool,
     /// The pages' peers the backend introduced on this connection
-    /// (`direct-channel.md`), which end with it.
+    /// (`crates/runner-direct/src/lib.rs`), which end with it.
     direct: Direct,
     /// The user's port forwards on this connection, which end with it.
     forwarding: Option<crate::forward::Forwarding>,
@@ -728,8 +728,7 @@ impl Owner<'_> {
     }
 
     /// Answers a second start of `job` with the job the runner has, since
-    /// it starts a job id once in its life (`sessions-and-targets.md`
-    /// § Recovery and persistence): a job that runs goes on; one that ended
+    /// it starts a job id once in its life (`crates/backend-remote-host/src/device_jobs.rs`): a job that runs goes on; one that ended
     /// answers its exit again while its directory lasts; and one released,
     /// whose end the backend has, or one that failed before it made its
     /// directory, answers that it was started already.
@@ -884,7 +883,7 @@ impl Owner<'_> {
         self.kept.disconnected();
         self.kept.jobs.end_spawns();
         // Without the backend the runner can no longer hear that a page
-        // went away (`direct-channel.md` § Who may connect), and its
+        // went away (`crates/runner-direct/src/lib.rs`), and its
         // forwards end with the connection that told it of them.
         self.forwarding = None;
         self.exposure = None;

@@ -1020,7 +1020,7 @@ async fn an_installer_installs_into_the_directory_demi_home_names() {
 
 /// A backend sources the runner executables of its paired devices' systems
 /// as it starts, so that a runner's update after the server's upgrade waits
-/// on no origin (`native-runtime.md` § Runner releases).
+/// on no origin (`crates/backend-http/src/install.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it.
 #[tokio::test]

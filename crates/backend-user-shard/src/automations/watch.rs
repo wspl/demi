@@ -2,7 +2,7 @@
 //! device in the target's directory, as the agent's shell would run it, through
 //! the conversation's host access for an existing conversation, and for a new
 //! one each run through device access on a paired device or machine access on
-//! the Cloud, which wakes it (`sessions-and-targets.md` § Every way to a Host).
+//! the Cloud, which wakes it (`crates/backend-host-access/src/lib.rs`).
 //! The SHA-256 of its whole standard output and its exit status are compared
 //! with the last ones, and its output's last 16 KB kept for the message; the
 //! first run only records them, and a change fires a run. A command that runs

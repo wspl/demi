@@ -740,7 +740,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         "demi agent resume: no archived subagent 1 (see `demi agent list`)\n"
     );
     // A table from the root down, each node's children after it, its
-    // archived ones only with --all (`commands.md` § Output).
+    // archived ones only with --all (`crates/shared-types/src/output.rs`).
     let rows = |text: &str| -> Vec<Vec<String>> {
         text.lines()
             .map(|line| line.split_whitespace().map(str::to_owned).collect())
@@ -2462,8 +2462,7 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
 }
 
 /// A shell call's lists hold only what its agent changed in the working
-/// directory its call started in (`edit-tracking.md` § Within the working
-/// directory): a child that works in `/workspace/sub` writes there and in
+/// directory its call started in (`crates/agent-store/src/changes.rs`): a child that works in `/workspace/sub` writes there and in
 /// the conversation's `/workspace`, and its pills and lists name its own
 /// directory's file alone, while its call keeps the other in its record,
 /// though the conversation moved, and the child's directory with it, while

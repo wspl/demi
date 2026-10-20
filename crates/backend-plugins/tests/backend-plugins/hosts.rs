@@ -1,5 +1,5 @@
 //! A conversation whose Host changes, as after a target switch
-//! (`sessions-and-targets.md` § Host operations): each command starts in
+//! (`crates/backend-host-access/src/access.rs`): each command starts in
 //! the conversation's directory on the Host it runs on, and a command's
 //! handle answers only on the Host that runs it.
 

@@ -1,4 +1,4 @@
-//! Runners and their devices (`crates/runner/src/main.rs`, `commands.md`): pairing with its
+//! Runners and their devices (`crates/runner/src/main.rs`, `crates/runner-jobs/src/commands/mod.rs`): pairing with its
 //! pending claims and codes, the installer scripts, each device's runner
 //! connection and the Host handles made over it, the file gate whose lease a
 //! conversation's Host is made against, the routing of a job's rpc calls to

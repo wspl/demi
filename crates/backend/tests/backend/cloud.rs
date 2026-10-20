@@ -1,6 +1,5 @@
 //! The Cloud through the backend (`managed-hosts.md`,
-//! `sessions-and-targets.md` § Resolve a target, § How a conversation uses a
-//! device, `crates/backend-user-shard/src/lifecycle/mod.rs`): the first uses of two conversations
+//! `crates/backend-database/src/selection.rs`, `crates/backend-cloud/src/uses.rs`, `crates/backend-user-shard/src/lifecycle/mod.rs`): the first uses of two conversations
 //! boot one Cloud, which keeps nothing of an ended command, an idle Cloud
 //! stops, and the next operation wakes it, the model learns the home the
 //! Cloud's runner reports once and not again at each wake, a conversation
@@ -1229,8 +1228,7 @@ async fn shutdown_ends_an_open_download_and_leaves_the_cloud_running() {
 
 /// The Cloud and a command on it survive a backend restart of one release:
 /// the manager keeps the sandbox, the next start takes the Cloud over, and
-/// the command reports its end there (`sessions-and-targets.md` § Recovery
-/// and persistence). Several seconds: the Cloud boots once, its job is a
+/// the command reports its end there (`crates/backend-remote-host/src/device_jobs.rs`). Several seconds: the Cloud boots once, its job is a
 /// login shell, and the call waits for two quiet seconds.
 #[tokio::test]
 async fn a_backend_restart_keeps_the_cloud_and_a_command_on_it_reports_its_end() {

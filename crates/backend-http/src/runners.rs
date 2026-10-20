@@ -204,7 +204,7 @@ pub(super) async fn get(
 /// `GET /api/offers/:id`: a file the backend offers the requesting device's
 /// runner for download, such as an attachment placed on its Host, from the
 /// byte a Range request names on, as a download that broke off resumes
-/// (`native-runtime.md` § Downloads). An offer withdrawn, unknown or made
+/// (`crates/shared-artifacts/src/download.rs`). An offer withdrawn, unknown or made
 /// to another device answers 404.
 pub(super) async fn offer(
     State(state): State<AppState>,

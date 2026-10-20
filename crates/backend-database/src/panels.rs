@@ -37,7 +37,7 @@ pub enum PanelOutcome {
 impl ControlService {
     /// `owner`'s conversations that are not archived and whose panel has
     /// a tab: those a lost package's plugin may have something to correct
-    /// in (`native-runtime.md` § Messages to the plugin).
+    /// in (`crates/command-protocol/src/messages.rs`).
     pub async fn panelled_conversations(
         &self,
         owner: UserId,

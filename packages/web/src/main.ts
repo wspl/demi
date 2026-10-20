@@ -105,7 +105,7 @@ const stopReports = reportPageErrorsWith(sendPageErrorReport)
 product.start()
 // The page's service worker answers the raw file requests over the page's
 // direct channels and keeps the page for opening offline, for its lifetime
-// (`direct-channel.md` § Bytes the browser fetches itself).
+// (`packages/web/src/direct/raw-bridge.ts`).
 startServiceWorker()
 // The page makes the peer of the device a conversation it shows runs on, and
 // follows what changes its paths, for its lifetime.

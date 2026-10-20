@@ -1,4 +1,4 @@
-//! The messages stream (`native-runtime.md` § Messages to the plugin)
+//! The messages stream (`crates/command-protocol/src/messages.rs`)
 //! between a service's handler and the end that takes its messages.
 
 use std::{

@@ -187,7 +187,7 @@ fn dialog(dialog: &Dialog) -> String {
 }
 
 /// Rows whose columns line up under the header row `columns`, as every
-/// command's lists print (`commands.md` § Output).
+/// command's lists print (`crates/shared-types/src/output.rs`).
 fn table<const N: usize>(columns: [&str; N], rows: impl IntoIterator<Item = [String; N]>) -> String {
     let mut table = Table::new(columns);
     for row in rows {

@@ -346,7 +346,7 @@ fn model(id: &str, vendor: Option<&str>, released: Option<&str>, name: Option<&s
     }
 }
 
-/// The list is a table (`commands.md` § Output): one row per model with
+/// The list is a table (`crates/shared-types/src/output.rs`): one row per model with
 /// the entry a call takes now, `-` where nothing is known, columns aligned
 /// by the width a terminal gives them, a CJK name counting two; what is no
 /// data, an entry whose models could not be listed or one that does not

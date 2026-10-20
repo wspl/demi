@@ -14,8 +14,7 @@ import { directFileReads, directStream } from './operations'
 import { ChannelFailed, ChannelRefused, openOperation, type ChannelMessage, type DirectPeer, type OperationChannel } from './peer'
 import { PlayedConnection } from './played-connection'
 
-// A conversation's operations over either path (`direct-channel.md`
-// § Choosing the path), on a peer and a relay the test plays: each starts
+// A conversation's operations over either path (`packages/web/src/direct/index.ts`), on a peer and a relay the test plays: each starts
 // on the choice of its start; one that fails on the channel sets the relay
 // and runs again there, a write once; a refusal is the relay's answer; a
 // stream moves when the choice changes, without a reconnect wait.
@@ -380,8 +379,7 @@ test('a live view whose live peer cannot be made opens on the relay with what it
 })
 
 /**
- * A live view closed while its channels are still opening (`direct-channel.md`
- * § Choosing the path; every channel is released on cancellation): the
+ * A live view closed while its channels are still opening (`packages/web/src/direct/index.ts`; every channel is released on cancellation): the
  * opening channel closes and the view stops waiting for it, so that views
  * opened and closed quickly do not use up the peer's channels. Planted
  * defect this catches: the channel left `connecting` until it opens, or
@@ -414,7 +412,7 @@ test('a live view closed while its channels open closes them and opens no other'
 
 /**
  * A live view's channel that fails after it opened sets the device's
- * choice to `relay` (`direct-channel.md` § Choosing the path), so the view
+ * choice to `relay` (`packages/web/src/direct/index.ts`), so the view
  * reopens on the relay at once and stays there until the page tries the
  * direct channel again. Planted defect this catches: only the live peer
  * dropped, so the view reopens direct and fails again, over and over.

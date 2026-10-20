@@ -86,7 +86,7 @@ pub trait LinkPolicy {
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>>;
 
     /// The bytes of the blob `blob` of the user's namespace, which a
-    /// handler returns as a medium (`commands.md` § Return media); none when
+    /// handler returns as a medium (`crates/runner-jobs/src/commands/command_output.rs`); none when
     /// the namespace does not hold it.
     fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>>;
 
@@ -103,8 +103,7 @@ pub trait LinkPolicy {
     fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>>;
 
     /// A native service on the device asks for `count` numbers of
-    /// `conversation`'s `sequence` (`native-runtime.md` § Conversation
-    /// numbers): the first of them, reserved, or why there are none.
+    /// `conversation`'s `sequence` (`crates/command-protocol/src/numbers.rs`): the first of them, reserved, or why there are none.
     fn reserve_numbers(
         &self,
         conversation: String,
@@ -113,8 +112,7 @@ pub trait LinkPolicy {
     ) -> LocalBoxFuture<'static, Result<u64, String>>;
 
     /// A page's direct channel opened the user stream `name` of
-    /// `conversation` on the device (`direct-channel.md` § Operations on the
-    /// channel): what the backend knows the stream with while it is open, as
+    /// `conversation` on the device (`crates/runner-protocol/src/direct.rs`): what the backend knows the stream with while it is open, as
     /// a stream of that name it opened, or why it does not know it.
     fn direct_stream(
         &self,
@@ -123,18 +121,18 @@ pub trait LinkPolicy {
     ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>>;
 
     /// A native service on the device told its plugin something, or its
-    /// state was lost (`native-runtime.md` § Messages to the plugin). The
+    /// state was lost (`crates/command-protocol/src/messages.rs`). The
     /// connection hands its events on one after another, in the order the
     /// runner sent them.
     fn package_event(&self, event: PackageEvent) -> LocalBoxFuture<'static, ()>;
 
     /// The runner said something of a port forward or of a peer it made
-    /// with another runner (`port-forwarding.md`), in the order it said
+    /// with another runner (`crates/backend-user-shard/src/shard/port_forwards.rs`), in the order it said
     /// it; the policy answers through the link.
     fn forward_event(&self, event: ForwardEvent);
 }
 
-/// What a runner says of the user's port forwards (`port-forwarding.md`).
+/// What a runner says of the user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForwardEvent {
     /// What `forward` is on this runner, its Listen On, now; none once it
@@ -177,7 +175,7 @@ pub enum PackageEvent {
 /// its conversation active, as an open relay stream's does, and what a relay
 /// stream of its name may install: the executable of the package the name
 /// binds, none for a name that binds none, from where `resolver` locates it
-/// (`native-runtime.md` § Install artifacts).
+/// (`crates/runner-command-packages/src/cache.rs`).
 pub struct DirectAdmission {
     pub lease: GateLease,
     pub package: Option<PackageDescriptor>,
@@ -406,7 +404,7 @@ pub(crate) enum Answer {
     Done,
 }
 
-/// What an exposed port answered a request (`port-exposure.md`): its status
+/// What an exposed port answered a request (`crates/backend-user-shard/src/shard/exposed_ports.rs`): its status
 /// and headers; its body comes through the request's answer pipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpHead {
@@ -427,7 +425,7 @@ pub struct HttpRequest {
 }
 
 /// What the runner says of a page's peer besides its answer
-/// (`direct-channel.md` § Making the channel, § Measuring the paths).
+/// (`crates/runner-direct/src/lib.rs`, `packages/web/src/direct/measure.ts`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PeerEvent {
     /// A candidate it found after its answer.
@@ -436,8 +434,7 @@ pub enum PeerEvent {
     Pong(u32),
 }
 
-/// What a runner said to a page's offer (`direct-channel.md` § Making the
-/// channel).
+/// What a runner said to a page's offer (`crates/runner-direct/src/lib.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DirectAnswer {
     /// The runner's answer, with its candidates.
@@ -822,7 +819,7 @@ impl Link {
     /// Whether the connection is closing or closed: nothing new starts on
     /// it.
     /// What the runner reports its artifact cache holds, from now on
-    /// (`native-runtime.md` § Installed artifacts): none until its first
+    /// (`crates/runner-command-packages/src/cache.rs`): none until its first
     /// report.
     pub fn watch_installed(&self) -> watch::Receiver<Option<Vec<HostArtifact>>> {
         self.0.installed.subscribe()
@@ -1050,7 +1047,7 @@ impl Link {
     /// Asks the runner to make `request` to one of its exposed ports, its
     /// body read from `body`, and waits for the answer's status and headers;
     /// the answer's body comes through `answer`. The caller decides that
-    /// the port is exposed (`port-exposure.md` § Exposed ports).
+    /// the port is exposed (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
     pub async fn http_request(
         &self,
         request: HttpRequest,
@@ -1709,7 +1706,7 @@ impl Link {
 
     /// Answers the runner's request for an executable's location, for the
     /// live work that runs it and only while it does
-    /// (`native-runtime.md` § Install artifacts).
+    /// (`crates/runner-command-packages/src/cache.rs`).
     fn resolve_artifact(&self, id: String, owner: ArtifactOwner, sha256: String, target: String) {
         let granted = self.grant(&owner);
         let refusal = match &granted {
@@ -1795,8 +1792,7 @@ impl Link {
     }
 
     /// Keeps the direct streams the runner reports open, by their ids, as
-    /// streams the backend opened (`direct-channel.md` § Operations on the
-    /// channel): each opening asks the policy to admit the stream, and once
+    /// streams the backend opened (`crates/runner-protocol/src/direct.rs`): each opening asks the policy to admit the stream, and once
     /// admitted the stream holds its conversation active and its artifact
     /// requests are answered; its closing, or the connection's end, ends both
     /// and cancels the requests in flight.
@@ -1853,7 +1849,7 @@ impl Link {
     }
 
     /// Answers a native service's request for conversation numbers, which
-    /// the policy decides (`native-runtime.md` § Conversation numbers).
+    /// the policy decides (`crates/command-protocol/src/numbers.rs`).
     fn reserve_numbers(
         &self,
         id: String,

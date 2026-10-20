@@ -176,7 +176,7 @@ async fn a_missing_end_times_out_a_lost_device_fails_its_pipes_an_early_reader_d
 }
 
 /// A forwarded connection's pipes have its 10 s deadline, not the pipes'
-/// window (`port-forwarding.md` § A port forward).
+/// window (`crates/backend-user-shard/src/shard/port_forwards.rs`).
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_pipe_minted_with_a_deadline_of_its_own_fails_when_its_ends_miss_it() {
     let pipes = Pipes::new(Duration::from_secs(120));

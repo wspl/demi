@@ -30,7 +30,7 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
   upgrade, at once for a command it may be waiting for, at its next turn for
   a resident one (`crates/agent-session/src/reports.rs`). A backend that
   only restarts, on the same release, ends none
-  ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
+  (`crates/backend-remote-host/src/device_jobs.rs`).
 - Each paired device's runner reconnects, finds that the backend serves
   another runner release, replaces itself with it and connects again, without
   its user doing anything (`crates/runner/src/update.rs`).
@@ -131,7 +131,7 @@ which the configuration names.
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
 | A Cloud's system | Stays on the image it is pinned to; Cloud settings says when a newer one is available, and a reset moves to it (`packages/web-ui/src/cloud/CloudSettings.vue`) | When the user resets |
 | A paired device's runner | The runner updates itself when the backend names another runner release (`crates/runner/src/update.rs`) | Its next connection |
-| A paired device's command programs | The backend's catalog names the new packages; the runner downloads each the first time it needs it ([Install artifacts](../execution/native-runtime.md#install-artifacts)) | Each program's next use |
+| A paired device's command programs | The backend's catalog names the new packages; the runner downloads each the first time it needs it (`crates/runner-command-packages/src/cache.rs`) | Each program's next use |
 | Control database | Migrated as the backend starts ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)) | During the upgrade |
 | Conversation databases | Each migrated when its conversation is next opened | On use |
 | Machine manager state | Migrated as the manager starts, when a release changes its format ([Startup and recovery](../cloud/managed-hosts.md#startup-and-recovery)) | During the upgrade |

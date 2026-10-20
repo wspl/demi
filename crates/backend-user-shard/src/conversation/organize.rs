@@ -1,5 +1,4 @@
-//! The product's `demi conversation` group (`sessions-and-targets.md`
-//! § What the agent can change): with the user's Organize Conversations, an
+//! The product's `demi conversation` group (`crates/backend-host-access/src/host_commands.rs`): with the user's Organize Conversations, an
 //! agent renames its conversation at once and lists the user's projects.
 //! Where the conversation runs decides its project, so an agent moves it
 //! into or out of one with `demi host move` (`host_commands.rs`).
@@ -101,8 +100,7 @@ pub(crate) fn failed(error: impl ToString) -> RpcError {
 }
 
 /// Arguments a handler refuses, such as a blank title: a usage error, which
-/// the dispatcher tells with the leaf's usage, exit 2 (`commands.md` § Parse
-/// input and render help).
+/// the dispatcher tells with the leaf's usage, exit 2 (`crates/command-declarations/src/parse.rs`).
 pub(crate) fn refused(message: impl ToString) -> RpcError {
     RpcError::Usage(message.to_string())
 }

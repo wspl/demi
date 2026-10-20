@@ -1,6 +1,5 @@
 //! The content coding of a command executable on its way to a runner
-//! (`native-runtime.md` § Publish packages, then source artifacts on
-//! demand): packaging compresses each executable with zstd, the object store
+//! (`crates/backend-runners/src/publication.rs`): packaging compresses each executable with zstd, the object store
 //! serves the compressed copy under `Content-Encoding`, and the download
 //! decodes it before it verifies.
 
@@ -16,7 +15,7 @@ pub const CONTENT_CODING: &str = "zstd";
 
 /// The most bytes `size` bytes can be served as, in [`CONTENT_CODING`] or
 /// as they are: a download of a file of known size holds no more
-/// (`native-runtime.md` § Downloads).
+/// (`crates/shared-artifacts/src/download.rs`).
 pub fn encoded_bound(size: u64) -> u64 {
     let size = usize::try_from(size).unwrap_or(usize::MAX);
     zstd::zstd_safe::compress_bound(size).max(size) as u64

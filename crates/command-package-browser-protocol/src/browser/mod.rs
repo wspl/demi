@@ -735,7 +735,7 @@ mod failure;
 mod operations;
 
 /// What the browser package tells `plugin-browser` about a conversation
-/// (`native-runtime.md` § Messages to the plugin): `{"tabs":"changed"}`, once
+/// (`crates/command-protocol/src/messages.rs`): `{"tabs":"changed"}`, once
 /// for a burst of changes of what `browser.tabs` lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -6,7 +6,7 @@
 //! finishes its disk step when it starts again.
 //!
 //! The reset holds the conversations that cannot work without the Cloud
-//! (`sessions-and-targets.md` § How a conversation uses a device): their
+//! (`crates/backend-cloud/src/uses.rs`): their
 //! turns stop, what their users send waits, and the transfers and streams
 //! of those whose files are on the Cloud end. It then flushes the Cloud and
 //! lets its runner go, which ends every command still running on it, an

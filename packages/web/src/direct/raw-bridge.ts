@@ -1,6 +1,5 @@
 /**
- * The page's side of its service worker (`direct-channel.md` § Bytes the
- * browser fetches itself): the worker hands the page each `GET` of a raw
+ * The page's side of its service worker: the worker hands the page each `GET` of a raw
  * file route the page made, and the page, which holds the peer, answers it
  * over the conversation's direct channel with the relay's status and
  * headers, its bytes as the worker pulls them. A request the page cannot

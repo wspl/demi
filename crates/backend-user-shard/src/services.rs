@@ -124,7 +124,7 @@ pub struct Services {
     /// connected paired devices download ahead (`crates/runner/src/update.rs`).
     pub prefetches: Prefetches,
     /// The STUN servers pages and runners ask for their public address
-    /// (`direct-channel.md` § Making the channel).
+    /// (`crates/runner-direct/src/lib.rs`).
     pub stun: Vec<StunUrl>,
     /// This run of the backend, chosen when the services start: the
     /// revisions counted in memory compare only within one run.
@@ -136,7 +136,7 @@ pub struct Services {
     pub sync: SyncRegistry,
     /// The devices the backend's last shutdown disconnected, which Host
     /// operations wait for in the grace after the start
-    /// (`sessions-and-targets.md` § Recovery and persistence).
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub returning: Arc<Returning>,
     /// The step a test holds runners' hellos at (`Backend::hold_hellos`).
     #[cfg(feature = "testing")]

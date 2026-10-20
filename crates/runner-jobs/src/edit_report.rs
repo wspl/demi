@@ -6,8 +6,7 @@ use demi_command_protocol::line_counts;
 use demi_runner_protocol::wire;
 use std::io::Read;
 
-/// What a job's `job_exit` reports of its edits (`edit-tracking.md`
-/// § The report).
+/// What a job's `job_exit` reports of its edits (`crates/command-protocol/src/edits.rs`).
 #[derive(Default)]
 pub struct EditReport {
     pub files: Vec<wire::JobFileChange>,

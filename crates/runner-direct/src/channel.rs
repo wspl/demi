@@ -1,7 +1,6 @@
 //! A data channel's reader and writer, the one flow control every channel
 //! of a peer uses, a page's file operation's and a forwarded TCP
-//! connection's alike (`direct-channel.md` § Operations on the channel,
-//! `port-forwarding.md` § Flow control).
+//! connection's alike (`crates/runner-protocol/src/direct.rs`).
 //!
 //! What goes out: the channel takes its producer's next message only while
 //! its queue holds less than [`QUEUE_BYTES`], or a live view's `video`

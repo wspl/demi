@@ -1,6 +1,5 @@
-//! The command packages the conversations' commands bind to
-//! (`native-runtime.md` § Publish packages, then source artifacts on demand,
-//! § Backend deployment configuration): the descriptors of the published
+//! The command packages the conversations' commands bind to: the descriptors
+//! of the published
 //! releases, and where a runner downloads each package's executable. The
 //! artifact module makes the catalog at startup from the server release's
 //! `commands/`; an executable enters the store when the backend stores ahead
@@ -10,7 +9,18 @@
 //! stored object at `/native-artifacts/<sha256>`. The runner executables
 //! are sourced the same way, as their compressed copies. Each shard thread builds its own
 //! `CommandCatalog` from the catalog, since a catalog's artifact resolver
-//! lives on one thread.
+//! lives on one thread. A job that `demi host shell` starts on another Host
+//! receives the calling session's catalog.
+//!
+//! A local store's downloads need no credentials and expire never, like the
+//! runner installers': they reveal nothing a user owns and cannot change what
+//! runs, since the objects are the released programs, which the release
+//! publishes anyway, and each URL names a digest that the runner checks the
+//! download against, a digest that reached it over its authenticated
+//! connection. A runner's `artifact_location` request has no deadline of its
+//! own while its connection lives, since a fetch on a small server's slow disk
+//! or link is not a failure; the other questions a runner asks, such as a
+//! conversation's numbers, are answered from what the backend holds.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
@@ -94,8 +104,7 @@ pub struct Artifacts {
 }
 
 /// The targets the backend stores the release's package executables
-/// ahead for (`native-runtime.md` § Publish packages, then source artifacts
-/// on demand).
+/// ahead for (`crates/backend-runners/src/publication.rs`).
 #[derive(Default)]
 struct Ahead {
     /// Each target foreseen: queued, being stored or stored. A target whose
@@ -238,8 +247,7 @@ impl NativeCatalog {
 
     /// Makes sure the store holds the runner executable `artifact` of
     /// `target`, a runner release's, as its compressed copy, taking it from
-    /// the release's files when it does not (`native-runtime.md` § Runner
-    /// releases).
+    /// the release's files when it does not (`crates/backend-http/src/install.rs`).
     pub async fn source_runner(
         &self,
         target: &str,
@@ -261,8 +269,7 @@ impl NativeCatalog {
     /// The stored runner executable `artifact` of `target`, its compressed
     /// copy in the content coding, from its byte `from` on, sourced first
     /// when the store lacks it: from this backend's release, or from the
-    /// files of the `next` release an upgrade announced (`native-runtime.md`
-    /// § Runner releases). For a runner's update or download ahead, which
+    /// files of the `next` release an upgrade announced (`crates/backend-http/src/install.rs`). For a runner's update or download ahead, which
     /// resumes from the bytes it has, or an installer's download.
     pub async fn runner_executable(
         &self,
@@ -320,8 +327,7 @@ impl NativeCatalog {
     /// Stores ahead the package executables of each of `targets` that was
     /// not foreseen before: the targets of the Hosts this backend knows,
     /// as it starts, and the target of a Host that pairs or wakes
-    /// (`native-runtime.md` § Publish packages, then source artifacts on
-    /// demand). `store_ahead` stores them, in the background.
+    /// (`crates/backend-runners/src/publication.rs`). `store_ahead` stores them, in the background.
     pub fn foresee<'a>(&self, targets: impl IntoIterator<Item = &'a str>) {
         let Some(artifacts) = &self.artifacts else {
             return;
@@ -414,8 +420,7 @@ impl NativeCatalog {
     /// Sources the runner executables of the current release in `runners`,
     /// a server release's `runners/`, for the targets of the systems of the
     /// paired devices `control` lists, one after another, so that an update
-    /// never waits on the release's origin (`native-runtime.md` § Runner
-    /// releases). The device records name a system, not a target, so each
+    /// never waits on the release's origin (`crates/backend-http/src/install.rs`). The device records name a system, not a target, so each
     /// of the system's targets is sourced. A failure is logged: a runner's
     /// update sources its executable again.
     pub async fn source_paired_runners(

@@ -1,6 +1,20 @@
-//! The numbers stream (`native-runtime.md` § Conversation numbers): a
-//! service's requests for numbers of a conversation's sequence, which the
-//! runner forwards to the backend, and their answers.
+//! The numbers stream: a service's requests for numbers of a conversation's
+//! sequence, which the runner forwards to the backend, and their answers.
+//!
+//! A number the model reads, such as the browser's tab `t7`, is never given
+//! twice in a conversation. The service cannot keep the count: its state ends
+//! with each browser restart, conversation release and Cloud stop. The
+//! backend keeps it, and advances the sequence by `count` in its own
+//! transaction before it answers, so a number it gave out is never given
+//! again whether or not the service uses it; a service that reserves ahead
+//! leaves gaps, never repeats.
+//!
+//! ```text
+//! Service                        Runner                          Backend
+//!   |<-- POST /v1/numbers ----------|  opened after GET /v1/info     |
+//!   |--- {id 3, c1, tab, count 4} ->|--- numbers_reserve ----------->|
+//!   |<-- {id 3, first 9} -----------|<-- numbers_reserved -----------|  9..12
+//! ```
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;

@@ -147,8 +147,7 @@ impl Installed {
 
     /// The executable of `release` in place in `releases/<release>/`,
     /// checked against `expected`: the one there, or one downloaded from
-    /// `backend` as its compressed copy (`native-runtime.md` § Runner
-    /// releases). The download keeps its bytes in
+    /// `backend` as its compressed copy (`crates/backend-http/src/install.rs`). The download keeps its bytes in
     /// `releases/.download-<release>/` across attempts and resumes from
     /// them; it is decompressed and checked once complete, and bytes that
     /// fail the check are removed. The caller holds the install lock.

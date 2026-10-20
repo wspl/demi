@@ -15,8 +15,7 @@ use demi_live_view_protocol::{
 
 use crate::mobile::{DeviceId, Orientation, MobilePlatform};
 
-/// The declared operation that serves a view (`native-runtime.md` § User
-/// streams).
+/// The declared operation that serves a view (`crates/runner-jobs/src/commands/streams.rs`).
 pub const OPERATION: &str = "mobile.live";
 
 /// A notice's code when the watched device's capture failed; the next

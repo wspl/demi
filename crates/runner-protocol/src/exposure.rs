@@ -1,5 +1,5 @@
 //! A request the backend makes for the user to one of the device's exposed
-//! ports (`port-exposure.md`): the runner makes it to `127.0.0.1:<port>`,
+//! ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`): the runner makes it to `127.0.0.1:<port>`,
 //! or `https://localhost:<port>`, with its own HTTP client, and answers its
 //! status and headers, the body travelling as pipes each way.
 

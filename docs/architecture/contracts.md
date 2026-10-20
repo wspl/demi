@@ -113,7 +113,7 @@ Every value from outside a process follows the same rule:
   belongs to the values whose schema is data: command arguments, whose schema
   travels in the manifest, where both ends check it with `jsonschema` and word
   a failure the same way
-  ([Parse input and render help](../execution/commands.md#parse-input-and-render-help)),
+  (`crates/command-declarations/src/parse.rs`),
   and a plugin's page call parameters, which the plugin host checks against
   the schema the plugin's manifest declares before the plugin sees them.
 
@@ -124,7 +124,7 @@ same for every string serde accepts, while garde's default counts bytes and
 JavaScript's `length` counts UTF-16 code units. So the one attribute gives
 both ends the same limit. For example, `😀` is one scalar value and two UTF-16
 code units, so a file name of 255 of them fits a limit of 255
-([Commands](../execution/commands.md)). Truncation and token estimates have
+(`crates/command-declarations/src/lib.rs`). Truncation and token estimates have
 their own units, defined with the rules that use them
 ([Token estimates](../agent/compaction.md#token-estimates)).
 
@@ -136,7 +136,7 @@ These are the points where values enter, and what a failure does:
 | A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/rendering.md#frame-protocol)) |
 | A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes (`crates/runner/src/main.rs`) |
-| Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
+| Invocation metadata and records between a runner and a command program | `command-protocol` | Validation and flow control (`crates/command-protocol/src/lib.rs`) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
 | A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field (`crates/backend-http/src/plugins.rs`) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |

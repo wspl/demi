@@ -67,7 +67,7 @@ Each executable is built for the targets where it runs:
 | Executable | Targets | Reason |
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
-| `demi-file`, `demi-browser`, `demi-claude-code`, `demi-fetch`, `demi-mobile` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
+| `demi-file`, `demi-browser`, `demi-claude-code`, `demi-fetch`, `demi-mobile` | All six | A released command package supplies its operations on every target (`crates/command-protocol/src/package.rs`) |
 | `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`; `aarch64-apple-darwin`, `x86_64-apple-darwin` in development only | Servers run Linux, and a release carries the Linux targets; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 | `demi-server` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | It installs, upgrades and rolls back a server, which runs Linux ([Upgrades](upgrades.md)) |
@@ -337,7 +337,7 @@ Each executable has its own kind of release:
   release directory holds `descriptor.json` and one subdirectory per target
   with the executable and its zstd-compressed copy, which the backend
   publishes as it is
-  ([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
+  (`crates/backend-runners/src/publication.rs`).
   Packaging keeps each compressed copy in `.cache/compressed/<sha256>`, named
   by the executable's SHA-256, and reuses it for the same executable, so
   packaging an unchanged program again compresses nothing. `xtask dev`
@@ -353,7 +353,7 @@ Each executable has its own kind of release:
   A release carries only the program: software the program installs, such
   as `demi-browser`'s Chrome for Testing, is the program's own
   (`crates/command-package-browser-chrome/src/driver/installation.rs`).
-  [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
+  `crates/command-protocol/src/package.rs`
   defines the descriptor.
 - **Runner.** A runner release is a directory named by the hash of its
   contents, holding `manifest.json` and one executable per target. Once that
@@ -395,7 +395,7 @@ files and leaves the top-level pointer as it was.
 A release carries the targets it was packaged with. The release workflow
 packages all six; a developer packages the targets of the Hosts in use. The
 backend loads either kind the same way, whatever its object store
-([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)).
+(`crates/command-protocol/src/package.rs`).
 A packaged version is immutable: packaging different artifacts needs a new
 workspace version, or, for a developer's release, removing its directory
 before packaging it again.
@@ -405,7 +405,7 @@ The backend loads the command package releases of its
 artifact locations to runners; publishing writes no release catalog into
 application source. Before it accepts requests, the backend publishes the
 command artifacts into its object store, and runners download them from there
-([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
+(`crates/backend-runners/src/publication.rs`).
 
 The Cloud image embeds a Linux runner release and the command package releases.
 `bun xtask cloud-image package` assembles the image on a Linux builder of the
@@ -446,9 +446,9 @@ the release's files:
 
 `release.json` names where the files are: for a published release, the
 GitHub release that offers them; for a developer's, the directory they lie
-in ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
+in (`crates/backend-runners/src/publication.rs`).
 The backend takes each program from there the first time a Host needs it
-([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)),
+(`crates/backend-runners/src/publication.rs`),
 so a server downloads the Windows programs only when a Windows laptop pairs.
 
 The backend serves `web/`, installs runners from `runners/`, and publishes
@@ -458,7 +458,7 @@ every package under `commands/`; the machine manager imports `image/`
 same release, its Linux target's programs from the release's files, so the
 command artifacts it embeds are the ones the backend's catalog selects, and a
 Cloud starts them from the image instead of downloading them
-([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
+(`crates/runner-command-packages/src/cache.rs`).
 
 `bun xtask server-release` assembles a release from the executables
 `bun xtask native build` wrote, packaging them as the packaging above does:
@@ -764,7 +764,7 @@ cache. A test that drives the browser program answers its request for Chrome
 with that executable, as the runner would; the scenario through the backend
 installs that release into its runner's artifact cache, as the runner
 installs a download, with hard links where the system allows them
-([Install artifacts](../execution/native-runtime.md#install-artifacts)):
+(`crates/runner-command-packages/src/cache.rs`):
 no test downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
 does. On Linux the Chrome tests start Chrome with the pinned Chrome runtime,

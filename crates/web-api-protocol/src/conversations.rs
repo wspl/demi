@@ -21,8 +21,7 @@ pub const TITLE_MAX: usize = 256;
 /// The most items one batch changes.
 pub const BATCH_MAX: usize = 100;
 
-/// Where a conversation's work runs (`sessions-and-targets.md` § Resolve a
-/// target): the user's Cloud, a directory on a paired device, or a
+/// Where a conversation's work runs (`crates/backend-database/src/selection.rs`): the user's Cloud, a directory on a paired device, or a
 /// workspace. A new conversation runs on the Cloud, in its session
 /// directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -193,8 +192,7 @@ pub struct ConversationSummary {
     /// Whether the conversation's agent works only by waiting for its
     /// primary Host, a paired device whose runner is away: every running
     /// agent's remaining work is a command whose start waits for it. A move
-    /// then stops nothing (`sessions-and-targets.md` § Switch the primary
-    /// target).
+    /// then stops nothing (`crates/backend-host-access/src/transition.rs`).
     pub only_waits_for_host: bool,
     /// The revision of the conversation's draft, 0 before its first save: a page reads the
     /// draft only when this is higher than the revision it holds.
@@ -217,7 +215,7 @@ pub struct ConversationSummary {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub hosts_revision: u64,
     /// The number of the conversation's latest attachment, 3 for `a3`, 0
-    /// before its first (`commands.md` § Attachment commands): a message
+    /// before its first (`crates/backend-host-access/src/attachment_commands.rs`): a message
     /// that names a higher number names one still to come, which shows once
     /// a summary raises this to it.
     #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -544,8 +542,7 @@ pub struct ConversationPatch {
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
     /// With `target`, tells the agent of the switch once it is made: the
-    /// user's message wakes the root (`sessions-and-targets.md` § Switch the
-    /// primary target).
+    /// user's message wakes the root (`crates/backend-host-access/src/transition.rs`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(custom(names_a_switch(&self.target)))]
     pub notify_agent: bool,

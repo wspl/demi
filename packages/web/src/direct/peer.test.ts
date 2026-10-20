@@ -4,8 +4,7 @@ import type { ChannelHeader } from '../api/generated/web-api'
 import { ChannelFailed, PeerChannels, openOperation } from './peer'
 import { PlayedConnection } from './played-connection'
 
-// An operation's channel on a connected peer (`direct-channel.md` § Choosing
-// the path): one that closes before it opens while the connection stands,
+// An operation's channel on a connected peer (`packages/web/src/direct/index.ts`): one that closes before it opens while the connection stands,
 // as one the runner could not acknowledge on a just reused stream id does,
 // is opened once more, and its sibling channels go on; a second such close,
 // or one on a connection that went, fails the operation, which then runs on
@@ -54,8 +53,7 @@ test('a second channel that never opens, or one whose connection went, fails the
 })
 
 /**
- * The channels a peer makes before its offer (`direct-channel.md` § Making
- * the channel): the `files` peer's probe channel, and for the `live` peer
+ * The channels a peer makes before its offer (`crates/runner-direct/src/lib.rs`): the `files` peer's probe channel, and for the `live` peer
  * no probe channel but the first live view's `video` channel, whose open
  * makes the peer ready and which that view then takes. Planted defects this
  * catches: a probe channel on the live peer, a second `video` channel for

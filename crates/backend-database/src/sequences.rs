@@ -18,8 +18,7 @@ pub fn next(connection: &Connection, sequence: Sequence) -> Result<u64, StorageE
 }
 
 /// The first of the next `count` numbers of `sequence`, which the database
-/// has advanced past when it answers (`native-runtime.md` § Conversation
-/// numbers).
+/// has advanced past when it answers (`crates/command-protocol/src/numbers.rs`).
 pub fn reserve(
     connection: &Connection,
     sequence: Sequence,

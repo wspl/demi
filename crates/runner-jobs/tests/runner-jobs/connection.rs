@@ -1,5 +1,4 @@
-//! What work under the runner asks the backend (`native-runtime.md`
-//! § Publish packages, then source artifacts on demand): where an artifact
+//! What work under the runner asks the backend (`crates/backend-runners/src/publication.rs`): where an artifact
 //! downloads from is answered once the backend has the artifact in its
 //! store, which on a small server can take long.
 

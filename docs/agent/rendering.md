@@ -32,7 +32,7 @@ with the command's own output and status. A shell call's `view` also holds
 the lists the conversation shows of changed files, which the backend computes
 as it stores the block and never changes: `files`, the call's own; `runFiles`,
 its run's up to it; `requestFiles`, its request's up to it
-([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows)).
+(`crates/agent-store/src/changes.rs`).
 A page shows the latest call's lists and counts nothing itself. In light form,
 only the latest call of each run carries `runFiles`, and only the latest of
 each request `requestFiles`, since a page uses no other.
@@ -214,8 +214,7 @@ commands*, and a click opens it to every step.
 - The row of the step that runs shows its tag: the time while its command
   runs; once the step ends, its tag goes with it into the run.
 - Folded, the files the run's calls changed show under the row, each once,
-  counted from its two ends within the run ([What the conversation
-  shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,
+  counted from its two ends within the run (`crates/agent-store/src/changes.rs`); open,
   each call shows its own.
 - A block brought into view inside a run, as a notice's call or a search
   result, marks its own row: a folded run opens for it and stays open

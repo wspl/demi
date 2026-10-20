@@ -1,9 +1,11 @@
-//! The file watch (`sessions-and-targets.md` § Every way to a Host): a page's
+//! The file watch (`crates/backend-host-access/src/lib.rs`): a page's
 //! subscriptions to what it keeps of a Host's files, and the Host's word that
 //! one of them changed. A conversation's watch carries its primary Host's
 //! subscriptions and, under a subscription's `host`, an attached host's; each
 //! host is admitted as a user stream is when a subscription first names it,
-//! never wakes a stopped Cloud, and is no activity. A device's folder dialog
+//! never wakes a stopped Cloud (whose files cannot change; the page opens its
+//! watch again when it wakes), and is no activity, so a page that shows files
+//! keeps no Cloud awake. A device's folder dialog
 //! watches its one device through device access. The shard holds each page's
 //! subscriptions on each Host, which pages that hold the same subject share
 //! (`RemoteHost::subscriber`), and renews them while the page renews them. The
@@ -86,7 +88,7 @@ impl dyn HostShard + '_ {
     }
 
     /// Opens a device's folder dialog's file watch through device access
-    /// (`sessions-and-targets.md` § Every way to a Host): every
+    /// (`crates/backend-host-access/src/lib.rs`): every
     /// subscription of it is outside a working tree. A device whose runner
     /// is not connected is out of reach.
     pub fn open_device_watch(&self, device: &DeviceId) -> OpenedWatch {

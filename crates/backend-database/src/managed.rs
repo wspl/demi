@@ -26,7 +26,7 @@ pub struct ManagedOperation {
 }
 
 /// One of the user's conversations as the Cloud's lifecycle weighs it
-/// (`sessions-and-targets.md` § How a conversation uses a device): whether
+/// (`crates/backend-cloud/src/uses.rs`): whether
 /// its files and commands are on the Cloud, the provider entry it infers
 /// with, and whether the Cloud is attached to it.
 #[derive(Debug, Clone, PartialEq, Eq)]

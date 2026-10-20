@@ -1,7 +1,33 @@
-//! `file.edit` (`commands.md` § Editing files): SEARCH/REPLACE blocks for
+//! `file.edit`: SEARCH/REPLACE blocks for
 //! one or several files, or `--old` and `--new` for one, matched against the
 //! files as they were, written together, and reported as the files now
 //! read.
+//!
+//! It is the way an agent changes the files of its task, made to do in one
+//! call what models otherwise write a Python script for (exact replacement,
+//! checked, over several files, with a build after), but failing loudly where
+//! `str.replace` changes nothing silently, and recording every change.
+//!
+//! The change travels on stdin rather than in arguments because a quoted
+//! heredoc passes text byte for byte, while an argument needs escaping (a
+//! model that edited a function with `--old $'…'` wrote each quote as `\x27`)
+//! and a command substitution drops the text's last newlines. `--old` and
+//! `--new` stay for a one-line change, and with them the command reads no
+//! stdin, so the input of a loop around it stays the loop's. A SEARCH matches
+//! text anywhere in the file, part of a line included, as Claude Code's Edit
+//! matches its `old_string`; an empty SEARCH creates its file and fails when
+//! the file exists, so an edit never overwrites a file it did not read. A
+//! SEARCH line of seven dots stands for any run of lines, so the agent names
+//! a function by its first and last lines; seven, because a line of three is
+//! Python's `...`, a placeholder in many files.
+//!
+//! A SEARCH must match exactly once, and every block of every file is matched
+//! against the files as they were, so nothing is written unless all matched,
+//! and a write that fails restores what was written before it. An error names
+//! the file by its full path, the block, the rule and that nothing was
+//! written, so the agent knows what to fix and that no file changed. A text
+//! with a line that is exactly a marker, or seven dots, cannot be written as
+//! a block; `--old` and `--new`, or `demi file patch`, write it.
 
 use std::{
     borrow::Cow,

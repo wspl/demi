@@ -51,10 +51,10 @@ over the manager's Unix socket.
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
 | `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), `crates/backend-accounts/src/lib.rs`, `crates/web-api-protocol/src/settings.rs` |
 | `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
-| `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the Claude Code machine, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
-| `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` and `demi attachment` groups | [Host operations](../execution/sessions-and-targets.md#host-operations) |
+| `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the Claude Code machine, and the provider test | Sessions and targets (`crates/backend-host-access/src/lib.rs`) |
+| `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` and `demi attachment` groups | Host operations (`crates/backend-host-access/src/access.rs`) |
 | `plugins` | `backend-plugins`, `demi-backend` (`plugins`) | The plugin host: the registry and its checks, the command set, instructions and context sources the agent server is given, each user's instances, the port's operations, page state and page calls (`backend-plugins`); the built-in plugins, in their order of registration (the backend's `plugins`) | [Plugins](../architecture/plugins.md) |
-| `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | `crates/runner/src/main.rs`, [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
+| `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | `crates/runner/src/main.rs`, Commands (`crates/command-declarations/src/lib.rs`), Native runtime (`crates/backend-runners/src/publication.rs`) |
 | `crates/backend-user-shard/src/lifecycle/mod.rs` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock and the conversation release (`backend-user-shard`) | `crates/backend-user-shard/src/lifecycle/mod.rs` |
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | Providers (`crates/backend-providers/src/lib.rs`), Models (`crates/shared-types/src/catalog.rs`), Usage and quota (`crates/backend-providers/src/usage/mod.rs`) |
@@ -81,7 +81,7 @@ agent tree that runs the turn, the conversation's host access that each tool
 call passes, and the runner connection that carries the tool's job all live in
 that shard. The edge takes part again only when the shard hands it bytes to
 copy, such as those of a download
-([Host operations](../execution/sessions-and-targets.md#host-operations)
+(`crates/backend-host-access/src/access.rs`
 follows one step by step).
 
 Each module's state lives in one of these places:
@@ -440,7 +440,7 @@ socket validates the entire frame before changing metadata or granting
 attachments. It resolves upload references to caller-owned blobs and gives
 each file the conversation's next attachment number, `a7`, from the sequence
 `demi attachment upload` takes its numbers from
-([Attachment commands](../execution/commands.md#attachment-commands)); the
+(`crates/backend-host-access/src/attachment_commands.rs`); the
 message enters at once and writes nothing to a Host, so a slow or broken link
 to the Host never holds a send and no stopped Cloud wakes for one. The agent
 receives an attachment record, with the same snippet for a text file, and the
@@ -603,7 +603,7 @@ At startup the backend:
 3. Loads the command package releases of its server release and publishes
    their descriptors into the object store; their artifacts enter it when
    first needed
-   ([Native runtime](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
+   (`crates/backend-runners/src/publication.rs`).
    An interrupt or termination signal during publication stops the start.
 4. Loads the instance secret and opens the control database; a new database
    receives its schema, and one of an earlier release is migrated
@@ -622,7 +622,7 @@ At startup the backend:
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
    Running commands are taken up as their runners connect, and a command
    that reports restores its conversation's tree
-   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)). The manager's
+   (`crates/backend-remote-host/src/device_jobs.rs`). The manager's
    `hello` on the first connection names its wire version, so a manager of
    another release stops the start here
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
@@ -644,7 +644,7 @@ is already open answers 503 `backend_closing`. Runner connections that are
 open keep working until step 2 closes them; a pipe a runner would open now is
 refused, so shutdown reads nothing from a Host. Shutdown stops nothing that
 runs on a Host: commands and Clouds go on, and the next start takes them up
-([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)):
+(`crates/backend-remote-host/src/device_jobs.rs`):
 
 1. Login flows are cancelled.
 2. Each shard ends its user's work in this order. The synchronization
@@ -723,7 +723,7 @@ the same flag.
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | Claude Code (`crates/backend-providers/src/llm/claude_releases.rs`) |
-| `DEMI_STUN_URLS` | The STUN servers pages and runners ask for their public address so a [direct channel](../execution/direct-channel.md) can cross networks, comma-separated `stun:` URLs. Default `stun:stun.cloudflare.com:3478`; empty keeps direct channels to one network. | [Direct channel](../execution/direct-channel.md#making-the-channel) |
+| `DEMI_STUN_URLS` | The STUN servers pages and runners ask for their public address so a `crates/runner-direct/src/lib.rs` can cross networks, comma-separated `stun:` URLs. Default `stun:stun.cloudflare.com:3478`; empty keeps direct channels to one network. | `crates/runner-direct/src/lib.rs` |
 | `DEMI_LOG` | What the backend writes to its standard error and its [server log](#request-ids-and-the-server-log), in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | Claude Code (`crates/provider-claude-code/src/live.rs`) |
 
 For example, a server whose backend sits behind Caddy on the same machine
@@ -972,7 +972,7 @@ machine's target; the conversation browser works once the agent has run
 The manager gives its Cloud's runners the artifact cache
 `.cache/dev-artifacts/` in the repository, which outlives every run, so a
 Cloud installs each program and Chrome once rather than at every wake or run
-([Install artifacts](../execution/native-runtime.md#install-artifacts)).
+(`crates/runner-command-packages/src/cache.rs`).
 
 ## Deployment and user ownership
 

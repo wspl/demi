@@ -591,7 +591,7 @@ pub enum TestResult {
         model: Option<String>,
         /// For a request to a port of the entry's device that the device
         /// has not exposed, that port, which the page offers to expose
-        /// with Expose Port before testing again (`port-exposure.md`).
+        /// with Expose Port before testing again (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",

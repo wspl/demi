@@ -5,8 +5,7 @@ import RenameDialog from '../ui/RenameDialog.vue'
 
 /**
  * A paired device's new name, which every page of the user's then shows,
- * the conversations it is attached to included (`sessions-and-targets.md`
- * § Attached hosts). The Cloud keeps its name and is never asked about.
+ * the conversations it is attached to included (`crates/backend-database/src/conversation_index.rs`). The Cloud keeps its name and is never asked about.
  */
 defineProps<{
   isOpen: boolean

@@ -120,7 +120,7 @@ prints it.
 
 `list` prints a table of the credentials, and `show` and `request` one
 credential as labelled lines with its fields as a table, a secret's value
-always `-` ([Output](../execution/commands.md#output)). `--json` returns
+always `-` (`crates/shared-types/src/output.rs`). `--json` returns
 the same, an array or the credential, never a secret value.
 
 ## Requests and routes

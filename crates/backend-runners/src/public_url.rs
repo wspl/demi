@@ -1,5 +1,4 @@
-//! The backend's public address (`native-runtime.md` § Backend deployment
-//! configuration): where runners and Cloud guests reach this backend.
+//! The backend's public address (`crates/backend-runners/src/publication.rs`): where runners and Cloud guests reach this backend.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, OnceLock};

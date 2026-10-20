@@ -1,5 +1,5 @@
 //! The users' exposed ports (`storage.md` § Control records,
-//! `port-exposure.md`): each a port of one of the user's Hosts, missing
+//! `crates/backend-user-shard/src/shard/exposed_ports.rs`): each a port of one of the user's Hosts, missing
 //! until the user enters it, and its label. A request the backend makes for
 //! the user reaches a device's port only while a row exposes it.
 
@@ -134,7 +134,7 @@ impl ControlService {
 
     /// Exposes a port of `device`, one of the user's Hosts: `port`, or
     /// none yet, with `label`. A port the device exposes already answers
-    /// its row as it is (`port-exposure.md` § Exposed ports, Recovery).
+    /// its row as it is (`crates/backend-user-shard/src/shard/exposed_ports.rs`, Recovery).
     pub async fn create_exposed_port(
         &self,
         user: UserId,

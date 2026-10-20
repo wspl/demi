@@ -1,4 +1,4 @@
-//! The invocation edit recorder (`edit-tracking.md`): what it records of a
+//! The invocation edit recorder (`crates/command-sdk/src/edits.rs`): what it records of a
 //! job's file changes, and what it leaves out.
 
 use std::{

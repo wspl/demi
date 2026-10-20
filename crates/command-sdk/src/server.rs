@@ -82,7 +82,7 @@ pub trait Handler: Send + Sync + 'static {
     }
 
     /// Takes the connection's numbers source before the first call
-    /// (`native-runtime.md` § Conversation numbers); the runner's numbers
+    /// (`crates/command-protocol/src/numbers.rs`); the runner's numbers
     /// stream answers its draws.
     fn numbers(&self, numbers: Numbers) {
         // A service that names nothing with conversation numbers draws none.
@@ -90,7 +90,7 @@ pub trait Handler: Send + Sync + 'static {
     }
 
     /// Takes the connection's message sender before the first call
-    /// (`native-runtime.md` § Messages to the plugin); the runner's messages
+    /// (`crates/command-protocol/src/messages.rs`); the runner's messages
     /// stream takes what it sends.
     fn messages(&self, messages: Messages) {
         // A service whose plugin needs to hear nothing sends nothing.
@@ -98,7 +98,7 @@ pub trait Handler: Send + Sync + 'static {
     }
 
     /// Takes the connection's artifacts source before the first call
-    /// (`native-runtime.md` § The artifacts stream); the runner's artifacts
+    /// (`crates/command-protocol/src/artifacts.rs`); the runner's artifacts
     /// stream answers its requests.
     fn artifacts(&self, artifacts: Artifacts) {
         // A service that needs nothing beside its executable asks for none.
@@ -123,8 +123,7 @@ fn relay_of<A: Asked>(asks: mpsc::Receiver<Pending<A>>) -> Relay {
 
 /// An invocation's writer: its records, in the order its handler wrote
 /// them. A medium's records are written in one turn, so no other record of
-/// the invocation comes between them (`native-runtime.md` § Response
-/// records and completion).
+/// the invocation comes between them (`crates/command-protocol/src/lib.rs`).
 #[derive(Clone)]
 pub struct Output {
     sender: mpsc::Sender<Record>,
@@ -180,8 +179,7 @@ impl Output {
         self.write(bytes, Record::Stderr).await
     }
 
-    /// Returns `bytes`, which `facts` describe, as a medium (`commands.md`
-    /// § Return media): the runner hands it to the invocation's job. A
+    /// Returns `bytes`, which `facts` describe, as a medium (`crates/runner-jobs/src/commands/command_output.rs`): the runner hands it to the invocation's job. A
     /// writer of an invocation that is no job command's refuses it, as it
     /// refuses a medium over [`MAX_MEDIUM_BYTES`].
     pub async fn medium(&self, facts: MediumFacts, mut bytes: Bytes) -> Result<(), ServiceError> {
@@ -257,8 +255,7 @@ where
         return Err(ProtocolError::TooLarge.into());
     }
     let operations = catalog.operations;
-    // Invocations are not counted (`native-runtime.md` § Validation and flow
-    // control). The runner may abandon any number of requests it just sent,
+    // Invocations are not counted (`crates/command-protocol/src/lib.rs`). The runner may abandon any number of requests it just sent,
     // which h2's guard against a flood of resets would otherwise answer by
     // closing the connection.
     let mut builder = h2::server::Builder::new();

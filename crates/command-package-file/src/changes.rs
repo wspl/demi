@@ -1,6 +1,6 @@
 //! Writing the files an edit or a patch changes, together: each is written
 //! in turn, and a write that fails restores the files written before it
-//! (`commands.md` § File commands).
+//! (`crates/command-package-file/src/files.rs`).
 
 use std::{fs, path::PathBuf};
 

@@ -61,7 +61,7 @@ pub(crate) struct LiveOutput {
     running: watch::Sender<BTreeSet<CommandId>>,
     /// The commands whose start waits for their Host, each with its node,
     /// none for the root, and the call that started it
-    /// (`sessions-and-targets.md` § Host operations).
+    /// (`crates/backend-host-access/src/access.rs`).
     held: watch::Sender<BTreeMap<CommandId, (Option<NodeId>, String)>>,
 }
 

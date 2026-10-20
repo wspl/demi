@@ -19,7 +19,7 @@ import {
 } from './port-forwards'
 
 /**
- * Settings › Port Forwarding (`port-forwarding.md` § What the user sees):
+ * Settings › Port Forwarding (`crates/runner-protocol/src/forward.rs`):
  * the user's forwards, one row each with its ends, its switch and its
  * state, each opening its own page, which `shown` names and which is shown
  * in the list's place. Add Forward creates one at once and opens its page.

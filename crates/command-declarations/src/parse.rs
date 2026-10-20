@@ -1,5 +1,5 @@
 //! Argv parsing: selecting a command in a tree and reading its input from the
-//! command line (`commands.md` § Parse input and render help). clap parses
+//! command line. clap parses
 //! argv with a command built from the selected node's declaration, and
 //! reports a usage error in its own words; the `jsonschema` validator checks
 //! what clap cannot express and reports in the same shape.
@@ -18,8 +18,7 @@ use crate::{Group, Leaf, Node};
 
 /// A command line or arguments that do not fit the selected command, in
 /// clap's words on two lines, without a final newline: the error with its
-/// tips joined to it, and the command's usage with the pointer to `--help`
-/// (`commands.md` § Parse input and render help). A caller writes it to
+/// tips joined to it, and the command's usage with the pointer to `--help`. A caller writes it to
 /// stderr and exits 2.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -468,8 +467,7 @@ impl<B> Leaf<B> {
     /// The optional positional the command line passes over, so that its
     /// token fills the optional last positional after it: when its option
     /// form is given, or when the last positional token stands in its place
-    /// and is no value of its field (`commands.md` § Parse input and render
-    /// help). `browser eval t1 e21` gives the ref and `browser eval t1
+    /// and is no value of its field. `browser eval t1 e21` gives the ref and `browser eval t1
     /// 'document.title'` the expression.
     fn passed_over(&self, line: &Line) -> Option<&str> {
         let positionals = self.positionals.as_deref()?;

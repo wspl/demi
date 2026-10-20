@@ -98,7 +98,7 @@ export interface ConversationFileService {
   changes(directory?: string): ChangeSetSource
   /**
    * The history of the repository the working tree under `directory` is
-   * in, the conversation's without one (`edit-tracking.md` § Commits mode);
+   * in, the conversation's without one (`packages/web-ui/src/files/history.ts`);
    * null while the conversation's Host is not known.
    */
   history(directory?: string): CommitHistorySource | null
@@ -107,7 +107,7 @@ export interface ConversationFileService {
   /**
    * A request of the agent `node` (null for the conversation's own), with
    * the files its calls changed, as the agent's transcript holds it now:
-   * derived as it is read, never stored (`edit-tracking.md` § A request).
+   * derived as it is read, never stored (`crates/agent-store/src/changes.rs`).
    * Null while the transcript does not hold it.
    */
   request(node: string | null, request: string): TranscriptRequest | null

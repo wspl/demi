@@ -249,8 +249,7 @@ impl<'a> Operation<'a> {
 }
 
 /// The number of the agent a browser command acts for: tabs, debugging
-/// sessions and temporary tabs belong to it (`native-runtime.md` § Command
-/// context).
+/// sessions and temporary tabs belong to it (`crates/command-protocol/src/invocation.rs`).
 pub fn agent(context: &demi_command_sdk::InvocationContext) -> Result<u64> {
     context
         .request

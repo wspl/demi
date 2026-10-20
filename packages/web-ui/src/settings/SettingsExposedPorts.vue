@@ -13,7 +13,7 @@ import ExposedPortDialog from './ExposedPortDialog.vue'
 import { exposedPortName, type ExposedPortChange, type SettingsExposedPort } from './exposed-ports'
 
 /**
- * A device's Exposed Ports (`port-exposure.md` § Exposed ports): each port
+ * A device's Exposed Ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`): each port
  * with its label, *11434 · Ollama*, and the address Demi's requests reach
  * it at, with Copy. Expose Port adds a row with the port missing and opens
  * its editor, the one Edit… opens; Remove stops exposing it.

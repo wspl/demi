@@ -1,6 +1,5 @@
 //! What the agent can change of its own conversation
-//! (`sessions-and-targets.md` § What the agent can change, § Switch the
-//! primary target, § Hosts a conversation may reach): `demi host pair` asks
+//! (`crates/backend-host-access/src/host_commands.rs`, `crates/backend-host-access/src/transition.rs`, `crates/backend-database/src/conversation_index.rs`): `demi host pair` asks
 //! the user each time, then pairs a computer whose installer shows the code
 //! and attaches it; `demi host attach` attaches a device at once, which the
 //! next context block announces; `demi host move` asks once for a host the

@@ -379,7 +379,7 @@ impl<H: HostResolver> Node<H> {
     /// changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
         // The commands the node left running go on where their Host kept
-        // them (`sessions-and-targets.md` § Recovery and persistence).
+        // them (`crates/backend-remote-host/src/device_jobs.rs`).
         // One its Host cannot be reached for stays recorded running; the
         // failure is logged, and a report or an rpc call of it tries again.
         let _ = self.runtime.take_up(|_| true).await;
@@ -534,7 +534,7 @@ impl<H: HostResolver> NodeRuntime<H> {
 
     /// Takes up the commands the node ran that the conversation records
     /// running, that `which` picks and its environments do not hold
-    /// (`sessions-and-targets.md` § Recovery and persistence). Answers
+    /// (`crates/backend-remote-host/src/device_jobs.rs`). Answers
     /// whether `which` picked one, or why one stays recorded running without
     /// being taken up, as when its Host cannot be reached now; the next
     /// restore tries again.
@@ -890,7 +890,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 // connection is away nothing until it is back: the silence is
                 // the connection's (`crates/agent-session/src/reports.rs`). So
                 // does one whose start waits for its Host, which never ran
-                // (`sessions-and-targets.md` § Host operations).
+                // (`crates/backend-host-access/src/access.rs`).
                 let interval = interval_ms?;
                 if environment.unreachable(command).is_some() {
                     return None;

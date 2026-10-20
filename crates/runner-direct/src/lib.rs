@@ -1,11 +1,63 @@
-//! The runner's side of direct channels (`direct-channel.md`), with a page
-//! or with another runner (`port-forwarding.md`): the peers the backend
+//! The runner's side of direct channels, with a page or with another runner
+//! (a port forward): the peers the backend
 //! introduces, offering or answering, their UDP sockets on `127.0.0.1` and
 //! the local network's addresses, ICE, DTLS and SCTP through str0m, and
 //! each channel's work: a page's operation, whose header and answer this
 //! crate handles and which the runner carries out through [`Operations`],
 //! or a forwarded TCP connection, a byte stream both ways
 //! ([`ForwardChannel`]). Every channel goes through one flow control.
+//!
+//! A page and a paired device's runner can talk without the backend between
+//! them, when the network lets them: a user's Mac that is the Host of a
+//! conversation on a far server would otherwise send every byte of a file or
+//! a live view to the server and back to the same Mac.
+//!
+//! ```text
+//! relay:   page --WSS--> backend --WS--> runner --> Chrome, files
+//! direct:  page ====== WebRTC data channels ======> runner --> Chrome, files
+//!          page --WSS--> backend --WS--> runner   (the introduction, and
+//!                                                  everything else)
+//! ```
+//!
+//! The direct channel is an optimization of a path that always exists. The
+//! page starts every operation on the relay at once, tries the direct channel
+//! beside it, moves to it when it connects and goes back when it fails;
+//! nothing waits for it, so a firewall, a policy or a browser's permission
+//! prompt can never slow or break the page. Only operations whose bytes are
+//! large or whose round trips the user feels go direct, for a conversation
+//! whose primary Host is a paired device; a Cloud runs beside the backend, so
+//! it is never offered one.
+//!
+//! WebRTC rather than a server on `localhost`: a page from a public origin
+//! that connects to `http://127.0.0.1` is blocked as mixed content in Safari,
+//! and Chrome asks for local network permission first for `fetch` and
+//! WebSockets; a server on a fixed port also answers every web page and local
+//! program that finds it. A data channel listens on nothing until the backend
+//! introduces a page, needs no certificate and reaches a machine on the local
+//! network too. Each side learns its public address from a STUN server, which
+//! sees that the browser and the device asked and carries none of their
+//! traffic; it does not work where both networks map each connection to a new
+//! address (symmetric NAT) or block UDP, and the relay then serves everything.
+//!
+//! The backend's introduction is the only check: a runner accepts no peer it
+//! was not told about, and everything a peer then does is the device owner's
+//! work on their own device, for any of their conversations on it. Demi adds
+//! no gate per conversation or per operation; the page names the conversation
+//! in each operation so the runner acts in that conversation's directory. The
+//! channel is encrypted end to end with DTLS, the fingerprints travelling in
+//! the offer and the answer.
+//!
+//! A page keeps two peers with a device: one for files and calls, whose SCTP
+//! association keeps its standard congestion window, and one for live views,
+//! whose association runs without it. A live view's sender limits itself by
+//! its own rate control, which a loss only delays, while SCTP's window halves
+//! the rate at every loss (at 2 % loss a picture stays near 1 Mbps on a link
+//! of 8); its association also resends a lost chunk after 50 ms at the least
+//! where SCTP's defaults wait a second, and queues more on its `video`
+//! channels, since the view's own window is its limit. A bulk file transfer
+//! has no such control, so it keeps the window. The change is the runner's
+//! sender alone; the browser's side is unchanged. Each peer counts toward the
+//! runner's limit of peers.
 //!
 //! The peers run on a thread of their own, off the runner's control
 //! thread, since a peer at full speed fills a core: the runner drives them

@@ -1,5 +1,4 @@
-//! A Host's value identity (`sessions-and-targets.md` § Every way to a
-//! Host): whose a Host handle is, the device it is on and the directory its
+//! A Host's value identity (`crates/backend-host-access/src/lib.rs`): whose a Host handle is, the device it is on and the directory its
 //! work starts in. Only this crate makes keys, and it makes a conversation's
 //! only against a lease of that conversation's file gate
 //! (`Devices::conversation_host`).

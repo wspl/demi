@@ -1,6 +1,4 @@
-//! The product's `demi host` group (`sessions-and-targets.md` § Attached
-//! hosts, § What the agent can change; `commands.md` § Demi command
-//! inputs): `list` names the Hosts the calling conversation reaches,
+//! The product's `demi host` group: `list` names the Hosts the calling conversation reaches,
 //! `current` its primary Host, and `shell --host` runs a script on one of
 //! them as one job there; `install-command` prints the command that installs
 //! the runner on a computer; `devices` lists the user's devices, `pair`
@@ -340,8 +338,7 @@ async fn devices_named(
 }
 
 /// Records the move to `target` as the conversation's pending move, which
-/// the shard makes once its tree is next idle (`sessions-and-targets.md`
-/// § Switch the primary target).
+/// the shard makes once its tree is next idle (`crates/backend-host-access/src/transition.rs`).
 pub async fn pend_move(
     shard: &dyn HostShard,
     conversation: &ConversationId,
@@ -751,8 +748,7 @@ async fn detach(
 }
 
 /// `demi host move`: checks that the directory is one on the host now, then
-/// records the move, which applies when the conversation's work ends
-/// (`sessions-and-targets.md` § What the agent can change).
+/// records the move, which applies when the conversation's work ends.
 async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
         args: MoveArgs { directory, .. },
@@ -781,7 +777,7 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
     }
     // A command stopped while the Host wakes or answers releases its access
     // and records no move. The move keeps the directory as the Host names
-    // it (`sessions-and-targets.md` § Resolve a target).
+    // it (`crates/backend-database/src/selection.rs`).
     let directory = tokio::select! {
         resolved = shard.canonical_directory(&record, &directory) => resolved.map_err(|refusal| match refusal {
             DirectoryRefusal::Offline(reason) => RpcError::Failed(reason),
@@ -917,8 +913,7 @@ async fn shell(
         invocation,
     } = call;
     // Without a script argument stdin is the script, as `ssh host bash -s`
-    // takes it, and the job gets no stdin of its own (`commands.md` § Demi
-    // command inputs). It is not the declaration's stdin field: that one,
+    // takes it, and the job gets no stdin of its own (`crates/command-declarations/src/lib.rs`). It is not the declaration's stdin field: that one,
     // given as its positional, would leave stdin unread, where a script
     // argument streams it to the far program.
     let (script, streams_stdin) = match script {

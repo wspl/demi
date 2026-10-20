@@ -1,5 +1,5 @@
 //! A command whose start waits for its Host, a paired device whose runner
-//! is away (`sessions-and-targets.md` § Host operations): it sends no
+//! is away (`crates/backend-host-access/src/access.rs`): it sends no
 //! interval report while it waits, a turn that ends leaves it waiting and
 //! the user's Stop of any later turn ends it, and the tree says, when it only waits for the
 //! device, that a move stops nothing (§ Switch the primary target). The

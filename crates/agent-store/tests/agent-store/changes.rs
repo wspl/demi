@@ -1,6 +1,5 @@
 //! The lists of changed files a transcript's shell calls carry
-//! (`edit-tracking.md` § What the conversation shows, § Within the working
-//! directory): a call's own, its run's and its request's, as the session
+//! (`crates/agent-store/src/changes.rs`): a call's own, its run's and its request's, as the session
 //! lists a call within its agent's directory and a stored transcript is
 //! listed again in order.
 

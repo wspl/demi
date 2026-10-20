@@ -175,7 +175,7 @@ pub fn relative_to(directory: &str, path: &str) -> Option<String> {
 
 /// Whether `path` is `directory` or inside it, judged by their parts
 /// after `.` and `..` are taken out, without following a link
-/// (`edit-tracking.md` § Within the working directory). Both are read in
+/// (`crates/agent-store/src/changes.rs`). Both are read in
 /// the spelling `directory` has: a Windows one, by its drive or share,
 /// takes `\` and `/` as separators and compares its parts as Windows
 /// does, ignoring case; a Posix one compares them exactly, a `\` part of a
@@ -209,7 +209,7 @@ mod tests {
     use super::is_inside;
 
     /// What the conversation shows as changed is judged by these
-    /// (`edit-tracking.md` § Within the working directory). Pure, under a
+    /// (`crates/agent-store/src/changes.rs`). Pure, under a
     /// millisecond.
     #[test]
     fn a_path_is_inside_a_directory_by_its_parts() {

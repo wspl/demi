@@ -2,7 +2,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 
 /**
  * A button that starts work Demi also starts by itself, as Try Again and
- * Measure on a device's page (`direct-channel.md` § What the user sees):
+ * Measure on a device's page (`packages/web-ui/src/devices/direct.ts`):
  * only work the user asked for shows, never work Demi started. A click
  * while none runs asks the host to start it (`start`); a click while Demi's
  * runs starts nothing and adopts it. Either way the button is loading until

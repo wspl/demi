@@ -1,5 +1,5 @@
 //! A direct channel between a page and its device's runner
-//! (`direct-channel.md`): what the backend's introduction tells the runner,
+//! (`crates/runner-direct/src/lib.rs`): what the backend's introduction tells the runner,
 //! and each operation's channel as the page and the runner speak it, its
 //! header, answers and limits. The page receives these types too.
 
@@ -23,8 +23,7 @@ pub const MESSAGE_BYTES: usize = 64 * 1024;
 /// the queue drains. Larger queues measured slower, not faster.
 pub const QUEUE_BYTES: usize = 256 * 1024;
 /// The most bytes the runner keeps queued on a live view's `video` channel:
-/// the view's own window, not the queue, limits it (`direct-channel.md`
-/// § Making the channel).
+/// the view's own window, not the queue, limits it (`crates/runner-direct/src/lib.rs`).
 pub const VIDEO_QUEUE_BYTES: usize = 2 * 1024 * 1024;
 /// The most peers a runner keeps; it refuses another offer with `busy`.
 pub const MAX_PEERS: usize = 8;
@@ -47,7 +46,7 @@ pub const MAX_STUN_URLS: usize = 8;
 pub const CANDIDATE_CHARS: usize = 512;
 
 /// A STUN server pages and runners ask for the address the internet sees
-/// them at (`direct-channel.md` § Making the channel), as a `stun:` URL:
+/// them at (`crates/runner-direct/src/lib.rs`), as a `stun:` URL:
 /// `stun:host` or `stun:host:port`, port 3478 when it names none (RFC 7064),
 /// with an IPv6 host in brackets. The page passes it to the browser as it
 /// is; the runner resolves its host.
@@ -184,7 +183,7 @@ pub struct Introduction {
 /// Whom the backend introduces to a runner: a page of the device's owner,
 /// with what the runner needs of the user, or another runner of the owner's,
 /// by its device, for a port forward between the two
-/// (`port-forwarding.md` § The path of a connection).
+/// (`crates/runner-direct/src/pairs.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(
     tag = "kind",
@@ -198,7 +197,7 @@ pub enum Introduced {
         page: Introduction,
         /// The page's peer for live views, whose association runs without
         /// SCTP's congestion window and carries only their `stream` and
-        /// `video` channels (`direct-channel.md` § Making the channel).
+        /// `video` channels (`crates/runner-direct/src/lib.rs`).
         #[serde(default)]
         #[garde(skip)]
         live: bool,
@@ -221,8 +220,7 @@ pub enum OfferRefusal {
 
 /// The page's first message on a channel: the operation, and the
 /// conversation it acts for with the directory its work starts in, as the
-/// conversation's summary names them (`direct-channel.md` § Who may
-/// connect).
+/// conversation's summary names them (`crates/runner-direct/src/lib.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(
     tag = "op",

@@ -73,7 +73,7 @@ reaches the next spawn (`crates/agent-server/src/server/tree/profiles.rs`).
 | Instructions | The identity that opens the system prompt ([System prompt](system-prompt.md)) | The product's instructions; a plugin adds only its command groups' index entries ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
 | Subagent settings | Whether subagents are on, their limits (`crates/agent-server/src/server/tree/profiles.rs`), and the named subagent profiles (`crates/agent-server/src/server/tree/profiles.rs`) with whether each is enabled, as data, asked at each spawn and each `demi agent profiles` | The user's current settings, which the user edits in the Subagents section of settings |
 | Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's (`crates/agent-server/src/node/mod.rs`) | The backend's provider assembly (`crates/backend-user-shard/src/conversation/providers.rs`) |
-| The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
+| The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access (`crates/backend-host-access/src/access.rs`) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](transcript.md#context)) | The conversation's execution context, then each plugin that is a context source, while the user has it on |
 
 A node's system prompt is therefore its identity (the instructions, or a
@@ -112,7 +112,7 @@ Admission is decided when an action arrives:
 
 A running action holds a lease on its tree's admission. A target switch or an
 archive reserves the idle tree through the same admission
-([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
+(`crates/backend-host-access/src/transition.rs`),
 and a running turn is conversation activity
 (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 
@@ -244,9 +244,9 @@ marked executing completes as an error
 `Tool call interrupted: the backend stopped before its result was recorded`,
 followed by its command's number when it had one, which the backend takes up
 again when its runner connects
-([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)):
+(`crates/backend-remote-host/src/device_jobs.rs`):
 its outcome is unknown, and it never runs again
-([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
+(`crates/backend-remote-host/src/device_jobs.rs`).
 The restored session is idle. A session restored from an interrupted
 turn holds its waiting input until the node's next action.
 Until then its transcript ends with the interruption record, so a later
@@ -476,9 +476,9 @@ that replays it, and a short number is copied without a slip.
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered (`crates/command-package-browser-chrome/src/tabs/registry.rs`) |
 | A simulator `demi mobile` opened | `m2` | The conversation, across its Hosts | The backend, when the device is opened (`crates/command-package-mobile/src/operations.rs`) |
-| An attachment, the user's or the agent's | `a3` | The conversation | The backend, when a send or `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
+| An attachment, the user's or the agent's | `a3` | The conversation | The backend, when a send or `demi attachment upload` stores it (`crates/backend-host-access/src/attachment_commands.rs`) |
 | An element reference | `e37` | Its tab, or its device | The conversation browser, as it observes the tab, or `demi mobile inspect` |
-| A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
+| A host | Its name, as `demi host list` shows it | The conversation's hosts | The user (`crates/backend-database/src/conversation_index.rs`) |
 
 - **Never twice.** A number is not given again after a crash, a restore or a
   Fork either: the backend stores the next number of each sequence before it

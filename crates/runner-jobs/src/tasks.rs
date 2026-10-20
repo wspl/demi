@@ -71,7 +71,7 @@ const PIPE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 pub struct JobTable {
     entries: HashMap<WorkId, Entry>,
     /// Every job id the table started, which it never starts again
-    /// (`sessions-and-targets.md` § Recovery and persistence).
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     started: HashSet<String>,
     running: JoinSet<WorkId>,
     config: Arc<JobConfig>,

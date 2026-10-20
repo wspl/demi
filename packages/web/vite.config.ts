@@ -47,8 +47,7 @@ function workspaceVersion(): string {
 }
 
 /**
- * The page's one service worker (`direct-channel.md` § Bytes the browser
- * fetches itself), served from the root so that its scope is the whole origin:
+ * The page's one service worker (`packages/web/src/direct/raw-bridge.ts`), served from the root so that its scope is the whole origin:
  * the development server transforms it on request, and the build emits it
  * beside the page under its fixed name.
  */

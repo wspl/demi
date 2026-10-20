@@ -22,8 +22,7 @@ fn framed(message: serde_json::Value) -> bytes::Bytes {
 
 /// The page's side of the stream, which answers the view's demands for
 /// input as the runner does: one at a time, so a second demand while one
-/// is open is the runner's refusal (`native-runtime.md` § Request body and
-/// input demand).
+/// is open is the runner's refusal (`crates/command-protocol/src/lib.rs`).
 pub(crate) struct Page {
     input: demi_command_sdk::CommandInput,
     output: demi_command_sdk::CommandOutput,

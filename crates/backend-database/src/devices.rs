@@ -58,7 +58,7 @@ pub struct DeviceRecord {
     pub claimed_at: Timestamp,
     pub last_seen_at: Option<Timestamp>,
     /// What its runner last reported its artifact cache holds
-    /// (`native-runtime.md` § Installed artifacts).
+    /// (`crates/runner-command-packages/src/cache.rs`).
     pub installed: Vec<HostArtifact>,
     /// The operating system its runner last reported; none before its
     /// runner first connected.
@@ -74,7 +74,7 @@ pub struct DeviceRecord {
     /// lifetime cap counts from it (`managed-hosts.md` § Lifecycle and
     /// capacity). None for a paired device and a Cloud that never booted.
     pub cloud_started_at: Option<Timestamp>,
-    /// How pages reach it (`direct-channel.md` § Choosing the path).
+    /// How pages reach it (`packages/web/src/direct/index.ts`).
     pub route: DeviceRoute,
     /// A paired device's number among its user's devices of its logo; none
     /// before its runner first reported its system, and for a Cloud.
@@ -83,7 +83,7 @@ pub struct DeviceRecord {
     pub machine: Option<ManagedMachine>,
     /// The home its runner last reported; none before its runner first
     /// reported one, or since the upgrade that began keeping it
-    /// (`sessions-and-targets.md` § Resolve a target).
+    /// (`crates/backend-database/src/selection.rs`).
     pub home: Option<String>,
     /// Why it will not start its runner by itself after a restart, as its
     /// runner last reported (`crates/runner/src/autostart.rs`);
@@ -456,7 +456,7 @@ impl ControlService {
     /// Records the operating system, the runner release, the instance and
     /// the home `device`'s runner reported in its hello, and advances the
     /// execution context of each conversation whose context the report
-    /// changes (`sessions-and-targets.md` § Resolve a target): when the
+    /// changes (`crates/backend-database/src/selection.rs`): when the
     /// system changed, of those whose primary Host the device is; when the
     /// home differs from the one its contexts named before, the Cloud's
     /// `/home/demi` before its first report, of those whose context names a
@@ -743,7 +743,7 @@ impl ControlService {
     }
 
     /// Records that the backend's shutdown ended the connections of
-    /// `devices` (`sessions-and-targets.md` § Recovery and persistence).
+    /// `devices` (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn set_devices_ended_by_shutdown(
         &self,
         devices: Vec<DeviceId>,

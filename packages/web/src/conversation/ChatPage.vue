@@ -55,7 +55,7 @@ const exposedPorts = useExposedPortSettings()
 /**
  * Expose Port on a turn that failed for a port of the user's device the
  * device had not exposed: the port is made sure to be exposed, which it may
- * be by now, then the turn resumes (`port-exposure.md` § Exposed ports).
+ * be by now, then the turn resumes (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
  */
 async function exposeAndResume(conversation: Parameters<typeof store.start>[0], deviceId: string, port: number): Promise<void> {
   if (await exposedPorts.expose(deviceId, port)) {

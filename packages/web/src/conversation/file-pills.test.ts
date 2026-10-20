@@ -4,7 +4,7 @@ import type { Block, ChangedFile, EditedFile, ModelSelection } from '@demicodes/
 
 // A conversation outside a project shows no changed-file pills, under a
 // call or under a folded run; one in a project shows both
-// (`edit-tracking.md` § What the conversation shows). The rows are the
+// (`crates/agent-store/src/changes.rs`). The rows are the
 // product's runs on a page of happy-dom, under what the conversation
 // session provides from what the conversation page tells it; the message
 // list around them lays out nothing in happy-dom. A few milliseconds,

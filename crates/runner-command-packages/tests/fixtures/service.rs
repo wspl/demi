@@ -136,7 +136,7 @@ impl Handler for Fixture {
                         .await?;
                 }
                 // Prints `before`, returns `count` media, one by default,
-                // and prints `after` (`commands.md` § Return media). Medium
+                // and prints `after` (`crates/runner-jobs/src/commands/command_output.rs`). Medium
                 // `i` is a PNG signature followed by bytes of `i`, `size`
                 // bytes in all, 16 by default; with `kind` "text", bytes
                 // that are no medium.

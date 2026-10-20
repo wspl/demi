@@ -278,7 +278,7 @@ pub(crate) struct Shared {
     stream_ends: RefCell<Vec<CancellationToken>>,
     /// Cancelled when the user next turns a plugin on or off, which makes
     /// what a direct channel's introduction told of the user's streams out
-    /// of date (`direct-channel.md` § Who may connect).
+    /// of date (`crates/runner-direct/src/lib.rs`).
     switched: RefCell<CancellationToken>,
     /// Each plugin's Host directories for the user, by its index, once
     /// read: every change goes through this shard.
@@ -500,8 +500,7 @@ impl Shared {
 #[derive(Clone)]
 pub struct UserPlugins(Rc<Shared>);
 
-/// What a package lost on a Host (`native-runtime.md` § Messages to the
-/// plugin).
+/// What a package lost on a Host (`crates/command-protocol/src/messages.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lost<'a> {
     /// The state of one package, whose service ended unsaid.
@@ -873,8 +872,7 @@ impl UserPlugins {
     /// What `lost` names was kept on a Host of each of `conversations` and
     /// ended without its package saying so: each plugin that binds such a
     /// package, that the user has on and that has panel tabs in one of the
-    /// conversations, receives `package_lost` for it (`native-runtime.md`
-    /// § Messages to the plugin). A plugin that shows nothing of a
+    /// conversations, receives `package_lost` for it (`crates/command-protocol/src/messages.rs`). A plugin that shows nothing of a
     /// conversation has nothing to correct.
     pub async fn package_lost(&self, lost: Lost<'_>, conversations: &[ConversationId]) {
         let plugins = match lost {

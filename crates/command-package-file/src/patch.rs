@@ -182,7 +182,7 @@ pub fn apply(
 /// `original` with `hunks` applied in order. A hunk's header gives no line
 /// counts that matter, as `git apply --recount` reads it: the hunk goes where
 /// its context and removed lines match, the only place or the one nearest
-/// its header's line (`commands.md` § File commands).
+/// its header's line (`crates/command-package-file/src/files.rs`).
 fn apply_hunks(
     original: &str,
     hunks: &[Hunk],

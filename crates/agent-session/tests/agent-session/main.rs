@@ -1175,7 +1175,7 @@ async fn a_save_that_fails_before_dispatch_completes_the_calls_with_the_failure(
 
 /// A call of a step completes in the transcript as soon as it returns, while
 /// the step's other call still runs, so the page shows its end and its
-/// changed files at once (`edit-tracking.md` § What the conversation shows).
+/// changed files at once (`crates/agent-store/src/changes.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_call_of_a_step_completes_as_it_returns_while_the_other_runs() {
     let provider = ScriptedRuntime::new([

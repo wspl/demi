@@ -3,7 +3,7 @@ import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
 
 /**
  * The attachments the gallery's conversation holds, as `demi attachment
- * upload` numbered them (`commands.md` § Attachment commands), over the
+ * upload` numbered them (`crates/backend-host-access/src/attachment_commands.rs`), over the
  * gallery's blobs, each with its file's size.
  */
 const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string }> = {

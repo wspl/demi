@@ -33,15 +33,15 @@ pub enum ServiceError {
     #[error("command handler failed: {0}")]
     Task(#[from] tokio::task::JoinError),
     /// The service could not draw conversation numbers
-    /// (`native-runtime.md` § Conversation numbers).
+    /// (`crates/command-protocol/src/numbers.rs`).
     #[error("conversation numbers: {0}")]
     Numbers(String),
     /// The service's message did not reach the runner's connection
-    /// (`native-runtime.md` § Messages to the plugin).
+    /// (`crates/command-protocol/src/messages.rs`).
     #[error("plugin message: {0}")]
     Messages(String),
     /// The runner installed no artifact the service asked for
-    /// (`native-runtime.md` § The artifacts stream).
+    /// (`crates/command-protocol/src/artifacts.rs`).
     #[error("artifact: {0}")]
     Artifacts(String),
     #[error("conversation cleanup failed; retire the service process: {0}")]
@@ -65,7 +65,7 @@ impl ServiceError {
 /// Whether a connection ended with `error` because its peer closed the
 /// transport: a write into a closed pipe or socket, a reset, or an end of
 /// input. After an answered shutdown that is how a connection may end, on
-/// either side (`native-runtime.md` § Invoke and retire a service).
+/// either side (`crates/runner-command-packages/src/lib.rs`).
 pub(crate) fn peer_closed(error: &h2::Error) -> bool {
     error.get_io().is_some_and(|io| {
         matches!(

@@ -1,4 +1,4 @@
-//! The local command client (`commands.md` § External command clients): a
+//! The local command client: a
 //! command alias forwards its command line to the runner's local endpoint and
 //! streams its standard input and output through it.
 
@@ -19,8 +19,7 @@ pub const CONTEXT_ENV: &str = "DEMI_CONTEXT_ID";
 /// [`RawCommand`].
 pub const RAW: &str = "raw";
 
-/// A command line a client forwards to the runner (`commands.md` § External
-/// command clients): the execution context it runs in, its root command and
+/// A command line a client forwards to the runner: the execution context it runs in, its root command and
 /// arguments, and whether its input is the job's own input. A request that
 /// breaks these rules is refused as it is read.
 #[derive(Serialize, Deserialize)]
@@ -215,8 +214,7 @@ pub trait Duplex: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Duplex for T {}
 pub type Stream = Box<dyn Duplex>;
 
-/// Waits for as long as the runner runs (`commands.md` § External command
-/// clients); a runner that is gone fails at once.
+/// Waits for as long as the runner runs; a runner that is gone fails at once.
 pub async fn connect(endpoint: &str, cancel: &CancellationToken) -> io::Result<Stream> {
     tokio::select! {
         _ = cancel.cancelled() => Err(io::Error::new(io::ErrorKind::Interrupted, "local connection cancelled")),
@@ -275,8 +273,11 @@ async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
     }
 }
 
-/// The file beside the socket that the runner keeps locked while it runs
-/// (`commands.md` § External command clients).
+/// The file beside the socket that the runner keeps locked while it runs. A
+/// refused connection looks the same whether the runner is busy or gone, so a
+/// client that is refused checks the lock and waits while it is held, and
+/// fails at once otherwise; the system releases the lock when the runner
+/// exits, even by crashing.
 #[cfg(unix)]
 pub const ALIVE: &str = "ipc.alive";
 

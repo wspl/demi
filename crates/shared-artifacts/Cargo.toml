@@ -19,12 +19,12 @@ testing = []
 
 [dependencies]
 # A runner executable's compressed copy, decoded as it streams to an
-# installer (`native-runtime.md` § Runner releases).
+# installer (`crates/backend-http/src/install.rs`).
 async-compression = { version = "0.4", features = ["tokio", "zstd"] }
 bytes.workspace = true
 futures-util.workspace = true
 # `zstd`: a command executable arrives in zstd content coding
-# (`native-runtime.md` § Publish artifacts before enabling commands).
+# (`crates/backend-runners/src/publication.rs`).
 reqwest = { workspace = true, features = ["rustls", "stream", "zstd"] }
 serde.workspace = true
 serde_json.workspace = true

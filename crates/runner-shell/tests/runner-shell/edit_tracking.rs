@@ -252,8 +252,7 @@ async fn a_move_carries_the_jobs_edits_to_the_new_name() {
 }
 
 /// A job lists its renames and removals, in order, beside its edits, so a
-/// request can follow its earlier calls' files (`edit-tracking.md`
-/// § A request): a move of a file the job did not change, a replacement
+/// request can follow its earlier calls' files (`crates/agent-store/src/changes.rs`): a move of a file the job did not change, a replacement
 /// from outside the workspace, and a removed folder named once by its own
 /// path; an `rm` that removed nothing lists nothing, and neither does one
 /// of a file the job made itself. A file removed and made again starts

@@ -1,4 +1,4 @@
-//! The command context (`native-runtime.md` § Command context): what every
+//! The command context (`crates/command-protocol/src/invocation.rs`): what every
 //! declared command of a job or a user stream knows beyond its arguments.
 //! The backend is its only source and builds it when the work starts.
 

@@ -1,5 +1,5 @@
-//! The media a handler returns (`commands.md` § Return media,
-//! `native-runtime.md` § Response records and completion): its writer sends
+//! The media a handler returns (`crates/runner-jobs/src/commands/command_output.rs`,
+//! `crates/command-protocol/src/lib.rs`): its writer sends
 //! each one as a medium record and its bytes, which the caller's exchange
 //! hands on whole, in its place among the output; an invocation that is no
 //! job's command cannot return one; and the bytes a medium may be.

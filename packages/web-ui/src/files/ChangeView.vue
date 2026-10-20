@@ -56,7 +56,7 @@ import type { FileContents } from './types'
 
 /**
  * One file of the repository's uncommitted changes or of one of its
- * commits (`edit-tracking.md` § Commits mode), or one file of a request of
+ * commits (`packages/web-ui/src/files/history.ts`), or one file of a request of
  * the conversation (§ What the conversation shows): its All Changes, from
  * before the request's first edit of it to after its last, or one of its
  * edits, which a control steps through. In Commits mode the sidebar is two

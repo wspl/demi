@@ -1,6 +1,17 @@
 //! What an invocation carries to a native command: its operation, command
 //! context, arguments, working directory and environment, and how it
 //! completes.
+//!
+//! The command context travels from the backend to the services like this:
+//!
+//! ```text
+//! Backend: builds it, keeps it in the job's or stream's record
+//!    | job_start { context }, service_open { context }
+//!    v
+//! Runner: keeps it in the job's live execution context
+//!    |-- native invocation { context, edits, cwd, env, args } --> service
+//!    `-- rpc_call { jobId } --> backend, which reads its own record
+//! ```
 
 use std::collections::BTreeMap;
 
@@ -81,8 +92,17 @@ pub enum ColorScheme {
     Dark,
 }
 
-/// What a declared command knows beyond its arguments. The backend is its
-/// only source; nothing reads it from the environment.
+/// What a declared command knows beyond its arguments: which conversation it
+/// serves, who started it, and the locale and color scheme its results are
+/// presented in. Work that belongs to no conversation names the provider
+/// entry it serves instead.
+///
+/// The backend is its only source, and nothing reads it from the environment:
+/// a script can change variables, and every program a job runs inherits them.
+/// So only declared commands receive it; the job's environment carries just
+/// an opaque handle that leads the runner to the job's execution context. A
+/// job another Host starts for `demi host shell` carries its invoking job's
+/// context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandContext {
@@ -107,7 +127,7 @@ pub struct Invocation {
     pub invocation_id: String,
     /// The command's path, such as `demi file edit`, which a handler that
     /// takes several values puts before each failure it reports
-    /// (`commands.md` § Handle an rpc call).
+    /// (`crates/host-interface/src/rpc.rs`).
     #[garde(length(min = 1))]
     pub command: String,
     #[garde(dive)]
@@ -145,7 +165,7 @@ pub struct Invocation {
     pub live_input: Option<bool>,
     /// The media types the job may show the model, for an invocation a
     /// job's command makes; none for a user stream or a package call, which
-    /// cannot return media (`commands.md` § Return media).
+    /// cannot return media (`crates/runner-jobs/src/commands/command_output.rs`).
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -169,8 +189,7 @@ pub struct Viewable {
     pub media_types: Option<Vec<String>>,
 }
 
-/// Raw CLI metadata from the local command client (`commands.md` § External
-/// command clients). The client names only its opaque execution context, in
+/// Raw CLI metadata from the local command client (`crates/runner-process/src/command_client.rs`). The client names only its opaque execution context, in
 /// `args`; the runner finds the command context through it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -208,7 +227,7 @@ pub struct Completion {
     pub error: Option<CommandError>,
 }
 
-/// The longest conversation name (`native-runtime.md` § Command context).
+/// The longest conversation name.
 pub const CONVERSATION_NAME_CHARS: usize = 64;
 
 /// A garde rule: the value names a conversation, or the provider entry that

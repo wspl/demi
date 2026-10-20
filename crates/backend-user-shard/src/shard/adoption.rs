@@ -66,8 +66,7 @@ impl Shard {
             self.mark(Part::Devices);
         }
         // The jobs the backend recorded on the device, which a backend that
-        // started again takes up (`sessions-and-targets.md` § Recovery and
-        // persistence).
+        // started again takes up (`crates/backend-remote-host/src/device_jobs.rs`).
         let recorded = match self.services().control.running_jobs(device.id.clone()).await {
             Ok(recorded) => recorded,
             Err(error) => {
@@ -136,7 +135,7 @@ impl Shard {
             conversations,
         };
         // A runner that started anew kept nothing of its packages' state
-        // (`native-runtime.md` § Messages to the plugin).
+        // (`crates/command-protocol/src/messages.rs`).
         let started_anew = device
             .runner_instance
             .is_some_and(|last| last != kept.instance);
@@ -227,7 +226,7 @@ impl Shard {
     /// Publishes a new connection of the device under the shard's policy,
     /// with what records its runner's hello: its system and release, and
     /// the advance of each execution context the report changes
-    /// (`sessions-and-targets.md` § Resolve a target). The record answers
+    /// (`crates/backend-database/src/selection.rs`). The record answers
     /// what settles a paired device's first home, which its caller runs
     /// while the connection serves, since the runner resolves its
     /// directories (`upgrades.md` § What crosses releases). None once the
@@ -245,8 +244,7 @@ impl Shard {
         let hello_instance = hello.instance;
         let home = runner.identity.home_dir.clone();
         // A Host of a target not stored for yet has its package executables
-        // stored ahead of its first command (`native-runtime.md` § Publish
-        // packages, then source artifacts on demand).
+        // stored ahead of its first command (`crates/backend-runners/src/publication.rs`).
         let native = &self.services().native;
         match &runner.native_target {
             Some(target) => native.foresee([target.as_str()]),
@@ -305,7 +303,7 @@ impl Shard {
     /// upgrade stopped it. Each tree's agent takes its commands up, which
     /// starts the Cloud again, whose runner's hello then says the commands
     /// were lost, to the upgrade when the release changed
-    /// (`sessions-and-targets.md` § Recovery and persistence).
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
         match self.services().control.running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),

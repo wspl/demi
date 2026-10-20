@@ -20,8 +20,7 @@ export interface CommandEnd {
  * How a command ended, as a shell row or a report row marks it (`rendering.md`
  * § Rendering boundary, § Command reports), that a stop waits for its
  * runner to end it (`crates/runner-shell/src/job.rs`), or that its
- * start waits for its Host, an offline device (`sessions-and-targets.md`
- * § Host operations): a row marks only what is not going as planned, and
+ * start waits for its Host, an offline device (`crates/backend-host-access/src/access.rs`): a row marks only what is not going as planned, and
  * a call's row and its notice mark it alike.
  */
 export type CommandEndMark =
@@ -70,7 +69,7 @@ export function runningTime(elapsedMs: number | null): string | null {
  * none, or how it ended and after how long, given how long it ran or has
  * run, `elapsedMs`. A lost command says why, as its tag does, and no time;
  * one a stop waits for says so, as its tag does (`crates/runner-shell/src/job.rs`), and so does one whose start waits for
- * its Host (`sessions-and-targets.md` § Host operations); none while the
+ * its Host (`crates/backend-host-access/src/access.rs`); none while the
  * time is unknown.
  */
 export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | null): string | null {

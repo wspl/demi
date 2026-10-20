@@ -1,5 +1,4 @@
-//! Commands outlive their connections and the backend (`crates/runner/src/connection/kept.rs`, `sessions-and-targets.md` § Recovery and
-//! persistence): a connection that drops and comes back within the grace
+//! Commands outlive their connections and the backend (`crates/runner/src/connection/kept.rs`, `crates/backend-remote-host/src/device_jobs.rs`): a connection that drops and comes back within the grace
 //! stops nothing, and the command reports its end with what it printed
 //! meanwhile; one that stays away loses the command for that reason; a
 //! backend that restarts takes its commands up again; and a release change
@@ -314,8 +313,7 @@ async fn started_unreceived(work: &mut Driven<'_>, network: &Network, home: &Pat
 /// A command whose start went into a connection its runner no longer read:
 /// the runner it went to, the same one, reconnects without listing it, and
 /// the start goes again, so the command runs once and ends as usual, late,
-/// with no loss reported (`sessions-and-targets.md` § Recovery and
-/// persistence). The production case: a Mac's connection dropped silently
+/// with no loss reported (`crates/backend-remote-host/src/device_jobs.rs`). The production case: a Mac's connection dropped silently
 /// and command 33 was reported lost.
 // About four seconds: a real device pairs, its job is a login shell, and
 // the call that starts it waits for two quiet seconds.

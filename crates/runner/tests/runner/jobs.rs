@@ -1,8 +1,7 @@
 //! Shell jobs as the backend runs them (`crates/runner-shell/src/lib.rs`): large
 //! output through functions and compound pipelines drains, a kill ends a
 //! job that blocks in a utility, and each job runs with the manifest its
-//! start names (`commands.md` § Dispatch the same declaration on each
-//! surface).
+//! start names (`crates/runner-jobs/src/commands/mod.rs`).
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -223,8 +222,7 @@ async fn a_job_that_ends_while_the_connection_is_lost_is_listed_and_its_exit_fol
     .unwrap();
 }
 
-/// The runner starts a job id once in its life (`sessions-and-targets.md`
-/// § Recovery and persistence): a start that arrives again while the job
+/// The runner starts a job id once in its life (`crates/backend-remote-host/src/device_jobs.rs`): a start that arrives again while the job
 /// runs leaves it running, once, and one that arrives after its end answers
 /// the exit the runner kept, so a start the backend sent again never runs
 /// a command twice. About a second: a login shell starts.
@@ -494,8 +492,7 @@ async fn reported(host: &mut Host, job: &str) -> (Vec<JobFileChange>, Vec<JobPat
 
 /// A job's report names what it wrote wherever it is, so a later move out
 /// of `/tmp` into the job's working directory carries the file's edits to
-/// its new name, which the backend then shows (`edit-tracking.md` § Within
-/// the working directory); a file a job made and removed is not listed at
+/// its new name, which the backend then shows (`crates/agent-store/src/changes.rs`); a file a job made and removed is not listed at
 /// all (§ The report). About a second: three jobs start a login shell.
 #[tokio::test]
 async fn a_move_out_of_tmp_carries_the_files_edits_and_a_made_and_removed_file_is_not_listed() {

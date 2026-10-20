@@ -36,7 +36,7 @@ pub struct ConversationRecord {
     /// The output revision the user last acknowledged; it only moves
     /// forward.
     pub read_revision: u64,
-    /// Where it runs (`sessions-and-targets.md` § Resolve a target).
+    /// Where it runs (`crates/backend-database/src/selection.rs`).
     pub target: Selection,
     /// Advanced by every change of the conversation's execution context,
     /// such as a target switch or a Host attached.
@@ -77,8 +77,7 @@ pub enum ConversationChange {
     /// A change of the conversation's model settings, which the
     /// conversation's settings order applies against the catalog.
     Settings(SettingsChange),
-    /// A switch of the primary target (`sessions-and-targets.md` § Switch the
-    /// primary target), which the target compare-and-set commits.
+    /// A switch of the primary target (`crates/backend-host-access/src/transition.rs`), which the target compare-and-set commits.
     Target(ConversationTarget),
 }
 
@@ -167,8 +166,7 @@ pub enum RecordChange {
     Model(ModelSelection),
     /// The conversation's new Workflow menu choice.
     Workflow(WorkflowChoice),
-    /// A device of the user's attached (`sessions-and-targets.md` § Attached
-    /// hosts); one attached already stays as it is.
+    /// A device of the user's attached; one attached already stays as it is.
     Attach(AttachedHostRecord),
     /// A detach of an attached device; a device that is not attached
     /// detaches as nothing.
@@ -533,8 +531,7 @@ impl ControlService {
                     // ones whose message was not delivered among them, and
                     // keeps the grants (`permissions.md` § Requests).
                     // It drops the move and the detaches an agent asked for
-                    // as well (`sessions-and-targets.md` § Switch the primary
-                    // target).
+                    // as well (`crates/backend-host-access/src/transition.rs`).
                     if *archived {
                         archive_in(&transaction, &id)?;
                     } else {
@@ -919,8 +916,7 @@ fn target_row(row: &Row<'_>) -> Result<Selection, StorageError> {
     })
 }
 
-/// A device attached to a conversation (`sessions-and-targets.md`
-/// § Attached hosts): a Host the conversation reaches besides its primary one.
+/// A device attached to a conversation: a Host the conversation reaches besides its primary one.
 /// A Fork keeps its source's in its operation's metadata. It has no name of
 /// its own: it goes by its device's, which [`AttachedHost`] carries as read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -931,7 +927,7 @@ pub struct AttachedHostRecord {
     /// The directory its commands start in, fixed when it was attached: the
     /// conversation's directory there for a departed primary target; none
     /// for a device `demi host attach` attached, whose commands start in its
-    /// home (`sessions-and-targets.md` § Attached hosts).
+    /// home.
     #[serde(deserialize_with = "Option::deserialize")]
     #[garde(skip)]
     pub cwd: Option<String>,
@@ -1013,7 +1009,7 @@ impl ControlService {
     /// The target switch's write, against `expected`, the selection the
     /// switch started from, and `from`, what it resolved to: it selects
     /// `to`'s directory, which makes its workspace when the user has none
-    /// (`sessions-and-targets.md` § Resolve a target), all in one
+    /// (`crates/backend-database/src/selection.rs`), all in one
     /// transaction, so of two switches from one selection exactly one
     /// wins. The winner records the switch for every node's next context
     /// block and advances the execution-context revision, which it
@@ -1117,8 +1113,7 @@ impl ControlService {
 /// Archives the conversation `id`. An archive withdraws the permission
 /// requests, decided ones whose message was not delivered among them, and
 /// keeps the grants (`permissions.md` § Requests); it drops the move and
-/// the detaches an agent asked for as well (`sessions-and-targets.md`
-/// § Switch the primary target).
+/// the detaches an agent asked for as well (`crates/backend-host-access/src/transition.rs`).
 pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result<(), StorageError> {
     connection.execute(
         "UPDATE conversation_hosts SET detaching = 0 WHERE conversation_id = ?1",
@@ -1136,7 +1131,7 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result
 
 /// Restores the conversation `id`. One whose project was deleted while it
 /// was archived moves back to its directory, into that directory's
-/// workspace, made again (`sessions-and-targets.md` § Resolve a target);
+/// workspace, made again (`crates/backend-database/src/selection.rs`);
 /// one whose device was revoked meanwhile keeps its directory there.
 fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> Result<(), StorageError> {
     connection.execute("UPDATE conversations SET archived = 0 WHERE id = ?1", [id.as_str()])?;
@@ -1157,7 +1152,7 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
 }
 
 /// A move an agent asked for, which waits for its conversation's tree to be
-/// idle (`sessions-and-targets.md` § Switch the primary target).
+/// idle (`crates/backend-host-access/src/transition.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingMove {
     pub id: String,
@@ -1443,8 +1438,7 @@ pub fn insert_attached_host(
     Ok(inserted)
 }
 
-/// Puts `device` on the list of hosts the conversation may reach
-/// (`sessions-and-targets.md` § Hosts a conversation may reach), where it
+/// Puts `device` on the list of hosts the conversation may reach, where it
 /// stays for the conversation's life; a device gone meanwhile, such as one
 /// revoked, joins nothing.
 pub fn add_reachable_host(
@@ -1462,10 +1456,14 @@ pub fn add_reachable_host(
     Ok(())
 }
 
-/// Whether the conversation may reach `device` (`sessions-and-targets.md`
-/// § Hosts a conversation may reach): it is the conversation's primary
-/// Host, the device of its project or the user's Cloud for a conversation
-/// there, or on its list.
+/// Whether the conversation may reach `device`: it is the conversation's
+/// primary Host, the device of its project or the user's Cloud for a
+/// conversation there, or on its list. Its agents work on any such host
+/// without asking again: attach it, detach it, move to it. Any other host,
+/// the Cloud included, needs the user's permission when the agent first tries,
+/// one host per request, and an allowed host stays on the list for the
+/// conversation's life. Listing the user's devices asks nothing: seeing a
+/// device is not reaching it.
 pub fn may_reach(
     connection: &Connection,
     conversation: &ConversationId,
@@ -1903,7 +1901,7 @@ mod tests {
 
     /// An archive drops what an agent asked for to happen once its
     /// conversation's work ends: the pending move and the pending detaches
-    /// (`sessions-and-targets.md` § Switch the primary target). A restore
+    /// (`crates/backend-host-access/src/transition.rs`). A restore
     /// brings neither back.
     #[tokio::test]
     async fn an_archive_drops_the_pending_move_and_the_pending_detaches() {

@@ -3,7 +3,7 @@ import type { SentenceText } from '../ui/ui-text'
 
 /**
  * A port of one of the user's devices that Demi's own requests for the
- * user may reach (`port-exposure.md` § Exposed ports), as the device's page
+ * user may reach (`crates/backend-user-shard/src/shard/exposed_ports.rs`), as the device's page
  * shows and edits it.
  */
 export interface SettingsExposedPort {

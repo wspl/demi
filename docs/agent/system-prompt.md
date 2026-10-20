@@ -3,7 +3,7 @@
 What a node's model reads before the conversation, who writes each part, and
 how a capability gets the model's attention without its whole manual. The
 transcript, context blocks and replay are the [agent runtime](runtime.md)'s;
-the command declarations and `--help` are [Commands](../execution/commands.md)'s;
+the command declarations and `--help` are those of `crates/command-declarations/src/lib.rs`;
 this document owns what the system prompt holds.
 
 ## What the model reads
@@ -84,7 +84,7 @@ order:
   or one of the user's paired devices, which can change while it lives; the
   current one's system and directory arrive in a context block before the
   first turn and after each change
-  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)). Other devices
+  (`crates/backend-host-access/src/transition.rs`). Other devices
   of the user are reached with `demi host`.
 - **The workspace.** The working directory is the task's workspace, which
   persists across turns. What the model makes, a new app, a download, notes,
@@ -119,7 +119,7 @@ order:
   whoever reads the reply: in a reply to the user, a file delivered to them,
   one they asked for or the work made for them, an image included, goes out
   as an attachment
-  ([Attachment commands](../execution/commands.md#attachment-commands)),
+  (`crates/backend-host-access/src/attachment_commands.rs`),
   placed as its block, `<attachment id="a3" />` on a line of its own, with
   the number the upload printed, and alone, not also a link to its path:
   two links to one file leave the user to tell them apart; a report to the
@@ -135,7 +135,7 @@ order:
   `[Fix the cart total](commit:3f2a9c1)`, with its repository's folder
   before it, `commit:src/v8@86229da`, when that repository is not the
   working directory's, which opens its changes
-  ([Commits mode](../execution/edit-tracking.md#commits-mode)).
+  (`packages/web-ui/src/files/history.ts`).
   The entry stands on its own and shows the wrong form beside the right one,
   `` `docs/execution/runner.md` `` and `` `3f2a9c1` `` against the links: a
   model writes paths and ids as code by habit, from terminals and code
@@ -173,7 +173,7 @@ lists every group of the node's command set, sorted by group path, each with
 its entry, the names of its operations, and where its details are. It opens
 with the paragraph of conventions every command follows unless its help says
 otherwise, such as how stdin bodies are passed and where output goes
-([Help](../execution/commands.md#help)). The
+(`crates/command-declarations/src/help.rs`). The
 renderer writes the operations' names and the pointer to `--help`; the entry
 is the declaration's text, at most 600 characters, refused at registration
 when longer.
@@ -209,7 +209,7 @@ names; no group does today.
 
 `demi <group> --help` lists the group's operations, each with its one-line
 summary, and `demi <group> <operation> --help` gives the operation's full
-usage, as [Help](../execution/commands.md#help) renders them. Help is
+usage, as `crates/command-declarations/src/help.rs` renders them. Help is
 deterministic, so the same read replays the same bytes. A model that needs a
 group reads its help once; after a compaction it reads it again when it
 needs it.

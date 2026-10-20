@@ -1,5 +1,4 @@
-//! A conversation whose Host goes offline (`sessions-and-targets.md` § Host
-//! operations, § Switch the primary target): the agent's command on its
+//! A conversation whose Host goes offline (`crates/backend-host-access/src/access.rs`, `crates/backend-host-access/src/transition.rs`): the agent's command on its
 //! offline primary device waits for the device and runs once it is back, a
 //! Stop ends every such wait, an earlier turn's too, and a move fails it, the command never sent; a command
 //! on an offline attached device fails at once with the device's offline
