@@ -1800,9 +1800,10 @@ export const LEFT_RUNNING_CALL = 'left-running-suite'
 
 /**
  * A turn that ended while a command it started runs on: the agent thought,
- * started the suite, and replied without waiting. The ended run's row says
- * what it did and wears the time the command has run until it ends. The
- * gallery's `leftRunningCommand` is it.
+ * started the suite, and replied without waiting. The suite's call is a row
+ * of its own under the run, wearing the time the command has run, until the
+ * command ends and the call joins the run. The gallery's `leftRunningCommand`
+ * is it.
  */
 export function leftRunningBlocks(): Block[] {
   return [
@@ -1812,7 +1813,7 @@ export function leftRunningBlocks(): Block[] {
     },
     ...inRun(
       { type: 'thinking', id: 'left-running-think', createdAt: iso(138_000), model: demoModel, text: 'The suite takes minutes: start it and let it report.', signature: null },
-      // Screenshots of the app's screens the run took first: the folded row holds their pictures and the command's time.
+      // Screenshots of the app's screens the run took first: the folded row holds their pictures.
       screenshotsCall(
         {
           id: 'left-running-shots',

@@ -11,9 +11,10 @@
  * What joins and ends a run:
  *
  * - Only a step that has ended joins its run. What still runs, a call being
- *   written or waiting for its result or thinking being written, is a row of
- *   its own under the run, so at the end of a running turn the run is what has
- *   happened and the row under it what happens now.
+ *   written or waiting for its result, a call whose command runs on after it
+ *   returned, or thinking being written, is a row of its own under the run, so
+ *   at the end of a running turn the run is what has happened and the row
+ *   under it what happens now.
  * - What ends a run is what the reader reads: the agent's text and the user's
  *   own words and decisions, never folded.
  * - A `resume` block ends none, as it shows nothing: the work after a Continue
@@ -36,7 +37,7 @@ import type { ShownBlock } from './whole-blocks'
 import { upperFirst } from '@demicodes/utils'
 import { formatSpan } from '../ui/dates'
 import { t } from './locales/text'
-import { parseToolCallInput, storedShellView } from './block-helpers'
+import { parseToolCallInput } from './block-helpers'
 import { reportMark, reportShown } from './command-reports'
 import { receiptRow } from './agent-receipts'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
@@ -138,11 +139,13 @@ function isEmptyThinking(block: MessageListBlock): boolean {
  *   running turn, as what the agent is doing. Once anything follows it or the
  *   turn ends, it has nothing to show and goes.
  * - Thinking blocks next to each other are one step.
- * - Only a step that has ended joins its run's row: a call once it returned,
- *   thinking once it is written. A step that still runs is a row of its own
- *   after the run's, as the step's own block: a call waiting for its result,
- *   wherever its run stands, and at the end of a running turn a call being
- *   written or thinking being written.
+ * - Only a step that has ended joins its run's row: a call once it returned
+ *   and the command it started, if any, ended, thinking once it is written. A
+ *   step that still runs is a row of its own after the run's, as the step's
+ *   own block: a call waiting for its result or whose command runs on, as
+ *   `commandRuns` says by the command's live frames, wherever its run stands,
+ *   and at the end of a running turn a call being written or thinking being
+ *   written.
  * - A run that holds only thinking shows no row while a step of it runs, until
  *   a step that says something joins it.
  * - A run's row is named after the run the backend stored (`runRowId`), so it
@@ -150,9 +153,22 @@ function isEmptyThinking(block: MessageListBlock): boolean {
  *   in any order. The row a lone step ran in becomes the run's row by taking
  *   its place (`succeedKeys`).
  */
-export function groupWork(blocks: readonly MessageListBlock[], running: boolean): MessageListBlock[] {
-  return groupRuns(blocks, running, new Map(), new Map())
+export function groupWork(
+  blocks: readonly MessageListBlock[],
+  running: boolean,
+  commandRuns: CommandRuns = NO_COMMAND_RUNS,
+): MessageListBlock[] {
+  return groupRuns(blocks, running, commandRuns, new Map(), new Map())
 }
+
+/**
+ * Whether the command the call `toolUseId` started still runs after the call
+ * returned, by the command's live frames (`shellRowRunning`).
+ */
+export type CommandRuns = (toolUseId: string) => boolean
+
+/** For a list that sees no command's live frames, as a share. */
+const NO_COMMAND_RUNS: CommandRuns = () => false
 
 /**
  * `groupWork` for a transcript that changes a little at a time, as a turn that
@@ -165,11 +181,11 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
  * changes is replaced, never changed in place (`applyTranscriptPatches`), so
  * the same block is the same content.
  */
-export function workGrouping(): (blocks: readonly MessageListBlock[], running: boolean) => MessageListBlock[] {
+export function workGrouping(): (blocks: readonly MessageListBlock[], running: boolean, commandRuns?: CommandRuns) => MessageListBlock[] {
   let last = new Map<MessageListBlock, GroupedRun>()
-  return (blocks, running) => {
+  return (blocks, running, commandRuns = NO_COMMAND_RUNS) => {
     const next = new Map<MessageListBlock, GroupedRun>()
-    const rows = groupRuns(blocks, running, last, next)
+    const rows = groupRuns(blocks, running, commandRuns, last, next)
     last = next
     return rows
   }
@@ -186,6 +202,8 @@ interface GroupedRun {
    */
   next: MessageListBlock | undefined
   live: boolean
+  /** For each block, whether it is a call whose command runs on. */
+  runningOn: readonly boolean[]
   rows: readonly MessageListBlock[]
 }
 
@@ -196,6 +214,7 @@ interface GroupedRun {
 function groupRuns(
   blocks: readonly MessageListBlock[],
   running: boolean,
+  commandRuns: CommandRuns,
   last: ReadonlyMap<MessageListBlock, GroupedRun>,
   kept: Map<MessageListBlock, GroupedRun>,
 ): MessageListBlock[] {
@@ -218,10 +237,12 @@ function groupRuns(
     }
     const next = blocks[end]
     const live = running && next === undefined
+    const runBlocks = blocks.slice(index, end)
+    const runningOn = runBlocks.map((step) => step.type === 'tool_call' && commandRuns(step.toolUseId))
     const before = last.get(block)
-    const grouped = before && sameRun(before, blocks, index, end, next, live)
+    const grouped = before && sameRun(before, runBlocks, next, live, runningOn)
       ? before
-      : { blocks: blocks.slice(index, end), next, live, rows: runRows(blocks.slice(index, end), next, live) }
+      : { blocks: runBlocks, next, live, runningOn, rows: runRows(runBlocks, next, live, runningOn) }
     kept.set(block, grouped)
     rows.push(...grouped.rows)
     index = end
@@ -230,31 +251,38 @@ function groupRuns(
 }
 
 /**
- * Whether `grouped` was grouped from the run `blocks[index..end]`, followed by
- * `next`.
+ * Whether `grouped` was grouped from the run `blocks`, followed by `next`, with
+ * the same calls whose command runs on.
  */
 function sameRun(
   grouped: GroupedRun,
   blocks: readonly MessageListBlock[],
-  index: number,
-  end: number,
   next: MessageListBlock | undefined,
   live: boolean,
+  runningOn: readonly boolean[],
 ): boolean {
-  if (grouped.next !== next || grouped.live !== live || grouped.blocks.length !== end - index)
+  if (grouped.next !== next || grouped.live !== live || grouped.blocks.length !== blocks.length)
     return false
-  return grouped.blocks.every((block, offset) => block === blocks[index + offset])
+  return grouped.blocks.every((block, at) => block === blocks[at] && grouped.runningOn[at] === runningOn[at])
 }
 
 /**
  * The rows of one run, `blocks`, followed by `next`: the row of the steps
- * that ended, then each step that still runs.
+ * that ended, then each step that still runs. `runningOn` says, for each
+ * block, whether it is a call whose command runs on.
  */
-function runRows(blocks: readonly MessageListBlock[], next: MessageListBlock | undefined, live: boolean): MessageListBlock[] {
+function runRows(
+  blocks: readonly MessageListBlock[],
+  next: MessageListBlock | undefined,
+  live: boolean,
+  runningOn: readonly boolean[],
+): MessageListBlock[] {
   const rows: MessageListBlock[] = []
+  const commandRunning = new Set(blocks.filter((_block, at) => runningOn[at]))
   const steps = joinThinking(blocks.filter((step, at, run): step is WorkStep =>
     isWorkStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1))))
-  const runs = (step: WorkStep, at: number) => stepRuns(step, live, at === steps.length - 1)
+  const runs = (step: WorkStep, at: number) =>
+    commandRunning.has(step) || stepRuns(step, live, at === steps.length - 1)
   const ended = steps.filter((step, at) => !runs(step, at))
   const runningSteps = steps.filter(runs)
   // Thinking alone is one step once joined, so every ended run that shows
@@ -293,9 +321,9 @@ function startOf(block: MessageListBlock | undefined): string | null {
 }
 
 /**
- * Whether `step` still runs: a call waiting for its result, wherever it
- * stands, and in a run at the end of a running turn, `live`, a call being
- * written or thinking, `newest`, that is being written.
+ * Whether `step` still runs by its block: a call waiting for its result,
+ * wherever it stands, and in a run at the end of a running turn, `live`, a
+ * call being written or thinking, `newest`, that is being written.
  */
 function stepRuns(step: WorkStep, live: boolean, newest: boolean): boolean {
   switch (step.type) {
@@ -371,18 +399,6 @@ function joinedThinking(parts: readonly HeldThinking[]): HeldThinking & { parts:
     ...(parts.some((part) => part.arrivals) ? { arrivals } : {}),
     parts,
   }
-}
-type CallBlockStep = Extract<WorkStep, { type: 'tool_call' }>
-
-/**
- * The `shell` calls of a run that returned while their command ran on, as
- * their stored view says, whose live frames say whether it still does: the
- * run's row wears their time until they end.
- */
-export function runningOn(steps: readonly WorkStep[]): CallBlockStep[] {
-  return steps.filter((step): step is CallBlockStep =>
-    step.type === 'tool_call' && toolRenderKind(step.toolName) === 'shell'
-    && (step.status === 'executing' || storedShellView(step)?.status === 'running'))
 }
 
 /**

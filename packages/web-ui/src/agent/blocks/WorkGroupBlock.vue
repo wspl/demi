@@ -6,10 +6,9 @@ import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import { CHROME_ENTER_MS, chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import FunctionalBlock from './FunctionalBlock.vue'
 import StepRow from './StepRow.vue'
-import CommandTimeTag from './CommandTimeTag.vue'
 import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
-import { runLabel, runningOn, stepKey, type WorkGroupBlock } from '../work-groups'
+import { runLabel, stepKey, type WorkGroupBlock } from '../work-groups'
 import { useEditSelection, useFilePills, useTranscript } from '../edit-selection'
 import { changeFile, pillSelection, requestFileSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
@@ -35,12 +34,6 @@ const isOpen = defineModel<boolean>('open', { default: false })
 const lone = computed(() => (props.group.steps.length === 1 ? props.group.steps[0]! : null))
 /** What the run did and the time its steps took. */
 const label = computed(() => runLabel(props.group))
-/**
- * The calls whose command ran on after they returned: the row wears their time
- * until they end.
- */
-const running = computed(() => runningOn(props.group.steps))
-
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
 const transcript = useTranscript()
@@ -131,10 +124,6 @@ function pickRest(paths: readonly string[]): void {
         <Layers :size="ICON_PX.in28" />
       </template>
       <span class="min-w-0 truncate">{{ label }}</span>
-      <!--
-        The run wears the time of a command still running in it, until it ends.
-      -->
-      <CommandTimeTag v-if="running.length > 0" :calls="running" />
       <template #body>
         <div class="[--agent-pad-x:0px]">
           <!--

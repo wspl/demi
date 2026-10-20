@@ -6,6 +6,7 @@ import { useMessageRows, type MessageRows, type MessageRowsSource } from '../mes
 import { useOpenRuns } from '../open-runs'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
 import { rowKey } from '../row-key'
+import type { TerminalPhase, TerminalRecord } from '../terminals'
 import { createdAt, model, userBlock } from './agent-harness'
 
 // The rows the transcript list renders, followed through a message sent while
@@ -38,6 +39,26 @@ const call = (id: string, status: 'executing' | 'completed', run = id): Block =>
 function drawnRows(list: MessageRows): string[] {
   return list.rows.value.map(list.keyOf)
 }
+
+// Review: a command left running when its call returned stayed folded in the
+// run; the list now follows the command's live frames as they change.
+test('a call whose command runs on joins its run when the command ends', () => {
+  const state = reactive<MessageRowsSource>({
+    ...answered(),
+    phase: 'running',
+    blocks: [userBlock('u-1', 'm-1', 'Wait for it.'), call('a', 'completed'), call('b', 'completed', 'a')],
+  })
+  const terminal: TerminalRecord = { id: '7', title: 'Wait two seconds', phase: 'running', startedAt: createdAt, output: '', toolUseId: 'b-use' }
+  const command = reactive({ phase: 'running' as TerminalPhase })
+  const scope = effectScope()
+  const list = scope.run(() => useMessageRows(() => state, (toolUseId) =>
+    toolUseId === 'b-use' ? { ...terminal, phase: command.phase } : undefined))!
+  const shown = () => list.rows.value.flatMap((row) => row.type === 'work_group' ? [row.steps.map((step) => step.id).join('+')] : [row.id])
+  expect(shown()).toContain('b')
+  command.phase = 'exited'
+  expect(shown()).toContain('a+b')
+  scope.stop()
+})
 
 beforeEach(() => {
   jest.useFakeTimers()
