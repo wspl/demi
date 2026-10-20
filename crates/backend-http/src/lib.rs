@@ -479,6 +479,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             put(push::subscribe).delete(push::unsubscribe),
         )
         .route("/automations", get(automations::list).post(automations::create))
+        .route("/automations/holidays", get(automations::holidays))
         .route(
             "/automations/{id}",
             patch(automations::patch).delete(automations::delete),

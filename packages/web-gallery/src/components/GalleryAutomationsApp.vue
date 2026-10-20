@@ -10,11 +10,11 @@ import AutomationsPane from '@demicodes/web-ui/automations/AutomationsPane.vue'
 import AutomationList from '@demicodes/web-ui/automations/AutomationList.vue'
 import AutomationEditor from '@demicodes/web-ui/automations/AutomationEditor.vue'
 import { t } from '@demicodes/web-ui/automations/locales/text'
-import { WEEKDAYS, type Automation, type AutomationChange, type AutomationLink, type AutomationRun } from '@demicodes/web-ui/automations/types'
+import type { Automation, AutomationChange, AutomationLink, AutomationRun } from '@demicodes/web-ui/automations/types'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import { triggerWords } from '@demicodes/web-ui/automations/words'
 import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
-import { RUN_TITLES, TIME_ZONES, automationConversations, automationHosts, galleryAutomations, wokenConversations } from '../fixtures/automations'
+import { HOLIDAY_COUNTRIES, RUN_TITLES, TIME_ZONES, automationConversations, automationHosts, galleryAutomations, wokenConversations } from '../fixtures/automations'
 import { demoModels, demoProviders } from '../fixtures/catalog'
 import { createSettingsState } from '../fixtures/settings'
 import { GALLERY_MARKS } from '../fixtures/device-marks'
@@ -138,7 +138,7 @@ function patchRun(automationId: string, runId: string, change: Partial<Automatio
   }
 }
 
-/** New Automation: one at once, paused, daily at 09:00 every day in a new conversation on the Cloud, opened. */
+/** New Automation: one at once, paused, every day with one task at 09:00 and no message, in a new conversation on the Cloud, opened. */
 function create(): void {
   const base = t('page.newName')
   const taken = new Set(automations.value.map((each) => each.name))
@@ -150,7 +150,14 @@ function create(): void {
   automations.value = [{
     id,
     name,
-    trigger: { kind: 'time', schedule: { kind: 'daily', time: '09:00', days: [...WEEKDAYS] } },
+    trigger: {
+      kind: 'time',
+      schedule: {
+        kind: 'repeat',
+        repeat: { every: 1, unit: 'days', start: null },
+        tasks: [{ id: `t-new-${Date.now()}`, time: '09:00', days: ['mon'], day: { kind: 'date', date: 1 }, month: 1, holidays: null, prompt: '' }],
+      },
+    },
     timeZone: TIME_ZONES[0],
     maxRunsPerDay: null,
     target: { kind: 'new', hostId: 'cloud', projectId: null },
@@ -175,12 +182,14 @@ onBeforeUnmount(() => {
   timers.clear()
 })
 
-function runNow(automation: Automation): void {
+/** Run Now: a run of the task it names, or of a single trigger. */
+function runNow(automation: Automation, taskId: string | null): void {
   const id = `r-now-${Date.now()}`
   const existing = automation.target.kind === 'existing' ? automation.target.conversationId : null
   const run: AutomationRun = {
     id,
     at: new Date().toISOString(),
+    taskId,
     state: 'running',
     note: null,
     line: null,
@@ -320,6 +329,7 @@ const selectedTitle = computed(() => {
           :hosts="hosts"
           :conversations="wakeable"
           :time-zones="TIME_ZONES"
+          :holiday-countries="HOLIDAY_COUNTRIES"
           :providers="demoProviders"
           :models="demoModels"
           :overlay-store="appOverlayStore"
@@ -327,7 +337,7 @@ const selectedTitle = computed(() => {
           :notifications-off="notificationsOff"
           @change="save(current.id, $event)"
           @back="open({ kind: 'list' })"
-          @run-now="runNow(current)"
+          @run-now="runNow(current, $event)"
           @delete="remove(current.id)"
           @show-secret="showSecret(current.id)"
           @hide-secret="hideSecret(current.id)"

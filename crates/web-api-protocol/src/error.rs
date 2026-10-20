@@ -414,6 +414,14 @@ pub enum ErrorCode {
     NotUrlTrigger,
     /// The conversation is not filed under an automation's run.
     NotFiled,
+    /// No public holidays are known for the country or the region a task
+    /// names.
+    UnknownHolidays,
+    /// Run Now names no task the automation's repeat holds, names one of a
+    /// single trigger, or names none among several.
+    TaskNotFound,
+    /// Run Now names a task with no message, which does not run.
+    TaskWithoutMessage,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

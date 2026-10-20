@@ -24,7 +24,8 @@ const COLUMNS: &str = "id, user_id, name, trigger, time_zone, max_runs_per_day, 
      stripe_secret IS NOT NULL AS has_stripe, watch_stdout, watch_digest, watch_exit, watch_checked_at,
      created_at, updated_at";
 
-const RUN_COLUMNS: &str = "id, automation_id, cause, at, state, note, line, conversation_id, turn_id, filed, unread, notified";
+const RUN_COLUMNS: &str =
+    "id, automation_id, cause, at, state, note, line, conversation_id, turn_id, filed, unread, notified, task_id";
 
 /// An automation as it is stored, without its secrets.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +137,8 @@ pub struct StoredRun {
     pub automation: AutomationId,
     pub cause: RunCause,
     pub at: Timestamp,
+    /// The repeat's task that started it; none for a single trigger.
+    pub task: Option<String>,
     pub state: RunState,
     pub note: Option<RunNote>,
     pub line: Option<String>,
@@ -260,6 +263,7 @@ fn run_row(row: &Row<'_>) -> Result<StoredRun, StorageError> {
         )?,
         cause: RunCause::of(&row.get::<_, String>("cause")?)?,
         at: instant(row, RUNS, "at")?,
+        task: row.get("task_id")?,
         state: state_of(&row.get::<_, String>("state")?)?,
         note: note
             .map(|text| decode(RUNS, "note", serde_json::from_str::<RunNote>(&text)))
@@ -277,7 +281,7 @@ fn run_row(row: &Row<'_>) -> Result<StoredRun, StorageError> {
 
 fn existing_conversation(target: &AutomationTarget) -> Option<&str> {
     match target {
-        AutomationTarget::Existing { conversation_id } => Some(conversation_id.as_str()),
+        AutomationTarget::Existing { conversation_id, .. } => Some(conversation_id.as_str()),
         AutomationTarget::New { .. } => None,
     }
 }
@@ -569,7 +573,7 @@ impl ControlService {
         self.call(move |connection, _| {
             connection.execute(
                 &format!(
-                    "INSERT INTO automation_runs ({RUN_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+                    "INSERT INTO automation_runs ({RUN_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
                 ),
                 params![
                     run.id.as_str(),
@@ -584,6 +588,7 @@ impl ControlService {
                     run.filed,
                     run.unread,
                     run.notified,
+                    run.task,
                 ],
             )?;
             Ok(())

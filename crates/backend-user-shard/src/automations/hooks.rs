@@ -441,6 +441,7 @@ async fn gather_until_quiet(
             &automation,
             Fired {
                 cause: RunCause::Url,
+                task: None,
                 at,
                 payload: Payload::Calls(calls.into_iter().map(Call::from).collect()),
             },

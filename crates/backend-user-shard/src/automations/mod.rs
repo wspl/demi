@@ -8,6 +8,7 @@
 //! until the nearest next time or the next change; nothing polls the table.
 
 pub(crate) mod commands;
+pub(crate) mod holidays;
 mod hooks;
 mod message;
 mod runs;
@@ -27,8 +28,8 @@ use demi_backend_page_sync::Part;
 use demi_backend_providers::vault::seal::Row;
 use demi_shared_types::{AutomationId, Timestamp};
 use demi_web_api_protocol::automations::{
-    AutomationDto, AutomationPatch, AutomationRunDto, AutomationTarget, NEW_NAME, RUNS_SHOWN,
-    Schedule, Trigger, Weekday,
+    AutomationDto, AutomationPatch, AutomationRunDto, AutomationTarget, MonthDay, NEW_NAME, RUNS_SHOWN,
+    Repeat, RepeatUnit, Schedule, Task, Trigger, Weekday,
 };
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
@@ -39,6 +40,12 @@ use crate::shard::Shard;
 use schedule::{Plan, PlanError};
 
 pub use hooks::{CALLS_PER_MINUTE, HookAnswer, HookCall, HookLimits, check_unknown};
+
+/// The countries and regions whose holidays a task's working days can
+/// follow.
+pub fn holiday_countries() -> Vec<demi_web_api_protocol::automations::HolidayCountry> {
+    holidays::countries()
+}
 
 /// What the shard keeps of its automations between their records' reads.
 #[derive(Default)]
@@ -77,6 +84,16 @@ pub enum AutomationError {
     Cron(String),
     #[error("{0}")]
     TimeZone(String),
+    #[error("{0}")]
+    Holidays(String),
+    #[error("The automation has no task {0}.")]
+    NoTask(String),
+    #[error("The automation has several tasks: give the one to run.")]
+    TaskNeeded,
+    #[error("A single trigger has no tasks.")]
+    NoTasks,
+    #[error("The task has no message to send.")]
+    NoMessage,
     #[error("The conversation is not one of your active conversations.")]
     ConversationUnavailable,
     #[error("A limit on runs a day is for a change watch or a URL.")]
@@ -96,6 +113,7 @@ impl From<PlanError> for AutomationError {
         match error {
             PlanError::TimeZone(_) => Self::TimeZone(error.to_string()),
             PlanError::Cron { .. } => Self::Cron(error.to_string()),
+            PlanError::Holidays(_) => Self::Holidays(error.to_string()),
         }
     }
 }
@@ -107,12 +125,30 @@ fn new_secret() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-/// A new automation's id: 128 random bits as 32 hexadecimal digits.
-fn new_automation_id() -> AutomationId {
+/// 128 random bits as 32 hexadecimal digits.
+fn random_id() -> String {
     let mut bytes = [0u8; 16];
     rand::rng().fill_bytes(&mut bytes);
-    let text: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-    AutomationId::try_from(text).expect("32 digits are not empty")
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// A new automation's id.
+fn new_automation_id() -> AutomationId {
+    AutomationId::try_from(random_id()).expect("32 digits are not empty")
+}
+
+/// A new task at the cycle's first moment, Monday, the 1st, in January, at
+/// 09:00, as Add Task makes it.
+pub(crate) fn new_task(prompt: String) -> Task {
+    Task {
+        id: random_id(),
+        time: "09:00".into(),
+        days: vec![Weekday::Mon],
+        day: MonthDay::Date { date: 1 },
+        month: 1,
+        holidays: None,
+        prompt,
+    }
 }
 
 impl Shard {
@@ -226,8 +262,9 @@ impl Shard {
     /// `POST /automations`, and `demi automation create`: a new automation from
     /// its defaults, with `patch` over them.
     ///
-    /// The defaults are *New Automation*, paused, daily at 09:00 in the user's
-    /// time zone in a new conversation on the Cloud. A URL trigger gets its
+    /// The defaults are *New Automation*, paused, every day with one task at
+    /// 09:00 in the user's time zone and no message, in a new conversation on
+    /// the Cloud. A URL trigger gets its
     /// secret at once; the answer carries it when there is one, which the agent's
     /// command prints once.
     pub async fn create_automation(
@@ -255,9 +292,13 @@ impl Shard {
             user: self.user().clone(),
             name,
             trigger: Trigger::Time {
-                schedule: Schedule::Daily {
-                    time: "09:00".into(),
-                    days: Weekday::ALL.to_vec(),
+                schedule: Schedule::Repeat {
+                    repeat: Repeat {
+                        every: 1,
+                        unit: RepeatUnit::Days,
+                        start: None,
+                    },
+                    tasks: vec![new_task(String::new())],
                 },
             },
             time_zone: match schedule::zone(&reported.locale.time_zone) {
@@ -339,6 +380,15 @@ impl Shard {
         if let Trigger::Time { schedule } = &automation.trigger {
             Plan::new(schedule, &automation.time_zone, now.to_jiff())?;
         }
+        // A task's place is checked even while it has no message or no
+        // working day, so what the page shows is always a place the table has.
+        for task in runs::tasks_of(&automation.trigger).unwrap_or_default() {
+            if let Some(place) = &task.holidays
+                && holidays::calendar(place).is_none()
+            {
+                return Err(PlanError::Holidays(place.country.clone()).into());
+            }
+        }
         if automation.max_runs_per_day.is_some() && !automation.trigger.takes_limit() {
             if patch.max_runs_per_day.flatten().is_some() {
                 return Err(AutomationError::LimitNotTaken);
@@ -401,7 +451,7 @@ impl Shard {
     /// Checks that an existing conversation a target names is one of the
     /// user's active ones.
     async fn check_target(&self, target: &AutomationTarget) -> Result<(), AutomationError> {
-        if let AutomationTarget::Existing { conversation_id } = target {
+        if let AutomationTarget::Existing { conversation_id, .. } = target {
             let record = self.services().control.conversation(conversation_id.clone()).await?;
             if !record.is_some_and(|record| record.owner == *self.user() && !record.archived) {
                 return Err(AutomationError::ConversationUnavailable);
@@ -497,15 +547,31 @@ impl Shard {
     }
 
     /// Run Now, and `demi automation run`: a run whatever the schedule, the
-    /// daily limit or whether the automation is paused.
-    pub async fn run_automation_now(&self, id: &AutomationId) -> Result<StoredAutomation, AutomationError> {
+    /// daily limit or whether the automation is paused, of the repeat's task
+    /// `task`, which may be left out when the repeat has only one.
+    pub async fn run_automation_now(
+        &self,
+        id: &AutomationId,
+        task: Option<String>,
+    ) -> Result<StoredAutomation, AutomationError> {
         let automation = self.stored_automation(id).await?;
+        let task = match (runs::tasks_of(&automation.trigger), task) {
+            (None, None) => None,
+            (None, Some(_)) => return Err(AutomationError::NoTasks),
+            (Some([only]), None) => Some(only),
+            (Some(_), None) => return Err(AutomationError::TaskNeeded),
+            (Some(tasks), Some(id)) => Some(tasks.iter().find(|each| each.id == id).ok_or(AutomationError::NoTask(id))?),
+        };
+        if task.is_some_and(|task| demi_shared_types::is_blank(&task.prompt)) {
+            return Err(AutomationError::NoMessage);
+        }
         let at = self.services().control.now();
         self.fire(
             &automation,
             runs::Fired {
                 cause: demi_backend_database::automations::RunCause::Now,
                 at,
+                task: task.map(|task| task.id.clone()),
                 payload: runs::Payload::None,
             },
         )
@@ -619,10 +685,13 @@ impl Shard {
                     };
                     let last = control.automation_last_fired(automation.id.clone()).await?;
                     let mut after = last.unwrap_or(automation.schedule_since).to_jiff();
-                    if let Some(due) = plan.latest_due(after, now.to_jiff()) {
-                        let at = Timestamp::truncate(due);
-                        self.fire(&automation, runs::Fired::time(at)).await;
-                        after = due;
+                    // Each task due runs as its own run, once for its
+                    // latest missed time; in time order, so the last fired
+                    // is the latest.
+                    for (due, task) in plan.due(after, now.to_jiff()) {
+                        self.fire(&automation, runs::Fired::time(Timestamp::truncate(due), task.map(str::to_owned)))
+                            .await;
+                        after = after.max(due);
                     }
                     if let Some(next) = plan.next_after(after) {
                         keep(Timestamp::truncate(next));
@@ -748,6 +817,7 @@ fn run_dto(run: StoredRun) -> AutomationRunDto {
     AutomationRunDto {
         id: run.id,
         at: run.at,
+        task_id: run.task,
         state: run.state,
         note: run.note,
         line: run.line,

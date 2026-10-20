@@ -15,6 +15,7 @@ export interface Automation {
   /** The most runs a day, for a change watch or a URL; none without a limit. */
   maxRunsPerDay: number | null
   target: AutomationTarget
+  /** What a single trigger's runs send; a repeat's tasks hold their own messages instead. */
   prompt: string
   /** The model settings a new conversation starts with; none for the user's own. */
   model: ModelSettings | null
@@ -33,15 +34,86 @@ export interface Automation {
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
-/** Monday first, as the days a daily schedule names are listed. */
+/** Monday first, as the days a weekly task names are listed. */
 export const WEEKDAYS: readonly Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
-/** When a time trigger fires: once, daily on chosen weekdays, every interval, or a cron expression of five fields. */
+export type RepeatUnit = 'days' | 'weeks' | 'months' | 'years'
+
+/**
+ * A repeating cycle, as Calendar's repeat: every `every` days, weeks, months
+ * or years. A cycle of several units starts on `start`, its first cycle;
+ * every task runs in each cycle's first unit.
+ */
+export interface Repeat {
+  every: number
+  unit: RepeatUnit
+  /** The first cycle's day, as 2026-01-01; none for a cycle of one unit. */
+  start: string | null
+}
+
+/** Which of a month's weekdays: the first to the fourth, or the last. */
+export type WeekOfMonth = 'first' | 'second' | 'third' | 'fourth' | 'last'
+
+/**
+ * A day of a month: a date, which a month without it skips; the last day;
+ * a weekday's first to fourth or last; or the first or last working day.
+ */
+export type MonthDay =
+  | { kind: 'date'; date: number }
+  | { kind: 'last_day' }
+  | { kind: 'weekday'; week: WeekOfMonth; weekday: Weekday }
+  | { kind: 'working_day'; which: 'first' | 'last' }
+
+/**
+ * A task: a moment in the repeat's cycle and the message it sends. Its moment
+ * is the time and, as the repeat's unit asks, its weekdays (weeks), its day
+ * of the month (months), or its month and day (years); the parts another
+ * unit reads stay, so changing the repeat back finds them as they were.
+ */
+export interface AutomationTask {
+  id: string
+  /** As 09:00. */
+  time: string
+  days: Weekday[]
+  day: MonthDay
+  /** 1 to 12. */
+  month: number
+  /**
+   * The country, and its region, whose working week and public holidays a
+   * first or last working day follows; none for Monday to Friday.
+   */
+  holidays: HolidayPlace | null
+  /** Empty until written; a task without a message does not run. */
+  prompt: string
+}
+
+/**
+ * Whether the task has a message to send: one of only spaces or line breaks
+ * has none, as the backend reads it, so it shows as missing and cannot run.
+ */
+export function hasMessage(task: Pick<AutomationTask, 'prompt'>): boolean {
+  return task.prompt.trim() !== ''
+}
+
+/** When a time trigger fires: once, on a repeating cycle with its tasks, every interval, or a cron expression of five fields. */
 export type TimeSchedule =
   | { kind: 'once'; at: string }
-  | { kind: 'daily'; time: string; days: Weekday[] }
+  | { kind: 'repeat'; repeat: Repeat; tasks: AutomationTask[] }
   | { kind: 'every'; minutes: number }
   | { kind: 'cron'; expression: string }
+
+/** A country by its ISO 3166 code, and one of its regions where its holidays differ. */
+export interface HolidayPlace {
+  country: string
+  region: string | null
+}
+
+/** A country whose public holidays Demi knows, with the regions whose holidays differ. */
+export interface HolidayCountry {
+  /** ISO 3166-1 alpha-2, which names it in the page's language. */
+  code: string
+  regions: readonly { code: string; name: string }[]
+}
 
 /** What starts an automation's runs. */
 export type AutomationTrigger =
@@ -53,11 +125,15 @@ export type AutomationTrigger =
  * Where an automation's runs work. It is one of:
  *
  * - a new conversation each run, on a Host and in a project on it or none, or
- * - an existing conversation, which has its own place.
+ * - an existing conversation, which has its own place, and whose run's
+ *   message, while it is busy, waits for its turn to end (queue) or reaches
+ *   the running turn (steer), as the composer's Steer does.
  */
 export type AutomationTarget =
   | { kind: 'new'; hostId: string; projectId: string | null }
-  | { kind: 'existing'; conversationId: string }
+  | { kind: 'existing'; conversationId: string; ifBusy: IfBusy }
+
+export type IfBusy = 'queue' | 'steer'
 
 export type PauseReason = 'conversation_archived' | 'conversation_deleted'
 
@@ -76,6 +152,8 @@ export interface AutomationRun {
   id: string
   /** When it started, ISO 8601. */
   at: string
+  /** The repeat's task that started it; none for a single trigger. */
+  taskId: string | null
   state: RunState
   note: RunNote | null
   /** The start of the agent's last answer; none before it answered. */

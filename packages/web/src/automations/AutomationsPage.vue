@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AutomationsPane from '@demicodes/web-ui/automations/AutomationsPane.vue'
 import AutomationList from '@demicodes/web-ui/automations/AutomationList.vue'
@@ -27,6 +27,11 @@ const resources = useResources()
 const navigation = useConversationNavigation()
 
 const current = computed(() => (props.id ? store.automations.find((automation) => automation.id === props.id) ?? null : null))
+watch(current, (automation) => {
+  if (automation) {
+    void store.readHolidays()
+  }
+}, { immediate: true })
 /** The moment the list's last runs are said against, as of its last change. */
 const now = computed(() => (store.automations, Date.now()))
 /** The user's own time zone first, then every zone the browser knows. */
@@ -77,6 +82,7 @@ function openRun(run: AutomationRun): void {
       :hosts="store.hosts"
       :conversations="store.conversations"
       :time-zones="timeZones"
+      :holiday-countries="store.holidayCountries"
       :providers="resources.providerInfos"
       :models="resources.models"
       :overlay-store="appOverlayStore"
@@ -84,7 +90,7 @@ function openRun(run: AutomationRun): void {
       :notifications-off="store.notificationsOff"
       @change="store.change(current.id, $event)"
       @back="openList"
-      @run-now="store.runNow(current.id)"
+      @run-now="store.runNow(current.id, $event)"
       @delete="remove(current.id)"
       @show-secret="store.showSecret(current.id)"
       @hide-secret="store.hideSecret(current.id)"

@@ -11,16 +11,19 @@ import type {
   AutomationHost,
   AutomationLink,
   AutomationTarget,
+  HolidayCountry,
 } from '@demicodes/web-ui/automations/types'
 import { triggerWords } from '@demicodes/web-ui/automations/words'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   automationAnswerSchema,
   automationSecretSchema,
+  holidayCountriesSchema,
   type AutomationDto,
   type AutomationPatch,
   type AutomationTarget as TargetDto,
   type ConversationTarget,
+  type RunNow,
 } from '../api/generated/web-api'
 import { cloudDeviceIn, deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 import { useProduct } from '../state/product'
@@ -45,6 +48,14 @@ export const useAutomations = defineStore('automations', () => {
   const writes = new SerialQueue()
   /** The secret Show shows, by automation; the page keeps none it does not show. */
   const secrets = ref<Record<string, string>>({})
+  /**
+   * The countries whose holidays a task can skip, read once: the build's
+   * data file holds them, so they change only with the backend's release.
+   */
+  const holidayCountries = ref<HolidayCountry[]>([])
+  let holidaysRead: Promise<void> | null = null
+  /** How many saves failed, by automation: Run Now runs only when none of the saves before it did. */
+  const failedSaves = new Map<string, number>()
 
   const devices = computed(() => product.snapshot?.devices ?? [])
   const workspaces = computed(() => product.snapshot?.workspaces ?? [])
@@ -63,7 +74,7 @@ export const useAutomations = defineStore('automations', () => {
 
   function targetOf(target: TargetDto): AutomationTarget {
     if (target.kind === 'existing') {
-      return { kind: 'existing', conversationId: target.conversationId }
+      return { kind: 'existing', conversationId: target.conversationId, ifBusy: target.ifBusy }
     }
     const place = target.target
     return { kind: 'new', hostId: hostIdOf(place), projectId: place.kind === 'workspace' ? place.workspaceId : null }
@@ -206,17 +217,44 @@ export const useAutomations = defineStore('automations', () => {
       })
       .catch((error) => {
         pending.drop()
+        failedSaves.set(id, (failedSaves.get(id) ?? 0) + 1)
         reportError(t('failed.save'), error, { userVisible: true })
       })
   }
 
-  /** Run Now: a run starts, whatever the limit, paused or not. */
-  async function runNow(id: string): Promise<void> {
-    try {
-      await apiRequest(`/automations/${encodeURIComponent(id)}/run`, { method: 'POST' })
-    } catch (error) {
-      reportError(t('failed.run'), error, { userVisible: true })
-    }
+  /**
+   * Run Now: a run of the task `taskId`, a repeat's, starts, whatever the
+   * limit, paused or not. It runs what the user sees, so it waits for the
+   * automation's saves before it, and runs nothing when one of them failed,
+   * which the failed save already said.
+   */
+  function runNow(id: string, taskId: string | null): Promise<void> {
+    const failed = failedSaves.get(id) ?? 0
+    return writes
+      .run(id, async () => {
+        if ((failedSaves.get(id) ?? 0) !== failed) {
+          return
+        }
+        await apiRequest(`/automations/${encodeURIComponent(id)}/run`, { method: 'POST', ...jsonBody({ taskId } satisfies RunNow) })
+      })
+      .catch((error) => {
+        reportError(t('failed.run'), error, { userVisible: true })
+      })
+  }
+
+  /** Reads the holidays' countries the first time an editor needs them. */
+  function readHolidays(): Promise<void> {
+    holidaysRead ??= (async () => {
+      try {
+        const response = await apiRequest('/automations/holidays')
+        holidayCountries.value = (await readResponse(response, holidayCountriesSchema)).countries
+      } catch (error) {
+        // A later editor tries again.
+        holidaysRead = null
+        reportError(t('failed.holidays'), error, { userVisible: true })
+      }
+    })()
+    return holidaysRead
   }
 
   async function remove(id: string): Promise<void> {
@@ -261,6 +299,8 @@ export const useAutomations = defineStore('automations', () => {
     unread,
     notificationsOff,
     secrets,
+    holidayCountries,
+    readHolidays,
     wakers,
     runOf,
     create,
