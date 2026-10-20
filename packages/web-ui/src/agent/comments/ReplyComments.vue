@@ -27,7 +27,7 @@ import { cardContent, pageToRead, readKey, type ReplyAsking, type ShownSideQuest
  *
  * - its text tinted and underlined, a sent one dimmer
  * - a comment mark in the reply's right margin at its line
- * - the card that shows a comment under the pointer or pinned by a click
+ * - the card that shows a comment once its words or its mark are clicked
  * - the box a new one is written in under its selection
  *
  * A side question is drawn as its words in purple, and its card set into the
@@ -258,36 +258,19 @@ function pictureTools(reply: { blockId: string; root: HTMLElement }, image: HTML
 
 defineExpose({ selectionTools, pictureTools })
 
-// --- The card: the comments under the pointer, or pinned open by a click.
+// --- The card: the comments whose words or mark were clicked. The pointer
+// resting on them shows nothing, as a comment in a document editor does not.
 
-const card = shallowRef<{ ids: string[]; spot: Spot; pinned: boolean } | null>(null)
+const card = shallowRef<{ ids: string[]; spot: Spot } | null>(null)
 const cardComments = computed(() => marked.value.filter((comment) => card.value?.ids.includes(comment.id)))
 const cardEl = ref<HTMLElement>()
-let hideTimer: ReturnType<typeof setTimeout> | undefined
 
-function showCard(ids: string[], spot: Spot, pinned: boolean): void {
-  clearTimeout(hideTimer)
-  if (card.value?.pinned && !pinned)
-    return
-  if (!pinned && card.value?.ids.join() === ids.join())
-    return
-  card.value = { ids, spot, pinned }
-}
-
-function leaveCard(): void {
-  clearTimeout(hideTimer)
-  if (card.value && !card.value.pinned)
-    hideTimer = setTimeout(() => (card.value = null), 160)
+function showCard(ids: string[], spot: Spot): void {
+  card.value = { ids, spot }
 }
 
 function closeCard(): void {
-  clearTimeout(hideTimer)
   card.value = null
-}
-
-function pinCard(): void {
-  if (card.value)
-    card.value = { ...card.value, pinned: true }
 }
 
 /** A line's comments as a sheet, on a phone. */
@@ -569,21 +552,14 @@ function askAt(x: number, y: number): ShownSideQuestion | undefined {
 function onPointerMove(event: PointerEvent): void {
   if (event.pointerType === 'touch' || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card]'))
     return
-  const over = hitsAt(event.clientX, event.clientY)
   const asking = askAt(event.clientX, event.clientY)
   hoveredAsk.value = asking?.id ?? null
-  pointing.value = over.length > 0 || asking !== undefined
-  if (over.length === 0) {
-    leaveCard()
-    return
-  }
-  showCard(over.map((hit) => hit.id), spotUnder(over[0]!.range, props.root!.getBoundingClientRect(), CARD_WIDTH), false)
+  pointing.value = asking !== undefined
 }
 
 function onPointerLeave(): void {
   pointing.value = false
   hoveredAsk.value = null
-  leaveCard()
 }
 
 function onClick(event: MouseEvent): void {
@@ -603,19 +579,19 @@ function onClick(event: MouseEvent): void {
   if (phone.value)
     sheet.value = { ids, anchor: event.target as HTMLElement }
   else
-    showCard(ids, spotUnder(over[0]!.range, props.root!.getBoundingClientRect(), CARD_WIDTH), true)
+    showCard(ids, spotUnder(over[0]!.range, props.root!.getBoundingClientRect(), CARD_WIDTH))
 }
 
-/** A pinned card closes when a press lands outside it and its text. */
+/** The card closes when a press lands outside it and its text. */
 function onDocumentPointerDown(event: PointerEvent): void {
   const target = event.target as Element
-  if (card.value?.pinned && !cardEl.value?.contains(target) && !target.closest('[data-comment-marker]')
+  if (card.value && !cardEl.value?.contains(target) && !target.closest('[data-comment-marker]')
     && hitsAt(event.clientX, event.clientY).length === 0)
     closeCard()
 }
 
 function onDocumentKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && !event.defaultPrevented && card.value?.pinned)
+  if (event.key === 'Escape' && !event.defaultPrevented && card.value)
     closeCard()
 }
 
@@ -625,14 +601,12 @@ function markerSpot(event: MouseEvent): Spot {
   return { top: rect.bottom - base.top + 4, left: Math.max(8, rect.right - base.left - CARD_WIDTH) }
 }
 
-function onMarker(group: MarkerGroup, event: MouseEvent, pinned: boolean): void {
+function onMarker(group: MarkerGroup, event: MouseEvent): void {
   const ids = group.comments.map((comment) => comment.id)
-  if (phone.value) {
-    if (pinned)
-      sheet.value = { ids, anchor: event.currentTarget as HTMLElement }
-    return
-  }
-  showCard(ids, markerSpot(event), pinned)
+  if (phone.value)
+    sheet.value = { ids, anchor: event.currentTarget as HTMLElement }
+  else
+    showCard(ids, markerSpot(event))
 }
 
 // The root comes and goes with the list: everything that follows it, its
@@ -668,7 +642,6 @@ watch(pointing, (now) => props.root?.classList.toggle('cursor-pointer', now))
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame)
-  clearTimeout(hideTimer)
   publishMarks(owner, null)
   for (const host of hosts.values())
     host.remove()
@@ -717,9 +690,7 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
         class="comment-marker inline-flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-full px-1 text-[11px] leading-none"
         :class="group.comments.some((comment) => !comment.sent) ? '' : 'comment-marker-sent'"
         :aria-label="countLabel(group.comments.length)"
-        @pointerenter="(event: PointerEvent) => event.pointerType !== 'touch' && onMarker(group, event, false)"
-        @pointerleave="leaveCard"
-        @click="onMarker(group, $event, true)"
+        @click="onMarker(group, $event)"
       >
         <MessageSquare :size="12" aria-hidden="true" />
         <span v-if="group.comments.length > 1 && !narrow">{{ group.comments.length }}</span>
@@ -743,8 +714,6 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
       data-comment-card
       class="overlay-shell pointer-events-auto absolute flex flex-col gap-1 rounded-lg px-2.5 py-1.5"
       :style="{ top: `${card.spot.top}px`, left: `${card.spot.left}px`, width: `min(${CARD_WIDTH}px, calc(100% - 16px))` }"
-      @pointerenter="showCard(card.ids, card.spot, card.pinned)"
-      @pointerleave="leaveCard"
     >
       <CommentItem
         v-for="comment in cardComments"
@@ -753,7 +722,6 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
         :sent="comment.sent"
         @save="commenting.edit(comment.id, $event)"
         @delete="remove(comment.id)"
-        @editing="$event && pinCard()"
       />
     </div>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { Check, Pencil, Trash2 } from '@lucide/vue'
 import IconButton from '../../ui/IconButton.vue'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -26,12 +26,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [text: string]
   delete: []
-  /** The row became the editor, or left it; its card stays open meanwhile. */
-  editing: [editing: boolean]
 }>()
 
 const editing = ref(false)
-watch(editing, (now) => emit('editing', now))
 
 function save(text: string): void {
   editing.value = false
