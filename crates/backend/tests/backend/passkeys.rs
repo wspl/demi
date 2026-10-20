@@ -1,8 +1,12 @@
-//! Passkeys at the edge (`crates/backend-accounts/src/passkeys.rs`), against
-//! a software authenticator and WebAuthn client of the kind a password manager
-//! is: adding one takes the password, a sign-in names no email, a synced
-//! passkey signs in, a removed one is named back as unknown, and a challenge
-//! lasts five minutes.
+//! Passkeys at the edge (`crates/backend-accounts/src/passkeys.rs`), against a
+//! software authenticator and WebAuthn client of the kind a password manager
+//! is.
+//!
+//! - Adding one takes the password.
+//! - A sign-in names no email.
+//! - A synced passkey signs in.
+//! - A removed one is named back as unknown.
+//! - A challenge lasts five minutes.
 
 use demi_shared_types::Clock as _;
 use demi_web_api_protocol::auth::{Identity, Role};
@@ -501,12 +505,12 @@ async fn phone_spends_code(backend: &TestBackend, laptop: &Session, held: Option
     }
 }
 
-/// A code's sign-in is the phone's confirmation: the phone adds a passkey at
-/// once, whether the code made its session or the phone kept the one it had,
-/// and a session that has not signed in for five minutes is asked to confirm
-/// first. The passkey then signs in by itself and, since the account's passkeys
-/// are excluded from the next addition, a phone whose manager holds it is
-/// refused a second.
+/// A code's sign-in is the phone's confirmation: the phone adds a passkey at once,
+/// whether the code made its session or the phone kept the one it had, and a
+/// session that has not signed in for five minutes is asked to confirm first.
+///
+/// The passkey then signs in by itself. Since the account's passkeys are excluded
+/// from the next addition, a phone whose manager holds it is refused a second.
 #[tokio::test]
 async fn a_phone_signed_in_by_a_code_adds_a_passkey_without_the_password() {
     let harness = harness();

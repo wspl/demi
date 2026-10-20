@@ -1,13 +1,20 @@
-//! The conversation index of the control store: each conversation's owner,
-//! title, archive and pin state, place in the sidebar, read revision,
-//! target, execution-context revision and model selection, which is the
-//! conversation's model settings (`crates/shared-types/src/catalog.rs`), and
-//! Workflow menu choice
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`). The agent
-//! tree itself is in the conversation's own database. A conversation's id is
-//! the one the web app chose, kept in the case it arrived in and compared
-//! without case, so an id another conversation holds in any spelling is
-//! taken.
+//! The conversation index of the control store.
+//!
+//! For each conversation it holds:
+//!
+//! - the owner, title, archive and pin state;
+//! - the place in the sidebar and the read revision;
+//! - the target and the execution-context revision;
+//! - the model selection, which is the conversation's model settings
+//!   (`crates/shared-types/src/catalog.rs`);
+//! - the Workflow menu choice
+//!   (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//!
+//! The agent tree itself is in the conversation's own database.
+//!
+//! A conversation's id is the one the web app chose, kept in the case it arrived
+//! in and compared without case, so an id another conversation holds in any
+//! spelling is taken.
 
 use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::automations::FiledRun;
@@ -316,11 +323,13 @@ impl DestinationColumns {
 }
 
 impl ControlService {
-    /// The owner's conversation of `id`, which is created when no
-    /// conversation has the id: first in the owner's sidebar, as `start`
-    /// says, with its hosts attached, all in one step. A retry of the
-    /// owner's finds the one it created, in the spelling it was created
-    /// with, and applies nothing of `start`.
+    /// The owner's conversation of `id`, which is created when no conversation has
+    /// the id.
+    ///
+    /// The new conversation is first in the owner's sidebar, as `start` says, with
+    /// its hosts attached, all in one step. A retry of the owner's finds the one it
+    /// created, in the spelling it was created with, and applies nothing of
+    /// `start`.
     pub async fn create_conversation(
         &self,
         owner: UserId,
@@ -528,10 +537,11 @@ impl ControlService {
             }
             match &change {
                 RecordChange::Archived(archived) => {
-                    // An archive withdraws the permission requests, decided
-                    // ones whose message was not delivered among them, and
-                    // keeps the grants. It drops the move and the detaches an
-                    // agent asked for as well
+                    // An archive withdraws the permission requests, decided ones
+                    // whose message was not delivered among them, and keeps the
+                    // grants.
+                    //
+                    // It drops the move and the detaches an agent asked for as well
                     // (`crates/backend-host-access/src/transition.rs`).
                     if *archived {
                         archive_in(&transaction, &id)?;
@@ -1007,14 +1017,16 @@ pub enum SwitchWrite {
 }
 
 impl ControlService {
-    /// The target switch's write, against `expected`, the selection the
-    /// switch started from, and `from`, what it resolved to: it selects
-    /// `to`'s directory, which makes its workspace when the user has none
-    /// (`crates/backend-database/src/selection.rs`), all in one
-    /// transaction, so of two switches from one selection exactly one
-    /// wins. The winner records the switch for every node's next context
-    /// block and advances the execution-context revision, which it
-    /// answers; when it makes the pending move `pending`, it clears it.
+    /// The target switch's write, against `expected`, the selection the switch
+    /// started from, and `from`, what it resolved to.
+    ///
+    /// It selects `to`'s directory, which makes its workspace when the user has
+    /// none (`crates/backend-database/src/selection.rs`), all in one transaction,
+    /// so of two switches from one selection exactly one wins.
+    ///
+    /// The winner records the switch for every node's next context block and
+    /// advances the execution-context revision, which it answers. When it makes the
+    /// pending move `pending`, it clears it.
     pub async fn switch_conversation_target(
         &self,
         id: ConversationId,
@@ -1355,14 +1367,17 @@ fn clear_pending_move(
     Ok(())
 }
 
-/// The conversation's attached hosts, first attached first, each by its
-/// device's current name: a host whose name the primary Host or one
-/// attached before it goes by already takes the first free `name-2`,
-/// `name-3` and so on, so no name stands for two hosts and a name stays the
-/// same device while the target, the hosts and their devices' names do.
-/// Hosts attached at one time, as a Fork's are, keep the order they were
-/// attached in, which their row ids hold. The primary Host goes by the name
-/// the header shows: its device's, Cloud for the Cloud.
+/// The conversation's attached hosts, first attached first, each by its device's
+/// current name.
+///
+/// - A host whose name the primary Host or one attached before it goes by already
+///   takes the first free `name-2`, `name-3` and so on, so no name stands for two
+///   hosts and a name stays the same device while the target, the hosts and their
+///   devices' names do.
+/// - Hosts attached at one time, as a Fork's are, keep the order they were
+///   attached in, which their row ids hold.
+/// - The primary Host goes by the name the header shows: its device's, Cloud for
+///   the Cloud.
 fn attached_rows(
     connection: &Connection,
     id: &ConversationId,
@@ -1457,14 +1472,20 @@ pub fn add_reachable_host(
     Ok(())
 }
 
-/// Whether the conversation may reach `device`: it is the conversation's
-/// primary Host, the device of its project or the user's Cloud for a
-/// conversation there, or on its list. Its agents work on any such host
-/// without asking again: attach it, detach it, move to it. Any other host,
-/// the Cloud included, needs the user's permission when the agent first tries,
-/// one host per request, and an allowed host stays on the list for the
-/// conversation's life. Listing the user's devices asks nothing: seeing a
-/// device is not reaching it.
+/// Whether the conversation may reach `device`.
+///
+/// It may when the device is:
+///
+/// - the conversation's primary Host;
+/// - the device of its project, or the user's Cloud for a conversation there;
+/// - on its list.
+///
+/// Its agents work on any such host without asking again: attach it, detach it,
+/// move to it. Any other host, the Cloud included, needs the user's permission
+/// when the agent first tries, one host per request, and an allowed host stays on
+/// the list for the conversation's life.
+///
+/// Listing the user's devices asks nothing: seeing a device is not reaching it.
 pub fn may_reach(
     connection: &Connection,
     conversation: &ConversationId,
@@ -1747,11 +1768,12 @@ mod tests {
     }
 
     /// An attached device named as the primary Host goes by its name with a
-    /// suffix, the Cloud's name counting for a Cloud conversation, so
-    /// `--host <name>` never names two hosts; a switch that changes the
-    /// primary's name renames the attached hosts, which the page learns of.
-    /// Planted defect this catches: a primary left out of the names taken,
-    /// which lists the attached `laptop` under the primary's name.
+    /// suffix, the Cloud's name counting for a Cloud conversation, so `--host
+    /// <name>` never names two hosts. A switch that changes the primary's name
+    /// renames the attached hosts, which the page learns of.
+    ///
+    /// Planted defect this catches: a primary left out of the names taken, which
+    /// lists the attached `laptop` under the primary's name.
     #[tokio::test]
     async fn an_attached_host_named_as_the_primary_takes_a_suffix() {
         let data = tempfile::tempdir().unwrap();

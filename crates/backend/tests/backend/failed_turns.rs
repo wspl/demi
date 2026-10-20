@@ -1,12 +1,18 @@
-//! A root's turn that failed with a known time to try again: it is resumed
-//! at that time, as the user's Resume would, only when the user's
-//! `resumeAtRetry` preference says so at that moment, and once; the wait
-//! outlives the tree's eviction, which the moment opens again, and a
-//! restart, after which opening the conversation waits again for a moment
-//! still to come; a newer failure replaces it, and the shard's close stops a
-//! resume under way. The model is a scripted family whose failures name a
-//! retry time an hour after they arrive; the shard's timer runs on the
-//! paused clock. No test calls a real model.
+//! A root's turn that failed with a known time to try again.
+//!
+//! Scenarios:
+//!
+//! - It is resumed at that time, as the user's Resume would, only when the
+//!   user's `resumeAtRetry` preference says so at that moment, and once.
+//! - The wait outlives the tree's eviction, which the moment opens again, and
+//!   a restart, after which opening the conversation waits again for a moment
+//!   still to come.
+//! - A newer failure replaces it.
+//! - The shard's close stops a resume under way.
+//!
+//! The model is a scripted family whose failures name a retry time an hour
+//! after they arrive; the shard's timer runs on the paused clock. No test
+//! calls a real model.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -256,11 +262,12 @@ impl World {
         socket
     }
 
-    /// A page's socket once the root's turn under way, such as a resume
-    /// that has asked the model, has ended. A message sent while it runs
-    /// waits in the queue and runs right after it, with no phase frame
-    /// between: the handshake said `running`, so its `chat` would never see
-    /// its turn start.
+    /// A page's socket once the root's turn under way, such as a resume that has
+    /// asked the model, has ended.
+    ///
+    /// A message sent while it runs waits in the queue and runs right after it, with
+    /// no phase frame between: the handshake said `running`, so its `chat` would
+    /// never see its turn start.
     async fn idle_socket(&self) -> Socket {
         let idle = ServerFrame::Phase {
             subagent_id: None,
@@ -315,12 +322,14 @@ fn answered() -> Vec<ProviderEvent> {
     vec![event::text("resumed"), event::response(1, 1)]
 }
 
-/// Off, as by default, the failure's time comes and the turn waits for the
-/// user; on, a failed turn resumes at its time, as the user's Resume would,
-/// and once: the turn it resumed answered, and the next request is the
-/// user's next message.
-// One conversation, four scripted requests and three hours of paused time:
-// well under a second.
+/// The preference decides whether a failed turn resumes at its time.
+///
+/// - Off, as by default, the failure's time comes and the turn waits for the user.
+/// - On, a failed turn resumes at its time, as the user's Resume would, and once:
+///   the turn it resumed answered, and the next request is the user's next
+///   message.
+// One conversation, four scripted requests and three hours of paused time: well
+// under a second.
 #[tokio::test(flavor = "local")]
 async fn a_failed_turn_resumes_at_its_retry_time_once_and_only_when_the_user_prefers_it() {
     let world = World::start().await;
@@ -358,12 +367,14 @@ async fn a_failed_turn_resumes_at_its_retry_time_once_and_only_when_the_user_pre
     world.backend.close().await;
 }
 
-/// The page leaves, and the idle tree is put away to save memory: the wait
-/// goes on, and its moment opens the conversation again and resumes the
-/// turn. A newer failure replaces the wait of the one before, and the
-/// preference turned off during a wait keeps the turn waiting.
-// One conversation, five scripted requests and four hours of paused time:
-// well under a second.
+/// The page leaves, and the idle tree is put away to save memory.
+///
+/// - The wait goes on, and its moment opens the conversation again and resumes the
+///   turn.
+/// - A newer failure replaces the wait of the one before.
+/// - The preference turned off during a wait keeps the turn waiting.
+// One conversation, five scripted requests and four hours of paused time: well
+// under a second.
 #[tokio::test(flavor = "local")]
 async fn the_wait_outlives_the_trees_eviction_a_newer_failure_replaces_it_and_off_keeps_it() {
     let world = World::start().await;
@@ -400,11 +411,11 @@ async fn the_wait_outlives_the_trees_eviction_a_newer_failure_replaces_it_and_of
     world.backend.close().await;
 }
 
-/// A usage limit whose failure names no moment, such as Grok Build's 402,
-/// resumes when the account's used-up window resets, as its quota shows;
-/// a window not used up does not count.
-// One conversation, two scripted requests and two hours of paused time:
-// well under a second.
+/// A usage limit whose failure names no moment, such as Grok Build's 402, resumes
+/// when the account's used-up window resets, as its quota shows; a window not used
+/// up does not count.
+// One conversation, two scripted requests and two hours of paused time: well
+// under a second.
 #[tokio::test(flavor = "local")]
 async fn a_usage_limit_naming_no_moment_resumes_when_the_quotas_used_up_window_resets() {
     let world = World::start().await;
@@ -466,9 +477,9 @@ async fn a_usage_limit_naming_no_moment_resumes_when_the_quotas_used_up_window_r
     world.backend.close().await;
 }
 
-/// The wait is the running backend's: after a restart, opening the
-/// conversation waits again for a moment still to come, and resumes then;
-/// one whose moment passed while the backend was down waits for nothing.
+/// The wait is the running backend's: after a restart, opening the conversation
+/// waits again for a moment still to come, and resumes then; one whose moment
+/// passed while the backend was down waits for nothing.
 // Two conversations' turns across two restarts on the paused clock: about a
 // second, for the backends' starts.
 #[tokio::test(flavor = "local")]

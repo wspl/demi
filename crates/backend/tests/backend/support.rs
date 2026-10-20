@@ -1,44 +1,62 @@
-//! The test backend: a data directory, a clock the test moves, a mailbox
-//! that captures verification codes, a machine manager the test scripts,
-//! the command packages the workspace built as development releases, which
-//! the backend's local store serves its runners, and an HTTP client that
-//! sends a session's cookie.
+//! The test backend.
+//!
+//! The harness provides:
+//!
+//! - a data directory;
+//! - a clock the test moves;
+//! - a mailbox that captures verification codes;
+//! - a machine manager the test scripts;
+//! - the command packages the workspace built as development releases, which
+//!   the backend's local store serves its runners;
+//! - an HTTP client that sends a session's cookie.
+//!
+//! # The world
 //!
 //! The world starts the backend inside the test process with its production
-//! shard threads, serves a scripted machine manager on a Unix socket and local
-//! fixtures in place of models.dev and the Claude Code release distribution,
-//! and pairs real runner processes, the executable the test starts from the
-//! target directory it runs from. The model is scripted in one of two ways: a
-//! scripted vendor that a built-in family sends to, which answers each request
-//! with the next scripted response and records every request, or a family the
-//! scenario registers. Title requests are off unless a scenario turns them on,
-//! since one beside the first turn would take a scripted answer. Assertions
-//! inspect what the model receives, not only what a client displays, and no
-//! check runs by itself when a scenario closes: each asserts what it protects.
+//! shard threads. It serves a scripted machine manager on a Unix socket and
+//! local fixtures in place of models.dev and the Claude Code release
+//! distribution, and pairs real runner processes, the executable the test
+//! starts from the target directory it runs from.
+//!
+//! The model is scripted in one of two ways:
+//!
+//! - A scripted vendor that a built-in family sends to, which answers each
+//!   request with the next scripted response and records every request.
+//! - A family the scenario registers.
+//!
+//! Title requests are off unless a scenario turns them on, since one beside
+//! the first turn would take a scripted answer. Assertions inspect what the
+//! model receives, not only what a client displays, and no check runs by
+//! itself when a scenario closes: each asserts what it protects.
+//!
+//! # Conventions
 //!
 //! - A driver reads a transcript as the backend serves it cold and follows
 //!   events and phases in the frames; it does not rebuild the live transcript
 //!   from patches. The web app's patch applier is the only one, so the web app
 //!   contract suite compares live with cold.
 //! - Scenarios run real runner processes, so they use real time with short
-//!   configured windows, a short idle window instead of the product's hour:
-//!   a paused clock would advance whenever the runtime waits on a runner and
+//!   configured windows, a short idle window instead of the product's hour.
+//!   A paused clock would advance whenever the runtime waits on a runner and
 //!   fire every timer early, and in-process tests on a paused clock pin the
 //!   exact boundaries of timer rules instead. A scenario that needs wall time
-//!   to pass, such as a session's expiry, sets an injected clock. A scenario
-//!   never fits a step into such a window: one that looks at a running Cloud
-//!   holds its conversation's file gate while it looks (`file_gate`), so the
-//!   Cloud idles only after the lease ends, and one that shows an operation a
-//!   transition holds waits until the operation waits at that gate
-//!   (`ActivityGate::waiting`) and fails if it finishes first.
-//! - A restart reuses the data directory. A backend restart whose runners come
-//!   back listens at the address it had, since a runner keeps its backend's
-//!   URL; one that needs only the same public URL configures it and listens on
-//!   a port of its own, because another test may take a released port.
-//!   Multi-user scenarios use separate authenticated sessions: the world's
-//!   default helper uses one, and is no isolation test by itself.
+//!   to pass, such as a session's expiry, sets an injected clock.
+//! - A scenario never fits a step into such a window:
+//!   - One that looks at a running Cloud holds its conversation's file gate
+//!     while it looks (`file_gate`), so the Cloud idles only after the lease
+//!     ends.
+//!   - One that shows an operation a transition holds waits until the
+//!     operation waits at that gate (`ActivityGate::waiting`) and fails if it
+//!     finishes first.
+//! - A restart reuses the data directory.
+//!   - A backend restart whose runners come back listens at the address it
+//!     had, since a runner keeps its backend's URL.
+//!   - One that needs only the same public URL configures it and listens on a
+//!     port of its own, because another test may take a released port.
+//!   - Multi-user scenarios use separate authenticated sessions: the world's
+//!     default helper uses one, and is no isolation test by itself.
 //! - The world does not bound the `job_output` bytes a job sends, nor record
-//!   the runner's wire frames: the job table's tests of `runner-jobs` pin the
+//!   the runner's wire frames. The job table's tests of `runner-jobs` pin the
 //!   first, and the runner tests of `backend-remote-host` read every frame
 //!   their runner sends and pin `job_exit` and `pipe_done`. A scenario sees a
 //!   missing `job_exit` as a command that never ends. The usage ledger is
@@ -156,13 +174,15 @@ pub const SESSION_COOKIE: &str = "demi_session";
 /// files.
 const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases");
 
-/// A command package the workspace built: its descriptor for this machine's
-/// target and its program, and a server release that holds it, whose
-/// descriptor every backend publishes into its own object store and whose
-/// files hold the program's compressed copy, which a backend stores when a
-/// runner first needs it (`crates/backend-runners/src/publication.rs`). Each test process computes the digest and writes the
-/// release once: both read the whole program, most of a second for
-/// `demi-browser`.
+/// A command package the workspace built: its descriptor for this machine's target
+/// and its program, and a server release that holds it.
+///
+/// Every backend publishes the release's descriptor into its own object store. The
+/// release's files hold the program's compressed copy, which a backend stores when
+/// a runner first needs it (`crates/backend-runners/src/publication.rs`).
+///
+/// Each test process computes the digest and writes the release once: both read
+/// the whole program, most of a second for `demi-browser`.
 pub struct Built {
     pub descriptor: PackageDescriptor,
     pub program: PathBuf,
@@ -192,10 +212,11 @@ impl Built {
 }
 
 /// Writes the root of the release `name` of `packages`, which holds their
-/// descriptors and names their files, and the files, which hold their
-/// programs' compressed copies, and answers the root. Each file is replaced
-/// whole, so a backend of another test process that reads it meanwhile
-/// reads it whole.
+/// descriptors and names their files, and the files, which hold their programs'
+/// compressed copies, and answers the root.
+///
+/// Each file is replaced whole, so a backend of another test process that reads it
+/// meanwhile reads it whole.
 fn write_release(name: &str, packages: &[&Built]) -> PathBuf {
     let root = PathBuf::from(RELEASES).join(format!("release-{name}"));
     let files = PathBuf::from(RELEASES).join(format!("files-{name}"));
@@ -526,14 +547,18 @@ impl Harness {
     }
 
     /// Conversations whose user streams bind to the runner's native test
-    /// fixture: `echo` answers what the page sends, `where` reports its
-    /// context and directory, `retain` makes the resident service hold the
-    /// conversation, as the browser service holds a conversation's Chrome
-    /// until its release, `held` answers what the service holds,
-    /// `stall_release` holds the conversation so that its release never ends
-    /// by itself, `stalled` ends once such a release waits, `tell` tells the
-    /// fixture's plugin each JSON chunk the page sends, and `crash` ends the
-    /// service.
+    /// fixture. Its streams are:
+    ///
+    /// - `echo` answers what the page sends.
+    /// - `where` reports its context and directory.
+    /// - `retain` makes the resident service hold the conversation, as the
+    ///   browser service holds a conversation's Chrome until its release.
+    /// - `held` answers what the service holds.
+    /// - `stall_release` holds the conversation so that its release never ends
+    ///   by itself.
+    /// - `stalled` ends once such a release waits.
+    /// - `tell` tells the fixture's plugin each JSON chunk the page sends.
+    /// - `crash` ends the service.
     pub fn with_native_fixture(mut self) -> Self {
         let package = FIXTURE.descriptor.id.clone();
         let stream = |operation: &str| NativeOperation {
@@ -724,12 +749,13 @@ impl Harness {
             .await
     }
 
-    /// A backend listening on `address`, such as the one an earlier start
-    /// of the same data directory had, which its runners reconnect to: a
-    /// runner's state names its backend's URL. Only a restart whose runners
-    /// must come back uses it, since another test may take the port between
-    /// the close and the start; one that needs only a stable URL sets
-    /// `public_url` and starts on a port of its own.
+    /// A backend listening on `address`, such as the one an earlier start of the
+    /// same data directory had, which its runners reconnect to: a runner's state
+    /// names its backend's URL.
+    ///
+    /// Only a restart whose runners must come back uses it, since another test may
+    /// take the port between the close and the start; one that needs only a stable
+    /// URL sets `public_url` and starts on a port of its own.
     pub async fn start_at(&self, address: SocketAddr) -> TestBackend {
         self.launch(address, self.mode).await
     }
@@ -1278,15 +1304,17 @@ pub fn alive(pid: &str) -> bool {
     }
 }
 
-/// Lets `duration` pass at once for the timers on this test's runtime, such
-/// as the lifetime of a pairing code, which the backend's handler of a
-/// waiting runner holds there, and then lets the clock run on in real time
-/// (`ARCHITECTURE.md`): an expiry is reached when the test
-/// says, not when a loaded machine happens to get there. The clock is
-/// paused only while it moves, when nothing outside the runtime is awaited,
-/// so no other wait sees the jump; a timer already running on the runtime,
-/// such as a hang guard, does, and is started after it. Needs the
-/// current-thread runtime, which alone can pause its clock.
+/// Lets `duration` pass at once for the timers on this test's runtime, such as
+/// the lifetime of a pairing code, which the backend's handler of a waiting
+/// runner holds there, and then lets the clock run on in real time
+/// (`ARCHITECTURE.md`): an expiry is reached when the test says, not when a
+/// loaded machine happens to get there.
+///
+/// The clock is paused only while it moves, when nothing outside the runtime is
+/// awaited, so no other wait sees the jump. A timer already running on the
+/// runtime, such as a hang guard, does, and is started after it.
+///
+/// Needs the current-thread runtime, which alone can pause its clock.
 pub async fn elapse(duration: Duration) {
     tokio::time::pause();
     tokio::time::advance(duration).await;
@@ -1329,11 +1357,12 @@ impl TestBackend {
         answer(request.send().await.unwrap()).await
     }
 
-    /// A request whose head declares a body of `length` bytes, sent without
-    /// the body, for a refusal of a body over a limit. The backend refuses a
-    /// declared length over the limit without reading the body and closes
-    /// the connection, so a client still writing the body when the refusal
-    /// comes can meet the connection's reset instead of the answer.
+    /// A request whose head declares a body of `length` bytes, sent without the
+    /// body, for a refusal of a body over a limit.
+    ///
+    /// The backend refuses a declared length over the limit without reading the body
+    /// and closes the connection, so a client still writing the body when the
+    /// refusal comes can meet the connection's reset instead of the answer.
     pub async fn declaring(
         &self,
         method: Method,

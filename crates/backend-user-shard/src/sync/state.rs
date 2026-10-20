@@ -1,8 +1,9 @@
-//! The product state a channel sends first, and each part of it a channel
-//! sends when it changed. The user's shard reads each part from the stores and
-//! its own state when the channel sends it; the state is not one atomic read
-//! across databases, and need not be, since a change made while it is read is
-//! marked and sent after it.
+//! The product state a channel sends first, and each part of it a channel sends
+//! when it changed.
+//!
+//! The user's shard reads each part from the stores and its own state when the
+//! channel sends it. The state is not one atomic read across databases, and need
+//! not be, since a change made while it is read is marked and sent after it.
 
 use demi_backend_accounts::passkeys::{passkey_list, relying_party_id};
 use demi_backend_database::StorageError;

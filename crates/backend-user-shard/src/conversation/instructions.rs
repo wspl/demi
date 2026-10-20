@@ -1,23 +1,31 @@
-//! The instructions source: the user's personal instructions and the project's
-//! `AGENTS.md` or `CLAUDE.md` file and `.demi/instructions.md` of each
-//! directory from the repository's root down to the node's working directory,
-//! and for the root the instructions of the workflow the conversation chose
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`), as one context
-//! block, with the list of what it holds for the page.
+//! The instructions source.
 //!
-//! The text is a context block, not part of the system prompt, which stays
-//! the same for every user and project so that its prefix is cached; an
-//! edit, or a random order, would cost the cache. One file is read per
-//! directory, the first name that exists, so a `CLAUDE.md` that links to or
-//! copies the `AGENTS.md` beside it reaches the model once. The git root
-//! bounds the search, as walking to the file system's root would read
-//! unrelated files above the project. Home directories are not read:
-//! `~/.claude/CLAUDE.md` would differ between the Cloud and each device the
-//! conversation moves to, and instructions for every project are the
-//! personal instructions, which follow the user. Nothing is cut: dropping
-//! the end of a project's rules without telling anyone is worse than a large
-//! request the context usage shows, and a file left out for its size is the
-//! same loss.
+//! It builds one context block, with the list of what it holds for the page,
+//! from:
+//!
+//! - the user's personal instructions;
+//! - the project's `AGENTS.md` or `CLAUDE.md` file and `.demi/instructions.md`
+//!   of each directory from the repository's root down to the node's working
+//!   directory;
+//! - for the root, the instructions of the workflow the conversation chose
+//!   (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//!
+//! # Design choices
+//!
+//! - The text is a context block, not part of the system prompt. The system
+//!   prompt stays the same for every user and project so that its prefix is
+//!   cached; an edit, or a random order, would cost the cache.
+//! - One file is read per directory, the first name that exists, so a
+//!   `CLAUDE.md` that links to or copies the `AGENTS.md` beside it reaches the
+//!   model once.
+//! - The git root bounds the search, as walking to the file system's root would
+//!   read unrelated files above the project.
+//! - Home directories are not read: `~/.claude/CLAUDE.md` would differ between
+//!   the Cloud and each device the conversation moves to, and instructions for
+//!   every project are the personal instructions, which follow the user.
+//! - Nothing is cut. Dropping the end of a project's rules without telling
+//!   anyone is worse than a large request the context usage shows, and a file
+//!   left out for its size is the same loss.
 
 use std::rc::{Rc, Weak};
 
@@ -159,14 +167,16 @@ impl ContextSource for Instructions {
 /// How many times a file that grew while it was read is read again.
 const REREADS: usize = 3;
 
-/// The project files for a node in `cwd`, root first, whole: one request
-/// finds `.git` and each name in every directory from `cwd` up with their
-/// sizes, and one more reads the files taken at those sizes; a file that
-/// grew meanwhile is read again. It watches each file it read or would
-/// read: in each directory searched its names, and the `.git` whose coming
-/// moves the root nearer; outside a repository, the `.git` of every
-/// directory above. The root's own `.git` is left out: git writes in it at
-/// every command.
+/// The project files for a node in `cwd`, root first, whole.
+///
+/// It reads in two requests: one finds `.git` and each name in every directory
+/// from `cwd` up with their sizes, and one more reads the files taken at those
+/// sizes. A file that grew meanwhile is read again.
+///
+/// It watches each file it read or would read: in each directory searched its
+/// names, and the `.git` whose coming moves the root nearer. Outside a
+/// repository, it watches the `.git` of every directory above. The root's own
+/// `.git` is left out: git writes in it at every command.
 pub(crate) async fn search_instructions(
     shard: &Shard,
     conversation: &ConversationId,

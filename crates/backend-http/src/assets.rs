@@ -1,13 +1,18 @@
-//! The web app build served beside the API: files as they are, and `index.html`
-//! for an extensionless navigation that accepts HTML, so a deep page reloads.
-//! Any other miss is a JSON 404. The build's `build.json` names it.
-//! `index.html` and `build.json` are asked for again on every load and compared
-//! by their content, never by their modification time, since a new build's
-//! files may be older than the old build's, as after a rollback; the hashed
-//! files under `assets/` never change.
+//! The web app build served beside the API.
+//!
+//! - Files are served as they are.
+//! - `index.html` answers an extensionless navigation that accepts HTML, so a
+//!   deep page reloads.
+//! - Any other miss is a JSON 404.
+//!
+//! The build's `build.json` names it. `index.html` and `build.json` are asked
+//! for again on every load and compared by their content, never by their
+//! modification time, since a new build's files may be older than the old
+//! build's, as after a rollback. The hashed files under `assets/` never change.
 //!
 //! A share's page at `/s/:token` is the build's `share.html`, an entry of its
-//! own, under the content policy and headers `crates/backend-http/src/shares.rs` sets.
+//! own, under the content policy and headers
+//! `crates/backend-http/src/shares.rs` sets.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -106,11 +111,11 @@ pub(super) fn serve<S: Clone + Send + Sync + 'static>(
     .fallback_service(files)
 }
 
-/// The page of a share: the build's own entry for it, which reads whether
-/// the share exists from the share's routes, as every page of a share
-/// does, so this answer tells nothing of what exists. It goes under
-/// `policy`, sends no referrer that would carry the link, and is not
-/// indexed.
+/// The page of a share: the build's own entry for it.
+///
+/// It reads whether the share exists from the share's routes, as every page of
+/// a share does, so this answer tells nothing of what exists. It goes under
+/// `policy`, sends no referrer that would carry the link, and is not indexed.
 async fn revalidated_shared_page(path: PathBuf, policy: String, request: Request) -> Response {
     let mut response = revalidated(path, "text/html", request).await;
     let headers = response.headers_mut();
@@ -126,20 +131,23 @@ async fn revalidated_shared_page(path: PathBuf, policy: String, request: Request
     response
 }
 
-/// The Content Security Policy of share `token`'s page: the build's own
-/// scripts, styles and fonts, and connections, images and videos only from the
-/// share's routes at `public`, the backend's public URL its link names, never
-/// from what a request's `Host` says. A source names
-/// `<public>/api/shares/<token>` and what lies under it, since a path is all
-/// CSP narrows below an origin and `'self'` takes none; the token is
-/// percent-encoded, so nothing in the address reaches the policy as a separator
-/// or another path. Without a public URL, which the backend sets as it starts
-/// listening, the page reaches nothing.
+/// The Content Security Policy of share `token`'s page.
+///
+/// The page may load the build's own scripts, styles and fonts, and
+/// connections, images and videos only from the share's routes at `public`, the
+/// backend's public URL its link names, never from what a request's `Host`
+/// says. Without a public URL, which the backend sets as it starts listening,
+/// the page reaches nothing.
+///
+/// A source names `<public>/api/shares/<token>` and what lies under it, since a
+/// path is all CSP narrows below an origin and `'self'` takes none. The token
+/// is percent-encoded, so nothing in the address reaches the policy as a
+/// separator or another path.
 ///
 /// Styles may be inline: the transcript's Markdown renders KaTeX and sized
 /// media with `style` attributes, and a style cannot run code. Fonts and
-/// images may be `data:` URLs, as the build inlines its smallest fonts and
-/// the page its empty icon; neither reaches anywhere.
+/// images may be `data:` URLs, as the build inlines its smallest fonts and the
+/// page its empty icon; neither reaches anywhere.
 fn shared_page_policy(token: &str, public: Option<&url::Url>) -> String {
     let encoded = percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC);
     let routes = public

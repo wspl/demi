@@ -1,22 +1,30 @@
-//! The user's port forwards in their shard: what
-//! Settings › Port Forwarding and `demi host forward` read and change, what
-//! each runner is told of the forwards it is an end of, what the Listen On
-//! runners announce of them, and the backend's part in a connection: the
-//! relay's pipes from one runner to the other, and the introduction of two
-//! runners to each other, as a page is introduced to a runner
-//! (`crates/runner-direct/src/lib.rs`). Every way to the two Hosts
-//! is device access: a stopped Cloud is not woken, and a connection to an
-//! offline Host is refused at once (`crates/backend-host-access/src/lib.rs`).
+//! The user's port forwards in their shard.
 //!
-//! A forward is `ssh -L` between the user's own Hosts, a paired device or
-//! their Cloud: a program on the Cloud that connects to `127.0.0.1:11434`
-//! talks to the Ollama on the user's Mac. It connects Hosts to each other;
-//! nothing listens on the backend's server, where on a shared instance every
-//! user's programs could connect. It belongs to the user and runs whenever
-//! its Listen On Host's runner runs, so it runs again after any restart with
-//! no one asking; a forward between one Host and itself joins its connections
-//! on that Host, without a runner or the backend between them, and counts
-//! them as Direct.
+//! The module serves:
+//!
+//! - what Settings › Port Forwarding and `demi host forward` read and change;
+//! - what each runner is told of the forwards it is an end of, and what the
+//!   Listen On runners announce of them;
+//! - the backend's part in a connection: the relay's pipes from one runner to the
+//!   other, and the introduction of two runners to each other, as a page is
+//!   introduced to a runner (`crates/runner-direct/src/lib.rs`).
+//!
+//! Every way to the two Hosts is device access: a stopped Cloud is not woken, and
+//! a connection to an offline Host is refused at once
+//! (`crates/backend-host-access/src/lib.rs`).
+//!
+//! # What a forward is
+//!
+//! A forward is `ssh -L` between the user's own Hosts, a paired device or their
+//! Cloud: a program on the Cloud that connects to `127.0.0.1:11434` talks to the
+//! Ollama on the user's Mac.
+//!
+//! - It connects Hosts to each other; nothing listens on the backend's server,
+//!   where on a shared instance every user's programs could connect.
+//! - It belongs to the user and runs whenever its Listen On Host's runner runs,
+//!   so it runs again after any restart with no one asking.
+//! - A forward between one Host and itself joins its connections on that Host,
+//!   without a runner or the backend between them, and counts them as Direct.
 //!
 //! ```text
 //! program -> 127.0.0.1:11434 on Host A -> A's runner == direct ==> B's runner
@@ -25,18 +33,26 @@
 //!                                                  -> localhost:11434 on B
 //! ```
 //!
-//! The Listen On runner listens on `127.0.0.1` only, so only programs on
-//! that Host connect. A connection takes the path chosen when it opens and
-//! keeps it: direct while the pair's peer is connected and neither Host's
-//! route is Relay Only, the relay otherwise, and always the relay when an end
-//! is a Cloud, which runs beside the backend. A failed peer ends the
-//! connections it carried, as TCP connections end when a network drops, and
-//! their programs connect again. A forward that is turned off, removed, or
-//! changed in where it listens or connects ends its listener and open
-//! connections, and new ones follow the change; removing a Host removes the
-//! forwards that name it. Forwarding is TCP between the user's Hosts only:
-//! no other listen address, no publishing a port to the internet, no UDP and
-//! no end in the user's browser.
+//! # Connections
+//!
+//! The Listen On runner listens on `127.0.0.1` only, so only programs on that
+//! Host connect.
+//!
+//! - A connection takes the path chosen when it opens and keeps it: direct while
+//!   the pair's peer is connected and neither Host's route is Relay Only, the
+//!   relay otherwise, and always the relay when an end is a Cloud, which runs
+//!   beside the backend.
+//! - A failed peer ends the connections it carried, as TCP connections end when
+//!   a network drops, and their programs connect again.
+//! - A forward that is turned off, removed, or changed in where it listens or
+//!   connects ends its listener and open connections, and new ones follow the
+//!   change.
+//! - Removing a Host removes the forwards that name it.
+//!
+//! # Scope
+//!
+//! Forwarding is TCP between the user's Hosts only: no other listen address, no
+//! publishing a port to the internet, no UDP and no end in the user's browser.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -371,11 +387,12 @@ impl Shard {
         link.forward_opened(id, Ok((down.wire_ref(), up.wire_ref())));
     }
 
-    /// Introduces `device`'s runner, which offered peer `peer` with `sdp`,
-    /// to the runner of `other`, the other end of one of its forwards, as
-    /// the signaling socket introduces a page; relays each side's
-    /// candidates to the other until the peer ends, either connection ends,
-    /// or the offering runner says it closed.
+    /// Introduces `device`'s runner, which offered peer `peer` with `sdp`, to the
+    /// runner of `other`, the other end of one of its forwards, as the signaling
+    /// socket introduces a page.
+    ///
+    /// It relays each side's candidates to the other until the peer ends, either
+    /// connection ends, or the offering runner says it closed.
     async fn introduce(&self, device: DeviceId, id: String, peer: String, other: String, sdp: String) {
         let Some(link) = self.devices().link(&device) else {
             return;

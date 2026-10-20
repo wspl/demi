@@ -1,12 +1,18 @@
-//! A direct channel's signaling socket: the backend introduces a page to its
-//! paired device's real runner, which answers the page's offer; the page's
-//! probes and candidates do not wait behind that answer; the socket's close
-//! closes the runner's peer; the Cloud and an offline device are refused; a
-//! quiet socket hears a heartbeat, and the runner's connection ending closes
-//! it. A page in process opens the user's streams on the channel: one installs
-//! its service from the backend as a relay stream does, but not another
-//! stream's package, and a plugin turned off ends its streams with the peer,
-//! whose next introduction lacks them.
+//! A direct channel's signaling socket.
+//!
+//! Scenarios:
+//!
+//! - The backend introduces a page to its paired device's real runner, which
+//!   answers the page's offer. The page's probes and candidates do not wait
+//!   behind that answer.
+//! - The socket's close closes the runner's peer.
+//! - The Cloud and an offline device are refused.
+//! - A quiet socket hears a heartbeat, and the runner's connection ending
+//!   closes it.
+//! - A page in process opens the user's streams on the channel. One installs
+//!   its service from the backend as a relay stream does, but not another
+//!   stream's package. A plugin turned off ends its streams with the peer,
+//!   whose next introduction lacks them.
 
 use std::time::Duration;
 
@@ -380,11 +386,12 @@ async fn a_direct_stream_installs_its_service_but_not_another_streams_and_a_plug
         json!({ "op": "stream", "conversation": CONVERSATION, "cwd": cwd, "stream": stream, "args": args })
     };
 
-    // The device does not hold the fixture's service: the direct stream
-    // asks the backend for it before it starts, as a stream the backend
-    // opened would, and no relay stream opens. While it runs, it may
-    // install only what a relay stream of its name may: the artifact of
-    // the extra package, which another of the user's streams binds, is
+    // The device does not hold the fixture's service: the direct stream asks the
+    // backend for it before it starts, as a stream the backend opened would, and no
+    // relay stream opens.
+    //
+    // While it runs, it may install only what a relay stream of its name may: the
+    // artifact of the extra package, which another of the user's streams binds, is
     // refused, so the invocation prints no path.
     let extra = &EXTRA.descriptor.targets[host_target()];
     let args = json!({ "sha256": extra.sha256, "size": extra.size });
@@ -538,12 +545,12 @@ async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
     backend.close().await;
 }
 
-/// A direct channel's watch and text answer the runner's numbers, the same
-/// as the relay's since the runner counts once for its process: a change
-/// after a direct read is numbered above it, a direct read after it not
-/// below it, and the relay's read of the file names the same epoch
-/// (`crates/runner-protocol/src/direct.rs`). A second or two: the
-/// runner starts its watch.
+/// A direct channel's watch and text answer the runner's numbers, the same as the
+/// relay's since the runner counts once for its process: a change after a direct
+/// read is numbered above it, a direct read after it not below it, and the relay's
+/// read of the file names the same epoch (`crates/runner-protocol/src/direct.rs`).
+///
+/// A second or two: the runner starts its watch.
 #[tokio::test]
 async fn a_direct_watch_and_text_order_reads_and_changes_with_the_relays_numbers() {
     let harness = Harness::new();

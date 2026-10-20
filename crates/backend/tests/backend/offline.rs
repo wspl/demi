@@ -1,12 +1,22 @@
-//! A conversation whose Host goes offline (`crates/backend-host-access/src/access.rs`, `crates/backend-host-access/src/transition.rs`): the agent's command on its
-//! offline primary device waits for the device and runs once it is back, a
-//! Stop ends every such wait, an earlier turn's too, and a move fails it, the command never sent; a command
-//! on an offline attached device fails at once with the device's offline
-//! error, worded for the model; a waiting command outlives a backend
-//! restart, still unsent, and a stop of it ends it; and a move away from an offline device
-//! leaves the commands still running there to its runner, which reports
-//! their ends once it is back. The model is an Anthropic endpoint the test
-//! scripts; the devices are real runners.
+//! A conversation whose Host goes offline
+//! (`crates/backend-host-access/src/access.rs`,
+//! `crates/backend-host-access/src/transition.rs`).
+//!
+//! Scenarios:
+//!
+//! - The agent's command on its offline primary device waits for the device
+//!   and runs once it is back.
+//! - A Stop ends every such wait, an earlier turn's too, and a move fails it,
+//!   the command never sent.
+//! - A command on an offline attached device fails at once with the device's
+//!   offline error, worded for the model.
+//! - A waiting command outlives a backend restart, still unsent, and a stop of
+//!   it ends it.
+//! - A move away from an offline device leaves the commands still running
+//!   there to its runner, which reports their ends once it is back.
+//!
+//! The model is an Anthropic endpoint the test scripts; the devices are real
+//! runners.
 
 use std::time::Duration;
 

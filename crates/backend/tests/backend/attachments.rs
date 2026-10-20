@@ -1,11 +1,18 @@
-//! The files the agent gives the user (`crates/backend-host-access/src/attachment_commands.rs`):
-//! `demi attachment upload` copies files beside the invocation into the
-//! conversation as `a1`, `a2`, …, and a file it cannot copy fails with its own
-//! line while the others are stored; the page reads an attachment by its number
-//! from the conversation's database, and its bytes as a blob. A job `demi host
-//! shell` runs on an attached Host uploads that Host's files, and a file whose
-//! blob the namespace holds already is not read again. The model is an Anthropic
-//! endpoint the test scripts; the devices are real runners.
+//! The files the agent gives the user
+//! (`crates/backend-host-access/src/attachment_commands.rs`).
+//!
+//! Scenarios:
+//!
+//! - `demi attachment upload` copies files beside the invocation into the
+//!   conversation as `a1`, `a2`, …. A file it cannot copy fails with its own
+//!   line while the others are stored.
+//! - The page reads an attachment by its number from the conversation's
+//!   database, and its bytes as a blob.
+//! - A job `demi host shell` runs on an attached Host uploads that Host's
+//!   files. A file whose blob the namespace holds already is not read again.
+//!
+//! The model is an Anthropic endpoint the test scripts; the devices are real
+//! runners.
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
@@ -308,12 +315,18 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
 // each run shell jobs on a real device.
 //
 // A reply shows only what its own agent uploaded, as the page asks for it with
-// `?node=`: the root its a1, the child its a2, the side question its a3, each
-// none of another's; the child's fork, whose copied history the child wrote,
-// the child's a2. Planted defects this catches: an upload recorded by the
-// agent's number, which a side question shares with the root, so the root shows
-// the side's file; and a fork that shows only its own uploads, so its copied
-// replies lose theirs.
+// `?node=`:
+//
+// - The root shows its a1, the child its a2, the side question its a3, each
+//   none of another's.
+// - The child's fork, whose copied history the child wrote, shows the child's
+//   a2.
+//
+// Planted defects this catches:
+//
+// - An upload recorded by the agent's number, which a side question shares
+//   with the root, so the root shows the side's file.
+// - A fork that shows only its own uploads, so its copied replies lose theirs.
 #[tokio::test]
 async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked_from() {
     use demi_conversation_socket_protocol::{ServerFrame, SubagentEvent};

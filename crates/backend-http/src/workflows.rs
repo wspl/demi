@@ -1,8 +1,10 @@
 //! `GET /conversations/:id/workflows`
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`): the Workflow
-//! menu's list, as the backend keeps it with the runner's file watch, with the
-//! Host's number before the read that found it, as every answer the file watch
-//! keeps current carries; while no search is held, no workflows and no number.
+//! menu's list, as the backend keeps it with the runner's file watch.
+//!
+//! The answer carries the Host's number before the read that found it, as every
+//! answer the file watch keeps current carries. While no search is held, there
+//! are no workflows and no number.
 
 use axum::Json;
 use axum::extract::{Path, State};

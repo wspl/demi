@@ -1,7 +1,9 @@
 //! The caller's subagent settings: the Subagents switch, the limits and the
-//! profiles. The caller's shard checks a profile's name, texts and model, as it does
-//! for `demi agent profiles`, and writes, and the change reaches the caller's pages
-//! as the `subagents` part.
+//! profiles.
+//!
+//! The caller's shard checks a profile's name, texts and model, as it does for
+//! `demi agent profiles`, and writes. The change reaches the caller's pages as
+//! the `subagents` part.
 
 use axum::Json;
 use axum::extract::{Path, State};

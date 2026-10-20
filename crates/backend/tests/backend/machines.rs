@@ -1,16 +1,27 @@
-//! A machine manager the tests script: it serves the manager's socket with
-//! `machine-manager-protocol`, as the real manager does, and runs each Cloud's
-//! sandbox as a real runner process whose home survives a stop, a wake and a
-//! reset. Operations of one device run one at a time, in arrival order; a
-//! device's first wake makes its storage. It records every call, and a test can
-//! hold a reset, fail one, keep a wake from starting its runner, or kill a
-//! runner as a crash would, which the manager reports as a death to every
-//! connection; a call whose handling panics is answered with the panic, never
-//! left waiting; its `reconcile` keeps the sandboxes that run, as the real
-//! manager's does. It mounts no image and isolates nothing: a stop clears the
-//! runner's state but its log and its job directories, as a Cloud's `/run/demi`
-//! goes with it while its system image, which holds those two, stays; a reset
-//! clears them too; both keep its home.
+//! A machine manager the tests script.
+//!
+//! It serves the manager's socket with `machine-manager-protocol`, as the real
+//! manager does, and runs each Cloud's sandbox as a real runner process whose
+//! home survives a stop, a wake and a reset.
+//!
+//! Behavior:
+//!
+//! - Operations of one device run one at a time, in arrival order.
+//! - A device's first wake makes its storage.
+//! - It records every call. A test can hold a reset, fail one, keep a wake
+//!   from starting its runner, or kill a runner as a crash would, which the
+//!   manager reports as a death to every connection.
+//! - A call whose handling panics is answered with the panic, never left
+//!   waiting.
+//! - Its `reconcile` keeps the sandboxes that run, as the real manager's does.
+//!
+//! It mounts no image and isolates nothing:
+//!
+//! - A stop clears the runner's state but its log and its job directories, as
+//!   a Cloud's `/run/demi` goes with it while its system image, which holds
+//!   those two, stays.
+//! - A reset clears them too.
+//! - Both keep its home.
 
 use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;

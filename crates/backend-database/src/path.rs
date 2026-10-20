@@ -1,8 +1,9 @@
-//! A node's current path through its tree of rows: the node's leaf, and the
-//! runs of consecutive row numbers from its first block to the leaf, which
-//! `path_runs` keeps so a range of positions reads a range of rows. The runs
-//! are derived from the rows and the leaf, and written with the leaf in the
-//! same transaction.
+//! A node's current path through its tree of rows.
+//!
+//! The path is the node's leaf, and the runs of consecutive row numbers from its
+//! first block to the leaf, which `path_runs` keeps so a range of positions reads
+//! a range of rows. The runs are derived from the rows and the leaf, and written
+//! with the leaf in the same transaction.
 
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -177,13 +178,15 @@ impl Path {
         Ok(())
     }
 
-    /// The versions at each position in `range` that holds more than one. A
-    /// place holds versions only where a row's parent has another row after
-    /// it, which the index of rows that do not follow the row before them
-    /// finds without reading the path's rows. A block a compaction carried
-    /// past its boundary shows the versions of the place it was carried
-    /// from, which the boundary then stands at without showing them, unless
-    /// its new place holds versions of its own.
+    /// The versions at each position in `range` that holds more than one.
+    ///
+    /// A place holds versions only where a row's parent has another row after it,
+    /// which the index of rows that do not follow the row before them finds without
+    /// reading the path's rows.
+    ///
+    /// A block a compaction carried past its boundary shows the versions of the
+    /// place it was carried from, which the boundary then stands at without showing
+    /// them, unless its new place holds versions of its own.
     pub(crate) fn versions(
         &self,
         connection: &Connection,
@@ -245,10 +248,11 @@ impl Path {
         }
     }
 
-    /// Makes the latest leaf below the `version`th version at `position`
-    /// the path's end, and answers the position the path changed from: the
-    /// place of the versions `position` shows, which for a block a
-    /// compaction carried is the place it was carried from. None when the
+    /// Makes the latest leaf below the `version`th version at `position` the
+    /// path's end, and answers the position the path changed from.
+    ///
+    /// That position is the place of the versions `position` shows, which for a
+    /// block a compaction carried is the place it was carried from. None when the
     /// path does not reach `position` or its place holds no such version.
     pub(crate) fn switch(
         &mut self,

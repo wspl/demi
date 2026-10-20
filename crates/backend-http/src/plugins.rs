@@ -1,8 +1,13 @@
-//! Plugin calls at the edge: a page's call of a plugin's method, for the user or
-//! for one of the user's conversations, and the read of a plugin's state for one
-//! conversation (§ Conversation state of plugins). The user's shard checks the
-//! parameters against the method's schema and the user's instance answers; what
-//! the call changes reaches the user's pages on the synchronization channel.
+//! Plugin calls at the edge.
+//!
+//! - A page's call of a plugin's method, for the user or for one of the user's
+//!   conversations.
+//! - The read of a plugin's state for one conversation (§ Conversation state of
+//!   plugins).
+//!
+//! The user's shard checks the parameters against the method's schema, and the
+//! user's instance answers. What the call changes reaches the user's pages on
+//! the synchronization channel.
 
 use axum::Json;
 use axum::extract::{Path, State};

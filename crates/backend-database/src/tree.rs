@@ -52,12 +52,12 @@ use super::conversations::ConversationDb;
 use super::search::{IndexedAgent, IndexedMessage, TranscriptChange, searchable_text};
 use super::{conversation_attachments, running, sequences};
 
-/// What a tree store tells after each commit that writes a node's
-/// checkpoint, closes, reopens or deletes a node, with that node: a
-/// conversation's summary reads its root's checkpoint. A commit that writes
-/// the root's checkpoint also tells what it changed for the search index,
-/// extracted on the database's thread, where the decoded blocks stay; the
-/// others tell none.
+/// What a tree store tells after each commit that writes a node's checkpoint,
+/// closes, reopens or deletes a node, with that node.
+///
+/// A conversation's summary reads its root's checkpoint. A commit that writes the
+/// root's checkpoint also tells what it changed for the search index, extracted on
+/// the database's thread, where the decoded blocks stay; the others tell none.
 pub type Saved = Rc<dyn Fn(&NodeId, Option<TranscriptChange>)>;
 
 /// One conversation's agent tree in its database, with its owner's blobs.
@@ -875,14 +875,17 @@ impl SessionStore for SqliteSessionStore {
     }
 }
 
-/// Writes one save of `node` in `transaction`: from the cut, the rows the
-/// path held leave it and stay as they are, and each block from there is
-/// a new row following the one before it; below the cut, a changed block
-/// updates its row. The rows carry the blobs and attachments each names,
-/// and the state row and the path's runs go with them; the child
-/// completions it carries are marked delivered. Changed output, or a path
-/// cut, advances the node's output revision; input alone does not. A
-/// refusal leaves the transaction uncommitted.
+/// Writes one save of `node` in `transaction`.
+///
+/// - From the cut, the rows the path held leave it and stay as they are, and each
+///   block from there is a new row following the one before it.
+/// - Below the cut, a changed block updates its row.
+/// - The rows carry the blobs and attachments each names, and the state row and
+///   the path's runs go with them.
+/// - The child completions it carries are marked delivered.
+///
+/// Changed output, or a path cut, advances the node's output revision; input
+/// alone does not. A refusal leaves the transaction uncommitted.
 fn write_checkpoint(
     transaction: &Transaction<'_>,
     node: &NodeId,
@@ -1676,15 +1679,17 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
     })
 }
 
-/// Walks the root's block rows back from its last one, until it knows the
-/// latest terminal block and the latest ended turn with its last text. A
-/// turn's input blocks carry its id, and the turn lasts until a block of
-/// another turn's input, so a text belongs to the ended turn when it comes
-/// after one of that turn's input blocks. While the root is in a turn
-/// (`phase` is not idle) that turn has not ended, so what the walk read of
-/// it, such as the responses of its earlier requests, counts for nothing.
-/// An action that has written no block of its own yet, such as a `compact`
-/// or a send before its message is written, cannot be told from the turn
+/// Walks the root's block rows back from its last one, until it knows the latest
+/// terminal block and the latest ended turn with its last text.
+///
+/// A turn's input blocks carry its id, and the turn lasts until a block of another
+/// turn's input, so a text belongs to the ended turn when it comes after one of
+/// that turn's input blocks.
+///
+/// While the root is in a turn (`phase` is not idle) that turn has not ended, so
+/// what the walk read of it, such as the responses of its earlier requests, counts
+/// for nothing. An action that has written no block of its own yet, such as a
+/// `compact` or a send before its message is written, cannot be told from the turn
 /// before it, which is then passed over too until the action writes one.
 fn walk(
     rows: impl Iterator<Item = Result<WalkRow, StorageError>>,
@@ -1755,11 +1760,13 @@ fn ended_turn(
     })
 }
 
-/// Which saved state of the root's transcript a reader saw: its output
-/// revision and its block count. Every save that changes the transcript
-/// changes one of them: a save of output, or one that removes rows, advances
-/// the revision, and a save of input alone adds blocks. The transcript's own
-/// version, its epoch and revision, lives only in the running session.
+/// Which saved state of the root's transcript a reader saw: its output revision
+/// and its block count.
+///
+/// Every save that changes the transcript changes one of them: a save of output,
+/// or one that removes rows, advances the revision, and a save of input alone adds
+/// blocks. The transcript's own version, its epoch and revision, lives only in the
+/// running session.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SavedVersion {
     pub revision: u64,
@@ -2404,11 +2411,12 @@ pub fn read_block(
     }
 }
 
-/// The entries of `request` with their size as a page sends them, when
-/// that is at most `room`; none when it is more. The entries are read in
-/// order only until the fewest bytes they can take pass `room`, so a
-/// request too large for what is left of a page, such as one of thousands
-/// of calls next to it, is never decoded whole.
+/// The entries of `request` with their size as a page sends them, when that is at
+/// most `room`; none when it is more.
+///
+/// The entries are read in order only until the fewest bytes they can take pass
+/// `room`, so a request too large for what is left of a page, such as one of
+/// thousands of calls next to it, is never decoded whole.
 fn request_within(
     connection: &Connection,
     transcript: &Transcript,
@@ -2450,11 +2458,12 @@ fn steps_bytes(count: u64) -> usize {
     format!(r#"{{"type":"steps_not_shared","count":{count}}}"#).len()
 }
 
-/// A subagent as [`subagents`] reads it: its record, the model selection
-/// its checkpoint saved, whether the call that started it is on its
-/// parent's current path, and whether its every ancestor's start is too,
-/// which makes it a child of the conversation's current path. A child no
-/// call started is on every path.
+/// A subagent as [`subagents`] reads it: its record, the model selection its
+/// checkpoint saved, whether the call that started it is on its parent's current
+/// path, and whether its every ancestor's start is too.
+///
+/// The last makes it a child of the conversation's current path. A child no call
+/// started is on every path.
 #[derive(Debug, Clone)]
 pub struct Subagent {
     pub record: NodeRecord,
@@ -2464,10 +2473,11 @@ pub struct Subagent {
 }
 
 /// Whether the call that started the node `nodes` names is on its parent's
-/// current path. The unary `+` takes the TEXT affinity off `started_by`:
-/// with it, SQLite would apply that affinity to the indexed expression,
-/// which has none, and scan the whole `blocks_by_id` index for every node
-/// instead of searching it.
+/// current path.
+///
+/// The unary `+` takes the TEXT affinity off `started_by`: with it, SQLite would
+/// apply that affinity to the indexed expression, which has none, and scan the
+/// whole `blocks_by_id` index for every node instead of searching it.
 const STARTED_ON_PATH: &str = "(nodes.started_by IS NULL OR EXISTS (
      SELECT 1 FROM blocks AS start INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
        ON run.node_id = start.node_id AND start.idx >= run.first AND start.idx < run.first + run.length
@@ -2530,12 +2540,16 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
 }
 
 /// The call that started the command `command`, with the node that ran it, on
-/// whatever branch it is, since the command ran: of the calls whose view names
-/// the command, the first, since a stored look at a command, from before such
-/// looks were removed, came after it; of calls equally early, the oldest
-/// agent's, since a fork's copy of its source's call keeps the call's time
-/// (`crates/agent-server/src/server/tree/supervisor.rs`), and a side question's
-/// copy comes after every agent's.
+/// whatever branch it is, since the command ran.
+///
+/// The call is chosen from the calls whose view names the command:
+///
+/// - The first, since a stored look at a command, from before such looks were
+///   removed, came after it.
+/// - Of calls equally early, the oldest agent's, since a fork's copy of its
+///   source's call keeps the call's time
+///   (`crates/agent-server/src/server/tree/supervisor.rs`), and a side question's
+///   copy comes after every agent's.
 pub fn command_call(
     connection: &Connection,
     command: &CommandId,
@@ -2738,11 +2752,12 @@ pub(crate) mod tests {
         .unwrap()
     }
 
-    // A conversation Fork names the source's rows before its window, and
-    // the destination's store copies them from the source's database file
-    // with the blobs they name, never reading them into the process; the
-    // commands its shell calls name are found in the source's database the
-    // same way.
+    // A conversation Fork names the source's rows before its window, and the
+    // destination's store copies them from the source's database file with the
+    // blobs they name, never reading them into the process.
+    //
+    // The commands its shell calls name are found in the source's database the same
+    // way.
     #[tokio::test(flavor = "local")]
     async fn a_fork_copies_the_rows_it_names_from_the_source_conversations_database() {
         let (source, stores, _data) = store().await;
@@ -2895,10 +2910,11 @@ pub(crate) mod tests {
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
     }
 
-    /// A page next to a request of many blocks holds that request when it
-    /// fits and leaves it out when it does not, and in that case reads it
-    /// only until it no longer fits: a row past that point is never
-    /// decoded, which a row that does not decode shows.
+    /// A page next to a request of many blocks holds that request when it fits and
+    /// leaves it out when it does not.
+    ///
+    /// In that case it reads the request only until it no longer fits: a row past
+    /// that point is never decoded, which a row that does not decode shows.
     // Cost: one database on disk with about four thousand rows, under a second.
     #[tokio::test(flavor = "local")]
     async fn a_page_reads_a_request_next_to_it_only_until_it_does_not_fit() {

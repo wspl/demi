@@ -1,11 +1,14 @@
-//! Account administration: administrators list every account, create accounts of
-//! a role they outrank with a first password the server makes, make another first
-//! password, change a role, disable and enable, set the size of an account's
-//! Cloud disks, sign an account out everywhere and make a sign-in code for it.
+//! Account administration.
+//!
+//! Administrators list every account, create accounts of a role they outrank
+//! with a first password the server makes, make another first password, change
+//! a role, disable and enable, set the size of an account's Cloud disks, sign an
+//! account out everywhere and make a sign-in code for it.
+//!
 //! Every route acts only on a role below the caller's: nobody acts on a peer or
-//! on the master, and no account is deleted. The one exception is the size of the
-//! Cloud disks, which an administrator also sets on its own account: it decides
-//! the server's disk, not the account.
+//! on the master, and no account is deleted. The one exception is the size of
+//! the Cloud disks, which an administrator also sets on its own account: it
+//! decides the server's disk, not the account.
 //!
 //! A sign-in code made for another account grants no more than a password reset
 //! does, which already lets an administrator in, and it changes no password.

@@ -1,13 +1,22 @@
-//! Finding a conversation (`crates/backend-database/src/search.rs`): a query lists the
-//! conversations whose title matches first, then those whose messages do, each group
-//! most recently active first, archived ones marked; a match is the newest message that
-//! holds every word, steers among them, with the line around it and the words' places
-//! in UTF-16, and the words are marked in a matching title too. Thinking is not
-//! searched. An edit that removes a message removes it from the results; the index
-//! applies each save on top of the one before, reading a conversation whole only when
-//! it missed one; an index of another schema is built again at start, and one that no
-//! longer opens is filled again at once, past a conversation that cannot be read. No
-//! test calls a real model.
+//! Finding a conversation (`crates/backend-database/src/search.rs`).
+//!
+//! Scenarios:
+//!
+//! - A query lists the conversations whose title matches first, then those
+//!   whose messages do, each group most recently active first, archived ones
+//!   marked.
+//! - A match is the newest message that holds every word, steers among them,
+//!   with the line around it and the words' places in UTF-16. The words are
+//!   marked in a matching title too.
+//! - Thinking is not searched.
+//! - An edit that removes a message removes it from the results.
+//! - The index applies each save on top of the one before, reading a
+//!   conversation whole only when it missed one.
+//! - An index of another schema is built again at start, and one that no
+//!   longer opens is filled again at once, past a conversation that cannot be
+//!   read.
+//!
+//! No test calls a real model.
 
 use std::time::Duration;
 

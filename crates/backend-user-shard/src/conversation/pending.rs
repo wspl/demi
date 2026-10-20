@@ -1,20 +1,31 @@
-//! The changes an agent asks for that wait for its conversation's tree to
-//! be idle: its pending move and the attached devices it asked to
-//! detach. A move and a detach are transitions, which the command's own job
-//! and its working tree would always find busy, so the command only records
-//! them and answers at once (a rename and an attach apply at once). A newer
-//! pending move replaces an older one, an archive drops it, and an attach of
-//! a device cancels its mark to detach; the device stays usable until the
-//! detach is made. Each change is announced to every node in its next
-//! context block, as one the user makes.
-//! A watch per conversation waits until the tree does nothing by
-//! itself, reserves it in the same step, so nothing else is admitted
-//! first, and makes them in one transition; a closed tree is idle at once.
+//! The changes an agent asks for that wait for its conversation's tree to be
+//! idle: its pending move and the attached devices it asked to detach.
+//!
+//! A move and a detach are transitions, which the command's own job and its
+//! working tree would always find busy, so the command only records them and
+//! answers at once. A rename and an attach apply at once.
+//!
+//! # Recording
+//!
+//! - A newer pending move replaces an older one.
+//! - An archive drops it.
+//! - An attach of a device cancels its mark to detach; the device stays usable
+//!   until the detach is made.
+//! - Each change is announced to every node in its next context block, as one
+//!   the user makes.
+//!
+//! # Making the change
+//!
+//! A watch per conversation waits until the tree does nothing by itself,
+//! reserves it in the same step, so nothing else is admitted first, and makes
+//! the changes in one transition. A closed tree is idle at once.
+//!
 //! A move checks what a user's switch checks, not whether the device is
-//! online; one that fails, such as into a project deleted meanwhile, leaves
-//! the conversation where it was and wakes the root with Demi's notice of
-//! the reason. The changes are stored, so a start
-//! makes those a restart cut off.
+//! online. One that fails, such as into a project deleted meanwhile, leaves the
+//! conversation where it was and wakes the root with Demi's notice of the
+//! reason.
+//!
+//! The changes are stored, so a start makes those a restart cut off.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

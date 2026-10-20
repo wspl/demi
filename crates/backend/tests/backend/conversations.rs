@@ -1,10 +1,19 @@
-//! Conversations: creation under the web app's id, the list and the product state, a
-//! chat over the socket with an Anthropic endpoint the test scripts, a reload whose
-//! history is what the database holds, a client that falls behind, the frames the
-//! backend refuses, a user's context limit on a model, provider edits and deletion at
-//! the inference boundary, the rate limit, a shutdown in the middle of a turn and one
-//! that a page which stopped reading cannot hold up, and the patches and batches of the
-//! sidebar. No test calls a real model.
+//! Conversations.
+//!
+//! Scenarios:
+//!
+//! - Creation under the web app's id, the list and the product state.
+//! - A chat over the socket with an Anthropic endpoint the test scripts.
+//! - A reload whose history is what the database holds.
+//! - A client that falls behind, and the frames the backend refuses.
+//! - A user's context limit on a model.
+//! - Provider edits and deletion at the inference boundary.
+//! - The rate limit.
+//! - A shutdown in the middle of a turn, and one that a page which stopped
+//!   reading cannot hold up.
+//! - The patches and batches of the sidebar.
+//!
+//! No test calls a real model.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1942,13 +1951,16 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
 
 /// A summary read while the conversation's database migrates waits for the
 /// migration and lists the conversation's facts
-/// (`crates/backend-database/src/lib.rs`): after an upgrade, the database of the
-/// previous release's schema migrates as its conversation opens, holding its
-/// write lock for as long as the migration takes, and a page's summaries that
-/// come meanwhile still say how its turn ended. On a production server the
-/// summary read migrated the database itself beside the open, gave up on the
-/// lock after its busy timeout and listed the conversation idle, with revision
-/// 0. A turn and a restart against the mock vendor, under a second.
+/// (`crates/backend-database/src/lib.rs`): after an upgrade, the database of
+/// the previous release's schema migrates as its conversation opens, holding
+/// its write lock for as long as the migration takes, and a page's summaries
+/// that come meanwhile still say how its turn ended.
+///
+/// On a production server the summary read migrated the database itself beside
+/// the open, gave up on the lock after its busy timeout and listed the
+/// conversation idle, with revision 0.
+///
+/// A turn and a restart against the mock vendor, under a second.
 #[tokio::test]
 async fn a_summary_read_while_the_conversations_database_migrates_lists_its_facts() {
     let vendor = MockVendor::start().await;
@@ -2148,16 +2160,18 @@ impl StalledPage {
     }
 }
 
-/// A page that stopped reading, its socket's buffers full, holds up shutdown
-/// no longer than the close frame's bound: the backend is in the middle of
+/// A page that stopped reading, its socket's buffers full, holds up shutdown no
+/// longer than the close frame's bound: the backend is in the middle of
 /// sending a transcript larger than any socket buffer when it shuts down.
+///
 /// The 8 MiB answer that makes the transcript so large costs most of the
-/// test's second: a smaller one can fit the send buffer, whose limit is 4
-/// MiB on Linux and macOS. The answer is the model's, since a page sends no
-/// message over 1 MiB. It comes in 128 KiB deltas, as a vendor streams it:
-/// the stream's parser reads a line again from its start each time more of
-/// it arrives, so one 8 MiB line cost seconds, and up to 12 under a full
-/// test run.
+/// test's second: a smaller one can fit the send buffer, whose limit is 4 MiB
+/// on Linux and macOS.
+///
+/// The answer is the model's, since a page sends no message over 1 MiB. It
+/// comes in 128 KiB deltas, as a vendor streams it: the stream's parser reads
+/// a line again from its start each time more of it arrives, so one 8 MiB line
+/// cost seconds, and up to 12 under a full test run.
 #[tokio::test]
 async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
     let vendor = MockVendor::start().await;
@@ -2555,11 +2569,13 @@ pub(crate) fn leveled(id: &str, fast: Option<&str>) -> Value {
     })
 }
 
-/// A conversation's model settings are one value that every page shows: a
-/// change names only its parts, so two pages that change different parts keep
-/// both; another page reads the change in its next snapshot; the conversation's
-/// next request uses it, whichever page sends it; and a tree opened after a
-/// change made while none was live opens with it.
+/// A conversation's model settings are one value that every page shows:
+///
+/// - A change names only its parts, so two pages that change different parts keep
+///   both.
+/// - Another page reads the change in its next snapshot.
+/// - The conversation's next request uses it, whichever page sends it.
+/// - A tree opened after a change made while none was live opens with it.
 #[tokio::test]
 async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request() {
     let vendor = MockVendor::start().await;
@@ -2709,12 +2725,12 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
     backend.close().await;
 }
 
-/// A change that names no effort takes the first effort the model lists,
-/// on a model that can turn thinking off too
-/// (`crates/shared-types/src/catalog.rs`): the settings never leave thinking to
-/// the vendor, and the
-/// request carries the effort every page shows. A patch cannot name no
-/// effort with null.
+/// A change that names no effort takes the first effort the model lists, on a model
+/// that can turn thinking off too (`crates/shared-types/src/catalog.rs`): the
+/// settings never leave thinking to the vendor, and the request carries the effort
+/// every page shows.
+///
+/// A patch cannot name no effort with null.
 #[tokio::test]
 async fn a_change_that_names_no_effort_takes_the_first_effort_the_model_lists() {
     let vendor = MockVendor::start().await;

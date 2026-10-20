@@ -1,7 +1,9 @@
-//! A conversation's attached hosts (`crates/backend-database/src/conversation_index.rs`):
-//! the list, with each device's connection, and a detach, which is a transition
-//! and reaches the conversation's nodes at their next context block. The
-//! conversation's agents attach the devices.
+//! A conversation's attached hosts
+//! (`crates/backend-database/src/conversation_index.rs`).
+//!
+//! The routes are the list, with each device's connection, and a detach. A
+//! detach is a transition and reaches the conversation's nodes at their next
+//! context block. The conversation's agents attach the devices.
 
 use axum::Json;
 use axum::extract::{Path, State};

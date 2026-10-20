@@ -1,13 +1,20 @@
-//! Change watches: every interval, the watch's command runs on the target's
-//! device in the target's directory, as the agent's shell would run it, through
-//! the conversation's host access for an existing conversation, and for a new
-//! one each run through device access on a paired device or machine access on
-//! the Cloud, which wakes it (`crates/backend-host-access/src/lib.rs`).
+//! Change watches.
+//!
+//! Every interval, the watch's command runs on the target's device in the
+//! target's directory, as the agent's shell would run it:
+//!
+//! - through the conversation's host access for an existing conversation;
+//! - for a new one, each run through device access on a paired device or
+//!   machine access on the Cloud, which wakes it
+//!   (`crates/backend-host-access/src/lib.rs`).
+//!
 //! The SHA-256 of its whole standard output and its exit status are compared
-//! with the last ones, and its output's last 16 KB kept for the message; the
-//! first run only records them, and a change fires a run. A command that runs
-//! over 60 seconds is stopped and fails the check. A check a pause, an edit of
-//! the trigger or a deletion overtook is stopped, and records nothing.
+//! with the last ones, and its output's last 16 KB kept for the message. The
+//! first run only records them, and a change fires a run.
+//!
+//! - A command that runs over 60 seconds is stopped and fails the check.
+//! - A check a pause, an edit of the trigger or a deletion overtook is stopped,
+//!   and records nothing.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

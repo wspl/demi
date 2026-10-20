@@ -1,9 +1,15 @@
 //! The account records of the control store
-//! (`crates/backend/src/config/secret.rs`): an account with its password
-//! hash, the hashes that stand for session and device tokens and for
-//! email-change codes, and the policies and outcomes of sessions and
-//! challenges. The accounts service decides the policies; storage keeps the
-//! records they govern.
+//! (`crates/backend/src/config/secret.rs`).
+//!
+//! The records are:
+//!
+//! - an account with its password hash;
+//! - the hashes that stand for session and device tokens and for email-change
+//!   codes;
+//! - the policies and outcomes of sessions and challenges.
+//!
+//! The accounts service decides the policies; storage keeps the records they
+//! govern.
 
 use std::fmt;
 

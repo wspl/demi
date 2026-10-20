@@ -1,6 +1,9 @@
-//! The work panel: a conversation's tabs, which the backend changes a request of changes
-//! at a time, all or none, and never interprets, counted by a revision the summary
-//! carries, with each tab's id used once.
+//! The work panel: a conversation's tabs.
+//!
+//! - The backend changes a request of changes at a time, all or none, and
+//!   never interprets them.
+//! - A revision the summary carries counts the changes.
+//! - Each tab's id is used once.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -281,11 +284,11 @@ async fn a_work_panel_holds_64_tabs_and_64_kib_and_an_archived_conversation_take
     backend.close().await;
 }
 
-// An attachment block's card opens a tab of the file-browser plugin's
-// `attachment` kind, which the backend keeps as any tab and lets go of when the
-// user closes it. Planted defect this catches: the kind left undeclared, which
-// refuses the tab, so a card's click opens nothing. One backend, a few
-// requests.
+// An attachment block's card opens a tab of the file-browser plugin's `attachment`
+// kind, which the backend keeps as any tab and lets go of when the user closes it.
+//
+// Planted defect this catches: the kind left undeclared, which refuses the tab, so
+// a card's click opens nothing. One backend, a few requests.
 #[tokio::test]
 async fn an_attachments_tab_is_kept_until_the_user_closes_it() {
     let (backend, master) = Harness::new().start_set_up().await;

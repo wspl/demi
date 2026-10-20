@@ -2,28 +2,41 @@
 //! (`crates/command-package-claude-code/src/lib.rs`,
 //! `crates/provider-claude-code/src/placement.rs`,
 //! `crates/provider-claude-code/src/account.rs`;
-//! `crates/backend-cloud/src/lib.rs`): the versions the machine has and
-//! the install of the vendor's newest, through the `demi.claude-code`
-//! package; the placement that starts a provider's process there, in its
-//! account's directory with a directory of its own for its session, or a
-//! sign-in's new directory; the machine as every user's sign-in and usage
-//! probe reach it; and the installs no conversation asked for, whose
-//! outcome the settings page shows.
+//! `crates/backend-cloud/src/lib.rs`).
+//!
+//! The module covers:
+//!
+//! - the versions the machine has and the install of the vendor's newest,
+//!   through the `demi.claude-code` package;
+//! - the placement that starts a provider's process there, in its account's
+//!   directory with a directory of its own for its session, or a sign-in's new
+//!   directory;
+//! - the machine as every user's sign-in and usage probe reach it;
+//! - the installs no conversation asked for, whose outcome the settings page
+//!   shows.
+//!
+//! # Installed versions
 //!
 //! What each machine has installed is kept per runner connection, and a process
 //! start asks the machine nothing: the root's process and three subagents'
-//! starting on a laptop ask its runner once in all. Showing a version is never
-//! a reason to wake a machine, and a newer version does not interrupt work: a
-//! machine with a usable version keeps answering with it while the newer one
-//! installs beside it. Installing leaves nothing in the transcript; a failure
-//! is that request's error, or the result of the account action that asked.
+//! starting on a laptop ask its runner once in all.
 //!
-//! The machine's record is the master's, so the master's shard holds it.
-//! Another user's work crosses there once per process start: the master's
-//! shard starts the process and a task there relays its standard streams
-//! and its end as `Send` pipe ends, and closes it, SIGTERM first, once the
-//! user's side lets go. Each run, sign-in and probe holds a lease of the
-//! machine for its whole life, which keeps it awake and wakes it.
+//! - Showing a version is never a reason to wake a machine.
+//! - A newer version does not interrupt work: a machine with a usable version
+//!   keeps answering with it while the newer one installs beside it.
+//! - Installing leaves nothing in the transcript. A failure is that request's
+//!   error, or the result of the account action that asked.
+//!
+//! # The master's shard
+//!
+//! The machine's record is the master's, so the master's shard holds it. Another
+//! user's work crosses there once per process start: the master's shard starts
+//! the process, and a task there relays its standard streams and its end as
+//! `Send` pipe ends. The task closes the process, SIGTERM first, once the user's
+//! side lets go.
+//!
+//! Each run, sign-in and probe holds a lease of the machine for its whole life,
+//! which keeps it awake and wakes it.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -461,13 +474,17 @@ impl ConfigDir for RelayedDir {
     }
 }
 
-/// Starts relaying `placed`, a process the master's shard started, holding
-/// its account's gate (`hold`), as a task of that shard: its output goes
-/// to the pipe, the user's side's orders reach its control, and its end
-/// goes back once its directory is removed, after which the gate is let go.
+/// Starts relaying `placed`, a process the master's shard started, holding its
+/// account's gate (`hold`), as a task of that shard.
+///
+/// - Its output goes to the pipe.
+/// - The user's side's orders reach its control.
+/// - Its end goes back once its directory is removed, after which the gate is
+///   let go.
+///
 /// When the user's side lets go of the control, or a change of the account
-/// begins, the process is closed, SIGTERM first. The task owns the
-/// process's control, so no path drops it raw.
+/// begins, the process is closed, SIGTERM first. The task owns the process's
+/// control, so no path drops it raw.
 fn relay(shard: &Shard, placed: Placed, hold: Option<AccountHold>) -> Relayed {
     let Placed {
         process,
@@ -531,15 +548,19 @@ fn relay(shard: &Shard, placed: Placed, hold: Option<AccountHold>) -> Relayed {
     }
 }
 
-/// The accounts whose processes run on the Claude Code machine, each with
-/// its gate, which the master's shard keeps
-/// (`crates/provider-claude-code/src/account.rs`): every process of an account
-/// holds its gate shared, from
-/// before its directory is readied until the directory the process made of
-/// its own is removed. Signing the account in again and removing it take
-/// the gate whole, one change at a time: a change first stops new starts of
-/// the account, which wait, then closes every process holding the gate and
-/// waits for them, and only then changes the account's directory.
+/// The accounts whose processes run on the Claude Code machine, each with its
+/// gate, which the master's shard keeps
+/// (`crates/provider-claude-code/src/account.rs`).
+///
+/// Every process of an account holds its gate shared, from before its directory
+/// is readied until the directory the process made of its own is removed.
+///
+/// Signing the account in again and removing it take the gate whole, one change
+/// at a time:
+///
+/// 1. The change stops new starts of the account, which wait.
+/// 2. It closes every process holding the gate and waits for them.
+/// 3. Only then does it change the account's directory.
 #[derive(Default)]
 pub(crate) struct AccountGates(RefCell<HashMap<String, Rc<AccountGate>>>);
 
@@ -634,15 +655,21 @@ impl AccountGates {
     }
 }
 
-/// The Claude Code machine as the master's shard starts a process on it,
-/// for a user's start that crossed there or for a sign-in or a usage probe
-/// that runs there: each start wakes or admits the machine through its
-/// machine access, makes sure it has the CLI, makes the account's directory
-/// (handing an earlier release's sign-in over into it once) and the
-/// process's own directory under it, or a sign-in's new directory, writes
-/// the start's files and starts the process, holding the machine's
-/// admission only until the process started; a process that is retained
-/// holds none afterwards.
+/// The Claude Code machine as the master's shard starts a process on it, for a
+/// user's start that crossed there or for a sign-in or a usage probe that runs
+/// there.
+///
+/// Each start:
+///
+/// 1. Wakes or admits the machine through its machine access.
+/// 2. Makes sure the machine has the CLI.
+/// 3. Makes the account's directory (handing an earlier release's sign-in over
+///    into it once) and the process's own directory under it, or a sign-in's
+///    new directory.
+/// 4. Writes the start's files and starts the process.
+///
+/// It holds the machine's admission only until the process started; a process
+/// that is retained holds none afterwards.
 pub(crate) struct MachinePlacement {
     shard: Weak<Shard>,
     /// The context the package's operations run under.
@@ -904,15 +931,18 @@ fn account_dir(accounts: &str, account: &str) -> Result<String, StartError> {
     Ok(format!("{accounts}/{account}"))
 }
 
-/// Writes the sign-in an earlier release kept, as the CLI's `files`, into
-/// the account's directory `dir`, private to the machine's user, unless the
-/// directory holds a sign-in already: its last file, the CLI's credentials,
-/// is there, and nothing is written over it
+/// Writes the sign-in an earlier release kept, as the CLI's `files`, into the
+/// account's directory `dir`, private to the machine's user, unless the
+/// directory holds a sign-in already.
+///
+/// The directory holds a sign-in when its last file, the CLI's credentials, is
+/// there, and nothing is written over it
 /// (`crates/provider-claude-code/src/account.rs`). One handover of the account
-/// runs at a time (`gate`). Each
-/// file is written whole beside its place, then all are renamed into place
-/// in order, so the directory holds a sign-in only once every file is
-/// there; a handover that fails leaves no sign-in, and the record keeps it.
+/// runs at a time (`gate`).
+///
+/// Each file is written whole beside its place, then all are renamed into place
+/// in order, so the directory holds a sign-in only once every file is there. A
+/// handover that fails leaves no sign-in, and the record keeps it.
 async fn hand_over(
     host: &RemoteHost,
     dir: &str,
@@ -1111,11 +1141,16 @@ impl Drop for MachineDir {
     }
 }
 
-/// The CLI work of one user's shard: the versions each machine has, the
-/// versions being installed beside the one in use, the processes prepared
-/// ahead for the user, and, on the master's shard, what it keeps of the
-/// Claude Code machine: the run directory's real path there and the
-/// gates of the accounts whose processes it starts.
+/// The CLI work of one user's shard.
+///
+/// It keeps:
+///
+/// - the versions each machine has;
+/// - the versions being installed beside the one in use;
+/// - the processes prepared ahead for the user;
+/// - on the master's shard, what it keeps of the Claude Code machine: the run
+///   directory's real path there and the gates of the accounts whose processes
+///   it starts.
 #[derive(Default)]
 pub(crate) struct ClaudeCli {
     versions: RefCell<HashMap<DeviceId, KeptVersions>>,
@@ -1134,10 +1169,11 @@ pub(crate) struct ClaudeCli {
 type Versions = Shared<LocalBoxFuture<'static, Result<Vec<Installed>, CliError>>>;
 
 /// What the backend keeps of the CLI versions a machine has
-/// (`crates/backend-providers/src/llm/claude_releases.rs`): the answer of the runner
-/// connection `link`, asked once on it, or what the backend's own install
-/// over it left. A new connection asks again. `waiting` counts the starts
-/// that wait for an ask still under way.
+/// (`crates/backend-providers/src/llm/claude_releases.rs`).
+///
+/// It is the answer of the runner connection `link`, asked once on it, or what
+/// the backend's own install over it left. A new connection asks again.
+/// `waiting` counts the starts that wait for an ask still under way.
 struct KeptVersions {
     link: WeakLink,
     versions: Versions,
@@ -1204,12 +1240,13 @@ impl ClaudeCli {
 }
 
 impl Shard {
-    /// What the machine `access` holds tells a process in `run_dir` of
-    /// itself, as the CLI reads it to describe its environment
-    /// (`crates/provider-claude-code/src/session.rs`): the kernel and
-    /// the `SHELL` its runner reported in its hello, and the directory with
-    /// its links resolved, once per runner connection. No process starts
-    /// for them.
+    /// What the machine `access` holds tells a process in `run_dir` of itself, as
+    /// the CLI reads it to describe its environment
+    /// (`crates/provider-claude-code/src/session.rs`).
+    ///
+    /// It gives the kernel and the `SHELL` its runner reported in its hello, and
+    /// the directory with its links resolved, once per runner connection. No
+    /// process starts for them.
     async fn cli_system(&self, access: &MachineAccess, run_dir: &str) -> Result<CliSystem, String> {
         let link = self
             .devices()
@@ -1268,12 +1305,13 @@ impl Shard {
 
     /// The executable to start on `target`
     /// (`crates/backend-providers/src/llm/claude_releases.rs`): the wanted
-    /// version when the machine has it, else the
-    /// newest it has while the wanted one installs beside it. A machine
-    /// with a version never waits for the release pointer: without a
+    /// version when the machine has it, else the newest it has while the wanted
+    /// one installs beside it.
+    ///
+    /// A machine with a version never waits for the release pointer: without a
     /// believed answer it starts its newest, and the pointer is read in the
-    /// background for a later start. Only a machine with none waits for the
-    /// read and the install, which it reports to `stages`.
+    /// background for a later start. Only a machine with none waits for the read
+    /// and the install, which it reports to `stages`.
     async fn cli_executable(
         &self,
         target: &CliTarget,
@@ -1308,14 +1346,15 @@ impl Shard {
         Ok(usable.path.to_string_lossy().into_owned())
     }
 
-    /// The versions `target`'s machine has, newest install first, as the
-    /// backend keeps them for its runner connection
-    /// (`crates/backend-providers/src/llm/claude_releases.rs`): asked once on
-    /// the connection, by whichever start
-    /// comes first, while the others wait for the same answer. A failed
-    /// ask, or one every start waiting for it gave up on, is kept by
-    /// nobody, so the next start asks again; a machine whose runner is not
-    /// connected is asked and nothing is kept.
+    /// The versions `target`'s machine has, newest install first, as the backend
+    /// keeps them for its runner connection
+    /// (`crates/backend-providers/src/llm/claude_releases.rs`).
+    ///
+    /// The versions are asked once on the connection, by whichever start comes
+    /// first, while the others wait for the same answer. A failed ask, or one
+    /// every start waiting for it gave up on, is kept by nobody, so the next
+    /// start asks again. A machine whose runner is not connected is asked and
+    /// nothing is kept.
     async fn cli_versions(&self, target: &CliTarget) -> Result<Vec<Installed>, CliError> {
         let Some(link) = self.devices().link(&target.device) else {
             return installed(self.services(), target).await;
@@ -1405,11 +1444,12 @@ impl Shard {
         }
     }
 
-    /// Installs `release` on `target` beside the version in use, once per
-    /// version whoever noticed it first. Nothing waits for it: a failed
-    /// update leaves the version in use, and the next start notices the
-    /// newer one again. Its Host admits each operation without waking the
-    /// machine, and shutdown cancels it.
+    /// Installs `release` on `target` beside the version in use, once per version
+    /// whoever noticed it first.
+    ///
+    /// Nothing waits for it: a failed update leaves the version in use, and the
+    /// next start notices the newer one again. Its Host admits each operation
+    /// without waking the machine, and shutdown cancels it.
     fn upgrade_cli(&self, target: CliTarget, release: Release) {
         if !self
             .claude_cli()
@@ -1438,13 +1478,14 @@ impl Shard {
         self.claude_cli().prepared.until_begun(count).await;
     }
 
-    /// Follows the vault's announcements of active-account changes until
-    /// the shard closes (`crates/provider-claude-code/src/prepared.rs`): for
-    /// each, the processes prepared for the user in the previous
+    /// Follows the vault's announcements of active-account changes until the
+    /// shard closes (`crates/provider-claude-code/src/prepared.rs`).
+    ///
+    /// For each change, the processes prepared for the user in the previous
     /// account's directory close, and the conversations on the entry that a page
-    /// has open prepare again. `changes` was subscribed when the shard was
-    /// made, so no change since is missed; a follower that fell behind
-    /// treats every entry as changed.
+    /// has open prepare again. `changes` was subscribed when the shard was made,
+    /// so no change since is missed; a follower that fell behind treats every
+    /// entry as changed.
     pub(crate) async fn follow_account_changes(
         self: Rc<Self>,
         mut changes: tokio::sync::broadcast::Receiver<ProviderId>,

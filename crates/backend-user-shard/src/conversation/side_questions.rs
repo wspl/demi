@@ -1,9 +1,12 @@
-//! A conversation's side questions on the backend: asking one, which opens the
-//! conversation's tree when it is closed and starts the side's node there,
-//! beside the root's turn; its card's title, which the user's small model
-//! writes as a conversation's; its follow-ups and Retry, which are turns of its
-//! node; its fold; and the list a page reads, whose revision every change
-//! raises.
+//! A conversation's side questions on the backend.
+//!
+//! - Asking one opens the conversation's tree when it is closed and starts the
+//!   side's node there, beside the root's turn.
+//! - Its card's title is written by the user's small model, as a
+//!   conversation's.
+//! - Its follow-ups and Retry are turns of its node.
+//! - It has a fold.
+//! - The list a page reads has a revision that every change raises.
 
 use demi_agent_server::AskError;
 use demi_agent_store::SideOf;

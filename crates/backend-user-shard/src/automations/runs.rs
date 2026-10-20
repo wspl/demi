@@ -1,9 +1,17 @@
-//! One run of an automation: recorded as it fires, before anything else, so it
-//! never starts twice; skipped when its target's device is offline, after the
-//! restart hold for one the backend's own restart disconnected, or its
-//! conversation is gone; otherwise its message goes to a new conversation,
-//! filed under the automation, or wakes the existing one, queued behind a turn
-//! that runs. It ends with the turn its message started.
+//! One run of an automation.
+//!
+//! A run is recorded as it fires, before anything else, so it never starts
+//! twice.
+//!
+//! It is skipped when:
+//!
+//! - its target's device is offline, after the restart hold for one the
+//!   backend's own restart disconnected;
+//! - its conversation is gone.
+//!
+//! Otherwise its message goes to a new conversation, filed under the
+//! automation, or wakes the existing one, queued behind a turn that runs. The
+//! run ends with the turn its message started.
 
 use std::rc::Rc;
 
@@ -174,10 +182,12 @@ impl Shard {
         (record.kind == DeviceKind::User && !self.devices().online(device)).then_some(record.name)
     }
 
-    /// The automation's run whose message the conversation works for, with
-    /// when it came: from that message until the user next writes to the
-    /// conversation, every turn of its tree, whatever the run's state. None
-    /// while the user's own message is the latest, or for a conversation no
+    /// The automation's run whose message the conversation works for, with when
+    /// it came.
+    ///
+    /// The run covers every turn of the conversation's tree from that message
+    /// until the user next writes to the conversation, whatever the run's state.
+    /// None while the user's own message is the latest, or for a conversation no
     /// tree holds.
     pub(crate) fn automation_input(&self, conversation: &ConversationId) -> Option<(AutomationMark, Timestamp)> {
         let root = root_of(conversation);

@@ -1,8 +1,12 @@
-//! Shares on the owner's shard: the owner makes a share, makes a conversation's share's
-//! list again and removes a share, each announced on the owner's pages through the
-//! conversation's summary, which lists its shares; and a share's reader reads what its
-//! list holds, by the share's record, which the edge found by the token. A read reaches
-//! the list alone: no Host, no live session.
+//! Shares on the owner's shard.
+//!
+//! The owner makes a share, makes a conversation's share's list again and
+//! removes a share. Each is announced on the owner's pages through the
+//! conversation's summary, which lists its shares.
+//!
+//! A share's reader reads what its list holds, by the share's record, which the
+//! edge found by the token. A read reaches the list alone: no Host, no live
+//! session.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;

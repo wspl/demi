@@ -1,6 +1,8 @@
-//! `/push/key` and `/push/subscription`: the backend's VAPID public key, and
-//! the caller's session's subscription, which it keeps and removes. Neither
-//! reaches another session's.
+//! `/push/key` and `/push/subscription`.
+//!
+//! They serve the backend's VAPID public key, and the caller's session's
+//! subscription, which the backend keeps and removes. Neither reaches another
+//! session's.
 
 use std::sync::Arc;
 

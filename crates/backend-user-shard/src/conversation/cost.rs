@@ -1,9 +1,12 @@
 //! A conversation's cost as its open pages follow it
-//! (`crates/backend-database/src/usage.rs`): the control store announces each
-//! ledger row it writes,
-//! the backend hands the row to its user's shard, and the shard sends what
-//! the row adds to the cost as a `cost` frame to the conversation's
-//! attached connections. A conversation nobody shows is sent nothing.
+//! (`crates/backend-database/src/usage.rs`).
+//!
+//! 1. The control store announces each ledger row it writes.
+//! 2. The backend hands the row to its user's shard.
+//! 3. The shard sends what the row adds to the cost as a `cost` frame to the
+//!    conversation's attached connections.
+//!
+//! A conversation nobody shows is sent nothing.
 
 use std::rc::Rc;
 

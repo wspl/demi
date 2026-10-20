@@ -1,26 +1,42 @@
 //! Retention and a conversation's deletion as the control database records it.
 //!
+//! # Retention
+//!
 //! Demi keeps everything a conversation made for as long as the conversation
 //! exists: its messages, the files the user sent in it, a tool result's images and
 //! videos, a command's whole output and its media, edit copies and every other
-//! blob. Nothing expires. Deleting the conversation removes it and the blobs no
-//! other record of its user names; a blob a failed write leaves without a
-//! reference costs storage until the next collection of its user's namespace,
-//! never correctness, since no row names it. A deletion goes in four steps: one
-//! transaction of the control database removes the conversation's record and every
-//! record that belongs to it (its draft, work panel, attached hosts, permission
-//! requests and grants, shares), except the usage ledger's rows, which are the
-//! user's record of what was used, and records the deletion as pending, from which
-//! commit no request finds the conversation; the conversation's Host resources are
-//! released as archive releases them and its tabs in the conversation browser are
-//! closed; its database file and its rows in the search index are removed; and the
-//! pending record is removed. A start that finds a pending deletion finishes it
-//! from the step it reached, so a crash in between leaves nothing of the
-//! conversation behind. Its project's files stay: they belong to the Host. The
-//! blobs the conversation named are left to the collection of its owner's
-//! namespace (`references`). There is no account deletion; when it comes it must
-//! also remove the account's blob namespace, `blobs/<userId>/`, which nothing else
-//! removes, and a Cloud's disks stay the machine manager's.
+//! blob. Nothing expires.
+//!
+//! Deleting the conversation removes it and the blobs no other record of its user
+//! names. A blob a failed write leaves without a reference costs storage until the
+//! next collection of its user's namespace, never correctness, since no row names
+//! it.
+//!
+//! # Steps of a deletion
+//!
+//! A deletion goes in four steps:
+//!
+//! 1. One transaction of the control database removes the conversation's record
+//!    and every record that belongs to it (its draft, work panel, attached hosts,
+//!    permission requests and grants, shares), except the usage ledger's rows,
+//!    which are the user's record of what was used. It records the deletion as
+//!    pending, from which commit no request finds the conversation.
+//! 2. The conversation's Host resources are released as archive releases them,
+//!    and its tabs in the conversation browser are closed.
+//! 3. Its database file and its rows in the search index are removed.
+//! 4. The pending record is removed.
+//!
+//! A start that finds a pending deletion finishes it from the step it reached, so
+//! a crash in between leaves nothing of the conversation behind.
+//!
+//! # What stays
+//!
+//! - Its project's files stay: they belong to the Host.
+//! - The blobs the conversation named are left to the collection of its owner's
+//!   namespace (`references`).
+//! - There is no account deletion. When it comes it must also remove the account's
+//!   blob namespace, `blobs/<userId>/`, which nothing else removes. A Cloud's
+//!   disks stay the machine manager's.
 
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use rusqlite::params;
@@ -39,11 +55,12 @@ pub struct PendingDeletion {
 }
 
 impl ControlService {
-    /// Step 1 of a deletion: removes `owner`'s conversation `id` with its
-    /// draft, work panel, attached hosts, permission requests and grants,
-    /// and records the deletion as pending, in one transaction. Answers the
-    /// id as the record spelled it, which names its database; none when the
-    /// owner has no such conversation. The usage the conversation incurred
+    /// Step 1 of a deletion: removes `owner`'s conversation `id` with its draft,
+    /// work panel, attached hosts, permission requests and grants, and records the
+    /// deletion as pending, in one transaction.
+    ///
+    /// Answers the id as the record spelled it, which names its database; none
+    /// when the owner has no such conversation. The usage the conversation incurred
     /// stays in the ledger: it is the owner's account of what they used.
     pub async fn delete_conversation(
         &self,

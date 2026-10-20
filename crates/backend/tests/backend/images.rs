@@ -1,17 +1,24 @@
 //! The agent's `demi image`, the `image` plugin over the port's Providers
-//! service: an image made to a file and to `demi file view`, an edit of the
-//! Host's files, warnings for what the result did not honour, a used-up
-//! account under Balanced moving the call to another, a usage ledger row
-//! per call, a stopped call's cancelled row, no account named to a shared
-//! instance's user, an entry whose Image Generation is off never chosen,
-//! the entry a call takes: subscriptions before keys, each in the order of
-//! Settings › Providers, the next once one is used up, never another after
-//! a refusal, and the one `--provider` names or why it cannot; what `demi
-//! image models` says of each model; and a compatible API whose shape is
-//! OpenAI Images. The model is the scripted family of the subagent
-//! scenarios, the image role a scripted family's, or OpenAI Images'
-//! requests to a scripted server, and the device a real runner. No test
-//! calls a real model.
+//! service.
+//!
+//! Scenarios:
+//!
+//! - An image made to a file and to `demi file view`, and an edit of the
+//!   Host's files.
+//! - Warnings for what the result did not honour.
+//! - A used-up account under Balanced moving the call to another.
+//! - A usage ledger row per call, and a stopped call's cancelled row.
+//! - No account named to a shared instance's user.
+//! - An entry whose Image Generation is off is never chosen.
+//! - The entry a call takes: subscriptions before keys, each in the order of
+//!   Settings › Providers, the next once one is used up, never another after
+//!   a refusal, and the one `--provider` names or why it cannot.
+//! - What `demi image models` says of each model.
+//! - A compatible API whose shape is OpenAI Images.
+//!
+//! The model is the scripted family of the subagent scenarios, the image role
+//! a scripted family's, or OpenAI Images' requests to a scripted server, and
+//! the device a real runner. No test calls a real model.
 
 use std::sync::Arc;
 
@@ -72,12 +79,15 @@ fn image_rows(harness: &Harness) -> Vec<Row> {
 // A few seconds: three real devices run the shell jobs of six turns, which
 // pipe an image of a quarter megabyte through the call's stdout.
 //
-// Planted defects: an image written to stdout cut or changed, so `cmp`
-// fails and `demi file view` shows no image; an edit that reads no file
-// of the Host, or reads the primary Host's inside `demi host shell` on an
-// attached one; a stopped call that writes no row; the administrator's
-// account named to a user of the shared entry; a row counted under no
-// turn.
+// Planted defects:
+//
+// - An image written to stdout cut or changed, so `cmp` fails and `demi file
+//   view` shows no image.
+// - An edit that reads no file of the Host, or reads the primary Host's inside
+//   `demi host shell` on an attached one.
+// - A stopped call that writes no row.
+// - The administrator's account named to a user of the shared entry.
+// - A row counted under no turn.
 #[tokio::test]
 async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_files() {
     let made = demi_agent_store::testing::speckled(700, 700).into_bytes();
@@ -536,17 +546,21 @@ async fn ran(scripts: &Arc<Scripts>, socket: &mut Socket, turn: &str, command: &
     last_root(scripts)
 }
 
-// A few seconds: a login, three entries and a real device's shell jobs of
-// nine turns.
+// A few seconds: a login, three entries and a real device's shell jobs of nine
+// turns.
 //
-// Planted defects: a key, which comes first in Settings › Providers, taken
-// over the subscription; the keys tried in the order they were added, not
-// the one the user dragged; a used-up subscription failing the call
-// instead of going on with the next key, or asked again once it is used
-// up; a key whose Image Generation is off still paying for the image;
-// `--provider` passed over for the first entry, or an entry it names that
-// cannot make the model tried anyway or refused without why; `models`
-// without the catalog's facts, an alias, the price or an entry's status.
+// Planted defects:
+//
+// - A key, which comes first in Settings › Providers, taken over the
+//   subscription.
+// - The keys tried in the order they were added, not the one the user dragged.
+// - A used-up subscription failing the call instead of going on with the next
+//   key, or asked again once it is used up.
+// - A key whose Image Generation is off still paying for the image.
+// - `--provider` passed over for the first entry, or an entry it names that
+//   cannot make the model tried anyway or refused without why.
+// - `models` without the catalog's facts, an alias, the price or an entry's
+//   status.
 #[tokio::test]
 async fn a_call_takes_subscriptions_before_keys_in_the_users_order_hands_on_when_used_up_and_takes_the_entry_named() {
     let Both { harness, _device, backend, master, scripts, subscription, key, entry, key_a, key_b, account } = both().await;
@@ -808,15 +822,16 @@ async fn a_compatible_api_with_the_openai_images_shape_makes_the_images_of_the_m
     backend.close().await;
 }
 
-// A model and its alias are one model: a used-up subscription that lists
-// both names and keys that list only the alias, as Codex lists
-// gpt-image-2 beside its dated name and a proxy only the short one. The
-// model's row has every entry that offers either name, and a call by
-// either goes on to a key, which is sent the name it lists. A few seconds:
-// a login, three entries and three turns.
+// A model and its alias are one model: a used-up subscription that lists both
+// names and keys that list only the alias, as Codex lists gpt-image-2 beside
+// its dated name and a proxy only the short one. The model's row has every
+// entry that offers either name, and a call by either goes on to a key, which
+// is sent the name it lists.
 //
-// Planted defect: a row or a call that counts only the entries listing
-// the very name asked, so the keys go unseen and the call fails used up.
+// A few seconds: a login, three entries and three turns.
+//
+// Planted defect: a row or a call that counts only the entries listing the
+// very name asked, so the keys go unseen and the call fails used up.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_model_and_its_alias_are_one_model_offered_by_every_entry_that_lists_either() {
     let Both { harness: _harness, _device, scripts, subscription, key, backend, master, account, .. } =

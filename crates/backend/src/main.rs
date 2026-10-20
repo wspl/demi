@@ -1,10 +1,16 @@
-//! `demi-backend`: reads its configuration, publishes its server release's
-//! command packages, serves until SIGINT or SIGTERM, then shuts down in
-//! order (`Backend::close`).
+//! `demi-backend`: the executable around the library.
 //!
-//! The stop signals are watched from the first step. One that comes while
-//! the command packages are being published stops the start; one that comes
-//! later is kept, the start finishes and the shutdown follows at once.
+//! It reads its configuration, publishes its server release's command
+//! packages, serves until SIGINT or SIGTERM, then shuts down in order
+//! (`Backend::close`).
+//!
+//! The stop signals are watched from the first step:
+//!
+//! - A signal that comes while the command packages are being published stops
+//!   the start.
+//! - A signal that comes later is kept: the start finishes and the shutdown
+//!   follows at once.
+//!
 //! Readiness goes to systemd, whose unit waits for it without a timeout,
 //! since a migration or an image import can take minutes.
 

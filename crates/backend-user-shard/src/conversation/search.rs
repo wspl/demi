@@ -1,22 +1,41 @@
-//! Finding a conversation (`crates/backend-database/src/search.rs`): the user's indexer,
-//! which keeps the user's search index in step with the conversations, and the search
-//! the edge answers from that index alone.
+//! Finding a conversation (`crates/backend-database/src/search.rs`).
 //!
-//! The indexer follows each save of a root's checkpoint by what it changed:
-//! the save hands over the version it follows and the one it makes, the
-//! searchable text of the blocks it wrote and where it cut the rest, and the
-//! indexer applies the saves of each conversation in turn, without reading
-//! the conversation, each only on top of the version it follows. Everything
-//! else that changes a conversation's summary, among them a title change and
-//! a deletion, marks the conversation on the indexer's watch; a marked
-//! conversation is looked at once, and a mark within the interval after that
-//! waits for its end. A mark reads the conversation's record and what the
-//! index holds of it, and replaces the title's row when the title differs.
-//! A conversation is read whole only when the index does not hold it: a mark
-//! finds it missing, a save finds it at another version than the one the
-//! save follows, the start finds it at another version, or the index is
-//! reset. A whole read that fails leaves the index behind, so the next save
-//! or start reads the conversation whole again.
+//! The module holds the user's indexer, which keeps the user's search index in
+//! step with the conversations, and the search the edge answers from that index
+//! alone.
+//!
+//! # Saves
+//!
+//! The indexer follows each save of a root's checkpoint by what it changed. The
+//! save hands over:
+//!
+//! - the version it follows and the one it makes;
+//! - the searchable text of the blocks it wrote and where it cut the rest.
+//!
+//! The indexer applies the saves of each conversation in turn, without reading
+//! the conversation, each only on top of the version it follows.
+//!
+//! # Marks
+//!
+//! Everything else that changes a conversation's summary, among them a title
+//! change and a deletion, marks the conversation on the indexer's watch. A
+//! marked conversation is looked at once, and a mark within the interval after
+//! that waits for its end.
+//!
+//! A mark reads the conversation's record and what the index holds of it, and
+//! replaces the title's row when the title differs.
+//!
+//! # Whole reads
+//!
+//! A conversation is read whole only when the index does not hold it:
+//!
+//! - a mark finds it missing;
+//! - a save finds it at another version than the one the save follows;
+//! - the start finds it at another version;
+//! - the index is reset.
+//!
+//! A whole read that fails leaves the index behind, so the next save or start
+//! reads the conversation whole again.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -126,11 +145,12 @@ impl Shard {
                         "a save was not indexed for search; the conversation is read whole"
                     ),
                 }
-                // The index lacks the conversation, or a change before this
-                // one: it is read whole, unless it is at the conversation's
-                // version already, which holds the saves waiting so far. A
-                // failed read leaves the index behind the conversation, so
-                // the next save, or the next start, reads it whole again.
+                // The index lacks the conversation, or a change before this one:
+                // it is read whole, unless it is at the conversation's version
+                // already, which holds the saves waiting so far.
+                //
+                // A failed read leaves the index behind the conversation, so the
+                // next save, or the next start, reads it whole again.
                 let caught_up = match services.control.conversation(id.clone()).await {
                     Ok(record) => shard.catch_up(&id, record, true).await,
                     Err(error) => Err(error),
@@ -175,12 +195,14 @@ impl Shard {
         });
     }
 
-    /// Brings the index's rows of the conversation `id` in step with
-    /// `record`, its record now, in the conversation's indexing turn, which
-    /// the caller holds: removed when it is gone or not the user's; read
-    /// whole when the index does not hold it, or, with `versions`, holds any
-    /// agent's transcript at another saved version than it has; otherwise its
-    /// title's row replaced when the title differs.
+    /// Brings the index's rows of the conversation `id` in step with `record`, its
+    /// record now, in the conversation's indexing turn, which the caller holds.
+    ///
+    /// - The rows are removed when the conversation is gone or not the user's.
+    /// - The conversation is read whole when the index does not hold it, or, with
+    ///   `versions`, holds any agent's transcript at another saved version than it
+    ///   has.
+    /// - Otherwise its title's row is replaced when the title differs.
     async fn catch_up(
         &self,
         id: &ConversationId,
@@ -227,11 +249,12 @@ impl Shard {
         services.search.index(user, &record.id, conversation).await
     }
 
-    /// Brings every conversation of the user's in step, in the background,
-    /// at start and after the index is reset: each of the user's
-    /// conversations, the most recently active first, and then the rows of
-    /// any conversation that is gone. An index built again is empty, so this
-    /// fills it. Asked for while it runs, it runs once more after.
+    /// Brings every conversation of the user's in step, in the background, at
+    /// start and after the index is reset.
+    ///
+    /// It covers each of the user's conversations, the most recently active first,
+    /// and then the rows of any conversation that is gone. An index built again is
+    /// empty, so this fills it. Asked for while it runs, it runs once more after.
     pub(crate) async fn catch_up_everything(self: Rc<Self>) {
         let indexer = self.search_indexer();
         if indexer.catching_up.get() != CatchUp::Idle {
@@ -350,11 +373,12 @@ pub async fn follow_resets(
     }
 }
 
-/// Answers `query` for `user` from the user's index alone: no
-/// conversation's database is opened and no Host woken. The conversations'
-/// records give their current titles, archive state and activity, and their
-/// order: title matches first, then the rest, each kind most recently
-/// active first; a conversation whose record is gone is left out.
+/// Answers `query` for `user` from the user's index alone: no conversation's
+/// database is opened and no Host woken.
+///
+/// The conversations' records give their current titles, archive state and
+/// activity, and their order: title matches first, then the rest, each kind most
+/// recently active first. A conversation whose record is gone is left out.
 pub async fn search(
     services: &Services,
     user: &UserId,

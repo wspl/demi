@@ -1,11 +1,14 @@
-//! The bytes of file transfers (`crates/backend-host-access/src/access.rs`): the edge moves them while the user's shard holds the
-//! transfer's admission through its lease. A download's body is read as
-//! the user's browser takes it and is cut short, never ended, when the
-//! Host's read fails or the shard ends the transfer; a connection on which
-//! nothing moves for a minute is closed. An upload's body is read as the
-//! Host writes it: the upload stalls when the user's browser sends nothing
-//! for a minute, and a Host that takes nothing for a minute closes its
-//! connection.
+//! The bytes of file transfers (`crates/backend-host-access/src/access.rs`).
+//!
+//! The edge moves them while the user's shard holds the transfer's admission
+//! through its lease.
+//!
+//! - A download's body is read as the user's browser takes it. It is cut short,
+//!   never ended, when the Host's read fails or the shard ends the transfer.
+//!   A connection on which nothing moves for a minute is closed.
+//! - An upload's body is read as the Host writes it. The upload stalls when the
+//!   user's browser sends nothing for a minute, and a Host that takes nothing
+//!   for a minute closes its connection.
 
 use std::io;
 use std::time::Duration;
@@ -28,11 +31,12 @@ use demi_backend_host_access::transfer::OpenUpload;
 /// nginx's `send_timeout` among them.
 pub(super) const TRANSFER_IDLE: Duration = Duration::from_secs(60);
 
-/// A download's body: the Host's bytes as the user's browser takes them. It
-/// ends complete only when the Host's read did; a failing read, or the shard
+/// A download's body: the Host's bytes as the user's browser takes them.
+///
+/// It ends complete only when the Host's read did. A failing read, or the shard
 /// ending the transfer, cuts it short, and the user's browser receives an
-/// incomplete response. The lease and the connection's watch go with the
-/// body, whether it ends or the user's browser leaves.
+/// incomplete response. The lease and the connection's watch go with the body,
+/// whether it ends or the user's browser leaves.
 pub(super) fn paced_body(reader: PipeReader, lease: Lease, watch: ConnectionWatch) -> Body {
     struct Pacing {
         reader: PipeReader,
@@ -83,11 +87,11 @@ pub(super) enum UploadEnd {
     Refused(ApiError),
 }
 
-/// Streams the body the user's browser sends into an open upload. A chunk
-/// is read only once the Host took the one before, so a slow Host slows the
-/// upload, and time the Host takes does not count against the user's
-/// browser. However the copy ends short of its end, the file stays as it
-/// was.
+/// Streams the body the user's browser sends into an open upload.
+///
+/// A chunk is read only once the Host took the one before, so a slow Host slows
+/// the upload, and time the Host takes does not count against the user's
+/// browser. However the copy ends short of its end, the file stays as it was.
 pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
     let OpenUpload {
         mut writer,

@@ -53,10 +53,11 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["registry"] }
 uuid = { version = "1", features = ["v4"] }
 # The passkeys and their challenges the control store keeps
-# (`crates/backend/src/config/secret.rs`), as `webauthn-rs` encodes
-# them: its state serialization stores a challenge between a sign-in's
-# two requests, which may reach different workers, and its credential
-# internals give a passkey's backup state.
+# (`crates/backend/src/config/secret.rs`), as `webauthn-rs` encodes them.
+#
+# - Its state serialization stores a challenge between a sign-in's two requests,
+#   which may reach different workers.
+# - Its credential internals give a passkey's backup state.
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["conditional-ui", "danger-allow-state-serialisation", "danger-credential-internals"] }
 # `webauthn-rs` signs and verifies with OpenSSL, which it offers no
 # alternative to; built from source, so that the static Linux builds of the

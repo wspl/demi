@@ -1,8 +1,20 @@
 //! The routes runners use, which authenticate with a device token instead of
-//! the user's session cookie: `WS /api/runner`, the one socket each runner holds, and the device ends of a pipe at `/api/pipes/:id`
-//! (`crates/runner-protocol/src/wire/pipe_frames.rs`). The source's runner puts a content pipe's bytes as a request body and sends a stream
-//! pipe's over a WebSocket, the sink's gets them, and the edge copies them between the requests and the pipe's ends; the pipe records are the
-//! device owner's shard's. Pipes have no size limit and no idle timeout: a quiet command's pipe stays open for as long as its command runs.
+//! the user's session cookie.
+//!
+//! - `WS /api/runner` is the one socket each runner holds.
+//! - `/api/pipes/:id` is the device ends of a pipe
+//!   (`crates/runner-protocol/src/wire/pipe_frames.rs`).
+//!
+//! A pipe works as follows:
+//!
+//! - The source's runner puts a content pipe's bytes as a request body and
+//!   sends a stream pipe's over a WebSocket.
+//! - The sink's runner gets them.
+//! - The edge copies them between the requests and the pipe's ends.
+//! - The pipe records are the device owner's shard's.
+//!
+//! Pipes have no size limit and no idle timeout: a quiet command's pipe stays
+//! open for as long as its command runs.
 
 use axum::body::Body;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
@@ -202,10 +214,11 @@ pub(super) async fn get(
 }
 
 /// `GET /api/offers/:id`: a file the backend offers the requesting device's
-/// runner for download, such as an attachment placed on its Host, from the
-/// byte a Range request names on, as a download that broke off resumes
-/// (`crates/shared-artifacts/src/download.rs`). An offer withdrawn, unknown or made
-/// to another device answers 404.
+/// runner for download, such as an attachment placed on its Host.
+///
+/// The download starts from the byte a Range request names, so a download that
+/// broke off resumes (`crates/shared-artifacts/src/download.rs`). An offer
+/// withdrawn, unknown or made to another device answers 404.
 pub(super) async fn offer(
     State(state): State<AppState>,
     Path(id): Path<String>,

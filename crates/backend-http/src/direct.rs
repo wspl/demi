@@ -1,13 +1,21 @@
-//! The signaling socket of a direct channel (`crates/runner-direct/src/lib.rs`): the backend introduces the page to its paired device's runner,
-//! through device access, and is the only check. It relays each offer to the
-//! runner and its answer to the page, each side's candidates found after them
-//! to the other, and the page's probes of the relay path and their answers,
-//! which never wait behind an offer's answer. The page keeps two peers with the
-//! device, one for files and one for live views, and each message names its
-//! peer; the backend gives each its own id toward the runner. The socket's
-//! close closes the runner's peers, and so does the user turning a plugin on or
-//! off, which the socket tells the page so that it offers again with the new
-//! introduction.
+//! The signaling socket of a direct channel
+//! (`crates/runner-direct/src/lib.rs`).
+//!
+//! The backend introduces the page to its paired device's runner, through
+//! device access, and is the only check. It relays:
+//!
+//! - each offer to the runner and its answer to the page;
+//! - each side's candidates found after them to the other;
+//! - the page's probes of the relay path and their answers, which never wait
+//!   behind an offer's answer.
+//!
+//! The page keeps two peers with the device, one for files and one for live
+//! views, and each message names its peer. The backend gives each its own id
+//! toward the runner.
+//!
+//! The socket's close closes the runner's peers, and so does the user turning a
+//! plugin on or off, which the socket tells the page so that it offers again
+//! with the new introduction.
 
 use std::future::poll_fn;
 use std::task::Poll;
@@ -353,12 +361,13 @@ impl Signaling {
         let _ = waited;
     }
 
-    /// Relays an offer to the runner, as the peer of this socket, with what
-    /// the runner needs of the user: the streams of the plugins they have on,
-    /// their locale and their color scheme, and the STUN servers to ask.
-    /// Answers what to tell the page, what is cancelled once the
-    /// introduction is out of date, and the candidates the runner finds
-    /// after its answer; none when the runner's connection ended.
+    /// Relays an offer to the runner, as the peer of this socket, with what the
+    /// runner needs of the user: the streams of the plugins they have on, their
+    /// locale and their color scheme, and the STUN servers to ask.
+    ///
+    /// Answers what to tell the page, what is cancelled once the introduction
+    /// is out of date, and the candidates the runner finds after its answer;
+    /// none when the runner's connection ended.
     async fn offer(&self, which: DirectPeer, sdp: String) -> Option<Offered> {
         let device = self.device.clone();
         let peer = self.id(which).to_owned();

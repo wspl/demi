@@ -1,30 +1,44 @@
 //! The Claude Code CLI through the backend
 //! (`crates/provider-claude-code/src/account.rs`,
 //! `crates/provider-claude-code/src/placement.rs`,
-//! `crates/backend-user-shard/src/conversation/claude_cli.rs`): a sign-in
-//! runs the CLI's own login on the user's Cloud, relays its link, hands it
-//! the pasted code, shows the CLI's words for a code it refuses, and keeps
-//! the account it wrote, replacing the tokens of one signed in again, in a
-//! directory that goes however the sign-in ends; a sign-in whose Cloud cannot install the CLI
-//! says why, with the version, and so does a request; the settings read the
-//! newest version and the Cloud's versions; a Cloud with an older CLI
-//! answers with it; a Cloud with a CLI starts it without waiting for the
-//! release pointer, whose answer a read in the background keeps, while a
-//! Cloud with none waits for it; a session describes the Cloud as its
-//! runner's hello reported it, with no process run for it; a
-//! conversation on a paired device infers through the
-//! Cloud, whose CLI process reads the account's token from a descriptor in
-//! a private directory of its own; and after another account is selected,
-//! the next request closes that process, whose directory goes, and starts
-//! one with the new account's token in a new directory.
+//! `crates/backend-user-shard/src/conversation/claude_cli.rs`).
 //!
-//! The distribution is a server the test scripts, and `demi.claude-code` is the
-//! workspace's own, which takes HTTPS downloads only: every install from the
-//! scripted distribution fails. The Cloud's CLI is therefore a script the
+//! Scenarios:
+//!
+//! - A sign-in runs the CLI's own login on the user's Cloud, relays its link,
+//!   hands it the pasted code and shows the CLI's words for a code it
+//!   refuses. It keeps the account it wrote, replacing the tokens of one
+//!   signed in again, in a directory that goes however the sign-in ends.
+//! - A sign-in whose Cloud cannot install the CLI says why, with the version,
+//!   and so does a request.
+//! - The settings read the newest version and the Cloud's versions.
+//! - A Cloud with an older CLI answers with it.
+//! - A Cloud with a CLI starts it without waiting for the release pointer,
+//!   whose answer a read in the background keeps. A Cloud with none waits for
+//!   it.
+//! - A session describes the Cloud as its runner's hello reported it, with no
+//!   process run for it.
+//! - A conversation on a paired device infers through the Cloud, whose CLI
+//!   process reads the account's token from a descriptor in a private
+//!   directory of its own.
+//! - After another account is selected, the next request closes that process,
+//!   whose directory goes, and starts one with the new account's token in a
+//!   new directory.
+//!
+//! # The scripted distribution
+//!
+//! The distribution is a server the test scripts, and `demi.claude-code` is
+//! the workspace's own, which takes HTTPS downloads only: every install from
+//! the scripted distribution fails. The Cloud's CLI is therefore a script the
 //! test installs in the Cloud runner's artifact cache, as the runner installs
-//! a download. Its login prints a link, reads a code, and writes the account
-//! the code names as the CLI writes it; its other runs answer each message
-//! with where they run and with which token. No test runs the real CLI.
+//! a download.
+//!
+//! - Its login prints a link, reads a code, and writes the account the code
+//!   names as the CLI writes it.
+//! - Its other runs answer each message with where they run and with which
+//!   token.
+//!
+//! No test runs the real CLI.
 
 use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt as _;
@@ -61,28 +75,38 @@ const OLDER: &str = "2.1.2";
 const LINK: &str = "https://claude.com/cai/oauth/authorize?code=true&state=scripted";
 const LOGIN: &str = "/api/providers/subscription-login";
 
-/// The Claude Code CLI as a script. Its login records its directory and that
-/// directory's mode, prints the link and waits for a code: a code starting
-/// `invalid` it calls invalid and waits again, one starting `refused` fails
-/// the login, and any other, `account#state`, signs in `account` with the
-/// access token `access-account-state`, whose tokens and account it writes
-/// into its directory as the CLI writes them; the vendor refuses the sign-in
-/// `access-expired-state`, as after a renewal it refused. Its other runs read the
-/// access token from the sign-in in their configuration directory, answer
-/// the message the session they resume ends with, if it ends with one, and
-/// otherwise wait for input as a process prepared ahead does, answer
-/// `initialize` and `get_usage`, print each user message back as they take
-/// it and answer it with the
-/// executable, the token, how many environment variables hold it, whether
-/// descriptor 3 is open, the directory they run in, their configuration
-/// directory and its mode and their own directory, and record the start
-/// and the end of each process that resumes a session. While
-/// `$HOME/hold-term` exists, a process asked to end writes its process id
-/// to `$HOME/term-held` and ends only once `$HOME/release-term` appears. A session or message that asks for `three calls`
-/// is answered by three calls to the vendor in one run, each streamed with
-/// its message's id and its own counts, then the quota the vendor reported
-/// after the last one, as the CLI prints a `rate_limit_event` after a call's
-/// `message_stop`, and a `result` whose usage sums them.
+/// The Claude Code CLI as a script.
+///
+/// Its login records its directory and that directory's mode, prints the link
+/// and waits for a code:
+///
+/// - A code starting `invalid` it calls invalid and waits again.
+/// - A code starting `refused` fails the login.
+/// - Any other, `account#state`, signs in `account` with the access token
+///   `access-account-state`, whose tokens and account it writes into its
+///   directory as the CLI writes them. The vendor refuses the sign-in
+///   `access-expired-state`, as after a renewal it refused.
+///
+/// Its other runs:
+///
+/// - Read the access token from the sign-in in their configuration directory.
+/// - Answer the message the session they resume ends with, if it ends with
+///   one, and otherwise wait for input as a process prepared ahead does.
+/// - Answer `initialize` and `get_usage`.
+/// - Print each user message back as they take it and answer it with the
+///   executable, the token, how many environment variables hold it, whether
+///   descriptor 3 is open, the directory they run in, their configuration
+///   directory and its mode and their own directory.
+/// - Record the start and the end of each process that resumes a session.
+///
+/// While `$HOME/hold-term` exists, a process asked to end writes its process id
+/// to `$HOME/term-held` and ends only once `$HOME/release-term` appears.
+///
+/// A session or message that asks for `three calls` is answered by three calls
+/// to the vendor in one run, each streamed with its message's id and its own
+/// counts, then the quota the vendor reported after the last one, as the CLI
+/// prints a `rate_limit_event` after a call's `message_stop`, and a `result`
+/// whose usage sums them.
 const SCRIPTED_CLI: &str = r#"#!/bin/sh
 if [ "$1" = auth ]; then
   echo "login $CLAUDE_CONFIG_DIR $(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)" >> "$HOME/claude-logins.log"
@@ -666,16 +690,18 @@ async fn a_sign_in_on_the_claude_code_machine_takes_the_pasted_code_and_each_acc
 }
 
 /// The release pointer holds up only a start that has no CLI to run
-/// (`crates/backend-providers/src/llm/claude_releases.rs`): on a machine with none, a sign-in
-/// waits for the read and fails with it; on a machine with one, a sign-in
-/// and a conversation start it while the read hangs, and the read, in the
-/// background, keeps its answer for later starts, which the settings read
-/// as it ends rather than reading again. The session describes the machine
-/// by the kernel and the `SHELL` its runner reported in its hello: a
-/// `uname` first on the machine's `PATH` that names another kernel never
-/// runs (§ The session a process resumes).
-// About two seconds: the Claude Code machine boots, and runs a sign-in and
-// a process of the scripted CLI.
+/// (`crates/backend-providers/src/llm/claude_releases.rs`):
+///
+/// - On a machine with none, a sign-in waits for the read and fails with it.
+/// - On a machine with one, a sign-in and a conversation start it while the
+///   read hangs. The read, in the background, keeps its answer for later
+///   starts, which the settings read as it ends rather than reading again.
+///
+/// The session describes the machine by the kernel and the `SHELL` its runner
+/// reported in its hello: a `uname` first on the machine's `PATH` that names
+/// another kernel never runs (§ The session a process resumes).
+// About two seconds: the Claude Code machine boots, and runs a sign-in and a
+// process of the scripted CLI.
 #[tokio::test]
 async fn a_machine_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_in_the_background()
 {
@@ -821,15 +847,16 @@ async fn a_machine_with_a_cli_starts_it_at_once_while_the_release_pointer_is_rea
     backend.close().await;
 }
 
-/// A sign-in that makes its account the entry's active one is a change of
-/// the active account, like a selection in Settings
-/// (`crates/provider-claude-code/src/prepared.rs`): the open conversation on
-/// the entry
-/// prepares its next process with the new account's token, and its next
-/// message takes that process. Removing the active account, the last, closed
-/// the process that held the previous token first.
-// About two seconds: the Cloud boots, and runs two sign-ins and two
-// processes of the scripted CLI.
+/// A sign-in that makes its account the entry's active one is a change of the
+/// active account, like a selection in Settings
+/// (`crates/provider-claude-code/src/prepared.rs`):
+///
+/// - The open conversation on the entry prepares its next process with the new
+///   account's token, and its next message takes that process.
+/// - Removing the active account, the last, closed the process that held the
+///   previous token first.
+// About two seconds: the Cloud boots, and runs two sign-ins and two processes
+// of the scripted CLI.
 #[tokio::test]
 async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_with_its_token() {
     let (distribution, catalog) = vendors().await;
@@ -915,15 +942,17 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
     backend.close().await;
 }
 
-/// A Claude Code run of three calls to the vendor is three usage ledger
-/// rows, one per call, each with its message's id, its own counts and the
-/// account, never the `result` line's sum
-/// (`crates/backend-database/src/usage.rs`); the quota the vendor reported
-/// after the last call's end is that
-/// call's alone; the server log's lines of each call name its request, its agent
-/// and its account, and so does the run's timing line.
-// About two seconds: the Claude Code machine boots, and runs a sign-in and
-// a process of the scripted CLI.
+/// A Claude Code run of three calls to the vendor is three usage ledger rows,
+/// one per call (`crates/backend-database/src/usage.rs`):
+///
+/// - Each row has its message's id, its own counts and the account, never the
+///   `result` line's sum.
+/// - The quota the vendor reported after the last call's end is that call's
+///   alone.
+/// - The server log's lines of each call name its request, its agent and its
+///   account, and so does the run's timing line.
+// About two seconds: the Claude Code machine boots, and runs a sign-in and a
+// process of the scripted CLI.
 #[tokio::test]
 async fn a_claude_code_run_of_three_calls_is_three_ledger_rows_with_the_account() {
     let (distribution, catalog) = vendors().await;
@@ -1034,11 +1063,13 @@ async fn a_claude_code_run_of_three_calls_is_three_ledger_rows_with_the_account(
     }
 }
 
-// An expired sign-in stops the CLI as a cancelled one does
-// (`LoginFlows::run`); the expiry itself, counted from the start, is proven
-// on a paused clock by the test in `vault::logins`. Proving it here would
-// take a lifetime short enough to wait for, a window that each sign-in's CLI
-// start and pasted code had to fall into, and a loaded machine misses it.
+// An expired sign-in stops the CLI as a cancelled one does (`LoginFlows::run`).
+// The expiry itself, counted from the start, is proven on a paused clock by the
+// test in `vault::logins`.
+//
+// Proving it here would take a lifetime short enough to wait for, a window that
+// each sign-in's CLI start and pasted code had to fall into, and a loaded machine
+// misses it.
 #[tokio::test]
 async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_directory() {
     let (distribution, catalog) = vendors().await;
@@ -1369,14 +1400,16 @@ impl Drop for PackageService {
     }
 }
 
-/// The versions a Cloud has are asked once per runner connection, and
-/// asked again at the next start once the package's service ended unsaid
-/// or the connection ended (`crates/backend-providers/src/llm/claude_releases.rs`): while the
-/// package cannot answer, another conversation starts the version the
-/// first one's start was told of; a version installed by hand meanwhile,
-/// which removed the one before, is what starts after each.
-// A few seconds: the Cloud boots twice and starts four CLI processes and
-// those prepared ahead.
+/// The versions a Cloud has are asked once per runner connection, and asked
+/// again at the next start once the package's service ended unsaid or the
+/// connection ended (`crates/backend-providers/src/llm/claude_releases.rs`):
+///
+/// - While the package cannot answer, another conversation starts the version
+///   the first one's start was told of.
+/// - A version installed by hand meanwhile, which removed the one before, is
+///   what starts after each.
+// A few seconds: the Cloud boots twice and starts four CLI processes and those
+// prepared ahead.
 #[tokio::test]
 async fn a_clouds_versions_are_asked_once_per_connection_and_again_after_a_lost_package_or_a_new_connection() {
     let cache = tempfile::tempdir().unwrap();
@@ -1412,17 +1445,21 @@ async fn a_clouds_versions_are_asked_once_per_connection_and_again_after_a_lost_
     kept.close().await;
 }
 
-/// A first ask of the Claude Code machine's versions that every start
-/// waiting for it gave up on is dropped with them
-/// (`crates/backend-providers/src/llm/claude_releases.rs`). An update to the
-/// newest release fails, as the distribution's
-/// address is not HTTPS, which drops what is kept while the machine's
-/// package service runs on; a line record that is a FIFO holds the
-/// service's listing of the versions, so the one ask the starts of two
-/// conversations share hangs, and both turns are stopped. The hung ask then
-/// answers with a version that is gone; the next start asks again rather
-/// than take that answer, and starts the CLI without finding an executable
-/// gone.
+/// A first ask of the Claude Code machine's versions that every start waiting
+/// for it gave up on is dropped with them
+/// (`crates/backend-providers/src/llm/claude_releases.rs`).
+///
+/// The scenario:
+///
+/// 1. An update to the newest release fails, as the distribution's address is
+///    not HTTPS, which drops what is kept while the machine's package service
+///    runs on.
+/// 2. A line record that is a FIFO holds the service's listing of the
+///    versions, so the one ask the starts of two conversations share hangs,
+///    and both turns are stopped.
+/// 3. The hung ask then answers with a version that is gone.
+/// 4. The next start asks again rather than take that answer, and starts the
+///    CLI without finding an executable gone.
 // A second or two: the machine boots and starts two CLI processes and those
 // prepared ahead.
 #[tokio::test]
@@ -1512,12 +1549,12 @@ async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_as
     kept.close().await;
 }
 
-/// A start that finds the executable it was given gone drops what is
-/// kept (`crates/backend-providers/src/llm/claude_releases.rs`): after a runner sharing the
-/// cache installed another version and removed the one a start was told
-/// of, the next start asks again and starts the new one.
-// A second or two: the Cloud boots and starts a few CLI processes and
-// those prepared ahead.
+/// A start that finds the executable it was given gone drops what is kept
+/// (`crates/backend-providers/src/llm/claude_releases.rs`): after a runner sharing
+/// the cache installed another version and removed the one a start was told of,
+/// the next start asks again and starts the new one.
+// A second or two: the Cloud boots and starts a few CLI processes and those
+// prepared ahead.
 #[tokio::test]
 async fn a_start_that_finds_its_executable_gone_makes_the_next_ask_again() {
     let cache = tempfile::tempdir().unwrap();
@@ -1543,11 +1580,12 @@ async fn a_start_that_finds_its_executable_gone_makes_the_next_ask_again() {
     kept.close().await;
 }
 
-/// A failed install drops what is kept (`crates/backend-providers/src/llm/claude_releases.rs`):
-/// **Install** on a Cloud with none fails, the CLI is then installed by
-/// hand, and the next start asks and starts it.
-// A few seconds: the Cloud boots and starts a CLI process and the one
-// prepared ahead.
+/// A failed install drops what is kept
+/// (`crates/backend-providers/src/llm/claude_releases.rs`): **Install** on a Cloud
+/// with none fails, the CLI is then installed by hand, and the next start asks and
+/// starts it.
+// A few seconds: the Cloud boots and starts a CLI process and the one prepared
+// ahead.
 #[tokio::test]
 async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
     let cache = tempfile::tempdir().unwrap();
@@ -1568,9 +1606,11 @@ async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
 
 /// An account an earlier release stored with its tokens hands them to its
 /// directory at its first use (`crates/provider-claude-code/src/account.rs`,
-/// `crates/server/src/main.rs`): the first start writes them as the CLI's
-/// own files, private to the machine's user, and the record keeps none, so
-/// the next start finds the sign-in in the directory alone.
+/// `crates/server/src/main.rs`).
+///
+/// The first start writes them as the CLI's own files, private to the machine's
+/// user, and the record keeps none, so the next start finds the sign-in in the
+/// directory alone.
 // A second or two: the machine boots and starts two CLI processes and those
 // prepared ahead.
 #[tokio::test]
@@ -1629,11 +1669,13 @@ async fn an_earlier_releases_sign_in_goes_to_the_accounts_directory_at_its_first
 }
 
 /// A sign-in the vendor refused signs its account out
-/// (`crates/provider-claude-code/src/account.rs`): the turn fails with the
-/// authentication error,
-/// whose words ask the user to sign in again, the accounts list says the
-/// account is signed out, and signing in to it again clears that, after
-/// which its requests run on the new sign-in.
+/// (`crates/provider-claude-code/src/account.rs`):
+///
+/// - The turn fails with the authentication error, whose words ask the user to
+///   sign in again.
+/// - The accounts list says the account is signed out.
+/// - Signing in to it again clears that, after which its requests run on the
+///   new sign-in.
 // About two seconds: the machine boots, and runs two sign-ins and two
 // processes of the scripted CLI.
 #[tokio::test]
@@ -1707,15 +1749,16 @@ async fn server_holds(backend: &TestBackend, master: &Session, words: &str) -> b
 }
 
 /// One change of an account at a time
-/// (`crates/provider-claude-code/src/account.rs`): signing an account in again
-/// first stops new processes of the
-/// account, closes the one it has and waits for it, then replaces its
-/// directory, and a request that came meanwhile starts in the new one; a
-/// login stays cancellable while it waits for the account's processes, and
-/// leaves the account as it was; removing the account closes its process
-/// and deletes its directory.
-// A few seconds: the machine boots, runs four sign-ins and three processes
-// of the scripted CLI, one of which takes its time to end.
+/// (`crates/provider-claude-code/src/account.rs`):
+///
+/// - Signing an account in again first stops new processes of the account,
+///   closes the one it has and waits for it, then replaces its directory. A
+///   request that came meanwhile starts in the new one.
+/// - A login stays cancellable while it waits for the account's processes, and
+///   leaves the account as it was.
+/// - Removing the account closes its process and deletes its directory.
+// A few seconds: the machine boots, runs four sign-ins and three processes of
+// the scripted CLI, one of which takes its time to end.
 #[tokio::test]
 async fn a_change_of_an_account_closes_its_processes_first_and_a_request_meanwhile_waits_for_it() {
     let (distribution, catalog) = vendors().await;
@@ -1836,13 +1879,13 @@ async fn a_change_of_an_account_closes_its_processes_first_and_a_request_meanwhi
     log.close().await;
 }
 
-/// The handover of an earlier release's sign-in puts each file in place
-/// whole, the credentials last (`crates/provider-claude-code/src/account.rs`): a
-/// handover that cannot put the account's file in place leaves the
-/// directory without a sign-in and the record holding it, and the next
-/// start hands it over.
-// A second or two: the machine boots, a sign-in is cancelled, and a CLI
-// process starts.
+/// The handover of an earlier release's sign-in puts each file in place whole, the
+/// credentials last (`crates/provider-claude-code/src/account.rs`).
+///
+/// A handover that cannot put the account's file in place leaves the directory
+/// without a sign-in and the record holding it, and the next start hands it over.
+// A second or two: the machine boots, a sign-in is cancelled, and a CLI process
+// starts.
 #[tokio::test]
 async fn a_handover_that_fails_leaves_no_sign_in_and_keeps_the_record() {
     let cache = tempfile::tempdir().unwrap();

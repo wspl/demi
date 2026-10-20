@@ -1,7 +1,8 @@
-//! The caller's port forwards (`crates/runner-protocol/src/forward.rs`):
-//! each route acts in the caller's shard, and a change reaches the
-//! caller's pages as the `portForwards` part. Each refusal is in words for
-//! the user, which the page shows as they are.
+//! The caller's port forwards (`crates/runner-protocol/src/forward.rs`).
+//!
+//! - Each route acts in the caller's shard.
+//! - A change reaches the caller's pages as the `portForwards` part.
+//! - Each refusal is in words for the user, which the page shows as they are.
 
 use axum::Json;
 use axum::extract::{Path, State};

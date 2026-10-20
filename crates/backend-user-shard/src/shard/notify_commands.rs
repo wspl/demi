@@ -1,7 +1,11 @@
-//! The product's `demi notify` group: `send` sends the user a notification from
-//! the conversation, at most 3 a minute and 30 an hour; `status` says whether
-//! one would reach the user. Neither needs a permission, and no command changes
-//! which events notify, which each browser chooses.
+//! The product's `demi notify` group.
+//!
+//! - `send` sends the user a notification from the conversation, at most 3 a
+//!   minute and 30 an hour.
+//! - `status` says whether one would reach the user.
+//!
+//! Neither needs a permission, and no command changes which events notify, which
+//! each browser chooses.
 
 use std::rc::{Rc, Weak};
 

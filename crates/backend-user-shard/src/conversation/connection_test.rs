@@ -1,8 +1,10 @@
 //! The provider **Test**: one real, minimal request to the model the user names,
-//! with the account the user names or the active one. It runs on the acting user's
-//! shard, which builds the runtime with its own HTTP client, or over the acting
-//! user's Cloud for a provider that runs a process. A test that ran and failed is
-//! a result carrying the provider's own reason.
+//! with the account the user names or the active one.
+//!
+//! It runs on the acting user's shard, which builds the runtime with its own
+//! HTTP client, or over the acting user's Cloud for a provider that runs a
+//! process. A test that ran and failed is a result carrying the provider's own
+//! reason.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -25,14 +27,19 @@ use crate::shard::exposed_ports::endpoint_device;
 use crate::shard::Shard;
 
 impl Shard {
-    /// Tests the key of an entry of media alone, which makes no text, as
-    /// its maker checks one: by reading its vendor's list of its media
-    /// models, as ElevenLabs' `GET /v1/models` does, or by a request the
-    /// vendor refuses for its body, as ByteDance's
-    /// (`crates/backend/src/families.rs`). It needs only the key: a passed test
-    /// names
-    /// the first model the maker answers, or the entry when it answers
-    /// none, and a refused key fails in the vendor's words.
+    /// Tests the key of an entry of media alone, which makes no text, as its
+    /// maker checks one.
+    ///
+    /// The check is one of two:
+    ///
+    /// - Reading its vendor's list of its media models, as ElevenLabs'
+    ///   `GET /v1/models` does.
+    /// - A request the vendor refuses for its body, as ByteDance's
+    ///   (`crates/backend/src/families.rs`).
+    ///
+    /// It needs only the key. A passed test names the first model the maker
+    /// answers, or the entry when it answers none, and a refused key fails in
+    /// the vendor's words.
     async fn test_media_key(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, cancel: CancellationToken) -> TestResult {
         let services = self.services();
         let assembly = &services.assembly;

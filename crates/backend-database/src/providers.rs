@@ -1,8 +1,14 @@
-//! The provider records of the control store: entries with their
-//! configuration still sealed, subscription accounts with their sealed
-//! secrets, versions and quota snapshots, and each entry's model catalog
-//! record. Sealing and opening belong to the vault; these operations store
-//! and read the sealed bytes.
+//! The provider records of the control store.
+//!
+//! The records are:
+//!
+//! - entries with their configuration still sealed;
+//! - subscription accounts with their sealed secrets, versions and quota
+//!   snapshots;
+//! - each entry's model catalog record.
+//!
+//! Sealing and opening belong to the vault; these operations store and read the
+//! sealed bytes.
 
 use demi_shared_types::{ProviderModelList, QuotaSnapshot, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
@@ -434,14 +440,16 @@ impl ControlService {
         .await
     }
 
-    /// Removes the account. When it was the entry's active account, the
-    /// entry's first remaining account in the list's order becomes active in
-    /// the same transaction, or none when it was the last
-    /// (`crates/backend-providers/src/vault/logins.rs`). An entry left with fewer
-    /// than two accounts has nothing to rotate, and its rotation goes back
-    /// to Manual in the same transaction
-    /// (`crates/backend-providers/src/llm/rotation.rs`). Answers the account
-    /// active afterwards.
+    /// Removes the account.
+    ///
+    /// - When it was the entry's active account, the entry's first remaining
+    ///   account in the list's order becomes active in the same transaction, or
+    ///   none when it was the last (`crates/backend-providers/src/vault/logins.rs`).
+    /// - An entry left with fewer than two accounts has nothing to rotate, and its
+    ///   rotation goes back to Manual in the same transaction
+    ///   (`crates/backend-providers/src/llm/rotation.rs`).
+    ///
+    /// Answers the account active afterwards.
     pub async fn remove_credential(
         &self,
         provider: ProviderId,

@@ -1,26 +1,36 @@
 //! Where a conversation runs, as the control store keeps it: the Cloud's
-//! directory of a conversation, a Host's home, or a workspace, and the one
-//! rule that turns a destination, a directory on a Host or a project, into
-//! one of them. Every move, a conversation's creation, a restore whose
-//! project was deleted and the upgrade's leftovers go through [`select`], in
-//! the transaction that writes the selection, which makes the directory's
-//! workspace when the user has none.
+//! directory of a conversation, a Host's home, or a workspace.
+//!
+//! One rule turns a destination, a directory on a Host or a project, into one of
+//! them. Every move, a conversation's creation, a restore whose project was
+//! deleted and the upgrade's leftovers go through [`select`], in the transaction
+//! that writes the selection, which makes the directory's workspace when the user
+//! has none.
+//!
+//! # Directories
 //!
 //! A move names a directory, never a selection kind, so no conversation runs
-//! outside a project in a project's directory, or in a project in its Host's
-//! home. A directory is known by its canonical path on its Host, as the Host
-//! resolves it when the move checks the directory: links followed, no
-//! trailing separator, the spelling the file system keeps (on Windows
-//! `C:/Users/alex/` and `c:\users\alex` are the one directory
-//! `C:\Users\alex`). The runner reports its home the same way, so two
-//! spellings of a directory are never two projects and a home reached through
-//! a link is still the home. A move to a device whose home was never
-//! reported is refused: a move needs the device online, which reports it.
-//! The home is kept with the device's record, so which directory is its home
-//! is known while it is offline; the Cloud's is `/home/demi` until its runner
-//! first reports. When a report changes what an execution context said, the
-//! context advances, so a node's next inference names the directory its shells
-//! really start in and never hands on a path that does not exist on its Host.
+//! outside a project in a project's directory, or in a project in its Host's home.
+//!
+//! A directory is known by its canonical path on its Host, as the Host resolves it
+//! when the move checks the directory: links followed, no trailing separator, the
+//! spelling the file system keeps (on Windows `C:/Users/alex/` and
+//! `c:\users\alex` are the one directory `C:\Users\alex`). The runner reports its
+//! home the same way, so two spellings of a directory are never two projects and a
+//! home reached through a link is still the home.
+//!
+//! # Homes
+//!
+//! - A move to a device whose home was never reported is refused: a move needs the
+//!   device online, which reports it.
+//! - The home is kept with the device's record, so which directory is its home is
+//!   known while it is offline. The Cloud's is `/home/demi` until its runner first
+//!   reports.
+//! - When a report changes what an execution context said, the context advances,
+//!   so a node's next inference names the directory its shells really start in and
+//!   never hands on a path that does not exist on its Host.
+//!
+//! # Workspaces
 //!
 //! A workspace is a named `(user, device, path)` record, one per device and
 //! directory. It groups conversations and owns no sandbox: it restricts no
@@ -119,11 +129,11 @@ impl Selected {
     }
 }
 
-/// The selection `to` names for `owner`'s conversation `conversation`, by
-/// its directory: the Cloud's directory of a conversation, the Host's home,
-/// or else the workspace of that device and directory, made now when the
-/// user has none. A Cloud directory makes the user's Cloud device when it
-/// was never made.
+/// The selection `to` names for `owner`'s conversation `conversation`, by its
+/// directory: the Cloud's directory of a conversation, the Host's home, or else
+/// the workspace of that device and directory, made now when the user has none.
+///
+/// A Cloud directory makes the user's Cloud device when it was never made.
 pub(crate) fn select(
     connection: &Connection,
     owner: &UserId,
@@ -194,10 +204,11 @@ pub(crate) fn select_directory(
     Ok(Ok(project_of(connection, device, &path, now)?))
 }
 
-/// The workspace of `path` on `device`, made now when its user has none:
-/// named after the directory's last component, with *(2)*, *(3)* after it
-/// when another of the device's projects has that name. A restore of a
-/// conversation whose project was deleted selects it alone, since a
+/// The workspace of `path` on `device`, made now when its user has none: named
+/// after the directory's last component, with *(2)*, *(3)* after it when another
+/// of the device's projects has that name.
+///
+/// A restore of a conversation whose project was deleted selects it alone, since a
 /// project's directory is never a home.
 pub(crate) fn project_of(
     connection: &Connection,

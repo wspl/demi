@@ -1,14 +1,19 @@
-//! Message editing through a conversation: an edit the page sends over the
-//! socket replaces its message and what followed it, gives the model only the
-//! history it kept, and leaves the files the removed turns wrote. Sent again
-//! over another socket of the conversation, or after a restart of the
-//! backend, the same edit answers its receipt without asking the model again,
-//! and an edit from the old snapshot is refused. While the edit's commit is
-//! held, the model is not asked and a reload reads the history before it; the
-//! page hears of the edit once it commits. The page sees a turn end only once
-//! the save that ends it has committed, so an edit it sends the moment it
-//! sees idle is admitted. No test calls a real model; the device is a real
-//! runner.
+//! Message editing through a conversation.
+//!
+//! Scenarios:
+//!
+//! - An edit the page sends over the socket replaces its message and what
+//!   followed it, gives the model only the history it kept, and leaves the
+//!   files the removed turns wrote.
+//! - Sent again over another socket of the conversation, or after a restart of
+//!   the backend, the same edit answers its receipt without asking the model
+//!   again. An edit from the old snapshot is refused.
+//! - While the edit's commit is held, the model is not asked and a reload
+//!   reads the history before it. The page hears of the edit once it commits.
+//! - The page sees a turn end only once the save that ends it has committed,
+//!   so an edit it sends the moment it sees idle is admitted.
+//!
+//! No test calls a real model; the device is a real runner.
 
 use std::time::Duration;
 
@@ -209,11 +214,12 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
     tokio::time::timeout(Duration::from_secs(10), hold.until_waiting(1))
         .await
         .expect("the edit reaches its commit");
-    // The edit's rows are written and its commit waits. A process that died
-    // now would leave the database as a reload reads it here, with the
-    // history before the edit, and the model is not asked. The page hears
-    // of the edit only after the commit, which the agent shows where its
-    // outbox can be read while the save waits (its editing tests).
+    // The edit's rows are written and its commit waits.
+    //
+    // A process that died now would leave the database as a reload reads it here,
+    // with the history before the edit, and the model is not asked. The page hears
+    // of the edit only after the commit, which the agent shows where its outbox can
+    // be read while the save waits (its editing tests).
     assert_eq!(transcript(&backend, &master, FIRST).await.blocks, history);
     assert_eq!(
         vendor.requests().len(),

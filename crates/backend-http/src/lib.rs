@@ -1,20 +1,27 @@
 //! The HTTP edge: the listener and router, the session gate, request
-//! extractors and body limits, error codes and the web app build. Handlers
-//! are thin: they parse, authenticate, check ownership, and call a shared
-//! service or a shard. That is why the edge is axum, whose requirement that a
-//! handler's future be `Send` therefore costs nothing, and whose extractors,
-//! tower middleware and socket-free router tests come with it.
+//! extractors and body limits, error codes and the web app build.
 //!
-//! The edge checks ownership before it hands a request to a shard: it
-//! resolves the caller from the cookie, loads the conversation, device,
-//! workspace or provider entry the path names, and answers 404 when it
-//! belongs to someone else. A request therefore reaches only its owner's
-//! shard, which checks a conversation's owner again whenever it loads the
-//! record. A runner authenticates with its device token in the first message
-//! of its socket, or as a bearer token on a pipe request, and an unpaired
-//! runner waits here for its user to claim the code it printed; a Cloud
-//! guest always presents its token and never pairs. Web sessions and the
-//! `Origin` check are the `gate`'s.
+//! Handlers are thin: they parse, authenticate, check ownership, and call a
+//! shared service or a shard. That is why the edge is axum, whose requirement
+//! that a handler's future be `Send` therefore costs nothing, and whose
+//! extractors, tower middleware and socket-free router tests come with it.
+//!
+//! # Ownership
+//!
+//! The edge checks ownership before it hands a request to a shard: it resolves
+//! the caller from the cookie, loads the conversation, device, workspace or
+//! provider entry the path names, and answers 404 when it belongs to someone
+//! else. A request therefore reaches only its owner's shard, which checks a
+//! conversation's owner again whenever it loads the record.
+//!
+//! # Runners
+//!
+//! - A runner authenticates with its device token in the first message of its
+//!   socket, or as a bearer token on a pipe request.
+//! - An unpaired runner waits here for its user to claim the code it printed.
+//! - A Cloud guest always presents its token and never pairs.
+//!
+//! Web sessions and the `Origin` check are the `gate`'s.
 
 // The text of the pages the backend renders, one catalogue per language.
 rust_i18n::i18n!("locales", fallback = "en");
@@ -126,25 +133,34 @@ pub struct Edge {
 }
 
 /// Opens the backend's runner socket at `path`, replacing the file a previous
-/// backend left; anyone who reaches the file may connect, since a runner
-/// proves itself with its device token, so the socket is mode 0666 in a
-/// directory of mode 0755. A Cloud's runner reaches its backend through this
-/// socket and never over the network, which would only add a way to fail:
-/// behind a CDN a Cloud's connection left the server for the CDN's edge and
-/// came back, and the edge reset it every hour or two, which cut off what the
-/// runner was sending. The socket serves only what a runner uses, the runner
-/// socket, the pipes and the downloads of runners and command artifacts, and a
-/// browser's routes answer 404 there. The machine manager mounts the socket's
-/// directory read-only at `/run/demi-backend` at every boot, so the socket a
-/// restarted backend makes again reaches the running Clouds (the unit's
-/// `RuntimeDirectoryPreserve` keeps the directory): the setting's file name
-/// must be `runners.sock`, the name a Cloud's runner looks for, in a directory
-/// of its own. The boot record's backend URL still names the backend's origin,
-/// which requests carry as their host; no TLS crosses the socket, an artifact
-/// URL on that origin goes through it, and any other URL, such as an S3
-/// store's, goes over the network.
-/// None when the socket's directory does not exist, as on a machine that
-/// runs no Cloud: no Cloud can then reach this backend.
+/// backend left. None when the socket's directory does not exist, as on a
+/// machine that runs no Cloud: no Cloud can then reach this backend.
+///
+/// Anyone who reaches the file may connect, since a runner proves itself with
+/// its device token, so the socket is mode 0666 in a directory of mode 0755.
+///
+/// A Cloud's runner reaches its backend through this socket and never over the
+/// network, which would only add a way to fail: behind a CDN a Cloud's
+/// connection left the server for the CDN's edge and came back, and the edge
+/// reset it every hour or two, which cut off what the runner was sending.
+///
+/// The socket serves only what a runner uses: the runner socket, the pipes and
+/// the downloads of runners and command artifacts. A browser's routes answer
+/// 404 there.
+///
+/// The machine manager mounts the socket's directory read-only at
+/// `/run/demi-backend` at every boot, so the socket a restarted backend makes
+/// again reaches the running Clouds (the unit's `RuntimeDirectoryPreserve`
+/// keeps the directory). The setting's file name must therefore be
+/// `runners.sock`, the name a Cloud's runner looks for, in a directory of its
+/// own.
+///
+/// The boot record's backend URL still names the backend's origin, which
+/// requests carry as their host:
+///
+/// - No TLS crosses the socket.
+/// - An artifact URL on that origin goes through it.
+/// - Any other URL, such as an S3 store's, goes over the network.
 pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
     let directory = path.parent().unwrap_or(Path::new("/"));
     if !directory.is_dir() {
@@ -273,14 +289,21 @@ impl FromRef<AppState> for Shards {
     }
 }
 
-/// The routes. The web app's routes, the entrances that sign a user in and
-/// every route the session cookie authenticates, refuse a request that could
-/// act from a page other than the product's before anything else.
-/// Every `/api` path, unknown paths included, passes the session gate,
-/// except those outside `session_api`: the entrances, setup, login, the
-/// passkey sign-in and spending a handoff code, the shares' public routes, the
-/// routes that authenticate with device credentials instead, and the
-/// synchronization channel, which checks the session without renewing it.
+/// The routes.
+///
+/// The web app's routes, the entrances that sign a user in and every route the
+/// session cookie authenticates, refuse a request that could act from a page
+/// other than the product's before anything else.
+///
+/// Every `/api` path, unknown paths included, passes the session gate, except
+/// those outside `session_api`:
+///
+/// - the entrances: setup, login, the passkey sign-in and spending a handoff
+///   code;
+/// - the shares' public routes;
+/// - the routes that authenticate with device credentials instead;
+/// - the synchronization channel, which checks the session without renewing it.
+///
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
 /// them, and outside the body limit, since their bodies have none.
 fn router(state: AppState, closing: CancellationToken, web_directory: Option<PathBuf>) -> Router {

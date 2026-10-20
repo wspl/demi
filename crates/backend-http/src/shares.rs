@@ -1,9 +1,15 @@
-//! Sharing: the owner's routes, which make, make again and remove a conversation's
-//! share, and the public routes under `/api/shares/:token`, which take no session and
-//! ignore one: the token is the only key, and every miss answers the same 404
-//! `share_not_found`, so an answer tells nothing of what exists. A public route finds
-//! the share's record, then reads through its list on the owner's shard, the
-//! conversation's history reads (`history.rs`) answering it.
+//! Sharing.
+//!
+//! The owner's routes make, make again and remove a conversation's share.
+//!
+//! The public routes under `/api/shares/:token` take no session and ignore one:
+//!
+//! - The token is the only key.
+//! - Every miss answers the same 404 `share_not_found`, so an answer tells
+//!   nothing of what exists.
+//! - A public route finds the share's record, then reads through its list on
+//!   the owner's shard, the conversation's history reads (`history.rs`)
+//!   answering it.
 
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};

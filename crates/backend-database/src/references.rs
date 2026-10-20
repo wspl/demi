@@ -1,12 +1,22 @@
-//! What names a user's blobs: the records a collection of the user's
-//! namespace reads before it removes a blob. In the control database, the
-//! drafts of the user's conversations and the messages they keep saved for
-//! later, and the plugins' values and Host directories; in each of the
-//! user's conversation databases, its blocks with their media and edit
-//! copies, the messages its checkpoints keep queued, the conversation's
-//! attachments, the records of its commands' outputs and the shares'
-//! snapshots. An upload record names its blob too, but only a recent one
-//! keeps it: an upload goes with its blob.
+//! What names a user's blobs: the records a collection of the user's namespace
+//! reads before it removes a blob.
+//!
+//! In the control database:
+//!
+//! - the drafts of the user's conversations and the messages they keep saved for
+//!   later;
+//! - the plugins' values and Host directories.
+//!
+//! In each of the user's conversation databases:
+//!
+//! - its blocks with their media and edit copies;
+//! - the messages its checkpoints keep queued;
+//! - the conversation's attachments;
+//! - the records of its commands' outputs;
+//! - the shares' snapshots.
+//!
+//! An upload record names its blob too, but only a recent one keeps it: an upload
+//! goes with its blob.
 
 use std::collections::BTreeSet;
 
@@ -107,11 +117,17 @@ impl ControlService {
     }
 }
 
-/// Every blob a conversation's database names, read on `connection` in the
-/// read transaction it is given: each block's media and edit copies, as
-/// `block_blobs` lists them for every row, the media of the messages its checkpoints keep queued, the
-/// agent's uploads, each stored command output, and the shares' copies,
-/// which keep their blobs while they last.
+/// Every blob a conversation's database names, read on `connection` in the read
+/// transaction it is given.
+///
+/// The blobs are:
+///
+/// - each block's media and edit copies, as `block_blobs` lists them for every
+///   row;
+/// - the media of the messages its checkpoints keep queued;
+/// - the agent's uploads;
+/// - each stored command output;
+/// - the shares' copies, which keep their blobs while they last.
 pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
     let mut blobs = BTreeSet::new();
     let mut named = connection.prepare("SELECT DISTINCT blob FROM block_blobs")?;

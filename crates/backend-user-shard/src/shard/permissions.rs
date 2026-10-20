@@ -1,6 +1,8 @@
-//! The shard's side of conversation permissions: what the check, the
-//! decisions and their messages need of the shard (`PermissionShard`), and
-//! the delivery at start of the decisions a restart cut off.
+//! The shard's side of conversation permissions.
+//!
+//! - What the check, the decisions and their messages need of the shard
+//!   (`PermissionShard`).
+//! - The delivery at start of the decisions a restart cut off.
 
 use std::rc::Rc;
 use std::sync::Arc;

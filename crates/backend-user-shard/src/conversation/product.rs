@@ -1,10 +1,13 @@
-//! What the backend's conversations are assembled from: the product's
-//! instructions, the toolset of the plugins the user has on with the
-//! product's `demi host` and `demi attachment` groups, the user's
-//! subagent settings, which each spawn reads, the Host each node
-//! reaches, the conversation's current primary Host, the execution
-//! context source, which tells a node that the conversation's execution
-//! context changed, and the plugins that are context sources.
+//! What the backend's conversations are assembled from.
+//!
+//! - The product's instructions.
+//! - The toolset of the plugins the user has on, with the product's `demi host`
+//!   and `demi attachment` groups.
+//! - The user's subagent settings, which each spawn reads.
+//! - The Host each node reaches, and the conversation's current primary Host.
+//! - The execution context source, which tells a node that the conversation's
+//!   execution context changed.
+//! - The plugins that are context sources.
 
 use std::rc::{Rc, Weak};
 

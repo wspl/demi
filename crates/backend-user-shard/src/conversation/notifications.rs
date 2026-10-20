@@ -1,20 +1,31 @@
-//! The push notifications of the user's conversations: a turn of the root that
-//! ends, with an answer or an error, once the conversation no longer runs; a
-//! request that asks the user; and what the agent sends with `demi notify
-//! send`, within its limits. Each goes, in the background and in the order they
-//! came, to the subscriptions that chose it, but those of a session one of
-//! whose pages shows its conversation, as the pages say on their
-//! synchronization channels, so a page that closes or loses its connection stops
-//! holding its conversation's notifications back; the accounts service's sender
-//! delivers it. A turn the user stopped notifies nothing, since the user was there.
+//! The push notifications of the user's conversations.
 //!
-//! A turn's end is told apart from the turns that ended before by the turn
-//! that had ended last when the tree started to work, which the shard keeps
-//! while it works; as the tree rests, the turn that ended last then is the
-//! one notified of, read from the session at once, so a turn that starts
-//! after it never stands in for it. A turn that starts and ends between two
-//! status changes still notifies, and work that ends no turn, such as a
-//! compaction or a retry the user stopped, notifies nothing.
+//! Three things notify:
+//!
+//! - a turn of the root that ends, with an answer or an error, once the
+//!   conversation no longer runs;
+//! - a request that asks the user;
+//! - what the agent sends with `demi notify send`, within its limits.
+//!
+//! Each goes, in the background and in the order they came, to the subscriptions
+//! that chose it, but those of a session one of whose pages shows its
+//! conversation, as the pages say on their synchronization channels. A page that
+//! closes or loses its connection therefore stops holding its conversation's
+//! notifications back. The accounts service's sender delivers it.
+//!
+//! A turn the user stopped notifies nothing, since the user was there.
+//!
+//! # Telling turns apart
+//!
+//! A turn's end is told apart from the turns that ended before by the turn that
+//! had ended last when the tree started to work, which the shard keeps while it
+//! works. As the tree rests, the turn that ended last then is the one notified
+//! of, read from the session at once, so a turn that starts after it never
+//! stands in for it.
+//!
+//! - A turn that starts and ends between two status changes still notifies.
+//! - Work that ends no turn, such as a compaction or a retry the user stopped,
+//!   notifies nothing.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};

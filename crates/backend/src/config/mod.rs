@@ -1,21 +1,32 @@
 //! The backend's configuration, and the instance secret with the keys derived
 //! from it.
 //!
+//! # One configuration for two programs
+//!
 //! The backend and the machine manager of a deployment read one
-//! configuration, the environment file `/opt/demi/config/demi.env` that both
+//! configuration: the environment file `/opt/demi/config/demi.env` that both
 //! services load, or the same settings as flags. Each parses its settings
 //! into one typed configuration and validates all of it before anything
-//! starts. The prefix `DEMI_MANAGED_` belongs to the machine manager, which
-//! refuses a `DEMI_MANAGED_*` variable it does not read; the backend leaves
-//! those names to it and refuses every other `DEMI_*` variable that none of
-//! its settings reads, such as a misspelt `DEMI_BACKEND_LISTENN`, rather than
-//! leave the setting at its default. The settings the manager shares with the
-//! backend (`DEMI_RELEASE`, `DEMI_BACKEND_PUBLIC_URL`,
-//! `DEMI_MACHINE_MANAGER_SOCKET`, `DEMI_BACKEND_RUNNER_SOCKET`) are the
-//! backend's names, so the backend's check covers them and one file serves
-//! both programs without either ignoring a misspelling. `--check-config`
-//! validates as a start would and exits, which an upgrade runs with the next
-//! release before it stops anything.
+//! starts.
+//!
+//! `--check-config` validates as a start would and exits. An upgrade runs it
+//! with the next release before it stops anything.
+//!
+//! # Names the backend refuses
+//!
+//! - The prefix `DEMI_MANAGED_` belongs to the machine manager, which refuses
+//!   a `DEMI_MANAGED_*` variable it does not read. The backend leaves those
+//!   names to it.
+//! - The backend refuses every other `DEMI_*` variable that none of its
+//!   settings reads, such as a misspelt `DEMI_BACKEND_LISTENN`, rather than
+//!   leave the setting at its default.
+//! - The settings the manager shares with the backend (`DEMI_RELEASE`,
+//!   `DEMI_BACKEND_PUBLIC_URL`, `DEMI_MACHINE_MANAGER_SOCKET`,
+//!   `DEMI_BACKEND_RUNNER_SOCKET`) are the backend's names, so the backend's
+//!   check covers them and one file serves both programs without either
+//!   ignoring a misspelling.
+//!
+//! # Defaults
 //!
 //! `DEMI_INSTANCE_MODE` and `DEMI_BACKEND_PUBLIC_URL` have no default: whoever
 //! deploys decides them, and nothing chooses for them.
@@ -24,13 +35,21 @@
 //! manager run the release of their own executables: the directory above the
 //! one that holds the running executable, as `current_exe` reports it.
 //!
+//! # The public URL and TLS
+//!
 //! Demi does not terminate TLS: the public URL names a domain, and something
-//! in front of the backend holds the certificate. A domain, not an IP address,
-//! because the web app needs a secure context (browsers give a page
-//! `crypto.randomUUID()` and the clipboard only over HTTPS or on
-//! `localhost`) and neither proxy issues a certificate for a public IP
-//! address; development is the exception, with the page on `localhost`. A
-//! Cloud does not reach the backend at that URL: its runner connects through
+//! in front of the backend holds the certificate.
+//!
+//! The URL names a domain, not an IP address, for two reasons:
+//!
+//! - The web app needs a secure context. Browsers give a page
+//!   `crypto.randomUUID()` and the clipboard only over HTTPS or on
+//!   `localhost`.
+//! - Neither proxy issues a certificate for a public IP address.
+//!
+//! Development is the exception, with the page on `localhost`.
+//!
+//! A Cloud does not reach the backend at that URL: its runner connects through
 //! the runner socket, and the URL only names the origin its requests carry.
 //! Either proxy must pass each request's `Origin` and `Host` unchanged (see
 //! `backend-http`'s `gate`).
@@ -468,11 +487,15 @@ pub struct BackendConfig {
 }
 
 impl BackendConfig {
-    /// A configuration on the system clock with one shard thread, the
-    /// built-in families, the published models.dev document, the media
-    /// catalog of the branch the backend was built from, no web
-    /// directory and no mail sender, whose Clouds the machine manager at
-    /// `machines_socket` runs.
+    /// A configuration on the system clock with one shard thread, whose Clouds the
+    /// machine manager at `machines_socket` runs.
+    ///
+    /// It has:
+    ///
+    /// - the built-in families;
+    /// - the published models.dev document;
+    /// - the media catalog of the branch the backend was built from;
+    /// - no web directory and no mail sender.
     pub fn new(
         data_dir: PathBuf,
         address: SocketAddr,

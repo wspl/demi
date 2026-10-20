@@ -1,15 +1,20 @@
-//! A root's failed turn resumed at its retry time: a turn whose failure
-//! names when it can succeed again, such as a usage limit that resets at
-//! 09:00, is resumed then, as the user's Resume would, when the user's
-//! `resumeAtRetry` preference says so at that moment.
+//! A root's failed turn resumed at its retry time.
+//!
+//! A turn whose failure names when it can succeed again, such as a usage limit
+//! that resets at 09:00, is resumed then, as the user's Resume would, when the
+//! user's `resumeAtRetry` preference says so at that moment.
 //!
 //! Each conversation has at most one timer, for the failure that ended its
-//! root's last turn. It is armed as the root comes to rest after that
-//! failure, which its phase change announces, and released when the root
-//! rests with no failed turn, when it fires, and when the shard closes. A
-//! tree evicted meanwhile keeps its conversation's timer, which opens the
-//! tree again when it fires. A timer is the shard's alone: a restart of the
-//! backend arms none until the conversation's tree is open again.
+//! root's last turn.
+//!
+//! - It is armed as the root comes to rest after that failure, which its phase
+//!   change announces.
+//! - It is released when the root rests with no failed turn, when it fires, and
+//!   when the shard closes.
+//! - A tree evicted meanwhile keeps its conversation's timer, which opens the
+//!   tree again when it fires.
+//! - A timer is the shard's alone: a restart of the backend arms none until the
+//!   conversation's tree is open again.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -137,15 +142,17 @@ impl Shard {
         }
     }
 
-    /// Resumes the conversation's unfinished turn, as the user's Resume
-    /// would: the conversation's tree opens if it is closed, the backend
-    /// prepares the Resume as it prepares the user's, and the root resumes
-    /// only while it rests with a last turn whose record `ended` accepts.
-    /// `reason`, when given, is what the resume tells the model before
-    /// "Continue from where you left off.". Answers whether the turn
-    /// resumed; false when the backend would refuse the user's Resume, as
-    /// for an archived conversation, or the last turn did not end as
-    /// `ended` expects.
+    /// Resumes the conversation's unfinished turn, as the user's Resume would.
+    ///
+    /// The conversation's tree opens if it is closed, the backend prepares the
+    /// Resume as it prepares the user's, and the root resumes only while it rests
+    /// with a last turn whose record `ended` accepts. `reason`, when given, is
+    /// what the resume tells the model before "Continue from where you left
+    /// off.".
+    ///
+    /// Answers whether the turn resumed; false when the backend would refuse the
+    /// user's Resume, as for an archived conversation, or the last turn did not
+    /// end as `ended` expects.
     pub(crate) async fn resume_unfinished_turn(
         &self,
         conversation: &ConversationId,

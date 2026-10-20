@@ -1,11 +1,19 @@
 //! Where a conversation's work runs, changed through the API
-//! (`crates/backend-host-access/src/transition.rs`, `crates/backend-database/src/conversation_index.rs`): a
-//! target switch moves the work and attaches the device it leaves, a switch ends
-//! the conversation's open transfers instead of waiting for them, attached hosts
-//! are detached, each change of them raises the revision a page reads them by,
-//! and an attached host's commands start where it was attached, whatever an
-//! earlier one did. The conversation's agents attach devices, which these tests
-//! write to storage. The devices are real runners.
+//! (`crates/backend-host-access/src/transition.rs`,
+//! `crates/backend-database/src/conversation_index.rs`).
+//!
+//! Scenarios:
+//!
+//! - A target switch moves the work and attaches the device it leaves.
+//! - A switch ends the conversation's open transfers instead of waiting for
+//!   them.
+//! - Attached hosts are detached, and each change of them raises the revision a
+//!   page reads them by.
+//! - An attached host's commands start where it was attached, whatever an
+//!   earlier one did.
+//!
+//! The conversation's agents attach devices, which these tests write to
+//! storage. The devices are real runners.
 
 use std::path::PathBuf;
 

@@ -1,6 +1,9 @@
-//! Setup, the session cookie and its gate, the pages a request that could
-//! act may come from, login and its lockout, and the caller's own account
-//! (`crates/backend-http/src/gate.rs`).
+//! The edge's authentication (`crates/backend-http/src/gate.rs`).
+//!
+//! - Setup and the session cookie with its gate.
+//! - The pages a request that could act may come from.
+//! - Login and its lockout.
+//! - The caller's own account.
 
 use std::sync::atomic::Ordering;
 
@@ -224,11 +227,13 @@ async fn post_from(
     answer(request.send().await.unwrap()).await
 }
 
-/// The user's browser sends the session cookie from every page of the
-/// product's site, one on another host of it among them, so a page of
-/// another site or another host may neither set the instance up, nor sign
-/// the user in, nor act with the user's session. The product's page may, and so may a program
-/// that sends no origin, such as curl calling the setup API.
+/// The user's browser sends the session cookie from every page of the product's
+/// site, one on another host of it among them. A page of another site or another
+/// host may therefore neither set the instance up, nor sign the user in, nor act
+/// with the user's session.
+///
+/// The product's page may, and so may a program that sends no origin, such as curl
+/// calling the setup API.
 #[tokio::test]
 async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_page() {
     let harness = Harness::new();
@@ -357,12 +362,13 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
     backend.close().await;
 }
 
-/// A web browser sends Fetch Metadata with every request `Origin` must come
-/// with, so a request with `Sec-Fetch-Site` and without `Origin` lost its
-/// `Origin` at a proxy in front of the backend, which turns the check off.
-/// The request passes, as any request without `Origin` does, and the
-/// backend's log says once that the proxy drops `Origin`; curl's request,
-/// which carries neither, says nothing.
+/// A web browser sends Fetch Metadata with every request `Origin` must come with,
+/// so a request with `Sec-Fetch-Site` and without `Origin` lost its `Origin` at a
+/// proxy in front of the backend, which turns the check off.
+///
+/// The request passes, as any request without `Origin` does, and the backend's log
+/// says once that the proxy drops `Origin`. Curl's request, which carries neither,
+/// says nothing.
 #[tokio::test]
 async fn a_request_whose_origin_a_proxy_dropped_passes_and_the_log_says_so_once() {
     let logs = tempfile::tempdir().unwrap();

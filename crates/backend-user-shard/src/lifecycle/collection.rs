@@ -1,10 +1,17 @@
 //! The collection of a user's blob namespace
-//! (`crates/backend-database/src/deletions.rs`): after a deletion, in the
-//! background, a blob that no remaining record of the user names, that was
-//! written more than a day ago and that was not put again since, is removed,
-//! and so is each upload record of it. The day keeps a blob whose reference is
-//! not written yet, since a blob is stored before the row that names it. A
-//! user's collections run one at a time; one asked for while another runs
+//! (`crates/backend-database/src/deletions.rs`).
+//!
+//! After a deletion, in the background, a blob is removed, and so is each upload
+//! record of it, when:
+//!
+//! - no remaining record of the user names it;
+//! - it was written more than a day ago;
+//! - it was not put again since.
+//!
+//! The day keeps a blob whose reference is not written yet, since a blob is
+//! stored before the row that names it.
+//!
+//! A user's collections run one at a time; one asked for while another runs
 //! starts after it. A collection fails closed: when one of the records that may
 //! name a blob cannot be read, it removes nothing.
 

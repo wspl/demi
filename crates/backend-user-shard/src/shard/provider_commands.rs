@@ -1,13 +1,17 @@
-//! The product's `demi providers` group: the agent lists and shows the user's provider
-//! entries with their models, adds, edits and removes entries, and searches
-//! models.dev to add, edit and remove the models of an entry's configured
-//! list. A change goes through the settings page's path, with its checks
-//! and its words (`provider_settings`), and needs the user's permission,
-//! the category [`MANAGE`]. No command takes a key as an argument or
-//! prints one: `add` and `edit` read a key from stdin with
-//! `--api-key-stdin` alone, from a credential the agent piped there, since a
-//! key typed into a conversation would sit in its transcript and reach the
-//! model's vendor.
+//! The product's `demi providers` group.
+//!
+//! The agent lists and shows the user's provider entries with their models,
+//! adds, edits and removes entries, and searches models.dev to add, edit and
+//! remove the models of an entry's configured list.
+//!
+//! A change goes through the settings page's path, with its checks and its words
+//! (`provider_settings`), and needs the user's permission, the category
+//! [`MANAGE`].
+//!
+//! No command takes a key as an argument or prints one. `add` and `edit` read a
+//! key from stdin with `--api-key-stdin` alone, from a credential the agent
+//! piped there, since a key typed into a conversation would sit in its
+//! transcript and reach the model's vendor.
 
 use std::rc::Rc;
 

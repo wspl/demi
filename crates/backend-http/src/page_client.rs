@@ -1,7 +1,9 @@
-//! Where a page's socket comes from, which its log lines name: the request ID
-//! of its upgrade, the edge's request id and the client's address that a proxy
-//! such as Cloudflare passes, else the connection's own peer, and the browser's
-//! user agent.
+//! Where a page's socket comes from, which its log lines name.
+//!
+//! - The request ID of its upgrade.
+//! - The edge's request id and the client's address that a proxy such as
+//!   Cloudflare passes, else the connection's own peer.
+//! - The browser's user agent.
 
 use std::net::IpAddr;
 

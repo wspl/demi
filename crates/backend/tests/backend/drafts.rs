@@ -1,8 +1,11 @@
-//! Conversation drafts: the backend keeps one draft per conversation, which every
-//! session of its user follows through the draft revision its channel brings. A save
-//! always takes effect; one built on an older revision keeps the version it replaced,
-//! which a session restores or dismisses. An upload the draft names is readable from
-//! every session, with the opening its record keeps.
+//! Conversation drafts.
+//!
+//! - The backend keeps one draft per conversation, which every session of its user
+//!   follows through the draft revision its channel brings.
+//! - A save always takes effect; one built on an older revision keeps the version
+//!   it replaced, which a session restores or dismisses.
+//! - An upload the draft names is readable from every session, with the opening
+//!   its record keeps.
 
 use demi_web_api_protocol::attachments::AttachmentAnswer;
 use demi_shared_types::{BlockId, MessageComment};

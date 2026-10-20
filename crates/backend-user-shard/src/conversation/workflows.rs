@@ -1,15 +1,20 @@
-//! A project's workflows on the conversation's Host: `.demi/workflows/*.yaml`
-//! of the nearest directory that has it, from the conversation's working
-//! directory up to the root of its git repository, read through the
-//! conversation's host access, or through device access for a new conversation
-//! before its first message, and parsed with the one parser
-//! (`crates/agent-tools/src/workflow.rs`). The shard keeps each conversation
-//! directory's workflows current with the runner's file watch
-//! (`project_files`), and the spawns, `demi agent workflows`, `demi agent
-//! profiles list`, the Workflow menu and the instructions block take what it
-//! holds.
+//! A project's workflows on the conversation's Host.
+//!
+//! A workflow is a `.demi/workflows/*.yaml` file of the nearest directory that
+//! has it, from the conversation's working directory up to the root of its git
+//! repository. It is:
+//!
+//! - read through the conversation's host access, or through device access for a
+//!   new conversation before its first message;
+//! - parsed with the one parser (`crates/agent-tools/src/workflow.rs`).
+//!
+//! The shard keeps each conversation directory's workflows current with the
+//! runner's file watch (`project_files`). The spawns, `demi agent workflows`,
+//! `demi agent profiles list`, the Workflow menu and the instructions block take
+//! what it holds.
 //!
 //! Why it is built this way:
+//!
 //! - Nothing applies by itself. A repository is often someone else's, so a
 //!   workflow applies only when the user picks it in a conversation's Workflow
 //!   menu, never because a repository holds it.
@@ -18,9 +23,9 @@
 //!   unavailable and never followed, since the Host looks at what each entry is
 //!   before it opens it; so what a workflow says is always what the repository
 //!   holds and what the watch sees.
-//! - A spawn takes the workflow as its file is then, without asking the Host,
-//!   so a slow or stopped Host never holds a spawn; only a directory's first
-//!   read holds them, briefly.
+//! - A spawn takes the workflow as its file is then, without asking the Host, so
+//!   a slow or stopped Host never holds a spawn; only a directory's first read
+//!   holds them, briefly.
 //! - A chosen workflow that no longer reads is shown as unavailable with why,
 //!   and spawns fail with that reason until the user picks another, rather than
 //!   quietly spawning with other settings.
@@ -172,14 +177,16 @@ pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
     }
 }
 
-/// The workflows of `cwd`, read through `read`: one request finds `cwd`
-/// itself, and `.git`, `.demi` and `.demi/workflows` in every directory
-/// from `cwd` up to the repository's root, and one more reads the nearest
-/// workflows directory's files. Nothing below a searched directory is
-/// followed: the Host answers a `.demi`, a `.demi/workflows` or a workflow
-/// file that is a link, or that has become one by the time it is read, as
-/// a link, and a `.demi` it cannot read makes that directory's workflows
-/// unavailable rather than looked past.
+/// The workflows of `cwd`, read through `read`.
+///
+/// It reads in two requests: one finds `cwd` itself, and `.git`, `.demi` and
+/// `.demi/workflows` in every directory from `cwd` up to the repository's root,
+/// and one more reads the nearest workflows directory's files.
+///
+/// Nothing below a searched directory is followed. The Host answers a `.demi`,
+/// a `.demi/workflows` or a workflow file that is a link, or that has become one
+/// by the time it is read, as a link. A `.demi` it cannot read makes that
+/// directory's workflows unavailable rather than looked past.
 pub(crate) async fn search_workflows<E, Fut>(
     paths: HostPaths,
     cwd: &str,
@@ -374,11 +381,11 @@ impl Shard {
         }
     }
 
-    /// The Workflow menu's list for a new conversation that works in
-    /// `directory` of the paired device `device`, before its first message
-    /// gives it a record: read
-    /// through device access, which wakes nothing; none while the device's
-    /// runner is not connected. With `after`, the answer is read at that
+    /// The Workflow menu's list for a new conversation that works in `directory`
+    /// of the paired device `device`, before its first message gives it a record.
+    ///
+    /// It is read through device access, which wakes nothing; none while the
+    /// device's runner is not connected. With `after`, the answer is read at that
     /// number or later.
     pub async fn device_workflows(
         &self,
@@ -402,13 +409,15 @@ impl Shard {
     }
 
     /// The Workflow menu's list for the conversation `id` (`GET
-    /// /conversations/:id/workflows`), with what the page watches. The page
-    /// asks when the runner reported a change, so a search under way for one
-    /// is waited for; with `after`, as its watch went live after the answer
-    /// it holds, one read at that number or later is. While no search is
-    /// held, it answers no workflows, read at no number, and the working
-    /// directory to watch: the page's watch going live there, as the Host
-    /// runs, makes that answer out of date.
+    /// /conversations/:id/workflows`), with what the page watches.
+    ///
+    /// The page asks when the runner reported a change, so a search under way for
+    /// one is waited for; with `after`, as its watch went live after the answer
+    /// it holds, one read at that number or later is.
+    ///
+    /// While no search is held, it answers no workflows, read at no number, and
+    /// the working directory to watch: the page's watch going live there, as the
+    /// Host runs, makes that answer out of date.
     pub async fn menu_workflows(
         &self,
         id: &ConversationId,

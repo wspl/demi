@@ -1,10 +1,13 @@
 //! `POST /api/attachments?name=&sha256=`: a file's bytes, at most 25 MiB, into
-//! the caller's blobs with one attachment record; with a SHA-256 and no body,
-//! the blob the caller holds already gains the record, and no bytes travel, and
-//! a blob it does not hold answers 200 with a null attachment. The answer
-//! carries the media type the backend reads from the bytes and, for a text
-//! file, its opening, which the composer shows on the file's capsule as the
-//! message will carry it.
+//! the caller's blobs with one attachment record.
+//!
+//! - With a SHA-256 and no body, the blob the caller holds already gains the
+//!   record, and no bytes travel.
+//! - A blob the caller does not hold answers 200 with a null attachment.
+//!
+//! The answer carries the media type the backend reads from the bytes and, for
+//! a text file, its opening, which the composer shows on the file's capsule as
+//! the message will carry it.
 
 use std::sync::Arc;
 

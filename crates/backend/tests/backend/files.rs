@@ -1,10 +1,18 @@
-//! A conversation's files through its host access (`crates/backend-host-access/src/lib.rs` §
-//! Host operations): listings, directories, deletes and text; a file's bytes by
-//! range under the headers that keep them inert, and back as an upload; the
-//! working tree's changes; what the host access refuses; and the transfer a
-//! shutdown ends. The conversation works in a directory of a paired device's
-//! real runner, which a workspace written to the control database names, as the
-//! workspace routes would.
+//! A conversation's files through its host access
+//! (`crates/backend-host-access/src/lib.rs` § Host operations).
+//!
+//! Scenarios:
+//!
+//! - Listings, directories, deletes and text.
+//! - A file's bytes by range under the headers that keep them inert, and back
+//!   as an upload.
+//! - The working tree's changes.
+//! - What the host access refuses.
+//! - The transfer a shutdown ends.
+//!
+//! The conversation works in a directory of a paired device's real runner,
+//! which a workspace written to the control database names, as the workspace
+//! routes would.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -1104,11 +1112,15 @@ impl OnDevice {
     }
 }
 
-/// A restart is not a device going away (`crates/backend-remote-host/src/device_jobs.rs`): for 30 seconds after the start, an operation
-/// for a device whose connection the shutdown ended waits for its runner
-/// instead of answering that the device is offline; after that it answers
-/// as for any device that is away. Costs two restarts, a runner start and
-/// 300 ms of a bound on what must not happen.
+/// A restart is not a device going away
+/// (`crates/backend-remote-host/src/device_jobs.rs`).
+///
+/// For 30 seconds after the start, an operation for a device whose connection the
+/// shutdown ended waits for its runner instead of answering that the device is
+/// offline. After that it answers as for any device that is away.
+///
+/// Costs two restarts, a runner start and 300 ms of a bound on what must not
+/// happen.
 #[tokio::test]
 async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconnected_until_the_grace_ends()
 {
@@ -1227,11 +1239,14 @@ fn read_at(answer: &Answer) -> (String, u64) {
     (epoch.to_owned(), number.parse().unwrap())
 }
 
-/// Two pages that subscribe to one file hear it live, from one subscription
-/// on the Host, and changed; every read answers the Host's number, a 304
-/// and a binary file's 415 as much as a text, so a change after a read is
-/// numbered above it and a read after the change not below it. A second or two:
-/// a paired device's real runner starts its watch.
+/// Two pages that subscribe to one file hear it live, from one subscription on the
+/// Host, and changed.
+///
+/// Every read answers the Host's number, a 304 and a binary file's 415 as much as
+/// a text, so a change after a read is numbered above it and a read after the
+/// change not below it.
+///
+/// A second or two: a paired device's real runner starts its watch.
 #[tokio::test]
 async fn pages_hear_a_file_live_and_changed_at_numbers_that_order_its_reads() {
     let device = OnDevice::start().await;

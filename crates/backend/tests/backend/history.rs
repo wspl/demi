@@ -1,6 +1,9 @@
-//! A conversation's history read a page at a time: pages of whole requests from
-//! the latest back, a page around a block, the refusal of a page whose edge
-//! moved, the light form and a block read whole.
+//! A conversation's history read a page at a time.
+//!
+//! - Pages of whole requests from the latest back.
+//! - A page around a block.
+//! - The refusal of a page whose edge moved.
+//! - The light form and a block read whole.
 
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::Block;

@@ -1,13 +1,18 @@
 //! The agent's `demi providers`
-//! (`crates/backend-user-shard/src/shard/provider_commands.rs`): reads need no
-//! permission and the first change asks for
-//! Manage Providers; then the agent adds an entry from the vendor list,
-//! searches models.dev and adds a model filled from a match, which starts
-//! the entry's own list from its vendor's models, and saves a
-//! key it pipes in from a file without the key reaching its transcript;
-//! a subscription entry's list refuses with the page's words. The model is
-//! the scripted family of the subagent scenarios, models.dev a scripted
-//! vendor, and the device a real runner. No test calls a real model.
+//! (`crates/backend-user-shard/src/shard/provider_commands.rs`).
+//!
+//! Scenarios:
+//!
+//! - Reads need no permission, and the first change asks for Manage Providers.
+//! - The agent adds an entry from the vendor list.
+//! - The agent searches models.dev and adds a model filled from a match, which
+//!   starts the entry's own list from its vendor's models.
+//! - The agent saves a key it pipes in from a file without the key reaching
+//!   its transcript.
+//! - A subscription entry's list refuses with the page's words.
+//!
+//! The model is the scripted family of the subagent scenarios, models.dev a
+//! scripted vendor, and the device a real runner. No test calls a real model.
 
 use std::sync::Arc;
 
@@ -95,11 +100,12 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // A read needs no permission; the first change asks for it and waits
-    // for the answer. Allowed, the entry joins incomplete, the search
-    // fills a model, and the key piped from a file makes it ready; a
-    // subscription's list and a key of two lines are refused with the
-    // page's words.
+    // A read needs no permission; the first change asks for it and waits for the
+    // answer.
+    //
+    // Allowed, the entry joins incomplete, the search fills a model, and the key
+    // piped from a file makes it ready. A subscription's list and a key of two lines
+    // are refused with the page's words.
     let add = "demi providers add --vendor google";
     scripts.root(
         FIRST,

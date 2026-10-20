@@ -1,9 +1,14 @@
-//! Versions: an edit continues from a new version of a message and keeps
-//! the old one with its answers, as written; the page shows ‹ 2/2 › on the
-//! message, and switching back restores the old branch in the transcript,
-//! the history pages, what the model reads next and the search index, and a
-//! restart keeps the path the switch made current. Regenerate adds a
-//! version of the answer beside the old one. No test calls a real model.
+//! Versions.
+//!
+//! - An edit continues from a new version of a message and keeps the old one
+//!   with its answers, as written.
+//! - The page shows ‹ 2/2 › on the message. Switching back restores the old
+//!   branch in the transcript, the history pages, what the model reads next
+//!   and the search index.
+//! - A restart keeps the path the switch made current.
+//! - Regenerate adds a version of the answer beside the old one.
+//!
+//! No test calls a real model.
 
 use std::time::Duration;
 

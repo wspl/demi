@@ -1,9 +1,10 @@
 //! The Cloud suite (`crates/machine-manager/scripts/cloud-suite.sh`): the
-//! backend against a real machine manager, its gVisor/systrap sandboxes
-//! and the shipped Cloud image, with a scripted model. An ordinary run
-//! ignores every test here; `cloud-suite.sh` runs them as root against a
-//! manager of its own, with the variables that say where the manager, its
-//! state and the image's command releases are.
+//! backend against a real machine manager, its gVisor/systrap sandboxes and
+//! the shipped Cloud image, with a scripted model.
+//!
+//! An ordinary run ignores every test here. `cloud-suite.sh` runs them as root
+//! against a manager of its own, with the variables that say where the
+//! manager, its state and the image's command releases are.
 //!
 //! The tests reach the Cloud as a conversation does: the model's shell jobs,
 //! the conversation's file and browser routes, and the Cloud's status and
@@ -16,21 +17,30 @@
 //! wake and a reset each save or boot it once more. The checkpoint's test
 //! takes minutes, as long as installing Chrome takes.
 //!
+//! # What the suite does not certify
+//!
 //! A fake manager certifies neither filesystem durability nor sandbox
 //! isolation, and one backend cannot show worker fencing. The suite runs with
 //! the resource limits off and in a stand-in execution host, so release
-//! acceptance checks by hand what it cannot: the limits on, and the
-//! out-of-memory death (a host with the cgroup v2 controllers); the tools'
-//! installers, public HTTPS and the DNS path (a sandbox that reaches the
-//! internet); copies on XFS and btrfs; the live view's frames and input; a full
-//! disk; a restart at each publication boundary, the manager's recovery and
-//! cleanup after cancellation or an injected fault (a manager built with fault
-//! injection and restarted under a live backend); and the phases inside the
-//! manager that no report names (storage setup, `runsc` start, runner
-//! authentication, checkpoint pause). Linux amd64 and arm64 are acceptance
-//! environments of their own. A single observed start duration is no
-//! end-to-end startup promise, and a passing run does not establish production
-//! capacity, latency under concurrent load or behavior at host power loss.
+//! acceptance checks by hand what it cannot:
+//!
+//! - the limits on, and the out-of-memory death (a host with the cgroup v2
+//!   controllers);
+//! - the tools' installers, public HTTPS and the DNS path (a sandbox that
+//!   reaches the internet);
+//! - copies on XFS and btrfs;
+//! - the live view's frames and input;
+//! - a full disk;
+//! - a restart at each publication boundary, the manager's recovery and
+//!   cleanup after cancellation or an injected fault (a manager built with
+//!   fault injection and restarted under a live backend);
+//! - the phases inside the manager that no report names (storage setup,
+//!   `runsc` start, runner authentication, checkpoint pause).
+//!
+//! Linux amd64 and arm64 are acceptance environments of their own. A single
+//! observed start duration is no end-to-end startup promise, and a passing run
+//! does not establish production capacity, latency under concurrent load or
+//! behavior at host power loss.
 
 use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -121,10 +131,11 @@ impl Environment {
     }
 
     /// A harness whose backends use the real manager, load the image's command
-    /// releases, serve the Clouds' runners on the runner socket the manager
-    /// mounts, and give them the URL the manager allows. A Cloud stops a moment
-    /// after the test lets go of its conversation's file gate, whose lease is
-    /// the conversation's work.
+    /// releases, serve the Clouds' runners on the runner socket the manager mounts,
+    /// and give them the URL the manager allows.
+    ///
+    /// A Cloud stops a moment after the test lets go of its conversation's file
+    /// gate, whose lease is the conversation's work.
     fn harness(&self) -> Harness {
         let mut harness = Harness::new();
         harness.machines = Some(self.socket.clone());
@@ -154,11 +165,13 @@ impl Environment {
     }
 }
 
-/// The tests share one manager, and a backend that starts reconciles it,
-/// which stops every Cloud: one test runs at a time, whatever the number of
-/// test threads. A test holds the suite across its awaits, so the lock is
-/// an asynchronous one; a test that fails while it holds the suite releases
-/// it as it unwinds and leaves nothing the next one depends on.
+/// The tests share one manager, and a backend that starts reconciles it, which
+/// stops every Cloud: one test runs at a time, whatever the number of test
+/// threads.
+///
+/// A test holds the suite across its awaits, so the lock is an asynchronous one. A
+/// test that fails while it holds the suite releases it as it unwinds and leaves
+/// nothing the next one depends on.
 async fn one_at_a_time() -> tokio::sync::MutexGuard<'static, ()> {
     static SUITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     SUITE.lock().await
@@ -637,14 +650,17 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_and_keeps_a_system_pack
 }
 
 /// How many attachments the large-write test sends, and the range of their
-/// sizes. Whether a write's last bytes stayed queued where gVisor's per-read
-/// limit left them depended on where the connection's reads fell against the
-/// end of the answer: about one write in twenty of sizes like these did,
-/// until the runner socket kept its connections within one read
-/// (`crates/backend-http/src/lib.rs`; google/gvisor#15639). An attachment is
-/// written whole, as a Claude Code session file is, which is what fills the
-/// connection; a file uploaded through the file routes goes as its request's
-/// body arrives.
+/// sizes.
+///
+/// Whether a write's last bytes stayed queued where gVisor's per-read limit
+/// left them depended on where the connection's reads fell against the end of
+/// the answer: about one write in twenty of sizes like these did, until the
+/// runner socket kept its connections within one read
+/// (`crates/backend-http/src/lib.rs`; google/gvisor#15639).
+///
+/// An attachment is written whole, as a Claude Code session file is, which is
+/// what fills the connection; a file uploaded through the file routes goes as
+/// its request's body arrives.
 const LARGE_WRITES: usize = 40;
 const LARGE_WRITE_SIZES: std::ops::Range<usize> = 300_000..3_000_000;
 

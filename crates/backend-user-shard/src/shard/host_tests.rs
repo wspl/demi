@@ -1,6 +1,7 @@
-//! The host access's operations over a shard (`backend-host-access`): the
-//! `demi host` group, a node's jobs and the remote files a message refers
-//! to, each against a runner the test plays.
+//! The host access's operations over a shard (`backend-host-access`).
+//!
+//! The tests cover the `demi host` group, a node's jobs and the remote files a
+//! message refers to, each against a runner the test plays.
 
 mod host_commands {
     use std::collections::BTreeMap;

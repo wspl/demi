@@ -1,12 +1,20 @@
-//! Work through a conversation on paired devices (`crates/backend-host-access/src/lib.rs`,
-//! `crates/runner-jobs/src/commands/mod.rs`, `crates/runner/src/main.rs`, `crates/command-sdk/src/edits.rs`): the model's shell tool
-//! runs where the conversation works, and the files it makes stay with the
-//! target they were made on. A switch moves the work and leaves the
-//! departed device reachable through `demi host shell`, whose pipes carry
-//! bytes both ways. Two conversations on one device keep apart, a
-//! command's edits outlive its runner, and neither a runner lost in the
-//! middle of a command nor a backend restart leaves work dangling. The
-//! model is an Anthropic endpoint the test scripts; the devices are real
+//! Work through a conversation on paired devices
+//! (`crates/backend-host-access/src/lib.rs`,
+//! `crates/runner-jobs/src/commands/mod.rs`, `crates/runner/src/main.rs`,
+//! `crates/command-sdk/src/edits.rs`).
+//!
+//! Scenarios:
+//!
+//! - The model's shell tool runs where the conversation works, and the files
+//!   it makes stay with the target they were made on.
+//! - A switch moves the work and leaves the departed device reachable through
+//!   `demi host shell`, whose pipes carry bytes both ways.
+//! - Two conversations on one device keep apart.
+//! - A command's edits outlive its runner.
+//! - Neither a runner lost in the middle of a command nor a backend restart
+//!   leaves work dangling.
+//!
+//! The model is an Anthropic endpoint the test scripts; the devices are real
 //! runners.
 
 use std::collections::HashSet;
@@ -913,12 +921,13 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     );
     assert!(std::fs::read(a.join("push.bin")).unwrap() == payload[..250_000]);
 
-    // A far command that stops reading before the caller's input ends, as
-    // `head -1` does, ends the call as its own end: its output and exit,
-    // and nothing on standard error about the input nobody reads. The
-    // caller writes a line through a FIFO and holds it open until the call
-    // closed its output. A child bash runs this part: the job's own shell
-    // keeps no FIFO apart from the processes it starts.
+    // A far command that stops reading before the caller's input ends, as `head -1`
+    // does, ends the call as its own end: its output and exit, and nothing on
+    // standard error about the input nobody reads.
+    //
+    // The caller writes a line through a FIFO and holds it open until the call
+    // closed its output. A child bash runs this part: the job's own shell keeps no
+    // FIFO apart from the processes it starts.
     let early = r#"bash <<'EOF'
 rm -f early && mkfifo early
 demi host shell --host alpha 'read -r l; echo "$l"' < early 2> early.err | { exec 3>early; echo hi >&3; IFS= read -r got; echo "got $got"; cat > /dev/null; exec 3>&-; }
@@ -1056,13 +1065,14 @@ EOF"#;
 
 /// Behind an edge that holds each request's body until it ends, as
 /// Cloudflare's does (`crates/runner-host/src/lib.rs`), `demi host shell`
-/// passes the far job's output and its own input on as they come: the far
-/// job prints a line, then waits for an answer that the caller writes only
-/// once it read that line, and prints the answer back. Before, the far
-/// runner sent the job's output and the calling runner the call's input as
-/// a PUT body, which such an edge held until the job ended: nothing reached
-/// either side, and on Cloudflare the upload was reset after 15 quiet
-/// seconds, so `echo a; sleep 40; echo b` lost `a` and failed.
+/// passes the far job's output and its own input on as they come: the far job
+/// prints a line, then waits for an answer that the caller writes only once it
+/// read that line, and prints the answer back.
+///
+/// Before, the far runner sent the job's output and the calling runner the
+/// call's input as a PUT body, which such an edge held until the job ended:
+/// nothing reached either side, and on Cloudflare the upload was reset after 15
+/// quiet seconds, so `echo a; sleep 40; echo b` lost `a` and failed.
 // Several seconds: two real devices behind the edge each install the builtin
 // package, and the far job runs through `demi host shell`.
 #[tokio::test]
@@ -1122,12 +1132,13 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
     let command = field(result, "commandId").to_owned();
-    // The far job's error output reaches the model while the job runs: the
-    // model looks at the command, each look showing what came since the one
-    // before, until `ready` is there. The far job's start (a login shell on
-    // alpha) may outlast the quiet that ended the call, and its shell's
-    // printf writes a byte at a time, so `ready` may come split between
-    // looks.
+    // The far job's error output reaches the model while the job runs: the model
+    // looks at the command, each look showing what came since the one before, until
+    // `ready` is there.
+    //
+    // The far job's start (a login shell on alpha) may outlast the quiet that ended
+    // the call, and its shell's printf writes a byte at a time, so `ready` may come
+    // split between looks.
     let mut output = shown_output(result);
     let deadline = tokio::time::Instant::now() + crate::support::PATIENCE;
     let mut reads = 0;
@@ -1224,11 +1235,11 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     // Stopping the command stops the far job with it.
     let pid = std::fs::read_to_string(&pid).unwrap().trim().to_owned();
     assert!(crate::support::alive(&pid));
-    // `demi shell stop` stops it, from another shell of the conversation,
-    // and waits until it has ended; a second stop is safe, and a number no
-    // command has fails, while the others it names are still stopped, as
-    // `cat a missing b` goes on. The model stopped it itself, so its end
-    // reports nothing more.
+    // `demi shell stop` stops it, from another shell of the conversation, and waits
+    // until it has ended. A second stop is safe, and a number no command has fails,
+    // while the others it names are still stopped, as `cat a missing b` goes on.
+    //
+    // The model stopped it itself, so its end reports nothing more.
     let stop = format!("demi shell stop {command}; demi shell stop 999 {command}");
     let stopped = work.turn(vec![shell("t5", &stop, 30_000), say("stopped")]).await;
     let stop = &stopped.received[0];

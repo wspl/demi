@@ -1,10 +1,15 @@
 //! A project's workflows on a paired device
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`): each
-//! directory's `.demi/instructions.md` joins the instructions block after its
-//! `AGENTS.md`; the Workflow menu's list reads `.demi/workflows/` with what the
-//! page watches; a conversation's choice puts the workflow's instructions in
-//! the root's block and its profiles in place of the user's, a model no entry
-//! offers making a profile unavailable, and No Subagents takes both away.
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//!
+//! Scenarios:
+//!
+//! - Each directory's `.demi/instructions.md` joins the instructions block
+//!   after its `AGENTS.md`.
+//! - The Workflow menu's list reads `.demi/workflows/` with what the page
+//!   watches.
+//! - A conversation's choice puts the workflow's instructions in the root's
+//!   block and its profiles in place of the user's, a model no entry offers
+//!   making a profile unavailable. No Subagents takes both away.
 
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, INSTRUCTIONS_SOURCE, InstructionEntry, WorkflowChoice};

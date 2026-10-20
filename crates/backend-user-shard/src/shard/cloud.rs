@@ -1,8 +1,9 @@
 //! The shard's side of the user's Cloud
-//! (`crates/machine-manager/src/lib.rs`): what the Cloud needs of the
-//! shard (`CloudShard`), with the holds of the user's conversations an
-//! idle stop and a reset take, and the routing of the machine manager's
-//! death events to the shards.
+//! (`crates/machine-manager/src/lib.rs`).
+//!
+//! - What the Cloud needs of the shard (`CloudShard`), with the holds of the
+//!   user's conversations an idle stop and a reset take.
+//! - The routing of the machine manager's death events to the shards.
 
 use std::rc::Rc;
 use std::sync::Arc;

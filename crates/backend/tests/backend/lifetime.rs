@@ -1,9 +1,17 @@
-//! Commands outlive their connections and the backend (`crates/runner/src/connection/kept.rs`, `crates/backend-remote-host/src/device_jobs.rs`): a connection that drops and comes back within the grace
-//! stops nothing, and the command reports its end with what it printed
-//! meanwhile; one that stays away loses the command for that reason; a
-//! backend that restarts takes its commands up again; and a release change
-//! loses them to the upgrade. The model is an Anthropic endpoint the test
-//! scripts; the device is a real runner.
+//! Commands outlive their connections and the backend
+//! (`crates/runner/src/connection/kept.rs`,
+//! `crates/backend-remote-host/src/device_jobs.rs`).
+//!
+//! Scenarios:
+//!
+//! - A connection that drops and comes back within the grace stops nothing,
+//!   and the command reports its end with what it printed meanwhile.
+//! - A connection that stays away loses the command for that reason.
+//! - A backend that restarts takes its commands up again.
+//! - A release change loses them to the upgrade.
+//!
+//! The model is an Anthropic endpoint the test scripts; the device is a real
+//! runner.
 
 use std::net::SocketAddr;
 use std::path::Path;
@@ -310,13 +318,15 @@ async fn started_unreceived(work: &mut Driven<'_>, network: &Network, home: &Pat
     field(result, "commandId").to_owned()
 }
 
-/// A command whose start went into a connection its runner no longer read:
-/// the runner it went to, the same one, reconnects without listing it, and
-/// the start goes again, so the command runs once and ends as usual, late,
-/// with no loss reported (`crates/backend-remote-host/src/device_jobs.rs`). The production case: a Mac's connection dropped silently
-/// and command 33 was reported lost.
-// About four seconds: a real device pairs, its job is a login shell, and
-// the call that starts it waits for two quiet seconds.
+/// A command whose start went into a connection its runner no longer read: the
+/// runner it went to, the same one, reconnects without listing it, and the start
+/// goes again, so the command runs once and ends as usual, late, with no loss
+/// reported (`crates/backend-remote-host/src/device_jobs.rs`).
+///
+/// The production case: a Mac's connection dropped silently and command 33 was
+/// reported lost.
+// About four seconds: a real device pairs, its job is a login shell, and the call
+// that starts it waits for two quiet seconds.
 #[tokio::test]
 async fn a_command_sent_into_a_dead_connection_starts_late_once_when_the_same_runner_is_back() {
     let vendor = MockVendor::start().await;
@@ -340,11 +350,11 @@ async fn a_command_sent_into_a_dead_connection_starts_late_once_when_the_same_ru
     backend.close().await;
 }
 
-/// A command whose start went into a connection its runner no longer read,
-/// when another runner process comes back, such as one started anew: that
-/// runner may have run it, so it is lost and never sent again.
-// Several seconds: a real device pairs, its job is a login shell, the call
-// that starts it waits for two quiet seconds, and the runner starts anew.
+/// A command whose start went into a connection its runner no longer read, when
+/// another runner process comes back, such as one started anew: that runner may
+/// have run it, so it is lost and never sent again.
+// Several seconds: a real device pairs, its job is a login shell, the call that
+// starts it waits for two quiet seconds, and the runner starts anew.
 #[tokio::test]
 async fn a_command_another_runner_does_not_list_is_lost_and_never_sent_again() {
     let vendor = MockVendor::start().await;
@@ -413,11 +423,11 @@ async fn a_backend_restart_takes_running_commands_up_again_and_they_report_their
     backend.close().await;
 }
 
-/// An upgrade that leaves a conversation idle with its server running loses
-/// the server: the loss wakes nobody, and the next message's turn reads it
-/// first (`crates/agent-session/src/reports.rs`, `upgrades.md`).
-// Several seconds: a real device pairs, the backend restarts, and the
-// device's runner starts anew as another release's would.
+/// An upgrade that leaves a conversation idle with its server running loses the
+/// server: the loss wakes nobody, and the next message's turn reads it first
+/// (`crates/agent-session/src/reports.rs`, `upgrades.md`).
+// Several seconds: a real device pairs, the backend restarts, and the device's
+// runner starts anew as another release's would.
 #[tokio::test]
 async fn a_release_change_loses_a_resident_command_and_the_next_turn_hears_of_it() {
     let vendor = MockVendor::start().await;
@@ -868,14 +878,13 @@ async fn a_look_after_a_backend_restart_counts_from_the_commands_start() {
     backend.close().await;
 }
 
-// Several seconds: a real device pairs, the call waits for two quiet
-// seconds, and the backend restarts.
+// Several seconds: a real device pairs, the call waits for two quiet seconds,
+// and the backend restarts.
 //
-// A command whose script ended before a backend restart, while its
-// background task runs on, still names the task once the restarted backend
-// takes it up: the runner's hello lists each job's outliving tasks. Before,
-// the restarted backend had no list, and a look said only that the command
-// keeps running.
+// A command whose script ended before a backend restart, while its background
+// task runs on, still names the task once the restarted backend takes it up:
+// the runner's hello lists each job's outliving tasks. Before, the restarted
+// backend had no list, and a look said only that the command keeps running.
 #[tokio::test]
 async fn a_backend_restart_keeps_the_background_tasks_that_outlive_a_commands_script() {
     let vendor = MockVendor::start().await;

@@ -1,9 +1,13 @@
-//! Sharing: an answer's share holds the message and the texts of the reply to it; a
-//! conversation's holds the root's messages and texts, with the media they show, as they
-//! were when it was taken until the owner takes it again, and in place of the agent's
-//! work between them the number of its steps, never a step itself; the public routes
-//! answer the token alone, ignore a session and answer every miss alike; and a share
-//! goes with its conversation or its Stop Sharing, at once.
+//! Sharing.
+//!
+//! - An answer's share holds the message and the texts of the reply to it.
+//! - A conversation's share holds the root's messages and texts, with the
+//!   media they show, as they were when it was taken until the owner takes it
+//!   again. In place of the agent's work between them it holds the number of
+//!   its steps, never a step itself.
+//! - The public routes answer the token alone, ignore a session and answer
+//!   every miss alike.
+//! - A share goes with its conversation or its Stop Sharing, at once.
 
 use std::sync::Arc;
 
@@ -242,11 +246,12 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let shot = upload(&backend, &master, "shot.png", "image/png", &PNG).await;
     let unsent = demi_agent_store::testing::png(5, 5, 1);
     let unsent = upload(&backend, &master, "other.png", "image/png", unsent.as_bytes()).await;
-    // Each child's first answer is held until its parent has answered and is
-    // idle. A child that ended sooner, while its spawn command still ran,
-    // would reach the parent before its next request, which takes the report
-    // in (`crates/agent-session/src/input.rs`); no request would then
-    // ask for the words scripted after the report.
+    // Each child's first answer is held until its parent has answered and is idle.
+    //
+    // A child that ended sooner, while its spawn command still ran, would reach the
+    // parent before its next request, which takes the report in
+    // (`crates/agent-session/src/input.rs`); no request would then ask for the words
+    // scripted after the report.
     let helper =
         scripts.child_held(vec![shell("c1", &format!("demi attachment upload {root}/viewed.png")), say("hi from the child")]);
     let mut thought = shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png");

@@ -1,14 +1,20 @@
-//! The failure facts of a transcript's error blocks: each error block with a
-//! failure record is read by the provider its model selection names, and the
-//! facts travel beside the blocks, never stored. The conversation socket's
-//! transcript frames and the history route both read them here. A usage limit
-//! of a subscription entry with several accounts is read against them too
-//! (`crates/backend-providers/src/llm/rotation.rs`): under rotation its moment
-//! is the earliest one among the accounts once every one is used up, and
-//! without rotation the dock offers the account with the most room now. A
-//! request to a port its device had not exposed names the port, which the page
-//! offers to expose or to try again, and one to an offline device names the
-//! device.
+//! The failure facts of a transcript's error blocks.
+//!
+//! Each error block with a failure record is read by the provider its model
+//! selection names, and the facts travel beside the blocks, never stored. The
+//! conversation socket's transcript frames and the history route both read them
+//! here.
+//!
+//! Three kinds of fact need more than the provider's own reading:
+//!
+//! - A usage limit of a subscription entry with several accounts is read
+//!   against them too (`crates/backend-providers/src/llm/rotation.rs`). Under
+//!   rotation its moment is the earliest one among the accounts once every one
+//!   is used up. Without rotation the dock offers the account with the most room
+//!   now.
+//! - A request to a port its device had not exposed names the port, which the
+//!   page offers to expose or to try again.
+//! - A request to an offline device names the device.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -130,11 +136,13 @@ async fn quota_moment(
     provider.quota()?.used_up_until(error.created_at)
 }
 
-/// What a usage limit of `entry` adds from its accounts: under rotation,
-/// the earliest moment among them once every one is used up; without it,
-/// the account with the most room now, other than the active one that
-/// failed. A read that fails adds nothing: the facts only add to the
-/// failure.
+/// What a usage limit of `entry` adds from its accounts.
+///
+/// - Under rotation, the earliest moment among them once every one is used up.
+/// - Without rotation, the account with the most room now, other than the active
+///   one that failed.
+///
+/// A read that fails adds nothing: the facts only add to the failure.
 async fn account_facts(
     assembly: &ProviderAssembly,
     entry: &ProviderEntry,
@@ -174,11 +182,12 @@ async fn account_facts(
     }
 }
 
-/// For a refused sign-in, the account the request used, the one the error
-/// block names, else the entry's active one, while its vendor has it
-/// signed out (`crates/provider-claude-code/src/account.rs`): an account signed
-/// in again since shows the failure as it was. A read that fails adds
-/// nothing.
+/// For a refused sign-in, the account the request used, the one the error block
+/// names, else the entry's active one, while its vendor has it signed out
+/// (`crates/provider-claude-code/src/account.rs`).
+///
+/// An account signed in again since shows the failure as it was. A read that
+/// fails adds nothing.
 async fn signed_out(
     assembly: &ProviderAssembly,
     entry: &ProviderEntry,

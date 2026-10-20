@@ -1,8 +1,11 @@
 //! Workspace records: a named directory on one of the user's devices, which
-//! conversations can target. A workspace is a pointer: it owns no files, and
-//! the user has one per device and directory. A new workspace joins the
-//! user's others at the end of their order. It keeps the model settings and
-//! the workflow the project's next conversation starts with.
+//! conversations can target.
+//!
+//! - A workspace is a pointer: it owns no files, and the user has one per device
+//!   and directory.
+//! - A new workspace joins the user's others at the end of their order.
+//! - It keeps the model settings and the workflow the project's next conversation
+//!   starts with.
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
@@ -116,11 +119,12 @@ impl ControlService {
         .await
     }
 
-    /// The new workspace `id` at `path` on the user's `device`, after the
-    /// user's others, unless the device is not the user's, the directory is
-    /// its home, or the user has a workspace of it already, which it
-    /// answers. The checks and the write are one transaction, so a
-    /// revocation cannot slip between them.
+    /// The new workspace `id` at `path` on the user's `device`, after the user's
+    /// others.
+    ///
+    /// It is made unless the device is not the user's, the directory is its home,
+    /// or the user has a workspace of it already, which it answers. The checks and
+    /// the write are one transaction, so a revocation cannot slip between them.
     pub async fn create_workspace(
         &self,
         id: WorkspaceId,

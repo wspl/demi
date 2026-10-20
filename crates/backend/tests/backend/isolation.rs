@@ -1,8 +1,10 @@
-//! Tenant isolation (`crates/backend-http/src/gate.rs`): every route that
-//! names a user's object answers another user, an administrator included,
-//! as if the object did not exist, and the lists hold nothing of it. A
-//! revoked device is gone for good; pairing the machine again is a new
-//! device.
+//! Tenant isolation (`crates/backend-http/src/gate.rs`).
+//!
+//! - Every route that names a user's object answers another user, an
+//!   administrator included, as if the object did not exist, and the lists
+//!   hold nothing of it.
+//! - A revoked device is gone for good; pairing the machine again is a new
+//!   device.
 
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};

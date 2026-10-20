@@ -1,8 +1,10 @@
-//! The product's `demi automation` group: the agent lists and shows the user's
-//! automations, creates, changes and deletes them with the user's Manage
-//! Automations, and runs one now. A run's own agent may list automations and
-//! show its own, never create, change or delete one: what started it, such as
-//! another system's call, must not make more.
+//! The product's `demi automation` group.
+//!
+//! - The agent lists and shows the user's automations, creates, changes and
+//!   deletes them with the user's Manage Automations, and runs one now.
+//! - A run's own agent may list automations and show its own, never create,
+//!   change or delete one: what started it, such as another system's call, must
+//!   not make more.
 
 use std::rc::{Rc, Weak};
 

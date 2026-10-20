@@ -1,8 +1,8 @@
-//! What a subagent's round runs on, in the names the model menu shows now:
-//! the provider entry's name from
-//! the user's entries, and the model's name and Fast tier from the catalog
-//! the menu reads. The `subagent` frames and the conversation's subagents
-//! route both read it here.
+//! What a subagent's round runs on, in the names the model menu shows now.
+//!
+//! The names are the provider entry's name from the user's entries, and the
+//! model's name and Fast tier from the catalog the menu reads. The `subagent`
+//! frames and the conversation's subagents route both read it here.
 
 use demi_agent_tools::runs_on as job_model;
 use demi_conversation_socket_protocol::JobModel;

@@ -1,9 +1,15 @@
-//! Conversation titles: the first message titles the conversation at once and a
-//! request beside the first turn writes a better one, and nothing asks again; a
-//! rename that lands while the request is in flight wins; an archive ends the
-//! request; an answer without a title writes nothing. The model is a scripted
-//! family that tells a title request from a turn by its system prompt. No test
-//! calls a real model.
+//! Conversation titles.
+//!
+//! Scenarios:
+//!
+//! - The first message titles the conversation at once, and a request beside
+//!   the first turn writes a better one. Nothing asks again.
+//! - A rename that lands while the request is in flight wins.
+//! - An archive ends the request.
+//! - An answer without a title writes nothing.
+//!
+//! The model is a scripted family that tells a title request from a turn by
+//! its system prompt. No test calls a real model.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -419,12 +425,15 @@ async fn first_message(backend: &TestBackend, master: &Session, id: &str, provid
     socket.chat("m1", "why does pnpm build fail").await;
 }
 
-/// The small model (`crates/backend-providers/src/llm/small_model.rs`): a conversation on one entry
-/// is titled by Haiku of another, at its highest version with thinking off;
-/// a chosen model is kept in the preferences and writes the titles while
-/// its entry lists it, Automatic again once it is gone; with Only the
-/// Conversation's Provider on, the conversation's own model writes them.
-/// Settings › Agent reads what Automatic resolves to from the catalog.
+/// The small model (`crates/backend-providers/src/llm/small_model.rs`).
+///
+/// - A conversation on one entry is titled by Haiku of another, at its highest
+///   version with thinking off.
+/// - A chosen model is kept in the preferences and writes the titles while its
+///   entry lists it, Automatic again once it is gone.
+/// - With Only the Conversation's Provider on, the conversation's own model
+///   writes them.
+/// - Settings › Agent reads what Automatic resolves to from the catalog.
 #[tokio::test]
 async fn titles_are_written_by_the_small_model() {
     const FOURTH: &str = "9c8b7a6d-5e4f-4a3b-8c1d-2e3f4a5b6c7d";

@@ -1,10 +1,15 @@
 //! The pages' synchronization channel end to end
-//! (`crates/backend-user-shard/src/sync/mod.rs`): the product state a page
-//! receives first, and the run that tells one start of the backend from the
-//! next; what it receives when another session changes something, after it
-//! reconnects, and when it falls behind; a turn and its reading as other pages
-//! see them; when the channel opens and how it ends; and the heartbeat each of
-//! a page's sockets sends when it is quiet.
+//! (`crates/backend-user-shard/src/sync/mod.rs`).
+//!
+//! Scenarios:
+//!
+//! - The product state a page receives first, and the run that tells one start
+//!   of the backend from the next.
+//! - What it receives when another session changes something, after it
+//!   reconnects, and when it falls behind.
+//! - A turn and its reading as other pages see them.
+//! - When the channel opens and how it ends.
+//! - The heartbeat each of a page's sockets sends when it is quiet.
 
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
@@ -286,12 +291,14 @@ async fn the_install_commands_of_an_https_backend_insist_on_https() {
     backend.close().await;
 }
 
-/// A conversation whose database cannot be opened, as one a build that
-/// does not know its schema made, takes nothing else down: the page's
-/// channel sends the product state with every conversation, the others
-/// open, and only that one's history fails. Its history answers
-/// `conversation_unreadable`, from which the page words the failure, never
-/// with the storage error, which names the file and an operator's command.
+/// A conversation whose database cannot be opened, as one a build that does not
+/// know its schema made, takes nothing else down: the page's channel sends the
+/// product state with every conversation, the others open, and only that one's
+/// history fails.
+///
+/// Its history answers `conversation_unreadable`, from which the page words the
+/// failure, never with the storage error, which names the file and an operator's
+/// command.
 // About a second: one backend with two conversations.
 #[tokio::test]
 async fn a_conversation_database_that_cannot_be_opened_fails_only_that_conversation() {
@@ -653,11 +660,12 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
         (4002, "session_ended".to_owned())
     );
 
-    // A channel never renews its session, not even as it opens: the
-    // tablet's page opens 20 days after its sign-in, when a request would
-    // renew the session, and closes as the session ends 30 days after the
-    // sign-in. The laptop's requests renew the laptop's, and the sessions
-    // they and the sign-out change come between the themes.
+    // A channel never renews its session, not even as it opens: the tablet's page
+    // opens 20 days after its sign-in, when a request would renew the session, and
+    // closes as the session ends 30 days after the sign-in.
+    //
+    // The laptop's requests renew the laptop's, and the sessions they and the
+    // sign-out change come between the themes.
     harness.clock.advance(days(20));
     theme(&backend, &laptop, "dark").await;
     laptop_page.until(|event| themed(event, Theme::Dark)).await;
@@ -685,11 +693,12 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
     assert_eq!(closed, (1001, "backend_closing".to_owned()));
 }
 
-/// A page that returns asks each socket that still looks open whether it is
-/// alive, with `{ ping: id }`, and only a `pong` that comes at once tells it
-/// so: the channel answers while it is busy with a change, ahead of that
-/// change, and a conversation socket answers beside its frames. Cost: one
-/// backend, no waits beyond the messages.
+/// A page that returns asks each socket that still looks open whether it is alive,
+/// with `{ ping: id }`, and only a `pong` that comes at once tells it so: the
+/// channel answers while it is busy with a change, ahead of that change, and a
+/// conversation socket answers beside its frames.
+///
+/// Cost: one backend, no waits beyond the messages.
 #[tokio::test]
 async fn each_socket_of_a_page_answers_a_ping_at_once_ahead_of_what_it_has_yet_to_send() {
     let harness = Harness::new();
@@ -711,11 +720,10 @@ async fn each_socket_of_a_page_answers_a_ping_at_once_ahead_of_what_it_has_yet_t
     backend.close().await;
 }
 
-/// A page tells a quiet socket from one that died without a close by the
-/// heartbeat each of its sockets sends once it has sent nothing else for the
-/// interval: the channel after its snapshot, and a conversation socket whose
-/// page never opened the conversation. Each waits for its heartbeat, 0.2 s
-/// here.
+/// A page tells a quiet socket from one that died without a close by the heartbeat
+/// each of its sockets sends once it has sent nothing else for the interval: the
+/// channel after its snapshot, and a conversation socket whose page never opened
+/// the conversation. Each waits for its heartbeat, 0.2 s here.
 #[tokio::test]
 async fn each_socket_of_a_page_sends_a_heartbeat_once_it_was_quiet_for_the_interval() {
     let mut harness = Harness::new();

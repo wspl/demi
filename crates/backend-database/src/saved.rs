@@ -1,7 +1,9 @@
-//! Messages saved for later: each conversation's list, newest first, and its revision,
-//! which the conversation's draft row keeps. Every change of the list raises the
-//! revision in the transaction that makes it; a save and an edit change the draft in
-//! the same transaction, so a message is never both saved and in the draft.
+//! Messages saved for later: each conversation's list, newest first, and its
+//! revision, which the conversation's draft row keeps.
+//!
+//! Every change of the list raises the revision in the transaction that makes it.
+//! A save and an edit change the draft in the same transaction, so a message is
+//! never both saved and in the draft.
 
 use demi_shared_types::{Timestamp, TurnId};
 use demi_web_api_protocol::drafts::{DraftWritten, Revisions};
@@ -74,13 +76,13 @@ impl ControlService {
             .await
     }
 
-    /// Saves the composer's message, `text` and `files`, for later as the
-    /// message `id` and empties the conversation's draft, as a save of an
-    /// empty draft built on the revision `base` would, in one transaction.
-    /// Each upload is presented with what its record holds, as a draft's is.
-    /// A save sent again, with an `id` the conversation keeps with the same
-    /// content, changes nothing and answers the message with the draft as it
-    /// is.
+    /// Saves the composer's message, `text` and `files`, for later as the message
+    /// `id` and empties the conversation's draft, as a save of an empty draft built
+    /// on the revision `base` would, in one transaction.
+    ///
+    /// Each upload is presented with what its record holds, as a draft's is. A save
+    /// sent again, with an `id` the conversation keeps with the same content,
+    /// changes nothing and answers the message with the draft as it is.
     pub async fn save_from_draft(
         &self,
         conversation: ConversationId,
@@ -156,11 +158,12 @@ impl ControlService {
         .await
     }
 
-    /// The edit `op`: moves the saved message `id` into the conversation's
-    /// draft, and the draft's text and files, when it holds any, into a
-    /// message saved for later as `becomes`, in one transaction. The answer
-    /// is kept by `op` for a day, so the same edit sent again answers as it
-    /// first did, whatever happened since; a refusal is not kept.
+    /// The edit `op`: moves the saved message `id` into the conversation's draft,
+    /// and the draft's text and files, when it holds any, into a message saved for
+    /// later as `becomes`, in one transaction.
+    ///
+    /// The answer is kept by `op` for a day, so the same edit sent again answers as
+    /// it first did, whatever happened since; a refusal is not kept.
     pub async fn edit_saved(
         &self,
         conversation: ConversationId,

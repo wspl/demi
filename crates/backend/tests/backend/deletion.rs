@@ -1,9 +1,15 @@
-//! Deleting a conversation (`crates/backend-database/src/deletions.rs`):
-//! nothing refuses it, a running conversation's command stops, and nothing
-//! finds the conversation after; a start finishes a deletion a crash cut
-//! short; and the collection after it removes only the blobs that nothing
-//! names and that are older than a day. The model is an Anthropic endpoint
-//! the test scripts; the device is a real runner.
+//! Deleting a conversation (`crates/backend-database/src/deletions.rs`).
+//!
+//! Scenarios:
+//!
+//! - Nothing refuses a deletion, a running conversation's command stops, and
+//!   nothing finds the conversation after.
+//! - A start finishes a deletion a crash cut short.
+//! - The collection after it removes only the blobs that nothing names and
+//!   that are older than a day.
+//!
+//! The model is an Anthropic endpoint the test scripts; the device is a real
+//! runner.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};

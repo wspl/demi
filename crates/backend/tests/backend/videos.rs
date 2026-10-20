@@ -1,14 +1,21 @@
 //! The agent's `demi video`, the `video` plugin over the port's Providers
-//! service: a video's job asked for, its states told, its MP4 downloaded
-//! to a file, and a usage ledger row with its seconds and cost; a job the
-//! vendor failed or that expired, told in the design's words; a used-up
-//! account handed on before the ask, never after it; a job still running
-//! at the bound; a stopped call's cancelled row, with the job cancelled at
-//! a vendor that can; and a compatible API whose video shape and models
-//! the agent sets with `demi providers`, its OpenRouter Videos and OpenAI
-//! Videos requests sent to a scripted server. The subscription's video
-//! role is a scripted family's, the device a real runner. No test calls a
-//! real model.
+//! service.
+//!
+//! Scenarios:
+//!
+//! - A video's job is asked for, its states told and its MP4 downloaded to a
+//!   file, with a usage ledger row of its seconds and cost.
+//! - A job the vendor failed or that expired is told in the design's words.
+//! - A used-up account is handed on before the ask, never after it.
+//! - A job still running at the bound.
+//! - A stopped call's cancelled row, with the job cancelled at a vendor that
+//!   can.
+//! - A compatible API whose video shape and models the agent sets with `demi
+//!   providers`, its OpenRouter Videos and OpenAI Videos requests sent to a
+//!   scripted server.
+//!
+//! The subscription's video role is a scripted family's, the device a real
+//! runner. No test calls a real model.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -77,12 +84,16 @@ async fn ran(scripts: &Arc<Scripts>, socket: &mut Socket, turn: &str, command: &
 // About two seconds: three logins and a real device's shell jobs of eight
 // turns, one woken by the user's decision.
 //
-// Planted defects: the job named only at its end; a state read but not
-// told; the ledger's seconds or cost left out; a used-up account at the
-// ask failing the call instead of moving on; a used-up account during the
-// job handed on, which asks and pays for a second job; a stopped call that
-// writes no row; `--video on` refused for a vendor's entry, whose shape is
-// fixed.
+// Planted defects:
+//
+// - The job named only at its end.
+// - A state read but not told.
+// - The ledger's seconds or cost left out.
+// - A used-up account at the ask failing the call instead of moving on.
+// - A used-up account during the job handed on, which asks and pays for a
+//   second job.
+// - A stopped call that writes no row.
+// - `--video on` refused for a vendor's entry, whose shape is fixed.
 #[tokio::test]
 async fn a_subscription_makes_a_video_told_as_its_job_moves_handing_on_only_before_the_ask() {
     let videos = Arc::new(VideoScript::new(&["clip-1"], Bytes::from_static(CLIP)));

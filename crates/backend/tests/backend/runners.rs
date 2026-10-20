@@ -1,7 +1,12 @@
-//! Runners and their devices (`crates/runner-protocol/src/wire/mod.rs`):
-//! pairing, the runner socket's protocol, one live connection per device,
-//! revocation, the pipe routes' authentication, the device routes, and a
-//! backend restart, with real runners.
+//! Runners and their devices (`crates/runner-protocol/src/wire/mod.rs`), with
+//! real runners.
+//!
+//! - Pairing.
+//! - The runner socket's protocol.
+//! - One live connection per device.
+//! - Revocation.
+//! - The pipe routes' authentication and the device routes.
+//! - A backend restart.
 
 use std::time::Duration;
 
@@ -451,12 +456,13 @@ async fn a_held_connection_that_does_not_answer_its_ping_gives_way_to_the_device
     backend.close().await;
 }
 
-/// A device whose runner cannot register with its system's service manager
-/// shows why, so the user learns it before a restart, and goes on showing
-/// it after the backend's own restart, until a runner that registered says
-/// nothing (`crates/runner/src/autostart.rs`).
-/// Planted defect this catches: a reason kept only in memory, which a
-/// backend's restart forgets.
+/// A device whose runner cannot register with its system's service manager shows
+/// why, so the user learns it before a restart, and goes on showing it after the
+/// backend's own restart, until a runner that registered says nothing
+/// (`crates/runner/src/autostart.rs`).
+///
+/// Planted defect this catches: a reason kept only in memory, which a backend's
+/// restart forgets.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_device_shows_why_it_will_not_start_its_runner_by_itself() {
     let harness = Harness::new();
@@ -963,11 +969,13 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
     backend.close().await;
 }
 
-/// A device shows the operating system and the runner release its runner's
-/// hello named, the Cloud's too; a paired device takes a new name, trimmed,
-/// which the user's pages see at once, or a route,
-/// while the Cloud keeps its name and its path and another user's device is
-/// not the caller's to change.
+/// A device shows the operating system and the runner release its runner's hello
+/// named, the Cloud's too.
+///
+/// - A paired device takes a new name, trimmed, which the user's pages see at
+///   once, or a route.
+/// - The Cloud keeps its name and its path.
+/// - Another user's device is not the caller's to change.
 // About half a second: a runner pairs and the Cloud boots.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_new_name_or_route() {
@@ -1129,11 +1137,12 @@ fn system(name: &str, distribution: Option<&str>) -> wire::OperatingSystem {
     }
 }
 
-/// A device's mark is its system's logo, a Linux device's from the
-/// distribution its hello names, with a number among the user's devices of
-/// that logo: given at the first hello as one more than the highest, kept
-/// while the device stays and when another goes, and given anew when a
-/// reinstall changes the logo.
+/// A device's mark is its system's logo, a Linux device's from the distribution
+/// its hello names, with a number among the user's devices of that logo.
+///
+/// The number is given at the first hello as one more than the highest, kept while
+/// the device stays and when another goes, and given anew when a reinstall changes
+/// the logo.
 // About 0.2 s: six raw runners pair and two say hello again.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo() {
@@ -1238,11 +1247,11 @@ async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo()
     backend.close().await;
 }
 
-/// A Cloud's runner reaches its backend through the runner socket the
-/// machine manager mounts into the Cloud
-/// (`crates/backend-http/src/lib.rs`), with the backend's public URL as the
-/// origin: the socket answers the runner's socket and pipes, and nothing a
-/// browser uses.
+/// A Cloud's runner reaches its backend through the runner socket the machine
+/// manager mounts into the Cloud (`crates/backend-http/src/lib.rs`), with the
+/// backend's public URL as the origin.
+///
+/// The socket answers the runner's socket and pipes, and nothing a browser uses.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
     let directory = tempfile::tempdir().unwrap();

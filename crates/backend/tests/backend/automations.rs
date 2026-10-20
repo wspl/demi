@@ -1,12 +1,23 @@
-//! Automations: the scheduler fires a time trigger's run into a new
-//! conversation filed out of the sidebar, and once for the times a backend that
-//! was down missed; a change watch records its first output, fires on a change
-//! and stops at its daily limit until the next day; a URL refuses every call
-//! without its secret alike, gathers a burst into one run, answers a repeated
-//! delivery as the first, counts what its limit holds back and makes a run's
-//! credential reads ask; and `demi automation` needs the user's permission,
-//! which a run's own agent cannot use. The model is the scripted family of the
-//! subagent scenarios; the device is a real runner. No test calls a real model.
+//! Automations.
+//!
+//! Scenarios:
+//!
+//! - The scheduler fires a time trigger's run into a new conversation filed
+//!   out of the sidebar, and once for the times a backend that was down
+//!   missed.
+//! - A change watch records its first output, fires on a change and stops at
+//!   its daily limit until the next day.
+//! - A URL trigger:
+//!   - refuses every call without its secret alike;
+//!   - gathers a burst into one run;
+//!   - answers a repeated delivery as the first;
+//!   - counts what its limit holds back;
+//!   - makes a run's credential reads ask.
+//! - `demi automation` needs the user's permission, which a run's own agent
+//!   cannot use.
+//!
+//! The model is the scripted family of the subagent scenarios; the device is a
+//! real runner. No test calls a real model.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -76,12 +87,14 @@ fn set_clock(harness: &Harness, to: jiff::Timestamp) {
     harness.clock.set(demi_shared_types::Timestamp::truncate(to));
 }
 
-/// Waits until `ended` holds `count` ends of the watch's checks, then moves
-/// the clock 61 seconds on, which makes the next check due, holds that
-/// check's end and lets these go. The clock moves only once the check has
-/// ended: one still finishing would read the moved clock as the time it
-/// tried and put the next check a minute later than the test waits for.
-/// That the output is recorded is no sign of the end, which comes after.
+/// Waits until `ended` holds `count` ends of the watch's checks, then moves the
+/// clock 61 seconds on, which makes the next check due, holds that check's end and
+/// lets these go.
+///
+/// The clock moves only once the check has ended: one still finishing would read
+/// the moved clock as the time it tried and put the next check a minute later than
+/// the test waits for. That the output is recorded is no sign of the end, which
+/// comes after.
 async fn next_check(harness: &Harness, backend: &TestBackend, ended: StepHold, count: usize) -> StepHold {
     use demi_shared_types::Clock;
     ended.until_arrived(count).await;

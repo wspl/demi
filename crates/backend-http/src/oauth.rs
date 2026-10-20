@@ -1,8 +1,9 @@
 //! A plugin's OAuth callback (`crates/backend-plugins/src/oauth.rs`): where the
-//! vendor sends the browser back after the user signed in. It is a session
-//! route: the browser's own navigation carries the session cookie, so the
-//! caller's shard completes only a sign-in its user started. It answers a
-//! page the user reads in the tab the sign-in opened.
+//! vendor sends the browser back after the user signed in.
+//!
+//! It is a session route: the browser's own navigation carries the session
+//! cookie, so the caller's shard completes only a sign-in its user started. It
+//! answers a page the user reads in the tab the sign-in opened.
 
 use axum::extract::{Path, Query, State};
 use axum::http::header::ACCEPT_LANGUAGE;
@@ -17,11 +18,14 @@ use super::AppState;
 use super::error::ApiError;
 use super::gate::AuthUser;
 
-/// `GET /plugins/:plugin/oauth/callback?code&state`, or `?error&state`
-/// when the user declined at the vendor: 200 once signed in; 400 for a
-/// `state` the caller did not start, one older than 10 minutes or used
-/// before, or a vendor's error; 404 for a plugin that does not sign in or
-/// that the caller has off; 502 when the vendor did not issue the tokens.
+/// `GET /plugins/:plugin/oauth/callback?code&state`, or `?error&state` when the
+/// user declined at the vendor.
+///
+/// - 200 once signed in.
+/// - 400 for a `state` the caller did not start, one older than 10 minutes or
+///   used before, or a vendor's error.
+/// - 404 for a plugin that does not sign in or that the caller has off.
+/// - 502 when the vendor did not issue the tokens.
 pub(super) async fn callback(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -119,10 +123,14 @@ fn page_language(headers: &HeaderMap) -> Language {
         .unwrap_or(Language::English)
 }
 
-/// The language Demi speaks for the BCP 47 tag `tag`, if any: Traditional
-/// Chinese for `zh-Hant` and the Chinese of Taiwan, Hong Kong and Macao,
-/// Simplified for any other `zh`, a script the tag names winning over its
-/// region. The page resolves its own language; this reads only a request's
+/// The language Demi speaks for the BCP 47 tag `tag`, if any.
+///
+/// - Traditional Chinese for `zh-Hant` and the Chinese of Taiwan, Hong Kong and
+///   Macao.
+/// - Simplified for any other `zh`.
+/// - A script the tag names wins over its region.
+///
+/// The page resolves its own language; this reads only a request's
 /// `Accept-Language`.
 fn spoken_for(tag: &str) -> Option<Language> {
     let mut subtags = tag.split(['-', '_']);

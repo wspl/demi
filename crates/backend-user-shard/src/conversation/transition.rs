@@ -1,17 +1,22 @@
 //! Changes of a conversation (`crates/backend-host-access/src/transition.rs`, §
-//! Lifecycle access). Every change goes through one entry, `Shard::transition`. A
-//! rename, a pin or a change of the model settings waits while a transition holds the
-//! conversation, and is then applied as if it arrived afterwards; the model settings
-//! change one at a time (`settings.rs`). An archive, a restore, a target switch and a
-//! detach are transitions: each holds the conversation, with its idle tree reserved,
-//! its file transfers, user streams and the one-shot calls admitted like them ended,
-//! and its file gate reserved; sends the conversation release to the devices it leaves;
-//! and commits, advancing the execution-context revision when the context changed,
-//! whether the devices took the release or not
-//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). A transition waits for
-//! no other work: a conversation that is busy refuses it. The shard reserves the idle
-//! tree; host access holds the rest and runs the transition's steps
-//! (`demi_backend_host_access::transition`).
+//! Lifecycle access).
+//!
+//! Every change goes through one entry, `Shard::transition`.
+//!
+//! - A rename, a pin or a change of the model settings waits while a transition
+//!   holds the conversation, and is then applied as if it arrived afterwards.
+//!   The model settings change one at a time (`settings.rs`).
+//! - An archive, a restore, a target switch and a detach are transitions. Each
+//!   holds the conversation, with its idle tree reserved, its file transfers,
+//!   user streams and the one-shot calls admitted like them ended, and its file
+//!   gate reserved. Each sends the conversation release to the devices it
+//!   leaves, and commits, advancing the execution-context revision when the
+//!   context changed, whether the devices took the release or not
+//!   (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+//!
+//! A transition waits for no other work: a conversation that is busy refuses
+//! it. The shard reserves the idle tree; host access holds the rest and runs the
+//! transition's steps (`demi_backend_host_access::transition`).
 
 use demi_backend_database::workspaces::WorkspaceDeletion;
 use demi_backend_database::{Selection, StorageError};
@@ -210,11 +215,13 @@ impl Shard {
         });
     }
 
-    /// Deletes the user's project `id` as one transition: every conversation in
-    /// it is held as its archive holds it, released on its Hosts, and archived
-    /// in the transaction that deletes the workspace. A conversation of it
-    /// whose work runs refuses the deletion, as it refuses its archive, and
-    /// nothing changes; so does one that moved in or was created meanwhile.
+    /// Deletes the user's project `id` as one transition: every conversation in it
+    /// is held as its archive holds it, released on its Hosts, and archived in the
+    /// transaction that deletes the workspace.
+    ///
+    /// A conversation of it whose work runs refuses the deletion, as it refuses
+    /// its archive, and nothing changes; so does one that moved in or was created
+    /// meanwhile.
     pub async fn delete_project(&self, id: &WorkspaceId) -> Result<(), ChangeRefusal> {
         let control = &self.services().control;
         let host = self.host_shard();
@@ -289,13 +296,17 @@ impl Shard {
         Ok((paired && !self.devices().online(device)).then(|| device.clone()))
     }
 
-    /// Reserves the conversation's live tree while it does nothing by itself: no action runs or
-    /// waits, no child is live and no command runs. A switch that `leaves` an offline device takes
-    /// the tree with commands running, which run on there, and also a tree whose every running node
-    /// only waits for that device: its waiting jobs were never sent, the switch fails them, and the
-    /// nodes go on on the new Host, so nothing is reserved
-    /// (`crates/backend-host-access/src/transition.rs`). A conversation without a live tree runs
-    /// nothing; one whose tree works otherwise refuses the transition.
+    /// Reserves the conversation's live tree while it does nothing by itself: no
+    /// action runs or waits, no child is live and no command runs.
+    ///
+    /// A switch that `leaves` an offline device takes the tree with commands
+    /// running, which run on there. It also takes a tree whose every running
+    /// node only waits for that device: its waiting jobs were never sent, the
+    /// switch fails them, and the nodes go on on the new Host, so nothing is
+    /// reserved (`crates/backend-host-access/src/transition.rs`).
+    ///
+    /// A conversation without a live tree runs nothing; one whose tree works
+    /// otherwise refuses the transition.
     fn reserve_idle_tree(
         &self,
         id: &ConversationId,
@@ -433,12 +444,13 @@ impl Shard {
 }
 
 impl Shard {
-    /// Tells the conversation's root of the user's move `switched`, through
-    /// the entry a permission decision's message takes, which opens a closed
-    /// tree and wakes an idle root (`crates/backend-host-access/src/transition.rs`). The message's id is the revision the move made, so
-    /// delivering it again changes nothing. A message that is not admitted
-    /// leaves the move made, and the agent reads it from its next context
-    /// block.
+    /// Tells the conversation's root of the user's move `switched`, through the
+    /// entry a permission decision's message takes, which opens a closed tree and
+    /// wakes an idle root (`crates/backend-host-access/src/transition.rs`).
+    ///
+    /// The message's id is the revision the move made, so delivering it again
+    /// changes nothing. A message that is not admitted leaves the move made, and
+    /// the agent reads it from its next context block.
     async fn tell_of_move(&self, id: &ConversationId, switched: &Switched) {
         let (from, to) = (&switched.switch.from, &switched.switch.to);
         let content = format!(
@@ -562,13 +574,14 @@ mod tests {
                     );
                 }
                 drop(operation);
-                // A transition holds the conversation: a rename waits for it,
-                // then applies. The rename reads the conversation first, and
-                // the control database answers its one connection's calls in
-                // order: once a read of the test's after it has come back and
-                // the test has yielded, the rename has gone as far as it can,
-                // to the gate or through its commit, which a second read would
-                // then see.
+                // A transition holds the conversation: a rename waits for it, then
+                // applies.
+                //
+                // The rename reads the conversation first, and the control database
+                // answers its one connection's calls in order: once a read of the
+                // test's after it has come back and the test has yielded, the rename
+                // has gone as far as it can, to the gate or through its commit,
+                // which a second read would then see.
                 let held = slot.file_gate().try_reserve().unwrap();
                 let renaming = {
                     let shard = shard.clone();
@@ -608,12 +621,13 @@ mod tests {
         pool.close().await;
     }
 
-    /// A directory is the one its Host names (`crates/backend-database/src/selection.rs`): on Windows `C:/Users/ana/site/` and
-    /// `c:\users\ana\site` are the one project `C:\Users\ana\site`, and a
-    /// link to the home is the home.
-    /// Planted defect this catches: a move that selects by the spelling it
-    /// was given, which makes two projects of one directory and a project
-    /// of the home.
+    /// A directory is the one its Host names
+    /// (`crates/backend-database/src/selection.rs`): on Windows
+    /// `C:/Users/ana/site/` and `c:\users\ana\site` are the one project
+    /// `C:\Users\ana\site`, and a link to the home is the home.
+    ///
+    /// Planted defect this catches: a move that selects by the spelling it was
+    /// given, which makes two projects of one directory and a project of the home.
     #[tokio::test(flavor = "local")]
     async fn two_spellings_of_a_directory_select_one_project_and_a_link_to_the_home_is_the_home() {
         let data = tempfile::tempdir().unwrap();

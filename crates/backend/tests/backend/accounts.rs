@@ -1,8 +1,15 @@
 //! A subscription entry's accounts
 //! (`crates/backend-providers/src/vault/logins.rs`,
-//! `crates/provider-common/src/quota.rs`): signed-in accounts sealed and never
-//! returned, explicit selection, device logins published once, held entries,
-//! cancellation, and an account's quota snapshot through a probe and a restart.
+//! `crates/provider-common/src/quota.rs`).
+//!
+//! Scenarios:
+//!
+//! - Signed-in accounts are sealed and never returned.
+//! - Selection is explicit.
+//! - Device logins are published once.
+//! - Held entries and cancellation.
+//! - An account's quota snapshot through a probe and a restart.
+//!
 //! The families are scripted.
 
 use std::sync::Arc;
@@ -717,12 +724,15 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
     backend.close().await;
 }
 
-/// Removing the active account selects the entry's next one, and the last
-/// one's removal leaves none (`crates/backend-providers/src/vault/logins.rs`): a
-/// request already running finishes with its own account, the next one runs
-/// with the account now active, and with none left the request is refused
-/// before inference with the message to add an account. One backend, three
-/// turns of a scripted family, well under a second.
+/// Removing the active account selects the entry's next one, and the last one's
+/// removal leaves none (`crates/backend-providers/src/vault/logins.rs`).
+///
+/// - A request already running finishes with its own account.
+/// - The next one runs with the account now active.
+/// - With none left, the request is refused before inference with the message to
+///   add an account.
+///
+/// One backend, three turns of a scripted family, well under a second.
 #[tokio::test]
 async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none() {
     use crate::conversations::{FIRST, Runs, Socket, choose, create, send};

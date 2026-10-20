@@ -1,7 +1,10 @@
-//! A subscription entry's accounts and logins: the account list and its active
-//! account, removal, and logins into a new or an existing entry, with the code a
-//! sign-in takes. Changing accounts is the configuring user's, like every other
-//! change of an entry; tokens and codes are never returned.
+//! A subscription entry's accounts and logins.
+//!
+//! - The account list and its active account, and removal.
+//! - Logins into a new or an existing entry, with the code a sign-in takes.
+//!
+//! Changing accounts is the configuring user's, like every other change of an
+//! entry. Tokens and codes are never returned.
 
 use std::sync::Arc;
 

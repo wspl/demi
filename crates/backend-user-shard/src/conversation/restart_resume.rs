@@ -1,22 +1,31 @@
-//! A root's turn a graceful shutdown interrupted, resumed once the backend
-//! is back: the restart was Demi's doing, not the turn's, so the turn goes
-//! on by itself, as the user's Resume would, unless the user's
-//! `resumeAfterRestart` preference is off.
+//! A root's turn a graceful shutdown interrupted, resumed once the backend is
+//! back.
 //!
-//! Before the shard's close aborts the agent's turns, it marks each live
-//! root whose turn is running, in the control database
-//! (`interrupted_turns`), so the next start finds them without opening a
-//! conversation's database. The mark and the turn's `interrupted` record
-//! live in two databases, so the mark comes first: a shutdown cut short,
-//! such as by a deployment that stops waiting, still leaves a mark for
-//! each root it began to interrupt, and the record is written when the
-//! conversation opens again. A marked root resumes when its last turn ended
-//! interrupted, whichever record says so; one whose turn ended otherwise
-//! before the abort reached it does not. A crash marks nothing: its turn
-//! waits for the user, so a turn that brought the backend down cannot bring
-//! it down again. The start takes each mark before it acts on it, so a turn
-//! is resumed once for each shutdown that interrupted it; its children come
-//! back with the tree, as a restored tree brings them.
+//! The restart was Demi's doing, not the turn's, so the turn goes on by itself,
+//! as the user's Resume would, unless the user's `resumeAfterRestart`
+//! preference is off.
+//!
+//! # Marks
+//!
+//! Before the shard's close aborts the agent's turns, it marks each live root
+//! whose turn is running, in the control database (`interrupted_turns`), so the
+//! next start finds them without opening a conversation's database.
+//!
+//! The mark and the turn's `interrupted` record live in two databases, so the
+//! mark comes first. A shutdown cut short, such as by a deployment that stops
+//! waiting, still leaves a mark for each root it began to interrupt, and the
+//! record is written when the conversation opens again.
+//!
+//! # Resuming
+//!
+//! - A marked root resumes when its last turn ended interrupted, whichever
+//!   record says so. One whose turn ended otherwise before the abort reached it
+//!   does not.
+//! - A crash marks nothing: its turn waits for the user, so a turn that brought
+//!   the backend down cannot bring it down again.
+//! - The start takes each mark before it acts on it, so a turn is resumed once
+//!   for each shutdown that interrupted it.
+//! - Its children come back with the tree, as a restored tree brings them.
 
 use std::rc::Rc;
 

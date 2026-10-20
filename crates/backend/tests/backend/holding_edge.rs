@@ -1,8 +1,9 @@
-//! An edge in front of the backend that holds each request's body until the
-//! body ends, as a TLS edge such as Cloudflare's does, and passes a
-//! WebSocket's bytes as they come (`crates/runner-host/src/lib.rs`). It speaks
-//! HTTP/1.1, as the backend's listener does, and reads each request's head
-//! and body by their framing; what the backend answers it passes on as it
+//! An edge in front of the backend that holds each request's body until the body
+//! ends, as a TLS edge such as Cloudflare's does, and passes a WebSocket's bytes
+//! as they come (`crates/runner-host/src/lib.rs`).
+//!
+//! It speaks HTTP/1.1, as the backend's listener does, and reads each request's
+//! head and body by their framing. What the backend answers it passes on as it
 //! comes.
 
 use std::net::SocketAddr;

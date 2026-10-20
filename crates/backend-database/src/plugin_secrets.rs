@@ -1,8 +1,15 @@
-//! The plugins' secrets and OAuth clients (`crates/backend-plugins/src/secrets.rs`; `crates/backend/src/config/secret.rs`): each plugin's sealed
-//! values for a user, by name, each with the revision a conditional write
-//! names; and the public client each plugin registered with its vendor's
-//! authorization server, with the redirect URI it was registered with. The
-//! control database stores a secret only sealed; the plugin host seals and
+//! The plugins' secrets and OAuth clients
+//! (`crates/backend-plugins/src/secrets.rs`;
+//! `crates/backend/src/config/secret.rs`).
+//!
+//! The module stores:
+//!
+//! - each plugin's sealed values for a user, by name, each with the revision a
+//!   conditional write names;
+//! - the public client each plugin registered with its vendor's authorization
+//!   server, with the redirect URI it was registered with.
+//!
+//! The control database stores a secret only sealed; the plugin host seals and
 //! opens it.
 
 use demi_web_api_protocol::ids::UserId;

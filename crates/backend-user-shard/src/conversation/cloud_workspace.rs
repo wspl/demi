@@ -1,6 +1,7 @@
-//! A workspace on the user's Cloud: a new project directory there, made through
-//! the Cloud's machine access (`crates/backend-host-access/src/lib.rs`),
-//! which wakes a stopped Cloud.
+//! A workspace on the user's Cloud: a new project directory there.
+//!
+//! It is made through the Cloud's machine access
+//! (`crates/backend-host-access/src/lib.rs`), which wakes a stopped Cloud.
 
 use demi_backend_database::workspaces::{WorkspaceCreation, WorkspaceRecord, new_workspace_id};
 use demi_host_interface::{Host as _, HostFs, MkdirOptions};

@@ -1,24 +1,41 @@
 //! The Providers service of the plugins' port for generated media
-//! (`crates/plugin-interface/src/lib.rs`): the models of one kind the
-//! user's entries offer, each with every fact the catalog of media models
-//! states and the entries that offer it; one image made through an entry's
-//! account or key; one video's job, from its ask to its download; and one
-//! audio file, with the voices a speech model speaks in.
+//! (`crates/plugin-interface/src/lib.rs`).
 //!
-//! Which entry makes a call: the one `--provider` names, which fails the
-//! call when it cannot; otherwise the first that can make the model now,
-//! the subscriptions before the keys, each in the order of Settings ›
-//! Providers. An entry can when the user has it on, its switch for the kind
-//! is on, it is signed in or has its key, it offers the model and an
-//! account of it is not used up. An entry whose last account is used up by
-//! the call's request hands it on to the next; a refusal of the request is
-//! never handed on, and neither is a video's job once the vendor took it,
-//! since it is paid for. Within an entry the call takes the account under
-//! the entry's rotation, as a new agent takes one at its first request, and
-//! another at once when that one is used up. The provider sends the
-//! request, renewing its account's sign-in, and each call is a usage ledger
-//! row with the purpose of its kind. What the agent reads of it, the plugin
-//! words.
+//! The service offers:
+//!
+//! - the models of one kind the user's entries offer, each with every fact the
+//!   catalog of media models states and the entries that offer it;
+//! - one image made through an entry's account or key;
+//! - one video's job, from its ask to its download;
+//! - one audio file, with the voices a speech model speaks in.
+//!
+//! # Which entry makes a call
+//!
+//! - The one `--provider` names, which fails the call when it cannot.
+//! - Otherwise the first that can make the model now, the subscriptions before
+//!   the keys, each in the order of Settings › Providers.
+//!
+//! An entry can when:
+//!
+//! - the user has it on and its switch for the kind is on;
+//! - it is signed in or has its key;
+//! - it offers the model;
+//! - an account of it is not used up.
+//!
+//! # Handing a call on
+//!
+//! - An entry whose last account is used up by the call's request hands it on to
+//!   the next.
+//! - A refusal of the request is never handed on, and neither is a video's job
+//!   once the vendor took it, since it is paid for.
+//!
+//! # The call
+//!
+//! Within an entry the call takes the account under the entry's rotation, as a
+//! new agent takes one at its first request, and another at once when that one
+//! is used up. The provider sends the request, renewing its account's sign-in,
+//! and each call is a usage ledger row with the purpose of its kind. What the
+//! agent reads of it, the plugin words.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -161,11 +178,16 @@ async fn route(
     }))
 }
 
-/// Entry `route` as it is now, while it may still make its kind: it
-/// exists, the user has it on, its switch for the kind is on, and it is
-/// signed in or has its key, read again right before a request is sent,
-/// since any of them may have changed while an earlier entry's request was
-/// under way.
+/// Entry `route` as it is now, while it may still make its kind.
+///
+/// An entry may when:
+///
+/// - it exists;
+/// - the user has it on and its switch for the kind is on;
+/// - it is signed in or has its key.
+///
+/// It is read again right before a request is sent, since any of them may have
+/// changed while an earlier entry's request was under way.
 async fn current(
     services: &Services,
     user: &demi_web_api_protocol::ids::UserId,
@@ -230,11 +252,12 @@ async fn standing(services: &Services, route: &Route, model: &str) -> Result<Sta
     })
 }
 
-/// Each entry's models of `kind`, by entry id, newest first, for the
-/// settings page's Images, Videos and Audio sections
-/// (`crates/backend-user-shard/src/provider_settings.rs`): whether or not its
-/// switch for the kind is on, and an alias
-/// left out beside the model it names. An entry whose models could not be
+/// Each entry's models of `kind`, by entry id, newest first, for the settings
+/// page's Images, Videos and Audio sections
+/// (`crates/backend-user-shard/src/provider_settings.rs`).
+///
+/// An entry is listed whether or not its switch for the kind is on, and an alias
+/// is left out beside the model it names. An entry whose models could not be
 /// listed has none here; the agent's listing says why.
 pub async fn entry_media_models(
     services: &Services,
@@ -678,11 +701,12 @@ pub(crate) async fn make_image(
     }
 }
 
-/// Asks for the video `ask` names for `conversation`, as [`make_image`]
-/// makes an image, and answers the job the vendor took with its steps:
-/// each change of its state, then its video. The steps, dropped before the
-/// video, stop the waiting, cancel the job where the vendor can and write
-/// the call's cancelled row.
+/// Asks for the video `ask` names for `conversation`, as [`make_image`] makes an
+/// image, and answers the job the vendor took with its steps: each change of its
+/// state, then its video.
+///
+/// The steps, dropped before the video, stop the waiting, cancel the job where
+/// the vendor can and write the call's cancelled row.
 pub(crate) async fn make_video(
     shard: &Shard,
     conversation: &ConversationId,
@@ -1228,11 +1252,11 @@ fn plugin_option(option: VideoOption) -> demi_plugin_interface::VideoOption {
     }
 }
 
-/// A video's job once the vendor took it: its state read every
-/// `every`, each change told, then its video downloaded, all within
-/// `bound` of the ask. It ends with its row written once, after the wait
-/// its bound covers; dropped before, it cancels the job where the vendor
-/// can and writes the cancelled row.
+/// A video's job once the vendor took it: its state read every `every`, each
+/// change told, then its video downloaded, all within `bound` of the ask.
+///
+/// It ends with its row written once, after the wait its bound covers. Dropped
+/// before, it cancels the job where the vendor can and writes the cancelled row.
 struct Job {
     maker: MakerOf,
     http: demi_provider_common::ProviderHttp,

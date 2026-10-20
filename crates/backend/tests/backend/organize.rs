@@ -1,19 +1,28 @@
 //! What the agent can change of its own conversation
-//! (`crates/backend-host-access/src/host_commands.rs`, `crates/backend-host-access/src/transition.rs`, `crates/backend-database/src/conversation_index.rs`): `demi host pair` asks
-//! the user each time, then pairs a computer whose installer shows the code
-//! and attaches it; `demi host attach` attaches a device at once, which the
-//! next context block announces; `demi host move` asks once for a host the
-//! conversation may not reach, checks its directory and waits, as `demi
-//! host detach` does, until the conversation's work ends, when they are
-//! made in one transition, and the directory decides the project it lands
-//! in; a move that fails then leaves the conversation where it was and wakes
-//! the root with Demi's notice of the reason. Deleting a project archives its
-//! conversations, unless one works; a device's first home report after the
-//! upgrade puts the conversations the earlier release left in its directories
-//! where those directories say. The model is the scripted family of the
-//! subagent scenarios, the devices real runners, and the conversation holds
-//! Organize Conversations and the hosts it reaches, as storage keeps them,
-//! unless a test asks. No test calls a real model.
+//! (`crates/backend-host-access/src/host_commands.rs`,
+//! `crates/backend-host-access/src/transition.rs`,
+//! `crates/backend-database/src/conversation_index.rs`).
+//!
+//! Scenarios:
+//!
+//! - `demi host pair` asks the user each time, then pairs a computer whose
+//!   installer shows the code and attaches it.
+//! - `demi host attach` attaches a device at once, which the next context
+//!   block announces.
+//! - `demi host move` asks once for a host the conversation may not reach,
+//!   checks its directory and waits, as `demi host detach` does, until the
+//!   conversation's work ends. They are then made in one transition, and the
+//!   directory decides the project it lands in.
+//! - A move that fails then leaves the conversation where it was and wakes the
+//!   root with Demi's notice of the reason.
+//! - Deleting a project archives its conversations, unless one works.
+//! - A device's first home report after the upgrade puts the conversations the
+//!   earlier release left in its directories where those directories say.
+//!
+//! The model is the scripted family of the subagent scenarios, the devices
+//! real runners, and the conversation holds Organize Conversations and the
+//! hosts it reaches, as storage keeps them, unless a test asks. No test calls
+//! a real model.
 
 use std::sync::Arc;
 
@@ -421,13 +430,17 @@ fn project_of(harness: &Harness, id: &str) -> Option<(String, String)> {
         .unwrap()
 }
 
-/// Where a conversation runs decides its project: `demi host move` to a
-/// directory puts the conversation in a new project named after it, which a
-/// second conversation moved there joins; a project's subdirectory is a project
-/// of its own; a second directory of the same name takes *(2)*; the Host's home
-/// puts it among Conversations. Planted defect this catches: a move that keeps
-/// the conversation outside projects in a directory that is none's home, or
-/// that makes a second project of a directory that has one.
+/// Where a conversation runs decides its project:
+///
+/// - `demi host move` to a directory puts the conversation in a new project
+///   named after it, which a second conversation moved there joins.
+/// - A project's subdirectory is a project of its own.
+/// - A second directory of the same name takes *(2)*.
+/// - The Host's home puts it among Conversations.
+///
+/// Planted defect this catches: a move that keeps the conversation outside
+/// projects in a directory that is none's home, or that makes a second project
+/// of a directory that has one.
 // Several seconds: a real device runs the shell jobs of six turns of two
 // conversations.
 #[tokio::test]
@@ -475,10 +488,11 @@ async fn a_host_move_puts_the_conversation_in_its_directorys_project_and_the_hom
     backend.close().await;
 }
 
-/// Deleting a project whose conversation works is refused as its archive
-/// is, and nothing changes; once the work ends the deletion archives it.
-/// Planted defect this catches: a deletion that archives a conversation
-/// under the agent that runs in it.
+/// Deleting a project whose conversation works is refused as its archive is, and
+/// nothing changes; once the work ends the deletion archives it.
+///
+/// Planted defect this catches: a deletion that archives a conversation under the
+/// agent that runs in it.
 // Several seconds: a real device runs a turn's shell job, which waits.
 #[tokio::test]
 async fn a_project_whose_conversation_works_is_not_deleted() {
@@ -515,19 +529,24 @@ async fn a_project_whose_conversation_works_is_not_deleted() {
     backend.close().await;
 }
 
-/// What a release before projects by directory left on a paired device
-/// settles when the device's runner first reports its home after the
-/// upgrade, by the directories its runner resolves
-/// (`crates/server/src/main.rs`): two workspaces of one directory, `site/`
-/// and a link to it, become the older, with the newer's conversation; a
-/// workspace at the home, reached through a link, goes and its
-/// conversation runs in the home; and each conversation outside a project
-/// moves to the home or its directory's project, a directory gone as it
-/// was spelled. A device revoked before its first report keeps its
-/// conversations outside projects, in their directories. Planted defect
-/// this catches: projects compared by spelling, so one directory stays two
-/// projects or the home a project; and conversations resolved before the
-/// runner names their directories.
+/// What a release before projects by directory left on a paired device settles
+/// when the device's runner first reports its home after the upgrade, by the
+/// directories its runner resolves (`crates/server/src/main.rs`):
+///
+/// - Two workspaces of one directory, `site/` and a link to it, become the
+///   older, with the newer's conversation.
+/// - A workspace at the home, reached through a link, goes and its
+///   conversation runs in the home.
+/// - Each conversation outside a project moves to the home or its directory's
+///   project, a directory gone as it was spelled.
+/// - A device revoked before its first report keeps its conversations outside
+///   projects, in their directories.
+///
+/// Planted defects this catches:
+///
+/// - Projects compared by spelling, so one directory stays two projects or the
+///   home a project.
+/// - Conversations resolved before the runner names their directories.
 // About three seconds: one paired runner connects twice, another once.
 #[tokio::test]
 async fn a_devices_first_home_report_settles_what_an_upgrade_left_by_the_directories_its_runner_names() {
