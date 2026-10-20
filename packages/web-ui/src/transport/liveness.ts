@@ -64,6 +64,14 @@ const HANDSHAKE_MS = 10_000
 /** How long a socket has to answer the return's ping: a working one answers in well under a second. */
 const PONG_MS = 5_000
 
+/**
+ * The reasons of the backend's closes that end a socket as expected, which the
+ * page does not report: its Host went offline or stopped, a transition such as
+ * a move to another Host replaced it, or the backend shuts down. A close with
+ * the same code and another reason, such as 1011 `internal_error`, is a failure.
+ */
+const EXPECTED_ENDS = new Set(['host_unreachable', 'conversation_changed', 'backend_closing'])
+
 /** Why the page let an open socket go that had not closed. */
 type Break = 'silence' | 'return' | 'probe'
 
@@ -128,9 +136,9 @@ function reconnectWait(failures: number): number {
  * - One whose opening handshake has not completed within `HANDSHAKE_MS` cannot be
  *   made, and is closed, which the web browser reports to its owner as it reports
  *   a refused one, with its `close` event.
- * - An open socket that the backend closes with a code of its own, or whose
- *   connection breaks, is reported under `name`, such as "conversation socket".
- *   One the page closes is not.
+ * - An open socket whose connection breaks, or that the backend closes for a
+ *   failure, is reported under `name`, such as "conversation socket". One the
+ *   page closes, or the backend ends as expected (`EXPECTED_ENDS`), is not.
  */
 export function openSocket(url: string | URL, name: string): WebSocket {
   const socket = new WebSocket(url)
@@ -176,7 +184,7 @@ export function openSocket(url: string | URL, name: string): WebSocket {
   socket.addEventListener('close', (event: CloseEvent) => {
     // A socket that never opened is one more attempt that failed; 1000 is
     // a normal end, which its owner does not replace.
-    if (opened && !closedByPage && event.code !== 1000) {
+    if (opened && !closedByPage && event.code !== 1000 && !EXPECTED_ENDS.has(event.reason)) {
       reportReplaced(name, `closed with ${event.code}${event.reason ? ` ${event.reason}` : ''}`)
     }
     // Its owners start their wait as the close reaches them, which the

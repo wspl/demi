@@ -11,7 +11,7 @@ import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { historyReads, readEditCopies, workingTreeReads } from './changes'
-import { ConversationWatch } from './file-watch'
+import { ConversationWatch, type FollowHost } from './file-watch'
 import { directRoute } from '../direct'
 import { directFileReads, directWatchLink } from '../direct/operations'
 import { useConversations } from './store'
@@ -25,26 +25,41 @@ const watches = new Map<string, ConversationWatch>()
 /**
  * The file watch of a conversation's Host, on the relay or its direct
  * channel: what the conversation's views keep of its Host's files is subscribed
- * on it.
+ * on it. Each of its watches opens while its device is online, and at once when
+ * the device comes online, as a stopped Cloud that started.
  */
 export function conversationWatch(conversationId: string): ConversationWatch {
   let watcher = watches.get(conversationId)
   if (!watcher) {
-    watcher = new ConversationWatch(conversationId, directWatchLink(() => directRoute(conversationId)))
+    watcher = new ConversationWatch(
+      conversationId,
+      directWatchLink(() => directRoute(conversationId)),
+      undefined,
+      followDevice,
+    )
     watches.set(conversationId, watcher)
   }
   return watcher
 }
 
-/** The attached hosts whose watch follows their device online, by conversation and device. */
-const following = new Set<string>()
+/** Follows a device's state from the synchronization channel, the Cloud's included, for the page's lifetime. */
+const followDevice: FollowHost = (deviceId, cameOnline) => {
+  const resources = useResources()
+  const online = () => resources.deviceById(deviceId)?.state === 'online'
+  effectScope(true).run(() => {
+    watch(online, (now) => {
+      if (now)
+        cameOnline()
+    })
+  })
+  return online
+}
 
 /**
  * The files of a Host the conversation reaches, as its attachment picker
  * lists them, with sizes and times: its primary Host's on the
  * conversation's own watch, an attached host's on the conversation's watch
- * with each subscription naming the host, which connects at once when the host
- * comes online, as a stopped Cloud that started.
+ * with each subscription naming the host.
  */
 export function conversationHostSource(
   conversationId: string,
@@ -53,16 +68,6 @@ export function conversationHostSource(
 ): FileBrowserSource {
   const resources = useResources()
   const watcher = conversationWatch(conversationId)
-  if (!primary && !following.has(`${conversationId}/${deviceId}`)) {
-    following.add(`${conversationId}/${deviceId}`)
-    // For the page's lifetime, as the primary Host's watch follows its device.
-    effectScope(true).run(() => {
-      watch(() => resources.deviceById(deviceId)?.state === 'online', (online) => {
-        if (online)
-          watcher.attachedOnline(deviceId)
-      })
-    })
-  }
   return fileSource({
     directory: `/conversations/${encodeURIComponent(conversationId)}/hosts/${encodeURIComponent(deviceId)}/fs`,
   }, resources.deviceById(deviceId), {
@@ -96,14 +101,12 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     return target ? resources.deviceById(target.deviceId) : null
   })
   const watcher = conversationWatch(conversationId)
-  // For the page's lifetime: a Host that comes back online has the watch
-  // connect at once, and the watch moves whenever the path to its device
-  // changes (`packages/web/src/direct/index.ts`).
+  // For the page's lifetime: while the Host is online, the watch moves
+  // whenever the path to its device changes (`packages/web/src/direct/index.ts`).
   effectScope(true).run(() => {
     watch(() => device.value?.state === 'online' ? device.value.id : null, (online, _previous, onCleanup) => {
       if (online === null)
         return
-      watcher.online()
       const moving = directRoute(conversationId)?.device.onChange(() => watcher.move())
       onCleanup(() => moving?.())
     }, { immediate: true })
