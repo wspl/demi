@@ -3,9 +3,6 @@
     "invalidCredentials": "这不是你当前的密码。",
     "invalidCode": "该验证码错误或已过期。请使用最新的验证码。"
   },
-  "credentials": {
-    "showFailed": "无法显示该值"
-  },
   "devices": {
     "revokeFailed": "无法撤销设备",
     "renameFailed": "无法重命名设备",

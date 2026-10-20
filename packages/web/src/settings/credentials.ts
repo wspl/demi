@@ -1,20 +1,8 @@
-import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
-import { reportError } from '@demicodes/web-ui/infra/errors'
-import type {
-  CredentialRevealOutcome,
-  SettingsCredential,
-  SettingsCredentialDraft,
-} from '@demicodes/web-ui/settings/types'
-import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
-import {
-  credentialAnswerSchema,
-  credentialValuesSchema,
-  type CredentialDto,
-  type CredentialPatch,
-  type NewCredential,
-} from '../api/generated/web-api'
+import type { SettingsCredential, SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
+import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { credentialAnswerSchema, type CredentialDto, type NewCredential } from '../api/generated/web-api'
 import { useProduct, type Answer } from '../state/product'
 
 /** The credentials in name order, as the backend lists them: `credential` in its place by id. */
@@ -29,12 +17,10 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
 }
 
 /**
- * The user's credentials as Settings › Credentials changes them: a saved or deleted
- * credential shows its answer, and the synchronization channel's `credentials` part
- * brings the same to every other page, each visible field with its value and never a
- * secret one's. A secret value comes only from the reveal, which the page shows and
- * does not keep, and which the backend answers only for a browser the user confirmed
- * in the last five minutes.
+ * The user's credentials as Settings › Credentials changes them: a created or
+ * deleted credential shows its answer, and the synchronization channel's
+ * `credentials` part brings the same to every other page, each visible field
+ * with its value and never a secret one's, which no route answers a page.
  */
 export const useCredentialSettings = defineStore('credential-settings', () => {
   const product = useProduct()
@@ -49,28 +35,11 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
     })),
   )
 
-  /** Creates a credential, or changes the credential `id`; a refusal is thrown for the editor to show. */
-  async function saveCredential(id: string | null, draft: SettingsCredentialDraft): Promise<void> {
+  /** Creates a credential, kept always as one the user adds is; a refusal is thrown for New Credential to show. */
+  async function createCredential(draft: SettingsCredentialDraft): Promise<void> {
     const at = product.sent()
-    let response: Response
-    if (id === null) {
-      const body: NewCredential = {
-        name: draft.name,
-        note: draft.note,
-        keep: draft.keep ?? 'always',
-        // A new credential has no saved value to keep: the editor requires every one.
-        fields: draft.fields.map((field) => ({ ...field, value: field.value ?? '' })),
-      }
-      response = await apiRequest('/credentials', { method: 'POST', ...jsonBody(body) })
-    } else {
-      const body: CredentialPatch = {
-        name: draft.name,
-        note: draft.note,
-        fields: draft.fields.map(({ value, ...field }) => (value === null ? field : { ...field, value })),
-        ...(draft.keep === null ? {} : { keep: draft.keep }),
-      }
-      response = await apiRequest(`/credentials/${encodeURIComponent(id)}`, { method: 'PATCH', ...jsonBody(body) })
-    }
+    const body: NewCredential = { name: draft.name, note: draft.note, keep: 'always', fields: draft.fields }
+    const response = await apiRequest('/credentials', { method: 'POST', ...jsonBody(body) })
     const { credential } = await readResponse(response, credentialAnswerSchema)
     product.answered(at, credentialsAnswer((current) => withCredential(current, credential)))
   }
@@ -81,23 +50,5 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
     product.answered(at, credentialsAnswer((current) => current.filter((credential) => credential.id !== id)))
   }
 
-  /**
-   * The values of the credential's fields by name, for the eye of a secret
-   * field; the confirmation first when the backend wants it; a failure the
-   * user is told of.
-   */
-  async function revealCredential(id: string): Promise<CredentialRevealOutcome> {
-    try {
-      const response = await apiRequest(`/credentials/${encodeURIComponent(id)}/values`)
-      return { kind: 'revealed', values: (await readResponse(response, credentialValuesSchema)).values }
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'verification_required') {
-        return { kind: 'needsVerification' }
-      }
-      reportError(t('credentials.showFailed'), error, { userVisible: true })
-      return { kind: 'failed' }
-    }
-  }
-
-  return { credentials, saveCredential, deleteCredential, revealCredential }
+  return { credentials, createCredential, deleteCredential }
 })

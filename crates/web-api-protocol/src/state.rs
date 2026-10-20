@@ -191,7 +191,7 @@ pub enum SyncEvent {
     Instructions {
         instructions: String,
     },
-    /// A credential was saved, changed, used or removed: the user's
+    /// A credential was saved, used or removed: the user's
     /// credentials, without their values.
     Credentials {
         credentials: Vec<CredentialDto>,

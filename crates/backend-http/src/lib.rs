@@ -505,11 +505,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(exposed_ports::patch).delete(exposed_ports::delete),
         )
         .route("/credentials", get(credentials::list).post(credentials::create))
-        .route("/credentials/{id}/values", get(credentials::values))
-        .route(
-            "/credentials/{id}",
-            patch(credentials::patch).delete(credentials::delete),
-        )
+        .route("/credentials/{id}", delete(credentials::delete))
         .route("/subagents", put(subagents::switch))
         .route("/subagents/profiles", post(subagents::create))
         .route(

@@ -8,7 +8,6 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
-import { formatVerbAt } from '../ui/dates'
 import IconButton from '../ui/IconButton.vue'
 import InlineError from '../ui/InlineError.vue'
 import Menu from '../ui/Menu.vue'
@@ -28,73 +27,55 @@ import {
   valueProblem,
   type EditorField,
 } from './credential-fields'
-import type { SettingsCredential, SettingsCredentialDraft } from './types'
+import type { SettingsCredentialDraft } from './types'
 
 /**
- * Creates a credential or edits one, asking no more than a credential is, as the
- * Passwords app's editor does: its name and its note, then one row for each
- * field.
+ * Creates a credential, asking no more than a credential is, as the Passwords
+ * app's editor does: its name and its note, then one row for each field. A
+ * saved credential is not edited: Settings lists it and deletes it.
  *
  * - A row holds the field's label and its value side by side, with the name an
  *   agent reads it by under the label and a ⋯ menu at the row's end that makes it
  *   secret or visible and deletes it.
  * - Every input starts and ends at the same edges: the cards share one grid of a
  *   label column, an input column and the menu's column.
- * - A new field is read by a name made from its label. A saved field keeps its
- *   name, a visible one shows its value, and a secret one's value left empty
- *   keeps the saved one, which the page never has.
- * - A credential kept for a while says under its note when it goes, beside Keep
- *   Always. One kept always says nothing of it.
- * - A problem shows under its input once the user has left it, and Save waits
- *   until nothing is wrong.
+ * - A field is read by a name made from its label.
+ * - A problem shows under its input once the user has left it, and Create
+ *   Credential waits until nothing is wrong.
  *
- * The host saves (`onSave`, whose promise Save shows until it settles). A refusal
- * shows under the fields, and the draft stays.
+ * The host saves (`onSave`, whose promise Create Credential shows until it
+ * settles). A refusal shows under the fields, and the draft stays.
  */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  /** The credential edited; null for a new one. */
-  credential: SettingsCredential | null
   onSave?: Action<[draft: SettingsCredentialDraft]>
-  /** What Save does, and what Delete does, one group on the credential (`operations.ts`): while one works, the other cannot be pressed. */
+  /** What Create Credential does (`operations.ts`). */
   saveOperation?: Operation
-  deleteOperation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
 }>()
 
 const emit = defineEmits<{
   close: []
-  delete: []
 }>()
 
 let keys = 0
 function newField(): EditorField {
   keys += 1
-  return { key: keys, saved: null, label: '', kind: 'secret', value: '' }
+  return { key: keys, label: '', kind: 'secret', value: '' }
 }
 
 const name = ref('')
 const note = ref('')
-/** Whether the user chose Keep Always for a credential kept for a while; a new one is kept always. */
-const keepAlways = ref(false)
 const fields = ref<EditorField[]>([])
 /** The inputs the user has left, by `name`, `label:<key>` or `value:<key>`: a problem shows under them. */
 const touched = ref(new Set<string>())
 
 function reset(): void {
-  const credential = props.credential
-  name.value = credential?.name ?? ''
-  note.value = credential?.note ?? ''
-  keepAlways.value = false
-  fields.value = credential
-    ? credential.fields.map((field) => {
-        keys += 1
-        // A visible field shows its value, as the list does; a secret's is never on the page.
-        return { key: keys, saved: field.name, label: field.label, kind: field.kind, value: field.value ?? '' }
-      })
-    : [newField()]
+  name.value = ''
+  note.value = ''
+  fields.value = [newField()]
   touched.value = new Set()
 }
 reset()
@@ -115,7 +96,7 @@ function touch(id: string): void {
 const namesRead = computed(() => fieldNames(fields.value))
 const nameProblem = computed(() => textProblem(name.value, NAME_MAX))
 const labelProblems = computed(() => fields.value.map((field) => textProblem(field.label, LABEL_MAX)))
-const valueProblems = computed(() => fields.value.map((field) => valueProblem(field.value, field.saved !== null)))
+const valueProblems = computed(() => fields.value.map((field) => valueProblem(field.value)))
 const canSave = computed(
   () =>
     nameProblem.value === null &&
@@ -136,12 +117,6 @@ function removeField(key: number): void {
   fields.value = fields.value.filter((field) => field.key !== key)
 }
 
-/** When the saved credential goes, "Removed today at 6:00 PM"; null for one kept always, or once the user chose Keep Always. */
-const removedAt = computed(() => {
-  const until = props.credential?.keepUntil
-  return until && !keepAlways.value ? formatVerbAt('Removed', until, new Date()) : null
-})
-
 function save(): unknown {
   if (!canSave.value) {
     return
@@ -149,12 +124,11 @@ function save(): unknown {
   return props.onSave?.({
     name: name.value.trim(),
     note: note.value.trim(),
-    keep: props.credential === null || keepAlways.value ? 'always' : null,
     fields: draftFields(fields.value),
   })
 }
 
-const title = computed(() => (props.credential ? t('credentialDialog.edit') : t('credentialDialog.new')))
+const title = t('credentialDialog.new')
 
 /**
  * The cards' one grid: the label column, the inputs' column and the menu's
@@ -188,7 +162,7 @@ const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 
             <span class="flex min-w-0 flex-col gap-1">
               <TextInput
                 v-model="name"
-                :focused="!credential"
+                focused
                 :aria-label="t('credentialDialog.name')"
                 @blur="touch('name')"
               />
@@ -207,13 +181,6 @@ const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 
             </span>
             <span class="phone:hidden" />
           </label>
-          <template v-if="removedAt">
-            <span class="phone:hidden" />
-            <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <span class="select-none text-setting-small text-fg-subtle">{{ removedAt }}</span>
-              <Button size="sm" @click="keepAlways = true">{{ t('credentialDialog.keepAlways') }}</Button>
-            </div>
-          </template>
         </div>
 
         <div class="flex min-h-7 items-center justify-between gap-3 pt-1">
@@ -240,7 +207,7 @@ const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 
                 @blur="touch(`label:${field.key}`)"
               />
               <span
-                v-if="field.saved !== null || field.label.trim() !== ''"
+                v-if="field.label.trim() !== ''"
                 class="min-w-0 truncate px-2.5 font-mono text-detail text-fg-subtle"
               >{{ namesRead[index] }}</span>
               <InlineError
@@ -253,7 +220,6 @@ const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 
                 v-model="field.value"
                 :masked="field.kind === 'secret' ? 'secret' : undefined"
                 literal
-                :placeholder="field.saved !== null ? t('credentialDialog.keepSaved') : undefined"
                 :aria-label="t('credentialDialog.valueOf', { n: index + 1 })"
                 @blur="touch(`value:${field.key}`)"
               />
@@ -306,13 +272,10 @@ const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 
       </ScrollArea>
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
-    <template v-if="credential" #footer-leading>
-      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">{{ uiText('common.delete') }}</Button>
-    </template>
     <template #footer>
       <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
       <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
-        {{ credential ? uiText('common.save') : t('credentialDialog.create') }}
+        {{ t('credentialDialog.create') }}
       </Button>
     </template>
   </Dialog>

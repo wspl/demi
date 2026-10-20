@@ -4,15 +4,15 @@ import { ahead } from './time'
 
 /**
  * A user's credentials, one of each kind the section shows: kept always with
- * a hidden field and a note, kept for a while with a visible and a hidden
- * field, used lately, and never used.
+ * a secret field and a note too long for its line, kept for a while with a
+ * visible and a secret field, used lately, and never used.
  */
 export function demoCredentials(): SettingsCredential[] {
   return [
     {
       id: 'cred-github',
       name: 'GitHub token for deploys',
-      note: 'To push the release branches from the deploy script',
+      note: 'To push the release branches from the deploy script and tag each release on the example-app repository once its build passes',
       fields: [{ name: 'token', label: 'Token', kind: 'secret', value: null }],
       keepUntil: null,
       lastUsedAt: ahead(-3 * 60 * 60_000),
@@ -37,13 +37,6 @@ export function demoCredentials(): SettingsCredential[] {
       lastUsedAt: ahead(-2 * 24 * 60 * 60_000),
     },
   ]
-}
-
-/** Every value behind the credentials above, as the reveal reads them; the list carries the visible ones too. */
-export const DEMO_CREDENTIAL_VALUES: Record<string, Record<string, string>> = {
-  'cred-github': { token: 'ghp_EXAMPLEEXAMPLEEXAMPLE' },
-  'cred-google': { key: 'AIza-example-not-a-real-key' },
-  'cred-linear': { user: 'alex@example.com', password: 'correct horse battery staple' },
 }
 
 /** The Credentials section's state as a specimen holds it. */

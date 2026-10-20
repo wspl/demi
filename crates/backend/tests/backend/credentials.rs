@@ -10,7 +10,8 @@
 //! - A read of a credential the conversation may not use asks for an allowance
 //!   and fails until the user allows it.
 //! - `remove` needs Manage Credentials.
-//! - A rename keeps the values readable.
+//! - Settings lists a visible field's value, never a secret one's, and a
+//!   name once.
 //! - A credential kept for a while is removed at its time and, after a backend
 //!   that was down then, at start.
 //!
@@ -22,7 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_user_shard::shard::ShardPlacement;
-use demi_web_api_protocol::credentials::{CredentialAnswer, CredentialList, CredentialValues, Keep};
+use demi_web_api_protocol::credentials::{CredentialAnswer, CredentialList, Keep};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::permissions::PermissionRequest;
 use demi_web_api_protocol::state::SyncEvent;
@@ -32,7 +33,7 @@ use serde_json::json;
 use crate::conversations::{FIRST, Socket, send, summary, transcript};
 use crate::permissions::{categories, permissions};
 use crate::subagents::{Scripts, background, say, shell, tree_on};
-use crate::support::{Harness, MASTER_PASSWORD, Session, TestBackend, elapse, eventually};
+use crate::support::{Harness, Session, TestBackend, elapse, eventually};
 
 /// The secret the user types, which only the file on the Host may hold.
 const SECRET: &str = "sk-live-7f3a9c";
@@ -398,59 +399,13 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
     backend.close().await;
 }
 
-/// Settings' reveal answers a secret's value only to a browser that
-/// confirmed it is the user in the last five minutes, a sign-in counting as
-/// one; the list never carries it, and changing a secret's value asks
-/// nothing.
+/// Settings lists a visible field's value and never a secret one's, a
+/// broken rule is refused in the editor's words, and a name another
+/// credential has, in any case, is refused.
 #[tokio::test]
-async fn revealing_a_secret_needs_a_recent_confirmation() {
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let id = saved(
-        &backend,
-        &master,
-        json!({
-            "name": "Linear key", "keep": "always",
-            "fields": [{ "name": "key", "label": "API key", "kind": "secret", "value": "lin_api_1" }]
-        }),
-    )
-    .await;
-    let reveal = format!("/api/credentials/{id}/values");
-    let signed_in = backend.get(&reveal, Some(&master)).await;
-    assert_eq!(signed_in.status, StatusCode::OK, "{}", String::from_utf8_lossy(&signed_in.body));
-
-    harness.clock.advance(jiff::SignedDuration::from_mins(5));
-    let lapsed = backend.get(&reveal, Some(&master)).await;
-    assert_eq!(lapsed.refusal(), (StatusCode::FORBIDDEN, ErrorCode::VerificationRequired));
-    assert!(!String::from_utf8_lossy(&lapsed.body).contains("lin_api_1"));
-    let changed = backend
-        .patch(
-            &format!("/api/credentials/{id}"),
-            &master,
-            json!({ "fields": [{ "name": "key", "label": "API key", "kind": "secret", "value": "lin_api_2" }] }),
-        )
-        .await;
-    assert_eq!(changed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&changed.body));
-    assert!(!String::from_utf8_lossy(&changed.body).contains("lin_api_2"));
-
-    let verified = backend
-        .post("/api/auth/verify", Some(&master), json!({ "password": MASTER_PASSWORD }))
-        .await;
-    assert_eq!(verified.status, StatusCode::NO_CONTENT);
-    let read = backend.get(&reveal, Some(&master)).await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-    let CredentialValues { values } = read.json();
-    assert_eq!(values.get("key").map(String::as_str), Some("lin_api_2"));
-    backend.close().await;
-}
-
-/// A rename seals the values again under the new name, so Settings' reveal
-/// still opens them; a change of the fields keeps the value of a field sent
-/// without one; and a name another credential has is refused.
-#[tokio::test]
-async fn a_renamed_credential_keeps_its_values() {
+async fn a_new_credential_lists_its_visible_values_and_takes_a_name_once() {
     let (backend, master) = Harness::new().start_set_up().await;
-    let id = saved(
+    saved(
         &backend,
         &master,
         json!({
@@ -493,57 +448,25 @@ async fn a_renamed_credential_keeps_its_values() {
     )
     .await;
 
-    let renamed = backend
-        .patch(
-            &format!("/api/credentials/{id}"),
-            &master,
-            json!({
-                "name": "  Linear key for ENG  ",
-                "fields": [
-                    { "name": "key", "label": "Personal API key", "kind": "secret" },
-                    { "name": "team", "label": "Team", "kind": "visible", "value": "OPS" }
-                ]
-            }),
-        )
-        .await;
-    assert_eq!(renamed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renamed.body));
-    let renamed: CredentialAnswer = renamed.json();
-    assert_eq!(renamed.credential.name, "Linear key for ENG");
-    assert_eq!(renamed.credential.note, "For the tracker");
-    let read = backend.get(&format!("/api/credentials/{id}/values"), Some(&master)).await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-    let CredentialValues { values } = read.json();
-    assert_eq!(values.get("key").map(String::as_str), Some("lin_api_1"));
-    assert_eq!(values.get("team").map(String::as_str), Some("OPS"));
-
-    // A name is one whatever its case: another credential's is taken, and a
-    // new credential of it is refused; a change of its own case is not.
-    let taken = backend
-        .patch(&format!("/api/credentials/{id}"), &master, json!({ "name": "OTHER" }))
-        .await;
-    assert_eq!(taken.refusal(), (StatusCode::CONFLICT, ErrorCode::CredentialNameTaken));
+    // A name is one whatever its case.
     let again = backend
         .post(
             "/api/credentials",
             Some(&master),
             json!({
-                "name": "linear KEY for eng", "keep": "always",
+                "name": "LINEAR key", "keep": "always",
                 "fields": [{ "name": "key", "label": "Key", "kind": "secret", "value": "y" }]
             }),
         )
         .await;
     assert_eq!(again.refusal(), (StatusCode::CONFLICT, ErrorCode::CredentialNameTaken));
-    let recased = backend
-        .patch(&format!("/api/credentials/{id}"), &master, json!({ "name": "Linear Key for ENG" }))
-        .await;
-    assert_eq!(recased.status, StatusCode::OK, "{}", String::from_utf8_lossy(&recased.body));
     let names: Vec<String> = credentials(&backend, &master)
         .await
         .credentials
         .into_iter()
         .map(|credential| credential.name)
         .collect();
-    assert_eq!(names, ["Linear Key for ENG", "Other"]);
+    assert_eq!(names, ["Linear key", "Other"]);
     backend.close().await;
 }
 

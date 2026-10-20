@@ -40,45 +40,39 @@ export function textProblem(text: string, max: number): SentenceText | null {
   return [...text.trim()].length > max ? t('credentialFields.maxChars', { max }) : null
 }
 
-/** What breaks the rule of a value's size; a value may be empty only where the field keeps its saved one. */
-export function valueProblem(value: string, keepsSaved: boolean): SentenceText | null {
+/** What breaks the rule of a value: it is required, and at most 64 KiB. */
+export function valueProblem(value: string): SentenceText | null {
   if (value === '') {
-    return keepsSaved ? null : t('credentialFields.required')
+    return t('credentialFields.required')
   }
   return new TextEncoder().encode(value).length > VALUE_MAX_BYTES ? t('credentialFields.maxBytes') : null
 }
 
-/** A field of the editor: a saved field keeps its name, a new one is named from its label as the label is typed. */
+/** A field of the editor, named from its label as the label is typed. */
 export interface EditorField {
   /** Tells the fields apart while they are added and removed. */
   key: number
-  /** The name of a saved field; null for a new one. */
-  saved: string | null
   label: string
   kind: CredentialFieldKind
   value: string
 }
 
-/** The names the editor's fields are read by, in order: a saved field's own, a new field's made from its label. */
+/** The names the editor's fields are read by, in order, each made from its label and different from those before it. */
 export function fieldNames(fields: readonly EditorField[]): string[] {
-  const names: string[] = fields.flatMap((field) => (field.saved === null ? [] : [field.saved]))
-  return fields.map((field) => {
-    if (field.saved !== null) {
-      return field.saved
-    }
-    const name = fieldNameFor(field.label.trim(), names)
-    names.push(name)
-    return name
-  })
+  const names: string[] = []
+  for (const field of fields) {
+    names.push(fieldNameFor(field.label.trim(), names))
+  }
+  return names
 }
 
-/** The editor's fields as the host saves them: an empty value keeps the saved one. */
+/** The editor's fields as the host saves them. */
 export function draftFields(fields: readonly EditorField[]): SettingsCredentialDraftField[] {
   const names = fieldNames(fields)
   return fields.map((field, index) => ({
     name: names[index]!,
     label: field.label.trim(),
     kind: field.kind,
-    value: field.value === '' && field.saved !== null ? null : field.value,
+    value: field.value,
   }))
 }

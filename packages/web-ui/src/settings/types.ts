@@ -574,34 +574,21 @@ export interface SettingsCredential {
   lastUsedAt: string | null
 }
 
-/** A field as the list shows it: a visible field with its value, a secret one without, which only the reveal reads. */
+/** A field as the list shows it: a visible field with its value, a secret one without, whose value never reaches the page. */
 export interface SettingsCredentialField extends CredentialFieldView {
   /** A visible field's value; null for a secret one. */
   value: string | null
 }
 
-/** A field as the editor saves it: a new field carries its value, an existing one its value only when the user typed one. */
+/** A field as New Credential saves it, with its value. */
 export interface SettingsCredentialDraftField extends CredentialFieldView {
-  /** The new value; null keeps the saved one, which only an existing field may. */
-  value: string | null
+  value: string
 }
 
-/**
- * How reading a credential's values for the eye ended: its values by field
- * name; the user's confirmation is needed first (the page asks it and reads
- * again); or failed, which the host has told the user.
- */
-export type CredentialRevealOutcome =
-  | { kind: 'revealed'; values: Record<string, string> }
-  | { kind: 'needsVerification' }
-  | { kind: 'failed' }
-
-/** What the credential editor saves. */
+/** What New Credential saves. */
 export interface SettingsCredentialDraft {
   name: string
   note: string
-  /** `always` for a new credential, or one the user chose Keep Always for; null leaves a saved credential's time as it is. */
-  keep: 'always' | null
   fields: SettingsCredentialDraftField[]
 }
 
