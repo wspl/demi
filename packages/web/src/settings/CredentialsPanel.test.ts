@@ -61,8 +61,10 @@ async function openPanel(credentials: CredentialDto[]) {
 }
 
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')
+/** A button's name: its text, or the label of a button drawn as an icon. */
+const named = (each: HTMLElement) => each.textContent?.trim() || each.getAttribute('aria-label')
 const button = (text: string, within: ParentNode = document) =>
-  [...within.querySelectorAll<HTMLElement>('[role="button"]')].find((each) => each.textContent?.trim() === text)
+  [...within.querySelectorAll<HTMLElement>('[role="button"]')].find((each) => named(each) === text)
 const menuItem = (text: string) =>
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((each) => each.textContent?.trim() === text)
 
@@ -97,7 +99,7 @@ function backend(answer: (key: string, body: unknown) => Response | null): strin
   return requests
 }
 
-const buttons = () => [...document.querySelectorAll<HTMLElement>('[role="button"]')].map((each) => each.textContent?.trim())
+const buttons = () => [...document.querySelectorAll<HTMLElement>('[role="button"]')].map(named)
 
 // A secret field shows nothing on the page, neither its label nor a mask nor
 // a control that reads it, and the page asks the backend for nothing; a
@@ -114,7 +116,7 @@ test('a credential lists its visible fields and nothing of a secret one, and off
   expect(text).not.toContain('Password')
   expect(text).not.toContain('•')
   expect(page.querySelectorAll('input').length).toBe(0)
-  expect(buttons()).toEqual(['New Credential…', 'Delete…'])
+  expect(buttons()).toEqual(['New Credential…', 'Delete Linear sign-in'])
   expect(requests).toEqual([])
   app.unmount()
   product.stop()
@@ -126,8 +128,8 @@ test('a credential lists its visible fields and nothing of a secret one, and off
 test('Delete… asks first, then deletes the credential and its row goes', async () => {
   const requests = backend((key) => (key === 'DELETE /api/credentials/c1' ? new Response(null, { status: 204 }) : null))
   const { app, product, page } = await openPanel([linear])
-  await waitFor(() => button('Delete…') !== undefined)
-  button('Delete…')!.click()
+  await waitFor(() => button('Delete Linear sign-in') !== undefined)
+  button('Delete Linear sign-in')!.click()
   await waitFor(() => dialog()?.textContent?.includes('Delete “Linear sign-in”?') === true)
   expect(requests).toEqual([])
   button('Delete', dialog()!)!.click()

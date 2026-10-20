@@ -4,8 +4,11 @@ import { t } from './locales/text'
 import { formError, reportError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
+import { Trash2 } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import IconButton from '../ui/IconButton.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { formatMoment } from '../ui/dates'
@@ -18,10 +21,10 @@ import type { SettingsCredential, SettingsCredentialDraft } from './types'
 
 /**
  * The Credentials section: the user's credentials by name, each a row of three
- * lines and Delete…:
+ * lines and a Delete… icon, as a list row's actions are icons:
  *
  * ```
- * Linear sign-in                                              Delete…
+ * Linear sign-in                                             [trash icon]
  * To file issues in the team's tracker from a conversa…
  * User name  alex@example.com    Kept until Always · Last used 2 days ago
  * ```
@@ -144,12 +147,15 @@ const empty = computed(() => props.credentials.length === 0)
             </span>
           </div>
         </template>
-        <Button
-          size="sm"
-          :aria-label="t('credentials.deleteLabel', { name: credential.name })"
-          :operation="deletion(credential)"
-          @click="askDelete(credential)"
-        >{{ t('credentials.delete') }}</Button>
+        <Tooltip :content="t('credentials.delete')"
+          ><IconButton
+            size="sm"
+            :icon="Trash2"
+            variant="danger"
+            :aria-label="t('credentials.deleteLabel', { name: credential.name })"
+            :operation="deletion(credential)"
+            @click="askDelete(credential)"
+        /></Tooltip>
       </SettingsRow>
       <div
         v-if="empty"
