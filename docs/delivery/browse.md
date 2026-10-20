@@ -215,6 +215,15 @@ The following helpers cover the remaining needs of a check:
     them would undo the tool's at the next reload.
   - `demi.grant(permission)` gives a permission such as the clipboard or local
     network access.
+- **A hidden page.** `demi.hide({ page })` puts a blank tab in front of the
+  slot's page, or of `page`, which then reads `document.visibilityState` as
+  `hidden` and gets `visibilitychange`. `demi.show({ page })` brings it back, as
+  the call's end does. A tab the script brings to the front hides nothing,
+  because the tool emulates focus on every page.
+- **Downloads.** A download lands under its own name in the slot's
+  `.cache/browse/downloads/`. Playwright's `download` event never comes,
+  because the tool attaches to the browser without Playwright's defaults,
+  whose focus emulation only Playwright could turn off.
 - **The gallery.** `demi.gallery('/session?view=blocks')` opens a specimen page
   of the slot's gallery.
 - **Any language.** A helper finds a control by its role and a `data-*` hook
