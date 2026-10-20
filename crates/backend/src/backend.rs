@@ -96,6 +96,10 @@ pub struct Backend {
     /// Stores the package executables ahead for the targets of the Hosts
     /// (`crates/backend-runners/src/publication.rs`); a close ends it.
     ahead: AbortOnDropHandle<()>,
+    /// The hold `BackendConfig::migrations_held` put on the migrations as
+    /// the stores opened, until a test takes it.
+    #[cfg(feature = "testing")]
+    held_migrations: std::sync::Mutex<Option<demi_backend_database::conversations::MigrationHold>>,
 }
 
 /// Why the backend did not start.
@@ -277,7 +281,18 @@ impl Backend {
             None => objects,
         };
         let storage = Storage::open(&data_dir, config.clock.clone(), objects, secret.vault_key()).await?;
+        #[cfg(feature = "testing")]
+        let held_migrations = config
+            .migrations_held
+            .then(|| storage.conversations.hold_migrations());
         let started = Self::serve(config, storage.clone(), &secret).await;
+        #[cfg(feature = "testing")]
+        if let Ok(backend) = &started {
+            *backend
+                .held_migrations
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = held_migrations;
+        }
         if started.is_err() {
             for failure in storage.close().await {
                 tracing::error!(
@@ -553,6 +568,8 @@ impl Backend {
             usage,
             runners,
             ahead,
+            #[cfg(feature = "testing")]
+            held_migrations: std::sync::Mutex::new(None),
         })
     }
 
@@ -581,11 +598,20 @@ impl Backend {
         self.services.search.corrupt(user).await.expect("the search index is overwritten");
     }
 
-    /// Holds every migration of a conversation's database from now on,
-    /// until the hold is released.
+    /// The hold on every migration of a conversation's database that the
+    /// backend started with (`BackendConfig::migrations_held`), until it is
+    /// released.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the backend started without one, or it was taken already.
     #[cfg(feature = "testing")]
-    pub fn hold_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
-        self.services.conversations.hold_migrations()
+    pub fn held_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
+        self.held_migrations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .expect("the backend started with its migrations held")
     }
 
     /// Holds every runner's hello at `step` from now on, until the hold is

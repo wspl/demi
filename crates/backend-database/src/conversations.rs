@@ -431,7 +431,7 @@ impl Drop for CommitHold {
 /// A hold on the migrations of the conversations' databases, for the scenarios
 /// that race a read against a migration.
 ///
-/// From `Backend::hold_migrations` until it is released or dropped, a migration
+/// From `Backend::held_migrations` until it is released or dropped, a migration
 /// holds its database's write lock and waits before it changes the database, on
 /// the thread that migrates it: where a long migration, such as one that rewrites
 /// every block of a large conversation, keeps its database.

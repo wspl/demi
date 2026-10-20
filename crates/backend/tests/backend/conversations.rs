@@ -1952,9 +1952,11 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
 /// A summary read while the conversation's database migrates waits for the
 /// migration and lists the conversation's facts
 /// (`crates/backend-database/src/lib.rs`): after an upgrade, the database of
-/// the previous release's schema migrates as its conversation opens, holding
-/// its write lock for as long as the migration takes, and a page's summaries
-/// that come meanwhile still say how its turn ended.
+/// the previous release's schema migrates on its first read or open since the
+/// start, here the start's search catch-up, which reads every conversation,
+/// holding the database's opening turn and write lock for as long as the
+/// migration takes, and a page that opens the conversation and reads its
+/// summaries meanwhile still learns how its turn ended.
 ///
 /// On a production server the summary read migrated the database itself beside
 /// the open, gave up on the lock after its busy timeout and listed the
@@ -1994,8 +1996,14 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
         DatabaseKind::Conversation,
     );
 
-    let backend = harness.start().await;
-    let hold = backend.hold_migrations();
+    // The hold is in place before the start's search catch-up reaches the
+    // database, so the catch-up migrates it and the page's open and summary
+    // read come while it does; only the summary read counts as a read that
+    // waits.
+    let (backend, hold) = harness.start_with_migrations_held().await;
+    tokio::time::timeout(PATIENCE, hold.until_migrating(1))
+        .await
+        .expect("the start's search catch-up migrates the database");
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket
         .send(&ClientFrame::Open {
@@ -2003,9 +2011,6 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
             edge: None,
         })
         .await;
-    tokio::time::timeout(PATIENCE, hold.until_migrating(1))
-        .await
-        .expect("opening the conversation migrates its database");
     let listed = {
         let listing = summaries(&backend, &master);
         tokio::pin!(listing);
