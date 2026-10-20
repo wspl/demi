@@ -19,6 +19,6 @@ const frame: ServerFrame = serverFrameSchema.parse(JSON.parse(message))
 Demi has no TypeScript SDK: this package and
 [`@demicodes/conversation-client`](../conversation-client/README.md) are the
 web app's client of the conversation socket, not a way to run Demi's agent in
-another program ([The TypeScript boundary](../../docs/architecture/contracts.md#the-typescript-boundary)).
+another program ([ARCHITECTURE.md](../../ARCHITECTURE.md)).
 
 Part of [Demi](../../README.md). Apache License 2.0; see [LICENSE](../../LICENSE).

@@ -67,7 +67,7 @@ export class MobileDevicesController {
     watch(pageVisibility, (visibility) => this.session.visibility(visibility !== 'hidden'), { immediate: true })
   }
 
-  /** The panel closed: the view ends and nothing reopens it (`plugin-pages.md` § Panel sessions). */
+  /** The panel closed: the view ends and nothing reopens it (`packages/web-ui/src/plugins/page.ts`). */
   dispose(): void {
     clearInterval(this.ticking)
     this.session.close()

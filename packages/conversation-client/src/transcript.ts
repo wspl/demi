@@ -227,7 +227,7 @@ function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], leng
 }
 
 /**
- * The one transcript patch applier (`contracts.md` § Generated TypeScript):
+ * The one transcript patch applier (`crates/xtask/src/contracts/mod.rs`):
  * `held` with `patches` applied in order. A patch changes the blocks the
  * page holds; one at a block it does not hold changes nothing it shows,
  * and an `add` or a `truncate` moves the indices after it either way. A

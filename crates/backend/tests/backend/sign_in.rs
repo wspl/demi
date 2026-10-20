@@ -1,4 +1,4 @@
-//! A plugin's OAuth sign-in at the edge (`plugins.md` § OAuth sign-in): the
+//! A plugin's OAuth sign-in at the edge (`crates/backend-plugins/src/oauth.rs`): the
 //! vendor sends the browser back to the plugin's callback, a session route,
 //! which completes only a sign-in the caller started and answers a page the
 //! user reads; the user's pages learn the plugin's new state, and no secret

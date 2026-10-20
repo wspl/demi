@@ -5,12 +5,11 @@ import { viewDirectory, type ChangeData } from './data'
 const NO_FILES: readonly RequestFile[] = []
 
 /**
- * What the Change view shows: the working tree's changes and the
- * repository's history, and in
- * Conversation the request the tab names, as its agent's transcript holds it
- * now. Each frame of a turn reads the request anew: the sources stay
- * the same value while a frame changes nothing of them, so the view does not
- * render for it (`plugin-pages.md` § What the service keeps).
+ * What the Change view shows: the working tree's changes and the repository's
+ * history, and in Conversation the request the tab names, as its agent's
+ * transcript holds it now. Each frame of a turn reads the request anew: the
+ * sources stay the same value while a frame changes nothing of them, so the
+ * view does not render for it (`packages/web-ui/src/files/file-cache.ts`).
  */
 export function useChangeSources(files: ConversationFileService, data: () => ChangeData): ComputedRef<ChangeSources> {
   const requestFiles = computed<readonly RequestFile[] | null>((previous) => {

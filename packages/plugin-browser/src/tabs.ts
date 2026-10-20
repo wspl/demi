@@ -47,7 +47,7 @@ function tabsError(error: PluginCallError): BrowserTabsError {
  * user stream over the plugin, for a
  * panel session, whose effect scope the tab list is followed in. A call
  * still waiting for the backend when the session ends, as the panel closes,
- * is dropped and never sent (`plugin-pages.md` § The page context).
+ * is dropped and never sent (`packages/web-ui/src/plugins/page.ts`).
  */
 export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: string) => void): BrowserTabsApi {
   const tabs = plugin.state(browserTabsSchema)

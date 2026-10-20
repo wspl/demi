@@ -1,9 +1,19 @@
-//! What the user's plugins reach on a Host (`plugins.md` § Host
-//! directories, § Reading a conversation's files): reads of a
-//! conversation's primary Host, or of a command job's Host, in the form
-//! that never wakes it, and the
+//! What the user's plugins reach on a Host: reads of a conversation's primary
+//! Host, or of a command job's Host, in the form that never wakes it, and the
 //! plugins' directories, which each job of the user's installs before it
 //! starts, once per runner connection.
+//!
+//! A plugin never writes a Host: it names the directories its user needs and
+//! host access installs them. A directory that exists is complete: the runner
+//! writes it beside the final one, read-only, and renames it into place, so a
+//! crash leaves at most a temporary directory, which the next installation
+//! removes. The same installation removes the plugin's directories the user's
+//! set no longer names; a command still reading one fails as with any file
+//! removed underneath it, and the model was already told the new paths. A new
+//! connection checks again, so a Cloud's new boot is covered and a directory
+//! the user deleted by hand comes back. A job never waits for a directory it
+//! does not need, and a conversation that runs no job installs nothing, so one
+//! that only talks never wakes its Cloud for a plugin's files.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
@@ -107,8 +117,7 @@ impl dyn HostShard + '_ {
     /// Reads `reads` for a command's job on `device`, the conversation's
     /// primary Host or an attached one, admitted as
     /// [`read_files`](Self::read_files) is; a relative path is read against
-    /// `directory`, the job's, as that Host resolves it (`plugins.md`
-    /// § The contract).
+    /// `directory`, the job's, as that Host resolves it (`crates/plugin-interface/src/lib.rs`).
     pub async fn read_job_files(
         &self,
         id: &ConversationId,

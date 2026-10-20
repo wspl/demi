@@ -71,6 +71,10 @@
 //! Chrome and no Cloud suite. `crates/command-sdk/examples/benchmark.rs` is a
 //! standalone synthetic service and client that measures the machine and build
 //! it runs on; it never calls a model.
+//!
+//! It holds no second implementation of what a crate owns: it downloads and
+//! publishes through `shared-artifacts` and writes every record with its
+//! contract crate's type.
 
 #[cfg(test)]
 mod boundaries;

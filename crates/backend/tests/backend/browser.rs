@@ -455,7 +455,7 @@ async fn a_job_that_touches_no_browser_leaves_the_tab_list_revision_the_summary_
 
     // The browser tells its plugin of its own changes; a job that runs no
     // browser command changes nothing the plugin shows, and its end reads
-    // nothing (`plugins.md` § Messages from its command package).
+    // nothing (`crates/plugin-interface/src/request.rs`).
     let mut work = Driven::open(&backend, &master, &vendor, &id, &provider, "/work").await;
     work.turn(vec![shell("t1", "true", 30_000), say("done")])
         .await;

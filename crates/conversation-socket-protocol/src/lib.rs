@@ -1,5 +1,4 @@
-//! The conversation WebSocket's frames (`crates-and-packages.md` §
-//! conversation-socket-protocol): what the web app sends ([`ClientFrame`])
+//! The conversation WebSocket's frames: what the web app sends ([`ClientFrame`])
 //! and what the backend answers ([`ServerFrame`]), with transcript patches
 //! and versions. It holds types and their checks; the session logic and the
 //! socket live elsewhere, and no frame carries file bytes.
@@ -31,6 +30,10 @@
 //! holds the frames of its turn's end until the turn goes on or the
 //! conversation goes idle after its closing save, so the last patch and
 //! `phase: idle` go together; the hold waits for that save, never for a timer.
+//!
+//! The agent resolves the files a client frame's content refers to through the
+//! backend (`agent-server`'s `ContentResolver`) before the session sees the
+//! content.
 
 mod client;
 mod cost;

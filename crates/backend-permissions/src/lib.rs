@@ -48,6 +48,10 @@
 //! before the decision, stopped or lost with a restart, leaves its request
 //! as it is: an Allow still grants the category for the commands that come
 //! later.
+//!
+//! The crate decides whether a call is dispatched and the shard dispatches it:
+//! it runs no handler, knows no plugin, reaches no Host and sees no agent
+//! session and no `Shard`.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

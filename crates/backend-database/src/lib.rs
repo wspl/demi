@@ -69,6 +69,10 @@
 //!   so a start does not wait for every conversation a server ever had.
 //!   `demi-server` copies the databases that will migrate before the new
 //!   release first opens them.
+//!
+//! The server log, with its database, its writer thread and the `tracing` layer
+//! that feeds it, lives here too. The crate holds no domain's policy: the
+//! domains above it decide and it stores.
 
 pub mod accounts;
 pub mod attachments;

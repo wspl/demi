@@ -1,5 +1,4 @@
-//! What a plugin keeps and sends beyond its values (`plugins.md` § Secrets,
-//! § Outbound requests, § OAuth sign-in): the names of its secrets, and one
+//! What a plugin keeps and sends beyond its values: the names of its secrets, and one
 //! outbound HTTPS request with its answer and the ways it can fail.
 
 use std::fmt;
@@ -82,7 +81,7 @@ impl fmt::Debug for StoredSecret {
     }
 }
 
-/// One outbound request (`plugins.md` § Outbound requests): only `https`,
+/// One outbound request (`crates/backend-plugins/src/web.rs`): only `https`,
 /// with a deadline and a limit on the response's body the plugin names.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

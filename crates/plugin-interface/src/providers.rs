@@ -1,4 +1,4 @@
-//! The port's Providers service (`plugins.md` § The contract):
+//! The port's Providers service:
 //! the media models of one kind of the user's provider entries with what
 //! the catalog states of each and the entries that offer it, one image
 //! made through an entry's account or key, one video's job, asked for and

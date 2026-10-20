@@ -37,8 +37,7 @@ import type { FileBrowserSource } from './types'
  * it alone over the attachment's copy (`AttachmentView`). A link in a
  * Markdown document asks the host to open its file (`open`).
  *
- * The file shows as its source keeps it (`plugin-pages.md` § What the
- * service keeps): a file seen a moment ago shows at once, scrolled where it
+ * The file shows as its source keeps it: a file seen a moment ago shows at once, scrolled where it
  * was, and a new text replaces the old in place; a file that is not text
  * keeps its card while it is checked. A read that fails keeps what shows and
  * says so quietly, with Retry; a file the Host cannot watch has the view say

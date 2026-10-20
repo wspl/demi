@@ -1,8 +1,14 @@
-//! The plugin page registry (`plugin-pages.md` § Registration): for each
+//! The plugin page registry: for each
 //! app that shows plugin pages, the static list of the page packages it
 //! depends on, in the order the backend registers their plugins. A page
 //! package is the one its plugin's manifest names, and default-exports its
 //! page.
+//!
+//! Adding a plugin's page to the product is adding the dependency: no import is
+//! written by hand and none is computed. A page package's boundary is its page
+//! object, the default export of its entry, which the registry imports because
+//! its plugin's manifest names the package, and its source-path exports
+//! (`./*`), which only the gallery's specimens import.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -74,7 +80,7 @@ fn module(header: &str, pages: &[(String, String)]) -> String {
             .expect("writing to a string");
     }
     source.push_str(
-        "\n/** The plugin pages this app shows, in the order the backend registers their plugins (`plugin-pages.md` § Registration). */\n",
+        "\n/** The plugin pages this app shows, in the order the backend registers their plugins. */\n",
     );
     source.push_str("export const PLUGIN_PAGES: readonly AnyPluginPage[] = [\n");
     for (plugin, _) in pages {

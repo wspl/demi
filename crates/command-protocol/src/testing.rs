@@ -1,6 +1,6 @@
-//! Test support (`crates-and-packages.md` § command-protocol) that tests at
-//! both ends of the command wire name: the programs a test finds beside
-//! itself and the operations of the runner's native fixture service.
+//! Test support that tests at both ends of the command wire name: the
+//! programs a test finds beside itself and the operations of the runner's
+//! native fixture service.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;

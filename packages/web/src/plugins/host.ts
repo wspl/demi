@@ -17,7 +17,7 @@ import { PLUGIN_PAGES } from './generated/pages'
 import { conversationStates } from './states'
 
 /**
- * The plugin pages' host in the product (`plugins.md` § The page): each
+ * The plugin pages' host in the product: each
  * plugin's user state from the product state the sync channel keeps, which
  * drops a plugin the user turned off; its conversation states by revision;
  * its calls over the plugin call routes, these calls and the states' reads
@@ -76,7 +76,8 @@ export function productPageHost(): PageHost {
       const scope = conversation === null ? '' : `/conversations/${encodeURIComponent(conversation)}`
       const path = `${scope}/plugins/${encodeURIComponent(plugin)}/calls/${encodeURIComponent(method)}`
       try {
-        // A call that cannot reach the backend waits for it in the HTTP client and goes then (`plugin-pages.md` § The page context).
+        // A call that cannot reach the backend waits for it in the HTTP client and goes then
+        // (`packages/web-ui/src/plugins/page.ts`).
         const response = await apiRequest(path, {
           method: 'POST',
           signal: options?.signal,

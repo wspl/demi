@@ -9,7 +9,7 @@ publish.workspace = true
 # Its tests reach a shard's calls, its conversations' transitions and idle
 # watches, and host access's operations over a shard with runners the tests
 # play, so they are unit tests and the crate has no integration tests
-# (`crates-and-packages.md` § Module layout); no doc examples.
+# (`ARCHITECTURE.md`); no doc examples.
 doctest = false
 bench = false
 

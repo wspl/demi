@@ -33,6 +33,8 @@
 //!                                           machine, which calls the vendor
 //! * none for Claude Code: the CLI keeps its sign-in on that machine
 //! ```
+//!
+//! The crate knows no conversations, devices or Cloud.
 
 pub mod llm;
 pub mod usage;

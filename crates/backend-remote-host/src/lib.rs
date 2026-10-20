@@ -1,4 +1,4 @@
-//! The backend's end of a runner (`crates-and-packages.md` § backend-remote-host):
+//! The backend's end of a runner:
 //!
 //! - the connection engine ([`Link`], served by its [`LinkDriver`]): replies
 //!   routed by id, liveness, and the plumbing of the rpc calls a job's
@@ -16,6 +16,9 @@
 //! feed it, and with its `edge` feature it relays a stream pipe's WebSocket
 //! that a pipe route accepted ([`accept_stream_pipe`]). Everything but the
 //! pipe ends runs inside the user's shard.
+//!
+//! Claim policy, the device registry, credentials and conversation state are
+//! not here.
 
 mod device_jobs;
 mod file_watch;

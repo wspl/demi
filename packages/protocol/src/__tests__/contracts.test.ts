@@ -13,8 +13,7 @@ import {
 
 // The Rust contract tests' fixtures and cases: the generated schemas must
 // accept and refuse what the Rust types accept and refuse, except where the
-// web app's schema is tolerant or a rule is Rust's alone (`contracts.md`
-// § Strict and tolerant objects, § Rules only Rust checks).
+// web app's schema is tolerant or a rule is Rust's alone (`crates/xtask/src/contracts/roots.rs`).
 const crates = resolve(import.meta.dir, '../../../../crates')
 
 const jsonSchema = z.json()

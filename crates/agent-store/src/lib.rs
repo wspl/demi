@@ -28,7 +28,11 @@
 //! Beside the contract: the media rules over the store's blob namespace
 //! (`media`), the fitting of an image as it enters a transcript (`images`), a
 //! medium's size in pixels (`pixels`) and what an upload becomes
-//! (`attachments`) (`crates-and-packages.md` § agent-store).
+//! (`attachments`).
+//!
+//! The crate depends on neither the transcript, the session nor the tools, and
+//! knows no provider's runtime. The product's store decides where media bytes
+//! go; this crate defines only what is stored.
 
 pub mod attachments;
 pub mod changes;

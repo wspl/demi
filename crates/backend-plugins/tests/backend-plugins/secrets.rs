@@ -1,4 +1,4 @@
-//! A plugin's secrets (`plugins.md` § Secrets): a value it keeps for a
+//! A plugin's secrets: a value it keeps for a
 //! user, written by versioned compare-and-set and stored sealed, bound to
 //! its plugin, its user and its name.
 

@@ -1,4 +1,4 @@
-//! A plugin's OAuth sign-in (`plugins.md` § OAuth sign-in), against a fake
+//! A plugin's OAuth sign-in, against a fake
 //! authorization server: Demi registers once, a user's sign-in exchanges
 //! its code with its PKCE verifier, the tokens renew at their revision and
 //! spend each refresh token once, a renewal runs to its end when its

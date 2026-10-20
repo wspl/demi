@@ -1,4 +1,4 @@
-// The `file-browser` plugin's page (`plugin-pages.md`): the pinned `file` kind,
+// The `file-browser` plugin's page (`packages/plugin-sdk/src/index.ts`): the pinned `file` kind,
 // the File view, which opens the `file` intent of the files messages name, and
 // the `attachment` kind, which previews an attachment's copy for the
 // `attachment` intent.
@@ -34,5 +34,5 @@ export const fileKind: PanelKind<FileData> = {
 
 export const fileBrowserPage = definePage({ plugin: PLUGIN, kinds: [fileKind, attachmentKind] })
 
-/** The page the registry imports (`plugin-pages.md` § Registration). */
+/** The page the registry imports (`crates/xtask/src/contracts/registry.rs`). */
 export default fileBrowserPage

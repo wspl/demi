@@ -1,7 +1,7 @@
-//! The manager-wide gate (`concurrency.md` § Machine manager): device
-//! operations share it, `reconcile` and shutdown take it whole. It is first
-//! in, first out, so an exclusive entrant waits for the operations in flight
-//! and every later request waits behind it.
+//! The manager-wide gate: device operations share it, `reconcile` and
+//! shutdown take it whole. It is first in, first out, so an exclusive entrant
+//! waits for the operations in flight and every later request waits behind
+//! it.
 
 use tokio::sync::{AcquireError, Semaphore, SemaphorePermit};
 

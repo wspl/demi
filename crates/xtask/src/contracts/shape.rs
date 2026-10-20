@@ -1,5 +1,4 @@
-//! The subset of JSON Schema the emitter translates (`contracts.md`
-//! § Generated TypeScript): the schemas schemars writes for serde's
+//! The subset of JSON Schema the emitter translates: the schemas schemars writes for serde's
 //! representation of the contract types, read into [`Shape`]s. Anything
 //! outside the subset is an [`Unsupported`] error that names the place.
 
@@ -465,7 +464,7 @@ fn read_integer(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsuppor
         max = max.min(exclusive.saturating_sub(1));
     }
     // An integer the web app reads is bounded to JavaScript's safe range
-    // (`contracts.md` § Encoding conventions), in the Rust type too, so that
+    // (`crates/shared-types/src/lib.rs`), in the Rust type too, so that
     // an end that decodes it refuses what the web app cannot hold.
     if min < -MAX_SAFE_INTEGER || max > MAX_SAFE_INTEGER {
         return Err(unsupported(

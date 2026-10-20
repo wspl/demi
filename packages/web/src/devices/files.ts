@@ -11,7 +11,7 @@ import { t } from './locales/text'
 /**
  * A device's folders for its folder dialog, through device access: the
  * dialog shows sizes and times, so each listing it keeps follows them on
- * the device's watch (`plugin-pages.md` § What the service keeps).
+ * the device's watch (`packages/web-ui/src/files/file-cache.ts`).
  */
 export function fileSourceFor(device: Device | null): FileBrowserSource {
   return fileSource({

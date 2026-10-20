@@ -16,7 +16,7 @@ import { harness, text } from './harness'
 
 // The agent's Rust tests record a patch sequence with the transcript it must
 // produce; the one applier and the client must rebuild exactly that
-// transcript (`contracts.md` § One patch applier).
+// transcript.
 const fixture = resolve(import.meta.dir, '../../../../crates/agent-server/tests/agent-server/fixtures/transcript-patches.json')
 const cases = z
   .array(z.strictObject({ name: z.string(), reset: z.json(), patches: z.array(z.json()), transcript: z.array(z.json()) }))

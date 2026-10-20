@@ -24,7 +24,7 @@ interface Held {
  * whenever the conversation's summary carries a newer revision than the one it
  * holds, a count of another run of the backend included. A read that cannot
  * reach the backend waits for it in the HTTP client and shows no failure
- * (`plugin-pages.md` § The page context). What it read stays for the page's
+ * (`packages/web-ui/src/plugins/page.ts`). What it read stays for the page's
  * lifetime, so following again shows it at once.
  */
 export function conversationStates(snapshot: () => ProductState | null) {

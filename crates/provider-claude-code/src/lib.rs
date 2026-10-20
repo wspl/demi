@@ -1,5 +1,4 @@
-//! The Claude Code provider (`crates-and-packages.md` §
-//! provider-claude-code): a `claude-code` subscription entry's account,
+//! The Claude Code provider: a `claude-code` subscription entry's account,
 //! signed in by the CLI's own login on the Claude Code machine, inferring
 //! through Demi's own copy of the vendor's CLI. A session's runtime keeps
 //! one CLI process and exchanges stream-json with it over the `shell`
@@ -37,6 +36,10 @@
 //! inference proxy. The backend's transcript stays the only record: a new
 //! process resumes a session written from it, so nothing depends on an earlier
 //! process or on files the machine kept.
+//!
+//! The crate depends on no agent crate, plugin or Host implementation: it runs
+//! the CLI through the `host-interface` process the placement answers, and
+//! which machine that is, is the backend's placement.
 
 mod account;
 mod cli;

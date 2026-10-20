@@ -8,7 +8,7 @@ publish.workspace = true
 [lib]
 # Its tests reach the layers' internals, so they are unit tests and the crate
 # has no integration tests; the browser's tests of the whole program are
-# command-package-browser's (`crates-and-packages.md` § Module layout). No doc
+# command-package-browser's (`ARCHITECTURE.md`). No doc
 # examples.
 doctest = false
 bench = false

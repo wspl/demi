@@ -1,5 +1,4 @@
-//! The Grok Build provider (`crates-and-packages.md` § Vendor provider
-//! crates): a `grok-build` subscription entry's account, signed in by OAuth
+//! The Grok Build provider: a `grok-build` subscription entry's account, signed in by OAuth
 //! device authorization at `auth.x.ai`, inferring over Chat Completions
 //! through the chat proxy Grok's own CLI uses. It refreshes the account's
 //! OIDC tokens by the one protocol of `crates/provider-grok-build/src/auth.rs`, reads

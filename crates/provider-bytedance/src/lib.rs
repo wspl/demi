@@ -1,5 +1,4 @@
-//! The ByteDance provider (`crates-and-packages.md` § Vendor provider
-//! crates): ByteDance's media through its keys. An Ark key, BytePlus
+//! The ByteDance provider: ByteDance's media through its keys. An Ark key, BytePlus
 //! ModelArk's or Volcengine Ark's, makes Seedream's images and Seedance's
 //! videos; a BytePlus ModelArk entry makes no text, and a Volcengine Ark
 //! entry's text is the OpenAI-compatible provider's it is given. A speech

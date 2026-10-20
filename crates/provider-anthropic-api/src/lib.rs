@@ -1,5 +1,4 @@
-//! The Anthropic Messages API provider (`crates-and-packages.md` § Vendor
-//! provider crates): an `anthropic` entry, which sends its API key when it
+//! The Anthropic Messages API provider: an `anthropic` entry, which sends its API key when it
 //! has one, its request and stream mapping and the standard reading of its
 //! failure records.
 

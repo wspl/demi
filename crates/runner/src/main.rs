@@ -33,7 +33,37 @@
 //! On a Cloud the runner is an ordinary process under init in the sandbox: it
 //! decodes the boot file the machine manager wrote, fails on missing or invalid
 //! credentials and never falls back to pairing, and never updates itself, since its
-//! release is the image's. Boot, mounts and network are the manager's.
+//! release is the image's. Boot, mounts and network are the manager's, and
+//! the runner never boots as PID 1, since init belongs to the image.
+//!
+//! The control runtime is single-threaded because its state belongs to one
+//! registration and one connection: plain `&mut` ownership then needs no
+//! locks, tests run deterministically on a paused clock, and the byte paths
+//! wait on IO rather than CPU. CPU and blocking work leave the thread through
+//! `Admission`, whose semaphores are the load limits. Shell work has its own
+//! runtime because each interpreter unit and utility needs an OS thread
+//! (builtins and utilities do synchronous IO, utilities keep state in
+//! thread-locals, and pipeline stages run at once): a stage blocked writing a
+//! full pipe waits for a sibling, so in one bounded pool shared with short
+//! control work a full pool would deadlock them. A command alias serves one
+//! invocation on a current-thread runtime.
+//!
+//! The runner is one executable built from seven crates, so that a change to
+//! one part recompiles only that part and what composes it, and a test of one
+//! part links only that part's dependencies. The standard utilities are the
+//! heaviest: only `runner-shell` links brush, the uutils, ripgrep, jaq, sed,
+//! findutils and diffutils, and nothing below the executable depends on it.
+//!
+//! ```text
+//! demi-runner (connection, registration, Host log, composition)
+//!   |-- runner-jobs --> runner-command-packages --> runner-process
+//!   |-- runner-host --------------------------------> runner-process
+//!   |-- runner-shell -------------------------------> runner-process
+//!   `-- runner-direct
+//! ```
+//!
+//! The runner owns no conversations or provider implementations and links no
+//! command's algorithms, which are separate programs.
 
 mod autostart;
 mod connection;
@@ -835,7 +865,7 @@ fn main() {
         shell.shutdown_background();
         result
     } else {
-        // A command alias serves one invocation (`concurrency.md` § Runner)
+        // A command alias serves one invocation
         // and has no log of its own; the runner it calls logs.
         tracing_subscriber::registry()
             .with(host_log::Console.with_filter(LevelFilter::WARN))

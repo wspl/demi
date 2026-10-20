@@ -2,7 +2,7 @@ import type { RequestEditSelection } from '../files/request-changes'
 
 /**
  * What the shell and plugins ask the work panel to show, named by what it
- * shows rather than by who shows it (`plugin-pages.md` § Intents), and the
+ * shows rather than by who shows it, and the
  * payload of each.
  */
 export interface IntentPayloads {

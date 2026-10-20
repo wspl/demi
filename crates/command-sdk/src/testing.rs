@@ -1,8 +1,7 @@
-//! Test support (`crates-and-packages.md` § command-sdk): a command
-//! service's binary started and driven with a client, a numbers source that
-//! counts, an artifacts source that answers as a test says, the messages
-//! stream taken as a runner takes it, and the count of
-//! the process's pauses before trying an operation again.
+//! Test support: a command service's binary started and driven with a client,
+//! a numbers source that counts, an artifacts source that answers as a test
+//! says, the messages stream taken as a runner takes it, and the count of the
+//! process's pauses before trying an operation again.
 
 use std::{
     collections::HashMap,

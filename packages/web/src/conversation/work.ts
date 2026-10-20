@@ -257,10 +257,9 @@ export const useWorkPanel = defineStore('work-panel', () => {
   }
 
   /**
-   * Opens an intent in the conversation's panel (`plugin-pages.md`
-   * § Intents): the kind that opens it shows it, in its pinned tab or a new
-   * one, which takes the selection, with the panel opened for it. What the
-   * panel already shows stays as it is (`openIntent`).
+   * Opens an intent in the conversation's panel (`packages/web-ui/src/plugins/intents.ts`): the
+   * kind that opens it shows it, in its pinned tab or a new one, which takes the selection, with
+   * the panel opened for it. What the panel already shows stays as it is (`openIntent`).
    */
   function openIn(conversationId: string, request: IntentRequest): void {
     const state = stateFor(conversationId)

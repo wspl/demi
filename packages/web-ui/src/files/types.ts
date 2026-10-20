@@ -53,7 +53,7 @@ export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; r
  * any Git repository. `not-found`, `binary` and `too-large` are what the
  * Host answered of the path, nothing there, a file that is not text, one
  * too large to read as text: the kept files keep each as an answer, never
- * as a failure (`plugin-pages.md` § What the service keeps).
+ * as a failure.
  */
 export interface FileBrowserFailure {
   kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'not-repository' | 'other'

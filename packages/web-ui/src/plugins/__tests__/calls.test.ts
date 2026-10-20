@@ -5,11 +5,10 @@ import { createOverlayStore } from '../../overlay/overlayStore'
 import { useOperationControl } from '../../ui/operations'
 import { PageScope, definePage, providePageHost, usePage, type PageHost } from '../page'
 
-// A plugin's call is an operation of the page (`plugin-pages.md` § Calls and
-// states): the Skills page's switch of a skill goes on with its call when
-// the page goes, shows it working when drawn again, and starts nothing while
-// it runs. The switch is drawn by Vue over plain objects through the page
-// context and the press Switch uses; a few milliseconds.
+// A plugin's call is an operation of the page: the Skills page's switch of a skill goes on with its
+// call when the page goes, shows it working when drawn again, and starts nothing while it runs. The
+// switch is drawn by Vue over plain objects through the page context and the press Switch uses; a
+// few milliseconds.
 
 interface Node {
   parent: Node | null

@@ -1,4 +1,4 @@
-// The `web` plugin's page (`plugin-pages.md`): its Web Search settings
+// The `web` plugin's page (`packages/plugin-sdk/src/index.ts`): its Web Search settings
 // section, under Agent in the settings dialog only, with no entry in the
 // app's sidebar, and the types of its state, parameters and results,
 // generated from the plugin's manifest.
@@ -29,5 +29,5 @@ export const webPage = definePage({
   },
 })
 
-/** The page the registry imports (`plugin-pages.md` § Registration). */
+/** The page the registry imports (`crates/xtask/src/contracts/registry.rs`). */
 export default webPage

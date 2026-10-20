@@ -52,7 +52,7 @@ backend's scenario suites in `crates/backend/tests/backend/support.rs`.
   other side depends on. A format that nothing outside the crate reads is not
   pinned. When the other side's types are generated from the same
   definitions, as the web app's are
-  ([Generated TypeScript](../architecture/contracts.md#generated-typescript)),
+  ([Generated TypeScript](../../crates/xtask/src/contracts/mod.rs)),
   generation carries the field names and tags, and a test that pins them
   restates the derive. Pin what generation does not carry: the fixtures both
   sides decode, the rules the generator translates (strict or tolerant,
@@ -80,7 +80,7 @@ backend's scenario suites in `crates/backend/tests/backend/support.rs`.
   against a hang, and asserts that it came no earlier than the window allows.
   It does not sleep across the window and then look.
 - Timer logic runs on a paused or injected clock where the code allows it
-  ([Tests and time](../architecture/concurrency.md#tests-and-time)). In the
+  ([Tests and time](../../ARCHITECTURE.md)). In the
   web app's packages, bun's `jest.useFakeTimers()` is that clock: it moves
   `setTimeout`, `setInterval`, `Date.now` and `performance.now`, while
   `setImmediate` stays real, so a test can still let the event loop turn
@@ -117,12 +117,12 @@ backend's scenario suites in `crates/backend/tests/backend/support.rs`.
   leave out
   (`crates/backend/tests/backend/real_cloud.rs`).
 - Each crate has one test binary, which tests its public boundary
-  ([Module layout](../architecture/crates-and-packages.md#module-layout)); a
+  ([Module layout](../../ARCHITECTURE.md)); a
   test gets a binary of its own only when it changes or exhausts process-wide
   state, such as the open-file limit. A behavior that can be reached only
   through a crate's private items may mean that the crate holds two parts.
   Split it only where
-  [build isolation](../architecture/crates-and-packages.md#module-layout)
+  [build isolation](../../ARCHITECTURE.md)
   allows; otherwise the crate keeps its tests as unit tests.
 - Cargo starts every test binary through the runner in `.cargo/config.toml`,
   which raises its soft open-file limit to the hard limit (on macOS to

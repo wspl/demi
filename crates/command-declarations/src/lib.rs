@@ -39,6 +39,14 @@
 //! into the conversation as its `bringsHost`: the declaration is all a
 //! command does about permissions, which the backend's dispatch checks
 //! before a handler runs.
+//!
+//! This crate is the one implementation of argv parsing, help and the input
+//! subset: the runner parses argv and renders `--help` with it, and the backend
+//! renders the model's capability index and checks registrations with it.
+//! Argument validation is `jsonschema` over the declaration's schema at both
+//! ends, through one check and one wording. It holds no handlers
+//! (`host-interface` pairs declarations with them), reads no stdin and does no
+//! other IO.
 
 mod help;
 mod input;

@@ -3,7 +3,7 @@
  * (`packages/plugin-mobile/src/index.ts`): each control is a page method that runs
  * the operation the agent's command of the same meaning runs. A call still
  * waiting when the panel session ends is dropped and never sent
- * (`plugin-pages.md` § The page context). The panel opens no device: the
+ * (`packages/web-ui/src/plugins/page.ts`). The panel opens no device: the
  * agent does, and the plugin gives each device its tab.
  */
 import { onScopeDispose } from 'vue'

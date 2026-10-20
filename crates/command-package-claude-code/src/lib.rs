@@ -12,6 +12,9 @@
 //! `unsupported_platform`, never another platform's build. It reads no pointers
 //! and chooses no versions: the backend builds the release record, and Demi is
 //! the only thing that changes the CLI's version (the CLI's own updater is off).
+//!
+//! It starts no CLI, and is never linked into the runner or another command
+//! program.
 
 pub mod install;
 pub mod platform;

@@ -1,5 +1,4 @@
-//! The `demi.fetch` package's contract (`crates-and-packages.md`
-//! § command-package-fetch-protocol): the arguments and the `--json` result
+//! The `demi.fetch` package's contract: the arguments and the `--json` result
 //! of its one operation, `fetch.get`, with their limits. It holds types and
 //! their checks only; the fetch lives in `demi-fetch`.
 

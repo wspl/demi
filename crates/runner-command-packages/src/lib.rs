@@ -35,6 +35,8 @@
 //! holds too). A call is never replayed, since its side effects may have
 //! happened. A new startup catalog makes new pinned bindings; it never swaps
 //! the executable under an existing execution context.
+//!
+//! The crate implements no command, parses no argv and knows no connection.
 
 pub mod cache;
 mod invocations;

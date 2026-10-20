@@ -1,5 +1,4 @@
-//! The contracts between the agent and what executes its work
-//! (`crates-and-packages.md` § host-interface), and nothing that implements them:
+//! The contracts between the agent and what executes its work, and nothing that implements them:
 //!
 //! - the Host contract: an execution target's filesystem and processes
 //!   ([`Host`], [`HostFs`], [`HostProcess`]) and its value identity
@@ -18,6 +17,9 @@
 //! - the text a handler prints: aligned columns ([`text`]).
 //!
 //! Everything here runs inside a user's shard, so nothing requires `Send`.
+//!
+//! The crate depends on no agent crate, no `provider-common`, no concrete
+//! provider, no plugin and no Host implementation.
 
 mod builders;
 mod commands;

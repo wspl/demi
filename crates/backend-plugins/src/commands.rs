@@ -1,7 +1,19 @@
-//! The command set every node starts from (`plugins.md` § Commands): the
+//! The command set every node starts from: the
 //! `demi` root with the product's groups and the plugins' groups, and the
 //! plugins' roots, each `rpc` leaf served by a handler that forwards the
 //! call to its plugin as a command request.
+//!
+//! A plugin of this repository adds named groups to `demi`; one from outside
+//! it adds root commands of its own, such as `jira`, never a group of `demi`.
+//! The groups of the agent runtime and the product are taken. Every
+//! registered plugin is checked against every other, so any set of them a
+//! user turns on is free of conflicts and a conflict is never found while a
+//! conversation runs. A group with a `native` leaf whose package or operation
+//! the startup catalog does not serve is left out whole, and the log says
+//! which, so a plugin needs no check of its own for a deployment without,
+//! say, a browser release. A group's permission categories are checked by the
+//! backend's dispatch before a call reaches the plugin, which never sees a
+//! permission.
 
 use std::rc::Rc;
 

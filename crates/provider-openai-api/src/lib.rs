@@ -1,5 +1,4 @@
-//! The OpenAI API provider (`crates-and-packages.md` § Vendor provider
-//! crates): an `openai` entry, which sends its API key when it has one,
+//! The OpenAI API provider: an `openai` entry, which sends its API key when it has one,
 //! speaking the Responses API or, for OpenAI-compatible endpoints, Chat
 //! Completions, with the typed vendor policy its entry names and the
 //! standard reading of its failure records; an OpenAI or xAI vendor

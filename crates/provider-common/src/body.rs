@@ -1,5 +1,4 @@
-//! A request body, built and serialized off the user's shard
-//! (`concurrency.md` § Blocking work): a request with images is megabytes of
+//! A request body, built and serialized off the user's shard: a request with images is megabytes of
 //! base64, which would hold up every conversation of the user.
 
 use serde::Serialize;

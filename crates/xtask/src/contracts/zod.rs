@@ -1,5 +1,5 @@
 //! Writes Zod v4 source and `z.infer` types for the definitions of one
-//! generated module (`contracts.md` § Generated TypeScript).
+//! generated module.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;

@@ -1,4 +1,4 @@
-// The `skills` plugin's page (`plugin-pages.md`): its settings section with
+// The `skills` plugin's page (`packages/plugin-sdk/src/index.ts`): its settings section with
 // its sidebar entry, and the types of its state, parameters and results,
 // generated from the plugin's manifest.
 import { WandSparkles } from '@lucide/vue'
@@ -29,5 +29,5 @@ export const skillsPage = definePage({
   },
 })
 
-/** The page the registry imports (`plugin-pages.md` § Registration). */
+/** The page the registry imports (`crates/xtask/src/contracts/registry.rs`). */
 export default skillsPage

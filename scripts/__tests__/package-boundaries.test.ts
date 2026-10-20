@@ -1,5 +1,4 @@
-// The TypeScript package boundary check (`crates-and-packages.md` § Boundary
-// checks): the npm workspace, its manifests and its production sources
+// The TypeScript package boundary check: the npm workspace, its manifests and its production sources
 // against the document's TypeScript graph, which the check reads rather than
 // a copy of it.
 import { expect, test } from 'bun:test'

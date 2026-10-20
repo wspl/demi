@@ -220,11 +220,10 @@ test('a link’s Open in Work Panel opens its page in a new tab of the conversat
   expect(state.pinned.file).toMatchObject({ path: '/work/src/a.ts', tree: true })
 })
 
-// An attachment block's card opens its file in the work panel: a tab of its own
-// named by its file, which a later click on the card selects again, whatever
-// the panel shows meanwhile, instead of adding another (`plugin-pages.md` §
-// Intents). Planted defect this catches: a kind without a key, which adds a
-// second tab. A few ms.
+// An attachment block's card opens its file in the work panel: a tab of its own named by its file,
+// which a later click on the card selects again, whatever the panel shows meanwhile, instead of
+// adding another (`packages/web-ui/src/plugins/intents.ts`). Planted defect this catches: a kind
+// without a key, which adds a second tab. A few ms.
 test('an attachment’s card opens it in a tab of its own, and a later click selects that tab again', () => {
   signIn('one')
   const plugin = (id: string) => ({ id, name: id, description: 'A plugin.', enabled: true, packages: [] })

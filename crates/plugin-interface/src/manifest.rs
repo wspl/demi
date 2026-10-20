@@ -1,5 +1,12 @@
-//! What a plugin declares once, when the backend starts (`plugins.md`
-//! § What a plugin contributes): fixed for the life of the process.
+//! What a plugin declares once, when the backend starts: fixed for the life of
+//! the process, while what varies by user, conversation or time arrives
+//! through requests.
+//!
+//! A manifest is a value its crate builds in code, not a file beside the
+//! crate, because it refers to what only code holds: its schemas are derived
+//! from the Rust types the plugin uses, and a page's contributions are its
+//! Vue components. A file would restate both as text, and nothing would check
+//! that the text still matched them. A plugin declares only what it uses.
 
 use std::fmt;
 
@@ -81,18 +88,24 @@ impl fmt::Display for PluginId {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Manifest {
     pub id: PluginId,
-    /// Its name in settings, such as `File Browser` or `Demi File Commands`
-    /// (`plugins.md` § What a plugin contributes has the rule).
+    /// Its name in settings. A plugin with a feature the user sees is named
+    /// after that feature, short, in title style, such as `File Browser`; one
+    /// that only gives the agent a `demi <group>` is named Demi *Group*
+    /// Commands.
     pub name: String,
-    /// What it does for the user, in one sentence in sentence style, which
-    /// settings show.
+    /// What it does for the user, in one full sentence in sentence style that
+    /// names its command when it has one, as plain text since settings show
+    /// it as written.
     pub description: String,
-    /// Its command groups and roots (`plugins.md` § Commands).
+    /// Its command groups and roots (`crates/backend-plugins/src/commands.rs`).
     #[serde(default)]
     pub commands: Vec<Commands>,
     /// Whether it is a context source, asked before each provider request
-    /// of a node while its user has it on (`plugins.md` § Prompt text and
-    /// context).
+    /// of a node while its user has it on. A plugin adds nothing to the
+    /// system prompt but the index entries of its command groups: the prompt
+    /// is rendered once, so what the model must learn beyond them, or what
+    /// differs by user or conversation or changes while one lives, reaches it
+    /// as a `context` block.
     #[serde(default)]
     pub context: bool,
     /// Whether it searches each conversation's project directory
@@ -100,14 +113,13 @@ pub struct Manifest {
     /// backend keeps current and gives to its context requests.
     #[serde(default)]
     pub project_search: bool,
-    /// Its user streams (`plugins.md` § Calling its command package).
+    /// Its user streams.
     #[serde(default)]
     pub streams: Vec<Stream>,
-    /// Its part of the web app's data and calls (`plugins.md` § The page).
+    /// Its part of the web app's data and calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<Page>,
-    /// The sign-in of its vendor, which the plugin host runs (`plugins.md`
-    /// § OAuth sign-in).
+    /// The sign-in of its vendor, which the plugin host runs (`crates/backend-plugins/src/oauth.rs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oauth: Option<OAuth>,
 }
@@ -129,9 +141,8 @@ impl Manifest {
     }
 }
 
-/// A vendor that signs its users in with OAuth 2.1 (`plugins.md` § OAuth
-/// sign-in): the plugin host registers Demi with its authorization server,
-/// runs the sign-in and keeps the tokens.
+/// A vendor that signs its users in with OAuth 2.1 (`crates/backend-plugins/src/oauth.rs`): the
+/// plugin host registers Demi with its authorization server, runs the sign-in and keeps the tokens.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OAuth {
@@ -149,7 +160,7 @@ pub struct OAuth {
 
 /// A user stream: a page connects to `operation` on the conversation's primary
 /// Host for as long as it keeps the stream open. Its messages and constants
-/// are declared for the page's generated types (`plugin-pages.md` § Types);
+/// are declared for the page's generated types (`crates/xtask/src/contracts/pages.rs`);
 /// the backend relays the stream's bytes without reading them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -207,7 +218,7 @@ pub struct Constant {
     pub value: Value,
 }
 
-/// A plugin's page (`plugins.md` § The page): its package, and what it
+/// A plugin's page: its package, and what it
 /// reads and calls.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -218,13 +229,15 @@ pub struct Page {
     /// Its state for the user, which reaches every page on the sync channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<State>,
-    /// Its state for one conversation, which a page reads by revision.
+    /// Its state for one conversation, which can be large and which only the
+    /// pages that show that conversation need, so a page reads it by
+    /// revision, as it reads a draft, and the sync channel does not carry it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation: Option<State>,
     #[serde(default)]
     pub methods: Vec<Method>,
     /// The work panel kinds whose tabs the backend keeps and the plugin
-    /// takes part in (`plugins.md` § Panel kinds).
+    /// takes part in (`crates/backend-http/src/panel.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub panel_kinds: Vec<String>,
     /// The reasons the page may be told a failure with, one closed set of

@@ -1,4 +1,4 @@
-// The `mobile` plugin's page (`plugin-pages.md`): its `mobile` work panel kind,
+// The `mobile` plugin's page (`packages/plugin-sdk/src/index.ts`): its `mobile` work panel kind,
 // a device's live view, its panel
 // session, and the types of its state, parameters, results and stream,
 // generated from the plugin's manifest.
@@ -33,5 +33,5 @@ export function mobilePage(options: MobileControllerOptions = {}) {
   })
 }
 
-/** The page the registry imports (`plugin-pages.md` § Registration). */
+/** The page the registry imports (`crates/xtask/src/contracts/registry.rs`). */
 export default mobilePage()

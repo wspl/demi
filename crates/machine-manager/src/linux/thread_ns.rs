@@ -1,4 +1,4 @@
-//! Work inside another namespace (`concurrency.md` § Machine manager): each
+//! Work inside another namespace: each
 //! job gets a new thread that enters the namespace, runs the job and exits,
 //! so no pooled thread ever runs later work in the wrong namespace.
 

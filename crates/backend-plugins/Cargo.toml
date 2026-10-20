@@ -6,8 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`crates-and-packages.md`
-# § Module layout); no doc examples.
+# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
 test = false
 doctest = false
 bench = false
@@ -25,7 +24,7 @@ demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
-# The OAuth pieces every sign-in meets (`plugins.md` § OAuth sign-in).
+# The OAuth pieces every sign-in meets.
 demi-provider-common = { path = "../provider-common" }
 base64.workspace = true
 futures-util.workspace = true

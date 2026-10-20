@@ -63,6 +63,33 @@
 //! replicas, and the two copies diverge. How a worker is fenced, when a
 //! replicated checkpoint is ready for the destination to open, and how a
 //! pairing claim reaches the worker that holds the unclaimed runner are open.
+//!
+//! `Backend::start` is the one composition root: it may construct, inject,
+//! mount and return, and never branches on business state. Each layer of the
+//! backend's crates knows only the layers beneath it:
+//!
+//! ```text
+//! demi-backend (configuration, composition)
+//!   |-- backend-providers (provider families)
+//!   `-- backend-http (the HTTP edge)
+//!         `-- backend-user-shard (the user's shard, conversations)
+//!               |-- backend-plugins (the plugin host)
+//!               |-- backend-permissions (conversation permissions)
+//!               |-- backend-host-access --> backend-cloud, backend-runners
+//!               |-- backend-cloud -------> backend-runners, backend-providers,
+//!               |                          backend-idle-watch
+//!               |-- backend-accounts
+//!               `-- (as each needs) -----> backend-database, backend-blobs,
+//!                                          backend-page-sync
+//! ```
+//!
+//! A test imports each part it replaces from the library that owns it
+//! (`backend-providers`, `backend-user-shard`, `backend-cloud`,
+//! `backend-runners`), never through the executable. The backend returns no
+//! secrets and proxies no model traffic, and it spawns neither `runsc` nor
+//! image tools: every sandbox and disk operation goes to the machine manager.
+//! The one credential that reaches a runner is a Claude Code account's token,
+//! in the CLI's environment on the user's Cloud.
 
 mod backend;
 mod config;

@@ -187,7 +187,7 @@ pub struct ConversationSummary {
     pub unread: bool,
     /// Whether the conversation's tree is open with commands of plugins the
     /// user has since turned on or off, so a reload would change them
-    /// (`plugins.md` § A user's plugins).
+    /// (`crates/backend-plugins/src/lib.rs`).
     pub plugins_changed: bool,
     /// Whether the conversation's agent works only by waiting for its
     /// primary Host, a paired device whose runner is away: every running

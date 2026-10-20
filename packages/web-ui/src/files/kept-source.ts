@@ -1,6 +1,5 @@
 /**
- * A file source that keeps what it read (`plugin-pages.md` § What the
- * service keeps): the reads a host makes, each a request, over the Host's
+ * A file source that keeps what it read: the reads a host makes, each a request, over the Host's
  * kept files (`HostFiles`), whose entries the source's watch keeps current.
  * A view shows an entry through the source and sees it replaced in place
  * when it is read again; a one-shot read answers from what is current, and

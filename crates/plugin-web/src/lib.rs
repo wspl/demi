@@ -1,9 +1,12 @@
-//! The `web` plugin (`plugins.md` § Built-in plugins): the `demi
+//! The `web` plugin: the `demi
 //! web` group, whose `search` runs here against Exa and whose `fetch` is
 //! bound to the `demi.fetch` command package on the Host; the user's Exa
 //! account, signed in through the plugin host's OAuth sign-in or as an API
 //! key kept as a secret; and the Settings › Web Search page's state and
 //! methods.
+//!
+//! The plugin holds no HTTP client of its own, stores no search result, and
+//! puts no token or key in page state or a log.
 
 mod account;
 mod mcp;

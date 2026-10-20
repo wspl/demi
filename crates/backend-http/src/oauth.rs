@@ -1,4 +1,4 @@
-//! A plugin's OAuth callback (`plugins.md` § OAuth sign-in): where the
+//! A plugin's OAuth callback (`crates/backend-plugins/src/oauth.rs`): where the
 //! vendor sends the browser back after the user signed in. It is a session
 //! route: the browser's own navigation carries the session cookie, so the
 //! caller's shard completes only a sign-in its user started. It answers a

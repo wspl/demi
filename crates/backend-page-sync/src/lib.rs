@@ -8,6 +8,10 @@
 //! channel holds at most one mark per part however far its page falls
 //! behind, so it never queues. A part of the backend that follows a user's
 //! changes as a page does, the search index, watches them the same way.
+//!
+//! A channel is registered under the hash of the session it opened with, a
+//! record of `backend-database`, so a sign-out ends that session's channels.
+//! The registry reads and builds no product state: `backend-user-shard` does.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};

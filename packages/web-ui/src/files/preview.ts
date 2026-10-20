@@ -32,8 +32,7 @@ export function tooLargeNote(): string {
 /**
  * What the File view shows of a file that is not there, whatever its kind,
  * as the folder list says of a folder that is not: the Host's answer drawn
- * as itself, not a read that failed (`plugin-pages.md` § What the service
- * keeps).
+ * as itself, not a read that failed.
  */
 export function missingFile(): { icon: typeof FileX; label: string } {
   return { icon: FileX, label: t('view.missing') }

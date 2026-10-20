@@ -2,7 +2,7 @@
 //! document encrypted with AES-256-GCM under a key derived from the
 //! instance secret, bound to the row it belongs to, and stored as one BLOB
 //! of a random 12-byte nonce, the ciphertext and the 16-byte tag. The
-//! plugins' secrets are sealed here too (`plugins.md` § Secrets), through
+//! plugins' secrets are sealed here too (`crates/backend-plugins/src/secrets.rs`), through
 //! the product's side of the plugin host's port, and so are the values of
 //! the users' credentials.
 

@@ -1,9 +1,13 @@
-//! The plugins' secrets (`plugins.md` § Secrets): values beside the plugin's
+//! The plugins' secrets: values beside the plugin's
 //! JSON values, with the same versioned compare-and-set, sealed at rest by
 //! the product's one owner of sealing with the plugin, the user and the
 //! secret's name as the additional data. The plugin reads only the names
 //! [`SecretName`](demi_plugin_interface::SecretName) allows; the host keeps
 //! a sign-in's tokens under a name outside that rule.
+//!
+//! Only the plugin that wrote a secret reads it, and no page call, page state
+//! or log carries one: a page learns only what the plugin's state says about
+//! it, such as the last four characters of a key.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::plugin_secrets::SecretRow;

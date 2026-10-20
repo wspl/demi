@@ -1,4 +1,4 @@
-//! The MiniMax provider (`crates-and-packages.md` § Vendor provider crates): a
+//! The MiniMax provider: a
 //! MiniMax entry's media through its key. The entry is models.dev's `minimax`
 //! or `minimax-cn`, whose text is MiniMax's Anthropic-shaped API, the provider
 //! it is given; its images, Hailuo videos and speech are asked on its

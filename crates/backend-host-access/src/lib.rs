@@ -5,7 +5,7 @@
 //! nodes over it; and the product's `demi host` and `demi attachment` groups.
 //!
 //! Host access's operations are methods of `dyn HostShard`, what host access
-//! needs of its user's shard (`concurrency.md` § The user shard), which the
+//! needs of its user's shard (`crates/backend-user-shard/src/lib.rs`), which the
 //! shard implements.
 //!
 //! Everything that reaches a conversation's Host on the conversation's behalf
@@ -51,6 +51,10 @@
 //! shard's. A runner connection makes a conversation's Host handle only
 //! against a lease of that conversation's file gate, which only host access
 //! takes, so no other code can make one.
+//!
+//! Other work holds the conversation through the gate itself (`file_gate`),
+//! whose leases make no Host. Host access never sees `Shard`, and no second way
+//! to a conversation's Host exists.
 
 pub mod access;
 pub mod attachment_commands;
@@ -130,7 +134,7 @@ pub trait HostShard {
     /// admission does (`crates/backend-user-shard/src/lifecycle/mod.rs`).
     fn track_idle(&self, conversation: &ConversationId);
     /// The Host directories of the user's plugins, which each job installs
-    /// before it starts (`plugins.md` § Host directories).
+    /// before it starts.
     fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>>;
     /// What the shard remembers of its Hosts' directories.
     fn plugin_installs(&self) -> &PluginInstalls;

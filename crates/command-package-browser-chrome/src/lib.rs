@@ -26,6 +26,11 @@
 //!   (`result_too_large`); an event cannot be dropped without leaving
 //!   observations stale, so it fails the connection into the normal
 //!   browser-loss cleanup.
+//!
+//! Each layer's rules: `driver` knows no tabs, conversations or viewers; `tabs`
+//! acts on a page's content only to navigate and knows no live view; `page` and
+//! `cdp` own no tab state, and `page` owns no CDP session; `live` knows nothing
+//! of how conversations are owned or released.
 
 pub mod cdp;
 pub mod driver;

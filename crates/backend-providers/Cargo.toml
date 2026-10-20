@@ -8,7 +8,7 @@ publish.workspace = true
 [lib]
 # Its tests reach the catalog cache's, the vault's and the meter's
 # internals, so they are unit tests and the crate has no integration tests
-# (`crates-and-packages.md` § Module layout); no doc examples.
+# (`ARCHITECTURE.md`); no doc examples.
 doctest = false
 bench = false
 

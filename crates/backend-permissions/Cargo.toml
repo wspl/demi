@@ -8,7 +8,7 @@ publish.workspace = true
 [lib]
 # The backend's permission scenarios cover the check, the decisions and
 # their messages at the boundaries the agent and the page observe
-# (`crates-and-packages.md` § Module layout). The unit tests hold what no
+# (`ARCHITECTURE.md`). The unit tests hold what no
 # scenario can order: a stop and an allow ready at the same moment. No doc
 # examples.
 doctest = false

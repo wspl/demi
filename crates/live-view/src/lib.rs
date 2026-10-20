@@ -37,6 +37,8 @@
 //!   unacknowledged and a new picture replaces the one waiting before the
 //!   encoder. On the relay each hop forwards only what the next accepts, so a
 //!   slow page holds the window full rather than filling backend memory.
+//!
+//! The crate knows no source, no conversation and no way a source is owned.
 
 mod bwe;
 pub mod delivery;

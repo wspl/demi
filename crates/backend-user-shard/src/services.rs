@@ -105,8 +105,7 @@ pub struct Services {
     pub media_tuning: MediaTuning,
     /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
-    /// The backend's plugins, checked at startup (`plugins.md` § The plugin
-    /// host).
+    /// The backend's plugins, checked at startup (`crates/backend-plugins/src/lib.rs`).
     pub plugins: Arc<Registry>,
     /// The user streams a page may open.
     pub user_streams: UserStreams,

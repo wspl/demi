@@ -1,5 +1,4 @@
-//! A test's capture of what it logs (`crates-and-packages.md`
-//! § `log-capture`).
+//! A test's capture of what it logs.
 //!
 //! A test captures its logs with a subscriber of its own, the default of its
 //! thread, while other tests of the same process run beside it with none.
@@ -11,6 +10,8 @@
 //! either. A second dispatcher kept registered for the whole process, which
 //! listens to nothing, makes it ask every dispatcher, so the statement is
 //! checked at each event against the default of the thread that logs it.
+//!
+//! It does not own the product's logging, which each binary sets up.
 
 use std::sync::OnceLock;
 

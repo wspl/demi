@@ -192,7 +192,7 @@ impl Kind {
 /// The failure a response of `status` other than success stands for when
 /// searching `kind`'s way. A sign-in's token Exa refuses is Exa's failure:
 /// the request went once more with a renewed token before this, and the
-/// sign-in stays (`plugins.md` § OAuth sign-in).
+/// sign-in stays (`crates/backend-plugins/src/oauth.rs`).
 pub(crate) fn status_failure(response: &WebResponse, kind: Kind) -> SearchError {
     let failure = match (response.status, kind) {
         (429, Kind::Anonymous) => Failure::AnonymousLimit,

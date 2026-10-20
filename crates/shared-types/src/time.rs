@@ -109,7 +109,7 @@ impl JsonSchema for Timestamp {
 }
 
 /// Where wall-clock time is read: the times records and answers carry. It is
-/// injected so that a test can fix it (`concurrency.md` § Tests and time);
+/// injected so that a test can fix it (`ARCHITECTURE.md`);
 /// durations measured in memory use Tokio's clock instead.
 pub trait Clock: Send + Sync {
     fn now(&self) -> Timestamp;

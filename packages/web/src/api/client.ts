@@ -171,7 +171,7 @@ export function invalidResponse(error: z.ZodError, requestId: string | null = nu
  * What a proxy in front of the backend answers while no backend runs behind
  * it, as while it restarts, and Cloudflare's own 520 to 524, when the origin
  * gave it nothing usable, as when its connection lost packets
- * (`plugin-pages.md` § Calls and states).
+ * (`packages/web-ui/src/plugins/page.ts`).
  */
 const AWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
 

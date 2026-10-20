@@ -118,7 +118,7 @@ impl AccountQuotas {
     }
 
     /// The edge's runtime, where a request with a provider's own HTTP
-    /// client runs (`concurrency.md` § Programs and threads).
+    /// client runs (`ARCHITECTURE.md`).
     pub fn edge(&self) -> &tokio::runtime::Handle {
         &self.edge
     }

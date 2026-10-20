@@ -1,4 +1,4 @@
-//! The `image` plugin (`plugins.md` § Built-in plugins): the
+//! The `image` plugin: the
 //! `demi image` group, which makes and edits images through the port's
 //! Providers service, reads an edit's images with the port's file reads,
 //! writes the image's bytes to stdout, and says on stderr what came back

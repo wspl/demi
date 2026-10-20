@@ -72,8 +72,8 @@ native command services, which are separate from provider CLIs.
 
 Each wire between these parts is defined once, as Rust types in a contract
 crate that both ends link, and the web app's schemas are generated from those
-types ([Contracts](architecture/contracts.md)).
-[Crates and packages](architecture/crates-and-packages.md) owns the
+types ([Contracts](../ARCHITECTURE.md)).
+[Crates and packages](../ARCHITECTURE.md) owns the
 responsibilities and dependencies of every crate and package.
 
 ## A conversation using a device
@@ -129,7 +129,7 @@ uses backend APIs rather than receiving stored provider secrets.
 | Host | The filesystem and process abstraction used to execute on a device. |
 | Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/backend-host-access/src/access.rs`). |
 | Guest | A managed gVisor/systrap sandbox running a runner. |
-| User shard | The part of the backend that holds everything belonging to one user, such as conversations, runner connections and Cloud state, on a single thread ([The user shard](architecture/concurrency.md#the-user-shard)). |
+| User shard | The part of the backend that holds everything belonging to one user, such as conversations, runner connections and Cloud state, on a single thread ([The user shard](../crates/backend-user-shard/src/lib.rs)). |
 | Backend machine | The machine that runs the backend or the machine manager. |
 
 The [reading index](README.md) lists every design document by the question it

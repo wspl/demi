@@ -1,6 +1,6 @@
-//! The registry (`plugins.md` § Commands): what stops the
-//! backend from starting, which trees are left out, and how a call through
-//! the composed command set reaches the plugin's instance.
+//! The registry: what stops the backend from starting, which trees are left
+//! out, and how a call through the composed command set reaches the plugin's
+//! instance.
 
 use std::rc::Rc;
 

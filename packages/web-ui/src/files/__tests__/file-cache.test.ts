@@ -15,8 +15,7 @@ import {
   type WatchRequest,
 } from '../watch-channel'
 
-// What a page keeps of a Host's files (`plugin-pages.md` § What the
-// service keeps), played against a scripted Host: its reads answer when the
+// What a page keeps of a Host's files, played against a scripted Host: its reads answer when the
 // test says, each with the Host's number taken when it began, and its watch
 // is the page's `WS …/fs/watch` as the test plays the backend. Every entry
 // kept holds its subscriptions; whether it is current comes from the

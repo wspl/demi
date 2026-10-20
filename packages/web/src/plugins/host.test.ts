@@ -173,9 +173,8 @@ async function backendReturns(state = productState({ pluginStates: { skills } })
   channels.last().connect(state)
 }
 
-// `plugin-pages.md` § The page context: a call waits for the backend rather
-// than failing for the connection, as the browser panel's Reload does while
-// Demi restarts.
+// A call waits for the backend rather than failing for the connection, as the browser panel's
+// Reload does while Demi restarts.
 test('a call the page cannot send while the backend restarts goes once it is back and answers its result', async () => {
   backendLeaves()
   const review = { source: 'src_1', skill: 'review', enabled: true }

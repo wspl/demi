@@ -1,8 +1,12 @@
-//! The `demi.file` package (`crates-and-packages.md` § command-package-file): reading,
+//! The `demi.file` package: reading,
 //! editing and patching files beside them, as a resident command
 //! service. It holds no conversation state, so the SDK's empty conversation
 //! status, release and close stand, and the service ends with its last
 //! lease.
+//!
+//! It is a program of its own: it hosts no runner connection, defines no part
+//! of the agent's command tree, stores no conversation, and is never linked
+//! into the runner. Standard shell utilities belong to the runner.
 
 mod changes;
 mod edit;

@@ -1,5 +1,4 @@
-//! The `demi.mobile` package (`crates-and-packages.md`
-//! § command-package-mobile): the Host's simulators for the conversations
+//! The `demi.mobile` package: the Host's simulators for the conversations
 //! that open them, as a resident command service, with a driver per
 //! platform behind one interface (`crates/command-package-mobile/src/driver.rs`).
 //!
@@ -30,6 +29,10 @@
 //! virtualization the Android Emulator needs. Xcode and the Android SDK are the
 //! user's; Demi's own helpers, the iOS one and the Android one, ship with the
 //! runner.
+//!
+//! It is a program of its own: it hosts no runner connection, defines no part
+//! of the agent's command tree, stores no conversation, and is never linked
+//! into the runner.
 
 pub mod android;
 mod booted;
