@@ -1,29 +1,37 @@
-//! What the conversation shows of a transcript's work, computed once as a
-//! block is stored and kept with it: the run of steps each block belongs to,
-//! and for each shell call its own files, its run's and its request's. The
-//! session applies them to the blocks it writes and the conversation
-//! database's migration to the blocks it stored before, with this one code,
-//! so a page counts and derives nothing. The list is in the block because it
-//! is small and read each time the conversation is shown; the contents behind
-//! a diff are blobs the list names, which the page fetches when a file is
-//! opened, since a transcript is loaded whole and a file may be megabytes.
+//! What the conversation shows of a transcript's work, computed once as a block
+//! is stored and kept with it.
 //!
-//! A request is what one message of the user asked for: it starts at a
-//! `user` block and holds every block of the same agent up to the next one.
-//! What wakes the agent without the user asking (a steer, command reports, an
-//! agent's message, a resume) starts no request and belongs to the one it
-//! continues. A request belongs to one agent: a subagent's changes show in
-//! its own transcript under its own requests, never under its parent's.
+//! This module computes the run of steps each block belongs to, and for each
+//! shell call its own files, its run's and its request's. The session applies
+//! them to the blocks it writes, and the conversation database's migration
+//! applies them to the blocks it stored before, with this one code, so a page
+//! counts and derives nothing.
 //!
-//! A list is a function of the blocks up to its call: where a run or a
-//! request starts is decided by the blocks before it, and later blocks only
-//! end it, while an edit or a regenerate removes the later blocks whole. So a
-//! stored list never changes, except that calls of one step may return in any
-//! order: a call's lists are final once every call before it has returned.
-//! Only what the agent changed in its working directory is shown (the
-//! directory its commands start in); a file the request created and removed
-//! is not in its list, which shows what the request left behind, while a
-//! call's own pills always show what that call did.
+//! The list is in the block because it is small and read each time the
+//! conversation is shown. The contents behind a diff are blobs the list names,
+//! which the page fetches when a file is opened, since a transcript is loaded
+//! whole and a file may be megabytes.
+//!
+//! A request is what one message of the user asked for. It starts at a `user`
+//! block and holds every block of the same agent up to the next one. What wakes
+//! the agent without the user asking (a steer, command reports, an agent's
+//! message, a resume) starts no request and belongs to the one it continues. A
+//! request belongs to one agent: a subagent's changes show in its own
+//! transcript under its own requests, never under its parent's.
+//!
+//! A list is a function of the blocks up to its call. Where a run or a request
+//! starts is decided by the blocks before it, and later blocks only end it,
+//! while an edit or a regenerate removes the later blocks whole. So a stored
+//! list never changes, except that calls of one step may return in any order: a
+//! call's lists are final once every call before it has returned.
+//!
+//! What a list shows:
+//!
+//! - Only what the agent changed in its working directory (the directory its
+//!   commands start in).
+//! - A file the request created and removed is not in its list, which shows
+//!   what the request left behind.
+//! - A call's own pills always show what that call did.
 
 use std::collections::{HashMap, HashSet};
 
@@ -42,10 +50,11 @@ use crate::media::BlobStore;
 enum Place {
     /// A step: thinking, a call, a command's notice or an agent's receipt.
     Step,
-    /// A block the reader never sees, which neither joins nor ends a run:
-    /// among them a `resume` and a Stop the user continued, so the steps
-    /// after a Continue, a Resume or the system's resume after a restart
-    /// join the run before it.
+    /// A block the reader never sees, which neither joins nor ends a run.
+    ///
+    /// Among them are a `resume` and a Stop the user continued, so the steps
+    /// after a Continue, a Resume or the system's resume after a restart join
+    /// the run before it.
     Passes,
     /// What the reader reads, which ends a run: the agent's text, the
     /// user's words and decisions, an error, a stop, a compaction's divider.
@@ -187,10 +196,13 @@ struct Tracking {
 }
 
 impl Tracking {
-    /// Adds a call: first its renames and removals, in the order it made
-    /// them, move or drop the files the earlier calls changed; then its own
-    /// files, which its job names as they stand after it, join them. Each
-    /// file it touches is outside as `own`, its own files as it marked
+    /// Adds a call.
+    ///
+    /// 1. Its renames and removals, in the order it made them, move or drop the
+    ///    files the earlier calls changed.
+    /// 2. Its own files, which its job names as they stand after it, join them.
+    ///
+    /// Each file it touches is outside as `own`, its own files as it marked
     /// them, says.
     fn add(&mut self, call: &CommandId, report: &[&EditedFile], changes: &[PathChange], own: &[EditedFile]) {
         let number = self.order.len();
@@ -275,10 +287,11 @@ impl Tracking {
         }
     }
 
-    /// A renamed path, or a folder with all in it: each file takes its new
-    /// name with its edits, merged into the file the new name already has,
-    /// which keeps its place, or the earlier of the two; a path the list
-    /// did not hold is listed renamed.
+    /// A renamed path, or a folder with all in it.
+    ///
+    /// Each file takes its new name with its edits, merged into the file the
+    /// new name already has, which keeps its place, or the earlier of the two.
+    /// A path the list did not hold is listed renamed.
     fn rename(&mut self, from: &str, to: &str, arrived: &mut HashSet<String>, own: &[EditedFile]) {
         let moved: Vec<usize> = (0..self.files.len())
             .filter(|&at| !self.files[at].removed && is_within(&self.files[at].path, from))
@@ -357,11 +370,12 @@ impl Tracking {
     }
 }
 
-/// The ends a listed file's lines are counted between: from the original
-/// of its first edit, or for a file that was there before, of its first
-/// edit that did not create it, so a replaced page shows the old against
-/// the new; to the result of its last edit, or nothing once it is deleted.
-/// None when an end was not kept.
+/// The ends a listed file's lines are counted between.
+///
+/// The start is the original of its first edit, or for a file that was there
+/// before, of its first edit that did not create it, so a replaced page shows
+/// the old against the new. The end is the result of its last edit, or nothing
+/// once it is deleted. None when an end was not kept.
 fn ends(file: &ChangedFile) -> Option<Ends> {
     let start = match file.kind {
         EditKind::Added => file.edits.first(),
@@ -389,13 +403,14 @@ fn reported(view: &ShellToolView) -> Vec<&EditedFile> {
         .collect()
 }
 
-/// A call's own files, its record of what it did that later lists are
-/// made from and its pills show (`crates/command-protocol/src/edits.rs`): the
-/// files its job wrote, then each path it removed as `deleted` and each it
-/// renamed, but to a path it wrote, as `renamed` with the old path. Each is
-/// marked `outside` when it is outside `directory`, the working directory
-/// the call started in, which the pills leave out; with no directory, as
-/// for a call stored before, each keeps the mark `view` gives it.
+/// A call's own files, its record of what it did that later lists are made from
+/// and its pills show (`crates/command-protocol/src/edits.rs`).
+///
+/// They are the files its job wrote, then each path it removed as `deleted` and
+/// each it renamed, but to a path it wrote, as `renamed` with the old path.
+/// Each is marked `outside` when it is outside `directory`, the working
+/// directory the call started in, which the pills leave out. With no directory,
+/// as for a call stored before, each keeps the mark `view` gives it.
 fn call_files(view: &ShellToolView, directory: Option<&str>) -> Vec<EditedFile> {
     let mut files: Vec<EditedFile> = reported(view).into_iter().cloned().collect();
     let written = files.len();
@@ -504,13 +519,16 @@ impl Planned {
 }
 
 /// Plans the lists of the shell call at `index` of `blocks` whose view is
-/// `view`, from the blocks before it: the call's own files, its run's and
-/// its request's up to it, without the files outside the working directory. The call's own
-/// files are judged against `directory`, the one it started in, once: the
-/// earlier calls' files keep the marks they were stored with, and with no
-/// directory, as for a list made again of a stored transcript or of a
-/// call stored before, so do the call's. The call's block need not hold
-/// `view` yet; the calls after it play no part.
+/// `view`, from the blocks before it.
+///
+/// The lists are the call's own files, its run's and its request's up to it,
+/// without the files outside the working directory.
+///
+/// The call's own files are judged against `directory`, the one it started in,
+/// once. The earlier calls' files keep the marks they were stored with. With no
+/// directory, as for a list made again of a stored transcript or of a call
+/// stored before, so do the call's. The call's block need not hold `view` yet;
+/// the calls after it play no part.
 pub fn plan(blocks: &[Block], index: usize, view: &ShellToolView, directory: Option<&str>) -> Planned {
     let before = &blocks[..index];
     let run = blocks[index]
@@ -555,9 +573,11 @@ pub fn plan(blocks: &[Block], index: usize, view: &ShellToolView, directory: Opt
 }
 
 /// Counts the lines between each pair of ends, reading each blob once from
-/// `blobs`. An end the namespace does not hold, or that could not be read,
-/// leaves its pair uncounted and its file named alone, as one whose ends
-/// were not kept: the list is never lost over its counts.
+/// `blobs`.
+///
+/// An end the namespace does not hold, or that could not be read, leaves its
+/// pair uncounted and its file named alone, as one whose ends were not kept:
+/// the list is never lost over its counts.
 pub async fn count(
     ends: Vec<(BlobRef, Option<BlobRef>)>,
     blobs: &dyn BlobStore,
@@ -614,13 +634,17 @@ pub fn later_in_request(blocks: &[Block], index: usize) -> Vec<usize> {
     later
 }
 
-/// Gives each block of a stored transcript, in order, its run and each
-/// shell call's view its lists, as the session gave them as it stored each
-/// block, from the edit copies `read` gives: what a conversation stored
-/// before the lists existed becomes what a new one stores
-/// (`crates/backend-database/src/lib.rs`). A blob `read` fails on stops it
-/// with the failure; one the namespace does not hold leaves its file named
-/// alone.
+/// Gives each block of a stored transcript, in order, its run and each shell
+/// call's view its lists.
+///
+/// They are as the session gave them as it stored each block, from the edit
+/// copies `read` gives. A conversation stored before the lists existed becomes
+/// what a new one stores (`crates/backend-database/src/lib.rs`).
+///
+/// # Errors
+///
+/// A blob `read` fails on stops it with the failure. One the namespace does not
+/// hold leaves its file named alone.
 pub fn relist<E>(
     blocks: &mut [Block],
     mut read: impl FnMut(&BlobRef) -> Result<Option<Bytes>, E>,

@@ -1,7 +1,9 @@
 //! What a session calls in its node: the admission of an action, the prompts
-//! and context, and the tools. The node assembly implements it, so a session
-//! never reaches its node otherwise, and a tool never reaches into its
-//! session: it returns its outcome.
+//! and context, and the tools.
+//!
+//! The node assembly implements it, so a session never reaches its node
+//! otherwise, and a tool never reaches into its session: it returns its
+//! outcome.
 
 use std::{
     cell::{Cell, RefCell},
@@ -64,10 +66,11 @@ pub trait SessionRuntime {
     /// Waits for the tree's admission and holds it while one action runs.
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease>;
 
-    /// Holds off every change of the node's children while an edit is
-    /// prepared and committed; refused while a child lives, starts or
-    /// closes, or its completion awaits delivery. Dropping the
-    /// reservation ends the hold.
+    /// Holds off every change of the node's children while an edit is prepared
+    /// and committed.
+    ///
+    /// It is refused while a child lives, starts or closes, or its completion
+    /// awaits delivery. Dropping the reservation ends the hold.
     fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<Reservation>, String>>;
 
     /// The system prompt of a request that infers with `model`, whose
@@ -78,19 +81,22 @@ pub trait SessionRuntime {
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<SystemPrompt, String>>;
 
-    /// The window the session's token thresholds use for `model`: the
-    /// model's context window, or the limit the user set on it
-    /// (`crates/shared-types/src/context_limit.rs`). Asked at each check, so a changed limit
-    /// counts from the next one.
+    /// The window the session's token thresholds use for `model`: the model's
+    /// context window, or the limit the user set on it
+    /// (`crates/shared-types/src/context_limit.rs`).
+    ///
+    /// Asked at each check, so a changed limit counts from the next one.
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32>;
 
     /// The text before the content of a user turn.
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
 
-    /// What the context sources tell the node before a request, in the
-    /// sources' order: `seen` is each context block the model receives,
-    /// from the last compaction boundary on, oldest first, and `turn` the
-    /// input turn the request belongs to.
+    /// What the context sources tell the node before a request, in the sources'
+    /// order.
+    ///
+    /// `seen` is each context block the model receives, from the last
+    /// compaction boundary on, oldest first, and `turn` the input turn the
+    /// request belongs to.
     fn context<'a>(
         &'a self,
         seen: &'a [SeenContext<'a>],
@@ -100,27 +106,29 @@ pub trait SessionRuntime {
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
 
-    /// The node's number in the conversation's tree, 0 for the root, which
-    /// its requests carry to the usage ledger
-    /// (`crates/backend-database/src/usage.rs`); none for a side question,
-    /// which is no agent and counts
-    /// under its conversation alone.
+    /// The node's number in the conversation's tree, 0 for the root, which its
+    /// requests carry to the usage ledger
+    /// (`crates/backend-database/src/usage.rs`).
+    ///
+    /// None for a side question, which is no agent and counts under its
+    /// conversation alone.
     fn agent(&self) -> Option<u64>;
 
-    /// The session the node's requests name to their provider for its
-    /// prompt cache and its routing, when it is not the node's own: a side
-    /// question's is its conversation's root, whose cache its first request
-    /// reads. None by default.
+    /// The session the node's requests name to their provider for its prompt
+    /// cache and its routing, when it is not the node's own.
+    ///
+    /// A side question's is its conversation's root, whose cache its first
+    /// request reads. None by default.
     fn affinity(&self) -> Option<String> {
         None
     }
 
-    /// The node's working directory now, where its `shell` calls start,
-    /// read as a step starts without reaching its Host: the files a call of
-    /// the step changed outside it are left out of what the conversation
-    /// shows (`crates/agent-store/src/changes.rs`). None when
-    /// it cannot be read, as by default, and then the step's files all
-    /// show.
+    /// The node's working directory now, where its `shell` calls start.
+    ///
+    /// It is read as a step starts without reaching its Host: the files a call
+    /// of the step changed outside it are left out of what the conversation
+    /// shows (`crates/agent-store/src/changes.rs`). None when it cannot be
+    /// read, as by default, and then the step's files all show.
     fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {
         Box::pin(async { None })
     }
@@ -132,12 +140,16 @@ pub trait SessionRuntime {
         Box::pin(async { RunningWork::default() })
     }
 
-    /// Whether the user recovers the node's unfinished turns, a root's, or
-    /// its parent decides for it, a child's: a root's turn left undone
-    /// because a call's Host was offline ends unfinished, with an error
-    /// block that offers Resume, and a root's failed turn holds its
-    /// waiting input until the user acts; a child's result says what it
-    /// could not do.
+    /// Whether the user recovers the node's unfinished turns (a root's), or its
+    /// parent decides for it (a child's).
+    ///
+    /// For a root:
+    ///
+    /// - A turn left undone because a call's Host was offline ends unfinished,
+    ///   with an error block that offers Resume.
+    /// - A failed turn holds its waiting input until the user acts.
+    ///
+    /// For a child, its result says what it could not do.
     fn user_recovers_turns(&self) -> bool {
         false
     }
@@ -151,18 +163,23 @@ pub trait SessionRuntime {
     }
 
     /// Runs one step: its calls, each of a tool that [`tools`](Self::tools)
-    /// names, together. Yields each call's outcome, by its index in
-    /// `calls`, as the call returns, and ends once every call has
-    /// returned. Dropping the stream stops the calls still running.
+    /// names, together.
+    ///
+    /// Yields each call's outcome, by its index in `calls`, as the call
+    /// returns, and ends once every call has returned. Dropping the stream
+    /// stops the calls still running.
     fn invoke_step(&self, calls: Vec<ToolInvocation>) -> StepOutcomes<'_>;
 
-    /// Resolves once `command`, which a `shell` call of the node left
-    /// running, has ended, and at once when it has ended already or the
+    /// Resolves once `command`, which a `shell` call of the node left running,
+    /// has ended.
+    ///
+    /// It resolves at once when the command has ended already, or when the
     /// node's shells do not hold it and the conversation does not record it
-    /// running; one it records running is taken up first
-    /// (`crates/agent-session/src/reports.rs`). It holds nothing of the session. A
-    /// node without shells has no commands, so by default it never
-    /// resolves.
+    /// running. One the conversation records running is taken up first
+    /// (`crates/agent-session/src/reports.rs`). It holds nothing of the
+    /// session.
+    ///
+    /// A node without shells has no commands, so by default it never resolves.
     fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
         let _ = command;
         Box::pin(std::future::pending())
@@ -170,22 +187,27 @@ pub trait SessionRuntime {
 
     /// Whether `command`, which a `shell` call left running, waits for the
     /// user's answer, as it changes: it reports no progress meanwhile.
-    /// None for a command that the node's shells do not hold or whose job
-    /// has not started, and by default.
+    ///
+    /// None for a command that the node's shells do not hold or whose job has
+    /// not started, and by default.
     fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
         let _ = command;
         None
     }
 
-    /// What `command`, which a `shell` call left running and which reports
-    /// every `interval_ms` while it runs, tells the node now
-    /// (`crates/agent-session/src/reports.rs`), named by the title its record
-    /// keeps: its progress while it runs, which moves the node's place in its
-    /// output as a look does, or its end, with the media its job viewed as a
-    /// result for `model`, whose vendor takes requests within `limits`,
-    /// attaches them. None when it has nothing to tell: the node saw its end in
-    /// a result already and its job viewed no media, or the node stopped it
-    /// itself.
+    /// What `command` tells the node now, named by the title its record keeps.
+    ///
+    /// The command is one a `shell` call left running and which reports every
+    /// `interval_ms` while it runs (`crates/agent-session/src/reports.rs`). The
+    /// report is one of:
+    ///
+    /// - its progress while it runs, which moves the node's place in its output
+    ///   as a look does;
+    /// - its end, with the media its job viewed as a result for `model`, whose
+    ///   vendor takes requests within `limits`, attaches them.
+    ///
+    /// None when it has nothing to tell: the node saw its end in a result
+    /// already and its job viewed no media, or the node stopped it itself.
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
@@ -205,30 +227,33 @@ pub trait SessionRuntime {
         false
     }
 
-    /// A look at `command` as the call that watched it shows it when something
-    /// other than its tool ended the call (`crates/agent-session/src/core.rs`):
-    /// its output since the node's last look, as a result shows it within
-    /// `budget` characters, which moves the node's place in it, and the user's
-    /// view of the call. None when the node's shells do not hold the command,
-    /// and by default.
+    /// A look at `command` as the call that watched it shows it, when something
+    /// other than its tool ended the call (`crates/agent-session/src/core.rs`).
+    ///
+    /// It is the command's output since the node's last look, as a result shows
+    /// it within `budget` characters, which moves the node's place in it, and
+    /// the user's view of the call. None when the node's shells do not hold the
+    /// command, and by default.
     fn look(&self, command: &CommandId, budget: usize) -> Option<CommandLook> {
         let _ = (command, budget);
         None
     }
 
-    /// Whether a look of the node at `command` runs now, such as a `demi
-    /// shell status --wait` that waits for its end: the command's end report
-    /// then ends no window, since the look shows the end itself
-    /// (`crates/agent-session/src/reports.rs`). None by default.
+    /// Whether a look of the node at `command` runs now, such as a `demi shell
+    /// status --wait` that waits for its end.
+    ///
+    /// The command's end report then ends no window, since the look shows the
+    /// end itself (`crates/agent-session/src/reports.rs`). None by default.
     fn looks_at(&self, command: &CommandId) -> bool {
         let _ = command;
         false
     }
 
-    /// Readies `report` as it is written into the transcript: it reads the
-    /// output the report carries, or marks the place what it read, so that a
-    /// report dropped before then moves no place in its command's output
-    /// (`crates/agent-session/src/reports.rs`). Nothing by default.
+    /// Readies `report` as it is written into the transcript.
+    ///
+    /// It reads the output the report carries, or marks the place what it read,
+    /// so that a report dropped before then moves no place in its command's
+    /// output (`crates/agent-session/src/reports.rs`). Nothing by default.
     fn write_report(&self, report: &mut CommandReport) {
         let _ = report;
     }
@@ -301,10 +326,11 @@ pub struct ToolInvocation {
     pub command: CallCommand,
 }
 
-/// The command a running call started, as its session knows it: what the
-/// session names when something other than the tool ends the call, and
-/// whether that end leaves the command running, as the backend's shutdown
-/// does (`crates/agent-session/src/core.rs`).
+/// The command a running call started, as its session knows it.
+///
+/// It is what the session names when something other than the tool ends the
+/// call, and whether that end leaves the command running, as the backend's
+/// shutdown does (`crates/agent-session/src/core.rs`).
 #[derive(Debug, Clone, Default)]
 pub struct CallCommand(Rc<CallCommandState>);
 
@@ -450,9 +476,10 @@ impl ToolOutcome {
 /// (`crates/agent-tools/src/lib.rs`): a tool never reaches into its session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolEffect {
-    /// The call returned while its command still runs, which had run for
-    /// `ran`: the session watches it, and the command reports every
-    /// `interval_ms` from its start until it ends, or only its end when none
+    /// The call returned while its command still runs, which had run for `ran`.
+    ///
+    /// The session watches it, and the command reports every `interval_ms` from
+    /// its start until it ends, or only its end when none
     /// (`crates/agent-session/src/reports.rs`).
     Background {
         command: CommandId,

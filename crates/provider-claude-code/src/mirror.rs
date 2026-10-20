@@ -1,11 +1,16 @@
 //! Which block each entry belongs to that a process mirrors of its session
-//! (`crates/provider-claude-code/src/session.rs`, `--session-mirror`):
-//! the user's message to its block, the model's reasoning, text and tool
-//! calls to theirs, a call's result to the call's; an entry that stands for
-//! no block, such as a `date` attachment, to the next block. The CLI prints
-//! a batch of entries when it writes them, which can be after the run that
-//! made them ended, so a block of a run is named by its position among the
-//! run's blocks while the run lasts, and by its items in later requests.
+//! (`crates/provider-claude-code/src/session.rs`, `--session-mirror`).
+//!
+//! - The user's message belongs to its block.
+//! - The model's reasoning, text and tool calls belong to theirs.
+//! - A call's result belongs to the call's.
+//! - An entry that stands for no block, such as a `date` attachment, belongs to
+//!   the next block.
+//!
+//! The CLI prints a batch of entries when it writes them, which can be after
+//! the run that made them ended. So a block of a run is named by its position
+//! among the run's blocks while the run lasts, and by its items in later
+//! requests.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -82,10 +87,11 @@ pub(crate) struct Mirror {
 }
 
 impl Mirror {
-    /// A run of the process begins with `request`: the previous run's
-    /// blocks are now items of it, the request's blocks after those the
-    /// previous request carried, and entries still waiting for a line of
-    /// that run belong to the next block.
+    /// A run of the process begins with `request`.
+    ///
+    /// The previous run's blocks are now items of it, the request's blocks
+    /// after those the previous request carried, and entries still waiting for
+    /// a line of that run belong to the next block.
     pub(crate) fn begin(&mut self, request: &InferenceRequest) -> Vec<ProviderEvent> {
         let previous = self.run;
         let base = self.base;
@@ -202,10 +208,11 @@ impl Mirror {
         self.written - 1
     }
 
-    /// Notes a content block the CLI printed whole, of the message `id`,
-    /// after the events it gave: the block of the run it went to, the
-    /// latest of its kind. A tool use is known by its id, and a block that
-    /// gave no event wrote none.
+    /// Notes a content block the CLI printed whole, of the message `id`, after
+    /// the events it gave.
+    ///
+    /// It is the block of the run it went to, the latest of its kind. A tool
+    /// use is known by its id, and a block that gave no event wrote none.
     pub(crate) fn printed(&mut self, id: Option<String>, block: Value, wrote: bool) {
         let latest = match block["type"].as_str() {
             Some("thinking") => self.thinking,
@@ -236,11 +243,12 @@ impl Mirror {
         self.given.extend(items);
     }
 
-    /// The events of a batch of entries the CLI printed: each entry that
-    /// names its block, with the entries before it that belong to the next
-    /// block. Entries the CLI keeps outside its chain, which have no id,
-    /// belong to no block. An entry of the message `streaming` waits for
-    /// the message's end, since a stream can still be abandoned.
+    /// The events of a batch of entries the CLI printed: each entry that names
+    /// its block, with the entries before it that belong to the next block.
+    ///
+    /// Entries the CLI keeps outside its chain, which have no id, belong to no
+    /// block. An entry of the message `streaming` waits for the message's end,
+    /// since a stream can still be abandoned.
     pub(crate) fn mirrored(
         &mut self,
         entries: Vec<Value>,
@@ -382,12 +390,13 @@ fn placing(
     }
 }
 
-/// `entry` as one entry per content block. The CLI writes a streamed
-/// message as an entry per block, of the same message id, and joins them
-/// back into one message when it reads its session; a complete answer it
-/// writes as one entry of all its blocks. Each block's entry goes to its
-/// own block, so the answer's text, reasoning and calls are each given
-/// once by the block they belong to; each entry but the first gets an id
+/// `entry` as one entry per content block.
+///
+/// The CLI writes a streamed message as an entry per block, of the same message
+/// id, and joins them back into one message when it reads its session. A
+/// complete answer it writes as one entry of all its blocks. Each block's entry
+/// goes to its own block, so the answer's text, reasoning and calls are each
+/// given once by the block they belong to. Each entry but the first gets an id
 /// of its own.
 fn per_block(entry: Value) -> Vec<Value> {
     let count = match entry["message"]["content"].as_array() {

@@ -1,12 +1,17 @@
-//! The Claude sign-in (`crates/provider-claude-code/src/account.rs`): Demi runs
-//! the CLI's own login on the Claude Code machine, in a new configuration
-//! directory, shows the user the link the CLI prints, and writes the code
-//! the user pastes to the CLI's input. When the CLI exits with success, Demi
-//! reads the account it signed in, its ID and email, and nothing of its
-//! tokens, and the directory becomes the account's; when the login fails or
-//! is stopped, the directory goes. A code the CLI refuses leaves it
-//! waiting, and the user sees its words and pastes another. Demi never
-//! writes Claude's OAuth flow itself, and never logs the code.
+//! The Claude sign-in (`crates/provider-claude-code/src/account.rs`).
+//!
+//! Demi runs the CLI's own login on the Claude Code machine, in a new
+//! configuration directory, shows the user the link the CLI prints, and writes
+//! the code the user pastes to the CLI's input.
+//!
+//! - When the CLI exits with success, Demi reads the account it signed in, its
+//!   ID and email, and nothing of its tokens, and the directory becomes the
+//!   account's.
+//! - When the login fails or is stopped, the directory goes.
+//! - A code the CLI refuses leaves it waiting, and the user sees its words and
+//!   pastes another.
+//!
+//! Demi never writes Claude's OAuth flow itself, and never logs the code.
 
 use std::sync::Arc;
 
@@ -90,11 +95,12 @@ impl AccountKit for ClaudeKit {
     }
 }
 
-/// Runs the CLI's sign-in on `machine` and relays it: what the start waits
-/// for goes to `io.stage`, the link the CLI prints to `io.pending`, and the
-/// codes the user pastes go to the CLI. It ends with the account the CLI
-/// signed in, or once the sign-in failed or was stopped, after the
-/// sign-in's directory went.
+/// Runs the CLI's sign-in on `machine` and relays it.
+///
+/// What the start waits for goes to `io.stage`, the link the CLI prints to
+/// `io.pending`, and the codes the user pastes go to the CLI. It ends with the
+/// account the CLI signed in, or once the sign-in failed or was stopped, after
+/// the sign-in's directory went.
 async fn sign_in(
     machine: Arc<dyn AccountMachine>,
     entry: String,
@@ -165,10 +171,12 @@ async fn sign_in(
     })
 }
 
-/// The sign-in on the machine `placement` stands for, whose account takes
-/// its id among `pool`'s. It ends early when `stop` fires or nobody waits
-/// for it any more (`abandoned`), and removes its directory however it ends
-/// but with success, which makes the directory the account's.
+/// The sign-in on the machine `placement` stands for, whose account takes its
+/// id among `pool`'s.
+///
+/// It ends early when `stop` fires or nobody waits for it any more
+/// (`abandoned`), and removes its directory however it ends but with success,
+/// which makes the directory the account's.
 async fn sign_in_at(
     placement: &dyn Placement,
     pool: &dyn CredentialPool,
@@ -245,10 +253,11 @@ async fn sign_in_at(
     }
 }
 
-/// Relays the sign-in until the CLI's output ends: the link it prints goes
-/// to `shown`, and each code to its input, followed by a newline. A code
-/// the CLI calls invalid goes to `shown` in the CLI's words, while the CLI
-/// waits for another. Answers the tail of its standard error.
+/// Relays the sign-in until the CLI's output ends.
+///
+/// The link it prints goes to `shown`, and each code to its input, followed by
+/// a newline. A code the CLI calls invalid goes to `shown` in the CLI's words,
+/// while the CLI waits for another. Answers the tail of its standard error.
 async fn relay(
     mut output: futures_util::stream::LocalBoxStream<'static, demi_host_interface::ProcessOutput>,
     control: &dyn ProcessControl,
@@ -331,8 +340,10 @@ fn link(line: &str) -> Option<String> {
 
 /// The account the CLI's sign-in wrote into its directory `config`, which
 /// becomes the account's directory: its ID and email, read from the CLI's
-/// `.claude.json`, and nothing of its tokens. The account's id is the one
-/// it has among `pool`'s accounts, or the one a new account gets.
+/// `.claude.json`, and nothing of its tokens.
+///
+/// The account's id is the one it has among `pool`'s accounts, or the one a new
+/// account gets.
 async fn signed_in(
     config: Box<dyn ConfigDir>,
     pool: &dyn CredentialPool,

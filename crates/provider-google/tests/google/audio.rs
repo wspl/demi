@@ -1,11 +1,17 @@
-//! A Gemini API key's speech and Lyria music, against a scripted vendor
-//! built from Google's speech and music guides
-//! (ai.google.dev/gemini-api/docs/speech-generation, …/music-generation)
-//! and the Interactions API reference (ai.google.dev/api/interactions-api):
-//! the interaction with the instructions as the turn's `speech_metadata`
-//! and the voice in `speech_config`, its `model_output` step's audio as
-//! base64, WAV kept and raw `audio/l16` marked to be wrapped; the voices,
-//! every page. No test calls a vendor.
+//! A Gemini API key's speech and Lyria music, against a scripted vendor built
+//! from Google's speech and music guides
+//! (ai.google.dev/gemini-api/docs/speech-generation, …/music-generation) and
+//! the Interactions API reference (ai.google.dev/api/interactions-api).
+//!
+//! The tests cover:
+//!
+//! - the interaction with the instructions as the turn's `speech_metadata` and
+//!   the voice in `speech_config`;
+//! - its `model_output` step's audio as base64, WAV kept and raw `audio/l16`
+//!   marked to be wrapped;
+//! - the voices, every page.
+//!
+//! No test calls a vendor.
 
 use std::sync::Arc;
 
@@ -68,11 +74,15 @@ fn catalog() -> Catalog {
     Catalog::decode(br#"{ "updated": "2026-10-01T00:00:00Z", "models": [] }"#).unwrap()
 }
 
-/// Planted defects this catches: the instructions sent as text of the turn
-/// rather than its `speech_metadata` style; the voice outside
-/// `speech_config`; a WAV block marked as PCM, or an `audio/l16` one not
-/// marked, or at the wrong rate; Lyria's prompt sent as a turn, or WAV
-/// not asked when `--format wav` does; a model without TTS or Lyria listed.
+/// Planted defects this catches:
+///
+/// - the instructions sent as text of the turn rather than its
+///   `speech_metadata` style;
+/// - the voice outside `speech_config`;
+/// - a WAV block marked as PCM, or an `audio/l16` one not marked, or at the
+///   wrong rate;
+/// - Lyria's prompt sent as a turn, or WAV not asked when `--format wav` does;
+/// - a model without TTS or Lyria listed.
 // One scripted vendor, four requests: milliseconds.
 #[tokio::test]
 async fn gemini_speaks_through_an_interaction_and_lyria_composes_with_the_format_asked() {
@@ -172,12 +182,18 @@ async fn gemini_lists_its_voices_across_every_page() {
     assert_eq!(sent[1].uri.query(), Some("page_size=1000&search=o&page_token=p2"));
 }
 
-/// Raw PCM is wrapped only as its media type states it: a type with no
-/// rate, or one that does not read, fails the call rather than being taken
-/// as 24 kHz; stereo stays stereo; PCM that ends inside a sample fails.
-/// Planted defects this catches: a missing rate filled in with 24 kHz; the
-/// channels the type states dropped for mono; a broken last sample
-/// written on.
+/// Raw PCM is wrapped only as its media type states it.
+///
+/// - A type with no rate, or one that does not read, fails the call rather than
+///   being taken as 24 kHz.
+/// - Stereo stays stereo.
+/// - PCM that ends inside a sample fails.
+///
+/// Planted defects this catches:
+///
+/// - a missing rate filled in with 24 kHz;
+/// - the channels the type states dropped for mono;
+/// - a broken last sample written on.
 // One scripted vendor, four requests: milliseconds.
 #[tokio::test]
 async fn pcm_is_taken_only_as_its_type_states_it() {
@@ -208,10 +224,11 @@ async fn pcm_is_taken_only_as_its_type_states_it() {
     );
 }
 
-/// An answer whose base64 audio is over 256 MiB once decoded fails, though
-/// its JSON is within what a JSON answer may be.
-/// Planted defect this catches: the base64 counted as it arrives only,
-/// which lets through a third more than a file answer may hold.
+/// An answer whose base64 audio is over 256 MiB once decoded fails, though its
+/// JSON is within what a JSON answer may be.
+///
+/// Planted defect this catches: the base64 counted as it arrives only, which
+/// lets through a third more than a file answer may hold.
 // One scripted vendor streaming 342 MiB of base64: a few seconds, and
 // about 950 MiB of memory at its peak (the body, its text and the
 // decoded audio).

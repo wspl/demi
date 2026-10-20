@@ -1,8 +1,10 @@
-//! MiniMax's media through its key, against scripted vendors built from
-//! its API reference at platform.minimax.io/docs/api-reference: Text to
-//! image and Image to image, Create, Query and Cancel or delete a v2 video
-//! task, Create a v1 text-to-video task, Query a v1 task and Retrieve
-//! file, Synchronous text to speech and Get voice. No test calls a vendor.
+//! MiniMax's media through its key, against scripted vendors built from its API
+//! reference at platform.minimax.io/docs/api-reference.
+//!
+//! The reference pages are Text to image and Image to image, Create, Query and
+//! Cancel or delete a v2 video task, Create a v1 text-to-video task, Query a v1
+//! task and Retrieve file, Synchronous text to speech and Get voice. No test
+//! calls a vendor.
 
 use std::sync::Arc;
 
@@ -110,12 +112,14 @@ fn job<'a>(id: &'a str, model: &'a str, catalog: &'a Catalog) -> JobRef<'a> {
     JobRef { id, model, catalog }
 }
 
-/// Planted defects this catches: the image asked for as an address rather
-/// than base64, several asked for, the shape sent other than as
-/// `aspect_ratio`, the portrait sent other than as a `character` subject;
-/// the media asked on the text API's path rather than the origin; a
-/// refusal MiniMax sends with HTTP 200 read as an image, or a refused key
-/// or a used-up balance read as another refusal.
+/// Planted defects this catches:
+///
+/// - the image asked for as an address rather than base64, several asked for,
+///   the shape sent other than as `aspect_ratio`, the portrait sent other than
+///   as a `character` subject;
+/// - the media asked on the text API's path rather than the origin;
+/// - a refusal MiniMax sends with HTTP 200 read as an image, or a refused key
+///   or a used-up balance read as another refusal.
 // One scripted vendor, five requests: milliseconds.
 #[tokio::test]
 async fn images_are_base64_and_a_refusal_on_http_200_is_its_base_resp() {
@@ -162,12 +166,15 @@ async fn images_are_base64_and_a_refusal_on_http_200_is_its_base_resp() {
     );
 }
 
-/// Planted defects this catches: a v2 ask without the resolution,
-/// duration or ratio MiniMax needs, a ratio sent for a video from a first
-/// frame, the resolution written other than as MiniMax does, an image in
-/// the wrong role; a status read wrongly, `cancelled` as made; the video's
-/// address not read, or the key sent to it; a v2 refusal, a status with an
-/// `error`, read as other than a refused key or a used-up balance.
+/// Planted defects this catches:
+///
+/// - a v2 ask without the resolution, duration or ratio MiniMax needs, a ratio
+///   sent for a video from a first frame, the resolution written other than as
+///   MiniMax does, an image in the wrong role;
+/// - a status read wrongly, `cancelled` as made;
+/// - the video's address not read, or the key sent to it;
+/// - a v2 refusal, a status with an `error`, read as other than a refused key
+///   or a used-up balance.
 // One scripted vendor, ten requests: milliseconds.
 #[tokio::test]
 async fn a_v2_task_is_asked_with_what_it_needs_read_through_its_states_and_downloaded() {
@@ -246,10 +253,12 @@ async fn a_v2_task_is_asked_with_what_it_needs_read_through_its_states_and_downl
     assert_eq!((download.uri.path(), download.header("authorization")), ("/inference_output/output.mp4", None));
 }
 
-/// Planted defects this catches: a stopped v2 call that deletes a running
-/// task, which MiniMax refuses, or a finished one, whose record it would
-/// delete, or one that leaves a queued task to run and be paid for; a v1
-/// task offered a cancellation MiniMax does not have.
+/// Planted defects this catches:
+///
+/// - a stopped v2 call that deletes a running task, which MiniMax refuses, or a
+///   finished one, whose record it would delete, or one that leaves a queued
+///   task to run and be paid for;
+/// - a v1 task offered a cancellation MiniMax does not have.
 // One scripted vendor, three requests: milliseconds.
 #[tokio::test]
 async fn a_stopped_call_cancels_a_v2_task_only_while_it_is_queued() {
@@ -277,11 +286,14 @@ async fn a_stopped_call_cancels_a_v2_task_only_while_it_is_queued() {
     );
 }
 
-/// Planted defects this catches: a v1 ask that sends the frames other
-/// than in their fields, or what v1 lacks, a reference or a shape, said
-/// as sent; a v1 refusal on HTTP 200 read as a task; a status read
-/// wrongly, `Preparing` as running; a finished task's file not retrieved
-/// for its address; a model the catalog names no request for asked anyway.
+/// Planted defects this catches:
+///
+/// - a v1 ask that sends the frames other than in their fields, or what v1
+///   lacks, a reference or a shape, said as sent;
+/// - a v1 refusal on HTTP 200 read as a task;
+/// - a status read wrongly, `Preparing` as running;
+/// - a finished task's file not retrieved for its address;
+/// - a model the catalog names no request for asked anyway.
 // One scripted vendor, seven requests: milliseconds.
 #[tokio::test]
 async fn a_v1_task_is_read_and_its_file_retrieved_for_its_address() {
@@ -338,11 +350,15 @@ async fn a_v1_task_is_read_and_its_file_retrieved_for_its_address() {
     assert!(reads[4].ends_with("/v1/files/retrieve?file_id=205258526306433"), "{reads:?}");
 }
 
-/// Planted defects this catches: the audio read as other than the
-/// hexadecimal text MiniMax answers, the voice or speed sent other than in
-/// `voice_setting`, the format other than in `audio_setting`; a refusal on
-/// HTTP 200 read as audio; instructions said as sent; voices of one kind
-/// only listed, or the account's own taken for the system's.
+/// Planted defects this catches:
+///
+/// - the audio read as other than the hexadecimal text MiniMax answers, the
+///   voice or speed sent other than in `voice_setting`, the format other than
+///   in `audio_setting`;
+/// - a refusal on HTTP 200 read as audio;
+/// - instructions said as sent;
+/// - voices of one kind only listed, or the account's own taken for the
+///   system's.
 // One scripted vendor, three requests: milliseconds.
 #[tokio::test]
 async fn speech_is_hex_audio_in_a_voice_get_voice_lists() {

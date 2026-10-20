@@ -1,26 +1,34 @@
 //! Message editing: an accepted edit continues the conversation from a new
-//! version of a user message, and Regenerate from a new version of its
-//! answer; either commits the new branch with its receipt in one save,
-//! leaving the old one stored, and then infers on a fresh runtime. A switch
-//! of versions makes another branch current. A Fork copies a prefix into a
-//! new root's first checkpoint.
+//! version of a user message, and Regenerate from a new version of its answer.
+//!
+//! Either commits the new branch with its receipt in one save, leaving the old
+//! one stored, and then infers on a fresh runtime. A switch of versions makes
+//! another branch current. A Fork copies a prefix into a new root's first
+//! checkpoint.
 //!
 //! The session owns the operation, and the transcript the suffix replacement
-//! and the patch that replicates it. The replacement infers on a fork of the
-//! provider runtime, so that no state the provider kept about the removed
-//! history reaches it; it takes a new turn ID, the selected model and a
-//! freshly prepared preamble, and the retained blocks keep their IDs,
-//! timestamps, content and media. Only a `user` block is a target: an
-//! explicit submission has its own block type, so the session and the page
-//! read editability from the type and no second rule decides it.
+//! and the patch that replicates it.
 //!
-//! A request is checked before its uploads are resolved, so that a repeated
-//! one writes no file: first its operation's receipt, then an edit with its
-//! operation ID still being prepared, then its snapshot. The digest covers
-//! the request as the page sent it, because resolving an upload writes the
-//! file under a name not yet taken, so the same request resolved twice would
-//! differ while its retry must match. A snapshot taken before a restart is
-//! always stale, since every restore starts a new epoch.
+//! The replacement infers on a fork of the provider runtime, so that no state
+//! the provider kept about the removed history reaches it. It takes a new turn
+//! ID, the selected model and a freshly prepared preamble. The retained blocks
+//! keep their IDs, timestamps, content and media.
+//!
+//! Only a `user` block is a target: an explicit submission has its own block
+//! type, so the session and the page read editability from the type and no
+//! second rule decides it.
+//!
+//! A request is checked before its uploads are resolved, so that a repeated one
+//! writes no file. The checks run in this order:
+//!
+//! 1. its operation's receipt;
+//! 2. an edit with its operation ID still being prepared;
+//! 3. its snapshot.
+//!
+//! The digest covers the request as the page sent it, because resolving an
+//! upload writes the file under a name not yet taken, so the same request
+//! resolved twice would differ while its retry must match. A snapshot taken
+//! before a restart is always stale, since every restore starts a new epoch.
 
 use std::rc::Rc;
 
@@ -184,10 +192,12 @@ pub fn regenerate_digest(request: &RegenerateRequest) -> String {
     canonical_digest(request).expect("a regenerate request serializes")
 }
 
-/// The edit action: prepares the replacement turn beside the accepted
-/// history, commits it with its receipt in one save, adopts it, closes the
-/// runtimes it discarded, and runs the replacement's turn on a runtime
-/// fork. Until the save commits, nothing of the history changes.
+/// The edit action.
+///
+/// It prepares the replacement turn beside the accepted history, commits it
+/// with its receipt in one save, adopts it, closes the runtimes it discarded,
+/// and runs the replacement's turn on a runtime fork. Until the save commits,
+/// nothing of the history changes.
 pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     // Held until the edit is accepted or rejected: the replacement's turn
     // may start and close children again.
@@ -358,10 +368,11 @@ impl Candidate {
     }
 }
 
-/// A switch of versions, admitted as an edit is: in the session's save
-/// order, the store makes the latest leaf of the `to`th version at the
-/// block `target`'s place current, and the session adopts that path from
-/// there as one rewrite batch, on fresh runtimes, so nothing a provider
+/// A switch of versions, admitted as an edit is.
+///
+/// In the session's save order, the store makes the latest leaf of the `to`th
+/// version at the block `target`'s place current. The session adopts that path
+/// from there as one rewrite batch, on fresh runtimes, so nothing a provider
 /// kept of the path it left reaches the next request. Nothing else changes.
 pub(super) async fn switch(
     s: &Rc<SessionShared>,
@@ -445,11 +456,13 @@ pub enum ForkError {
 }
 
 /// A Fork's seed: the history through the completed text a [`ForkEnd`] names,
-/// idle, with nothing waiting: a new root's, or a forked child's or side
-/// question's (`crates/agent-server/src/server/tree/supervisor.rs`). The
-/// blocks the source's store holds before its window are no part of it:
-/// `prefix` names them as rows, which the destination's store copies in the
-/// database ([`demi_agent_store::AgentTreeStore::create_node_after`]), and the
+/// idle, with nothing waiting.
+///
+/// It seeds a new root, or a forked child or side question
+/// (`crates/agent-server/src/server/tree/supervisor.rs`). The blocks the
+/// source's store holds before its window are no part of it: `prefix` names
+/// them as rows, which the destination's store copies in the database
+/// ([`demi_agent_store::AgentTreeStore::create_node_after`]), and the
 /// checkpoint holds the blocks after them, from its `start`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForkSeed {
@@ -459,9 +472,10 @@ pub struct ForkSeed {
 
 impl ForkSeed {
     /// Creates the node `record` in `store` with the seed as its first
-    /// checkpoint, in one commit: the prefix's rows copied from the tree
-    /// of the conversation root `source`, or from `store`'s own with none,
-    /// then the seed's blocks.
+    /// checkpoint, in one commit.
+    ///
+    /// The prefix's rows are copied from the tree of the conversation root
+    /// `source`, or from `store`'s own with none, then the seed's blocks.
     pub async fn create(
         &self,
         store: &dyn AgentTreeStore,
@@ -483,10 +497,11 @@ impl ForkSeed {
     }
 }
 
-/// The seed of a source whose path holds `window` from `start` on, the
-/// blocks before it in `store`, with the checkpoint state `state`: what a
-/// Fork through `end` keeps is checked against the window, and against the
-/// store for the blocks before it, which it names without reading them.
+/// The seed of a source whose path holds `window` from `start` on, the blocks
+/// before it in `store`, with the checkpoint state `state`.
+///
+/// What a Fork through `end` keeps is checked against the window, and against
+/// the store for the blocks before it, which it names without reading them.
 pub async fn fork_seed(
     store: &dyn SessionStore,
     start: usize,

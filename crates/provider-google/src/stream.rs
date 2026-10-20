@@ -188,10 +188,11 @@ impl Mapper {
         false
     }
 
-    /// The run's end with the stream's: the response when a candidate
-    /// finished with `STOP`, with the last usage a chunk reported and none
-    /// when no chunk did, else the failure that says why the reply is not
-    /// complete.
+    /// The run's end with the stream's.
+    ///
+    /// It is the response when a candidate finished with `STOP`, with the last
+    /// usage a chunk reported and none when no chunk did. Otherwise it is the
+    /// failure that says why the reply is not complete.
     fn end(&self) -> ProviderEvent {
         let Some((ending, received)) = &self.ended else {
             return ProviderEvent::Error(ProviderFailure::cut_short());

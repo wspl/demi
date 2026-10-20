@@ -123,10 +123,11 @@ fn a_compaction_after_the_latest_response_leaves_no_anchor() {
     assert!(estimate(&blocks, 1_000_000) < 10_000);
 }
 
-/// A medium weighs what the request to its model carries: its bytes, by
-/// them, or the text that names it, as text. A model that does not read
-/// a type, or a vendor whose requests it would take more than half of,
-/// gets the text.
+/// A medium weighs what the request to its model carries: its bytes, by them,
+/// or the text that names it, as text.
+///
+/// A model that does not read a type, or a vendor whose requests it would take
+/// more than half of, gets the text.
 #[test]
 fn a_medium_weighs_what_the_request_to_its_model_carries() {
     let image = B64Bytes::from(vec![0; 3_000_000]);

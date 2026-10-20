@@ -1,13 +1,17 @@
 //! Transient retries: the agent, not the provider, retries a request that
-//! failed in a way waiting can fix. A provider makes one attempt per run and
-//! reports a classified failure, so counts, backoff, cancellation, transcript
-//! safety and the reports of a retry are the same for HTTP and streaming
-//! failures; the one exception is a credential's refresh after an HTTP 401.
+//! failed in a way waiting can fix.
 //!
-//! An attempt is retried only when everything it wrote can be unwound.
-//! Reasoning is unwound; text already streamed out is not, because a product
-//! may have posted it and a second attempt would post a second answer beside
-//! it. Tool calls completed by earlier requests stay and are not run again.
+//! A provider makes one attempt per run and reports a classified failure, so
+//! counts, backoff, cancellation, transcript safety and the reports of a retry
+//! are the same for HTTP and streaming failures. The one exception is a
+//! credential's refresh after an HTTP 401.
+//!
+//! An attempt is retried only when everything it wrote can be unwound:
+//!
+//! - Reasoning is unwound.
+//! - Text already streamed out is not, because a product may have posted it and
+//!   a second attempt would post a second answer beside it.
+//! - Tool calls completed by earlier requests stay and are not run again.
 
 use std::time::Duration;
 

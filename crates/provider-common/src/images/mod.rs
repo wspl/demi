@@ -1,9 +1,10 @@
-//! The image role of a provider: a provider that makes images lists its
-//! image models and makes one image for its account or key; the backend
-//! chooses the entry and the account. The request a vendor takes is the
-//! provider's own; what every vendor's call has in common is in
-//! [`crate::media`], and the answer of the OpenAI-shaped image APIs is
-//! here.
+//! The image role of a provider.
+//!
+//! A provider that makes images lists its image models and makes one image for
+//! its account or key; the backend chooses the entry and the account. The
+//! request a vendor takes is the provider's own. What every vendor's call has
+//! in common is in [`crate::media`], and the answer of the OpenAI-shaped image
+//! APIs is here.
 
 pub mod openai;
 pub mod xai;

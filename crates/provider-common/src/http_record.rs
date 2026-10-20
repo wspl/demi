@@ -12,10 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ErrorCode, FailureReader, ProviderFailure, failure::diagnostics};
 
-/// What an HTTP failure keeps as its `upstream`: the status, every response
-/// header as a `[name, value]` pair with the name in lowercase, sorted by
-/// name with a repeated header kept as separate pairs in arrival order, and
-/// the body text as received. Nothing in it is parsed, filtered or redacted.
+/// What an HTTP failure keeps as its `upstream`.
+///
+/// It holds the status, every response header as a `[name, value]` pair with
+/// the name in lowercase, sorted by name with a repeated header kept as
+/// separate pairs in arrival order, and the body text as received. Nothing in
+/// it is parsed, filtered or redacted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HttpFailureRecord {
@@ -67,10 +69,11 @@ impl HttpFailureRecord {
     }
 }
 
-/// The failure of a response with a failure status: the vendor's text in the
-/// message (`"{label} API request failed with HTTP {status}: {body}"`), the
-/// whole response as the record, and the wait `reader` finds in it. A body
-/// that cannot be read counts as empty.
+/// The failure of a response with a failure status.
+///
+/// It holds the vendor's text in the message (`"{label} API request failed with
+/// HTTP {status}: {body}"`), the whole response as the record, and the wait
+/// `reader` finds in it. A body that cannot be read counts as empty.
 pub async fn http_failure(
     response: reqwest::Response,
     label: &str,
@@ -131,11 +134,12 @@ pub fn read_http_failure(
     ProviderFailureFacts { retry_at, continue_with: None, signed_out: None, not_exposed: None, device_offline: None }
 }
 
-/// The moment a `Retry-After` value names (RFC 9110 § 10.2.3): a number of
-/// seconds counted from `received_at`, with surrounding whitespace allowed
-/// and a decimal fraction counted to the millisecond, or an HTTP-date. Any
-/// other value names no time, such as `1e3`, `0x10`, an ISO 8601 date or
-/// `-5`.
+/// The moment a `Retry-After` value names (RFC 9110 § 10.2.3).
+///
+/// The value is a number of seconds counted from `received_at`, with
+/// surrounding whitespace allowed and a decimal fraction counted to the
+/// millisecond, or an HTTP-date. Any other value names no time, such as `1e3`,
+/// `0x10`, an ISO 8601 date or `-5`.
 pub fn retry_at(value: &str, received_at: Timestamp) -> Option<Timestamp> {
     let value = value.trim_ascii();
     if let Some(delay) = delay_milliseconds(value) {

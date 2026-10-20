@@ -1,9 +1,10 @@
-//! What an uploaded file becomes (`crates/backend-host-access/src/uploads.rs`):
-//! the media type and, for a text file, the opening the upload is recorded
-//! with, and the blocks it becomes in a message once the backend has written it
-//! to the conversation's Host. The backend's upload route and its content
-//! resolution both use these rules; the agent never reads a file's bytes
-//! itself.
+//! What an uploaded file becomes (`crates/backend-host-access/src/uploads.rs`).
+//!
+//! This module decides the media type and, for a text file, the opening the
+//! upload is recorded with. It also decides the blocks the upload becomes in a
+//! message once the backend has written it to the conversation's Host. The
+//! backend's upload route and its content resolution both use these rules; the
+//! agent never reads a file's bytes itself.
 
 use demi_command_protocol::sniff_media_type;
 use demi_shared_types::{
@@ -73,14 +74,18 @@ pub struct Upload<'a> {
     pub bytes: &'a B64Bytes,
 }
 
-/// The blocks an upload becomes in a message: the medium a model reads
-/// natively when it is an image, a video or a PDF, then the file's record,
-/// with its opening when it is text. The medium references the upload's own
-/// blob, with its size in pixels, and its bytes come with the blocks, for
-/// the session to hold. An image enters fitted: one that fitting changed
-/// references the fitted image's blob, which is put into `blobs` first, and
-/// one no provider can take stays the record alone, which the model reads by
-/// path.
+/// The blocks an upload becomes in a message.
+///
+/// The blocks are, in order:
+///
+/// 1. The medium a model reads natively, when the upload is an image, a video
+///    or a PDF. It references the upload's own blob, with its size in pixels,
+///    and its bytes come with the blocks, for the session to hold.
+/// 2. The file's record, with its opening when it is text.
+///
+/// An image enters fitted. One that fitting changed references the fitted
+/// image's blob, which is put into `blobs` first. One no provider can take
+/// stays the record alone, which the model reads by path.
 pub async fn upload_blocks(
     upload: Upload<'_>,
     blobs: &dyn BlobStore,

@@ -1,7 +1,8 @@
-//! What every kind of a provider's media role has in common: the vendor
-//! whose models it makes, the models it lists, how a request to the vendor
-//! is sent within its deadline with the account's or the key's credentials,
-//! and how a refusal reads. The image, video and audio roles
+//! What every kind of a provider's media role has in common.
+//!
+//! It covers the vendor whose models the role makes, the models it lists, how a
+//! request to the vendor is sent within its deadline with the account's or the
+//! key's credentials, and how a refusal reads. The image, video and audio roles
 //! ([`crate::images`], [`crate::videos`], [`crate::audio`]) build on it; the
 //! backend chooses the entry and the account.
 
@@ -22,10 +23,11 @@ use crate::{
     quota::{Observation, ProviderQuota},
 };
 
-/// How long one request to a vendor may take: the token's refresh, the
-/// request and the reading of the answer or the refusal. An image is one
-/// request; a video's ask, each read of its state and its download are one
-/// each.
+/// How long one request to a vendor may take: the token's refresh, the request
+/// and the reading of the answer or the refusal.
+///
+/// An image is one request; a video's ask, each read of its state and its
+/// download are one each.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The largest file an answer may hold, counted as it arrives: a video's
@@ -121,14 +123,16 @@ impl Ask {
     }
 }
 
-/// Sends `ask`, following its redirects here rather than in the client, so
-/// each hop's headers are chosen by its origin: `key`, the credential's
-/// headers, goes only to an address of `origin`, never to another host's,
-/// such as a storage bucket's, which gets the request without it. reqwest
-/// drops only `Authorization` across hosts, not a vendor's own key header
-/// such as `xi-api-key` or `x-goog-api-key`. A 303, and a 301 or a 302 of a
-/// `POST`, is followed with a `GET` and no body, as browsers and reqwest do;
-/// a 307 or a 308 with the same method and body.
+/// Sends `ask`, following its redirects here rather than in the client, so each
+/// hop's headers are chosen by its origin.
+///
+/// `key`, the credential's headers, goes only to an address of `origin`, never
+/// to another host's, such as a storage bucket's, which gets the request
+/// without it. reqwest drops only `Authorization` across hosts, not a vendor's
+/// own key header such as `xi-api-key` or `x-goog-api-key`.
+///
+/// A 303, and a 301 or a 302 of a `POST`, is followed with a `GET` and no body,
+/// as browsers and reqwest do; a 307 or a 308 with the same method and body.
 pub(crate) async fn follow(
     http: &crate::ProviderHttp,
     ask: &Ask,
@@ -163,10 +167,12 @@ pub(crate) async fn follow(
     Err(unreadable(format!("its address redirected more than {REDIRECTS} times")))
 }
 
-/// A vendor whose media models a provider makes, by its id in the catalog
-/// of media models: a subscription's (ChatGPT's are OpenAI's, Grok's
-/// xAI's) or a key's. A compatible entry's maker has none: what it makes is
-/// whatever its endpoint serves.
+/// A vendor whose media models a provider makes, by its id in the catalog of
+/// media models: a subscription's (ChatGPT's are OpenAI's, Grok's xAI's) or a
+/// key's.
+///
+/// A compatible entry's maker has none: what it makes is whatever its endpoint
+/// serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MediaVendor {
     OpenAi,
@@ -271,10 +277,13 @@ pub trait MediaMaker: Send + Sync {
     /// whose models are the ones its user added.
     fn vendor(&self) -> Option<MediaVendor>;
 
-    /// The models of its kind it offers: those `catalog` lists for a
-    /// subscription, whose vendor lists none to it, what the vendor lists
-    /// for a key, read when asked with the HTTP client of the shard that
-    /// asks, or the models a compatible entry's user added.
+    /// The models of its kind it offers.
+    ///
+    /// - For a subscription, whose vendor lists none to it, those `catalog`
+    ///   lists.
+    /// - For a key, what the vendor lists, read when asked with the HTTP client
+    ///   of the shard that asks.
+    /// - For a compatible entry, the models its user added.
     fn models<'a>(
         &'a self,
         http: &'a crate::ProviderHttp,
@@ -282,9 +291,10 @@ pub trait MediaMaker: Send + Sync {
     ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>>;
 
     /// Checks the key of an entry of media alone, as Test Connection does
-    /// (`crates/backend/src/families.rs`), and answers its models: by
-    /// reading the vendor's list of them, unless the vendor lists none to
-    /// the key, as ByteDance's do not, and checks it another way.
+    /// (`crates/backend/src/families.rs`), and answers its models.
+    ///
+    /// It reads the vendor's list of them, unless the vendor lists none to the
+    /// key, as ByteDance's do not, and checks it another way.
     fn check_key<'a>(
         &'a self,
         http: &'a crate::ProviderHttp,
@@ -425,9 +435,10 @@ pub enum MediaCredential {
     Key { refused: fn(StatusCode, &str) -> bool },
 }
 
-/// How a provider's media requests are sent and their failures read: the
-/// label its failure records carry, the reader that finds a moment in one,
-/// its reading of a used-up account or key, its clock, the account's
+/// How a provider's media requests are sent and their failures read.
+///
+/// It holds the label its failure records carry, the reader that finds a moment
+/// in one, its reading of a used-up account or key, its clock, the account's
 /// quota and what the request is sent with.
 pub struct MediaCall<'a> {
     pub label: &'static str,
@@ -474,13 +485,14 @@ impl MediaCall<'_> {
     }
 
     /// Sends `ask` with the headers `credentials` gives, and answers the
-    /// vendor's success, its body read within what `holding` allows, all
-    /// within [`REQUEST_TIMEOUT`]. The headers go only to the origin of
-    /// `ask`'s address, the entry's endpoint's, its redirects followed by
-    /// [`follow`]. For an account, a request refused with HTTP 401 is sent
-    /// again once, with the credentials renewed past the token it was
-    /// refused with; `credentials` answers the headers and that token, none
-    /// for a key, which is never renewed.
+    /// vendor's success, its body read within what `holding` allows, all within
+    /// [`REQUEST_TIMEOUT`].
+    ///
+    /// The headers go only to the origin of `ask`'s address, the entry's
+    /// endpoint's, its redirects followed by [`follow`]. For an account, a
+    /// request refused with HTTP 401 is sent again once, with the credentials
+    /// renewed past the token it was refused with. `credentials` answers the
+    /// headers and that token, none for a key, which is never renewed.
     pub async fn send<F, Fut>(&self, http: &crate::ProviderHttp, ask: Ask, holding: Holding, credentials: F) -> MediaAnswer<Answered>
     where
         F: FnMut(Option<Secret>) -> Fut,
@@ -649,11 +661,13 @@ pub fn trace_id(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-/// What a refused request's record names to trace it: the vendor's code,
-/// the body's `error.code`, or its `code` or `base_resp.status_code`, as a
-/// number other than the HTTP status, which says nothing more; and its
-/// request ID, the headers' ([`trace_id`]), the body's `request_id` or
-/// `trace_id`, or the one its message quotes, as Ark's and OpenAI's do.
+/// What a refused request's record names to trace it.
+///
+/// - The vendor's code: the body's `error.code`, or its `code` or
+///   `base_resp.status_code`, as a number other than the HTTP status, which
+///   says nothing more.
+/// - Its request ID: the headers' ([`trace_id`]), the body's `request_id` or
+///   `trace_id`, or the one its message quotes, as Ark's and OpenAI's do.
 pub fn record_trace(record: &HttpFailureRecord) -> VendorTrace {
     #[derive(Deserialize)]
     struct Body {
@@ -708,10 +722,12 @@ pub fn record_trace(record: &HttpFailureRecord) -> VendorTrace {
     VendorTrace { code, id }
 }
 
-/// What a vendor said in a refusal's body: `error.message`, `error` when
-/// it is text, `message`, or `detail`, as ElevenLabs and other FastAPI
-/// servers answer, text, an object's `message` or a validation list's first
-/// `msg`; a body of none of these is its text, trimmed.
+/// What a vendor said in a refusal's body.
+///
+/// In order of preference: `error.message`, `error` when it is text, `message`,
+/// or `detail`, as ElevenLabs and other FastAPI servers answer, text, an
+/// object's `message` or a validation list's first `msg`. A body of none of
+/// these is its text, trimmed.
 pub fn vendor_message(body: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Refusal {

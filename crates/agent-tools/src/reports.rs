@@ -1,10 +1,14 @@
-//! What a command's report tells its node (`crates/agent-session/src/reports.rs`):
-//! its progress while it runs, or its end, each with the output since the
-//! node's last look as a `shell` result shows it. A report is data; the text
-//! the model reads is rendered from it where it is replayed
-//! ([`demi_agent_transcript::report_text`]). Its output moves the node's
-//! place only when the report is written into the transcript, so a report
-//! dropped because a look showed the end first moves nothing.
+//! What a command's report tells its node
+//! (`crates/agent-session/src/reports.rs`).
+//!
+//! A report is its progress while it runs, or its end, each with the output
+//! since the node's last look as a `shell` result shows it. A report is data;
+//! the text the model reads is rendered from it where it is replayed
+//! ([`demi_agent_transcript::report_text`]).
+//!
+//! Its output moves the node's place only when the report is written into the
+//! transcript, so a report dropped because a look showed the end first moves
+//! nothing.
 
 use demi_agent_transcript::{REPLAY_CHARS, report_text};
 use demi_host_interface::CommandStatus;
@@ -24,10 +28,11 @@ pub enum EndOf {
     Unrecorded,
 }
 
-/// The report of `command`, which still runs and reports every
-/// `interval_ms`: how long it has run and printed nothing. Its output is
-/// read when the report is written ([`fill_output`]), which moves the
-/// node's place then.
+/// The report of `command`, which still runs and reports every `interval_ms`:
+/// how long it has run and printed nothing.
+///
+/// Its output is read when the report is written ([`fill_output`]), which moves
+/// the node's place then.
 pub fn progress_report(
     command: &CommandId,
     title: &str,

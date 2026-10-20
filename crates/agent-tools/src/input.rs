@@ -34,11 +34,13 @@ pub(super) struct ShellInput {
     pub(super) interval_ms: Interval,
 }
 
-// How a call asks its command to be watched: whole milliseconds, or none
-// for a resident command. Its field is required, and its schema says `null`
-// is a value: a field of an `Option` would be optional to serde and
-// schemars alike, and schemars's `required` takes the `null` out. (A doc
-// comment would become the field's description in the model's schema.)
+// How a call asks its command to be watched: whole milliseconds, or none for a
+// resident command.
+//
+// Its field is required, and its schema says `null` is a value: a field of an
+// `Option` would be optional to serde and schemars alike, and schemars's
+// `required` takes the `null` out. (A doc comment would become the field's
+// description in the model's schema.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Interval(pub(super) Option<u64>);
 
@@ -62,12 +64,13 @@ fn interval<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Interva
     Option::<u64>::deserialize(deserializer).map(Interval)
 }
 
-/// A command's interval as a node's shells take it: `asked`, within the
-/// bounds from `floor` to [`INTERVAL_CAP_MS`], and the line that says so
-/// when it was outside them (`crates/agent-tools/src/lib.rs`), naming it as
-/// `field` names it, such as `intervalMs 900000 is above the cap; taken as
-/// 600000`. The floor is [`INTERVAL_FLOOR_MS`] in the product; a test
-/// configures a shorter one.
+/// A command's interval as a node's shells take it: `asked`, within the bounds
+/// from `floor` to [`INTERVAL_CAP_MS`].
+///
+/// The result also holds the line that says so when `asked` was outside the
+/// bounds (`crates/agent-tools/src/lib.rs`), naming it as `field` names it,
+/// such as `intervalMs 900000 is above the cap; taken as 600000`. The floor is
+/// [`INTERVAL_FLOOR_MS`] in the product; a test configures a shorter one.
 pub fn taken_interval(asked: u64, floor: u32, field: &str) -> (u32, Option<String>) {
     if asked > u64::from(INTERVAL_CAP_MS) {
         let note = format!("{field} {asked} is above the cap; taken as {INTERVAL_CAP_MS}");

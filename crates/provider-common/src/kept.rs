@@ -1,10 +1,12 @@
 //! A value read from a vendor's service and kept for a while, such as the
 //! newest release of a vendor's CLI
 //! (`crates/backend-providers/src/llm/claude_releases.rs`,
-//! `crates/provider-codex/src/models.rs`): believed until it is older than its
-//! lifetime, then read again in the background while the kept one still
-//! answers, so that a reader that can use it never waits. Concurrent readers
-//! share one read, and a failed read keeps what was read before.
+//! `crates/provider-codex/src/models.rs`).
+//!
+//! The value is believed until it is older than its lifetime, then read again
+//! in the background while the kept one still answers, so that a reader that
+//! can use it never waits. Concurrent readers share one read, and a failed read
+//! keeps what was read before.
 
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -13,7 +15,6 @@ use demi_shared_types::{Clock, Timestamp};
 use jiff::SignedDuration;
 use tokio::runtime::Handle;
 
-/// The kept value of one read.
 pub struct KeptRead<T> {
     /// How long a value read is believed.
     lifetime: SignedDuration,
@@ -65,9 +66,11 @@ impl<T: Clone> KeptRead<T> {
     }
 
     /// The value read within its lifetime, or a new read by `read`, which a
-    /// concurrent caller waits for and shares. With `refresh`, only a read
-    /// that finished after the call began answers without a new one. A
-    /// failed read keeps the value read before and fails this call alone.
+    /// concurrent caller waits for and shares.
+    ///
+    /// With `refresh`, only a read that finished after the call began answers
+    /// without a new one. A failed read keeps the value read before and fails
+    /// this call alone.
     pub async fn read<F, Fut, E>(&self, refresh: bool, read: F) -> Result<T, E>
     where
         F: FnOnce() -> Fut,
@@ -102,11 +105,13 @@ impl<T: Clone> KeptRead<T> {
         state.value.as_ref().map(|(_, value)| value.clone())
     }
 
-    /// The value last read, at once, fresh or not; none before the first
-    /// read succeeds. When it is older than its lifetime or missing, and no
-    /// read is under way, `read_again` is spawned on `edge`: it reads by
-    /// [`read`](Self::read) for a later call to answer with, and says what
-    /// becomes of a failure. Otherwise it is dropped unpolled.
+    /// The value last read, at once, fresh or not; none before the first read
+    /// succeeds.
+    ///
+    /// When it is older than its lifetime or missing, and no read is under way,
+    /// `read_again` is spawned on `edge`: it reads by [`read`](Self::read) for
+    /// a later call to answer with, and says what becomes of a failure.
+    /// Otherwise it is dropped unpolled.
     pub fn kept(
         &self,
         edge: &Handle,

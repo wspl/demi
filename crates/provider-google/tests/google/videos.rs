@@ -1,11 +1,16 @@
-//! A Gemini API key's videos (the Veo shape) against a
-//! scripted vendor built from Google's Veo guide
-//! (ai.google.dev/gemini-api/docs/video): the models that list
-//! `predictLongRunning`, the ask with its `instances` and `parameters`, the
-//! operation read until `done`, the video downloaded with the key from the
-//! key's endpoint and without it through the redirect to storage Google
-//! answers, and a failed or filtered operation told in
-//! Google's words. No test calls a vendor.
+//! A Gemini API key's videos (the Veo shape) against a scripted vendor built
+//! from Google's Veo guide (ai.google.dev/gemini-api/docs/video).
+//!
+//! The tests cover:
+//!
+//! - the models that list `predictLongRunning`;
+//! - the ask with its `instances` and `parameters`;
+//! - the operation read until `done`;
+//! - the video downloaded with the key from the key's endpoint and without it
+//!   through the redirect to storage Google answers;
+//! - a failed or filtered operation told in Google's words.
+//!
+//! No test calls a vendor.
 
 use std::sync::Arc;
 
@@ -47,11 +52,13 @@ fn image(bytes: &'static [u8]) -> InputImage {
     InputImage { media_type: "image/png", bytes: Bytes::from_static(bytes) }
 }
 
-/// Planted defects this catches: a model without `predictLongRunning`
-/// listed; `durationSeconds` or the frames sent under the image API's
-/// names; an operation not yet `done` read as a failure; the download sent
-/// without the key or not following Google's redirect; the key sent on to
-/// the storage host the redirect names.
+/// Planted defects this catches:
+///
+/// - a model without `predictLongRunning` listed;
+/// - `durationSeconds` or the frames sent under the image API's names;
+/// - an operation not yet `done` read as a failure;
+/// - the download sent without the key or not following Google's redirect;
+/// - the key sent on to the storage host the redirect names.
 // Two scripted servers, seven requests: milliseconds.
 #[tokio::test]
 async fn veo_lists_its_models_asks_with_instances_and_parameters_and_downloads_with_the_key() {

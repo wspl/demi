@@ -1,9 +1,13 @@
-//! How a Codex request reaches the Responses backend: over a WebSocket as one
-//! `response.create` message, over
-//! server-sent events, or the WebSocket first with server-sent events as the
-//! fallback. Every answer of the service, a refusal included, is shown to the
-//! account's quota, and the windows it reported are kept for the call's usage
-//! ledger row.
+//! How a Codex request reaches the Responses backend.
+//!
+//! The transport is one of these:
+//!
+//! - a WebSocket, as one `response.create` message;
+//! - server-sent events;
+//! - the WebSocket first, with server-sent events as the fallback.
+//!
+//! Every answer of the service, a refusal included, is shown to the account's
+//! quota, and the windows it reported are kept for the call's usage ledger row.
 
 use std::time::Duration;
 
@@ -54,9 +58,12 @@ pub(crate) struct Refusal {
     pub(crate) body: String,
 }
 
-/// Opens the request by the provider's transport. With both, a WebSocket
-/// that fails before its first event gives way to server-sent events unless
-/// the run was cancelled; after its first event, its failure is the run's.
+/// Opens the request by the provider's transport.
+///
+/// With both, a WebSocket that fails before its first event gives way to
+/// server-sent events unless the run was cancelled. After its first event, its
+/// failure is the run's.
+///
 /// A WebSocket that cannot connect at all, which is how networks that block
 /// WebSockets show, sends the provider's requests over server-sent events at
 /// once for [`WEBSOCKET_RETRY_AFTER`].
@@ -103,10 +110,12 @@ pub(crate) async fn open(
     }
 }
 
-/// How long a WebSocket that could not connect leaves the provider's
-/// requests to server-sent events: long enough that a network that blocks
-/// WebSockets does not cost each request a failed connect, short enough that
-/// a passing failure does not cost the WebSocket for long.
+/// How long a WebSocket that could not connect leaves the provider's requests
+/// to server-sent events.
+///
+/// It is long enough that a network that blocks WebSockets does not cost each
+/// request a failed connect, and short enough that a passing failure does not
+/// cost the WebSocket for long.
 const WEBSOCKET_RETRY_AFTER: Duration = Duration::from_secs(600);
 
 /// Whether a WebSocket failed to connect within [`WEBSOCKET_RETRY_AFTER`].
@@ -250,10 +259,14 @@ async fn websocket(
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-/// The events a WebSocket sends. A terminal event ends the stream after the
-/// socket is closed with `response_done`; cancellation closes it with
-/// `aborted`; a socket that idles past `idle` fails and closes with
-/// `idle_timeout`. Dropping the stream drops the connection.
+/// The events a WebSocket sends.
+///
+/// - A terminal event ends the stream after the socket is closed with
+///   `response_done`.
+/// - Cancellation closes it with `aborted`.
+/// - A socket that idles past `idle` fails and closes with `idle_timeout`.
+///
+/// Dropping the stream drops the connection.
 fn websocket_events(
     mut socket: Socket,
     idle: Option<Duration>,

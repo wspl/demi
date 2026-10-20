@@ -398,9 +398,10 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
 }
 
 /// An edit keeps a file by naming it: an attachment record by its number, and
-/// an image, a video or a document by its kind and blob. The session puts
-/// the edited message's own block in its place, so the model reads the
-/// bytes and the block keeps its media type and file name; a file the
+/// an image, a video or a document by its kind and blob.
+///
+/// The session puts the edited message's own block in its place, so the model
+/// reads the bytes and the block keeps its media type and file name. A file the
 /// message does not hold is refused.
 #[tokio::test(flavor = "local")]
 async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not() {
@@ -957,11 +958,17 @@ async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
     assert_eq!(steer.comments, comments);
 }
 
-/// A comment on a picture of the reply, sent with a text comment, as
-/// the model reads it: the text comment's
-/// quote and comment, then the picture as an image the message carries,
-/// read from its blob, then its comment, then the message's own text. A
-/// model that reads no images gets a note naming the picture in its place.
+/// A comment on a picture of the reply, sent with a text comment, as the model
+/// reads it.
+///
+/// The model reads, in order:
+///
+/// 1. the text comment's quote and comment;
+/// 2. the picture as an image the message carries, read from its blob;
+/// 3. its comment;
+/// 4. the message's own text.
+///
+/// A model that reads no images gets a note naming the picture in its place.
 #[tokio::test(flavor = "local")]
 async fn a_picture_comment_reaches_the_model_as_the_image_then_its_comment() {
     for reads_images in [true, false] {
@@ -1077,9 +1084,10 @@ async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
 }
 
 /// A message's comments: the model reads each quoted text as a `>` quote with
-/// its comment after it, then the typed text; the `user` block keeps them apart
-/// from its content, and an edit of the message changes its text and keeps
-/// them.
+/// its comment after it, then the typed text.
+///
+/// The `user` block keeps them apart from its content, and an edit of the
+/// message changes its text and keeps them.
 #[tokio::test(flavor = "local")]
 async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_edit_keeps_them() {
     let script = ScriptedRuntime::new([said("Uploads fail because"), said("Starting smaller"), said("Starting at 1 MB")]);

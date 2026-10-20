@@ -1,20 +1,24 @@
 //! A conversation's live tree: its root and every live child, the connections
 //! attached to it, the frames its sessions' events become, and its eviction
-//! once it has stayed detached and quiescent. The supervisor operations on its
-//! children are in [`supervisor`], and its commands' live output in [`live`].
+//! once it has stayed detached and quiescent.
+//!
+//! The supervisor operations on its children are in [`supervisor`], and its
+//! commands' live output in [`live`].
 //!
 //! Subagent traffic of the whole tree travels on the conversation's one socket,
-//! flat: a job's `parentSessionId` is the tree. A child's transcript goes only
-//! to a connection that shows it (`show_subagents`), so opening a conversation
-//! whose five children each hold megabytes of output costs the root's latest
-//! page and five summaries; each open sends the `subagents` summary of every
-//! child, so one that started or finished while the page was away shows as it
-//! is. A child's blocks never reach another session's inference transcript: the
-//! parent never receiving a child's tool history is what subagents are for.
+//! flat: a job's `parentSessionId` is the tree.
+//!
+//! - A child's transcript goes only to a connection that shows it
+//!   (`show_subagents`), so opening a conversation whose five children each
+//!   hold megabytes of output costs the root's latest page and five summaries.
+//! - Each open sends the `subagents` summary of every child, so one that
+//!   started or finished while the page was away shows as it is.
+//! - A child's blocks never reach another session's inference transcript: the
+//!   parent never receiving a child's tool history is what subagents are for.
 //!
 //! A connection that closes only detaches. A tree detached and quiescent for
 //! `ServerConfig::idle_tree` is disposed, saving its checkpoints, and the next
-//! open restores it as after a restart; a live child or a running command is
+//! open restores it as after a restart. A live child or a running command is
 //! not quiescent, so only an idle root is evicted.
 
 mod live;
@@ -127,9 +131,10 @@ pub struct Tree<H: HostResolver> {
 }
 
 /// The shells of a child that closed while its commands still ran
-/// (`crates/agent-server/src/server/tree/supervisor.rs`): the pages see each
-/// command stopping, any agent can look at it or stop it, and its environment
-/// records its end when its runner reports it.
+/// (`crates/agent-server/src/server/tree/supervisor.rs`).
+///
+/// The pages see each command stopping, any agent can look at it or stop it,
+/// and its environment records its end when its runner reports it.
 pub(crate) struct StoppingShells {
     /// The closed child whose commands they are.
     subagent: NodeId,
@@ -311,10 +316,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Opens the conversation's tree from its store, or creates it, with the
-    /// model selection its record holds and a runtime for it; a restored root
-    /// switches to that selection at its next provider request. The caller
-    /// holds the root's opening order and then hands the continuation to
-    /// [`continue_restored`](Self::continue_restored).
+    /// model selection its record holds and a runtime for it.
+    ///
+    /// A restored root switches to that selection at its next provider request.
+    /// The caller holds the root's opening order and then hands the
+    /// continuation to [`continue_restored`](Self::continue_restored).
     pub(crate) async fn open(
         server: &Rc<AgentServer<H>>,
         root: &NodeId,
@@ -465,7 +471,6 @@ impl<H: HostResolver> Tree<H> {
         Ok((tree, assembled.continuation))
     }
 
-    /// The root node.
     pub fn root(&self) -> &Rc<Node<H>> {
         &self.root
     }
@@ -481,9 +486,10 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The `context_usage` of each live node, the root's, then each live
-    /// child's, depth first in spawn order: none for a node whose session
-    /// cannot tell it without reading a blob, so the page shows no figure
-    /// from before.
+    /// child's, depth first in spawn order.
+    ///
+    /// None for a node whose session cannot tell it without reading a blob, so
+    /// the page shows no figure from before.
     pub(crate) async fn held_context_usage(&self) -> Vec<ServerFrame> {
         let nodes: Vec<Rc<Node<H>>> = std::iter::once(self.root.clone())
             .chain(self.descendants().iter().map(|child| child.node().clone()))
@@ -529,13 +535,16 @@ impl<H: HostResolver> Tree<H> {
         &self.admission
     }
 
-    /// Interrupts the tree for a transition of a Host it cannot work
-    /// without, such as a Cloud reset (`crates/backend-cloud/src/uses.rs`): its admission is reserved, so no action
-    /// starts; the root's running action is stopped as the user's Stop
-    /// would stop it, every live child is aborted, and the root's shells
-    /// end. The reservation is answered once every action has let go of
-    /// the admission; what waits to run stays queued and runs once it is
-    /// dropped.
+    /// Interrupts the tree for a transition of a Host it cannot work without,
+    /// such as a Cloud reset (`crates/backend-cloud/src/uses.rs`).
+    ///
+    /// - Its admission is reserved, so no action starts.
+    /// - The root's running action is stopped as the user's Stop would stop it.
+    /// - Every live child is aborted.
+    /// - The root's shells end.
+    ///
+    /// The reservation is answered once every action has let go of the
+    /// admission; what waits to run stays queued and runs once it is dropped.
     /// `hold` names the transition, as the stopped calls' results say it
     /// (`crates/agent-session/src/core.rs`), such as "the Cloud is being
     /// reset".
@@ -565,10 +574,11 @@ impl<H: HostResolver> Tree<H> {
         self.sink.emit(frame);
     }
 
-    /// Writes a page's input to the conversation's command `command`: through
-    /// the shells of the live node that holds it, or of the closed child it
-    /// stays with while it stops
-    /// (`crates/agent-server/src/server/tree/supervisor.rs`); the root's shells
+    /// Writes a page's input to the conversation's command `command`.
+    ///
+    /// The input goes through the shells of the live node that holds it, or of
+    /// the closed child it stays with while it stops
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`). The root's shells
     /// refuse a command nothing holds.
     pub(crate) async fn shell_write(&self, command: &CommandId, stdin: String) -> Result<(), String> {
         match (self.holder(command), self.stopping_shell(command)) {
@@ -625,10 +635,11 @@ impl<H: HostResolver> Tree<H> {
             .cloned()
     }
 
-    /// Where the conversation's command `command` is, whichever agent ran
-    /// it: held by a node's shells while it runs and until its end is
-    /// given, by a closed child's while it stops, then known to the store,
-    /// which keeps its output.
+    /// Where the conversation's command `command` is, whichever agent ran it.
+    ///
+    /// It is held by a node's shells while it runs and until its end is given,
+    /// then by a closed child's while it stops, then known to the store, which
+    /// keeps its output.
     pub(crate) async fn command_place(&self, command: &CommandId) -> Result<CommandPlace<H>, String> {
         if let Some(node) = self.holder(command) {
             return Ok(CommandPlace::Held(node));
@@ -667,14 +678,15 @@ impl<H: HostResolver> Tree<H> {
             || !quiescent(&self.root.session().status())
     }
 
-    /// Whether the tree works, and only waits for its primary device: no
-    /// child starts, and every node that runs, the root while it runs or
-    /// waits to run and each live child, is running its tools, each of its
-    /// calls still executing a command whose start waits for its Host, as
-    /// for the conversation's offline device. A provider request, a call
-    /// that runs or a child at other work is work
-    /// (`crates/backend-host-access/src/transition.rs`). The
-    /// conversation's summary announces it.
+    /// Whether the tree works, and only waits for its primary device.
+    ///
+    /// No child starts, and every node that runs (the root while it runs or
+    /// waits to run, and each live child) is running its tools, each of its
+    /// calls still executing a command whose start waits for its Host, as for
+    /// the conversation's offline device. A provider request, a call that runs
+    /// or a child at other work is work
+    /// (`crates/backend-host-access/src/transition.rs`). The conversation's
+    /// summary announces it.
     pub fn only_waits(&self) -> bool {
         if !self.works() || !self.starting.borrow().is_empty() {
             return false;
@@ -712,7 +724,6 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Whether a command of the tree runs.
     pub fn runs_commands(&self) -> bool {
         self.live.runs_commands()
     }
@@ -725,10 +736,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// A watch that wakes at each change that may make the tree quiescent or
-    /// not, or its admission free to reserve: its root's status, a child's
-    /// start or close, a command's start or end, a lease or a reservation of
-    /// its admission. It does not keep the tree alive, and it wakes once the
-    /// tree is gone.
+    /// not, or its admission free to reserve.
+    ///
+    /// The changes are its root's status, a child's start or close, a command's
+    /// start or end, and a lease or a reservation of its admission. The watch
+    /// does not keep the tree alive, and it wakes once the tree is gone.
     pub fn watch_quiescence(&self) -> QuiescenceWatch {
         QuiescenceWatch {
             status: self.root.session().status_watch(),
@@ -738,15 +750,21 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Attaches a connection beside the others and sends it the open
-    /// handshake in one step, so nothing happens to the tree between
-    /// `opened` and the last live command: the root's snapshot frames, its
-    /// transcript `reset` from the blocks the page holds, which the root's
-    /// session read just before (`AgentSession::reset`), the summary of
-    /// every child, then each live child's `started`, with its transcript
-    /// when the connection shows it (`shown`), depth first in spawn order,
-    /// then the view of each live command of the tree. Answers how many
-    /// frames it sent.
+    /// Attaches a connection beside the others and sends it the open handshake
+    /// in one step, so nothing happens to the tree between `opened` and the
+    /// last live command.
+    ///
+    /// The handshake is, in order:
+    ///
+    /// 1. the root's snapshot frames;
+    /// 2. its transcript `reset` from the blocks the page holds, which the
+    ///    root's session read just before (`AgentSession::reset`);
+    /// 3. the summary of every child;
+    /// 4. each live child's `started`, with its transcript when the connection
+    ///    shows it (`shown`), depth first in spawn order;
+    /// 5. the view of each live command of the tree.
+    ///
+    /// Answers how many frames it sent.
     pub(crate) fn attach(
         &self,
         connection: u64,
@@ -801,10 +819,12 @@ impl<H: HostResolver> Tree<H> {
         sent
     }
 
-    /// Fresh transcripts of the root, from `reset`, and of every live child
-    /// the connection shows (`shown`), with the view of each live command
-    /// of the tree: the answer to a connection that saw a gap in the patch
-    /// revisions, which goes to that connection alone.
+    /// Fresh transcripts of the root, from `reset`, and of every live child the
+    /// connection shows (`shown`), with the view of each live command of the
+    /// tree.
+    ///
+    /// It is the answer to a connection that saw a gap in the patch revisions,
+    /// which goes to that connection alone.
     pub(crate) fn fresh_transcripts(
         &self,
         reset: Reset,
@@ -820,9 +840,10 @@ impl<H: HostResolver> Tree<H> {
 
 
     /// The `shell_output` of each live command
-    /// (`crates/agent-server/src/server/tree/live.rs`): the root's, then each
-    /// live child's, depth first in spawn order, then each one a closed child's
-    /// shells hold while it stops.
+    /// (`crates/agent-server/src/server/tree/live.rs`).
+    ///
+    /// The order is the root's, then each live child's, depth first in spawn
+    /// order, then each one a closed child's shells hold while it stops.
     fn live_commands(&self) -> Vec<ServerFrame> {
         let mut frames: Vec<ServerFrame> = self
             .root
@@ -857,9 +878,10 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// What a restored tree does next
-    /// (`crates/agent-server/src/server/tree/supervisor.rs`): the root
-    /// continues under its policy, then its children come back from the store,
-    /// each restoring its own.
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`).
+    ///
+    /// The root continues under its policy, then its children come back from
+    /// the store, each restoring its own.
     pub(crate) async fn continue_restored(
         self: &Rc<Self>,
         continuation: Continuation,
@@ -879,8 +901,10 @@ impl<H: HostResolver> Tree<H> {
 
     /// Disposes the tree: the starts and closes under way finish, then every
     /// session saves its final checkpoint and the subtree stays live in the
-    /// store for the next open. Every attached connection receives what the
-    /// disposal changed, then `closed`, and is detached.
+    /// store for the next open.
+    ///
+    /// Every attached connection receives what the disposal changed, then
+    /// `closed`, and is detached.
     pub(crate) async fn dispose(&self) {
         self.disposing.set(true);
         for child in self.children.borrow().values() {

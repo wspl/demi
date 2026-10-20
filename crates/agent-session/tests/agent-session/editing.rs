@@ -1,8 +1,14 @@
-//! Message editing at the session: what an edit shows before its save
-//! commits, what the session admits while the edit is prepared, a stop or
-//! dispose during it, the work that refuses it, the order of saves, where
-//! the cut falls, and what stays accepted when the replacement's turn
-//! fails.
+//! Message editing at the session.
+//!
+//! The tests cover:
+//!
+//! - what an edit shows before its save commits;
+//! - what the session admits while the edit is prepared;
+//! - a stop or dispose during it;
+//! - the work that refuses it;
+//! - the order of saves;
+//! - where the cut falls;
+//! - what stays accepted when the replacement's turn fails.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
 use demi_agent_session::ErrorReport;

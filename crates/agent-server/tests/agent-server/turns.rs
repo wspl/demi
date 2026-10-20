@@ -1,7 +1,13 @@
-//! Turns over the conversation socket: a message runs to its response and
-//! its patches rebuild the transcript; a failure, a stop and a close in the
-//! middle of a turn; a reopen from the store after a close and after a
-//! crash; model switches; the product's texts.
+//! Turns over the conversation socket.
+//!
+//! The tests cover:
+//!
+//! - a message that runs to its response, and its patches rebuilding the
+//!   transcript;
+//! - a failure, a stop and a close in the middle of a turn;
+//! - a reopen from the store after a close and after a crash;
+//! - model switches;
+//! - the product's texts.
 
 use std::{cell::Cell, rc::Rc, time::Duration};
 
@@ -162,10 +168,12 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     }
 }
 
-/// A failed run ends its turn with an `error` frame, which the page shows
-/// with its code, and an `error` block; what the vendor streamed before the
-/// failure stays, and the queued message runs next. The code is spelled as
-/// the product spells it: one of Demi's codes, or the vendor's own.
+/// A failed run ends its turn with an `error` frame, which the page shows with
+/// its code, and an `error` block. What the vendor streamed before the failure
+/// stays, and the queued message runs next.
+///
+/// The code is spelled as the product spells it: one of Demi's codes, or the
+/// vendor's own.
 #[tokio::test(flavor = "local")]
 async fn a_provider_failure_reaches_the_page_once_with_its_code_and_the_queued_message_runs_next() {
     for (code, spelled) in [
@@ -443,10 +451,12 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     );
 }
 
-/// A page that had a figure for the root's context, and opens again once
-/// the conversation was restored, is told the figure is unknown while an
-/// image no response measured has not been read back
-/// (`crates/agent-server/src/server/tree.rs`): it shows no figure rather than the old one.
+/// A page that had a figure for the root's context, and opens again once the
+/// conversation was restored, is told the figure is unknown while an image no
+/// response measured has not been read back
+/// (`crates/agent-server/src/server/tree.rs`).
+///
+/// It shows no figure rather than the old one.
 #[tokio::test(flavor = "local")]
 async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() {
     let failing = Turn::Stream(Box::new(|_| {
@@ -746,10 +756,11 @@ async fn a_switch_lands_at_the_next_request_inside_the_running_turn() {
 }
 
 /// A switch to another provider builds that provider's runtime before it is
-/// recorded, which serves from the next request on; the old runtime is
-/// closed then, and so is the runtime of a pending switch that a switch to
-/// yet another provider replaced. A switch within the pending switch's
-/// provider builds nothing and keeps its runtime.
+/// recorded, which serves from the next request on.
+///
+/// The old runtime is closed then, and so is the runtime of a pending switch
+/// that a switch to yet another provider replaced. A switch within the pending
+/// switch's provider builds nothing and keeps its runtime.
 #[tokio::test(flavor = "local")]
 async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_at_the_next_request()
  {
@@ -1092,10 +1103,12 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_
     assert!(tree.root().session().queued_messages().is_empty());
 }
 
-/// A report that waited in the checkpoint for a command whose shells were
-/// let go, as a backend shutdown lets them go, carries the command's stored
-/// output when it is written: its node no longer holds the command
-/// (`crates/agent-session/src/reports.rs`). A few milliseconds.
+/// A report that waited in the checkpoint for a command whose shells were let
+/// go, as a backend shutdown lets them go, carries the command's stored output
+/// when it is written: its node no longer holds the command
+/// (`crates/agent-session/src/reports.rs`).
+///
+/// A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output() {
     use demi_agent_store::{
@@ -1165,11 +1178,13 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
     );
 }
 
-/// A job's `rpc` call asks its node to take its command up; when the
-/// command cannot be taken up, as when its Host cannot be reached, the call
-/// hears why instead of waiting for a take-up that never comes
-/// (`crates/agent-session/src/reports.rs`). A job no live node ran is unknown. A
-/// few milliseconds.
+/// A job's `rpc` call asks its node to take its command up.
+///
+/// When the command cannot be taken up, as when its Host cannot be reached, the
+/// call hears why instead of waiting for a take-up that never comes
+/// (`crates/agent-session/src/reports.rs`). A job no live node ran is unknown.
+///
+/// A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_whose_command_cannot_be_taken_up_answers_why() {
     use demi_agent_store::RunningCommand;

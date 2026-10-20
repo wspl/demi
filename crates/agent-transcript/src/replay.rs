@@ -1,17 +1,22 @@
-//! What the model receives of a transcript: the blocks from the last
-//! compaction boundary on, each as its inference item, with long texts cut
-//! in the middle, each medium with the bytes the session holds for it, and
-//! each medium the request's model cannot take as a text that says why.
+//! What the model receives of a transcript.
+//!
+//! It is the blocks from the last compaction boundary on, each as its inference
+//! item, with long texts cut in the middle, each medium with the bytes the
+//! session holds for it, and each medium the request's model cannot take as a
+//! text that says why.
 //!
 //! Replay reads only what the blocks hold for the model and which media the
-//! request's model accepts, never an ID or a time, and a block keeps its
-//! place, so the same history gives the same items for the same model in any
-//! session. Each request's items therefore begin with the previous request's:
-//! new blocks are appended, a tool call's result completes a call no request
-//! carried yet, and a view is never replayed. Only compaction, a model switch
-//! and an edit change what an earlier request carried, and a retry or a
-//! resume cuts back to an earlier request. This is how a session keeps its
-//! vendor's prompt cache.
+//! request's model accepts, never an ID or a time, and a block keeps its place,
+//! so the same history gives the same items for the same model in any session.
+//!
+//! Each request's items therefore begin with the previous request's. This is
+//! how a session keeps its vendor's prompt cache:
+//!
+//! - New blocks are appended.
+//! - A tool call's result completes a call no request carried yet.
+//! - A view is never replayed.
+//! - Only compaction, a model switch and an edit change what an earlier request
+//!   carried, and a retry or a resume cuts back to an earlier request.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -228,13 +233,14 @@ fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
     start + 1..marker
 }
 
-/// A request of one model over the model's view: the one owner of what
-/// each medium becomes in that request. Each medium goes with the bytes
-/// the session holds for it, within the types the model reads natively,
-/// each within half of its vendor's request body limit. A medium whose
-/// blob is missing, and any medium the model cannot take, goes as a text
-/// that names it, the same text in every request to that model. Replay
-/// puts that into the request's items, and the token estimates weigh it.
+/// A request of one model over the model's view: the one owner of what each
+/// medium becomes in that request.
+///
+/// Each medium goes with the bytes the session holds for it, within the types
+/// the model reads natively, each within half of its vendor's request body
+/// limit. A medium whose blob is missing, and any medium the model cannot take,
+/// goes as a text that names it, the same text in every request to that model.
+/// Replay puts that into the request's items, and the token estimates weigh it.
 pub struct RequestView<'a> {
     view: &'a ModelView,
     model: &'a Model,
@@ -393,9 +399,11 @@ impl<'a> RequestView<'a> {
     }
 
     /// Reports that arrived together as the model receives them: their text,
-    /// one paragraph each, and after a report whose job viewed media, those
-    /// media, each as a tool result's medium is replayed, with the lines
-    /// about them (`crates/agent-tools/src/result.rs`).
+    /// one paragraph each.
+    ///
+    /// After a report whose job viewed media come those media, each as a tool
+    /// result's medium is replayed, with the lines about them
+    /// (`crates/agent-tools/src/result.rs`).
     fn reports(&self, reports: &[CommandReport]) -> Vec<UserPart> {
         let mut parts = Vec::new();
         let mut text: Vec<String> = Vec::new();
@@ -489,9 +497,11 @@ impl<'a> RequestView<'a> {
     }
 
     /// The bytes the session holds for the medium `blob` names, of
-    /// `media_type`; or the text it reaches the model as when its blob is
-    /// missing, or when the model does not take it (`accepted` says whether
-    /// it reads the type), with `name` naming it.
+    /// `media_type`.
+    ///
+    /// When its blob is missing, or when the model does not take it (`accepted`
+    /// says whether it reads the type), it is the text the medium reaches the
+    /// model as, with `name` naming it.
     fn bytes(
         &self,
         kind: &str,
@@ -571,11 +581,12 @@ enum EnvelopeSender<'a> {
     Product(&'static str),
 }
 
-/// The model-facing text of an agent message: an instruction on how to take
-/// it, then the message as JSON. A provider may need a user-role item to
-/// carry it; that wire role does not make the message human-authored in the
-/// transcript or the web app, and it is never replayed as the recipient's own
-/// assistant answer.
+/// The model-facing text of an agent message: an instruction on how to take it,
+/// then the message as JSON.
+///
+/// A provider may need a user-role item to carry it. That wire role does not
+/// make the message human-authored in the transcript or the web app, and it is
+/// never replayed as the recipient's own assistant answer.
 pub fn agent_message_envelope(message: &AgentMessage) -> String {
     let (event, outcome) = match &message.event {
         AgentMessageEvent::Message {} => ("message", None),

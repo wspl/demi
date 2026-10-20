@@ -1,12 +1,13 @@
-//! The blocks before a session's window: what a work that concerns them
-//! reads from the store while it holds the session's save order, under
-//! which no row before the window changes and the window keeps its
-//! start.
+//! The blocks before a session's window.
+//!
+//! A work that concerns them reads them from the store while it holds the
+//! session's save order, under which no row before the window changes and the
+//! window keeps its start.
 //!
 //! The window is the only copy of the transcript the live process keeps, so a
 //! tree's memory grows with its sessions' windows, never with the length of
-//! their conversations; whatever concerns a block before it, a page reading
-//! history, an edit, a Fork, reads the rows it needs from the store and holds
+//! their conversations. Whatever concerns a block before it (a page reading
+//! history, an edit, a Fork) reads the rows it needs from the store and holds
 //! them no longer than that work.
 
 use std::collections::BTreeMap;
@@ -18,11 +19,12 @@ use demi_shared_types::{Block, BlockId};
 
 use super::SessionShared;
 
-/// Holds the blocks from the last `compaction_boundary` at or before
-/// `position` on, reading those before the window from the store, so that
-/// a rewrite of the history from there sees them. The caller holds the
-/// session's save order; the next save that leaves nothing unsaved before
-/// the last boundary lets them go again.
+/// Holds the blocks from the last `compaction_boundary` at or before `position`
+/// on, so that a rewrite of the history from there sees them.
+///
+/// Those before the window are read from the store. The caller holds the
+/// session's save order; the next save that leaves nothing unsaved before the
+/// last boundary lets them go again.
 pub(crate) async fn reach(s: &SessionShared, position: usize) -> Result<(), StoreError> {
     let start = s.read(|core| core.transcript.start());
     if position >= start {
@@ -66,14 +68,17 @@ pub struct Reset {
     pub version: demi_conversation_socket_protocol::TranscriptVersion,
 }
 
-/// The reset of the session's transcript for a page that holds its blocks
-/// up to `from`, whose block there it holds as `edge`: from `from` while
-/// that block is still `edge`, else from the start of the latest page,
-/// which the window holds ([`latest_page_start_within`]). A reset within
-/// the window is read at once, so that it follows every frame sent before
-/// it even while a save waits to commit; one from a place before the
-/// window holds the session's save order and reads the blocks the page
-/// holds from there from the store.
+/// The reset of the session's transcript for a page that holds its blocks up to
+/// `from`, whose block there it holds as `edge`.
+///
+/// The reset starts from `from` while that block is still `edge`, else from the
+/// start of the latest page, which the window holds
+/// ([`latest_page_start_within`]).
+///
+/// - A reset within the window is read at once, so that it follows every frame
+///   sent before it even while a save waits to commit.
+/// - One from a place before the window holds the session's save order and
+///   reads the blocks the page holds from there from the store.
 pub(crate) async fn reset(s: &SessionShared, from: Option<u32>, edge: Option<&BlockId>) -> Result<Reset, StoreError> {
     let held = from.and_then(|from| usize::try_from(from).ok());
     let before = match (held, edge) {

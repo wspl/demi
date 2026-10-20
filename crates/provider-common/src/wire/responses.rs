@@ -1,11 +1,12 @@
-//! The OpenAI Responses stream as Demi reads it, shared by every provider
-//! that speaks it (the OpenAI Responses API and the Codex backend, over
-//! server-sent events or a WebSocket): the events Demi maps, decoded in two
-//! steps by their `type`, and their mapping onto a run's events.
+//! The OpenAI Responses stream as Demi reads it, shared by every provider that
+//! speaks it (the OpenAI Responses API and the Codex backend, over server-sent
+//! events or a WebSocket).
 //!
-//! The types describe only the fields Demi reads. A reasoning item keeps
-//! every other field, because it is sent back to the vendor with the
-//! transcript.
+//! The module holds the events Demi maps, decoded in two steps by their `type`,
+//! and their mapping onto a run's events.
+//!
+//! The types describe only the fields Demi reads. A reasoning item keeps every
+//! other field, because it is sent back to the vendor with the transcript.
 
 use std::{
     collections::HashMap,
@@ -345,9 +346,10 @@ pub fn split_tool_use_id(tool_use_id: &str) -> (&str, Option<&str>) {
 }
 
 /// The events of a Responses body sent as server-sent events, each with the
-/// text it arrived as, until the body ends or `cancel` fires. A body that
-/// breaks off or a frame that cannot be decoded is the stream's last item,
-/// as a failure.
+/// text it arrived as, until the body ends or `cancel` fires.
+///
+/// A body that breaks off or a frame that cannot be decoded is the stream's
+/// last item, as a failure.
 pub fn sse_events<'a, S>(
     body: S,
     label: &'static str,
@@ -372,13 +374,14 @@ where
 
 /// Maps a Responses stream onto a run's events
 /// (`crates/provider-common/src/contract.rs`,
-/// `crates/provider-common/src/wire/mod.rs`). The run ends with a response
-/// after the
-/// completion event, and with a failure after a failed or incomplete
-/// response, an error, or a stream that ends without its completion event.
-/// `events` ends when `cancel` fires, and then the run ends without a
-/// further event. `signature_tag` is the prefix the provider puts on the
-/// reasoning items it receives, so that it replays only its own vendor's.
+/// `crates/provider-common/src/wire/mod.rs`).
+///
+/// The run ends with a response after the completion event, and with a failure
+/// after a failed or incomplete response, an error, or a stream that ends
+/// without its completion event. `events` ends when `cancel` fires, and then
+/// the run ends without a further event. `signature_tag` is the prefix the
+/// provider puts on the reasoning items it receives, so that it replays only
+/// its own vendor's.
 pub fn map_events<'a, S>(
     events: S,
     vendor: Vendor,
@@ -648,10 +651,15 @@ impl Mapper {
         }
     }
 
-    /// A failure the vendor reported in the stream: its message, else the
-    /// event's own, else `fallback`; its code read from the vendor's code and
-    /// message; the vendor's request and response ids; the frame as its
-    /// record; and the wait the vendor's reader finds in it.
+    /// A failure the vendor reported in the stream.
+    ///
+    /// It holds:
+    ///
+    /// - the vendor's message, else the event's own, else `fallback`;
+    /// - its code read from the vendor's code and message;
+    /// - the vendor's request and response ids;
+    /// - the frame as its record;
+    /// - the wait the vendor's reader finds in it.
     fn failure(
         &self,
         error: Option<&VendorError>,

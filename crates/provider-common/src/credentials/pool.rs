@@ -77,9 +77,10 @@ pub trait AccountDocument: Send + Sync {
     fn replace(&self, text: Option<String>, version: u64)
     -> BoxFuture<'_, Result<bool, PoolError>>;
 
-    /// Waits until no other refresh of this account runs in this process. A
-    /// refresh token is spent once, so refreshes of one account take turns and
-    /// the later one finds the earlier one's tokens. The turn ends when the
+    /// Waits until no other refresh of this account runs in this process.
+    ///
+    /// A refresh token is spent once, so refreshes of one account take turns
+    /// and the later one finds the earlier one's tokens. The turn ends when the
     /// permit is dropped, whether the refresh succeeded, failed or was
     /// cancelled.
     fn refresh_turn(&self) -> BoxFuture<'_, RefreshPermit>;
@@ -102,9 +103,11 @@ pub trait CredentialPool: Send + Sync {
     fn set_active<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 
     /// Inserts the account, or replaces the one with its id, with its secret
-    /// document; none for a family whose sign-in is kept elsewhere, such as
-    /// Claude Code's CLI (`crates/provider-common/src/credentials/refresh.rs`). Writing an
-    /// account clears its `signed_out`.
+    /// document.
+    ///
+    /// The secret is none for a family whose sign-in is kept elsewhere, such as
+    /// Claude Code's CLI (`crates/provider-common/src/credentials/refresh.rs`).
+    /// Writing an account clears its `signed_out`.
     fn write(
         &self,
         meta: AccountMeta,

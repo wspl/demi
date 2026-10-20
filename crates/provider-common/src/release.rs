@@ -1,9 +1,11 @@
-//! The newest release of a vendor's CLI, which a provider names in its
-//! requests as that CLI does, since the vendor's service decides by it what
-//! it serves (`crates/provider-codex/src/models.rs`, `crates/provider-common/src/endpoint.rs`):
-//! read from where the CLI's own update check reads it, kept six hours and
-//! read again in the background by [`KeptRead`], so no request waits for it,
-//! with the version built into the provider answering until the first read
+//! The newest release of a vendor's CLI, which a provider names in its requests
+//! as that CLI does, since the vendor's service decides by it what it serves
+//! (`crates/provider-codex/src/models.rs`,
+//! `crates/provider-common/src/endpoint.rs`).
+//!
+//! It is read from where the CLI's own update check reads it, kept six hours
+//! and read again in the background by [`KeptRead`], so no request waits for
+//! it. The version built into the provider answers until the first read
 //! succeeds. One serves the whole backend for its vendor.
 
 use std::{fmt, sync::Arc, time::Duration};
@@ -70,10 +72,11 @@ impl KeptRelease {
     }
 
     /// The release built into `source`, believed as read now by `clock`, so
-    /// that no read starts while `clock` stays within six hours: a test
-    /// whose requests name the built-in release opens no socket for it,
-    /// whose answer would differ by system and, on a paused clock, let the
-    /// read's timeout move the time.
+    /// that no read starts while `clock` stays within six hours.
+    ///
+    /// A test whose requests name the built-in release thereby opens no socket
+    /// for it. Such a socket's answer would differ by system and, on a paused
+    /// clock, let the read's timeout move the time.
     #[cfg(feature = "testing")]
     pub fn built_in(source: ReleaseSource, clock: Arc<dyn Clock>) -> Self {
         let version = source.built_in.parse().expect("the built-in release is a version");

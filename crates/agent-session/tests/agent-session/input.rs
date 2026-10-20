@@ -981,11 +981,13 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
     assert!(!session.set_interval(&command, Some(60_000)));
 }
 
-// A command that waits for the user's answer reports nothing, however long
-// it waits, so nothing wakes the agent; once it goes on, its interval counts
-// from then, and its end reports as any command's does. Before, it reported
-// every interval while it waited. One session, four scripted requests and
-// twenty minutes of paused time: a few milliseconds.
+// A command that waits for the user's answer reports nothing, however long it
+// waits, so nothing wakes the agent. Once it goes on, its interval counts from
+// then, and its end reports as any command's does. Before, it reported every
+// interval while it waited.
+//
+// One session, four scripted requests and twenty minutes of paused time: a few
+// milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_command_waiting_for_the_user_reports_nothing_until_an_interval_after_it_goes_on() {
     let provider = ScriptedRuntime::new([
@@ -1274,11 +1276,14 @@ fn reports_sent(provider: &ScriptedRuntime) -> Vec<String> {
         .collect()
 }
 
-// A Stop stops only what the node is doing: the call that watched command
-// 18 stops it and says so in its result, so its end, before or after the
-// stop is recorded, reports nothing; command 17, which an earlier call left
-// running, runs on and still reports its end, which opens a turn of its
-// own. Paused clock: a few milliseconds.
+// A Stop stops only what the node is doing:
+//
+// - The call that watched command 18 stops it and says so in its result, so its
+//   end, before or after the stop is recorded, reports nothing.
+// - Command 17, which an earlier call left running, runs on and still reports
+//   its end, which opens a turn of its own.
+//
+// Paused clock: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_reporting() {
     for end_on_stop in [true, false] {
@@ -1304,11 +1309,13 @@ async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_repor
 }
 
 /// A root whose turn failed holds what arrives afterwards: two children's
-/// results and a command's end are written into the failed turn as they
-/// arrive, where they show at once, and no turn starts until the user's
-/// Resume, which answers them in one request. The failed turn still offers
-/// Resume behind them. A child's failed turn is not held, since its parent
-/// decides for it: the same result opens a continuation at once.
+/// results and a command's end are written into the failed turn as they arrive,
+/// where they show at once, and no turn starts until the user's Resume, which
+/// answers them in one request. The failed turn still offers Resume behind
+/// them.
+///
+/// A child's failed turn is not held, since its parent decides for it: the same
+/// result opens a continuation at once.
 // Two sessions, six scripted requests, a minute of paused time: a few
 // milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
@@ -1391,10 +1398,11 @@ async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_n
     assert!(child.failed_turn().is_none());
 }
 
-// The loss of a resident command, such as a dev server an upgrade ended,
-// opens no turn, also after a restart: the next turn's first request
-// carries it (`crates/agent-session/src/reports.rs`). One session restored once and
-// two scripted requests: a few milliseconds.
+// The loss of a resident command, such as a dev server an upgrade ended, opens
+// no turn, also after a restart: the next turn's first request carries it
+// (`crates/agent-session/src/reports.rs`).
+//
+// One session restored once and two scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first_request() {
     let provider = ScriptedRuntime::new([
@@ -1476,10 +1484,11 @@ async fn a_loss_of_a_command_with_an_interval_opens_a_turn() {
 }
 
 // A call that watched a command with an interval when the process died: the
-// restored session watches the command at the interval its record kept,
-// so its loss opens a turn as any loss of such a command does
-// (`crates/agent-session/src/reports.rs`). One session restored once and two
-// scripted requests: a few milliseconds.
+// restored session watches the command at the interval its record kept, so its
+// loss opens a turn as any loss of such a command does
+// (`crates/agent-session/src/reports.rs`).
+//
+// One session restored once and two scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_loss_opens_a_turn() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![

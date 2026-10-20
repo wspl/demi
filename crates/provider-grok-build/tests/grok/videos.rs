@@ -1,9 +1,13 @@
-//! Making videos (the Grok row of the video shapes): the chat proxy's
-//! video endpoints with the account's identity, every option of the
-//! xAI Videos shape sent as its field and the seed, which it has none for,
-//! left out; the job read through a 202 `pending` with its progress to
-//! `done` with its cost in ticks, or to `failed` and `expired`; and the
-//! video's temporary address downloaded without the account's token.
+//! Making videos (the Grok row of the video shapes).
+//!
+//! The tests cover:
+//!
+//! - the chat proxy's video endpoints with the account's identity, every option
+//!   of the xAI Videos shape sent as its field and the seed, which it has none
+//!   for, left out;
+//! - the job read through a 202 `pending` with its progress to `done` with its
+//!   cost in ticks, or to `failed` and `expired`;
+//! - the video's temporary address downloaded without the account's token.
 
 use bytes::Bytes;
 use demi_provider_common::{
@@ -85,10 +89,11 @@ async fn a_video_is_asked_in_the_xai_shape_read_to_done_and_downloaded_without_t
     assert_eq!(sent[3].header("authorization"), None);
 }
 
-/// A job xAI failed is told in its words, one it withheld for moderation
-/// says so, and one that expired is no failure of the read.
-/// Planted defect this catches: `failed` or `expired` read as an unknown
-/// state, which would fail the call as the vendor's unreadable answer.
+/// A job xAI failed is told in its words, one it withheld for moderation says
+/// so, and one that expired is no failure of the read.
+///
+/// Planted defect this catches: `failed` or `expired` read as an unknown state,
+/// which would fail the call as the vendor's unreadable answer.
 // One scripted proxy, three requests: milliseconds.
 #[tokio::test]
 async fn a_failed_a_withheld_and_an_expired_job_are_read_as_such() {

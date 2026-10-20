@@ -1,7 +1,8 @@
-//! A medium's size in pixels, read from its header alone, which its
-//! reference and an attachment's record carry so a page knows a thumbnail's
-//! box before the bytes arrive: an image's as it shows, and a video's from
-//! its container's header, MP4 and QuickTime or WebM.
+//! A medium's size in pixels, read from its header alone.
+//!
+//! Its reference and an attachment's record carry the size so a page knows a
+//! thumbnail's box before the bytes arrive: an image's as it shows, and a
+//! video's from its container's header, MP4 and QuickTime or WebM.
 
 use bytes::Bytes;
 use demi_shared_types::PixelSize;
@@ -19,9 +20,10 @@ pub fn pixel_size(bytes: Bytes, media_type: &str) -> Option<PixelSize> {
     }
 }
 
-/// The size a video's container header gives its video track. The parser
-/// walks the container's boxes or elements to the track header and never
-/// reads the frames; a header after the frames, as in an MP4 whose `moov`
+/// The size a video's container header gives its video track.
+///
+/// The parser walks the container's boxes or elements to the track header and
+/// never reads the frames. A header after the frames, as in an MP4 whose `moov`
 /// box comes last, is found only when `bytes` reaches it.
 fn video_size(bytes: Bytes) -> Option<PixelSize> {
     let source = nom_exif::MediaSource::from_memory(bytes).ok()?;

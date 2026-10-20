@@ -1,8 +1,13 @@
-//! A tree's live output: the commands whose pages' view changed and was not
-//! sent yet, the task that sends them to every attached connection at most
-//! every [`INTERVAL`] and an end at once, the commands that run, which keep the
-//! tree from being idle, and the feed through which each node's shell
-//! environments report their commands and learn whether a page watches.
+//! A tree's live output.
+//!
+//! It holds:
+//!
+//! - the commands whose pages' view changed and was not sent yet;
+//! - the task that sends them to every attached connection at most every
+//!   [`INTERVAL`], and an end at once;
+//! - the commands that run, which keep the tree from being idle;
+//! - the feed through which each node's shell environments report their
+//!   commands and learn whether a page watches.
 //!
 //! ```text
 //! job output --> runner --> backend: command record --> tree --> pages
@@ -11,20 +16,25 @@
 //! ```
 //!
 //! The pages' view is one per command, the same for every page whatever any
-//! page or the model read, and no read changes it; the model's place in the
-//! output is separate, and sending to a page never moves it. The backend
-//! follows a command (so the runner sends the output beyond each stream's first
-//! 8 KiB as it comes) only while a connection is attached; with none, the
-//! runner sends the newest bytes less often, which the model's view and its
-//! idle time count from. A command's last frame shows its end and none follows
-//! it; the tree's disposal ends no command, which runs on and reports when the
-//! tree is live again.
+//! page or the model read, and no read changes it. The model's place in the
+//! output is separate, and sending to a page never moves it.
 //!
-//! Everything that keeps output coming is released with its owner: the runner's
-//! messages and timer with the job, the backend's following with the job's
-//! task, the commands waiting to be sent when they are sent, end, or the last
-//! connection detaches, and the sending task with the tree, which the feed
-//! holds only weakly.
+//! The backend follows a command (so the runner sends the output beyond each
+//! stream's first 8 KiB as it comes) only while a connection is attached. With
+//! none, the runner sends the newest bytes less often, which the model's view
+//! and its idle time count from.
+//!
+//! A command's last frame shows its end and none follows it. The tree's
+//! disposal ends no command, which runs on and reports when the tree is live
+//! again.
+//!
+//! Everything that keeps output coming is released with its owner:
+//!
+//! - the runner's messages and timer with the job;
+//! - the backend's following with the job's task;
+//! - the commands waiting to be sent when they are sent, end, or the last
+//!   connection detaches;
+//! - the sending task with the tree, which the feed holds only weakly.
 
 use std::{
     cell::{Cell, RefCell},
@@ -85,7 +95,6 @@ impl LiveOutput {
         })
     }
 
-    /// Whether a command of the tree runs.
     pub(crate) fn runs_commands(&self) -> bool {
         !self.running.borrow().is_empty()
     }
@@ -193,10 +202,11 @@ impl LiveOutput {
     }
 }
 
-/// The tree's sending task: it sends the waiting commands at most every
-/// [`INTERVAL`], keeps a timer only while commands wait, and forgets them
-/// when the last connection detaches. It ends with the tree, which aborts
-/// it.
+/// The tree's sending task.
+///
+/// It sends the waiting commands at most every [`INTERVAL`], keeps a timer only
+/// while commands wait, and forgets them when the last connection detaches. It
+/// ends with the tree, which aborts it.
 pub(crate) async fn send_changes(live: Rc<LiveOutput>) {
     let mut attached = live.sink.watch_attached();
     loop {

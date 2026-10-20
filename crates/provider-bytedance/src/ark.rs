@@ -1,9 +1,12 @@
-//! What every Ark request has in common, Seedream's and Seedance's alike
-//! ([Base URL and authentication](https://docs.byteplus.com/en/docs/modelark/base-url-and-authentication),
-//! [Error codes](https://docs.byteplus.com/en/docs/modelark/error-codes)):
-//! the key as a bearer token, a key Ark does not know refused with HTTP 401
-//! `AuthenticationError`, and an account whose balance is overdue refused
-//! with HTTP 403, which is a used-up key, not a refused one.
+//! What every Ark request has in common, Seedream's and Seedance's alike ([Base
+//! URL and
+//! authentication](https://docs.byteplus.com/en/docs/modelark/base-url-and-authentication),
+//! [Error codes](https://docs.byteplus.com/en/docs/modelark/error-codes)).
+//!
+//! - The key is a bearer token.
+//! - A key Ark does not know is refused with HTTP 401 `AuthenticationError`.
+//! - An account whose balance is overdue is refused with HTTP 403, which is a
+//!   used-up key, not a refused one.
 
 use demi_provider_common::{
     ErrorCode, HttpFailureRecord, ProviderFailure, Secret,

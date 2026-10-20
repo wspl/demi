@@ -1,16 +1,18 @@
-//! The session a new CLI process resumes: written from the request's replayed blocks, in their
-//! order, into the process's own directory before it starts. A
-//! block gives the entries the CLI wrote for it, as they were; what no entry
-//! of a block stands for, such as another provider's turn or input Demi
-//! wrote, is written in the CLI's format. The file opens with the CLI's
-//! `environment` entry, written by the provider: the snapshot of the CLI's
-//! machine, which the CLI compares with its own and so describes no other,
-//! and no text. Each entry names the one before it, so the chain is whole
-//! wherever blocks were cut out, and every entry carries the file's
-//! session. A medium an entry holds is kept on its block as a reference to
-//! the block's own medium (`demiBlob`), and its bytes return here.
+//! The session a new CLI process resumes: written from the request's replayed
+//! blocks, in their order, into the process's own directory before it starts.
 //!
-//! The history goes in as a session file and never as text: written as text,
+//! A block gives the entries the CLI wrote for it, as they were. What no entry
+//! of a block stands for, such as another provider's turn or input Demi wrote,
+//! is written in the CLI's format.
+//!
+//! The file opens with the CLI's `environment` entry, written by the provider:
+//! the snapshot of the CLI's machine, which the CLI compares with its own and
+//! so describes no other, and no text. Each entry names the one before it, so
+//! the chain is whole wherever blocks were cut out, and every entry carries the
+//! file's session. A medium an entry holds is kept on its block as a reference
+//! to the block's own medium (`demiBlob`), and its bytes return here.
+//!
+//! The history goes in as a session file and never as text. Written as text,
 //! every new process sent a new prefix and paid for the whole history again,
 //! and the model read its own tool calls as a retelling under names unlike its
 //! tools'. With the file, the request the CLI sends begins with the bytes the
@@ -20,13 +22,15 @@
 //! The entries are the backend's: stored with the blocks and carried by no
 //! client-facing form of a block. A request given up (a `usage_limit` sent
 //! again on another account) leaves the blocks as they were before it, so no
-//! entry is twice and the model never reads a failure as its own words. The
-//! provider writes the `environment` entry itself, with a single space as its
-//! text, because the CLI's own would describe the machine it runs on and not
-//! the conversation's Host. These rules use the session file as CLI 2.1.295
-//! reads it, which the vendor documents only as a file to move between
-//! machines, and the Claude Code scenario suite checks them against the CLI it
-//! is given.
+//! entry is twice and the model never reads a failure as its own words.
+//!
+//! The provider writes the `environment` entry itself, with a single space as
+//! its text, because the CLI's own would describe the machine it runs on and
+//! not the conversation's Host.
+//!
+//! These rules use the session file as CLI 2.1.295 reads it, which the vendor
+//! documents only as a file to move between machines. The Claude Code scenario
+//! suite checks them against the CLI it is given.
 
 use std::collections::HashMap;
 
@@ -66,10 +70,10 @@ pub(crate) struct SessionFile {
 }
 
 impl SessionFile {
-    /// The session of `session` holding `blocks` of `items` (each item a
-    /// block of its own when the request names none), written at
-    /// `timestamp`. It serializes the whole history, so it runs off the
-    /// shard.
+    /// The session of `session` holding `blocks` of `items` (each item a block
+    /// of its own when the request names none), written at `timestamp`.
+    ///
+    /// It serializes the whole history, so it runs off the shard.
     pub(crate) fn new(
         session: &str,
         items: &[InferenceItem],
@@ -166,10 +170,11 @@ fn snapshot(system: &CliSystem) -> Value {
     })
 }
 
-/// The type of the entry the provider keeps on a block the CLI left out of
-/// its history: what an abandoned stream showed that the complete answer
-/// replacing it did not repeat (`crates/provider-claude-code/src/mcp.rs`). It
-/// stands for every item of its block no entry of the CLI's stands for, so
+/// The type of the entry the provider keeps on a block the CLI left out of its
+/// history: what an abandoned stream showed that the complete answer replacing
+/// it did not repeat (`crates/provider-claude-code/src/mcp.rs`).
+///
+/// It stands for every item of its block no entry of the CLI's stands for, so
 /// those give nothing, and it is never written to a session.
 const LEFT_OUT: &str = "demi_left_out";
 
@@ -179,18 +184,17 @@ pub(crate) fn left_out() -> Value {
 }
 
 /// The session's entries, unchained: each block's, with the calls of one
-/// response before their results, as the CLI writes a batch; then each
-/// entry of another session, as a fork's blocks hold, under an id of this
-/// one's.
+/// response before their results, as the CLI writes a batch; then each entry of
+/// another session, as a fork's blocks hold, under an id of this one's.
 ///
-/// Adjacent tool-call blocks are one batch only while their calls belong to
-/// one assistant message: a call whose entry names another message than the
-/// batch's starts a batch of its own. Two responses that each called a tool
-/// with nothing between are then written call, result, call, result, as the
-/// CLI wrote them; written as one batch, the CLI pairs each call only with
-/// the user message right after its own message, finds the first call's
-/// result missing, and replaces it with an error of its own. A call no entry
-/// stands for is written in the message before it, so it joins the batch.
+/// Adjacent tool-call blocks are one batch only while their calls belong to one
+/// assistant message: a call whose entry names another message than the batch's
+/// starts a batch of its own. Two responses that each called a tool with
+/// nothing between are then written call, result, call, result, as the CLI
+/// wrote them. Written as one batch, the CLI pairs each call only with the user
+/// message right after its own message, finds the first call's result missing,
+/// and replaces it with an error of its own. A call no entry stands for is
+/// written in the message before it, so it joins the batch.
 fn entries(items: &[InferenceItem], blocks: &[RequestBlock], session: &Uuid) -> Vec<Value> {
     let alone: Vec<RequestBlock>;
     let blocks = if blocks.is_empty() {
@@ -284,14 +288,17 @@ fn message_id(written: &[Value], pending: &[Value]) -> String {
     .unwrap_or_else(|| format!("msg_demi_{}", written.len() + pending.len()))
 }
 
-/// What `block` gives the session: its entries with their media restored,
-/// then an entry in the CLI's format for each of its items none of them
-/// stands for. A tool call's results come apart from the rest, for the
-/// batch's order. Entries whose medium the request no longer holds are
-/// dropped, and the block's items are written instead; reasoning no entry
-/// stands for is left out, since only its own vendor checks it, and so is
-/// reasoning kept past a summary, since that vendor checks it against the
-/// history the summary replaced (`crates/provider-anthropic-api/src/request.rs`).
+/// What `block` gives the session: its entries with their media restored, then
+/// an entry in the CLI's format for each of its items none of them stands for.
+///
+/// - A tool call's results come apart from the rest, for the batch's order.
+/// - Entries whose medium the request no longer holds are dropped, and the
+///   block's items are written instead.
+/// - Reasoning no entry stands for is left out, since only its own vendor
+///   checks it.
+/// - Reasoning kept past a summary is left out too, since that vendor checks it
+///   against the history the summary replaced
+///   (`crates/provider-anthropic-api/src/request.rs`).
 fn block_entries(
     items: &[InferenceItem],
     block: &RequestBlock,
@@ -353,11 +360,12 @@ fn block_entries(
 }
 
 /// Gives each `user` entry that recorded one of `items`' user messages the
-/// blocks the message gained after it, as a summary request's instruction
-/// joins the input that ends its history: the recorded blocks stay as they
-/// were, and so does every other entry of the block, such as the metadata
-/// the CLI wrote before the message. An entry whose blocks are not the
-/// start of the message's stays as it is.
+/// blocks the message gained after it, as a summary request's instruction joins
+/// the input that ends its history.
+///
+/// The recorded blocks stay as they were, and so does every other entry of the
+/// block, such as the metadata the CLI wrote before the message. An entry whose
+/// blocks are not the start of the message's stays as it is.
 fn extend_recorded(entries: &mut [Value], items: &[InferenceItem]) {
     let messages = items.iter().filter_map(|item| match item {
         InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
@@ -449,12 +457,17 @@ fn covered<'a>(
     }
 }
 
-/// `item` as an entry in the CLI's format, as the CLI would have written it
-/// had the item come from it: input as a `user` entry with the message Demi
-/// writes to a process, text and tool calls as `assistant` entries of one
-/// message, with the tool's name as the CLI gives it, and a result as a
-/// `user` entry. Reasoning and empty text give none. `written` are the
-/// session's entries before the block, and `pending` the block's before it.
+/// `item` as an entry in the CLI's format, as the CLI would have written it had
+/// the item come from it.
+///
+/// - Input is a `user` entry with the message Demi writes to a process.
+/// - Text and tool calls are `assistant` entries of one message, with the
+///   tool's name as the CLI gives it.
+/// - A result is a `user` entry.
+/// - Reasoning and empty text give none.
+///
+/// `written` are the session's entries before the block, and `pending` the
+/// block's before it.
 fn written_as(item: &InferenceItem, written: &[Value], pending: &[Value]) -> Option<Value> {
     let assistant = |model: &str, content: Value| {
         json!({
@@ -551,10 +564,10 @@ fn result_content(output: &[ResultPart]) -> Vec<Value> {
         .collect()
 }
 
-/// `entries` with the ids of another session's renamed for `session`: a
-/// fork's blocks hold its parent's entries, and the fork's file is a
-/// session of its own.
-/// A field that names a renamed entry names its new id.
+/// `entries` with the ids of another session's renamed for `session`.
+///
+/// A fork's blocks hold its parent's entries, and the fork's file is a session
+/// of its own. A field that names a renamed entry names its new id.
 fn renamed(mut entries: Vec<Value>, session: &Uuid) -> Vec<Value> {
     let ours = session.to_string();
     let mut renames: HashMap<String, String> = HashMap::new();

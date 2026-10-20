@@ -1,7 +1,8 @@
-//! Server-sent events, framed by the eventsource-stream library, which
-//! follows the specification, with Demi's one addition: a final event that
-//! the vendor ends without its blank line is kept, because vendors end bodies
-//! that way.
+//! Server-sent events, framed by the eventsource-stream library, which follows
+//! the specification, with Demi's one addition.
+//!
+//! A final event that the vendor ends without its blank line is kept, because
+//! vendors end bodies that way.
 
 use bytes::Bytes;
 use eventsource_stream::{EventStreamError, Eventsource};
@@ -30,10 +31,12 @@ impl<E> From<EventStreamError<E>> for SseError<E> {
     }
 }
 
-/// The data of each event of a response body: its `data:` fields joined with
-/// a newline. A frame without data (a comment, `event: ping`, an empty
-/// `data:`) is not an event, and a frame the body ends without a blank line
-/// is still one. No mapper reads the `event:` name, so it is not carried.
+/// The data of each event of a response body: its `data:` fields joined with a
+/// newline.
+///
+/// A frame without data (a comment, `event: ping`, an empty `data:`) is not an
+/// event, and a frame the body ends without a blank line is still one. No
+/// mapper reads the `event:` name, so it is not carried.
 pub fn sse_data<S, E>(body: S) -> impl Stream<Item = Result<String, SseError<E>>>
 where
     S: Stream<Item = Result<Bytes, E>>,

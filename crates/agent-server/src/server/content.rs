@@ -1,8 +1,9 @@
-//! A frame's content as the session receives it: text and references as
-//! they are, uploads and remote files as the backend resolved them, with
-//! the bytes of the media the backend read, and, in an edit, the references
-//! to the files the edited message holds, which the session resolves from
-//! that message. No frame carries bytes.
+//! A frame's content as the session receives it.
+//!
+//! Text and references are as they are. Uploads and remote files are as the
+//! backend resolved them, with the bytes of the media the backend read. In an
+//! edit, the references to the files the edited message holds are resolved by
+//! the session from that message. No frame carries bytes.
 
 use demi_agent_session::EditContent;
 use demi_agent_store::media::HeldMedia;
@@ -26,11 +27,12 @@ pub enum FileReference {
 }
 
 /// Where the backend resolves the files of one frame's content
-/// (`crates/backend-host-access/src/uploads.rs`): an upload is written to
-/// the conversation's Host and becomes its native media block, when it has
-/// one, then its attachment record, or the text that says it is
-/// unavailable; a remote file becomes its reference once its device may be
-/// read.
+/// (`crates/backend-host-access/src/uploads.rs`).
+///
+/// - An upload is written to the conversation's Host and becomes its native
+///   media block, when it has one, then its attachment record, or the text that
+///   says it is unavailable.
+/// - A remote file becomes its reference once its device may be read.
 pub trait ContentResolver {
     /// The files `files` stand for, in the order given. All of one frame's
     /// references are resolved together, so that none is granted unless all

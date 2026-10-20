@@ -1,9 +1,16 @@
-//! The request side of the OpenAI-shaped formats, shared by the providers
-//! that build them: the Responses input as the OpenAI API and the Codex
-//! backend each want a transcript replayed, the Chat Completions messages of
-//! OpenAI-compatible endpoints and the Grok Build proxy, and the fields both
-//! formats spell alike. Each vendor's differences are a dialect, stated where
-//! the vendor's provider builds its body.
+//! The request side of the OpenAI-shaped formats, shared by the providers that
+//! build them.
+//!
+//! The formats are:
+//!
+//! - the Responses input, as the OpenAI API and the Codex backend each want a
+//!   transcript replayed;
+//! - the Chat Completions messages of OpenAI-compatible endpoints and the Grok
+//!   Build proxy;
+//! - the fields both formats spell alike.
+//!
+//! Each vendor's differences are a dialect, stated where the vendor's provider
+//! builds its body.
 
 use std::borrow::Cow;
 
@@ -67,10 +74,12 @@ pub enum SummaryOff {
     Auto,
 }
 
-/// The `reasoning` a Responses request asks for: none for a token budget or
-/// thinking turned off; adaptive thinking at an effort with an `auto`
-/// summary; the effort `none` alone; otherwise the effort with the summary
-/// asked for, `auto` when unset.
+/// The `reasoning` a Responses request asks for.
+///
+/// - None for a token budget or thinking turned off.
+/// - Adaptive thinking at an effort, with an `auto` summary.
+/// - The effort `none` alone.
+/// - Otherwise the effort with the summary asked for, `auto` when unset.
 pub fn responses_reasoning(
     thinking: Option<&ThinkingConfig>,
     off: SummaryOff,
@@ -547,8 +556,9 @@ impl<'a> From<&'a ToolDefinition> for ChatTool<'a> {
 pub struct ChatDialect {
     /// Earlier thinking is sent back as `reasoning_content` on the assistant
     /// message it preceded, and as an empty one on a tool-call message without
-    /// thinking, as DeepSeek's thinking mode requires; OpenAI refuses the
-    /// field.
+    /// thinking.
+    ///
+    /// DeepSeek's thinking mode requires it; OpenAI refuses the field.
     pub reasoning_content: bool,
     pub media: ChatMedia,
 }

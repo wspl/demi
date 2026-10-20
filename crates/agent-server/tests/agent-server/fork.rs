@@ -1,7 +1,8 @@
 //! `demi agent fork` at the tree's boundary
-//! (`crates/agent-server/src/server/tree/supervisor.rs`): a new child of the
-//! caller from what one of its children already knows, on the profile the
-//! caller names, with the caller's message.
+//! (`crates/agent-server/src/server/tree/supervisor.rs`).
+//!
+//! A fork is a new child of the caller from what one of its children already
+//! knows, on the profile the caller names, with the caller's message.
 
 use std::rc::Rc;
 
@@ -215,10 +216,12 @@ async fn a_fork_of_a_running_child_ends_at_its_newest_completed_text_and_leaves_
     assert!(model.is_done());
 }
 
-// A fork is refused, and creates nothing, before its source has written a
-// completed text, for a node that is not the caller's child, and by every
-// check of a spawn: the Subagent switch, the profile's name and the live
-// limit.
+// A fork is refused, and creates nothing, in these cases:
+//
+// - before its source has written a completed text;
+// - for a node that is not the caller's child;
+// - by every check of a spawn: the Subagent switch, the profile's name and the
+//   live limit.
 #[tokio::test(flavor = "local")]
 async fn a_fork_is_refused_without_a_completed_text_and_by_the_checks_of_a_spawn() {
     let model = Model::default();
@@ -395,9 +398,10 @@ async fn until_loss_waits(store: &MemoryTreeStore, node: &NodeId) {
     panic!("the loss never waited in the checkpoint of {node}");
 }
 
-// A dev server the root started was lost while the conversation was idle:
-// its report waits for the next turn, and a Fork from the root's answer
-// still succeeds, its new root holding no report of the source's command.
+// A dev server the root started was lost while the conversation was idle: its
+// report waits for the next turn, and a Fork from the root's answer still
+// succeeds, its new root holding no report of the source's command.
+//
 // Under a second on the paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_no_report() {

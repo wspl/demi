@@ -1,18 +1,24 @@
 //! How a CLI process starts (`crates/provider-claude-code/src/run.rs`,
-//! `crates/provider-claude-code/src/account.rs`): no tools, slash commands or
-//! permission prompts
-//! of its own, and nothing the machine or the account adds to them; the
-//! session the provider wrote, resumed and mirrored, with
-//! the system prompt and tools of the request rather than those the session
-//! recorded; the request's model, system prompt and effort; the thinking
-//! display; stream-json in
-//! and out with partial messages, each user message printed back as the CLI
-//! takes it; the account's directory as its
-//! configuration directory, where the CLI reads and renews the sign-in
-//! itself, and a directory of its own there for its session; the CLI's
-//! updater and automatic compaction off; and the input a session ends with
-//! answered at once. A sign-in runs the CLI's own login in a new directory,
-//! and a usage probe a process that sends no message.
+//! `crates/provider-claude-code/src/account.rs`).
+//!
+//! The process starts with:
+//!
+//! - no tools, slash commands or permission prompts of its own, and nothing the
+//!   machine or the account adds to them;
+//! - the session the provider wrote, resumed and mirrored, with the system
+//!   prompt and tools of the request rather than those the session recorded;
+//! - the request's model, system prompt and effort;
+//! - the thinking display;
+//! - stream-json in and out with partial messages, each user message printed
+//!   back as the CLI takes it;
+//! - the account's directory as its configuration directory, where the CLI
+//!   reads and renews the sign-in itself, and a directory of its own there for
+//!   its session;
+//! - the CLI's updater and automatic compaction off;
+//! - the input a session ends with answered at once.
+//!
+//! A sign-in runs the CLI's own login in a new directory, and a usage probe a
+//! process that sends no message.
 
 use std::collections::BTreeMap;
 
@@ -25,10 +31,11 @@ use crate::input::MCP_SERVER;
 use crate::placement::{CliSite, CliStart};
 use crate::session::SessionFile;
 
-/// What starts a CLI process at `site` with `args`, a request's: the session `session`
-/// in the process's own directory, and the process, in the account's
-/// directory. It is retained: the process is kept between turns and is not
-/// activity of its machine.
+/// What starts a CLI process at `site` with `args`, a request's.
+///
+/// The session `session` is in the process's own directory, and the process
+/// runs in the account's directory. It is retained: the process is kept between
+/// turns and is not activity of its machine.
 pub(crate) fn start(site: &CliSite, args: Vec<String>, session: &SessionFile) -> CliStart {
     let spawn = SpawnRequest {
         command: site.executable.clone(),
@@ -45,12 +52,12 @@ pub(crate) fn start(site: &CliSite, args: Vec<String>, session: &SessionFile) ->
 }
 
 /// What starts the usage probe's process at `site`: stream-json in and out,
-/// with no message, so the CLI renews the sign-in when it is due and
-/// answers control requests without inferring
-/// (`crates/provider-claude-code/src/account.rs`). Its environment never turns
-/// the CLI's nonessential
-/// traffic off, which turns its quota reading off with it. It is work of
-/// the machine while it runs.
+/// with no message.
+///
+/// The CLI renews the sign-in when it is due and answers control requests
+/// without inferring (`crates/provider-claude-code/src/account.rs`). Its
+/// environment never turns the CLI's nonessential traffic off, which turns its
+/// quota reading off with it. It is work of the machine while it runs.
 pub(crate) fn probe(site: &CliSite) -> CliStart {
     let mut env = environment(site);
     env.remove("CLAUDE_CODE_RESUME_INTERRUPTED_TURN");
@@ -78,10 +85,12 @@ pub(crate) fn probe(site: &CliSite) -> CliStart {
     }
 }
 
-/// The request that starts the CLI's own sign-in at `site`: it prints the
-/// link to sign in at, reads the code the page shows from its input, and
-/// writes the sign-in into its configuration directory, a new one. No web browser
-/// opens on the machine. It is work of the machine while it runs.
+/// The request that starts the CLI's own sign-in at `site`.
+///
+/// It prints the link to sign in at, reads the code the page shows from its
+/// input, and writes the sign-in into its configuration directory, a new one.
+/// No web browser opens on the machine. It is work of the machine while it
+/// runs.
 pub(crate) fn login_request(site: &CliSite) -> CliStart {
     let set = |value: &str| Some(value.to_owned());
     let spawn = SpawnRequest {
@@ -126,11 +135,13 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         "off",
         // Safe mode loads none of the machine's CLAUDE.md, skills, plugins,
         // agents or LSP servers, and none of the claude.ai account's
-        // connectors: without it, a token with the `user:mcp_servers` scope
-        // gives the model the account's connector tools beside `main`'s and
-        // an "MCP Server Instructions" message (Claude Code 2.1.296, its
-        // safe-mode table's `mcpClaudeAi: false`, logged as `[claudeai-mcp]
-        // Disabled in safe mode`).
+        // connectors.
+        //
+        // Without it, a token with the `user:mcp_servers` scope gives the model
+        // the account's connector tools beside `main`'s and an "MCP Server
+        // Instructions" message (Claude Code 2.1.296, its safe-mode table's
+        // `mcpClaudeAi: false`, logged as `[claudeai-mcp] Disabled in safe
+        // mode`).
         "--safe-mode",
         "--disable-slash-commands",
         "--tools",
@@ -153,8 +164,9 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         args.push(effort.to_owned());
     }
     // The vendor's summary of the thinking, the most it gives, whatever the
-    // selection's summary says, unless the selection turns thinking off:
-    // without the flag the CLI leaves the display to the vendor, which sends
+    // selection's summary says, unless the selection turns thinking off.
+    //
+    // Without the flag the CLI leaves the display to the vendor, which sends
     // every thinking block empty (Claude Code 2.1.296). A summarized block's
     // text arrives in its `thinking_delta`s, and the block's start ends the
     // page's Requesting at once.
@@ -175,19 +187,25 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
     args
 }
 
-/// The changes to the machine's environment: a token in the machine's own
-/// environment removed, so the CLI reads the directory's sign-in; the
-/// account's directory as the configuration directory, and the process's
-/// own directory of sessions there; the CLI's updater off, since Demi alone
-/// changes its version; its automatic compaction off, since Demi compacts
-/// the conversation itself; an MCP tool-output limit of one million tokens,
-/// so the CLI never cuts a result Demi sends; `CLAUDECODE` removed, so the
-/// CLI never takes itself for a session inside another Claude Code; and
-/// the input the session ends with answered at once. The CLI's telemetry
-/// stays on: turning it off (`DISABLE_TELEMETRY=1`) halved the CLI's start in
-/// a gVisor sandbox, but CLI 2.1.296 then reports each call's `iterations`
-/// empty, and Demi read the turn's sum as the last call's usage and compacted
-/// after every response.
+/// The changes to the machine's environment:
+///
+/// - A token in the machine's own environment is removed, so the CLI reads the
+///   directory's sign-in.
+/// - The account's directory is the configuration directory, and the process's
+///   own directory of sessions is there.
+/// - The CLI's updater is off, since Demi alone changes its version.
+/// - Its automatic compaction is off, since Demi compacts the conversation
+///   itself.
+/// - An MCP tool-output limit of one million tokens means the CLI never cuts a
+///   result Demi sends.
+/// - `CLAUDECODE` is removed, so the CLI never takes itself for a session
+///   inside another Claude Code.
+/// - The input the session ends with is answered at once.
+///
+/// The CLI's telemetry stays on. Turning it off (`DISABLE_TELEMETRY=1`) halved
+/// the CLI's start in a gVisor sandbox, but CLI 2.1.296 then reports each
+/// call's `iterations` empty, and Demi read the turn's sum as the last call's
+/// usage and compacted after every response.
 fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
     let set = |value: &str| Some(value.to_owned());
     BTreeMap::from([

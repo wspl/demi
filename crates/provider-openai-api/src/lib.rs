@@ -1,9 +1,13 @@
-//! The OpenAI API provider: an `openai` entry, which sends its API key when it has one,
-//! speaking the Responses API or, for OpenAI-compatible endpoints, Chat
-//! Completions, with the typed vendor policy its entry names and the
-//! standard reading of its failure records; an OpenAI or xAI vendor
-//! entry's key also makes images, an xAI vendor entry's key videos, and an
-//! OpenAI vendor entry's key speech.
+//! The OpenAI API provider: an `openai` entry, which sends its API key when it
+//! has one.
+//!
+//! It speaks the Responses API or, for OpenAI-compatible endpoints, Chat
+//! Completions, with the typed vendor policy its entry names and the standard
+//! reading of its failure records. The key also makes media:
+//!
+//! - an OpenAI or xAI vendor entry's key makes images;
+//! - an xAI vendor entry's key makes videos;
+//! - an OpenAI vendor entry's key makes speech.
 
 mod audio;
 mod images;
@@ -51,9 +55,11 @@ pub struct OpenAiConfig {
     pub wire: WireApi,
     pub policy: VendorPolicy,
     /// The models.dev vendor the entry was added from, such as `openai` or
-    /// `xai`; none for a compatible API. It prefixes the reasoning items
-    /// the provider receives, so that each vendor replays only its own
-    /// ciphertext, and an xAI entry's images are xAI's requests.
+    /// `xai`; none for a compatible API.
+    ///
+    /// It prefixes the reasoning items the provider receives, so that each
+    /// vendor replays only its own ciphertext, and an xAI entry's images are
+    /// xAI's requests.
     pub vendor_id: Option<String>,
     /// Whether the entry's key makes images, as its vendor's image shape
     /// says: an OpenAI or xAI key's does.
@@ -239,7 +245,6 @@ pub mod testing {
         crate::request::responses(request, policy, "openai:")
     }
 
-    /// The Chat Completions body of `request` for a vendor of `policy`.
     pub fn chat_completions_body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
         crate::request::chat_completions(request, policy)
     }

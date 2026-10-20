@@ -1,10 +1,11 @@
 //! The CLI's own files in an account's directory
 //! (`crates/provider-claude-code/src/account.rs`), as Claude Code 2.1.301
-//! writes them: its sign-in in
-//! `.credentials.json` (`claudeAiOauth`), and the account it signed in in
-//! `.claude.json` (`oauthAccount`). Demi reads only the account of a new
-//! sign-in, and writes both once, for the sign-in an earlier release kept
-//! in an account's record.
+//! writes them.
+//!
+//! Its sign-in is in `.credentials.json` (`claudeAiOauth`), and the account it
+//! signed in is in `.claude.json` (`oauthAccount`). Demi reads only the account
+//! of a new sign-in, and writes both once, for the sign-in an earlier release
+//! kept in an account's record.
 
 use bytes::Bytes;
 use demi_provider_common::Secret;

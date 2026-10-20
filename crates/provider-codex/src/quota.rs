@@ -1,7 +1,10 @@
-//! The quota of a Codex account: a free probe
-//! of the account's usage status, which the Codex CLI reads for its own
-//! status and which answers while the limit is reached, and the
-//! `x-codex-*` headers on every response of the service.
+//! The quota of a Codex account.
+//!
+//! It has two sources:
+//!
+//! - A free probe of the account's usage status, which the Codex CLI reads for
+//!   its own status and which answers while the limit is reached.
+//! - The `x-codex-*` headers on every response of the service.
 
 use std::sync::Arc;
 
@@ -182,11 +185,12 @@ fn usage_windows(rate_limit: Option<RateLimit>) -> ObservedWindows {
     report
 }
 
-/// What the `x-codex-<kind>-*` headers say about a window: nothing without
-/// its `used-percent` header; otherwise a window, even with a value Demi
-/// cannot read, unless the headers are the placeholder Codex sends for a
-/// window the account does not have: nothing used, a length of zero or none,
-/// and no reset time. The Codex CLI reads its headers by the same rule.
+/// What the `x-codex-<kind>-*` headers say about a window.
+///
+/// Nothing without its `used-percent` header. Otherwise a window, even with a
+/// value Demi cannot read, unless the headers are the placeholder Codex sends
+/// for a window the account does not have: nothing used, a length of zero or
+/// none, and no reset time. The Codex CLI reads its headers by the same rule.
 fn header_window(headers: &HeaderMap, kind: Kind) -> Option<Reported> {
     let prefix = format!("x-codex-{}", kind.id());
     let used_name = format!("{prefix}-used-percent");

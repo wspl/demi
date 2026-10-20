@@ -1,8 +1,10 @@
 //! The lists of changed files a session stores with each shell call
-//! (`crates/agent-store/src/changes.rs`): computed as each
-//! call's result is recorded, from the calls before it in the transcript
-//! whatever order they returned in, and the same as a stored transcript
-//! listed again in order, as the conversation database's migration does.
+//! (`crates/agent-store/src/changes.rs`).
+//!
+//! They are computed as each call's result is recorded, from the calls before
+//! it in the transcript whatever order they returned in. They are the same as a
+//! stored transcript listed again in order, as the conversation database's
+//! migration does.
 
 use std::collections::HashMap;
 

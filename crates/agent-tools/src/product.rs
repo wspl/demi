@@ -1,7 +1,12 @@
-//! What a product supplies for its agents besides the data the agent
-//! server is given: the commands a tree opens with, the user's subagent
-//! settings each spawn reads, the Host a node's shell tools reach, and
-//! the context sources asked before each request.
+//! What a product supplies for its agents besides the data the agent server is
+//! given.
+//!
+//! The product supplies:
+//!
+//! - the commands a tree opens with;
+//! - the user's subagent settings each spawn reads;
+//! - the Host a node's shell tools reach;
+//! - the context sources asked before each request.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -26,11 +31,12 @@ pub struct Toolset {
     pub revision: Rc<str>,
 }
 
-/// Where a tree that opens takes its toolset from: the product's current
-/// one, which may change while the server runs. The server composes a
-/// revision once and every node holds that one set, so it asks for the
-/// revision first and for the commands only when it holds none of that
-/// revision.
+/// Where a tree that opens takes its toolset from: the product's current one,
+/// which may change while the server runs.
+///
+/// The server composes a revision once and every node holds that one set, so it
+/// asks for the revision first and for the commands only when it holds none of
+/// that revision.
 pub trait ToolsetSource {
     /// The revision of the toolset [`current`](Self::current) would give
     /// now, read without composing it.
@@ -90,9 +96,10 @@ pub struct Profile {
 }
 
 /// A profile's model settings (`crates/shared-types/src/catalog.rs`): the
-/// provider entry, the model, the thinking effort and the
-/// service tier the user chose, which the product builds a child's model
-/// selection from at each spawn.
+/// provider entry, the model, the thinking effort and the service tier the user
+/// chose.
+///
+/// The product builds a child's model selection from them at each spawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileModel {
     pub provider_id: String,
@@ -224,10 +231,13 @@ pub struct ModelChoice {
 /// The effort option that turns thinking off.
 pub const EFFORT_OFF: &str = "off";
 
-/// What a job says a round on `selection` runs on: the entry's name `entry` and
-/// the model's name and Fast tier from its catalog model `catalog`, the names
-/// the model menu shows; the entry's id, the selection's model name and no Fast
-/// tier for what the user's scope no longer has.
+/// What a job says a round on `selection` runs on.
+///
+/// With the user's scope still holding the entry and model, it is the entry's
+/// name `entry` and the model's name and Fast tier from its catalog model
+/// `catalog`, the names the model menu shows. For what the user's scope no
+/// longer has, it is the entry's id, the selection's model name and no Fast
+/// tier.
 pub fn runs_on(
     selection: &ModelSelection,
     entry: Option<&str>,
@@ -290,10 +300,11 @@ pub struct ProfileEdit {
     pub enabled: Option<bool>,
 }
 
-/// Where the agent reads the user's subagent settings, at each spawn and
-/// each `demi agent profiles` call, never once per tree, and changes the
-/// user's profiles through the same path as the settings page, with its
-/// checks and its words. A change reaches the next read.
+/// Where the agent reads the user's subagent settings, at each spawn and each
+/// `demi agent profiles` call, never once per tree.
+///
+/// It also changes the user's profiles through the same path as the settings
+/// page, with its checks and its words. A change reaches the next read.
 pub trait SubagentSource {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>>;
 
@@ -393,8 +404,9 @@ pub trait HostResolver: 'static {
     type Host: Host;
 
     /// The Host a node's shell tools reach now: the conversation's current
-    /// execution target (`crates/backend-host-access/src/access.rs`). Two
-    /// answers for the same target have equal keys, so a node keeps one
+    /// execution target (`crates/backend-host-access/src/access.rs`).
+    ///
+    /// Two answers for the same target have equal keys, so a node keeps one
     /// shell environment per target it used. By default there is none, and a
     /// shell tool's call fails.
     async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<Self::Host>, HostError> {
@@ -406,8 +418,10 @@ pub trait HostResolver: 'static {
 
     /// Where the conversation works now: its primary Host's device and its
     /// directory there, which a child's working directory is read against
-    /// (`crates/agent-server/src/node/mod.rs`). By default its Host's key and
-    /// the directory the Host starts its work in ([`Host::default_cwd`]).
+    /// (`crates/agent-server/src/node/mod.rs`).
+    ///
+    /// By default its Host's key and the directory the Host starts its work in
+    /// ([`Host::default_cwd`]).
     async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
         let host = self.host(context).await?;
         Ok(Placement {
@@ -437,25 +451,29 @@ impl From<String> for ContextAnswer {
 /// One source of what the model must learn before a request, such as the
 /// conversation's execution context, the instructions or a plugin.
 ///
-/// What the model must learn between its requests, and what differs by user
-/// or conversation, reaches it as `context` blocks, never through the system
-/// prompt: when the user moves the conversation from the Cloud to a laptop,
-/// the execution context source answers the new Host before the node's next
-/// request. The session asks each source before every request, in the
-/// product's order, appends each answer as one block that names its source and
-/// saves it at once, so a request never carries a context its transcript does
-/// not hold. A source sees only the blocks the model still receives, those
-/// from the last compaction boundary on, so after a compaction it tells the
-/// model again what the summary may have left out.
+/// What the model must learn between its requests, and what differs by user or
+/// conversation, reaches it as `context` blocks, never through the system
+/// prompt. For example, when the user moves the conversation from the Cloud to
+/// a laptop, the execution context source answers the new Host before the
+/// node's next request.
+///
+/// The session asks each source before every request, in the product's order,
+/// appends each answer as one block that names its source and saves it at once,
+/// so a request never carries a context its transcript does not hold.
+///
+/// A source sees only the blocks the model still receives, those from the last
+/// compaction boundary on, so after a compaction it tells the model again what
+/// the summary may have left out.
 pub trait ContextSource {
     /// The name its blocks record: `execution`, `instructions`,
     /// `side_questions`, or a plugin's id.
     fn name(&self) -> &str;
 
-    /// What the node must learn now, or nothing. `seen` is the text of the
-    /// source's own blocks the model receives, oldest first, and `turn` the
-    /// input turn the request belongs to. A failure adds no block; the
-    /// source is asked again before the next request.
+    /// What the node must learn now, or nothing.
+    ///
+    /// `seen` is the text of the source's own blocks the model receives, oldest
+    /// first, and `turn` the input turn the request belongs to. A failure adds
+    /// no block; the source is asked again before the next request.
     fn context<'a>(
         &'a self,
         node: NodeContext<'a>,

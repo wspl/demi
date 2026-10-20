@@ -1,13 +1,15 @@
 //! A conversation's side questions: each a node of the tree beside the root's
-//! children, never in the agent directory. It starts from the root's history
-//! through the asked reply, a Fork's seed, with the root's instructions,
-//! commands and model, so its first request begins with what the root's next
-//! one would send and reads it from the provider's cache; its first message
-//! holds the asked words, the instruction that makes it a side question, and
-//! the question. It runs beside the root's turn and never waits for it, closes
-//! once it is quiescent, which delivers nothing to anyone, and opens again for
-//! a follow-up or a Retry. The pages follow its transcript as a subagent's, by
-//! its node.
+//! children, never in the agent directory.
+//!
+//! A side question starts from the root's history through the asked reply, a
+//! Fork's seed, with the root's instructions, commands and model. Its first
+//! request therefore begins with what the root's next one would send and reads
+//! it from the provider's cache. Its first message holds the asked words, the
+//! instruction that makes it a side question, and the question.
+//!
+//! It runs beside the root's turn and never waits for it. It closes once it is
+//! quiescent, which delivers nothing to anyone, and opens again for a follow-up
+//! or a Retry. The pages follow its transcript as a subagent's, by its node.
 
 use std::{
     cell::{Cell, RefCell},
@@ -37,10 +39,11 @@ use crate::{
     server::AgentServer,
 };
 
-/// What makes a question a side question, between what it asks about and
-/// the question in its first message: about the words quoted above it, or about
-/// the picture its first message carries before it, which is all
-/// that differs.
+/// What makes a question a side question, between what it asks about and the
+/// question in its first message.
+///
+/// The instruction is about the words quoted above it, or about the picture its
+/// first message carries before it, which is all that differs.
 pub fn side_instruction(about_picture: bool) -> String {
     let subject = if about_picture { "the picture above" } else { "the words quoted above" };
     format!(
@@ -200,10 +203,12 @@ impl<H: HostResolver> Tree<H> {
         self.sides.borrow().contains_key(id)
     }
 
-    /// Asks the side question `id` about `of`, from the root's history
-    /// through `of`'s block, in a task of the tree, so the start runs to its
-    /// end even when the call is cancelled. The same question again under
-    /// its id asks nothing more. Answers whether this call asked it.
+    /// Asks the side question `id` about `of`, from the root's history through
+    /// `of`'s block, in a task of the tree, so the start runs to its end even
+    /// when the call is cancelled.
+    ///
+    /// The same question again under its id asks nothing more. Answers whether
+    /// this call asked it.
     pub(crate) async fn ask(self: &Rc<Self>, id: NodeId, of: SideOf) -> Result<bool, AskError> {
         let tree = self.clone();
         let started = self.lifecycle.spawn_local(async move {
@@ -341,9 +346,10 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// A side question's own provider runtime for `model`, which the product
-    /// builds for the entry: never a fork of the root's, which waits while a
-    /// request of the root's holds it, and a side never waits for the
-    /// root's turn.
+    /// builds for the entry.
+    ///
+    /// It is never a fork of the root's, which waits while a request of the
+    /// root's holds it, and a side never waits for the root's turn.
     async fn side_runtime(
         &self,
         server: &AgentServer<H>,
@@ -429,10 +435,12 @@ impl<H: HostResolver> Tree<H> {
         })
     }
 
-    /// The side question's node from the assembly, with the root's
-    /// instructions and commands and no preamble, so its system prompt and
-    /// tools are the root's; its frames from then on, what it has yet to
-    /// run, and its supervision.
+    /// The side question's node from the assembly, with the root's instructions
+    /// and commands and no preamble, so its system prompt and tools are the
+    /// root's.
+    ///
+    /// It then sets up its frames from then on, what it has yet to run, and its
+    /// supervision.
     async fn start_side(
         self: &Rc<Self>,
         server: &Rc<AgentServer<H>>,
@@ -551,12 +559,10 @@ impl<H: HostResolver> Tree<H> {
         side
     }
 
-    /// Each live side question's transcript, phase, calls being written and
-    /// wait for the model: what a connection that attaches or syncs
-    /// receives after the children's.
-    /// The block of the side questions source for the request `node` is
-    /// about to make, given the source's blocks `seen` since the last
-    /// compaction: only the root's, only when the request follows the user's
+    /// The block of the side questions source for the request `node` is about
+    /// to make, given the source's blocks `seen` since the last compaction.
+    ///
+    /// The block is only the root's, only when the request follows the user's
     /// new message or steer, and only the questions asked since the agent last
     /// heard of them, about replies still in its history, in the order asked.
     /// The root's path holds a reply before its window too, which its store
@@ -595,9 +601,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Every side question's state, the closed ones' as they ended, in the
-    /// order they were asked: what a connection that attaches or syncs
-    /// receives after the children's, so a side question that finished while
-    /// the page was away shows done and whole.
+    /// order they were asked.
+    ///
+    /// It is what a connection that attaches or syncs receives after the
+    /// children's, so a side question that finished while the page was away
+    /// shows done and whole.
     pub(super) fn replay_sides(&self) -> Vec<ServerFrame> {
         let mut frames: Vec<(Option<demi_shared_types::Timestamp>, Vec<ServerFrame>)> = self
             .sides
@@ -626,9 +634,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Looks at `side` and decides, in one step with no await, whether it
-    /// closes: once an action failed for good, or once it is quiescent, as
-    /// a child is; a follow-up accepted before this step keeps it open.
-    /// Answers the failure it closes with, if any.
+    /// closes: once an action failed for good, or once it is quiescent, as a
+    /// child is.
+    ///
+    /// A follow-up accepted before this step keeps it open. Answers the failure
+    /// it closes with, if any.
     fn decide_side(&self, side: &Side<H>) -> Option<Option<String>> {
         if side.closing.get() || self.disposing.get() {
             return None;

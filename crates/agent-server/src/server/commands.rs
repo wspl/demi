@@ -1,20 +1,27 @@
 //! The `demi agent` command group: its declarations, and the handlers that run
 //! each call against the live tree of the invoking job's conversation.
-//! Lifecycle verbs act on the caller's own children; communication and reads
-//! reach any live agent of the tree; `cwd` reads or moves the caller's own
-//! working directory.
 //!
-//! The model keeps the one `shell` tool: the group is grafted into every node's
+//! - Lifecycle verbs act on the caller's own children.
+//! - Communication and reads reach any live agent of the tree.
+//! - `cwd` reads or moves the caller's own working directory.
+//!
+//! The model keeps the one `shell` tool. The group is grafted into every node's
 //! command set, the root's included (the product never declares an `agent`
 //! group, the plugin host refuses the name), and no command is stripped by
-//! depth. `spawn`, `fork` and `resume` answer once the child exists and its
-//! message is queued, because the supervisor owns the child independently of
-//! the invoking job; the outcome arrives as a message, so there is no `wait`
-//! verb. Briefs and messages come from stdin only, so a long text never meets
-//! quoting or argument limits. There is no `--model` option: a child's model
-//! comes from its profile or its parent. `--profile`'s help names no profile:
-//! help is part of the system prompt, rendered once per tree, and the profiles
-//! change with the user's settings.
+//! depth.
+//!
+//! Design decisions:
+//!
+//! - `spawn`, `fork` and `resume` answer once the child exists and its message
+//!   is queued, because the supervisor owns the child independently of the
+//!   invoking job. The outcome arrives as a message, so there is no `wait`
+//!   verb.
+//! - Briefs and messages come from stdin only, so a long text never meets
+//!   quoting or argument limits.
+//! - There is no `--model` option: a child's model comes from its profile or
+//!   its parent.
+//! - `--profile`'s help names no profile: help is part of the system prompt,
+//!   rendered once per tree, and the profiles change with the user's settings.
 
 use std::{
     cell::RefCell,
@@ -170,12 +177,13 @@ struct Aborted {
 }
 
 
-/// The command sets every tree's nodes share: the product's toolset of each
-/// revision, and each set with the runtime's groups grafted, by the
-/// product's set it was grafted on and the spawning right. Each is kept
-/// only while a node holds it, so the last tree to close frees it. The
-/// grafted groups hold nothing of a tree: their handlers find the caller's
-/// tree from the invocation.
+/// The command sets every tree's nodes share.
+///
+/// They are the product's toolset of each revision, and each set with the
+/// runtime's groups grafted, by the product's set it was grafted on and the
+/// spawning right. Each is kept only while a node holds it, so the last tree to
+/// close frees it. The grafted groups hold nothing of a tree: their handlers
+/// find the caller's tree from the invocation.
 #[derive(Default)]
 pub(crate) struct NodeCommandSets {
     toolsets: RefCell<Vec<HeldToolset>>,

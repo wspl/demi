@@ -1,28 +1,35 @@
-//! Which version of its place a row is: the rows that follow the same row
-//! are its siblings; each that replaces none begins a version of its own,
-//! in the order the rows were written, and one the session's own rewrite
-//! wrote in place of another is of that one's version. Both realizations
-//! of the tree store read versions by this rule.
+//! Which version of its place a row is.
 //!
-//! A transcript is a tree of rows, and what the conversation shows, replays
-//! and continues from is one path through it, the current path, from the
-//! first block to the current leaf. A row is written once and never deleted:
-//! after it settles it changes only where a later event marks it, never its
-//! content, and its row number, its index in the order rows were written, is
-//! never given to another row. An edit adds a sibling after the row the old
-//! message follows, and Regenerate a new answer after the same message;
-//! either makes the new branch's last row the current leaf, and nothing of
-//! the old branch is removed. The session's own rewrites, a retry, a resume's
-//! unwind and a compaction cut inside a turn, leave what they replace as a
-//! branch of its own that is never offered: only an edit and Regenerate make
-//! versions the user sees. Switching versions changes only the current path;
-//! files and the commands that ran stay as they are, as for an edit.
+//! The rows that follow the same row are its siblings. Each that replaces none
+//! begins a version of its own, in the order the rows were written. One the
+//! session's own rewrite wrote in place of another is of that one's version.
+//! Both realizations of the tree store read versions by this rule.
 //!
-//! Replay, estimates, compaction, pages, Fork and a new share read the
-//! current path, and a subagent belongs to the branch its start is on. The
-//! page and its patches address blocks by their position on the current
-//! path; what must stay valid across switches, a share's list and the
-//! search index's rows, names a row by its row number.
+//! A transcript is a tree of rows, and what the conversation shows, replays and
+//! continues from is one path through it, the current path, from the first
+//! block to the current leaf.
+//!
+//! A row is written once and never deleted. After it settles it changes only
+//! where a later event marks it, never its content, and its row number, its
+//! index in the order rows were written, is never given to another row.
+//!
+//! How rows are added:
+//!
+//! - An edit adds a sibling after the row the old message follows, and
+//!   Regenerate a new answer after the same message. Either makes the new
+//!   branch's last row the current leaf, and nothing of the old branch is
+//!   removed.
+//! - The session's own rewrites (a retry, a resume's unwind and a compaction
+//!   cut inside a turn) leave what they replace as a branch of its own that is
+//!   never offered. Only an edit and Regenerate make versions the user sees.
+//! - Switching versions changes only the current path; files and the commands
+//!   that ran stay as they are, as for an edit.
+//!
+//! Replay, estimates, compaction, pages, Fork and a new share read the current
+//! path, and a subagent belongs to the branch its start is on. The page and its
+//! patches address blocks by their position on the current path. What must stay
+//! valid across switches, a share's list and the search index's rows, names a
+//! row by its row number.
 
 use demi_conversation_socket_protocol::Versions;
 

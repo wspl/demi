@@ -30,10 +30,11 @@ const EXPIRY_SKEW: Duration = Duration::from_secs(5 * 60);
 const STALENESS: Duration = Duration::from_secs(8 * 24 * 60 * 60);
 
 /// The Codex family's secret document: the ChatGPT sign-in's tokens, the
-/// account they act for, and when they were last refreshed. Demi defines it;
-/// it is not the Codex CLI's `auth.json`. A sign-in without a refresh token,
-/// as a development one has none, is never refreshed: it is used until its
-/// access token expires, and then it has ended.
+/// account they act for, and when they were last refreshed.
+///
+/// Demi defines it; it is not the Codex CLI's `auth.json`. A sign-in without a
+/// refresh token, as a development one has none, is never refreshed: it is used
+/// until its access token expires, and then it has ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct CodexSecret {
@@ -189,9 +190,10 @@ impl CodexSecret {
 }
 
 /// The Codex sign-in a development backend is started with
-/// (`crates/xtask/src/dev/mod.rs`): the tokens of a Codex CLI sign-in
-/// without its refresh token, so that Demi never renews it and the CLI's
-/// own stays valid.
+/// (`crates/xtask/src/dev/mod.rs`).
+///
+/// It holds the tokens of a Codex CLI sign-in without its refresh token, so
+/// that Demi never renews it and the CLI's own stays valid.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DevelopmentSignIn {
@@ -279,12 +281,13 @@ impl CodexAuth {
         }
     }
 
-    /// The credentials of a request, refreshed first when the sign-in is
-    /// due, or when it still holds the access token a request was `refused`
-    /// with, as with HTTP 401. A refresh that waited behind another uses the
-    /// other's tokens unless they are due as well. A sign-in without a
-    /// refresh token is never refreshed: it is used as it is until it has
-    /// ended.
+    /// The credentials of a request, refreshed first when the sign-in is due,
+    /// or when it still holds the access token a request was `refused` with, as
+    /// with HTTP 401.
+    ///
+    /// A refresh that waited behind another uses the other's tokens unless they
+    /// are due as well. A sign-in without a refresh token is never refreshed:
+    /// it is used as it is until it has ended.
     pub(crate) async fn credentials(
         &self,
         http: &demi_provider_common::ProviderHttp,

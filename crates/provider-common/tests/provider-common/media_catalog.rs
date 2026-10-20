@@ -1,8 +1,9 @@
 //! The catalog of image and video models
-//! (`crates/provider-common/src/media_catalog.rs`): the file's decoding,
-//! the repository's own file, the download of the build's branch with its
-//! newer-of rule, and the image models a subscription and a key's listing
-//! read from it, against a scripted server. No test reaches GitHub.
+//! (`crates/provider-common/src/media_catalog.rs`), against a scripted server.
+//!
+//! The tests cover the file's decoding, the repository's own file, the download
+//! of the build's branch with its newer-of rule, and the image models a
+//! subscription and a key's listing read from it. No test reaches GitHub.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,10 +41,13 @@ fn ids(catalog: &Catalog) -> Vec<&str> {
 
 // Decoding in memory: microseconds.
 //
-// Planted defects: an unknown field or kind that refuses the file; a
-// missing `name` accepted; a size that is not WxH, or has a side of 0,
-// accepted; content after the document accepted; an alias of an alias, or
-// of a model the file lacks, accepted.
+// Planted defects:
+//
+// - an unknown field or kind that refuses the file;
+// - a missing `name` accepted;
+// - a size that is not WxH, or has a side of 0, accepted;
+// - content after the document accepted;
+// - an alias of an alias, or of a model the file lacks, accepted.
 #[test]
 fn a_catalog_decodes_ignoring_what_it_does_not_know_and_refuses_a_missing_required_field() {
     let read = Catalog::decode(
@@ -98,10 +102,12 @@ fn a_catalog_decodes_ignoring_what_it_does_not_know_and_refuses_a_missing_requir
 
 // Decoding in memory: microseconds.
 //
-// Planted defects: an audio model read as an unknown kind; voices that the
-// vendor lists refused, or named voices read as listed; a unit, a currency
-// or a duration of a rate misread; an unknown unit, currency or output
-// refusing the file.
+// Planted defects:
+//
+// - an audio model read as an unknown kind;
+// - voices that the vendor lists refused, or named voices read as listed;
+// - a unit, a currency or a duration of a rate misread;
+// - an unknown unit, currency or output refusing the file.
 #[test]
 fn an_audio_model_decodes_with_its_voices_durations_and_rates() {
     let read = Catalog::decode(
@@ -206,13 +212,14 @@ async fn a_download_is_used_only_when_newer_and_a_failed_or_older_one_keeps_the_
     assert_eq!(vendor.requests().len(), 5);
 }
 
-/// `future`, with the runtime kept busy while it waits, so that a paused
-/// clock stands still until the test moves it: a download under way waits
-/// on the network, which an idle runtime's paused clock would skip past to
-/// the next timer, the download's deadline among them. Each `yield_now`
-/// waits for the runtime's next poll of the network; what has not happened
-/// after ten thousand of them will not happen while the clock stands, and
-/// fails the test rather than hang it.
+/// `future`, with the runtime kept busy while it waits, so that a paused clock
+/// stands still until the test moves it.
+///
+/// A download under way waits on the network, which an idle runtime's paused
+/// clock would skip past to the next timer, the download's deadline among them.
+/// Each `yield_now` waits for the runtime's next poll of the network. What has
+/// not happened after ten thousand of them will not happen while the clock
+/// stands, and fails the test rather than hang it.
 async fn busy<F: std::future::Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);
     for _ in 0..10_000 {

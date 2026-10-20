@@ -1,7 +1,8 @@
-//! The Anthropic Messages API provider at its boundaries: the request it
-//! sends to a scripted vendor, the events it makes of recorded event streams,
-//! its failures, its cancellation and what it says about itself. No test
-//! calls the real vendor.
+//! The Anthropic Messages API provider at its boundaries.
+//!
+//! The tests cover the request it sends to a scripted vendor, the events it
+//! makes of recorded event streams, its failures, its cancellation and what it
+//! says about itself. No test calls the real vendor.
 
 mod cancellation;
 mod failures;

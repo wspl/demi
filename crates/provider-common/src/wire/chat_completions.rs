@@ -1,8 +1,9 @@
 //! The OpenAI Chat Completions stream as Demi reads it, shared by every
 //! provider that speaks it (OpenAI-compatible endpoints and the Grok Build
-//! proxy), and its mapping onto a run's events. A chunk carries no `type`
-//! tag, so there is nothing to skip: a malformed chunk is a protocol failure
-//! that names the field.
+//! proxy), and its mapping onto a run's events.
+//!
+//! A chunk carries no `type` tag, so there is nothing to skip: a malformed
+//! chunk is a protocol failure that names the field.
 
 use std::collections::BTreeMap;
 
@@ -123,16 +124,22 @@ pub fn decode_chunk(data: &str) -> Result<Chunk, WireError> {
     decode_untagged(data)
 }
 
-/// Maps a Chat Completions body sent as server-sent events onto a run's
-/// events (`crates/provider-common/src/contract.rs`,
-/// `crates/provider-common/src/wire/mod.rs`), until the body
-/// ends or `cancel` fires. When the stream ends, with its `[DONE]` sentinel
-/// or with the body, the run ends with the tool calls collected and one
-/// response if a choice finished with `stop` or `tool_calls`, and otherwise
-/// with a failure: the vendor's other finish reason, or none at all. The
-/// response carries the last usage a chunk reported, and none when no chunk
-/// did. A vendor error or an undecodable chunk ends it as a failure at once.
-/// A cancelled run ends without a further event.
+/// Maps a Chat Completions body sent as server-sent events onto a run's events
+/// (`crates/provider-common/src/contract.rs`,
+/// `crates/provider-common/src/wire/mod.rs`), until the body ends or `cancel`
+/// fires.
+///
+/// When the stream ends, with its `[DONE]` sentinel or with the body, the run
+/// ends:
+///
+/// - with the tool calls collected and one response if a choice finished with
+///   `stop` or `tool_calls`;
+/// - otherwise with a failure: the vendor's other finish reason, or none at
+///   all.
+///
+/// The response carries the last usage a chunk reported, and none when no chunk
+/// did. A vendor error or an undecodable chunk ends it as a failure at once. A
+/// cancelled run ends without a further event.
 pub fn map_sse<'a, S>(
     body: S,
     vendor: Vendor,
@@ -261,11 +268,13 @@ impl Mapper {
         false
     }
 
-    /// Folds one increment into the call it belongs to. A vendor that omits
-    /// `index` sends one call at a time, in order. The first increment that
-    /// names the function reports the call's start, with the arguments so
-    /// far, and each later piece of arguments is reported as it comes, for
-    /// display (`crates/provider-common/src/contract.rs`); the call is whole at the flush.
+    /// Folds one increment into the call it belongs to.
+    ///
+    /// A vendor that omits `index` sends one call at a time, in order. The
+    /// first increment that names the function reports the call's start, with
+    /// the arguments so far, and each later piece of arguments is reported as
+    /// it comes, for display (`crates/provider-common/src/contract.rs`). The
+    /// call is whole at the flush.
     fn collect(&mut self, delta: ToolCallDelta, out: &mut Vec<ProviderEvent>) {
         let index = delta
             .index

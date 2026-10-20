@@ -8,10 +8,11 @@ use demi_provider_common::media::ANSWER_LIMIT;
 use demi_provider_common::videos::download;
 use http::HeaderMap;
 
-/// A video past 256 MiB fails as it arrives, without a length announced
-/// first, rather than being kept whole.
-/// Planted defect this catches: the size read only from a
-/// `Content-Length`, which this answer does not send.
+/// A video past 256 MiB fails as it arrives, without a length announced first,
+/// rather than being kept whole.
+///
+/// Planted defect this catches: the size read only from a `Content-Length`,
+/// which this answer does not send.
 // One scripted server streaming 257 MiB of one shared chunk: under a
 // second, and 256 MiB of memory at most.
 #[tokio::test]

@@ -35,13 +35,15 @@ pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy, signat
     let has_tools = !request.tools.is_empty();
     // The key routes a session's requests together, and the vendor caches by
     // prefix on its own, finding an earlier entry at most 20 message endings
-    // back. Replay puts each call's result right after its call, so a turn
-    // that adds more than 20 (21 parallel calls) misses the previous request's
-    // entry once. Newer models take an explicit breakpoint
-    // (`prompt_cache_breakpoint`) that would read it exactly; Demi does not
-    // send it, because the API documents it as unsupported on earlier models
-    // without saying they ignore it, and sending it only to the models that
-    // take it would need a list of model ids.
+    // back. Replay puts each call's result right after its call, so a turn that
+    // adds more than 20 (21 parallel calls) misses the previous request's entry
+    // once.
+    //
+    // Newer models take an explicit breakpoint (`prompt_cache_breakpoint`) that
+    // would read it exactly. Demi does not send it, because the API documents
+    // it as unsupported on earlier models without saying they ignore it, and
+    // sending it only to the models that take it would need a list of model
+    // ids.
     let body = ResponsesBody {
         model: &request.model_id,
         input: responses_input(&request.items, &dialect),

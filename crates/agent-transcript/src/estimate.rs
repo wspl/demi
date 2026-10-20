@@ -71,6 +71,7 @@ pub struct ContextAnchor {
 }
 
 /// The anchor of the next request of `model` over the replayed `blocks`.
+///
 /// There is none when a compaction came after the latest response, when the
 /// last compaction has no marker yet, or when the usage is larger than the
 /// model's own context window, which one request's usage cannot be.
@@ -91,10 +92,12 @@ pub fn context_anchor(blocks: &[Block], model: &Model) -> ContextAnchor {
 }
 
 /// The estimate of `request`, the next request of its model, with
-/// `system_prompt`: its [`context_anchor`] plus the estimates of the blocks
-/// from the anchor on; without an anchor, the estimate of the system prompt
-/// and the tools in its place, so a request just after a compaction is not
-/// read as the history alone.
+/// `system_prompt`.
+///
+/// It is its [`context_anchor`] plus the estimates of the blocks from the
+/// anchor on. Without an anchor, it is the estimate of the system prompt and
+/// the tools in its place, so a request just after a compaction is not read as
+/// the history alone.
 pub fn context_tokens(request: &RequestView, system_prompt: &str) -> u64 {
     let blocks = request.blocks();
     let anchor = context_anchor(blocks, request.model());
@@ -251,9 +254,12 @@ fn content_estimate(content: &[UserContentBlock], request: &RequestView) -> (Str
 }
 
 /// A message's part: its line, and the weight of the medium the request
-/// carries. An image or a video is its URL or media type, a document
-/// `<fileName> <mediaType>`, and a medium the request carries as text that
-/// text; videos weigh nothing.
+/// carries.
+///
+/// - An image or a video weighs its URL or media type.
+/// - A document weighs `<fileName> <mediaType>`.
+/// - A medium the request carries as text weighs that text.
+/// - Videos weigh nothing.
 fn content_part_estimate<'a>(
     part: &'a UserContentBlock,
     request: &RequestView,

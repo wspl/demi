@@ -1,8 +1,9 @@
-//! Images as they enter a transcript: each is fitted once to what every
-//! provider accepts of one image, at most 2,000 px on each side and
-//! 5,000,000 bytes as base64, and kept light, since every request replays
-//! it. It never changes afterwards, so every request sends the same bytes.
-//! The original stays where it came from.
+//! Images as they enter a transcript.
+//!
+//! Each is fitted once to what every provider accepts of one image, at most
+//! 2,000 px on each side and 5,000,000 bytes as base64, and kept light, since
+//! every request replays it. It never changes afterwards, so every request
+//! sends the same bytes. The original stays where it came from.
 
 use std::io::Cursor;
 
@@ -25,7 +26,6 @@ const MAX_BYTES: usize = 3_750_000;
 const LIGHT_BYTES: usize = 500_000;
 /// The most memory decoding one image may take.
 const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
-/// The quality a scaled JPEG keeps.
 const JPEG_QUALITY: u8 = 90;
 /// The quality of an image that is heavier than [`LIGHT_BYTES`].
 const SMALLER_JPEG_QUALITY: u8 = 85;
@@ -74,13 +74,16 @@ pub async fn fit(data: B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
     }
 }
 
-/// Fits `data`: a PNG, JPEG or WebP within 2,000 px on each side and 500,000 bytes
-/// enters as it came, once it decodes. Any other image is turned upright;
-/// one over 2,000 px on a side is scaled to fit 2,000 × 2,000 px and, like a
-/// GIF, encoded again, a JPEG as JPEG and anything else as PNG. One still
-/// over 500,000 bytes enters as a JPEG of a lower quality, its transparency
-/// flattened onto white, when that is smaller; one over 3,750,000 bytes
-/// after that does not enter.
+/// Fits `data` to what the transcript keeps.
+///
+/// - A PNG, JPEG or WebP within 2,000 px on each side and 500,000 bytes enters
+///   as it came, once it decodes.
+/// - Any other image is turned upright. One over 2,000 px on a side is scaled
+///   to fit 2,000 × 2,000 px and, like a GIF, encoded again, a JPEG as JPEG and
+///   anything else as PNG.
+/// - One still over 500,000 bytes enters as a JPEG of a lower quality, its
+///   transparency flattened onto white, when that is smaller.
+/// - One over 3,750,000 bytes after that does not enter.
 fn fit_now(data: &B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
     let (format, mut decoder) = decoder(data, media_type)?;
     let orientation = decoder.orientation()?;
@@ -200,7 +203,6 @@ fn jpeg(image: &DynamicImage, quality: u8) -> Result<Vec<u8>, Unfit> {
     Ok(bytes)
 }
 
-/// `image` as a PNG.
 fn png(image: &DynamicImage) -> Result<Vec<u8>, Unfit> {
     let mut bytes = Vec::new();
     image.write_with_encoder(PngEncoder::new(&mut bytes))?;

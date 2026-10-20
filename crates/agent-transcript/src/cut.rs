@@ -23,25 +23,30 @@ pub struct ResumePoint {
 
 /// Scans back from the end over what nobody can have acted on: thinking,
 /// redacted thinking, `error` blocks and blank text, passing over a
-/// compaction's boundary and marker. The first other block stops the scan;
-/// reaching the block that opened the turn makes it a rerun.
+/// compaction's boundary and marker.
 ///
-/// Recovery is this one mechanism: a transient provider failure and a human
+/// The first other block stops the scan; reaching the block that opened the
+/// turn makes it a rerun.
+///
+/// Recovery is this one mechanism. A transient provider failure and a human
 /// asking to continue a dead turn ask the same question, how the turn gets
-/// finished, and the answer depends only on what has already left the
-/// process, never on which of the two asked or how the turn died. A caller
-/// must not branch on the failure kind: a terminal error can arrive after ten
-/// minutes of tool calls as easily as before the first token, so mapping an
-/// error to one action and a stop to another picks the destructive path
-/// exactly when it is most damaging. The scan stops at the first block
-/// someone may already have acted on, since blocks stream outward as they
-/// are produced and become effects that cannot be recalled: rendering,
-/// posting, running the tool. A tool call stops it whatever its status, as
-/// one still executing outlived the process and whether its effect landed is
-/// unknown. A rerun spares the model a continuation attached to a stub of its
-/// own aborted output. `retry` ([`rewind`]) is not recovery: it discards the
-/// whole turn for a caller who wants another answer and knows its effects can
-/// be repeated.
+/// finished, and the answer depends only on what has already left the process,
+/// never on which of the two asked or how the turn died.
+///
+/// A caller must not branch on the failure kind. A terminal error can arrive
+/// after ten minutes of tool calls as easily as before the first token, so
+/// mapping an error to one action and a stop to another picks the destructive
+/// path exactly when it is most damaging.
+///
+/// The scan stops at the first block someone may already have acted on, since
+/// blocks stream outward as they are produced and become effects that cannot be
+/// recalled: rendering, posting, running the tool. A tool call stops it
+/// whatever its status, as one still executing outlived the process and whether
+/// its effect landed is unknown. A rerun spares the model a continuation
+/// attached to a stub of its own aborted output.
+///
+/// `retry` ([`rewind`]) is not recovery: it discards the whole turn for a
+/// caller who wants another answer and knows its effects can be repeated.
 pub fn resume_point(blocks: &[Block]) -> ResumePoint {
     resume_point_within(blocks).unwrap_or(ResumePoint {
         cut: blocks.len(),
@@ -199,12 +204,13 @@ pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Blo
         ForkEnd::At(target) => at(target)?,
         ForkEnd::Newest => newest(blocks, 0).ok_or(CutError::NothingCompleted)?,
         // A side question's history is what the conversation's next request
-        // would have sent after the reply, its response included, so it
-        // reads the conversation's prompt cache. Once a compaction
-        // summarized the reply, the reply is only in the summary, and the
-        // history is the conversation's context as it stands: the summary
-        // and what follows it, through the newest completed text, or
-        // through the compaction when no text followed it yet.
+        // would have sent after the reply, its response included, so it reads
+        // the conversation's prompt cache.
+        //
+        // Once a compaction summarized the reply, the reply is only in the
+        // summary, and the history is the conversation's context as it stands:
+        // the summary and what follows it, through the newest completed text,
+        // or through the compaction when no text followed it yet.
         ForkEnd::Side(target) => side_end(blocks, at(target)?),
     };
     let prefix = &blocks[..=index];
@@ -214,12 +220,13 @@ pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Blo
     Ok(prefix)
 }
 
-/// Where a side question's history ends among `blocks` when it asks
-/// about the text at `asked` ([`ForkEnd::Side`]): there, with its
-/// response, or, once a compaction after it summarized it, at the newest
-/// completed text after the last compaction, or at that compaction.
-/// `blocks` may be a window that starts after the text, with `asked` 0:
-/// the window starts with the compaction that summarized it.
+/// Where a side question's history ends among `blocks` when it asks about the
+/// text at `asked` ([`ForkEnd::Side`]).
+///
+/// It ends at that text with its response, or, once a compaction after it
+/// summarized it, at the newest completed text after the last compaction, or at
+/// that compaction. `blocks` may be a window that starts after the text, with
+/// `asked` 0: the window starts with the compaction that summarized it.
 pub fn side_end(blocks: &[Block], asked: usize) -> usize {
     let end = match blocks[asked..].iter().rposition(is_compaction) {
         None => asked,
@@ -267,20 +274,26 @@ pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
         })
 }
 
-/// The record that ended the last turn: the last block but a compaction's
-/// boundary and marker, an error that ended no turn, such as a Compact
-/// whose summary request failed, and the agent messages and command reports
-/// a failed turn took after it ended, which leave the turn before them as
-/// it was. An `error` block there is the failure that left the turn
-/// unfinished.
+/// The record that ended the last turn.
+///
+/// It is the last block except:
+///
+/// - a compaction's boundary and marker;
+/// - an error that ended no turn, such as a Compact whose summary request
+///   failed;
+/// - the agent messages and command reports a failed turn took after it ended,
+///   which leave the turn before them as it was.
+///
+/// An `error` block there is the failure that left the turn unfinished.
 pub fn turn_record(blocks: &[Block]) -> Option<&Block> {
     blocks.iter().rev().find(|block| Kind::Record.holds(block))
 }
 
 /// The block that ended the latest ended turn, as a conversation's summary
-/// names it (`tree::summary` in the backend's storage): the last `response`,
-/// `error` or `abort` but an error that ended no turn and a stop a Resume
-/// continued.
+/// names it (`tree::summary` in the backend's storage).
+///
+/// It is the last `response`, `error` or `abort` but an error that ended no
+/// turn and a stop a Resume continued.
 pub fn ended_turn(blocks: &[Block]) -> Option<&Block> {
     blocks.iter().rev().find(|block| match block {
         Block::Response(_) => true,
@@ -290,10 +303,12 @@ pub fn ended_turn(blocks: &[Block]) -> Option<&Block> {
     })
 }
 
-/// The latest ended turn: the block that ended it, as [`ended_turn`] finds
-/// it, and its last text that is not blank, the answer a conversation's
-/// summary names. A text belongs to the turn when it comes after one of
-/// that turn's input blocks and before the end.
+/// The latest ended turn: the block that ended it, as [`ended_turn`] finds it,
+/// and its last text that is not blank, the answer a conversation's summary
+/// names.
+///
+/// A text belongs to the turn when it comes after one of that turn's input
+/// blocks and before the end.
 pub fn ended_turn_answer(blocks: &[Block]) -> Option<(&Block, Option<&TextBlock>)> {
     let end = ended_turn(blocks)?;
     let at = blocks.iter().rposition(|block| std::ptr::eq(block, end))?;

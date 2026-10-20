@@ -1,22 +1,38 @@
-//! Saving a session's checkpoint: only what changed, one save at a time, one
-//! second after the first unsaved change or at once where the session must
-//! not lose it. A save that started always finishes, and a failed one leaves
-//! its rows to the next.
+//! Saving a session's checkpoint: only what changed, one save at a time.
+//!
+//! A save runs one second after the first unsaved change, or at once where the
+//! session must not lose it. A save that started always finishes, and a failed
+//! one leaves its rows to the next.
 //!
 //! Saves, history rewrites and edit commits run in the order they were
-//! requested, and a running turn never holds that order while it waits for a
+//! requested. A running turn never holds that order while it waits for a
 //! provider, a tool or a context source, so its scheduled saves commit
-//! meanwhile. A save is due when the transcript, the edit receipts, the queue,
-//! the waiting agent messages or the model selection changed; the phase alone
-//! never makes one due. It is made at once before tools are dispatched, after
-//! a `context` block, when an action ends, when an agent message is admitted
-//! or written, on a history rewrite or an edit commit, and on dispose. The
-//! save at the end of an action records the phase idle, so a checkpoint that
-//! says an action was running is one the process died in. A scheduled save
-//! that fails is reported as an `error` event and its rows go with the next
-//! change; the failed save at an action's end fails the action. A history
-//! rewrite is saved before it is published. A save stores no blob: media are
-//! references whose blobs were stored when the medium entered.
+//! meanwhile.
+//!
+//! A save is due when the transcript, the edit receipts, the queue, the waiting
+//! agent messages or the model selection changed. The phase alone never makes
+//! one due.
+//!
+//! A save is made at once:
+//!
+//! - before tools are dispatched;
+//! - after a `context` block;
+//! - when an action ends;
+//! - when an agent message is admitted or written;
+//! - on a history rewrite or an edit commit;
+//! - on dispose.
+//!
+//! The save at the end of an action records the phase idle, so a checkpoint
+//! that says an action was running is one the process died in.
+//!
+//! Failed saves:
+//!
+//! - A scheduled save that fails is reported as an `error` event and its rows
+//!   go with the next change.
+//! - The failed save at an action's end fails the action.
+//!
+//! A history rewrite is saved before it is published. A save stores no blob:
+//! media are references whose blobs were stored when the medium entered.
 
 use std::{
     rc::{Rc, Weak},
@@ -72,10 +88,11 @@ pub(crate) async fn flush(s: &SessionShared) -> Result<(), StoreError> {
 }
 
 /// Commits a history rewrite of the session's own, a retry, an unwind or a
-/// dropped attempt: in the session's save order, the store commits the new
-/// branch, which stands in for what it replaces and leaves it stored, and
-/// only then does the session adopt it and publish one `replace` patch. A
-/// failed save changes nothing.
+/// dropped attempt.
+///
+/// In the session's save order, the store commits the new branch, which stands
+/// in for what it replaces and leaves it stored, and only then does the session
+/// adopt it and publish one `replace` patch. A failed save changes nothing.
 pub(crate) async fn commit_rewrite(
     s: &SessionShared,
     blocks: Vec<Block>,

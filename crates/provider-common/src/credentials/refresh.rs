@@ -1,7 +1,8 @@
-//! The token refresh every family follows:
-//! one refresh at a time per account in this process, a fresh read after the
-//! wait, and a versioned replace, so that refreshers of one account, in this
-//! backend or another worker, never invalidate each other's tokens.
+//! The token refresh every family follows: one refresh at a time per account in
+//! this process, a fresh read after the wait, and a versioned replace.
+//!
+//! So refreshers of one account, in this backend or another worker, never
+//! invalidate each other's tokens.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -16,9 +17,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::credentials::{AccountDocument, PoolError};
 
 /// One refresh at a time for each account in this process, first come first
-/// served, and the owner of the refreshes under way. Its owner keys accounts
-/// so that no two entries' accounts share a key, such as by the provider
-/// entry's id and the account's id.
+/// served, and the owner of the refreshes under way.
+///
+/// Its owner keys accounts so that no two entries' accounts share a key, such
+/// as by the provider entry's id and the account's id.
 #[derive(Debug)]
 pub struct RefreshGates {
     gate: KeyedSerialGate<String>,
@@ -216,24 +218,28 @@ pub async fn read_secret<S: SecretDocument>(
 /// none came; the tokens stay as they were.
 const REFRESH_DEADLINE: Duration = Duration::from_secs(60);
 
-/// An account's secret, refreshed by the one protocol of this module when
-/// `due` says it needs a refresh: take the account's
-/// turn; read the stored document again and use it when `due` no longer
-/// says so, because another refresher stored new tokens meanwhile;
-/// otherwise ask the vendor through `refresh`. A refreshed secret is stored
-/// over the version read, and when another writer stored first, its secret
-/// is used instead. A refusal uses the tokens another writer stored
-/// meanwhile, and fails only when nobody did. A secret that is not due is
-/// used without taking the turn.
+/// An account's secret, refreshed by the one protocol of this module when `due`
+/// says it needs a refresh.
 ///
-/// Once it asks the vendor, the refresh is a task the account's gates own,
-/// which holds the turn and runs to its end whether or not the caller still
-/// waits, and which their close waits for: the
-/// vendor may have spent the old refresh token the moment it answered, so
-/// its answer is stored even for a caller that went away. The task ends
-/// with the vendor's answer, or after [`REFRESH_DEADLINE`] without one. A
-/// caller dropped while it waits for
-/// the turn gives up its place.
+/// The protocol, in order:
+///
+/// 1. Take the account's turn.
+/// 2. Read the stored document again and use it when `due` no longer says so,
+///    because another refresher stored new tokens meanwhile.
+/// 3. Otherwise ask the vendor through `refresh`.
+///
+/// A refreshed secret is stored over the version read, and when another writer
+/// stored first, its secret is used instead. A refusal uses the tokens another
+/// writer stored meanwhile, and fails only when nobody did. A secret that is
+/// not due is used without taking the turn.
+///
+/// Once it asks the vendor, the refresh is a task the account's gates own. The
+/// task holds the turn and runs to its end whether or not the caller still
+/// waits, and the gates' close waits for it. The vendor may have spent the old
+/// refresh token the moment it answered, so its answer is stored even for a
+/// caller that went away. The task ends with the vendor's answer, or after
+/// [`REFRESH_DEADLINE`] without one. A caller dropped while it waits for the
+/// turn gives up its place.
 pub async fn renew<S, E, F, R>(
     doc: Arc<dyn AccountDocument>,
     due: impl Fn(&S) -> bool,

@@ -1,10 +1,13 @@
 //! An OpenAI or xAI key's images against a scripted vendor built from each
-//! vendor's documented shapes: OpenAI's Images API reference
-//! (developers.openai.com/api/reference/resources/images) and its error
-//! codes guide, and xAI's Imagine guide
-//! (docs.x.ai/developers/model-capabilities/imagine), its image generation
-//! models listing and its debugging guide's status codes. No test calls a
-//! vendor.
+//! vendor's documented shapes:
+//!
+//! - OpenAI's Images API reference
+//!   (developers.openai.com/api/reference/resources/images) and its error codes
+//!   guide;
+//! - xAI's Imagine guide (docs.x.ai/developers/model-capabilities/imagine), its
+//!   image generation models listing and its debugging guide's status codes.
+//!
+//! No test calls a vendor.
 
 use demi_provider_common::media_catalog::Catalog;
 use std::sync::Arc;

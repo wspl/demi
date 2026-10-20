@@ -31,10 +31,12 @@ pub fn client_text(text: &str) -> Vec<ClientContent> {
 /// Makes one provider's runtimes.
 type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
 
-/// Provider runtimes by provider id: every runtime of one provider plays
-/// that provider's one script, and a provider without one is unknown. Every
-/// conversation's record holds the selection a test chose last, else
-/// [`test_model`]. A provider's catalog lists the models a test gave it.
+/// Provider runtimes by provider id.
+///
+/// Every runtime of one provider plays that provider's one script, and a
+/// provider without one is unknown. Every conversation's record holds the
+/// selection a test chose last, else [`test_model`]. A provider's catalog lists
+/// the models a test gave it.
 #[derive(Default)]
 pub struct ScriptedProviders {
     runtimes: RefCell<HashMap<String, Runtimes>>,

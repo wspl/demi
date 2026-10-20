@@ -1,10 +1,12 @@
 //! Test support (feature `testing`): a scripted Codex backend WebSocket, for
 //! the tests of this provider's WebSocket transport and of what sends its
-//! requests. It records each connection's handshake headers, the messages it
-//! receives and the close reason the client sends, and plays one script per
-//! connection. A connection that is not a WebSocket upgrade, such as the
-//! server-sent events fallback, is forwarded to a scripted HTTP vendor, so
-//! both transports share one backend URL as they do in the product.
+//! requests.
+//!
+//! It records each connection's handshake headers, the messages it receives and
+//! the close reason the client sends, and plays one script per connection. A
+//! connection that is not a WebSocket upgrade, such as the server-sent events
+//! fallback, is forwarded to a scripted HTTP vendor, so both transports share
+//! one backend URL as they do in the product.
 
 use std::{
     collections::VecDeque,

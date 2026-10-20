@@ -1,10 +1,15 @@
 //! How long a run waited for its process and its first word
-//! (`crates/provider-claude-code/src/prepared.rs`): the run's span carries
-//! whether it took a kept, a prepared or a new process; for a new or
-//! prepared one, the steps of its start; and, counted from the request, when
-//! the process was ready for the request's input and when the first content
-//! delta came. The run logs them at `info` when it ends, so the time to a
-//! first word can be read from a backend's log without the wire trace.
+//! (`crates/provider-claude-code/src/prepared.rs`).
+//!
+//! The run's span carries:
+//!
+//! - whether it took a kept, a prepared or a new process;
+//! - for a new or prepared one, the steps of its start;
+//! - counted from the request, when the process was ready for the request's
+//!   input and when the first content delta came.
+//!
+//! The run logs them at `info` when it ends, so the time to a first word can be
+//! read from a backend's log without the wire trace.
 
 use std::time::Duration;
 

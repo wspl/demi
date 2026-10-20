@@ -1,7 +1,8 @@
 //! The tree store contract over the in-memory store
-//! (`crates/agent-store/src/lib.rs`); the cases are
-//! `agent_store::testing::store_contract`'s, which the backend's database store
-//! passes too.
+//! (`crates/agent-store/src/lib.rs`).
+//!
+//! The cases are `agent_store::testing::store_contract`'s, which the backend's
+//! database store passes too.
 
 use demi_agent_store::testing::{MemoryTreeStore, store_contract};
 

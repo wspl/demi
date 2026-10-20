@@ -694,11 +694,12 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
     runtime.close().await;
 }
 
-/// Claude Code retries a call whose stream failed without streaming, keeps
-/// only the answer it got then, and writes it as one entry of all its
-/// blocks. Each block keeps the part of that entry that stands for it, and
-/// none keeps an entry of the abandoned stream, so a new process resumes
-/// the answer once, as the CLI kept it.
+/// Claude Code retries a call whose stream failed without streaming, keeps only
+/// the answer it got then, and writes it as one entry of all its blocks.
+///
+/// Each block keeps the part of that entry that stands for it, and none keeps
+/// an entry of the abandoned stream, so a new process resumes the answer once,
+/// as the CLI kept it.
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_complete_answer_after_a_failed_stream_is_kept_once_on_its_blocks_and_the_stream_nowhere()
@@ -831,11 +832,12 @@ async fn a_complete_answer_after_a_failed_stream_is_kept_once_on_its_blocks_and_
     );
 }
 
-/// The assistant entries a new process resumes after a stream of the
-/// stream events `stream` stalled and the complete answer `answer`
-/// replaced it, ending in the call `toolu_1`. `shown` are the items the
-/// agent's blocks of that run hold, each a block of its own but the call,
-/// which holds its result too.
+/// The assistant entries a new process resumes after a stream of the stream
+/// events `stream` stalled and the complete answer `answer` replaced it, ending
+/// in the call `toolu_1`.
+///
+/// `shown` are the items the agent's blocks of that run hold, each a block of
+/// its own but the call, which holds its result too.
 async fn resumed_after(stream: Vec<Value>, answer: Value, shown: Vec<InferenceItem>) -> Vec<Value> {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();

@@ -1,12 +1,14 @@
 //! A project's workflows: the format of `.demi/workflows/<id>.yaml`, the one
-//! parser that reads it, and the help that teaches the format, kept together so
-//! they never disagree. The help is the only place the format is written, since
-//! no skill or prompt teaches it: a model asked to write a workflow reads `demi
-//! agent workflows --help` and checks its file with `demi agent workflows
-//! check`, which uses this parser. A workflow's name is a menu item's in the
-//! composer's Workflow menu, so it names the way of working and never the task
-//! at hand; `check` warns of one that is not, and the workflow works whatever
-//! its name.
+//! parser that reads it, and the help that teaches the format.
+//!
+//! They are kept together so they never disagree. The help is the only place
+//! the format is written, since no skill or prompt teaches it: a model asked to
+//! write a workflow reads `demi agent workflows --help` and checks its file
+//! with `demi agent workflows check`, which uses this parser.
+//!
+//! A workflow's name is a menu item's in the composer's Workflow menu, so it
+//! names the way of working and never the task at hand. `check` warns of one
+//! that is not, and the workflow works whatever its name.
 
 use demi_shared_types::ContextChoice;
 use garde::Validate;
@@ -331,10 +333,11 @@ mod tests {
         }
     }
 
-    /// A name that does not read as a menu item, a task's title with a
-    /// colon, a plus sign or brackets or one over 30 characters, still
-    /// reads, with a warning that says why; a short name in the user's
-    /// language reads without one.
+    /// A name that does not read as a menu item, a task's title with a colon, a
+    /// plus sign or brackets or one over 30 characters, still reads, with a
+    /// warning that says why.
+    ///
+    /// A short name in the user's language reads without one.
     #[test]
     fn a_name_that_is_not_a_menu_items_reads_with_a_warning() {
         let warned = [

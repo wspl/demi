@@ -1,37 +1,42 @@
-//! The user's subagent settings as a tree reads them: the checks a spawn makes
-//! against the settings and the conversation's Workflow menu choice as they are
-//! at that moment, and `demi agent profiles`. Nothing is kept between two
-//! reads, so a change in settings, in the choice or in a workflow's file
-//! reaches the next spawn of every tree, an open one included; a child keeps
-//! what it was spawned with, so a profile changed or deleted afterwards changes
-//! no child.
+//! The user's subagent settings as a tree reads them.
+//!
+//! This module holds the checks a spawn makes against the settings and the
+//! conversation's Workflow menu choice as they are at that moment, and `demi
+//! agent profiles`.
+//!
+//! Nothing is kept between two reads, so a change in settings, in the choice or
+//! in a workflow's file reaches the next spawn of every tree, an open one
+//! included. A child keeps what it was spawned with, so a profile changed or
+//! deleted afterwards changes no child.
 //!
 //! A profile never replaces the product's prompt (the child is always Demi) and
 //! never changes the commands. A spawn without `--profile` takes the inherit
-//! profile, which exists whether or not the user has profiles. The reasons
-//! behind the checks, whose order is that of `Tree::spawn_setup`:
+//! profile, which exists whether or not the user has profiles.
+//!
+//! The checks run in the order of `Tree::spawn_setup`. The reasons behind them:
+//!
 //! - Nothing falls back. A profile whose model settings are missing (entry
-//!   gone, model dropped, effort or tier no longer offered) is unavailable and
-//!   a spawn fails naming what is missing, never on the parent's model or
-//!   another effort or tier, so a spawn never runs on something the user did
+//!   gone, model dropped, effort or tier no longer offered) is unavailable, and
+//!   a spawn fails naming what is missing. It never runs on the parent's model
+//!   or another effort or tier, so a spawn never runs on something the user did
 //!   not choose. A disabled profile is the user's choice, so one that is also
 //!   unavailable is reported disabled.
 //! - The switch blocks spawns only. Running children go on, and `send`,
 //!   `abort`, `resume`, `list` and `show` keep working, because they act on
-//!   agents that exist; a resume continues a child the parent already has.
+//!   agents that exist. A resume continues a child the parent already has.
 //! - The limits are the user's across all their conversations, because they
 //!   bound what the user runs at once (tokens, the Hosts' load), not what one
 //!   conversation does. A tree with a live subagent is never evicted, so every
-//!   live one is counted; a limit lowered below what is live ends nothing.
+//!   live one is counted. A limit lowered below what is live ends nothing.
 //! - A workflow chosen for the conversation replaces the user's profiles and
 //!   the switch.
 //! - `profiles list` reads the settings at call time and succeeds while
-//!   subagents are off. They are in neither the system prompt nor a context
-//!   block: the prompt is rendered once per tree and could not follow an edit,
-//!   and a block would put every edit into every conversation's transcript,
-//!   spawning or not.
+//!   subagents are off. The profiles are in neither the system prompt nor a
+//!   context block: the prompt is rendered once per tree and could not follow
+//!   an edit, and a block would put every edit into every conversation's
+//!   transcript, spawning or not.
 //! - `create`, `edit` and `delete` change a setting every conversation reads,
-//!   so each needs the user's permission in each conversation; they go through
+//!   so each needs the user's permission in each conversation. They go through
 //!   the settings page's path, with its checks and words.
 
 use std::{num::NonZeroU32, rc::Rc};
@@ -138,14 +143,20 @@ fn effort_word(effort: &str) -> String {
 }
 
 impl<H: HostResolver> Tree<H> {
-    /// What a spawn by `owner` with the profile `name`, none for the inherit
-    /// profile, makes its child of. The checks run in their order against
-    /// the user's current settings and the conversation's choice, and the
-    /// first that fails ends the spawn before anything is created:
-    /// subagents are on, the name is known, the profile is enabled, and its
-    /// model settings make a selection. A workflow's profiles replace the
-    /// user's, whatever the user's switch is. The limits the spawn checks
-    /// next come with the answer.
+    /// What a spawn by `owner` with the profile `name` makes its child of.
+    ///
+    /// `name` is none for the inherit profile. The checks run against the
+    /// user's current settings and the conversation's choice. The first that
+    /// fails ends the spawn before anything is created. In order, they require
+    /// that:
+    ///
+    /// 1. subagents are on;
+    /// 2. the name is known;
+    /// 3. the profile is enabled;
+    /// 4. its model settings make a selection.
+    ///
+    /// A workflow's profiles replace the user's, whatever the user's switch is.
+    /// The limits the spawn checks next come with the answer.
     pub(super) async fn spawn_setup(
         &self,
         server: &AgentServer<H>,
@@ -274,9 +285,14 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// `demi agent profiles list`, from the user's settings and the
-    /// conversation's choice now: the chosen workflow's profiles in its
-    /// order; or, with Global Workflow and subagents on, each enabled profile of the
-    /// user's in name order; an unavailable one with what is missing.
+    /// conversation's choice now.
+    ///
+    /// It lists:
+    ///
+    /// - the chosen workflow's profiles in its order;
+    /// - or, with Global Workflow and subagents on, each enabled profile of the
+    ///   user's in name order;
+    /// - an unavailable one with what is missing.
     pub(crate) async fn profiles(&self) -> Result<ProfileListing, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         let off = |choice| ProfileListing {
@@ -424,9 +440,10 @@ impl<H: HostResolver> Tree<H> {
         Ok(answer(&server, profile).await)
     }
 
-    /// `demi agent profiles create`: the profile as stored, and, while this
-    /// conversation runs a workflow, why a spawn here cannot use it: a
-    /// workflow's profiles replace the user's
+    /// `demi agent profiles create`: the profile as stored.
+    ///
+    /// While this conversation runs a workflow, it also answers why a spawn
+    /// here cannot use the profile: a workflow's profiles replace the user's
     /// (`crates/backend-user-shard/src/conversation/workflows.rs`).
     pub(crate) async fn create_profile(
         &self,
@@ -587,14 +604,13 @@ fn no_profile(name: &str, settings: &SubagentSettings) -> String {
 }
 
 impl ProfileListing {
-    /// Why no agent of the conversation may spawn now, or with no profile
-    /// what a spawn does, which `list` tells on stderr; none while
-    /// profiles are listed.
     /// What makes each unavailable profile so, for stderr.
     pub(crate) fn unavailable(&self) -> impl Iterator<Item = &str> {
         self.profiles.iter().filter_map(|profile| profile.unavailable.as_deref())
     }
 
+    /// Why no agent of the conversation may spawn now, or with no profile what a
+    /// spawn does, which `list` tells on stderr; none while profiles are listed.
     pub(crate) fn note(&self) -> Option<String> {
         match &self.choice {
             WorkflowChoice::Default if !self.enabled => Some(

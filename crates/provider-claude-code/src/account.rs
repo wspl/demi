@@ -1,29 +1,31 @@
-//! A Claude Code account: its record holds only its public metadata, since
-//! the CLI keeps its sign-in in the account's directory on the Claude Code
-//! machine and renews it there. The provider names the account a process uses,
-//! marks it signed out when the vendor refused its sign-in, and hands over,
-//! once, the sign-in an earlier release kept sealed in its record.
+//! A Claude Code account: its record holds only its public metadata, since the
+//! CLI keeps its sign-in in the account's directory on the Claude Code machine
+//! and renews it there.
+//!
+//! The provider names the account a process uses, marks it signed out when the
+//! vendor refused its sign-in, and hands over, once, the sign-in an earlier
+//! release kept sealed in its record.
 //!
 //! - One directory per account is the CLI's configuration directory for every
 //!   process of that account, and the one place its sign-in exists. That is a
-//!   requirement: a renewal revokes at once the refresh token it spends and
-//!   the access token it replaces (measured with Claude Code 2.1.301), so a
-//!   second copy of a sign-in anywhere is signed out by the first renewal of
-//!   the other. In one directory the CLI renews once for all its processes,
-//!   under a lock there.
-//! - A process is always closed, SIGTERM first, never killed: one killed while
+//!   requirement: a renewal revokes at once the refresh token it spends and the
+//!   access token it replaces (measured with Claude Code 2.1.301), so a second
+//!   copy of a sign-in anywhere is signed out by the first renewal of the
+//!   other. In one directory the CLI renews once for all its processes, under a
+//!   lock there.
+//! - A process is always closed, SIGTERM first, never killed. One killed while
 //!   it renews leaves the lock behind, and for about a minute every process of
 //!   the account fails, until the CLI takes the lock back (the sign-in
 //!   survives). The backend never renews a Claude sign-in itself.
 //! - A refused renewal ends a run with `authentication_failed` (`is_error`,
-//!   though its `subtype` says success); the account is marked signed out
-//!   until a login replaces it, and account rotation passes over it.
+//!   though its `subtype` says success). The account is marked signed out until
+//!   a login replaces it, and account rotation passes over it.
 //! - Signing an account in again and removing it replace or delete its
-//!   directory, so each first stops new processes of the account from starting,
+//!   directory. Each first stops new processes of the account from starting,
 //!   requests and probes alike, closes every process it has, and only then
 //!   changes the directory.
 //! - The handover moves the tokens an earlier release kept sealed into the
-//!   directory and clears the record's secret, so the backend holds none; a
+//!   directory and clears the record's secret, so the backend holds none. A
 //!   directory that already holds a sign-in wins.
 
 use std::sync::Arc;
@@ -40,10 +42,11 @@ use crate::FAMILY;
 use crate::files::SignIn;
 use crate::placement::{CliWork, Handover};
 
-/// The sign-in an earlier release kept sealed in an account's record: what
-/// the CLI's login wrote, its tokens and their expiry, the scopes granted and
-/// the subscription type, with the account's ID and email. It is read only to
-/// hand it over to the account's directory.
+/// The sign-in an earlier release kept sealed in an account's record.
+///
+/// It is what the CLI's login wrote, its tokens and their expiry, the scopes
+/// granted and the subscription type, with the account's ID and email. It is
+/// read only to hand it over to the account's directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct EarlierSignIn {
@@ -115,10 +118,11 @@ impl ClaudeAuth {
         Ok(meta)
     }
 
-    /// What a process of the account starts with: the account's directory,
-    /// and the sign-in its record still holds from an earlier release, as
-    /// the CLI's files, when it holds one. A signed-out account starts
-    /// nothing: the CLI emptied its sign-in.
+    /// What a process of the account starts with: the account's directory, and
+    /// the sign-in its record still holds from an earlier release, as the CLI's
+    /// files, when it holds one.
+    ///
+    /// A signed-out account starts nothing: the CLI emptied its sign-in.
     pub(crate) async fn work(&self) -> Result<AccountWork, AuthFailure> {
         self.status().await?;
         let account = self.account()?;
@@ -159,8 +163,9 @@ impl ClaudeAuth {
     }
 
     /// Clears the record's secret, read at `version`, once its sign-in is in
-    /// the account's directory: the tokens move, they are not copied. A
-    /// record that changed meanwhile was written by a new sign-in, which
+    /// the account's directory: the tokens move, they are not copied.
+    ///
+    /// A record that changed meanwhile was written by a new sign-in, which
     /// holds no secret.
     pub(crate) async fn handed_over(&self, version: u64) {
         let Ok(account) = self.account() else {

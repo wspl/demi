@@ -2,11 +2,12 @@
 
 use reqwest::Url;
 
-/// The URL of the request at `path`, such as `/responses`, under an entry's
-/// API `base`: the base with `path` appended, unless the base already ends
-/// with it. A trailing slash of the base is ignored. An Anthropic base
-/// includes the API version, usually `/v1`: a service that documents a root
-/// its own clients append `/v1/messages` to is entered with `/v1` added.
+/// The URL of the request at `path`, such as `/responses`, under an entry's API
+/// `base`: the base with `path` appended, unless the base already ends with it.
+///
+/// A trailing slash of the base is ignored. An Anthropic base includes the API
+/// version, usually `/v1`: a service that documents a root its own clients
+/// append `/v1/messages` to is entered with `/v1` added.
 pub fn endpoint_url(base: &Url, path: &str) -> Url {
     let mut url = base.clone();
     let trimmed = url.path().trim_end_matches('/').to_owned();

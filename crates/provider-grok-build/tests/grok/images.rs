@@ -1,7 +1,8 @@
-//! Making images: the chat proxy's image endpoints with the account's
-//! identity, the shape asked as `aspect_ratio`, the image always as
-//! base64, an edit's images as data URLs, and a refused model and a
-//! used-up account as the call's failures.
+//! Making images: the chat proxy's image endpoints with the account's identity.
+//!
+//! The tests cover the shape asked as `aspect_ratio`, the image always as
+//! base64, an edit's images as data URLs, and a refused model and a used-up
+//! account as the call's failures.
 
 use demi_provider_common::media_catalog::Catalog;
 use bytes::Bytes;
@@ -92,9 +93,10 @@ async fn a_model_the_proxy_does_not_have_is_refused_in_its_words_and_a_402_uses_
     assert_eq!(failure, MediaFailure::UsageLimit { retry_at: None, trace: Default::default() });
 }
 
-/// A shape the proxy does not take fails with the shapes its refusal
-/// names, in its order, so a shape xAI adds needs no change in Demi; the
-/// proxy's `auto` is no shape and is left out.
+/// A shape the proxy does not take fails with the shapes its refusal names, in
+/// its order, so a shape xAI adds needs no change in Demi. The proxy's `auto`
+/// is no shape and is left out.
+///
 /// Planted defect this catches: the refusal passed on as the proxy's raw
 /// deserializer text, or a list of shapes of Demi's own.
 // One scripted proxy, one request: milliseconds.
@@ -117,9 +119,10 @@ async fn a_shape_the_proxy_does_not_take_fails_with_the_shapes_it_names() {
     }
 }
 
-/// A list read whole is told as shapes, its last entry after `or`
-/// included; a list with a part not understood is told in the proxy's own
-/// words rather than as a shorter list.
+/// A list read whole is told as shapes, its last entry after `or` included. A
+/// list with a part not understood is told in the proxy's own words rather than
+/// as a shorter list.
+///
 /// Planted defect this catches: a list read up to the first part not
 /// understood, which drops the shapes after it.
 // One scripted proxy, two requests: milliseconds.

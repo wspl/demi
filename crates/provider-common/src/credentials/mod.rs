@@ -1,10 +1,16 @@
 //! The accounts of a subscription entry and their secrets
-//! (`crates/backend-providers/src/vault/entries.rs`): the credential pool a
-//! provider receives, bound to one
-//! entry; the refresh protocol every family follows, with one refresh at a
-//! time per account; a pool held in memory; and the account operations a
-//! family offers over its pool, and why an account could not be used. The
-//! metadata the web app receives is `core`'s.
+//! (`crates/backend-providers/src/vault/entries.rs`).
+//!
+//! This module holds:
+//!
+//! - the credential pool a provider receives, bound to one entry;
+//! - the refresh protocol every family follows, with one refresh at a time per
+//!   account;
+//! - a pool held in memory;
+//! - the account operations a family offers over its pool, and why an account
+//!   could not be used.
+//!
+//! The metadata the web app receives is `core`'s.
 
 mod accounts;
 mod failure;

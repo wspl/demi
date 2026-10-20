@@ -1,10 +1,11 @@
-//! The newest Codex CLI release (`crates/provider-codex/src/models.rs`): the npm
-//! registry's `latest` version of `@openai/codex`, as the CLI's own update
-//! check finds it, which the catalog request names. One serves the whole
-//! backend, whatever the number of Codex entries and accounts; it is kept by
-//! provider-common's [`KeptRelease`]. The service decides by that version which
-//! models it lists, each model naming the oldest client it is shown to, so a
-//! stale version hides new models.
+//! The newest Codex CLI release (`crates/provider-codex/src/models.rs`): the
+//! npm registry's `latest` version of `@openai/codex`, as the CLI's own update
+//! check finds it, which the catalog request names.
+//!
+//! One serves the whole backend, whatever the number of Codex entries and
+//! accounts; it is kept by provider-common's [`KeptRelease`]. The service
+//! decides by that version which models it lists, each model naming the oldest
+//! client it is shown to, so a stale version hides new models.
 
 use std::{fmt, sync::Arc};
 

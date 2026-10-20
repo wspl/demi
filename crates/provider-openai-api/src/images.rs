@@ -1,10 +1,16 @@
-//! The image role of an OpenAI or xAI key and of a compatible entry whose
-//! image shape is OpenAI Images: each vendor's image API under the entry's
-//! base URL, with the key as a bearer token; the models the vendor lists
-//! for the key, read when asked, or the models a compatible entry's user
-//! added; and the vendor's failures read as its text failures are, a usage
-//! or billing limit used up and a refused key named. A compatible endpoint
-//! is sent OpenAI's requests and read as OpenAI's API is.
+//! The image role of an OpenAI or xAI key and of a compatible entry whose image
+//! shape is OpenAI Images.
+//!
+//! The role covers:
+//!
+//! - each vendor's image API under the entry's base URL, with the key as a
+//!   bearer token;
+//! - the models the vendor lists for the key, read when asked, or the models a
+//!   compatible entry's user added;
+//! - the vendor's failures, read as its text failures are: a usage or billing
+//!   limit used up and a refused key named.
+//!
+//! A compatible endpoint is sent OpenAI's requests and read as OpenAI's API is.
 
 use std::sync::Arc;
 
@@ -200,10 +206,11 @@ impl ImageMaker for KeyImages {
     }
 }
 
-/// The image role of a compatible entry whose image shape is OpenAI
-/// Images: OpenAI's image requests under its `base`, with its `key` when it
-/// has one, offering the `models` its user added; `name` is the entry's,
-/// which its failures name.
+/// The image role of a compatible entry whose image shape is OpenAI Images:
+/// OpenAI's image requests under its `base`, with its `key` when it has one.
+///
+/// It offers the `models` its user added; `name` is the entry's, which its
+/// failures name.
 pub fn compatible_images(
     name: String,
     key: Option<Secret>,
@@ -308,12 +315,11 @@ struct XaiImage {
     kind: &'static str,
 }
 
-/// How an OpenAI-shaped request with a key is sent and its failures read:
-/// as xAI reads them when `xai`, else as OpenAI does, which a compatible
-/// endpoint is taken to follow.
-/// Every model OpenAI's `GET …/models` at `url` lists for the key, each
-/// with the date it was made: the one reader of that listing, which each
-/// kind's role narrows to its own models.
+/// Every model OpenAI's `GET …/models` at `url` lists for the key, each with
+/// the date it was made.
+///
+/// It is the one reader of that listing, which each kind's role narrows to its
+/// own models.
 pub(crate) async fn openai_models(
     call: &MediaCall<'_>,
     http: &demi_provider_common::ProviderHttp,
@@ -329,6 +335,9 @@ pub(crate) async fn openai_models(
         .collect())
 }
 
+/// How an OpenAI-shaped request with a key is sent and its failures read:
+/// as xAI reads them when `xai`, else as OpenAI does, which a compatible
+/// endpoint is taken to follow.
 pub(crate) fn key_call(xai: bool, clock: &dyn Clock) -> MediaCall<'_> {
     MediaCall {
         label: if xai { "xAI" } else { "OpenAI" },

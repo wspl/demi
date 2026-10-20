@@ -1,7 +1,9 @@
-//! The Codex provider at its boundaries: the requests it sends to a scripted
-//! backend and sign-in service, over server-sent events and a scripted
-//! WebSocket, the events it makes of recorded streams, its token refresh,
-//! failures, quota, catalog and device login. No test calls the real vendor.
+//! The Codex provider at its boundaries.
+//!
+//! The tests cover the requests it sends to a scripted backend and sign-in
+//! service, over server-sent events and a scripted WebSocket, the events it
+//! makes of recorded streams, its token refresh, failures, quota, catalog and
+//! device login. No test calls the real vendor.
 
 mod auth;
 mod images;

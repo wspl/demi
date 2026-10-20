@@ -34,11 +34,13 @@ pub trait Provider: Send + Sync + 'static {
     /// Whether the provider can run requests.
     fn runtime_state(&self) -> RuntimeState;
 
-    /// A fresh read of the provider's model directory. The provider keeps no
-    /// catalog of its own: the backend's catalog cache is the only one
-    /// (`crates/backend-providers/src/llm/catalog_cache.rs`). A provider without a directory, whose
-    /// entry lists its vendor's models from models.dev or the ones the user
-    /// configured (`crates/backend-providers/src/llm/catalog.rs`), lists none.
+    /// A fresh read of the provider's model directory.
+    ///
+    /// The provider keeps no catalog of its own: the backend's catalog cache is
+    /// the only one (`crates/backend-providers/src/llm/catalog_cache.rs`). A
+    /// provider without a directory, whose entry lists its vendor's models from
+    /// models.dev or the ones the user configured
+    /// (`crates/backend-providers/src/llm/catalog.rs`), lists none.
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
         Box::pin(async {
             Ok(ProviderModelList {
@@ -51,11 +53,13 @@ pub trait Provider: Send + Sync + 'static {
         })
     }
 
-    /// What the directory [`list_models`](Self::list_models) would read
-    /// depends on besides the entry, such as the client version the Codex
-    /// catalog asks with; a kept catalog read under another revision is
-    /// stale (`crates/provider-codex/src/models.rs`). Read without waiting; none
-    /// for a directory that depends on the entry alone.
+    /// What the directory [`list_models`](Self::list_models) would read depends
+    /// on besides the entry, such as the client version the Codex catalog asks
+    /// with.
+    ///
+    /// A kept catalog read under another revision is stale
+    /// (`crates/provider-codex/src/models.rs`). Read without waiting; none for
+    /// a directory that depends on the entry alone.
     fn catalog_revision(&self) -> Option<String> {
         None
     }
@@ -154,16 +158,19 @@ pub trait ProviderRuntime {
     /// provider shares and none of this runtime's execution state.
     fn fresh(&self) -> Box<dyn ProviderRuntime>;
 
-    /// Releases what outlives a run, such as a kept process. Releasing a
-    /// process on another machine takes time, so closing is an explicit,
-    /// awaited step; a runtime dropped without closing still has its process
-    /// killed, without waiting.
+    /// Releases what outlives a run, such as a kept process.
+    ///
+    /// Releasing a process on another machine takes time, so closing is an
+    /// explicit, awaited step. A runtime dropped without closing still has its
+    /// process killed, without waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
 
-    /// The session's action ended, such as a turn: nothing of it runs
-    /// until its next request. A runtime that counts what runs, such as an
-    /// agent's account under rotation (`crates/backend-providers/src/llm/rotation.rs`),
-    /// stops counting it; most runtimes have nothing to do.
+    /// The session's action ended, such as a turn: nothing of it runs until its
+    /// next request.
+    ///
+    /// A runtime that counts what runs, such as an agent's account under
+    /// rotation (`crates/backend-providers/src/llm/rotation.rs`), stops
+    /// counting it; most runtimes have nothing to do.
     fn idle(&mut self) {}
 
     /// Whether [`prepare`](Self::prepare) readies anything, so the session
@@ -174,13 +181,13 @@ pub trait ProviderRuntime {
     }
 
     /// Readies ahead what the session's next request needs, now that the
-    /// request is known but for its input: `request` is that request
-    /// without it, and `ahead` says what made it known
-    /// (`crates/provider-claude-code/src/prepared.rs`). What it starts goes on
-    /// by itself once
-    /// the future ends, and a failure of it is the runtime's to log and
-    /// forget: the request then does what it would have done. Most
-    /// runtimes have nothing to ready.
+    /// request is known but for its input.
+    ///
+    /// `request` is that request without it, and `ahead` says what made it
+    /// known (`crates/provider-claude-code/src/prepared.rs`). What it starts
+    /// goes on by itself once the future ends, and a failure of it is the
+    /// runtime's to log and forget: the request then does what it would have
+    /// done. Most runtimes have nothing to ready.
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
         let _ = (request, ahead);
         Box::pin(std::future::ready(()))
@@ -235,13 +242,11 @@ impl ToolResultKinds {
         video: false,
         document: false,
     };
-    /// Images only.
     pub const IMAGES: Self = Self {
         image: true,
         video: false,
         document: false,
     };
-    /// Images and documents.
     pub const IMAGES_AND_DOCUMENTS: Self = Self {
         image: true,
         video: false,
@@ -320,11 +325,13 @@ pub type ProviderRun<'a> = LocalBoxStream<'a, ProviderEvent>;
 pub struct InferenceRequest {
     /// The owning session.
     pub session_id: String,
-    /// The session a provider keys its prompt cache and its routing by,
-    /// when it is not `session_id`: a side question sends its
-    /// conversation's, so its request reads the conversation's cache. None for
-    /// every other request. A provider whose session is state of its own, such
-    /// as a CLI's resumed session, keeps `session_id` for that state.
+    /// The session a provider keys its prompt cache and its routing by, when it
+    /// is not `session_id`.
+    ///
+    /// A side question sends its conversation's, so its request reads the
+    /// conversation's cache. None for every other request. A provider whose
+    /// session is state of its own, such as a CLI's resumed session, keeps
+    /// `session_id` for that state.
     pub affinity: Option<String>,
     /// The turn the request belongs to; continuations inside a turn share it.
     pub turn_id: String,
@@ -339,11 +346,11 @@ pub struct InferenceRequest {
     pub system_prompt: String,
     /// The transcript as the model receives it.
     pub items: Arc<[InferenceItem]>,
-    /// The replayed blocks that give `items`, in order: which items each
-    /// gives and the entries a vendor kept on it
-    /// (`crates/provider-claude-code/src/session.rs`). A request that is no
-    /// session's, such as
-    /// a title request, names none.
+    /// The replayed blocks that give `items`, in order: which items each gives
+    /// and the entries a vendor kept on it
+    /// (`crates/provider-claude-code/src/session.rs`).
+    ///
+    /// A request that is no session's, such as a title request, names none.
     pub blocks: Arc<[RequestBlock]>,
     pub tools: Arc<[ToolDefinition]>,
     pub thinking: Option<ThinkingConfig>,
@@ -400,17 +407,28 @@ impl RequestPurpose {
 /// How a request extends the session's earlier requests.
 ///
 /// A vendor finds what it has cached only when a request begins with exactly
-/// what an earlier one sent, so each request of a session begins with the
-/// session's previous request, byte for byte, in the provider's own format,
-/// and only new content follows; Demi never rewrites what it has sent. What
-/// changes it is a compaction, a model switch (a vendor keeps one cache per
-/// model), an edit, a change of the thinking setting, an edit of a configured
-/// model's accepted file types, or a Demi release that changes the system
-/// prompt, the tools or the request format. `retry` and `resume` are no
-/// exceptions: they cut the history back to an earlier request. Nor is a change
-/// of the output limit or the service tier, which no vendor counts in the
-/// cached prefix. The prompt and the tools hold no time, id, Host or state, and
-/// a body holds no request id or time, which would break the prefix.
+/// what an earlier one sent. So each request of a session begins with the
+/// session's previous request, byte for byte, in the provider's own format, and
+/// only new content follows. Demi never rewrites what it has sent.
+///
+/// What changes the prefix:
+///
+/// - a compaction;
+/// - a model switch (a vendor keeps one cache per model);
+/// - an edit;
+/// - a change of the thinking setting;
+/// - an edit of a configured model's accepted file types;
+/// - a Demi release that changes the system prompt, the tools or the request
+///   format.
+///
+/// What does not:
+///
+/// - `retry` and `resume`: they cut the history back to an earlier request.
+/// - A change of the output limit or the service tier, which no vendor counts
+///   in the cached prefix.
+///
+/// The prompt and the tools hold no time, id, Host or state, and a body holds
+/// no request id or time, which would break the prefix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptCache {
     /// A request that is no session's, such as a title request or a
@@ -435,10 +453,9 @@ impl InferenceRequest {
     }
 }
 
-/// One replayed block of a request: the range of the request's items it
-/// gives, and the entries of the vendor's own record of the session that a
-/// provider kept on it, as the provider gave them
-/// ([`ProviderEvent::Entries`]).
+/// One replayed block of a request: the range of the request's items it gives,
+/// and the entries of the vendor's own record of the session that a provider
+/// kept on it, as the provider gave them ([`ProviderEvent::Entries`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RequestBlock {
     pub items: std::ops::Range<usize>,
@@ -460,18 +477,20 @@ pub enum InferenceItem {
         model_id: String,
         text: String,
     },
-    /// Reasoning with the vendor's signature when it signed it; a provider
-    /// replays only signatures it recognizes as its vendor's, since a vendor
-    /// refuses one it did not sign. The `openai` family tags by its entry's
-    /// vendor, because OpenAI and xAI speak one API but sign apart.
+    /// Reasoning with the vendor's signature when it signed it.
+    ///
+    /// A provider replays only signatures it recognizes as its vendor's, since
+    /// a vendor refuses one it did not sign. The `openai` family tags by its
+    /// entry's vendor, because OpenAI and xAI speak one API but sign apart.
     AssistantThinking {
         model_id: String,
         text: String,
         signature: Option<String>,
         /// Compaction kept it after a summary, which replaced the history it
-        /// followed: a provider whose vendor checks reasoning against that
-        /// history leaves it out
-        /// (`crates/provider-anthropic-api/src/request.rs`).
+        /// followed.
+        ///
+        /// A provider whose vendor checks reasoning against that history leaves
+        /// it out (`crates/provider-anthropic-api/src/request.rs`).
         kept_past_summary: bool,
     },
     /// Opaque reasoning data, replayed as received.
@@ -556,12 +575,13 @@ pub fn offers(tools: &[ToolDefinition], name: &str) -> bool {
     tools.iter().any(|tool| tool.name == name)
 }
 
-/// An event of a run. A run ends after `Response`,
-/// after `Error`, after the last `ToolCall` of a batch when the vendor needs
-/// the results before it can finish, or when its request's token is
-/// cancelled. Cancellation ends it without a further event, and dropping the
-/// stream is cancellation. Every failure is its `Error`; nothing fails outside
-/// the stream.
+/// An event of a run.
+///
+/// A run ends after `Response`, after `Error`, after the last `ToolCall` of a
+/// batch when the vendor needs the results before it can finish, or when its
+/// request's token is cancelled. Cancellation ends it without a further event,
+/// and dropping the stream is cancellation. Every failure is its `Error`;
+/// nothing fails outside the stream.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProviderEvent {
     /// The model opened a reasoning block.
@@ -587,34 +607,41 @@ pub enum ProviderEvent {
     },
     ToolCall(ToolCall),
     /// The run's end, with the usage of its final API call: the context the
-    /// next request carries, never a total over the turn. None when the
-    /// vendor reported no call's own usage; nothing stands in for it. An HTTP
-    /// provider makes it with [`ProviderEvent::response`].
+    /// next request carries, never a total over the turn.
+    ///
+    /// None when the vendor reported no call's own usage; nothing stands in for
+    /// it. An HTTP provider makes it with [`ProviderEvent::response`].
     Response(Option<TokenUsage>),
     /// The run's failure; it is the run's last event.
     Error(ProviderFailure),
-    /// The account the agent uses from this run on, sent before anything
-    /// else of the run when it is not the one the request named; none when
-    /// the entry's rotation gives the agent no account of its own. The
-    /// session keeps it with its state (`crates/backend-providers/src/llm/rotation.rs`).
+    /// The account the agent uses from this run on, sent before anything else
+    /// of the run when it is not the one the request named.
+    ///
+    /// None when the entry's rotation gives the agent no account of its own.
+    /// The session keeps it with its state
+    /// (`crates/backend-providers/src/llm/rotation.rs`).
     Account(Option<AgentAccount>),
     /// The agent's account reached its limit and the request goes on with
     /// another account, which an `Account` event names next.
     AccountSwitch(AccountSwitch),
     /// Entries of the vendor's own record of the session that belong to one
-    /// block, which the agent keeps on that block, after those it holds,
-    /// and gives back in the request's [`RequestBlock`]s
-    /// (`crates/provider-claude-code/src/session.rs`). They change
-    /// nothing the model sees in this run.
+    /// block.
+    ///
+    /// The agent keeps them on that block, after those it holds, and gives them
+    /// back in the request's [`RequestBlock`]s
+    /// (`crates/provider-claude-code/src/session.rs`). They change nothing the
+    /// model sees in this run.
     Entries {
         of: EntriesOf,
         entries: Vec<demi_shared_types::Entry>,
     },
     /// One call to the vendor of a run that makes several, such as a Claude
-    /// Code run in which the CLI calls the vendor more than once, for the
-    /// usage ledger, which keeps a row per call; the agent reads nothing of
-    /// it. A run's first call starts with the run, and a call no `Ended`
-    /// reports is ended by the run's end (`crates/backend-database/src/usage.rs`).
+    /// Code run in which the CLI calls the vendor more than once.
+    ///
+    /// It is for the usage ledger, which keeps a row per call; the agent reads
+    /// nothing of it. A run's first call starts with the run, and a call no
+    /// `Ended` reports is ended by the run's end
+    /// (`crates/backend-database/src/usage.rs`).
     Call(CallEvent),
 }
 
@@ -626,9 +653,11 @@ pub enum CallEvent {
     /// The call that started last ended.
     Ended(VendorCall),
     /// The windows of the account's quota the vendor reported with the call
-    /// open now, or, between a call's end and the next one's start, with the
-    /// call that ended last, as Claude Code's `rate_limit_event` follows its
-    /// `message_stop`.
+    /// open now.
+    ///
+    /// Between a call's end and the next one's start, they are those reported
+    /// with the call that ended last, as Claude Code's `rate_limit_event`
+    /// follows its `message_stop`.
     Observed(Vec<QuotaWindow>),
 }
 
@@ -648,9 +677,10 @@ pub struct VendorCall {
 }
 
 impl VendorCall {
-    /// The end of a run's one call by `last`, the run's last event: its
-    /// response, with its usage, or its failure, with `usage`, what the
-    /// vendor counted before it failed, if anything. None for an event that
+    /// The end of a run's one call by `last`, the run's last event.
+    ///
+    /// It is the response, with its usage, or the failure, with `usage`, what
+    /// the vendor counted before it failed, if anything. None for an event that
     /// ends no run.
     pub fn ended_by(
         vendor_id: Option<String>,
@@ -691,8 +721,9 @@ pub enum CallOutcome {
 }
 
 impl ProviderEvent {
-    /// The run's end with the usage the vendor sent for it, if any. A
-    /// response without usage logs an error naming the provider and the
+    /// The run's end with the usage the vendor sent for it, if any.
+    ///
+    /// A response without usage logs an error naming the provider and the
     /// model: the vendor left out what it is asked for, and the context
     /// estimate and the usage ledger go without this response's counts.
     pub fn response(usage: Option<TokenUsage>, provider: &str, model: &str) -> Self {
@@ -706,12 +737,13 @@ impl ProviderEvent {
         Self::Response(usage)
     }
 
-    /// Whether the event is output the model wrote in this run: reasoning,
-    /// text or a tool call, whole or in pieces. The run's usage and failure,
-    /// the agent's account and the vendor's record of the session are
-    /// bookkeeping, which writes nothing of the answer: a usage limit after
-    /// only those still sends the request again on another account
-    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    /// Whether the event is output the model wrote in this run: reasoning, text
+    /// or a tool call, whole or in pieces.
+    ///
+    /// The run's usage and failure, the agent's account and the vendor's record
+    /// of the session are bookkeeping, which writes nothing of the answer. A
+    /// usage limit after only those still sends the request again on another
+    /// account (`crates/backend-providers/src/llm/rotation.rs`).
     pub fn is_output(&self) -> bool {
         match self {
             Self::ThinkingStart
@@ -748,10 +780,12 @@ pub struct AccountSwitch {
 pub enum EntriesOf {
     /// The block that gives the item at this index of the run's request.
     Item(usize),
-    /// The block the run's events wrote at this position, counting from 0:
-    /// a thinking start or redacted reasoning writes a block, a text piece
-    /// writes one unless text was the last block written, a reasoning piece
-    /// writes one unless open reasoning was, and a tool call writes one.
+    /// The block the run's events wrote at this position, counting from 0.
+    ///
+    /// - A thinking start or redacted reasoning writes a block.
+    /// - A text piece writes one unless text was the last block written.
+    /// - A reasoning piece writes one unless open reasoning was.
+    /// - A tool call writes one.
     Output(usize),
 }
 

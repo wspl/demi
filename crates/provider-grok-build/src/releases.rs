@@ -1,7 +1,8 @@
-//! The newest stable Grok CLI release: the
-//! plain-text pointer `https://x.ai/cli/stable`, as Grok's own install script
-//! finds it, which every request names in `x-grok-client-version`. One
-//! serves the whole backend, whatever the number of Grok Build entries and
+//! The newest stable Grok CLI release: the plain-text pointer
+//! `https://x.ai/cli/stable`, as Grok's own install script finds it, which
+//! every request names in `x-grok-client-version`.
+//!
+//! One serves the whole backend, whatever the number of Grok Build entries and
 //! accounts; it is kept by provider-common's [`KeptRelease`], as Codex's is.
 //!
 //! The proxy refuses a Grok CLI version older than its minimum with HTTP 426

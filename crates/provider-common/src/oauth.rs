@@ -1,8 +1,10 @@
 //! The pieces every OAuth device login and token refresh meets
-//! (`crates/backend-providers/src/vault/logins.rs`, `crates/provider-common/src/wire/mod.rs`): the
-//! durations servers state as numbers or as digits, a response decoded
-//! without quoting its tokens, and the claims read from a token. The flows
-//! themselves are each vendor's, written by hand on these: the `oauth2`
+//! (`crates/backend-providers/src/vault/logins.rs`,
+//! `crates/provider-common/src/wire/mod.rs`).
+//!
+//! They are the durations servers state as numbers or as digits, a response
+//! decoded without quoting its tokens, and the claims read from a token. The
+//! flows themselves are each vendor's, written by hand on these: the `oauth2`
 //! crate refuses the vendors' token responses, which omit `token_type` and
 //! state `expires_in` as a string.
 
@@ -118,10 +120,11 @@ const OAUTH_ERRORS: [&str; 12] = [
     "expired_token",
 ];
 
-/// A token endpoint's refusal (RFC 6749 § 5.2): the `error` code of a body
-/// that is a JSON object, when it is one OAuth defines. Nothing else of the
-/// body is kept, its `error_description` included, so no log or message
-/// repeats what a vendor wrote, which may quote a token.
+/// A token endpoint's refusal (RFC 6749 § 5.2): the `error` code of a body that
+/// is a JSON object, when it is one OAuth defines.
+///
+/// Nothing else of the body is kept, its `error_description` included, so no
+/// log or message repeats what a vendor wrote, which may quote a token.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TokenRefusal {
     /// The OAuth code; none for a body that is no JSON object, states no
@@ -199,12 +202,13 @@ const BASE64_URL: GeneralPurpose = GeneralPurpose::new(
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
-/// The claims of a JWT, read without verifying its signature: the vendor
-/// that receives the token decides whether it is good, and Demi reads only
-/// the account's identity and the token's expiry. `None` when the token is
-/// not three segments, its payload is not base64url JSON, or the claims are
-/// not a `C`; `C` reads a claim of the wrong type as absent where a missing
-/// claim is no reason to refuse the token.
+/// The claims of a JWT, read without verifying its signature.
+///
+/// The vendor that receives the token decides whether it is good, and Demi
+/// reads only the account's identity and the token's expiry. `None` when the
+/// token is not three segments, its payload is not base64url JSON, or the
+/// claims are not a `C`. `C` reads a claim of the wrong type as absent where a
+/// missing claim is no reason to refuse the token.
 pub fn jwt_claims<C: DeserializeOwned>(token: &str) -> Option<C> {
     let mut segments = token.split('.');
     let (Some(_header), Some(payload), Some(_signature), None) = (

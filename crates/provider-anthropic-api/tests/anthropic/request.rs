@@ -625,10 +625,11 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
     );
 }
 
-/// A Codex call after a model switch, stored as `call_…|fc_…`: its call and
-/// its result go to the vendor under one id the vendor's pattern accepts,
-/// so they pair, and the same request sends the same bytes again, so the
-/// cached prefix holds.
+/// A Codex call after a model switch, stored as `call_…|fc_…`: its call and its
+/// result go to the vendor under one id the vendor's pattern accepts, so they
+/// pair.
+///
+/// The same request sends the same bytes again, so the cached prefix holds.
 // Cost: two requests to a local stub, a few milliseconds.
 #[tokio::test]
 async fn a_codex_call_replays_under_an_id_the_vendor_accepts_the_same_each_time() {

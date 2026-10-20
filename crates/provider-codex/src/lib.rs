@@ -1,11 +1,16 @@
 //! The Codex provider: a `codex` subscription entry's account, signed in by
 //! Codex's device login, inferring through the Codex Responses backend over a
-//! WebSocket with server-sent events as the fallback. It refreshes the
-//! account's tokens by the one protocol of
-//! `crates/provider-codex/src/auth.rs`, reads its failure records'
-//! usage-limit resets, keeps the account's quota from the `x-codex-*` headers
-//! and a free usage probe, and reads the account's model catalog, and makes
-//! images through the backend's image endpoints.
+//! WebSocket with server-sent events as the fallback.
+//!
+//! The provider:
+//!
+//! - refreshes the account's tokens by the one protocol of
+//!   `crates/provider-codex/src/auth.rs`;
+//! - reads its failure records' usage-limit resets;
+//! - keeps the account's quota from the `x-codex-*` headers and a free usage
+//!   probe;
+//! - reads the account's model catalog;
+//! - makes images through the backend's image endpoints.
 
 mod auth;
 mod failure;

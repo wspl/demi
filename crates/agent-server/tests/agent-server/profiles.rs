@@ -1,8 +1,13 @@
 //! The user's subagent settings at the tree's boundary
 //! (`crates/agent-server/src/server/tree/profiles.rs`, Acceptance 3, 7, 14 to
-//! 17): what a spawn checks and in which order, that each spawn and each
-//! `demi agent profiles list` reads the settings as they are then, and the
-//! provider runtime a profile's child runs on.
+//! 17).
+//!
+//! The tests cover:
+//!
+//! - what a spawn checks and in which order;
+//! - that each spawn and each `demi agent profiles list` reads the settings as
+//!   they are then;
+//! - the provider runtime a profile's child runs on.
 
 use std::{cell::Cell, num::NonZeroU32, rc::Rc};
 
@@ -208,10 +213,9 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
 
     let asked_one = &model.requests_of("task one")[0];
     let asked_two = &model.requests_of("task two")[0];
-    // A profile's child is Demi: the product's identity and harness guide
-    // lead its prompt, the index lists what the child may run, and the
-    // profile's instructions follow the model identity under their own
-    // heading.
+    // A profile's child is Demi: the product's identity and harness guide lead
+    // its prompt, the index lists what the child may run, and the profile's
+    // instructions follow the model identity under their own heading.
     let added_after_identity = |instructions: &str| {
         format!(
             "If asked which model you are, answer with this.\n\nInstructions for this subagent:\n\n{instructions}"

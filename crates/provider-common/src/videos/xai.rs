@@ -1,11 +1,13 @@
-//! The xAI Videos shape, which a Grok subscription's chat proxy, an xAI
-//! key and a compatible API speak alike: `POST …/videos/generations`
-//! answers a `request_id`, and `GET …/videos/<request_id>` answers 202
-//! with `status: pending` and its `progress` while the job runs, then 200
-//! with `done`, `failed` or `expired`. A finished video is a temporary
-//! address, downloaded without a header, and its cost is
-//! `usage.cost_in_usd_ticks`, ten-billionths of a dollar ([Cost
-//! Tracking](https://docs.x.ai/developers/cost-tracking)).
+//! The xAI Videos shape, which a Grok subscription's chat proxy, an xAI key and
+//! a compatible API speak alike.
+//!
+//! - `POST …/videos/generations` answers a `request_id`.
+//! - `GET …/videos/<request_id>` answers 202 with `status: pending` and its
+//!   `progress` while the job runs, then 200 with `done`, `failed` or
+//!   `expired`.
+//! - A finished video is a temporary address, downloaded without a header.
+//! - Its cost is `usage.cost_in_usd_ticks`, ten-billionths of a dollar ([Cost
+//!   Tracking](https://docs.x.ai/developers/cost-tracking)).
 
 use bytes::Bytes;
 use demi_shared_types::{Cost, Currency, TokenUsage, VideoResolution};

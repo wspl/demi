@@ -66,16 +66,20 @@ impl ProviderFailure {
     }
 
     /// No answer from the vendor: the request could not be sent, or its
-    /// response broke off. A network failure or a timeout is `overloaded`; a
-    /// request that could not even be built has no code. The message names
-    /// the error and its causes but never the endpoint, which stays inside
-    /// the provider.
+    /// response broke off.
     ///
-    /// A request to a device's port fails in Demi's words: a port the
-    /// device has not exposed with `port_not_exposed`, which waiting cannot
-    /// fix, an offline device with `device_offline`, retried as an
-    /// unreachable endpoint is, and a failed request as any unreachable
-    /// endpoint (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
+    /// A network failure or a timeout is `overloaded`; a request that could not
+    /// even be built has no code. The message names the error and its causes
+    /// but never the endpoint, which stays inside the provider.
+    ///
+    /// A request to a device's port fails in Demi's words
+    /// (`crates/backend-user-shard/src/shard/exposed_ports.rs`):
+    ///
+    /// - A port the device has not exposed fails with `port_not_exposed`, which
+    ///   waiting cannot fix.
+    /// - An offline device fails with `device_offline`, retried as an
+    ///   unreachable endpoint is.
+    /// - A failed request fails as any unreachable endpoint.
     pub fn transport(label: &str, error: impl Into<SendError>) -> Self {
         let error = match error.into() {
             SendError::Transport(error) => error,
@@ -218,10 +222,11 @@ pub(crate) fn diagnostics(
 /// it is stored or sent. The agent retries `rate_limit` and `overloaded`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorCode {
-    /// The account cannot be used until a reset or a change of its plan: a
-    /// used-up subscription window, credits or a spend cap, or use its
-    /// administrator turned off. Waiting a few seconds cannot fix it, so the
-    /// agent does not retry it.
+    /// The account cannot be used until a reset or a change of its plan.
+    ///
+    /// The cause is a used-up subscription window, credits or a spend cap, or
+    /// use its administrator turned off. Waiting a few seconds cannot fix it,
+    /// so the agent does not retry it.
     UsageLimit,
     /// Throttling: too many requests or tokens for a short while.
     RateLimit,
@@ -288,10 +293,12 @@ impl ErrorCode {
         }
     }
 
-    /// The code of an HTTP failure status; `message` is the failure's text,
-    /// which tells a request refused for its size, and one refused for its
-    /// tokens, among the 400s. A body the vendor refuses for its size (413)
-    /// is too large, not too long: leaving media out makes it smaller.
+    /// The code of an HTTP failure status.
+    ///
+    /// `message` is the failure's text, which tells a request refused for its
+    /// size, and one refused for its tokens, among the 400s. A body the vendor
+    /// refuses for its size (413) is too large, not too long: leaving media out
+    /// makes it smaller.
     pub fn from_http(status: u16, message: &str) -> Option<Self> {
         match status {
             401 => Some(Self::AuthExpired),
@@ -305,16 +312,17 @@ impl ErrorCode {
         }
     }
 
-    /// The code of a failure the vendor reported inside a response, such as
-    /// a stream's error event: its words decide a coarse category, and
-    /// otherwise the vendor's own code stands. Only vendor-reported failures
-    /// are classified; a failure Demi finds itself gets its code by a fixed
-    /// rule.
+    /// The code of a failure the vendor reported inside a response, such as a
+    /// stream's error event.
+    ///
+    /// Its words decide a coarse category, and otherwise the vendor's own code
+    /// stands. Only vendor-reported failures are classified; a failure Demi
+    /// finds itself gets its code by a fixed rule.
     ///
     /// Words count only as whole words, with `_` and `-` separating them, so
     /// that `generate` is not `rate`. `limit` and `usage` decide nothing: a
-    /// throttled request's text may say *not your usage limit*, and a
-    /// vendor's own sign of a used-up account is read by its provider.
+    /// throttled request's text may say *not your usage limit*, and a vendor's
+    /// own sign of a used-up account is read by its provider.
     pub fn classify(code: Option<&str>, message: &str) -> Option<Self> {
         let code = code.filter(|code| !code.is_empty());
         let text = words(&format!("{} {message}", code.unwrap_or_default()));
@@ -355,11 +363,13 @@ impl FromStr for ErrorCode {
     }
 }
 
-/// A 400 whose text says the request's body or images are more than the
-/// vendor takes, such as the Anthropic API's refusals of a request with more
-/// images than it takes, or with more than 20 images when one exceeds its
-/// size for many-image requests. It is tried before [`TOO_LONG`], which
-/// `too large` alone matches.
+/// A 400 whose text says the request's body or images are more than the vendor
+/// takes.
+///
+/// Examples are the Anthropic API's refusals of a request with more images than
+/// it takes, or with more than 20 images when one exceeds its size for
+/// many-image requests. It is tried before [`TOO_LONG`], which `too large`
+/// alone matches.
 static TOO_LARGE: LazyLock<Regex> = LazyLock::new(|| {
     pattern(r"(?i)too many images|many-image|request too large|payload too large")
 });
