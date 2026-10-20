@@ -1,15 +1,14 @@
 # Architecture
 
-The map of the code and the rules that hold across it.
-
-- What Demi is, and one conversation end to end: the
-  [overview](docs/overview.md).
-- What one module decides: its entry comment (`lib.rs`, `main.rs`,
-  `index.ts`), next to the code.
-- When this file and the code disagree, the code is right and this file is
-  fixed.
+This document is the map of the code and the rules that hold across it. The
+[overview](docs/overview.md) describes what Demi is and follows one
+conversation end to end. What one module decides lives in its entry comment
+(`lib.rs`, `main.rs`, `index.ts`), next to the code. When this document and
+the code disagree, the code is right and this document is fixed.
 
 ## Code map
+
+The following diagram shows the programs and how they talk to each other:
 
 ```text
 web app (packages/web)  --- HTTP, sync and conversation sockets --->
@@ -25,7 +24,8 @@ command programs (command-package-*): demi-file, demi-browser,
 demi-fetch, demi-mobile, demi-claude-code
 ```
 
-Each program's inside is drawn in its entry comment:
+Each program's inside is drawn in its entry comment. The following table lists
+the entry comments:
 
 | Part | Entry comment |
 | --- | --- |
@@ -36,157 +36,208 @@ Each program's inside is drawn in its entry comment:
 | The plugin contract | `crates/plugin-interface/src/lib.rs` |
 | The page API | `packages/plugin-sdk/src/index.ts` |
 
-## Every capability is a plugin
+## Capabilities as plugins
 
-- The agent runtime, the backend and the web app know a capability only
-  through the plugin contract (`plugin-interface`).
-- A plugin contributes, all as messages:
-  - commands;
-  - text for the model's context;
-  - Host directories;
-  - a part of the page.
-- Who supplies what:
-  - the agent runtime: its own tools, `demi agent` and `demi shell`;
-  - the product: the conversation's Host, `demi host` and
-    `demi attachment`;
-  - plugins: everything else the agent can do.
+Every capability is a plugin. The agent runtime, the backend and the web app
+know a capability only through the plugin contract (`plugin-interface`).
+
+A plugin contributes the following, all as messages:
+
+-   Commands
+-   Text for the model's context
+-   Host directories
+-   A part of the page
+
+Three parties supply what the agent can do:
+
+-   The agent runtime supplies its own tools, `demi agent` and `demi shell`.
+-   The product supplies the conversation's Host, `demi host` and
+    `demi attachment`.
+-   Plugins supply everything else the agent can do.
 
 ### State on a Host
 
 A capability that keeps state on a Host is also a command package behind the
-runner's narrow port. The browser, for example:
+runner's narrow port. The browser shows how this works:
 
-- `command-package-browser-protocol` holds its operation types;
-- the `demi.browser` package (`command-package-browser` with `-chrome`)
-  carries them out;
-- `plugin-browser` declares them as `demi browser` commands;
-- its tabs are keyed by the conversation the runner names on every
-  invocation, and end with the generic conversation release;
-- no browser type or message exists in the runner crates,
-  `runner-protocol`, `backend-remote-host`, the agent or the lifecycle.
+-   `command-package-browser-protocol` holds the browser's operation types.
+-   The `demi.browser` package (`command-package-browser` with `-chrome`)
+    carries the operations out.
+-   `plugin-browser` declares the operations as `demi browser` commands.
+-   The package keys the browser's tabs by the conversation the runner names
+    on every invocation. The generic conversation release ends the tabs.
+-   No browser type or message exists in the runner crates,
+    `runner-protocol`, `backend-remote-host`, the agent or the lifecycle.
 
-### Adding a capability
+### Add a capability
 
-- Add a `plugin-<name>` crate.
-- When it keeps Host state, add a command package, with its operation types
-  in a contract crate.
-- These do not change: the runner, `runner-protocol`, `backend-remote-host`,
-  the agent, `backend-plugins` and the lifecycle. A message, adapter or
-  lifecycle hook for one tool in them belongs at the plugin contract or the
-  runner's port instead.
-- Where a shared mechanism goes:
-  - answered without knowing who asked or why (a file operation, a
-    working-tree listing, a service stream): the runner wire;
-  - usable by any plugin (a Host directory): the plugin contract.
+To add a capability:
 
-## Dependencies point down
+1.  Add a `plugin-<name>` crate.
+2.  When the capability keeps Host state, add a command package, with its
+    operation types in a contract crate.
 
-- A crate or package never knows the products, adapters, user interfaces,
-  providers or machines above it, in production code or in tests.
-- A test reaches a fake through the `testing` feature of the crate that owns
-  what it fakes. No crate has a dev-dependency on a crate that depends on it,
-  except on itself to turn on its own `testing`.
-- A crate's public items are the ones its entry comment names; the rest is
-  `pub(crate)` or private.
-- Inside the backend, each layer knows only those beneath it. A domain that
-  needs another domain's state:
-  - defines the narrow trait of what it needs (`CloudShard`, `HostShard`,
-    `PermissionShard`, `PluginShard`);
-  - `backend-user-shard` implements it;
-  - no crate below `backend-user-shard` sees `Shard` or `Services`.
-- The runner is one executable of several crates, so a change recompiles
-  only its part. Only `runner-shell` links the shell and its utilities, and
-  nothing below the executable depends on it.
+Adding a capability changes none of the following:
 
-### The graphs
+-   The runner
+-   `runner-protocol`
+-   `backend-remote-host`
+-   The agent
+-   `backend-plugins`
+-   The lifecycle
 
-- The [graphs](#dependency-graphs) below are the required crates and
-  packages and the edges between them.
-- Manifests follow the graphs. When a `Cargo.toml` or `package.json`
-  disagrees with its line, either the manifest changes, or the graph changes
-  first with the work package that needs it.
-- Both graphs stay acyclic; external and vendored crates are outside them.
+A message, adapter or lifecycle hook for one tool in any of them belongs at
+the plugin contract or the runner's port instead.
+
+A shared mechanism goes where its use decides:
+
+-   A mechanism answered without knowing who asked or why goes in the runner
+    wire. A file operation, a working-tree listing and a service stream are
+    examples.
+-   A mechanism usable by any plugin goes in the plugin contract. A Host
+    directory is an example.
+
+## Dependency direction
+
+Dependencies point down. The following rules apply:
+
+-   A crate or package never knows the products, adapters, user interfaces,
+    providers or machines above it, in production code or in tests.
+-   A test reaches a fake through the `testing` feature of the crate that owns
+    what it fakes.
+-   No crate has a dev-dependency on a crate that depends on it, except on
+    itself to turn on its own `testing`.
+-   A crate's public items are the ones its entry comment names. The rest is
+    `pub(crate)` or private.
+
+### Backend layers
+
+Inside the backend, each layer knows only the layers beneath it. A domain that
+needs another domain's state follows these rules:
+
+-   The domain defines the narrow trait of what it needs (`CloudShard`,
+    `HostShard`, `PermissionShard`, `PluginShard`).
+-   `backend-user-shard` implements the trait.
+-   No crate below `backend-user-shard` sees `Shard` or `Services`.
+
+### Runner crates
+
+The runner is one executable of several crates, so a change recompiles only
+its part. Only `runner-shell` links the shell and its utilities, and nothing
+below the executable depends on it.
+
+### Graphs and manifests
+
+The [dependency graphs](#dependency-graphs) list the required crates and
+packages and the edges between them. Manifests follow the graphs. When a
+`Cargo.toml` or `package.json` disagrees with its line, either the manifest
+changes, or the graph changes first with the work package that needs it.
+
+Both graphs stay acyclic. They leave out external and vendored crates.
 
 ## Names and layout
 
-Where things live:
+The following sections cover where code lives, how to name it, when to split
+it, how to organize a crate and how many test binaries a crate has.
 
-- Rust crates: `crates/`.
-- TypeScript packages: `packages/`.
-- Vendored crates: `vendor/<upstream>/<crate>/`.
+### Directories
 
-Names:
+Code lives in these directories:
 
-- A crate directory is `<owner>-<part>`. The owners:
-  - `backend-`, `runner-`, `machine-manager-`: one program each;
-  - `agent-`: the conversation runtime;
-  - `provider-`: model providers;
-  - `command-`: the command wire;
-  - `command-package-<name>-`: one package, released as `demi.<name>`;
-  - `host-`, `plugin-`;
-  - `shared-`: no single owner.
-- A program is named by its owner alone.
-- A library's package is `demi-<directory>`; a program's package is its
-  executable's name.
-- Suffixes:
-  - `-protocol`: the types of one wire or data family, and the decode
-    function of each boundary that receives them; no IO, no async runtime;
-  - `-sdk`: one end of a wire;
-  - `-interface`: traits, and nothing that implements them.
-- Words whose meaning differs outside stay out of names: `service`,
-  `extension`, `edge`, `core`.
-- `plugin` names only a plugin, `browser` appears only in
-  `command-package-browser`, and `shell` only for the shell.
+-   Rust crates live in `crates/`.
+-   TypeScript packages live in `packages/`.
+-   Vendored crates live in `vendor/<upstream>/<crate>/`.
 
-When to split:
+### Names
 
-- A separate crate or package needs a reason: independent use,
-  distribution, dependency isolation or build isolation.
-- Code that changes together is modules of one crate, never split because it
-  is long.
-- Cargo rebuilds every crate above a changed one, so a split saves build
-  time only when the part split off is not above the code that changes:
-  - code that changes often belongs above;
-  - types many crates read belong below.
+A crate directory is `<owner>-<part>`. The owner is `host-`, `plugin-` or one
+of the following:
 
-Inside a crate:
+-   `backend-`, `runner-` and `machine-manager-` name one program each.
+-   `agent-` names the conversation runtime.
+-   `provider-` names model providers.
+-   `command-` names the command wire.
+-   `command-package-<name>-` names one package, released as `demi.<name>`.
+-   `shared-` names code with no single owner.
 
-- One composition root per executable (`main.rs`, `Backend::start`, the web
-  app's `main.ts`): it constructs, injects, mounts and returns, and never
-  branches on business state.
-- Modules follow responsibilities; there is no `misc`, `helpers` or `utils`
-  module.
-- Generic Rust comes from std or an established crate, generic web code from
-  `@demicodes/utils`, and a domain helper sits beside its module.
-- Generated TypeScript (`src/generated/` directories) is never committed.
-- A vendored crate keeps its upstream metadata and licenses. Its
-  `[package.metadata.demi]` names each change from upstream with its reason,
-  and `bun xtask vendor diff` compares it with crates.io.
+A program is named by its owner alone. A library's package is
+`demi-<directory>`, and a program's package is its executable's name.
+
+A suffix tells what a crate holds:
+
+-   `-protocol` holds the types of one wire or data family, and the decode
+    function of each boundary that receives them. It has no IO and no async
+    runtime.
+-   `-sdk` holds one end of a wire.
+-   `-interface` holds traits, and nothing that implements them.
+
+Words whose meaning differs outside stay out of names: `service`, `extension`,
+`edge` and `core`. The word `plugin` names only a plugin, `browser` appears
+only in the browser's own crates (`command-package-browser*` and
+`plugin-browser`), and `shell` appears only for the shell.
+
+### When to split
+
+A separate crate or package needs one of these reasons:
+
+-   Independent use
+-   Distribution
+-   Dependency isolation
+-   Build isolation
+
+Code that changes together is modules of one crate. Never split it because it
+is long.
+
+Cargo rebuilds every crate above a changed one, so a split saves build time
+only when the part split off is not above the code that changes. Place code
+accordingly:
+
+-   Code that changes often belongs above.
+-   Types many crates read belong below.
+
+### Inside a crate
+
+Inside a crate, these rules apply:
+
+-   Each executable has one composition root (`main.rs`, `Backend::start`, the
+    web app's `main.ts`). The root constructs, injects, mounts and returns,
+    and never branches on business state.
+-   Modules follow responsibilities. There is no `misc`, `helpers` or `utils`
+    module.
+-   Generic Rust comes from std or an established crate, generic web code
+    comes from `@demicodes/utils`, and a domain helper sits beside its module.
+-   Generated TypeScript (`src/generated/` directories) stays uncommitted.
+-   A vendored crate keeps its upstream metadata and licenses. Its
+    `[package.metadata.demi]` names each change from upstream with its reason,
+    and `bun xtask vendor diff` compares the crate with crates.io.
 
 ### Test binaries
 
-- Each crate has one test binary, its integration tests, which test the
-  public boundary with a module per area.
-- The library and every executable set `test = false`; every library sets
-  `doctest = false` and `bench = false`. Otherwise `--all-targets` compiles
-  each library twice.
-- A crate without programs whose behavior is observable only inside keeps
-  unit tests and no `tests/`.
-- A test gets a binary of its own only when it changes or exhausts
-  process-wide state (such as the open-file limit), or needs what others
-  must not have (such as root). Its file says so at the top.
-- A test reaches another program as the binary Cargo built.
+These rules decide how many test binaries a crate has:
+
+-   Each crate has one test binary, its integration tests, which test the
+    public boundary with a module per area.
+-   The library and every executable set `test = false`. Every library sets
+    `doctest = false` and `bench = false`. Otherwise, `--all-targets` compiles
+    each library twice.
+-   A crate without programs whose behavior is observable only inside keeps
+    unit tests and no `tests/`.
+-   A test gets a binary of its own only when it changes or exhausts
+    process-wide state (such as the open-file limit), or needs what others
+    must not have (such as root). Its file says so at the top.
+-   A test reaches another program as the binary Cargo built.
 
 ## Contracts
 
-- Every message and stored document that crosses a process boundary is
-  defined once, as a Rust type.
-- Its JSON Schema, TypeScript type and validator derive from it
-  (`bun run contracts`).
-- A second declaration of the same shape is a defect, even while the two
-  agree.
-- The encoding conventions are in `crates/shared-types/src/lib.rs`; the
-  generator is in `crates/xtask/src/contracts/`.
+Define every message and stored document that crosses a process boundary once,
+as a Rust type. Its JSON Schema, TypeScript type and validator derive from it
+(`bun run contracts`). A second declaration of the same shape is a defect, even
+while the two agree.
+
+The encoding conventions are in `crates/shared-types/src/lib.rs`. The
+generator is in `crates/xtask/src/contracts/`.
+
+The following table shows where each wire or data family is defined:
 
 | Wire or data | Defined in |
 | --- | --- |
@@ -201,72 +252,90 @@ Inside a crate:
 | Machine manager socket, Cloud image manifest | `machine-manager-protocol` |
 | JSON stored in the databases | the crate that owns the data |
 
-- The runner wire and the machine manager socket have both ends in Rust and
-  fixed encodings, pinned by a golden corpus of every message kind.
-- A vendor's API is not a Demi contract: each provider crate declares only
-  what it reads.
-- A value from outside a process is decoded at its entry, against its type.
-  After that nothing checks it again; before that nothing looks inside it.
-- Corrupt data is refused, never repaired or defaulted.
+Contracts follow these further rules:
+
+-   The runner wire and the machine manager socket have both ends in Rust and
+    fixed encodings. A golden corpus of every message kind pins them.
+-   A vendor's API is not a Demi contract. Each provider crate declares only
+    what it reads.
+-   A boundary decodes a value from outside a process at its entry, against
+    its type. After that, nothing checks the value again. Before that, nothing
+    looks inside it.
+-   A boundary refuses corrupt data and never repairs or defaults it.
 
 ## Concurrency
 
-Where work runs:
+The following sections cover where work runs, how it shares state, how
+blocking work leaves the async threads, how cancellation works and how tests
+handle time.
 
-- All programs use Tokio.
-- State one user or one connection owns lives on one single-threaded
-  runtime, so it needs no lock and a test's paused clock reaches it:
-  - a backend shard thread;
-  - the runner's control loop;
-  - the machine manager's loop.
-- Bytes, and work across users, run in parallel at the edge.
-- Each runtime builds its own `reqwest::Client`: a pooled connection's task
-  is tied to the runtime that made it.
+### Where work runs
 
-Sharing:
+All programs use Tokio.
 
-- Shared state has one owner that answers requests.
-- Work that must not overlap across awaits takes a named gate from
-  `shared-gates`.
-- Read-mostly data is a snapshot published through `watch`.
-- No lock guard or `RefCell` borrow is held across an `.await`.
+State that one user or one connection owns lives on one single-threaded
+runtime, so it needs no lock and a test's paused clock reaches it. The
+following run on such a runtime:
 
-Blocking work:
+-   A backend shard thread
+-   The runner's control loop
+-   The machine manager's loop
 
-- CPU work over about a millisecond, and every blocking call, leave async
-  threads through `spawn_blocking` or a thread of its own.
+Bytes, and work across users, run in parallel at the edge.
 
-Cancellation:
+Each runtime builds its own `reqwest::Client`, because a pooled connection's
+task is tied to the runtime that made it.
 
-- It follows ownership: a `CancellationToken` tree.
-- Guards release on drop, on success, failure and cancellation alike.
-- Cancelling stops waits, never a commit: a store save is not raced.
-- A release that must wait is an explicit `close()`, with drop as the
-  fallback that kills.
+### Shared state
+
+Shared state follows these rules:
+
+-   Shared state has one owner that answers requests.
+-   Work that must not overlap across awaits takes a named gate from
+    `shared-gates`.
+-   An owner publishes read-mostly data as a snapshot through `watch`.
+-   Code never holds a lock guard or `RefCell` borrow across an `.await`.
+
+### Blocking work
+
+CPU work over about a millisecond, and every blocking call, runs off the async
+threads, through `spawn_blocking` or a thread of its own.
+
+### Cancellation
+
+Cancellation follows these rules:
+
+-   Cancellation follows ownership, through a `CancellationToken` tree.
+-   Guards release on drop, on success, failure and cancellation alike.
+-   Cancelling stops waits and never a commit. Code never races a store save.
+-   A release that must wait is an explicit `close()`. Drop is the fallback,
+    and it kills.
 
 ### Tests and time
 
-- Timer logic inside one process runs on Tokio's paused clock, so a test
-  asserts exact times.
-- A test whose timers run while it waits on a real runner, service or
-  database uses real time with short windows: a paused clock jumps to the
-  next timer whenever the runtime is idle.
-- Wall time comes from an injected `Clock`.
-- A backend test without a real runner runs the shards on the test's own
-  runtime (`ShardPlacement::Inline`).
+Tests handle time by these rules:
+
+-   Timer logic inside one process runs on Tokio's paused clock, so a test
+    asserts exact times.
+-   A test whose timers run while it waits on a real runner, service or
+    database uses real time with short windows, because a paused clock jumps
+    to the next timer whenever the runtime is idle.
+-   Wall time comes from an injected `Clock`.
+-   A backend test without a real runner runs the shards on the test's own
+    runtime (`ShardPlacement::Inline`).
 
 ## Dependency graphs
 
-- Each graph lists every member once, as `name -> dependency, dependency`,
-  or `name -> none`.
-- The crate check (`crates/xtask/src/boundaries.rs`) and the package check
-  (`scripts/__tests__/package-boundaries.test.ts`) read these blocks, and
-  fail until every manifest agrees with its line.
-- So each stays one fenced `text` block in this form.
+Each graph lists every member once, as `name -> dependency, dependency`, or as
+`name -> none`. The crate check (`crates/xtask/src/boundaries.rs`) and the
+package check (`scripts/__tests__/package-boundaries.test.ts`) read these
+blocks and fail until every manifest agrees with its line. Each graph
+therefore stays one fenced `text` block in this form.
 
 ### Rust crates
 
-A line names a workspace member by its directory.
+A line names a workspace member by its directory. The following graph lists the
+Rust crates:
 
 ```text
 shared-types -> none
@@ -352,6 +421,7 @@ xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser
 ### TypeScript packages
 
 A line names a workspace package by its name without the `@demicodes/` scope.
+The following graph lists the TypeScript packages:
 
 ```text
 protocol -> none
