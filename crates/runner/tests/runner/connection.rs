@@ -83,6 +83,7 @@ async fn ending_a_tree_watch_keeps_the_runner_responsive() {
                 id: id.into(),
                 kind: demi_runner_protocol::files::SubscriptionKind::Worktree,
                 path: path.clone(),
+                suffix: None,
             })
             .await;
             assert!(matches!(host.frame().await, Outbound::FsLive { id: live, .. } if live == id));
@@ -94,6 +95,7 @@ async fn ending_a_tree_watch_keeps_the_runner_responsive() {
             id: "last".into(),
             kind: demi_runner_protocol::files::SubscriptionKind::Worktree,
             path,
+            suffix: None,
         })
         .await;
         assert!(matches!(host.frame().await, Outbound::FsLive { id, .. } if id == "last"));

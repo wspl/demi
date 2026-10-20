@@ -10,6 +10,9 @@
 //! - A conversation's choice puts the workflow's instructions in the root's
 //!   block and its profiles in place of the user's, a model no entry offers
 //!   making a profile unavailable. No Subagents takes both away.
+//! - What the page watches changes for a workflow added or edited, or a
+//!   `.demi` that comes nearer, and not for the other files of the
+//!   directories searched.
 
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, INSTRUCTIONS_SOURCE, InstructionEntry, WorkflowChoice};
@@ -21,6 +24,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{FIRST, anthropic_at, create, transcript};
+use crate::files::{send_watch, watch_message, watch_socket_of};
 use crate::support::{Harness, Session, TestBackend};
 use crate::support::eventually;
 use crate::work::{Driven, say, shell, switch};
@@ -84,8 +88,8 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
     let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
 
     // The menu's list, with the Host's number and what the page watches:
-    // the names of `web/.demi`, which could gain workflows nearer, and the
-    // workflows directory's details.
+    // the `.git` that would make `web` the root, `web/.demi/workflows`,
+    // which would be nearer, and the workflow files.
     let listed = backend
         .get(&format!("/api/conversations/{FIRST}/workflows"), Some(&master))
         .await;
@@ -105,8 +109,9 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
                 { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null, "profiles": ["explore", "slow"] },
             ],
             "watch": [
-                { "kind": "folder_names", "path": path(&web.join(".demi")) },
-                { "kind": "folder_details", "path": path(&workflows) },
+                { "kind": "file", "path": path(&web.join(".git")) },
+                { "kind": "file", "path": path(&web.join(".demi/workflows")) },
+                { "kind": "folder_details", "path": path(&workflows), "suffix": ".yaml" },
             ],
             "unavailable": null,
         })
@@ -242,6 +247,116 @@ async fn menu_once(
     })
     .await;
     listed.into_inner()
+}
+
+/// The `changed` batches the watch sends until one names `key`: every
+/// other key they name but `tree`'s.
+async fn others_until(socket: &mut crate::files::Socket, key: &str) -> Vec<String> {
+    let mut others = Vec::new();
+    loop {
+        let message = watch_message(socket).await;
+        assert_eq!(message["type"], "changed", "{message}");
+        let mut named = false;
+        for change in message["changes"].as_array().unwrap() {
+            match change[0].as_str().unwrap() {
+                changed if changed == key => named = true,
+                "tree" => {}
+                changed => others.push(changed.to_owned()),
+            }
+        }
+        if named {
+            return others;
+        }
+    }
+}
+
+// One to four seconds: a real runner on a paired device answers the reads
+// and watches what the page subscribes to.
+//
+// Planted defect it catches: a search that watches a searched directory's
+// names, or every entry of the workflows directory, so that any file made
+// in a home folder or a repository's root reads the list again.
+#[tokio::test]
+async fn the_page_hears_of_workflows_and_a_nearer_demi_but_not_of_other_files_beside_them() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    create(&backend, &master, FIRST).await;
+    let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
+
+    // `repo/app/web` works with the workflows of `repo`; `app` has a
+    // `.demi` without workflows, `web` none.
+    let repo = alpha.runner.home_dir().join("repo");
+    let app = repo.join("app");
+    let web = app.join("web");
+    let workflows = repo.join(".demi/workflows");
+    std::fs::create_dir_all(app.join(".demi")).unwrap();
+    std::fs::create_dir_all(&web).unwrap();
+    std::fs::create_dir_all(&workflows).unwrap();
+    let initialized = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    assert!(initialized.success());
+    std::fs::write(workflows.join("review.yaml"), REVIEW).unwrap();
+    switch(&backend, &master, FIRST, &alpha, &web).await;
+
+    // The page watches the repository's changes list, so one watch of its
+    // tree carries everything below, in the order it happens.
+    let mut socket = watch_socket_of(&backend, &master, &format!("/api/conversations/{FIRST}/fs/watch")).await;
+    let tree = json!({ "key": "tree", "kind": "worktree", "path": path(&repo) });
+    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": [tree] })).await;
+    let live = watch_message(&mut socket).await;
+    assert_eq!(live["type"], "live", "{live}");
+
+    // It subscribes to what the list says to watch, under keys of its own.
+    let listed = menu(&backend, &master).await;
+    assert_eq!(
+        listed["watch"],
+        json!([
+            { "kind": "file", "path": path(&web.join(".git")) },
+            { "kind": "file", "path": path(&app.join(".git")) },
+            { "kind": "file", "path": path(&web.join(".demi")) },
+            { "kind": "file", "path": path(&app.join(".demi/workflows")) },
+            { "kind": "folder_details", "path": path(&workflows), "suffix": ".yaml" },
+        ])
+    );
+    let subscriptions: Vec<serde_json::Value> = listed["watch"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .map(|(index, subject)| {
+            let mut subscription = subject.clone();
+            subscription["key"] = json!(format!("w{index}"));
+            subscription
+        })
+        .collect();
+    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": subscriptions })).await;
+    for _ in 0..subscriptions.len() {
+        let live = watch_message(&mut socket).await;
+        assert_eq!(live["type"], "live", "{live}");
+    }
+
+    // Files beside what the search looked for, then a new workflow: only
+    // the workflow files' subscription changes.
+    std::fs::write(web.join("notes.txt"), "notes").unwrap();
+    std::fs::write(app.join("notes.txt"), "notes").unwrap();
+    std::fs::write(app.join(".demi/notes.md"), "notes").unwrap();
+    std::fs::write(repo.join("notes.txt"), "notes").unwrap();
+    std::fs::write(workflows.join("docs.yaml"), DOCS).unwrap();
+    assert_eq!(others_until(&mut socket, "w4").await, Vec::<String>::new());
+    // A file of the workflows directory that is no workflow, then a `.demi`
+    // made in the working directory, which may bring workflows nearer: only
+    // the `.demi`'s subscription changes.
+    std::fs::write(workflows.join("README.md"), "notes").unwrap();
+    std::fs::create_dir(web.join(".demi")).unwrap();
+    assert_eq!(others_until(&mut socket, "w2").await, Vec::<String>::new());
+    // A workflow edited in place.
+    std::fs::write(workflows.join("review.yaml"), REVIEW.replace("REVIEW STEPS", "REVIEW STEPS TWO")).unwrap();
+    assert_eq!(others_until(&mut socket, "w4").await, Vec::<String>::new());
+    backend.close().await;
 }
 
 // A few seconds: a real runner on a paired device answers the reads, and

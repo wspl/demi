@@ -26,6 +26,9 @@
 //!
 //! # What counts as a change
 //!
+//! - A folder subscription with a suffix counts only the entries whose names
+//!   end with it: a `notes.txt` beside `.demi/workflows/review.yaml` changes
+//!   nothing of a subscription to that folder's `.yaml` entries.
 //! - An ignored path changes no `worktree` subscription (`crate::ignore`), but
 //!   a `file` or `folder` subscription inside an ignored folder, such as a log
 //!   under `target/` a page shows, changes as any other.
@@ -75,6 +78,7 @@ enum Request {
         id: String,
         kind: SubscriptionKind,
         path: String,
+        suffix: Option<String>,
     },
     Unsubscribe(String),
     Renew(Vec<String>),
@@ -114,9 +118,9 @@ impl Subscriptions {
     }
 
     /// Subscribes `id`, replacing what had that id.
-    pub fn subscribe(&self, id: String, kind: SubscriptionKind, path: String) {
+    pub fn subscribe(&self, id: String, kind: SubscriptionKind, path: String, suffix: Option<String>) {
         // The owner ends only with this handle.
-        let _ = self.requests.send(Request::Subscribe { id, kind, path });
+        let _ = self.requests.send(Request::Subscribe { id, kind, path, suffix });
     }
 
     pub fn unsubscribe(&self, id: String) {
@@ -162,7 +166,7 @@ struct Subscription {
 #[derive(Debug, Clone)]
 enum Subject {
     File(PathBuf),
-    Folder { path: PathBuf, details: bool },
+    Folder { path: PathBuf, entries: Entries },
     Worktree { root: PathBuf, repo: Option<GitDirs> },
     /// Followed through the tree's watch, which also covers its git
     /// directories.
@@ -178,11 +182,32 @@ impl Subject {
     }
 }
 
+/// What of a folder's entries a folder subscription counts.
+#[derive(Debug, Clone)]
+struct Entries {
+    /// Their sizes and times too, not only their names.
+    details: bool,
+    /// Only those whose names end with it; none for all.
+    suffix: Option<String>,
+}
+
+impl Entries {
+    /// Whether a change of the entry `path` counts: `entry` when it came,
+    /// went or was renamed.
+    fn count(&self, path: &Path, entry: bool) -> bool {
+        let named = self.suffix.as_ref().is_none_or(|suffix| {
+            path.file_name()
+                .is_some_and(|name| name.as_encoded_bytes().ends_with(suffix.as_bytes()))
+        });
+        (entry || self.details) && named
+    }
+}
+
 /// The subscriptions that follow one watch, as its thread matches them.
 #[derive(Default)]
 struct Index {
     files: BTreeMap<PathBuf, BTreeSet<String>>,
-    folders: BTreeMap<PathBuf, BTreeMap<String, bool>>,
+    folders: BTreeMap<PathBuf, BTreeMap<String, Entries>>,
     trees: BTreeMap<String, Subject>,
 }
 
@@ -192,11 +217,11 @@ impl Index {
             Subject::File(path) => {
                 self.files.entry(path.clone()).or_default().insert(id.to_owned());
             }
-            Subject::Folder { path, details } => {
+            Subject::Folder { path, entries } => {
                 self.folders
                     .entry(path.clone())
                     .or_default()
-                    .insert(id.to_owned(), *details);
+                    .insert(id.to_owned(), entries.clone());
             }
             Subject::Worktree { .. } | Subject::Head { .. } => {
                 self.trees.insert(id.to_owned(), subject.clone());
@@ -250,8 +275,8 @@ impl Index {
                 if let Some(parent) = path.parent()
                     && let Some(ids) = self.folders.get(parent)
                 {
-                    for (id, details) in ids {
-                        if *entry || *details {
+                    for (id, entries) in ids {
+                        if entries.count(path, *entry) {
                             pending.note(id, event.at);
                         }
                     }
@@ -457,9 +482,9 @@ impl Owner {
     /// Carries out a request; false once nobody hears the reports.
     async fn request(&mut self, request: Request) -> bool {
         match request {
-            Request::Subscribe { id, kind, path } => {
+            Request::Subscribe { id, kind, path, suffix } => {
                 self.end(&id);
-                self.subscribe(id, kind, path).await
+                self.subscribe(id, kind, path, suffix).await
             }
             Request::Unsubscribe(id) => {
                 self.end(&id);
@@ -477,12 +502,12 @@ impl Owner {
         }
     }
 
-    async fn subscribe(&mut self, id: String, kind: SubscriptionKind, path: String) -> bool {
+    async fn subscribe(&mut self, id: String, kind: SubscriptionKind, path: String, suffix: Option<String>) -> bool {
         let lease = Instant::now() + SUBSCRIPTION_LEASE;
         let resolved = resolve(&self.default_cwd, &path);
         let subject = match resolved {
             Ok(path) => {
-                let found = tokio::task::spawn_blocking(move || subject_of(kind, &path)).await;
+                let found = tokio::task::spawn_blocking(move || subject_of(kind, &path, suffix)).await;
                 match found {
                     Ok(found) => found,
                     Err(error) => Err(error.to_string()),
@@ -529,8 +554,14 @@ impl Owner {
                 if let Some(root) = held {
                     return Some(tree(&root));
                 }
+                // A kqueue of a folder hears that some name changed, not
+                // which, so a suffix needs the entries' stream too.
                 let reach = match subject {
-                    Subject::Folder { details: true, .. } if cfg!(target_os = "macos") => Reach::Entries,
+                    Subject::Folder { entries, .. }
+                        if cfg!(target_os = "macos") && (entries.details || entries.suffix.is_some()) =>
+                    {
+                        Reach::Entries
+                    }
                     _ => Reach::Node,
                 };
                 let key = Key {
@@ -733,20 +764,25 @@ async fn sleep_until(deadline: Option<Instant>) {
     }
 }
 
-/// What `kind` of the absolute `path` matches, with its path canonical as
-/// the platform reports paths; a path that is not there yet is canonical
-/// under the nearest folder above it that is.
-fn subject_of(kind: SubscriptionKind, path: &Path) -> Result<Subject, String> {
+/// What `kind` of the absolute `path` matches, of a folder's entries only
+/// those whose names end with `suffix`, with its path canonical as the
+/// platform reports paths; a path that is not there yet is canonical under
+/// the nearest folder above it that is.
+fn subject_of(kind: SubscriptionKind, path: &Path, suffix: Option<String>) -> Result<Subject, String> {
+    if suffix.is_some() && !matches!(kind, SubscriptionKind::FolderNames | SubscriptionKind::FolderDetails) {
+        return Err("only a folder's subscription counts entries by the ending of their names".to_owned());
+    }
+    let folder = |details| Entries { details, suffix: suffix.clone() };
     let canonical = canonical(path)?;
     Ok(match kind {
         SubscriptionKind::File => Subject::File(canonical),
         SubscriptionKind::FolderNames => Subject::Folder {
             path: canonical,
-            details: false,
+            entries: folder(false),
         },
         SubscriptionKind::FolderDetails => Subject::Folder {
             path: canonical,
-            details: true,
+            entries: folder(true),
         },
         SubscriptionKind::Worktree => Subject::Worktree {
             repo: crate::git::git_dirs(&canonical),

@@ -212,6 +212,7 @@ impl HostSubscriber {
                 id,
                 kind: subject.kind,
                 path: subject.path.clone(),
+                suffix: subject.suffix.clone(),
             })
         });
         if let Some(message) = posted {

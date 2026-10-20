@@ -725,6 +725,13 @@ pub enum Inbound {
         kind: crate::files::SubscriptionKind,
         #[garde(length(min = 1), custom(without_nul))]
         path: String,
+        /// See [`crate::files::Subject::suffix`].
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        suffix: Option<String>,
     },
     /// Ends subscription `id` at once; one that ended already is ended.
     FsUnsubscribe {

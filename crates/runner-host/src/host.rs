@@ -182,7 +182,7 @@ impl HostServer {
             return Err(io::Error::other("host connection closed"));
         };
         match message {
-            Inbound::FsSubscribe { id, kind, path } => subscriptions.subscribe(id, kind, path),
+            Inbound::FsSubscribe { id, kind, path, suffix } => subscriptions.subscribe(id, kind, path, suffix),
             Inbound::FsUnsubscribe { id } => subscriptions.unsubscribe(id),
             Inbound::FsRenew { ids } => subscriptions.renew(ids),
             _ => return Err(io::Error::other("not a subscription request")),

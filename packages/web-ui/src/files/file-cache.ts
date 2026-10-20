@@ -252,8 +252,8 @@ function failureOf(error: unknown): FileBrowserFailure {
 }
 
 /** The subscription key of `subject`, by which the kept files share it. */
-function subjectKey({ kind, path }: Subject): string {
-  return `${kind}\u0000${path}`
+function subjectKey({ kind, path, suffix }: Subject): string {
+  return `${kind}\u0000${path}\u0000${suffix ?? ''}`
 }
 
 /**

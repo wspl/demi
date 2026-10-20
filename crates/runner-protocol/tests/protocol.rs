@@ -588,6 +588,7 @@ fn asked(key: &str, kind: SubscriptionKind, path: &str) -> PageSubscription {
         key: key.into(),
         kind,
         path: path.into(),
+        suffix: None,
     }
 }
 
@@ -595,6 +596,7 @@ fn subject(kind: SubscriptionKind, path: &str) -> Subject {
     Subject {
         kind,
         path: path.into(),
+        suffix: None,
     }
 }
 

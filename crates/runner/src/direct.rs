@@ -506,7 +506,7 @@ impl PageWatchTask {
                     }
                     Effect::Hold(subject) => {
                         let id = held.hold(subject.clone());
-                        subscriptions.subscribe(id, subject.kind, subject.path);
+                        subscriptions.subscribe(id, subject.kind, subject.path, subject.suffix);
                     }
                     Effect::Release(subject) => {
                         if let Some(id) = held.release(&subject) {

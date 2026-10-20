@@ -44,6 +44,7 @@ fn subscribe(host: &HostServer, id: &str, kind: SubscriptionKind, path: &Path) {
         id: id.into(),
         kind,
         path: path.to_string_lossy().into_owned(),
+        suffix: None,
     })
     .unwrap();
 }

@@ -2369,17 +2369,19 @@ async fn pages_that_hold_one_subject_share_its_subscription_which_the_last_one_e
     let file = Subject {
         kind: SubscriptionKind::File,
         path: "/work/a.txt".into(),
+        suffix: None,
     };
     let folder = Subject {
         kind: SubscriptionKind::FolderNames,
         path: "/work".into(),
+        suffix: None,
     };
     let mut first = host.subscriber().unwrap();
     let mut second = host.subscriber().unwrap();
     first.hold(file.clone());
     second.hold(file.clone());
     let id = match link.next().await {
-        Inbound::FsSubscribe { id, kind, path } => {
+        Inbound::FsSubscribe { id, kind, path, .. } => {
             assert_eq!((kind, path.as_str()), (SubscriptionKind::File, "/work/a.txt"));
             id
         }

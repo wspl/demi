@@ -209,18 +209,12 @@ pub(crate) async fn search_instructions(
         .await?;
     let (git, named) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git).len();
-    let in_repository = git
-        .iter()
-        .any(|file| !matches!(file, HostFile::Missing | HostFile::Unreadable { .. }));
     let file = |path: String| Subject {
         kind: SubscriptionKind::File,
         path,
+        suffix: None,
     };
-    let below_root = if in_repository { searched - 1 } else { ancestors.len() };
-    let mut watch: Vec<Subject> = ancestors[..below_root]
-        .iter()
-        .map(|directory| file(join(directory, ".git")))
-        .collect();
+    let mut watch: Vec<Subject> = project::root_watch(paths, &ancestors, git).into_iter().map(file).collect();
     for directory in &ancestors[..searched] {
         watch.extend(NAMES.iter().map(|name| file(join(directory, name))));
         watch.push(file(demi_file(directory)));

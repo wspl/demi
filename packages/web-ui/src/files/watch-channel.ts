@@ -34,10 +34,15 @@ const MESSAGE_KEYS = 4096
 /** What a subscription watches, and so when it changes (`crates/runner-host/src/subscriptions.rs`). */
 export type SubscriptionKind = 'file' | 'folder_names' | 'folder_details' | 'worktree' | 'head'
 
-/** What a subscription is to: a kind and an absolute path on the Host. */
+/**
+ * What a subscription is to: a kind and an absolute path on the Host, and for a
+ * folder the ending of the entry names that count, such as `.yaml`; without one,
+ * every entry counts.
+ */
 export interface Subject {
   kind: SubscriptionKind
   path: string
+  suffix?: string
 }
 
 /** Where in the Host's run of numbers a read began; another epoch's numbers compare with nothing. */
@@ -48,7 +53,7 @@ export interface ReadAt {
 
 /** A message the page sends on a watch. */
 export type WatchRequest =
-  | { type: 'subscribe'; subscriptions: { key: string; kind: SubscriptionKind; path: string }[] }
+  | { type: 'subscribe'; subscriptions: ({ key: string } & Subject)[] }
   | { type: 'unsubscribe'; keys: string[] }
   | { type: 'renew'; keys: string[] }
 

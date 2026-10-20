@@ -31,9 +31,9 @@
 //!   quietly spawning with other settings.
 
 use demi_agent_tools::{
-    ChosenWorkflow, ConversationProfiles, EFFORT_OFF, ListedWorkflow, WORKFLOW_FILE_MAX_BYTES,
-    WORKFLOWS_DIRECTORY, Workflow, WorkflowChild, WorkflowListing, WorkflowProfile,
-    parse_workflow, workflow_id,
+    ChosenWorkflow, ConversationProfiles, EFFORT_OFF, ListedWorkflow, WORKFLOW_EXTENSION,
+    WORKFLOW_FILE_MAX_BYTES, WORKFLOWS_DIRECTORY, Workflow, WorkflowChild, WorkflowListing,
+    WorkflowProfile, parse_workflow, workflow_id,
 };
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::access::HostAccessError;
@@ -187,6 +187,17 @@ pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
 /// a `.demi/workflows` or a workflow file that is a link, or that has become one
 /// by the time it is read, as a link. A `.demi` it cannot read makes that
 /// directory's workflows unavailable rather than looked past.
+///
+/// It watches only what its answer depends on, so that the files a home folder
+/// or a repository's root gains all day change nothing:
+///
+/// - the `.git` whose coming moves the repository's root nearer;
+/// - in each directory it passed, the coming of the entry it looked for and
+///   did not find, its `.demi`, or its `.demi/workflows`;
+/// - in the workflows directory, the `.yaml` entries and their contents.
+///
+/// A `.demi` or `.demi/workflows` that is a link is watched in its folder's
+/// names, since a subscription to its path follows the link to its target.
 pub(crate) async fn search_workflows<E, Fut>(
     paths: HostPaths,
     cwd: &str,
@@ -217,17 +228,23 @@ where
     }
     let (git, kept) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git);
-    let mut watch = Vec::new();
+    let file = |path: String| WatchSubject {
+        kind: WatchKind::File,
+        path,
+        suffix: None,
+    };
     let names = |path: String| WatchSubject {
         kind: WatchKind::FolderNames,
         path,
+        suffix: None,
     };
+    let mut watch: Vec<WatchSubject> = project::root_watch(paths, &ancestors, git).into_iter().map(file).collect();
     let mut nearest = None;
     for (directory, answers) in searched.iter().zip(kept.chunks(2)) {
         let unusable = |reason: String| (directory.clone(), workflows_of(directory), Err(reason));
         match (&answers[0], &answers[1]) {
             (HostFile::Missing | HostFile::File { .. } | HostFile::Other, _) => {
-                watch.push(names(directory.clone()));
+                watch.push(file(dot_demi(directory)));
                 continue;
             }
             (HostFile::Link, _) => {
@@ -235,11 +252,11 @@ where
                 nearest = Some(unusable(NOT_LINKS.to_owned()));
             }
             (HostFile::Unreadable { message }, _) => {
-                watch.push(names(directory.clone()));
+                watch.push(file(dot_demi(directory)));
                 nearest = Some(unusable(format!("the Host cannot read {}: {message}", dot_demi(directory))));
             }
             (HostFile::Directory { .. }, HostFile::Missing | HostFile::File { .. } | HostFile::Other) => {
-                watch.push(names(dot_demi(directory)));
+                watch.push(file(workflows_of(directory)));
                 continue;
             }
             (HostFile::Directory { .. }, HostFile::Link) => {
@@ -247,13 +264,14 @@ where
                 nearest = Some(unusable(NOT_LINKS.to_owned()));
             }
             (HostFile::Directory { .. }, HostFile::Unreadable { message }) => {
-                watch.push(names(dot_demi(directory)));
+                watch.push(file(workflows_of(directory)));
                 nearest = Some(unusable(format!("the Host cannot read {}: {message}", workflows_of(directory))));
             }
             (HostFile::Directory { .. }, HostFile::Directory { entries }) => {
                 watch.push(WatchSubject {
                     kind: WatchKind::FolderDetails,
                     path: workflows_of(directory),
+                    suffix: Some(WORKFLOW_EXTENSION.to_owned()),
                 });
                 nearest = Some((directory.clone(), workflows_of(directory), Ok(entries.clone())));
             }
@@ -364,6 +382,7 @@ pub(crate) async fn search_conversation_workflows(
         watch: vec![WatchSubject {
             kind: WatchKind::FolderNames,
             path: directory.to_owned(),
+            suffix: None,
         }],
         read_at,
     }))
@@ -437,6 +456,7 @@ impl Shard {
                     watch: vec![WatchSubject {
                         kind: WatchKind::FolderNames,
                         path: directory,
+                        suffix: None,
                     }],
                 };
                 (answer, None)

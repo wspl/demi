@@ -137,12 +137,12 @@ export class SimulatedWatch {
       send: (request) => {
         switch (request.type) {
           case 'subscribe':
-            for (const { key, kind, path } of request.subscriptions) {
+            for (const { key, ...subject } of request.subscriptions) {
               if (this.mode === 'unavailable') {
                 tell({ type: 'unavailable', key, reason: UNWATCHED_REASON })
                 continue
               }
-              link.held.set(key, { kind, path })
+              link.held.set(key, subject)
               tell({ type: 'live', key, since: this.number, epoch: this.epoch })
             }
             return
@@ -193,14 +193,15 @@ export class SimulatedWatch {
 }
 
 /** Whether a change of `path` changes a subscription to `subject`; `entry` when an entry came or went. */
-function concerns({ kind, path: subject }: Subject, path: string, entry: boolean): boolean {
+function concerns({ kind, path: subject, suffix = '' }: Subject, path: string, entry: boolean): boolean {
+  const counted = parentPath(path) === subject && path.endsWith(suffix)
   switch (kind) {
     case 'file':
       return within(subject, path)
     case 'folder_names':
-      return within(subject, path) || (entry && parentPath(path) === subject)
+      return within(subject, path) || (entry && counted)
     case 'folder_details':
-      return within(subject, path) || parentPath(path) === subject
+      return within(subject, path) || counted
     case 'worktree':
       return within(path, subject)
     case 'head':

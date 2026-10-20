@@ -26,6 +26,25 @@ pub fn root_reads(paths: HostPaths, ancestors: &[String]) -> Vec<HostRead> {
         .collect()
 }
 
+/// The `.git` paths whose coming moves the repository's root nearer, from
+/// `ancestors` and the answers to their [`root_reads`]: in each directory
+/// below the root, or in every one outside a repository. The root's own
+/// `.git` is left out: git writes in it at every command.
+pub fn root_watch(paths: HostPaths, ancestors: &[String], git: &[HostFile]) -> Vec<String> {
+    let in_repository = git
+        .iter()
+        .any(|file| !matches!(file, HostFile::Missing | HostFile::Unreadable { .. }));
+    let below_root = if in_repository {
+        searched(ancestors, git).len() - 1
+    } else {
+        ancestors.len()
+    };
+    ancestors[..below_root]
+        .iter()
+        .map(|directory| paths.join(directory, ".git"))
+        .collect()
+}
+
 /// The directories searched, nearest first, from `ancestors` and the
 /// answers to their [`root_reads`]: those up to the first that holds `.git`,
 /// or the first alone when none does.

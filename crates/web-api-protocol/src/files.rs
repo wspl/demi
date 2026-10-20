@@ -29,6 +29,11 @@ pub struct ConversationSubscription {
     pub kind: SubscriptionKind,
     #[garde(length(chars, min = 1), custom(demi_command_protocol::without_nul))]
     pub path: String,
+    /// See [`demi_runner_protocol::files::Subject::suffix`].
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub suffix: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "DeviceId")]
     #[garde(skip)]
@@ -42,9 +47,10 @@ impl ConversationSubscription {
             key,
             kind,
             path,
+            suffix,
             host,
         } = self;
-        (host, PageSubscription { key, kind, path })
+        (host, PageSubscription { key, kind, path, suffix })
     }
 }
 
@@ -55,10 +61,11 @@ impl From<FileWatchRequest> for ConversationWatchRequest {
             FileWatchRequest::Subscribe { subscriptions } => Self::Subscribe {
                 subscriptions: subscriptions
                     .into_iter()
-                    .map(|PageSubscription { key, kind, path }| ConversationSubscription {
+                    .map(|PageSubscription { key, kind, path, suffix }| ConversationSubscription {
                         key,
                         kind,
                         path,
+                        suffix,
                         host: None,
                     })
                     .collect(),
