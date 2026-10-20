@@ -1,9 +1,10 @@
-import type { AgentMessage } from '@demicodes/protocol'
+import type { AgentMessage, Block } from '@demicodes/protocol'
 import { inject, provide, type InjectionKey } from 'vue'
 import { homePath } from '../files/paths'
 import { codeText } from '../infra/errors'
 import { hostAction, reachAction, useCredentialAction, wordedActions } from '../permissions/types'
 import { around, t } from './locales/text'
+import { agentName } from './subagents'
 
 /**
  * A receipt's row: what happened, in the user's words, and the agent it names
@@ -73,6 +74,27 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
 }
 
 /**
+ * Whether an agent's message shows as a bubble with its words, as the brief
+ * does, rather than as its receipt row: another agent's message that ended a
+ * run, as the backend places one from above or beside its receiver, its parent
+ * or a sibling (`crates/agent-store/src/changes.rs`). A message or a report
+ * from below is a step of a run, a result the receiver reads, and keeps its
+ * row, so the main agent's view shows only rows. A page's light form keeps the
+ * words of such a message alone (`crates/conversation-socket-protocol/src/transcript.rs`).
+ */
+export function receivedAsBubble(block: Pick<Extract<Block, { type: 'agent_message' }>, 'message' | 'run'>): boolean {
+  return block.message.event.type === 'message' && block.message.sender != null && block.run == null
+}
+
+/**
+ * The name above a message's bubble, as a group chat names its members: none
+ * for the main agent's, which reads as the brief does.
+ */
+export function bubbleName(message: AgentMessage): string | null {
+  return message.sender?.number === 0 ? null : senderName(message)
+}
+
+/**
  * *Message from main agent*, its title inside the sentence. The catalogue's one
  * sentence is split at the agent, so a language that puts the agent before its
  * words (*メインエージェントからのメッセージ*) is worded as it reads.
@@ -99,12 +121,10 @@ function permissionAction(event: Extract<AgentMessage['event'], { type: 'permiss
   return (categories.length || host.length ? wordedActions(categories, host) : null) ?? event.action
 }
 
-/**
- * The agent a message names: its description, or its number when it has none.
- */
+/** The agent a message names (`agentName`); none sent no named message. */
 function senderName(message: AgentMessage): string {
   const sender = message.sender
-  return sender?.description.trim() || t('transcript.receipt.unnamed', { number: sender?.number ?? '' }).trim()
+  return sender ? agentName(sender.description, sender.number) : ''
 }
 
 /**

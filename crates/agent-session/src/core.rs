@@ -1403,8 +1403,15 @@ impl SessionCore {
                 }
                 Input::Agent(input) => {
                     agent_message = true;
+                    // A message no agent sent is the user's or Demi's,
+                    // which ends a run wherever it stands.
+                    let sender_below = input
+                        .message
+                        .sender
+                        .as_ref()
+                        .is_some_and(|sender| self.runtime.is_below(&sender.id));
                     self.transcript
-                        .push_agent_message(turn.clone(), &input.model, input.message);
+                        .push_agent_message(turn.clone(), &input.model, input.message, sender_below);
                 }
             }
         }

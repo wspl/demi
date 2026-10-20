@@ -300,9 +300,10 @@ impl TranscriptLog {
         turn_id: TurnId,
         model: &ModelSelection,
         message: AgentMessage,
+        sender_below: bool,
     ) {
         let created_at = self.clock.now();
-        self.append(Block::AgentMessage(AgentMessageBlock {
+        self.append_received(Block::AgentMessage(AgentMessageBlock {
             run: None,
             id: message.id.clone(),
             turn_id,
@@ -310,7 +311,7 @@ impl TranscriptLog {
             model: model.clone(),
             message,
             entries: Vec::new(),
-        }));
+        }), sender_below);
     }
 
     /// The turn continues after a cut; `reason` says what made Demi resume
@@ -786,10 +787,18 @@ impl TranscriptLog {
         (id, self.clock.now())
     }
 
-    /// Appends `block` with the run of steps it joins, which the blocks
-    /// before it decide once.
-    fn append(&mut self, mut block: Block) {
-        block.set_run(run_of(&self.blocks, &block));
+    /// Appends `block`, which is no agent's message, with the run of steps
+    /// it joins, which the blocks before it decide once.
+    fn append(&mut self, block: Block) {
+        // Only an agent's message reads where its sender stands.
+        self.append_received(block, true);
+    }
+
+    /// [`append`](Self::append) for any block: an agent's message from a
+    /// sender below this node, `sender_below`, is a step of the run it
+    /// arrives in, and one from above or beside ends it.
+    fn append_received(&mut self, mut block: Block, sender_below: bool) {
+        block.set_run(run_of(&self.blocks, &block, sender_below));
         let index = self.len();
         self.journal.add(index, &block, self.versions.get(&index).copied());
         self.blocks.push(block);

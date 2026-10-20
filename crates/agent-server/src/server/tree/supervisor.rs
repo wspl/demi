@@ -302,6 +302,26 @@ impl<H: HostResolver> Tree<H> {
             .collect()
     }
 
+    /// Whether `node` is below `ancestor`: its child or any descendant of
+    /// one, live or closed, as the children's records link them.
+    pub(crate) fn is_below(&self, node: &NodeId, ancestor: &NodeId) -> bool {
+        let summaries = self.summaries.borrow();
+        let parent_of = |id: &NodeId| {
+            summaries
+                .values()
+                .find(|summary| &summary.record.id == id)
+                .and_then(|summary| summary.record.parent.clone())
+        };
+        let mut parent = parent_of(node);
+        while let Some(id) = parent {
+            if &id == ancestor {
+                return true;
+            }
+            parent = parent_of(&id);
+        }
+        false
+    }
+
     /// Whether `child` is a live child of `owner`.
     pub(crate) fn is_child_of(&self, child: &NodeId, owner: &NodeId) -> bool {
         self.child(child)

@@ -9,6 +9,7 @@ import HighlightText from '../ui/HighlightText.vue'
 import Menu from '../ui/Menu.vue'
 import Tag from '../ui/Tag.vue'
 import {
+  agentName,
   finishedSubagents,
   formatSubagentDuration,
   type SubagentRecord,
@@ -27,7 +28,7 @@ const items = computed(() => {
   const nowMs = Date.now()
   return finishedSubagents(props.agents).map((agent) => ({
     id: agent.id,
-    label: agent.name,
+    label: agentName(agent.name, agent.number),
     icon: Bot,
     value: formatSubagentDuration(agent, nowMs),
     profile: agent.profile,

@@ -35,6 +35,7 @@ import IndeterminateSpinner from '../../ui/IndeterminateSpinner.vue'
 import { useTranscript } from '../edit-selection'
 import { childBrief } from '../subagents'
 import { blockMessageFiles } from '../working-directory'
+import { bubbleName, receiptOrigin, receivedAsBubble, useOriginRevealer } from '../agent-receipts'
 import { provideMessageFiles, useMessageFiles } from '../../markdown/message-files'
 
 defineOptions({ inheritAttrs: false })
@@ -113,6 +114,27 @@ const entersAsChrome = computed(() =>
   && (props.block.type === 'agent_message' || props.block.type === 'wakeup' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort' || props.block.type === 'activity_slot'),
 )
 
+const revealOrigin = useOriginRevealer()
+/**
+ * Another agent's message this agent shows as a bubble with its words, as its
+ * brief (`receivedAsBubble`), and the sender named above it, but for the main
+ * agent; null for a message that keeps its receipt row.
+ */
+const bubble = computed(() => {
+  const block = props.block
+  if (block.type !== 'agent_message' || !receivedAsBubble(block)) {
+    return null
+  }
+  const message = block.message
+  const name = bubbleName(message)
+  const origin = receiptOrigin(message)
+  return {
+    content: [{ type: 'text' as const, text: message.content }],
+    brief: message.content,
+    sender: name === null ? null : { name, go: origin ? revealOrigin(origin) : undefined },
+  }
+})
+
 /**
  * Recall and Send Now on the message being sent: the same requests as on
  * the steer or the queued message it will be, by the id it keeps, which the
@@ -160,6 +182,14 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       :editable="editable"
       :versions="versions"
       @edit="emit('editUser', block.id)"
+    />
+    <UserBlock
+      v-else-if="bubble"
+      v-bind="attrs"
+      :content="bubble.content"
+      :brief="bubble.brief"
+      :sender="bubble.sender"
+      :editable="false"
     />
     <UserBlock
       v-else-if="block.type === 'steer'"

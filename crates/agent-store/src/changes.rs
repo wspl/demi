@@ -61,7 +61,10 @@ enum Place {
     Ends,
 }
 
-fn place(block: &Block) -> Place {
+/// Where `block` stands toward a run. For an agent's message, `sender_below`
+/// says whether its sender is below the node whose transcript holds it, its
+/// child or any descendant of one; no other block reads it.
+fn place(block: &Block, sender_below: bool) -> Place {
     match block {
         Block::Thinking(_) | Block::RedactedThinking(_) | Block::ToolCall(_) => Place::Step,
         // A block of progress reports alone shows nothing.
@@ -76,11 +79,15 @@ fn place(block: &Block) -> Place {
                 Place::Passes
             }
         }
-        // Another agent's update or end is a step; the receipts of the
-        // user's decisions and Demi's notices end a run, as the user's words
-        // do.
+        // A child's end, and a message from below, are results the agent
+        // reads among its steps. A message from above or beside, such as
+        // its parent's or a sibling's, is an instruction it works from and
+        // ends a run, as the user's words do; so do the receipts of the
+        // user's decisions and Demi's notices.
         Block::AgentMessage(message) => match message.message.event {
-            AgentMessageEvent::Message {} | AgentMessageEvent::Completion { .. } => Place::Step,
+            AgentMessageEvent::Completion { .. } => Place::Step,
+            AgentMessageEvent::Message {} if sender_below => Place::Step,
+            AgentMessageEvent::Message {} => Place::Ends,
             AgentMessageEvent::Permission { .. }
             | AgentMessageEvent::Moved { .. }
             | AgentMessageEvent::MoveFailed { .. } => Place::Ends,
@@ -108,12 +115,17 @@ fn place(block: &Block) -> Place {
 /// The run `block` joins after `before`: the run of the step before it,
 /// past the blocks the reader never sees, or a run of its own after
 /// anything that ends one; none for a block that is not a step.
-pub fn run_of(before: &[Block], block: &Block) -> Option<BlockId> {
-    if place(block) != Place::Step {
+///
+/// For an agent's message, `sender_below` says whether its sender is below
+/// the node whose transcript this is: its child or any descendant of one. A
+/// message in `before` keeps the place its stored run says, so one stored
+/// before its sender placed it stays where it was.
+pub fn run_of(before: &[Block], block: &Block, sender_below: bool) -> Option<BlockId> {
+    if place(block, sender_below) != Place::Step {
         return None;
     }
     for previous in before.iter().rev() {
-        match place(previous) {
+        match place(previous, previous.run().is_some()) {
             Place::Passes => continue,
             Place::Ends => break,
             Place::Step => {
@@ -125,10 +137,13 @@ pub fn run_of(before: &[Block], block: &Block) -> Option<BlockId> {
 }
 
 /// Gives every block of `blocks` its run, in order, as storing them one by
-/// one would.
+/// one would, where every agent's message came from below.
+///
+/// It lists blocks stored before their runs were, which knew no sender's
+/// place: each message among them stays a step of its run.
 pub fn set_runs(blocks: &mut [Block]) {
     for index in 0..blocks.len() {
-        let run = run_of(&blocks[..index], &blocks[index]);
+        let run = run_of(&blocks[..index], &blocks[index], true);
         blocks[index].set_run(run);
     }
 }
@@ -534,7 +549,8 @@ pub fn plan(blocks: &[Block], index: usize, view: &ShellToolView, directory: Opt
     let run = blocks[index]
         .run()
         .cloned()
-        .or_else(|| run_of(before, &blocks[index]));
+        // A shell call is no agent's message, whose sender alone is placed.
+        .or_else(|| run_of(before, &blocks[index], true));
     let start = before.iter().rposition(|block| matches!(block, Block::User(_)));
     let mut request = Tracking::default();
     let mut runs = Tracking::default();

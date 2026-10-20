@@ -13,7 +13,7 @@ import TabItem from './TabItem.vue'
 import AgentMark from './AgentMark.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { provideLiveCalls } from './live-calls'
-import { agentCompaction, subagentPanelTabs, type SubagentRecord } from './subagents'
+import { agentCompaction, agentName, subagentPanelTabs, type SubagentRecord } from './subagents'
 import { useCallTerminals, type TerminalRecord } from './terminals'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import type { UsageLimits } from './context-usage'
@@ -245,7 +245,7 @@ function closeTab(id: string): void {
       <TabItem
         v-for="agent in tabs"
         :key="agent.id"
-        :title="agent.name"
+        :title="agentName(agent.name, agent.number)"
         :is-active="agent.id === active?.id"
         :closable="false"
         @select="activate(agent.id)"

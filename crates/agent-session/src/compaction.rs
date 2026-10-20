@@ -28,7 +28,7 @@ use demi_conversation_socket_protocol::{AgentCode, Refusal};
 use demi_provider_common::{ErrorCode, InferenceItem, RequestLimits, ToolDefinition, UserPart};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, ContextUsage, EXECUTION_SOURCE, Model, ModelSelection, TokenUsage,
+    B64Bytes, BlobRef, Block, ContextUsage, EXECUTION_SOURCE, Model, ModelSelection, NodeId, TokenUsage,
     TurnId, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
@@ -938,6 +938,10 @@ impl SessionRuntime for CopyRuntime {
     /// The summary request is its session's agent's.
     fn agent(&self) -> Option<u64> {
         self.session.agent()
+    }
+
+    fn is_below(&self, node: &NodeId) -> bool {
+        self.session.is_below(node)
     }
 
     /// The copy runs one request and no tool, so it never asks for a step;

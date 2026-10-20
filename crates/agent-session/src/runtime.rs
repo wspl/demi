@@ -15,7 +15,7 @@ use std::{
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
 use demi_shared_types::{
-    CommandId, CommandReport, InstructionEntry, ModelSelection, ShellToolView,
+    CommandId, CommandReport, InstructionEntry, ModelSelection, NodeId, ShellToolView,
     ToolView, TurnId,
 };
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
@@ -113,6 +113,15 @@ pub trait SessionRuntime {
     /// None for a side question, which is no agent and counts under its
     /// conversation alone.
     fn agent(&self) -> Option<u64>;
+
+    /// Whether `node` is below this node in the conversation's tree: its
+    /// child or any descendant of one, live or closed.
+    ///
+    /// It places an agent's message the node receives in its transcript: one
+    /// from below is a step of the run it arrives in, and one from above or
+    /// beside ends it (`crates/agent-store/src/changes.rs`). It changes
+    /// neither what the model is sent nor when a turn ends.
+    fn is_below(&self, node: &NodeId) -> bool;
 
     /// The session the node's requests name to their provider for its prompt
     /// cache and its routing, when it is not the node's own.

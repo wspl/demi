@@ -134,6 +134,14 @@ export function runEffortWords(model: JobModel): string | null {
   return model.effort === 'off' ? t('subagents.thinkingOff') : effortWord(model.effort)
 }
 
+/**
+ * What an agent is called: its description, or *Agent 4* for one spawned
+ * without a description.
+ */
+export function agentName(description: string, number: number): string {
+  return description.trim() || t('transcript.receipt.unnamed', { number }).trim()
+}
+
 export function isSubagentRunning(phase: SubagentPhase): boolean {
   return phase === 'running'
 }

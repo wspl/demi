@@ -224,6 +224,11 @@ impl SessionRuntime for TestRuntime {
         Some(0)
     }
 
+    /// The node is the root: every agent is below it.
+    fn is_below(&self, _node: &NodeId) -> bool {
+        true
+    }
+
     fn tools(&self) -> Arc<[ToolDefinition]> {
         self.tools
             .iter()

@@ -522,3 +522,136 @@ export function slotSubagent(): SubagentRecord {
     history: wholeHistory(slotBlocks()),
   }
 }
+
+/** The conversation's own agent, which the bubble specimens' children report to. */
+export const BUBBLES_ROOT = 'gallery-bubbles'
+
+/**
+ * A message the agent `sender` sent the agent `recipient`, from its call
+ * `origin`: a step of no run, as the backend places one from above or beside
+ * the recipient (`inRun` makes it one from below).
+ */
+function agentSays(
+  id: string,
+  sender: { id: string, number: number, description: string },
+  recipient: string,
+  createdAt: string,
+  content: string,
+  origin: string,
+): Block {
+  const message: AgentMessage = {
+    id,
+    sender: { ...sender, round: 1 },
+    recipientId: recipient,
+    timestamp: createdAt,
+    content,
+    event: { type: 'message' },
+    origin,
+  }
+  return { type: 'agent_message', id, turnId: `${id}-turn`, createdAt, model: demoModel, message }
+}
+
+const NOTES = { id: 'ag-notes', number: 3, description: 'Tidy the release notes' }
+const REVIEW = { id: 'ag-review', number: 4, description: 'Review the notes' }
+const LINKS = { id: 'ag-links', number: 5, description: 'Check the links' }
+const MAIN = { id: BUBBLES_ROOT, number: 0, description: 'root session' }
+
+/**
+ * Tidy the release notes' transcript: its brief, its work, a message from the
+ * main agent and one from its sibling Review the notes, and with `report`, the
+ * report of its own child Check the links. The tree: Tidy the release notes
+ * and Review the notes are the main agent's children, Check the links is Tidy
+ * the release notes' child. A message from above or beside it ends a run, as
+ * the user's words do.
+ */
+function notesBlocks(report: boolean): Block[] {
+  return [
+    user('ag-notes-user', ago(240_000), 'Tidy the release notes in `docs/RELEASE.md`: one heading per version, newest first, and fix any broken table.'),
+    ...inRun(
+      shell('ag-notes-read', ago(230_000), 'Read the release notes', '# Release notes\n## 2.4.0\n…', 'completed', 'cat docs/RELEASE.md'),
+      shell('ag-notes-sort', ago(220_000), 'List the version headings', '## 2.4.0\n## 2.2.0\n## 2.3.0', 'completed', "grep -n '^## ' docs/RELEASE.md"),
+      shell('ag-notes-spawn', ago(210_000), 'Start a check of the links', 'Spawned agent 5', 'completed', 'demi agent spawn --description "Check the links"'),
+    ),
+    agentSays('ag-notes-main', MAIN, NOTES.id, ago(200_000), 'Also keep the old **Upgrading** heading; other pages link to it.', 'gallery-bubbles-send'),
+    text('ag-notes-ack', ago(190_000), 'I will keep the Upgrading heading and move the versions under it.'),
+    agentSays('ag-notes-review', REVIEW, NOTES.id, ago(150_000), 'The table on line 40 is broken: its second row has one cell too few.', 'ag-review-send'),
+    ...(report
+      ? [{
+          type: 'agent_message',
+          id: 'subagent:ag-links:1',
+          run: 'subagent:ag-links:1',
+          turnId: 'ag-notes-links-turn',
+          createdAt: ago(120_000),
+          model: demoModel,
+          message: {
+            id: 'subagent:ag-links:1',
+            sender: { ...LINKS, round: 1 },
+            recipientId: NOTES.id,
+            timestamp: ago(120_000),
+            content: 'All 14 links resolve.',
+            event: { type: 'completion', outcome: 'completed' },
+            origin: 'ag-links-text',
+          },
+        } satisfies Block]
+      : []),
+    text('ag-notes-text', ago(100_000), 'The versions are in order and the table on line 40 has its missing cell.'),
+  ]
+}
+
+/** A bubble specimen's agent: one of the tree's, finished, with its transcript. */
+function bubbleAgent(agent: { id: string, number: number, description: string }, blocks: Block[]): SubagentRecord {
+  return {
+    id: agent.id,
+    number: agent.number,
+    onPath: true,
+    name: agent.description,
+    ...runsOn('docs', SONNET),
+    phase: 'completed',
+    sessionPhase: 'idle',
+    contextUsage: null,
+    startedAt: ago(240_000),
+    endedAt: ago(90_000),
+    failures: {},
+    pendingCalls: [],
+    waitingSince: null,
+    history: wholeHistory(blocks),
+  }
+}
+
+/**
+ * The agents of the bubble specimens, Tidy the release notes first; with
+ * `report`, its child's report is in its transcript.
+ */
+export function bubbleAgents(report: boolean): SubagentRecord[] {
+  return [
+    bubbleAgent(NOTES, notesBlocks(report)),
+    bubbleAgent(REVIEW, [
+      user('ag-review-user', ago(220_000), 'Review `docs/RELEASE.md` and tell whoever tidies it what is wrong.'),
+      ...inRun(shell('ag-review-send', ago(150_000), 'Tell Tidy the release notes of the broken table', 'Sent', 'completed', 'demi agent send 3')),
+      text('ag-review-text', ago(140_000), 'I told agent 3 about the broken table.'),
+    ]),
+    bubbleAgent(LINKS, [
+      user('ag-links-user', ago(210_000), 'Check that every link in `docs/RELEASE.md` resolves.'),
+      ...inRun(shell('ag-links-check', ago(180_000), 'Check the links', '14 links, 0 broken', 'completed', 'lychee docs/RELEASE.md')),
+      text('ag-links-text', ago(120_000), 'All 14 links resolve.'),
+    ]),
+  ]
+}
+
+/**
+ * The main agent's transcript beside them: a message from its child Tidy the
+ * release notes, which arrives after its answer and so is a run of its own,
+ * keeps its receipt row, as every message from below does.
+ */
+export function bubblesMainBlocks(): Block[] {
+  return [
+    user('bubbles-user', ago(260_000), 'Tidy the release notes and have someone review them.'),
+    ...inRun(
+      shell('bubbles-spawn', ago(250_000), 'Start the tidy and the review', 'Spawned agents 3 and 4', 'completed', 'demi agent spawn'),
+      shell('gallery-bubbles-send', ago(200_000), 'Ask Tidy the release notes to keep the old heading', 'Sent', 'completed', 'demi agent send 3'),
+    ),
+    text('bubbles-started', ago(195_000), 'Tidy the release notes and Review the notes are at work. I asked the tidy to keep the Upgrading heading.'),
+    ...inRun(agentSays('bubbles-from-notes', NOTES, BUBBLES_ROOT, ago(180_000), 'I will keep the Upgrading heading.', 'ag-notes-ack')),
+    text('bubbles-text', ago(90_000), 'The release notes are tidied, and the review found one broken table, now fixed.'),
+  ]
+}
