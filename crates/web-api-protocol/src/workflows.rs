@@ -64,6 +64,10 @@ pub struct MenuWorkflow {
 pub struct WatchSubject {
     pub kind: SubscriptionKind,
     pub path: String,
+    /// See [`demi_runner_protocol::files::Subject::suffix`].
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "serde_with::rust::unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub suffix: Option<String>,
 }
 
 /// `?directory=` of `GET /devices/:id/workflows`: the absolute directory a

@@ -108,6 +108,7 @@ pub(crate) async fn search(
                 watch.push(WatchSubject {
                     kind: SubscriptionKind::File,
                     path: join(&node.path, "SKILL.md"),
+                    suffix: None,
                 });
                 if let HostFile::File { bytes, size } = manifest {
                     if let Some(skill) = project_skill(paths, &node.path, bytes.as_bytes(), *size) {
@@ -126,6 +127,7 @@ pub(crate) async fn search(
                 watch.push(WatchSubject {
                     kind: SubscriptionKind::FolderNames,
                     path: node.path.clone(),
+                    suffix: None,
                 });
             }
             let Some(entries) = entries else {

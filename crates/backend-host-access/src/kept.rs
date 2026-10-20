@@ -520,6 +520,7 @@ mod tests {
         let subject = Subject {
             kind: SubscriptionKind::File,
             path: path.clone(),
+            suffix: None,
         };
         let searches = Rc::new(Cell::new(0));
         let host = fixture.host();

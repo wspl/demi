@@ -297,7 +297,7 @@ mod tests {
             ("name: Review\n", "line 1 column 1: missing field `profiles`"),
             (
                 "name: Review\nprofile: []\n",
-                "line 2 column 1: unknown field `profile`, expected one of name, instructions, profiles",
+                "line 2 column 1: unknown field `profile`, expected one of name, instructions, subagent_instructions, profiles",
             ),
             (
                 "name: Review\nprofiles:\n  - id: Explore\n    description: Finds code.\n",

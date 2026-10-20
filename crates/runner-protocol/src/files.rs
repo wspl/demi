@@ -15,6 +15,7 @@ use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_with::rust::unwrap_or_skip;
 use typed_path::Utf8TypedPath;
 
 /// One entry of a listing, with its own size and time, as `lstat` reports
@@ -105,12 +106,18 @@ pub enum SubscriptionKind {
     Head,
 }
 
-/// What a subscription is of: its kind and its absolute path. Subscriptions
-/// of one subject share one on the Host.
+/// What a subscription is of: its kind, its absolute path and, for a folder,
+/// the ending of the entry names that count. Subscriptions of one subject
+/// share one on the Host.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Subject {
     pub kind: SubscriptionKind,
     pub path: String,
+    /// For a folder kind, only the entries whose names end with it count,
+    /// such as `.yaml`, so that a search that looks only at those files
+    /// hears nothing of the others; none counts every entry. A subscription
+    /// of another kind with one fails.
+    pub suffix: Option<String>,
 }
 
 /// The most subscriptions one page's file watch holds, and the most of them
@@ -128,6 +135,11 @@ pub struct PageSubscription {
     pub kind: SubscriptionKind,
     #[garde(length(chars, min = 1), custom(demi_command_protocol::without_nul))]
     pub path: String,
+    /// See [`Subject::suffix`].
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub suffix: Option<String>,
 }
 
 /// A message the page sends on its file watch, `WS .../fs/watch` or a
@@ -318,14 +330,15 @@ impl PageSubscriptions {
         self.root.as_ref().map(|root| Subject {
             kind: SubscriptionKind::Worktree,
             path: root.clone(),
+            suffix: None,
         })
     }
 
     /// The page subscribes, its leases running from `now`.
     pub fn subscribe(&mut self, subscriptions: Vec<PageSubscription>, now: Instant) -> Vec<Effect> {
         let mut effects = Vec::new();
-        for PageSubscription { key, kind, path } in subscriptions {
-            let subject = Subject { kind, path };
+        for PageSubscription { key, kind, path, suffix } in subscriptions {
+            let subject = Subject { kind, path, suffix };
             if let Some(held) = self.keys.get_mut(&key) {
                 if held.subject == subject {
                     held.lease = now + crate::wire::SUBSCRIPTION_LEASE;

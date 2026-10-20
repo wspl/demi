@@ -27,9 +27,10 @@
 //!
 //! On macOS a file or folder outside the working tree is watched alone with
 //! kqueue, never through a stream over its parent's whole tree, at most
-//! `MAX_SINGLE_WATCHES` of them. A `folder_details` subscription there is an
-//! FSEvents stream over that folder alone, since kqueue does not see its
-//! entries' contents change.
+//! `MAX_SINGLE_WATCHES` of them. A `folder_details` subscription there, or a
+//! folder's with a suffix, is an FSEvents stream over that folder alone, since
+//! kqueue does not see its entries' contents change, nor which entry came or
+//! went.
 //!
 //! kqueue sees its own node removed or renamed, not a folder above it. Outside
 //! the working tree, a rename of a folder above a subscription therefore goes

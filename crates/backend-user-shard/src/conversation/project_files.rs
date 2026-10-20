@@ -252,6 +252,7 @@ fn subjects(watch: &[WatchSubject]) -> Vec<Subject> {
         .map(|subject| Subject {
             kind: subject.kind,
             path: subject.path.clone(),
+            suffix: subject.suffix.clone(),
         })
         .collect()
 }
