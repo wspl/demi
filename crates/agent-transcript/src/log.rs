@@ -7,16 +7,16 @@
 
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
-use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion, Versions};
+use demi_conversation_socket_protocol::{TranscriptPatch, Version, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
-use demi_shared_types::{AutomationMark, MessageComment, 
+use demi_shared_types::{AutomationMark, CodeFile, MessageComment, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, Entry, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
     UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement, CommandReport,
 };
-use demi_agent_store::changes::run_of;
+use demi_agent_store::changes::{request_of, run_of};
 use serde_json::Value;
 
 use super::{
@@ -184,8 +184,8 @@ impl TranscriptLog {
         &self.versions
     }
 
-    pub fn version(&self) -> TranscriptVersion {
-        TranscriptVersion {
+    pub fn version(&self) -> Version {
+        Version {
             epoch: self.epoch.clone(),
             revision: self.revision,
         }
@@ -219,6 +219,7 @@ impl TranscriptLog {
             id,
             turn_id,
             created_at,
+            request: None,
             model: model.clone(),
             content,
             comments,
@@ -242,6 +243,7 @@ impl TranscriptLog {
             id,
             turn_id,
             created_at,
+            request: None,
             model: model.clone(),
             source,
             text,
@@ -265,6 +267,7 @@ impl TranscriptLog {
             id,
             turn_id,
             created_at,
+            request: None,
             model: model.clone(),
             content,
             comments,
@@ -287,6 +290,7 @@ impl TranscriptLog {
             id,
             turn_id,
             created_at,
+            request: None,
             model: model.clone(),
             placement,
             reports,
@@ -308,6 +312,7 @@ impl TranscriptLog {
             id: message.id.clone(),
             turn_id,
             created_at,
+            request: None,
             model: model.clone(),
             message,
             entries: Vec::new(),
@@ -322,6 +327,7 @@ impl TranscriptLog {
             id,
             turn_id,
             created_at,
+            request: None,
             model: model.clone(),
             reason,
             entries: Vec::new(),
@@ -440,9 +446,21 @@ impl TranscriptLog {
         kept: Vec<KeptMessage>,
     ) -> BlockId {
         let (id, created_at) = self.stamp();
+        // It continues the request of the block before it; at the window's
+        // start, the request the block after it continues.
+        let offset = index - self.start;
+        let request = match offset.checked_sub(1).and_then(|before| self.blocks.get(before)) {
+            Some(before) => before.request().cloned(),
+            None => self
+                .blocks
+                .get(offset)
+                .filter(|after| !matches!(after, Block::User(_)))
+                .and_then(|after| after.request().cloned()),
+        };
         let block = Block::CompactionBoundary(CompactionBoundaryBlock {
             id: id.clone(),
             created_at,
+            request,
             model: model.clone(),
             summary,
             summary_tokens,
@@ -471,6 +489,7 @@ impl TranscriptLog {
         self.append(Block::CompactionMarker(CompactionMarkerBlock {
             id,
             created_at,
+            request: None,
             model: model.clone(),
             boundary_id,
             compacted_tokens,
@@ -483,6 +502,7 @@ impl TranscriptLog {
         self.append(Block::Abort(AbortBlock {
             id,
             created_at,
+            request: None,
             model: model.clone(),
             is_resumed: false,
         }));
@@ -501,6 +521,7 @@ impl TranscriptLog {
         self.append(Block::Error(ErrorBlock {
             id,
             created_at,
+            request: None,
             model: model.clone(),
             message,
             code,
@@ -538,6 +559,7 @@ impl TranscriptLog {
             run: None,
             id,
             created_at,
+            request: None,
             model: model.clone(),
             text,
             signature: None,
@@ -581,6 +603,7 @@ impl TranscriptLog {
         self.append(Block::RedactedThinking(RedactedThinkingBlock {
             id,
             created_at,
+            request: None,
             model: model.clone(),
             data,
             run: None,
@@ -603,6 +626,8 @@ impl TranscriptLog {
         self.append(Block::Text(TextBlock {
             id,
             created_at,
+            request: None,
+            code_files: None,
             model: model.clone(),
             text: text.to_owned(),
             forkable: false,
@@ -648,6 +673,7 @@ impl TranscriptLog {
             run: None,
             id,
             created_at,
+            request: None,
             model: model.clone(),
             tool_use_id: call.tool_use_id,
             tool_name: call.tool_name,
@@ -667,6 +693,7 @@ impl TranscriptLog {
         self.append(Block::AccountSwitch(AccountSwitchBlock {
             id,
             created_at,
+            request: None,
             model: model.clone(),
             from: switch.from,
             to: switch.to,
@@ -680,6 +707,7 @@ impl TranscriptLog {
         self.append(Block::Response(ResponseBlock {
             id,
             created_at,
+            request: None,
             model: model.clone(),
             usage,
         }));
@@ -767,6 +795,24 @@ impl TranscriptLog {
         }
     }
 
+    /// Keeps `files` with the complete text `id` as which of its code spans
+    /// name files, unless it keeps an answer already; answers whether it
+    /// did. A block that is gone, as after an edit cut it, takes none.
+    pub fn keep_code_files(&mut self, id: &BlockId, files: Vec<CodeFile>) -> bool {
+        let Some(index) = self.position(id) else {
+            return false;
+        };
+        let Block::Text(text) = &mut self.blocks[index - self.start] else {
+            return false;
+        };
+        if !text.forkable || text.code_files.is_some() {
+            return false;
+        }
+        text.code_files = Some(files);
+        self.record_replace(index);
+        true
+    }
+
     /// Adds `entries` after those the block `id` holds. A block that is
     /// gone, as after an edit cut it, or one that holds none, takes none.
     pub fn add_entries(&mut self, id: &BlockId, entries: Vec<Entry>) {
@@ -799,6 +845,7 @@ impl TranscriptLog {
     /// arrives in, and one from above or beside ends it.
     fn append_received(&mut self, mut block: Block, sender_below: bool) {
         block.set_run(run_of(&self.blocks, &block, sender_below));
+        block.set_request(request_of(&self.blocks, &block));
         let index = self.len();
         self.journal.add(index, &block, self.versions.get(&index).copied());
         self.blocks.push(block);

@@ -10,7 +10,7 @@ import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { productWould } from './product-would'
-import { demoModel, editedFile, inRun, listedFiles, shellView, withLists, type ShellView } from './fixtures/blocks'
+import { demoModel, editedFile, inRequests, inRun, listedFiles, shellView, withLists, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
 import { suitePathsUpdate } from './fixtures/subagents'
@@ -169,7 +169,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     id: options.id ?? 'turn-flow',
     cwd: options.cwd ?? '/',
     title: options.title ?? 'Login test',
-    blocks: options.blocks ?? [],
+    blocks: inRequests(options.blocks ?? []),
     get history() {
       return wholeHistory(this.blocks)
     },
@@ -265,9 +265,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return `${state.id}-${kind}-${sequence}`
   }
 
-  /** A block written again keeps the run it was stored in. */
+  /** A block written again keeps the run and the request it was stored in. */
   function replace(id: string, next: Block): void {
-    state.blocks = state.blocks.map((block) => (block.id === id ? ({ ...next, ...('run' in block ? { run: block.run } : {}) }) as Block : block))
+    state.blocks = state.blocks.map((block) => (block.id === id
+      ? ({ ...next, ...('run' in block ? { run: block.run } : {}), ...(block.request !== undefined ? { request: block.request } : {}) }) as Block
+      : block))
   }
 
   /**
@@ -290,7 +292,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (block.type === 'thinking' || block.type === 'text' || block.type === 'tool_call') {
       state.waitingSince = null
     }
-    state.blocks = [...state.blocks, block]
+    // Each block names its request, as the backend stores it: a message
+    // starts one, and the rest belong to the one before them.
+    const request = block.type === 'user' ? block.id : state.blocks.at(-1)?.request
+    state.blocks = [...state.blocks, request === undefined ? block : ({ ...block, request } as Block)]
   }
 
   /**

@@ -1,25 +1,35 @@
 //! The usage ledger of the control store: one row per vendor call, kept as written
-//! and announced as it is, and the totals and a conversation's cost computed when
-//! they are read.
+//! and announced as it is, the user's totals computed when they are read, and each
+//! conversation's cost kept as its rows are written.
+//!
+//! # A conversation's cost
+//!
+//! Each conversation keeps, per agent and for the rows of no agent, the totals
+//! of its rows and the number of its turn calls (`usage_costs`), which the row's
+//! insert adds to in the same transaction. A turn call is numbered among its
+//! agent's and keeps why it missed the cache, judged from the agent's previous
+//! call as it is written. So no read of a cost, and no new row, reads more than
+//! a few rows of the ledger: a page reads an agent's totals with its metadata,
+//! and the recent calls behind its cache chart only when the chart opens.
 //!
 //! The counts are the vendor's, so the ledger is a record for reconciliation and
 //! not a bill. Prices tiered by a request's length, as some models charge more
 //! past 200K tokens, are not modelled: a call is priced at the model's base rates.
 
-use std::collections::{BTreeMap, HashMap};
-
-use demi_conversation_socket_protocol::{AgentCost, CacheMiss, CostCall, CostTotals};
+use demi_conversation_socket_protocol::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
 use demi_shared_types::{Cost, Currency, ModelCost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::text::EmailAddress;
-use demi_web_api_protocol::usage::{ConversationCost, UsageGroup, UserUsage};
-use rusqlite::{Connection, Row, params};
+use demi_web_api_protocol::usage::{UsageGroup, UserUsage};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
-use super::tree::AgentLabel;
+
+/// How many of an agent's latest turn calls a cache chart reads at most.
+pub const CHART_CALLS: u64 = 400;
 
 /// One call to a vendor: whose it was, what it was for, with which entry,
 /// account and model, the vendor's counts for it alone, how it ended and
@@ -115,30 +125,15 @@ impl ApiPrice {
 
 /// A row written to the ledger, as the control store announces it to
 /// whoever shows its conversation's cost.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UsageWritten {
     pub user: UserId,
     pub conversation: ConversationId,
-    /// The row's id.
-    pub id: String,
-}
-
-/// What one row adds to its conversation's cost, as the `cost` frame
-/// carries it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CostAddition {
-    /// The number of the conversation's rows up to this one, in the order
-    /// they were written, so a page knows whether it holds the row already
-    /// or missed one before it.
-    pub rows: u64,
-    pub totals: CostTotals,
     /// The row's agent; none for a row of no agent, as a title's.
     pub agent: Option<u64>,
-    /// The profile the row's subagent was started with; none for none and
-    /// for the main conversation.
-    pub profile: Option<String>,
-    /// The row as a turn call of its agent; none for any other row.
-    pub call: Option<CostCall>,
+    /// The kept cost of that agent, or of the rows of no agent, with the
+    /// row.
+    pub cost: AgentCost,
 }
 
 /// A window of the account's quota as a call's response reported it, as
@@ -209,15 +204,31 @@ fn column_count(count: u64) -> i64 {
 }
 
 impl ControlService {
-    /// Writes the row, announces it and answers its id.
+    /// Writes the row, adds it to its conversation's kept cost, announces it
+    /// and answers its id.
     pub async fn append_usage(&self, row: UsageRow) -> Result<String, StorageError> {
         let id = uuid::Uuid::new_v4().to_string();
-        let written = UsageWritten {
-            user: row.user.clone(),
-            conversation: row.conversation.clone(),
-            id: id.clone(),
-        };
-        let id = self.call(move |connection, _| {
+        let user = row.user.clone();
+        let conversation = row.conversation.clone();
+        let agent = row.agent;
+        let (id, totals) = self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let call = match (row.agent, row.purpose, row.usage) {
+                (Some(agent), "turn", Some(usage)) => Some(next_call(
+                    &transaction,
+                    row.conversation.as_str(),
+                    agent,
+                    &CallFacts {
+                        before: i64::MAX,
+                        model: &row.model,
+                        usage,
+                        started_at: row.started_at,
+                        system_hash: row.system_hash.as_deref(),
+                        tools_hash: row.tools_hash.as_deref(),
+                    },
+                )?),
+                _ => None,
+            };
             let quota = row.quota.as_ref().map(to_json);
             let counts = row.usage.map(|usage| {
                 [
@@ -230,15 +241,15 @@ impl ControlService {
                 .map(column_count)
             });
             let count = |index: usize| counts.map(|counts| counts[index]);
-            connection.execute(
+            transaction.execute(
                 "INSERT INTO usage_ledger (id, user_id, conversation_id, agent, turn_id, purpose,
                    provider_id, account_id, model_id, request_id, vendor_id,
                    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
                    cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency,
                    api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-                   system_hash, tools_hash)
+                   system_hash, tools_hash, call_number, after_compaction, miss)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
+                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
                 params![
                     id,
                     row.user.as_str(),
@@ -269,102 +280,83 @@ impl ControlService {
                     row.price.map(|price| price.output),
                     row.system_hash,
                     row.tools_hash,
+                    call.map(|call| column_count(call.number)),
+                    call.map(|call| call.after_compaction),
+                    call.and_then(|call| call.miss).map(|miss| miss.to_string()),
                 ],
             )?;
-            Ok(id)
+            let added = RowCost {
+                usage: row.usage,
+                parts: row.price,
+                usd: row.cost.filter(|cost| cost.currency == Currency::Usd).map(|cost| cost.amount),
+            };
+            add_cost(&transaction, row.conversation.as_str(), row.agent, &added, call.is_some())?;
+            let totals = kept_cost(&transaction, row.conversation.as_str(), row.agent)?;
+            transaction.commit()?;
+            Ok((id, totals))
         })
         .await?;
-        self.announce_usage(written);
+        self.announce_usage(UsageWritten {
+            user,
+            conversation,
+            agent,
+            cost: totals,
+        });
         Ok(id)
     }
 
-    /// The number of the conversation's ledger rows.
-    pub async fn cost_rows(&self, conversation: ConversationId) -> Result<u64, StorageError> {
-        let rows: i64 = self
-            .call(move |connection, _| {
-                Ok(connection.query_row(
-                    "SELECT count(*) FROM usage_ledger WHERE conversation_id = ?1",
-                    [conversation.as_str()],
-                    |row| row.get(0),
-                )?)
-            })
-            .await?;
-        decode("usage_ledger", "rowid", u64::try_from(rows))
-    }
-
-    /// The conversation's cost from its ledger rows, its agents named by
-    /// `labels`: the whole conversation's with the main conversation's turn
-    /// calls, or with `agent` that agent's own, its rows and its turn calls.
-    /// Either counts every row of the conversation, which every `cost` frame
-    /// continues.
-    pub async fn conversation_cost(
-        &self,
-        conversation: ConversationId,
-        labels: Vec<AgentLabel>,
-        agent: Option<u64>,
-    ) -> Result<ConversationCost, StorageError> {
-        let rows = self.call(move |connection, _| cost_rows(connection, &conversation)).await?;
-        let calls = turn_calls(&rows, agent.unwrap_or(0));
-        let own: Vec<&CostRow> = rows
-            .iter()
-            .filter(|row| agent.is_none_or(|agent| row.agent == Some(agent)))
-            .collect();
-        let mut prices: BTreeMap<u64, f64> = BTreeMap::new();
-        for row in own.iter().copied() {
-            if let (Some(agent), Some(price)) = (row.agent, row.price()) {
-                *prices.entry(agent).or_default() += price;
+    /// The conversation's kept cost: each agent's own, by number, and the
+    /// rows' of no agent.
+    pub async fn conversation_costs(&self, conversation: ConversationId) -> Result<Vec<KeptCost>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT agent, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens,
+                   price_total, price_input, price_cache_write, price_cache_read, price_output, calls
+                 FROM usage_costs WHERE conversation_id = ?1 ORDER BY agent",
+            )?;
+            let mut rows = statement.query([conversation.as_str()])?;
+            let mut costs = Vec::new();
+            while let Some(row) = rows.next()? {
+                costs.push(agent_cost(row)?);
             }
-        }
-        Ok(ConversationCost {
-            rows: rows.len() as u64,
-            totals: totals_of(own.iter().copied()),
-            agents: prices
-                .into_iter()
-                .map(|(agent, price)| agent_cost(agent, price, &labels))
-                .collect(),
-            calls: calls.into_iter().map(|(_, call)| call).collect(),
+            Ok(costs)
         })
+        .await
     }
 
-    /// What the row `id` adds to its conversation's cost, its agent named
-    /// by `labels`; none when the conversation holds no such row.
-    pub async fn cost_addition(
+    /// The turn calls of the conversation's agent `agent` numbered after
+    /// `after`, oldest first: at most the latest `limit` of them, which the
+    /// cache chart draws.
+    pub async fn agent_calls(
         &self,
         conversation: ConversationId,
-        id: String,
-        labels: Vec<AgentLabel>,
-    ) -> Result<Option<CostAddition>, StorageError> {
-        let row_id = id.clone();
-        let (rows, written) = self
-            .call(move |connection, _| {
-                let transaction = connection.transaction()?;
-                let rows = cost_rows(&transaction, &conversation)?;
-                let written: i64 = transaction.query_row(
-                    "SELECT count(*) FROM usage_ledger
-                     WHERE conversation_id = ?1
-                       AND rowid <= (SELECT rowid FROM usage_ledger WHERE id = ?2)",
-                    params![conversation.as_str(), row_id],
-                    |row| row.get(0),
-                )?;
-                transaction.commit()?;
-                Ok((rows, written))
-            })
-            .await?;
-        let Some(row) = rows.iter().find(|row| row.id == id) else {
-            return Ok(None);
-        };
-        let call = row.agent.and_then(|agent| {
-            turn_calls(&rows, agent)
-                .into_iter()
-                .find_map(|(call_id, call)| (call_id == id).then_some(call))
-        });
-        Ok(Some(CostAddition {
-            rows: decode("usage_ledger", "rowid", u64::try_from(written))?,
-            totals: totals_of([row]),
-            agent: row.agent,
-            profile: row.agent.and_then(|agent| profile_of(agent, &labels)),
-            call,
-        }))
+        agent: u64,
+        after: u64,
+        limit: u64,
+    ) -> Result<Vec<CostCall>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT call_number, started_at, ended_at, input_tokens, cache_write_tokens, cache_read_tokens,
+                   api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
+                   cost, cost_currency, after_compaction, miss
+                 FROM usage_ledger
+                 WHERE conversation_id = ?1 AND agent = ?2 AND call_number > ?3
+                 ORDER BY rowid DESC LIMIT ?4",
+            )?;
+            let mut rows = statement.query(params![
+                conversation.as_str(),
+                column_count(agent),
+                column_count(after),
+                column_count(limit)
+            ])?;
+            let mut calls = Vec::new();
+            while let Some(row) = rows.next()? {
+                calls.push(cost_call(row)?);
+            }
+            calls.reverse();
+            Ok(calls)
+        })
+        .await
     }
 
     /// Adds `windows`, which the vendor reported after the call of the row
@@ -471,82 +463,241 @@ const MISS_TOKENS: u64 = 2_000;
 const KEPT_MS: i64 = 5 * 60 * 1000;
 const KEPT_HOUR_MS: i64 = 60 * 60 * 1000;
 
-/// One ledger row as a conversation's cost reads it.
-#[derive(Debug, Clone)]
-struct CostRow {
-    id: String,
-    agent: Option<u64>,
-    purpose: Option<String>,
-    model: String,
-    /// None when the vendor reported no counts.
-    usage: Option<TokenUsage>,
-    cache_write_1h_tokens: u64,
-    outcome: Option<String>,
+/// One conversation's kept cost of one agent, or of its rows of no agent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeptCost {
+    /// None for the rows of no agent, as a title's.
+    pub agent: Option<u64>,
+    pub cost: AgentCost,
+}
+
+/// What a turn call's row says of the call, which the next one is judged
+/// against.
+struct CallFacts<'a> {
+    /// The rowid the call is written at, or past every row for a new one:
+    /// only the rows before it are its agent's earlier ones.
+    before: i64,
+    model: &'a str,
+    usage: TokenUsage,
     started_at: Timestamp,
-    ended_at: Timestamp,
-    parts: Option<ApiPrice>,
-    /// The vendor's own cost, when it named it in dollars.
-    usd: Option<f64>,
-    system_hash: Option<String>,
-    tools_hash: Option<String>,
+    system_hash: Option<&'a str>,
+    tools_hash: Option<&'a str>,
 }
 
-impl CostRow {
-    /// The call's price: its parts, or for a call whose tokens have no
-    /// price the vendor's own cost in dollars.
-    fn price(&self) -> Option<f64> {
-        self.parts.map(|parts| parts.total()).or(self.usd)
-    }
-
-    /// The call of a turn of `agent`, with counts.
-    fn turn_of(&self, agent: u64) -> Option<TokenUsage> {
-        (self.agent == Some(agent) && self.purpose.as_deref() == Some("turn"))
-            .then_some(self.usage)
-            .flatten()
-    }
+/// What a turn call keeps of its place among its agent's calls.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct KeptCall {
+    /// Its number among its agent's turn calls, from 1.
+    number: u64,
+    after_compaction: bool,
+    miss: Option<CacheMiss>,
 }
 
-/// The conversation's rows in the order their calls started.
-fn cost_rows(connection: &Connection, conversation: &ConversationId) -> Result<Vec<CostRow>, StorageError> {
-    let mut statement = connection.prepare_cached(
-        "SELECT id, agent, purpose, model_id, input_tokens, output_tokens, cache_read_tokens,
-           cache_write_tokens, cache_write_1h_tokens, outcome, started_at, ended_at, cost, cost_currency,
-           api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-           system_hash, tools_hash
-         FROM usage_ledger WHERE conversation_id = ?1
-         ORDER BY coalesce(started_at, ended_at), rowid",
-    )?;
-    let mut rows = statement.query([conversation.as_str()])?;
-    let mut read = Vec::new();
-    while let Some(row) = rows.next()? {
-        read.push(cost_row(row)?);
-    }
-    Ok(read)
-}
-
-fn cost_row(row: &Row<'_>) -> Result<CostRow, StorageError> {
-    let count = |column: &'static str| -> Result<Option<u64>, StorageError> {
-        row.get::<_, Option<i64>>(column)?
-            .map(|count| decode("usage_ledger", column, u64::try_from(count)))
-            .transpose()
+/// The turn call `facts` of the conversation's agent `agent`, judged against
+/// the agent's previous call: its number, whether an answered compaction of
+/// the agent came between them and why it missed the cache.
+///
+/// A call missed when it wrote again more than [`MISS_SHARE`] of its prompt and
+/// at least [`MISS_TOKENS`], except the first call and the first after a
+/// compaction, which start a new prompt.
+fn next_call(
+    connection: &Connection,
+    conversation: &str,
+    agent: u64,
+    facts: &CallFacts<'_>,
+) -> Result<KeptCall, StorageError> {
+    let agent = column_count(agent);
+    let previous = connection
+        .prepare_cached(
+            "SELECT rowid, call_number, model_id, system_hash, tools_hash, ended_at FROM usage_ledger
+             WHERE conversation_id = ?1 AND agent = ?2 AND call_number IS NOT NULL AND rowid < ?3
+             ORDER BY rowid DESC LIMIT 1",
+        )?
+        .query_row(params![conversation, agent, facts.before], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })
+        .optional()?;
+    let Some((rowid, number, model, system_hash, tools_hash, ended_at)) = previous else {
+        return Ok(KeptCall {
+            number: 1,
+            after_compaction: false,
+            miss: None,
+        });
     };
-    let counts = [
-        count("input_tokens")?,
-        count("output_tokens")?,
-        count("cache_read_tokens")?,
-        count("cache_write_tokens")?,
+    let compacted: bool = connection
+        .prepare_cached(
+            "SELECT EXISTS (SELECT 1 FROM usage_ledger
+               WHERE conversation_id = ?1 AND agent = ?2 AND rowid > ?3 AND rowid < ?4
+                 AND purpose = 'compaction' AND outcome = 'answered')",
+        )?
+        .query_row(params![conversation, agent, rowid, facts.before], |row| row.get(0))?;
+    let number = decode("usage_ledger", "call_number", u64::try_from(number))? + 1;
+    if compacted {
+        return Ok(KeptCall {
+            number,
+            after_compaction: true,
+            miss: None,
+        });
+    }
+    let usage = facts.usage;
+    let written = usage.input_tokens + usage.cache_write_tokens;
+    let prompt = written + usage.cache_read_tokens;
+    let missed = written >= MISS_TOKENS && written as f64 > prompt as f64 * MISS_SHARE;
+    let miss = if missed {
+        let changed = |before: Option<&str>, after: Option<&str>| matches!((before, after), (Some(before), Some(after)) if before != after);
+        // Whether the latest write of the call's model was kept for an hour.
+        let hour_write: Option<i64> = connection
+            .prepare_cached(LATEST_CACHE_WRITE)?
+            .query_row(params![conversation, agent, facts.before, facts.model], |row| row.get(0))
+            .optional()?
+            .flatten();
+        let kept = if hour_write.is_some_and(|tokens| tokens > 0) { KEPT_HOUR_MS } else { KEPT_MS };
+        Some(if model != facts.model {
+            CacheMiss::ModelChanged
+        } else if changed(tools_hash.as_deref(), facts.tools_hash) {
+            CacheMiss::ToolsChanged
+        } else if changed(system_hash.as_deref(), facts.system_hash) {
+            CacheMiss::SystemPromptChanged
+        } else if facts.started_at.as_millisecond() - ended_at > kept {
+            CacheMiss::CacheExpired
+        } else {
+            CacheMiss::NotCached
+        })
+    } else {
+        None
+    };
+    Ok(KeptCall {
+        number,
+        after_compaction: false,
+        miss,
+    })
+}
+
+/// The hour-long part of the latest cache write of agent `?2` of
+/// conversation `?1` by model `?4`, before rowid `?3`: found by
+/// `usage_ledger_cache_writes` directly, however many rows the agent has.
+const LATEST_CACHE_WRITE: &str = "SELECT cache_write_1h_tokens FROM usage_ledger
+     WHERE conversation_id = ?1 AND agent = ?2 AND call_number IS NOT NULL AND rowid < ?3
+       AND model_id = ?4 AND cache_write_tokens > 0
+     ORDER BY rowid DESC LIMIT 1";
+
+/// What one row adds to a cost: its counts, and its price by kind or, for a
+/// call whose tokens have no price, the vendor's own cost in dollars.
+struct RowCost {
+    usage: Option<TokenUsage>,
+    parts: Option<ApiPrice>,
+    usd: Option<f64>,
+}
+
+/// Adds `row` to the kept cost of the conversation's agent `agent`, or of its
+/// rows of no agent, with one more turn call when `call`.
+fn add_cost(
+    connection: &Connection,
+    conversation: &str,
+    agent: Option<u64>,
+    row: &RowCost,
+    call: bool,
+) -> Result<(), StorageError> {
+    let usage = row.usage.unwrap_or_default();
+    let price = row.parts.map(|parts| parts.total()).or(row.usd);
+    let values = params![
+        conversation,
+        agent.map(column_count),
+        column_count(usage.input_tokens),
+        column_count(usage.cache_write_tokens),
+        column_count(usage.cache_read_tokens),
+        column_count(usage.output_tokens),
+        price,
+        row.parts.map(|parts| parts.input),
+        row.parts.map(|parts| parts.cache_write),
+        row.parts.map(|parts| parts.cache_read),
+        row.parts.map(|parts| parts.output),
+        i64::from(call),
     ];
-    let usage = match counts {
-        [Some(input_tokens), Some(output_tokens), Some(cache_read_tokens), Some(cache_write_tokens)] => {
-            Some(TokenUsage {
-                input_tokens,
-                output_tokens,
-                cache_read_tokens,
-                cache_write_tokens,
-            })
-        }
-        [None, None, None, None] => None,
-        _ => return Err(corrupt("input_tokens", "some of the counts only")),
+    // A price null in the kept cost or in the row adds to the other: null
+    // only while no row had one.
+    let updated = connection.prepare_cached(
+        "UPDATE usage_costs SET
+           input_tokens = input_tokens + ?3, cache_write_tokens = cache_write_tokens + ?4,
+           cache_read_tokens = cache_read_tokens + ?5, output_tokens = output_tokens + ?6,
+           price_total = CASE WHEN ?7 IS NULL THEN price_total ELSE coalesce(price_total, 0) + ?7 END,
+           price_input = CASE WHEN ?8 IS NULL THEN price_input ELSE coalesce(price_input, 0) + ?8 END,
+           price_cache_write = CASE WHEN ?9 IS NULL THEN price_cache_write ELSE coalesce(price_cache_write, 0) + ?9 END,
+           price_cache_read = CASE WHEN ?10 IS NULL THEN price_cache_read ELSE coalesce(price_cache_read, 0) + ?10 END,
+           price_output = CASE WHEN ?11 IS NULL THEN price_output ELSE coalesce(price_output, 0) + ?11 END,
+           calls = calls + ?12
+         WHERE conversation_id = ?1 AND agent IS ?2",
+    )?
+    .execute(values)?;
+    if updated == 0 {
+        connection
+            .prepare_cached(
+                "INSERT INTO usage_costs (conversation_id, agent, input_tokens, cache_write_tokens,
+                   cache_read_tokens, output_tokens, price_total, price_input, price_cache_write,
+                   price_cache_read, price_output, calls)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            )?
+            .execute(values)?;
+    }
+    Ok(())
+}
+
+/// The kept cost of the conversation's agent `agent`, or of its rows of no
+/// agent; nothing before its first row.
+fn kept_cost(connection: &Connection, conversation: &str, agent: Option<u64>) -> Result<AgentCost, StorageError> {
+    let kept = connection
+        .prepare_cached(
+            "SELECT agent, input_tokens, cache_write_tokens, cache_read_tokens, output_tokens,
+               price_total, price_input, price_cache_write, price_cache_read, price_output, calls
+             FROM usage_costs WHERE conversation_id = ?1 AND agent IS ?2",
+        )?
+        .query_row(params![conversation, agent.map(column_count)], |row| Ok(agent_cost(row)))
+        .optional()?;
+    Ok(match kept {
+        Some(kept) => kept?.cost,
+        None => AgentCost::default(),
+    })
+}
+
+fn agent_cost(row: &Row<'_>) -> Result<KeptCost, StorageError> {
+    let count = |column: &'static str| -> Result<u64, StorageError> {
+        decode("usage_costs", column, u64::try_from(row.get::<_, i64>(column)?))
+    };
+    let agent: Option<i64> = row.get("agent")?;
+    Ok(KeptCost {
+        agent: agent
+            .map(|agent| decode("usage_costs", "agent", u64::try_from(agent)))
+            .transpose()?,
+        cost: AgentCost {
+            totals: CostTotals {
+                input_tokens: count("input_tokens")?,
+                cache_write_tokens: count("cache_write_tokens")?,
+                cache_read_tokens: count("cache_read_tokens")?,
+                output_tokens: count("output_tokens")?,
+                price: CostPrice {
+                    total: row.get("price_total")?,
+                    input: row.get("price_input")?,
+                    cache_write: row.get("price_cache_write")?,
+                    cache_read: row.get("price_cache_read")?,
+                    output: row.get("price_output")?,
+                },
+            },
+            calls: count("calls")?,
+        },
+    })
+}
+
+/// A turn call's row as the cache chart plots it.
+fn cost_call(row: &Row<'_>) -> Result<CostCall, StorageError> {
+    let count = |column: &'static str| -> Result<u64, StorageError> {
+        decode("usage_ledger", column, u64::try_from(row.get::<_, i64>(column)?))
     };
     let parts = match [
         row.get::<_, Option<f64>>("api_price_input")?,
@@ -554,40 +705,33 @@ fn cost_row(row: &Row<'_>) -> Result<CostRow, StorageError> {
         row.get("api_price_cache_read")?,
         row.get("api_price_output")?,
     ] {
-        [Some(input), Some(cache_write), Some(cache_read), Some(output)] => Some(ApiPrice {
-            input,
-            cache_write,
-            cache_read,
-            output,
-        }),
+        [Some(input), Some(cache_write), Some(cache_read), Some(output)] => Some(input + cache_write + cache_read + output),
         [None, None, None, None] => None,
         _ => return Err(corrupt("api_price_input", "some of the price's parts only")),
     };
     let currency: Option<String> = row.get("cost_currency")?;
-    let amount: Option<f64> = row.get("cost")?;
-    let agent: Option<i64> = row.get("agent")?;
+    let usd = row
+        .get::<_, Option<f64>>("cost")?
+        .filter(|_| currency == Some(Currency::Usd.to_string()));
     let ended_at = instant(row, "usage_ledger", "ended_at")?;
     let started_at = match row.get::<_, Option<i64>>("started_at")? {
         Some(_) => instant(row, "usage_ledger", "started_at")?,
         // A row written before the ledger kept a call's start.
         None => ended_at,
     };
-    Ok(CostRow {
-        id: row.get("id")?,
-        agent: agent
-            .map(|agent| decode("usage_ledger", "agent", u64::try_from(agent)))
-            .transpose()?,
-        purpose: row.get("purpose")?,
-        model: row.get("model_id")?,
-        usage,
-        cache_write_1h_tokens: count("cache_write_1h_tokens")?.unwrap_or(0),
-        outcome: row.get("outcome")?,
+    let miss = row
+        .get::<_, Option<String>>("miss")?
+        .map(|miss| decode("usage_ledger", "miss", miss.parse::<CacheMiss>()))
+        .transpose()?;
+    Ok(CostCall {
+        number: count("call_number")?,
         started_at,
-        ended_at,
-        parts,
-        usd: amount.filter(|_| currency == Some(Currency::Usd.to_string())),
-        system_hash: row.get("system_hash")?,
-        tools_hash: row.get("tools_hash")?,
+        input_tokens: count("input_tokens")?,
+        cache_write_tokens: count("cache_write_tokens")?,
+        cache_read_tokens: count("cache_read_tokens")?,
+        price: parts.or(usd),
+        after_compaction: row.get("after_compaction")?,
+        miss,
     })
 }
 
@@ -599,137 +743,122 @@ fn corrupt(column: &'static str, problem: &'static str) -> StorageError {
     }
 }
 
-/// The token and price totals of `rows`; a count the vendor did not report
-/// adds nothing, and a price is null when no row has one.
-fn totals_of<'a>(rows: impl IntoIterator<Item = &'a CostRow>) -> CostTotals {
-    let mut totals = CostTotals::default();
-    let add = |sum: &mut Option<f64>, value: Option<f64>| {
-        if let Some(value) = value {
-            *sum = Some(sum.unwrap_or(0.0) + value);
-        }
-    };
-    for row in rows {
-        if let Some(usage) = row.usage {
-            totals.input_tokens += usage.input_tokens;
-            totals.cache_write_tokens += usage.cache_write_tokens;
-            totals.cache_read_tokens += usage.cache_read_tokens;
-            totals.output_tokens += usage.output_tokens;
-        }
-        add(&mut totals.price.total, row.price());
-        add(&mut totals.price.input, row.parts.map(|parts| parts.input));
-        add(&mut totals.price.cache_write, row.parts.map(|parts| parts.cache_write));
-        add(&mut totals.price.cache_read, row.parts.map(|parts| parts.cache_read));
-        add(&mut totals.price.output, row.parts.map(|parts| parts.output));
-    }
-    totals
-}
-
-fn agent_cost(agent: u64, price: f64, labels: &[AgentLabel]) -> AgentCost {
-    AgentCost {
-        agent,
-        profile: profile_of(agent, labels),
-        price,
-    }
-}
-
-/// The profile the subagent `agent` was started with, as `labels` name it;
-/// none for the main conversation.
-fn profile_of(agent: u64, labels: &[AgentLabel]) -> Option<String> {
-    labels
-        .iter()
-        .find(|label| label.number == agent)
-        .and_then(|label| label.profile.clone())
-        .filter(|_| agent != 0)
-}
-
-/// The turn calls of `agent` among `rows`, each with its row's id, whether
-/// it follows a compaction of that agent and why it missed the cache.
-///
-/// A call missed when it wrote again more than [`MISS_SHARE`] of its prompt and at
-/// least [`MISS_TOKENS`], except the first call and the first after a compaction,
-/// which start a new prompt.
-fn turn_calls(rows: &[CostRow], agent: u64) -> Vec<(String, CostCall)> {
-    let mut calls = Vec::new();
-    let mut previous: Option<&CostRow> = None;
-    let mut compacted = false;
-    // Whether each model's latest write was kept for an hour.
-    let mut hour_writes: HashMap<&str, bool> = HashMap::new();
-    for row in rows {
-        if row.agent == Some(agent)
-            && row.purpose.as_deref() == Some("compaction")
-            && row.outcome.as_deref() == Some("answered")
-        {
-            compacted = true;
-            continue;
-        }
-        let Some(usage) = row.turn_of(agent) else {
-            continue;
+/// Numbers every turn call of the ledger, judges each against its agent's
+/// previous one and keeps each conversation's cost, as writing the rows one
+/// by one in their order would: the migration to the ledger that keeps
+/// them (`crates/backend-database/src/schema.rs`).
+pub(crate) fn keep_costs(connection: &Connection) -> Result<(), StorageError> {
+    let mut rows = connection.prepare(
+        "SELECT rowid, conversation_id, agent, purpose, model_id, input_tokens, output_tokens,
+           cache_read_tokens, cache_write_tokens, cache_write_1h_tokens, started_at, ended_at,
+           cost, cost_currency, api_price_input, api_price_cache_write, api_price_cache_read,
+           api_price_output, system_hash, tools_hash
+         FROM usage_ledger ORDER BY rowid",
+    )?;
+    let mut rows = rows.query([])?;
+    let mut number = connection.prepare(
+        "UPDATE usage_ledger SET call_number = ?2, after_compaction = ?3, miss = ?4 WHERE rowid = ?1",
+    )?;
+    while let Some(row) = rows.next()? {
+        let rowid: i64 = row.get("rowid")?;
+        // The id is a key here, which the ledger of any release holds as
+        // text.
+        let conversation: String = row.get("conversation_id")?;
+        let agent = row
+            .get::<_, Option<i64>>("agent")?
+            .map(|agent| decode("usage_ledger", "agent", u64::try_from(agent)))
+            .transpose()?;
+        let count = |column: &'static str| -> Result<Option<u64>, StorageError> {
+            row.get::<_, Option<i64>>(column)?
+                .map(|count| decode("usage_ledger", column, u64::try_from(count)))
+                .transpose()
         };
-        let written = usage.input_tokens + usage.cache_write_tokens;
-        let prompt = written + usage.cache_read_tokens;
-        let missed = written >= MISS_TOKENS && written as f64 > prompt as f64 * MISS_SHARE;
-        let miss = match previous {
-            Some(previous) if !compacted && missed => {
-                let hour_write = hour_writes.get(row.model.as_str()).copied().unwrap_or(false);
-                Some(miss_cause(previous, row, hour_write))
+        let usage = match [
+            count("input_tokens")?,
+            count("output_tokens")?,
+            count("cache_read_tokens")?,
+            count("cache_write_tokens")?,
+        ] {
+            [Some(input_tokens), Some(output_tokens), Some(cache_read_tokens), Some(cache_write_tokens)] => Some(TokenUsage {
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+            }),
+            // A call the vendor reported no counts for.
+            [None, None, None, None] => None,
+            _ => return Err(corrupt("input_tokens", "some of the token counts only")),
+        };
+        let parts = match [
+            row.get::<_, Option<f64>>("api_price_input")?,
+            row.get("api_price_cache_write")?,
+            row.get("api_price_cache_read")?,
+            row.get("api_price_output")?,
+        ] {
+            [Some(input), Some(cache_write), Some(cache_read), Some(output)] => Some(ApiPrice {
+                input,
+                cache_write,
+                cache_read,
+                output,
+            }),
+            [None, None, None, None] => None,
+            _ => return Err(corrupt("api_price_input", "some of the price's parts only")),
+        };
+        let currency: Option<String> = row.get("cost_currency")?;
+        let usd = row
+            .get::<_, Option<f64>>("cost")?
+            .filter(|_| currency == Some(Currency::Usd.to_string()));
+        let purpose: Option<String> = row.get("purpose")?;
+        let call = match (agent, purpose.as_deref(), usage) {
+            (Some(agent), Some("turn"), Some(usage)) => {
+                let model: String = row.get("model_id")?;
+                let system_hash: Option<String> = row.get("system_hash")?;
+                let tools_hash: Option<String> = row.get("tools_hash")?;
+                let ended_at = instant(row, "usage_ledger", "ended_at")?;
+                let started_at = match row.get::<_, Option<i64>>("started_at")? {
+                    Some(_) => instant(row, "usage_ledger", "started_at")?,
+                    None => ended_at,
+                };
+                Some(next_call(
+                    connection,
+                    &conversation,
+                    agent,
+                    &CallFacts {
+                        before: rowid,
+                        model: &model,
+                        usage,
+                        started_at,
+                        system_hash: system_hash.as_deref(),
+                        tools_hash: tools_hash.as_deref(),
+                    },
+                )?)
             }
             _ => None,
         };
-        calls.push((
-            row.id.clone(),
-            CostCall {
-                started_at: row.started_at,
-                input_tokens: usage.input_tokens,
-                cache_write_tokens: usage.cache_write_tokens,
-                cache_read_tokens: usage.cache_read_tokens,
-                price: row.price(),
-                after_compaction: compacted && previous.is_some(),
-                miss,
-            },
-        ));
-        if usage.cache_write_tokens > 0 {
-            hour_writes.insert(&row.model, row.cache_write_1h_tokens > 0);
+        if let Some(call) = call {
+            number.execute(params![
+                rowid,
+                column_count(call.number),
+                call.after_compaction,
+                call.miss.map(|miss| miss.to_string())
+            ])?;
         }
-        compacted = false;
-        previous = Some(row);
+        add_cost(connection, &conversation, agent, &RowCost { usage, parts, usd }, call.is_some())?;
     }
-    calls
-}
-
-/// Why `row` missed the cache after `previous`, the first cause that
-/// applies; a hash only tells a change when both calls have one, and
-/// `hour_write` says whether the latest write of `row`'s model was kept for
-/// an hour.
-fn miss_cause(previous: &CostRow, row: &CostRow, hour_write: bool) -> CacheMiss {
-    let changed = |before: &Option<String>, after: &Option<String>| {
-        matches!((before, after), (Some(before), Some(after)) if before != after)
-    };
-    let kept = if hour_write { KEPT_HOUR_MS } else { KEPT_MS };
-    if previous.model != row.model {
-        CacheMiss::ModelChanged
-    } else if changed(&previous.tools_hash, &row.tools_hash) {
-        CacheMiss::ToolsChanged
-    } else if changed(&previous.system_hash, &row.system_hash) {
-        CacheMiss::SystemPromptChanged
-    } else if row.started_at.as_millisecond() - previous.ended_at.as_millisecond() > kept {
-        CacheMiss::CacheExpired
-    } else {
-        CacheMiss::NotCached
-    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use demi_conversation_socket_protocol::{AgentCost, CacheMiss};
+    use demi_conversation_socket_protocol::CacheMiss;
     use demi_shared_types::{Cost, Currency, SystemClock, Timestamp, TokenUsage};
     use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
     use super::{ApiPrice, UsageRow};
     use crate::control::{ControlService, testing};
     use crate::providers::NoSealedConfigs;
-    use crate::tree::AgentLabel;
 
     const MINUTE: i64 = 60 * 1000;
 
@@ -879,12 +1008,12 @@ mod tests {
         ]);
         write(&control, &user, calls).await;
 
-        let cost = control
-            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), Vec::new(), None)
+        let calls = control
+            .agent_calls(ConversationId::try_from(CONVERSATION).unwrap(), 0, 0, 100)
             .await
             .unwrap();
         let read: Vec<(bool, Option<CacheMiss>)> =
-            cost.calls.iter().map(|call| (call.after_compaction, call.miss)).collect();
+            calls.iter().map(|call| (call.after_compaction, call.miss)).collect();
         assert_eq!(
             read,
             [
@@ -910,23 +1039,21 @@ mod tests {
         control.close().await.unwrap();
     }
 
-    /// The totals sum every row of the conversation, every agent's, compactions,
-    /// titles and media included.
+    /// The kept cost of each agent sums its rows as they are written,
+    /// compactions and media included, with the rows of no agent, such as a
+    /// title's, kept apart.
     ///
-    /// They are:
+    /// Each holds the counts, each kind's price, and the price, which for a
+    /// call whose tokens have no price is the vendor's own cost in dollars and
+    /// never one in another currency, and how many turn calls it made; an
+    /// agent's calls are its turns alone.
     ///
-    /// - the counts, each kind's price, and the price, which for a call whose
-    ///   tokens have no price is the vendor's own cost in dollars and never one in
-    ///   another currency;
-    /// - each agent with a priced call, with its price, named by its profile;
-    /// - the calls, which are the main conversation's turns.
-    ///
-    /// Planted defects: a cost in yuan counted as dollars, a title counted as an
-    /// agent, or a subagent's call among the main conversation's.
+    /// Planted defects: a cost in yuan counted as dollars, a title counted as
+    /// an agent, or a subagent's call among the main conversation's.
     ///
     /// Six rows of an in-memory ledger: milliseconds.
     #[tokio::test]
-    async fn the_cost_sums_every_row_and_names_each_priced_agent() {
+    async fn each_agent_keeps_the_cost_of_its_rows_as_they_are_written() {
         let (_data, control, user) = ledger().await;
         let price = |input, cache_write, cache_read, output| {
             Some(ApiPrice {
@@ -962,45 +1089,61 @@ mod tests {
             ],
         )
         .await;
-        let labels = vec![
-            AgentLabel { number: 0, profile: None },
-            AgentLabel { number: 1, profile: Some("research".into()) },
-            AgentLabel { number: 2, profile: None },
-            AgentLabel { number: 3, profile: None },
-        ];
-        let cost = control
-            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), labels.clone(), None)
-            .await
-            .unwrap();
-        let totals = cost.totals;
+        let conversation = ConversationId::try_from(CONVERSATION).unwrap();
+        let costs = control.conversation_costs(conversation.clone()).await.unwrap();
+        let kept: Vec<(Option<u64>, u64, u64, Option<f64>, u64)> = costs
+            .iter()
+            .map(|kept| {
+                let totals = &kept.cost.totals;
+                (kept.agent, totals.input_tokens, totals.output_tokens, totals.price.total, kept.cost.calls)
+            })
+            .collect();
         assert_eq!(
-            (totals.input_tokens, totals.cache_write_tokens, totals.cache_read_tokens, totals.output_tokens),
-            (1_016, 2_025, 3_035, 40)
-        );
-        let price = totals.price;
-        assert_eq!(
-            (price.total, price.input, price.cache_write, price.cache_read, price.output),
-            (Some(14.0), Some(1.75), Some(2.5), Some(3.125), Some(4.625))
-        );
-        assert_eq!(
-            cost.agents,
+            kept,
             [
-                AgentCost { agent: 0, profile: None, price: 1.0 },
-                AgentCost { agent: 1, profile: Some("research".into()), price: 10.0 },
-                AgentCost { agent: 2, profile: None, price: 2.0 },
+                (None, 1, 10, Some(1.0), 0),
+                (Some(0), 1_000, 10, Some(1.0), 1),
+                (Some(1), 10, 10, Some(10.0), 1),
+                (Some(2), 0, 0, Some(2.0), 0),
+                (Some(3), 5, 10, None, 1),
             ]
         );
-        assert_eq!(cost.calls.len(), 1);
-        assert_eq!(cost.calls[0].price, Some(1.0));
+        let sum = |part: fn(&super::KeptCost) -> Option<f64>| -> f64 { costs.iter().filter_map(part).sum() };
+        assert_eq!(
+            (
+                sum(|kept| kept.cost.totals.price.input),
+                sum(|kept| kept.cost.totals.price.cache_write),
+                sum(|kept| kept.cost.totals.price.cache_read),
+                sum(|kept| kept.cost.totals.price.output)
+            ),
+            (1.75, 2.5, 3.125, 4.625)
+        );
 
-        // One agent's own: its rows alone, its turn call, every row counted.
-        let own = control
-            .conversation_cost(ConversationId::try_from(CONVERSATION).unwrap(), labels, Some(1))
-            .await
-            .unwrap();
-        assert_eq!((own.rows, own.totals.input_tokens, own.totals.price.total), (6, 10, Some(10.0)));
-        assert_eq!(own.agents, [AgentCost { agent: 1, profile: Some("research".into()), price: 10.0 }]);
-        assert_eq!(own.calls.iter().map(|call| call.price).collect::<Vec<_>>(), [Some(10.0)]);
+        // One agent's calls: its turn call alone.
+        let calls = control.agent_calls(conversation, 1, 0, 100).await.unwrap();
+        assert_eq!(calls.iter().map(|call| call.price).collect::<Vec<_>>(), [Some(10.0)]);
         control.close().await.unwrap();
+    }
+
+    /// A new call finds its agent's latest cache write by its model through
+    /// an index, never by reading the agent's earlier rows one by one: a
+    /// call and each row of the 0.1.37 migration judge their miss by it.
+    #[test]
+    fn the_latest_cache_write_is_found_through_its_index() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("control.sqlite");
+        let mut connection = rusqlite::Connection::open(&path).unwrap();
+        crate::schema::CONTROL.apply(&mut connection, &path, &crate::schema::NoBlobs).unwrap();
+        let plan: Vec<String> = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", super::LATEST_CACHE_WRITE))
+            .unwrap()
+            .query_map(rusqlite::params!["c1", 1, 100, "m1"], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            plan.iter().any(|step| step.contains("USING INDEX usage_ledger_cache_writes (conversation_id=? AND agent=? AND model_id=? AND rowid<?)")),
+            "{plan:?}"
+        );
     }
 }

@@ -2,9 +2,9 @@
 //! history through one of its replies, whose first request is the one the root
 //! would send next with the side's message, and which the root never learns of.
 
-use demi_agent_server::{side_instruction, testing::TestClient};
+use demi_agent_server::{side_instruction, testing::{TestClient, agent_entries, entry_in}};
 use demi_agent_store::{ClosePhase, SideOf};
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{AgentRole, ClientFrame, ServerFrame};
 use demi_provider_common::{InferenceItem, InferenceRequest, Medium, UserPart, testing::{Turn, event}};
 use demi_shared_types::{Block, BlockId, FileExtension, MediaSource, NodeId, Timestamp};
 use demi_agent_store::testing::model_reading;
@@ -12,8 +12,8 @@ use serde_json::json;
 
 use crate::subagents::{closed_phase, fixture, held_said, refused, root, root_receipts, said};
 use crate::support::{
-    Fixture, Gate, Model, TestProduct, agent, conversation, held, request_text, send, streamed_then_held, texts, until,
-};
+        Fixture, Gate, Model, TestProduct, agent, conversation, held, request_text, send, streamed_then_held, texts, until,
+    };
 
 /// The brief the root's first message gives; the side's first request
 /// carries it as the root's does, which routes the side to its script.
@@ -110,6 +110,8 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
     model.child(FIRST, [said("Its TTL is an hour.")]);
     let (fixture, mut client) = replied(&model).await;
     let block = last_text(&fixture);
+    // The page shows its card, which subscribes to its node.
+    client.subscribe(&side()).await;
 
     fixture
         .server
@@ -160,14 +162,19 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
     assert!(!listed.stdout.contains("side-1"), "{listed:?}");
     assert!(!listed.stdout.contains("TTL"), "{listed:?}");
     let frames = client.received();
+    // It is listed as a side question, never as a subagent.
     assert!(
-        !frames.iter().any(|frame| matches!(frame, ServerFrame::Subagent { .. })),
+        frames.iter().flat_map(agent_entries).all(|entry| !matches!(entry.role, AgentRole::Subagent(_))),
         "{frames:?}"
     );
-    // Its transcript went to the pages under its node.
+    assert!(
+        frames.iter().filter_map(|frame| entry_in(frame, &side())).all(|entry| matches!(entry.role, AgentRole::Side(_))),
+        "{frames:?}"
+    );
+    // Its transcript went to the page that subscribes to its node.
     assert!(frames.iter().any(|frame| matches!(
         frame,
-        ServerFrame::SubagentTranscriptReset { subagent_id, .. } if *subagent_id == side()
+        ServerFrame::TranscriptReset { node, .. } if *node == side()
     )));
 }
 
@@ -329,8 +336,9 @@ async fn a_side_question_about_a_compacted_reply_starts_from_the_summary() {
 }
 
 // A page goes away while a side question answers, the answer ends, and the page
-// comes back: its open brings the side question as it ended, its whole answer
-// and idle, though the side question is no longer live.
+// comes back: its open lists the side question as it ended, idle, though it is
+// no longer live; its answer is its node's transcript, which the history
+// routes read.
 //
 // A few milliseconds.
 #[tokio::test(flavor = "local")]
@@ -351,22 +359,16 @@ async fn a_page_that_comes_back_receives_a_side_question_that_ended_while_it_was
 
     gate.open();
     until(|| closed_phase(&fixture, &side()).is_some()).await;
-    let mut returned = fixture.opened().await;
+    let mut returned = fixture.client();
+    returned.open().await;
     let frames = returned.received();
-    let reset = frames.iter().rev().find_map(|frame| match frame {
-        ServerFrame::SubagentTranscriptReset { subagent_id, blocks, .. } if *subagent_id == side() => Some(blocks.clone()),
-        _ => None,
-    });
-    let blocks = reset.expect("the open brings the side question's transcript");
+    let phase = frames.iter().rev().find_map(|frame| entry_in(frame, &side()).map(|entry| entry.phase));
+    assert_eq!(phase, Some(demi_shared_types::SessionPhase::Idle), "{frames:?}");
+    let stored = fixture.store.rows(&side());
     assert!(
-        blocks.iter().any(|block| matches!(block, Block::Text(text) if text.text == "Its TTL is an hour.")),
-        "{blocks:?}"
+        stored.iter().any(|block| matches!(block, Block::Text(text) if text.text == "Its TTL is an hour.")),
+        "{stored:?}"
     );
-    let phase = frames.iter().rev().find_map(|frame| match frame {
-        ServerFrame::Phase { subagent_id: Some(id), phase } if *id == side() => Some(*phase),
-        _ => None,
-    });
-    assert_eq!(phase, Some(demi_shared_types::SessionPhase::Idle));
 }
 
 /// The `side_questions` context blocks of the root's transcript.
@@ -481,6 +483,7 @@ async fn a_side_question_still_being_answered_is_told_only_once_answered() {
     model.child(FIRST, [streamed_then_held(&gate, vec![event::text("Its TTL")], vec![event::text(" is an hour."), event::response(1, 1)])]);
     let (fixture, mut client) = replied(&model).await;
     let block = last_text(&fixture);
+    client.subscribe(&side()).await;
     fixture
         .server
         .ask(&conversation(), side(), asking(block, "Why is it stale?"))
@@ -488,9 +491,10 @@ async fn a_side_question_still_being_answered_is_told_only_once_answered() {
         .unwrap();
     until(|| model.requests_of(FIRST).len() == 1).await;
     let tree = fixture.server.tree(&root()).unwrap();
-    // Its answer is half written: the page has its first words.
+    // Its answer is half written: the page that shows its card has its
+    // first words.
     client
-        .next_until(|frame| matches!(frame, ServerFrame::SubagentTranscriptPatch { .. }) && format!("{frame:?}").contains("Its TTL"))
+        .next_until(|frame| matches!(frame, ServerFrame::TranscriptPatch { node, .. } if *node == side()) && format!("{frame:?}").contains("Its TTL"))
         .await;
 
     client.send(send("m2", "Fix it.")).await;

@@ -36,8 +36,6 @@ use demi_agent_tools::{
     WorkflowProfile, parse_workflow, workflow_id,
 };
 use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::kept::Wait;
 use demi_backend_host_access::transition::ChangeRefusal;
 use std::rc::Rc;
 use std::future::Future;
@@ -50,7 +48,7 @@ use demi_shared_types::{ModelSelection, ReadAt, THINKING_OFF, UnavailableSetting
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_runner_protocol::files::SubscriptionKind as WatchKind;
-use demi_web_api_protocol::workflows::{ConversationWorkflows, MenuWorkflow, WatchSubject};
+use demi_web_api_protocol::workflows::{ConversationWorkflows, KeptWorkflowList, MenuWorkflow, WatchSubject};
 use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
@@ -70,11 +68,9 @@ pub(crate) struct ProjectWorkflows {
     pub(crate) unavailable: Option<String>,
     /// Each file, by id.
     pub(crate) files: Vec<WorkflowFile>,
-    /// What the page watches to hear of a workflow added, changed or
+    /// What the backend watches to hear of a workflow added, changed or
     /// removed, or of a nearer directory that gains one.
     pub(crate) watch: Vec<WatchSubject>,
-    /// The Host's number before the search.
-    pub(crate) read_at: ReadAt,
 }
 
 /// One workflow file, as it reads now.
@@ -94,9 +90,9 @@ pub(crate) enum Unread {
 }
 
 /// The directory a search was asked about is not there, or is no
-/// directory, as the Host said at its number.
+/// directory, as the Host said.
 #[derive(Debug)]
-pub(crate) struct NoDirectory(ReadAt);
+pub(crate) struct NoDirectory;
 
 impl ProjectWorkflows {
     fn get(&self, id: &str) -> Option<&WorkflowFile> {
@@ -116,7 +112,7 @@ impl ProjectWorkflows {
     }
 
     /// The Workflow menu's list, by id.
-    fn menu(&self) -> (ConversationWorkflows, ReadAt) {
+    pub(crate) fn menu(&self) -> ConversationWorkflows {
         let workflows = self
             .files
             .iter()
@@ -132,13 +128,11 @@ impl ProjectWorkflows {
                     .unwrap_or_default(),
             })
             .collect();
-        let answer = ConversationWorkflows {
+        ConversationWorkflows {
             directory: self.directory.clone(),
             unavailable: self.unavailable.clone(),
             workflows,
-            watch: self.watch.clone(),
-        };
-        (answer, self.read_at.clone())
+        }
     }
 }
 
@@ -221,10 +215,10 @@ where
             });
         }
     }
-    let (found, read_at) = read(reads).await?;
+    let (found, _) = read(reads).await?;
     let (itself, found) = found.split_at(1);
     if !matches!(itself[0], HostFile::Directory { .. }) {
-        return Ok(Err(NoDirectory(read_at)));
+        return Ok(Err(NoDirectory));
     }
     let (git, kept) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git);
@@ -284,7 +278,6 @@ where
             unavailable: None,
             files: Vec::new(),
             watch,
-            read_at,
         }));
     };
     let entries = match entries {
@@ -295,7 +288,6 @@ where
                 unavailable: Some(reason),
                 files: Vec::new(),
                 watch,
-                read_at,
             }));
         }
     };
@@ -341,7 +333,6 @@ where
         unavailable: None,
         files,
         watch,
-        read_at,
     }))
 }
 
@@ -353,6 +344,7 @@ pub enum DeviceWorkflowsRefusal {
     /// The directory is not there.
     NoDirectory,
     Host(HostError),
+    Storage(demi_backend_database::StorageError),
 }
 
 /// The workflows of `directory`, the conversation `id`'s, read now through
@@ -375,7 +367,7 @@ pub(crate) async fn search_conversation_workflows(
         host.read_files_on(id, Some(device), &reads, cancel).await
     })
     .await?;
-    Ok(found.unwrap_or_else(|NoDirectory(read_at)| ProjectWorkflows {
+    Ok(found.unwrap_or_else(|NoDirectory| ProjectWorkflows {
         directory: None,
         unavailable: None,
         files: Vec::new(),
@@ -384,38 +376,41 @@ pub(crate) async fn search_conversation_workflows(
             path: directory.to_owned(),
             suffix: None,
         }],
-        read_at,
     }))
 }
 
 impl Shard {
     /// The workflows the shard holds for the conversation `id`'s working
     /// directory; why none are, while it holds none, as on a Host that has
-    /// not run since. `wait` says whether a search under way for a change
-    /// the runner reported is waited for.
-    pub(crate) async fn project_workflows(&self, id: &ConversationId, wait: Wait) -> Result<Rc<ProjectWorkflows>, String> {
-        match self.kept_workflows(id, wait).await.map_err(|error| error.to_string())? {
+    /// not run since.
+    pub(crate) async fn project_workflows(&self, id: &ConversationId) -> Result<Rc<ProjectWorkflows>, String> {
+        match self.kept_workflows(id).await.map_err(|error| error.to_string())? {
             KeptWorkflows::Found(found) => Ok(found),
-            KeptWorkflows::None { .. } => Err(ReadFilesError::NotRunning.to_string()),
+            KeptWorkflows::None => Err(ReadFilesError::NotRunning.to_string()),
         }
     }
 
     /// The Workflow menu's list for a new conversation that works in `directory`
     /// of the paired device `device`, before its first message gives it a record.
     ///
-    /// It is read through device access, which wakes nothing; none while the
-    /// device's runner is not connected. With `after`, the answer is read at that
-    /// number or later.
+    /// What the backend stored of the directory, at once; else it is read now
+    /// through device access, which wakes nothing, and stored. A refusal while
+    /// the device's runner is not connected and nothing is stored.
     pub async fn device_workflows(
         &self,
         device: &DeviceId,
         directory: &str,
-        after: Option<&ReadAt>,
-    ) -> Result<(ConversationWorkflows, ReadAt), DeviceWorkflowsRefusal> {
-        // What a loaded conversation there keeps already, unless it was read
-        // before `after`: the search below reads it anew.
-        if let Some(found) = self.project_files().workflows.held(device, directory.to_owned(), after) {
-            return Ok(found.menu());
+    ) -> Result<KeptWorkflowList, DeviceWorkflowsRefusal> {
+        let control = &self.services().control;
+        let stored = control
+            .host_workflows(device.clone(), directory.to_owned())
+            .await
+            .map_err(DeviceWorkflowsRefusal::Storage)?;
+        if let Some(stored) = stored {
+            return Ok(KeptWorkflowList::Read {
+                list: stored.list,
+                read_at: stored.read_at,
+            });
         }
         let host = self.devices().device_access(device).await.ok_or(DeviceWorkflowsRefusal::Offline)?;
         let paths = host.identity().paths;
@@ -423,44 +418,15 @@ impl Shard {
         let found = search_workflows(paths, directory, |reads| async move { look_files(host, &reads).await })
             .await
             .map_err(DeviceWorkflowsRefusal::Host)?
-            .map_err(|NoDirectory(_)| DeviceWorkflowsRefusal::NoDirectory)?;
-        Ok(found.menu())
-    }
-
-    /// The Workflow menu's list for the conversation `id` (`GET
-    /// /conversations/:id/workflows`), with what the page watches.
-    ///
-    /// The page asks when the runner reported a change, so a search under way for
-    /// one is waited for; with `after`, as its watch went live after the answer
-    /// it holds, one read at that number or later is.
-    ///
-    /// While no search is held, it answers no workflows, read at no number, and
-    /// the working directory to watch: the page's watch going live there, as the
-    /// Host runs, makes that answer out of date.
-    pub async fn menu_workflows(
-        &self,
-        id: &ConversationId,
-        after: Option<ReadAt>,
-    ) -> Result<(ConversationWorkflows, Option<ReadAt>), Rc<HostAccessError>> {
-        let wait = after.map_or(Wait::Current, Wait::After);
-        Ok(match self.kept_workflows(id, wait).await? {
-            KeptWorkflows::Found(found) => {
-                let (answer, read_at) = found.menu();
-                (answer, Some(read_at))
-            }
-            KeptWorkflows::None { directory } => {
-                let answer = ConversationWorkflows {
-                    directory: None,
-                    unavailable: None,
-                    workflows: Vec::new(),
-                    watch: vec![WatchSubject {
-                        kind: WatchKind::FolderNames,
-                        path: directory,
-                        suffix: None,
-                    }],
-                };
-                (answer, None)
-            }
+            .map_err(|NoDirectory| DeviceWorkflowsRefusal::NoDirectory)?;
+        let list = found.menu();
+        control
+            .keep_host_workflows(device.clone(), directory.to_owned(), list.clone())
+            .await
+            .map_err(DeviceWorkflowsRefusal::Storage)?;
+        Ok(KeptWorkflowList::Read {
+            list,
+            read_at: self.services().clock.now(),
         })
     }
 
@@ -468,7 +434,7 @@ impl Shard {
     pub(crate) async fn workflow_listing(&self, id: &ConversationId) -> Result<WorkflowListing, String> {
         let chosen = self.workflow_choice(id).await?;
         let found = self
-            .project_workflows(id, Wait::First)
+            .project_workflows(id)
             .await
             .map_err(|error| format!("the project's workflows cannot be read: {error}"))?;
         let workflows = found
@@ -517,7 +483,7 @@ impl Shard {
             WorkflowChoice::None => return Ok(ConversationProfiles::Off),
             WorkflowChoice::Workflow { id } => id,
         };
-        let found = self.project_workflows(id, Wait::First).await?;
+        let found = self.project_workflows(id).await?;
         if let Some(reason) = found.unavailable(&chosen) {
             return Ok(ConversationProfiles::Unavailable { id: chosen, reason });
         }

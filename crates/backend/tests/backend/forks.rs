@@ -68,7 +68,7 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
         .await;
     let settings = raised
         .json::<demi_web_api_protocol::conversations::ConversationUpdate>()
-        .conversation
+        .metadata
         .model;
     backend
         .patch(&source_path, &master, json!({ "workflow": { "type": "none" } }))
@@ -110,8 +110,11 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
         (SECOND, Some("Build (Fork)"), false, false)
     );
     assert_eq!(destination.status, ConversationStatus::Idle);
+    // The answer's metadata is the destination's, as a read of it says.
+    let kept = &forked.metadata;
+    assert_eq!(kept, &crate::conversations::metadata(&backend, &master, SECOND).await);
     assert_eq!(
-        (&destination.model, &destination.workflow),
+        (&kept.model, &kept.workflow),
         (&settings, &demi_shared_types::WorkflowChoice::None),
         "the destination keeps the source's model settings and workflow"
     );
@@ -121,9 +124,9 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
         serde_json::to_value(&destination.target).unwrap(),
         json!({ "kind": "cloud", "path": directory })
     );
-    assert_eq!(destination.cwd, directory);
+    assert_eq!(kept.cwd, directory);
     assert_eq!(
-        transcript(&backend, &master, SECOND).await.blocks,
+        demi_conversation_socket_protocol::light(&transcript(&backend, &master, SECOND).await.blocks),
         history[..3]
     );
     let listed: Vec<String> = summaries(&backend, &master)
@@ -265,10 +268,7 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     let forked = created.json::<ForkAnswer>();
     // The first message titled the source.
     assert_eq!(
-        (
-            forked.conversation.title.as_deref(),
-            &forked.conversation.model
-        ),
+        (forked.conversation.title.as_deref(), &forked.metadata.model),
         (Some("U1 (Fork)"), &settings)
     );
     // The history through the latest text, without the response after it.

@@ -22,6 +22,16 @@
 //!
 //! A message that is not JSON closes the socket.
 //!
+//! # The conversation's own frames
+//!
+//! Beside the agents' frames, the socket sends what the backend keeps of the
+//! conversation itself (`ConversationFrame`): its metadata once the page
+//! sent its `open`, refused or not, as one of a conversation with no model
+//! yet, and at each change of it, and its draft when the draft is newer than
+//! the revision the page named at its open, and at each change of it.
+//! Only a socket of the conversation hears of them; the sidebar's channel
+//! sends the conversation's entry alone.
+//!
 //! # Frames the socket rewrites
 //!
 //! - An `open` takes the conversation's settings order, so the tree opens with
@@ -48,6 +58,7 @@ use demi_conversation_socket_protocol::{
 };
 use demi_shared_gates::Purpose;
 use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
+use demi_web_api_protocol::conversations::{ConversationFrame, ConversationMetadata};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
 use demi_web_api_protocol::error::ErrorCode;
@@ -114,8 +125,21 @@ enum Handled {
     /// The frame reached its session, or the backend refused it with these
     /// frames.
     Replies(Vec<ServerFrame>),
+    /// An `open` reached the tree, or the backend refused it with these
+    /// frames: the page holds the draft at `draft`, and follows the
+    /// conversation from now on.
+    Opened { draft: u64, replies: Vec<ServerFrame> },
     /// The message is not JSON: the socket closes.
     NotJson,
+}
+
+/// What a socket last sent of the conversation itself, once its page opened
+/// it.
+#[derive(Default)]
+struct Shown {
+    metadata: Option<ConversationMetadata>,
+    /// The revision of the draft the page holds; none before its open.
+    draft: Option<u64>,
 }
 
 /// An `error` frame the backend answers a refused frame with.
@@ -153,8 +177,11 @@ impl Shard {
         if self.is_closing() {
             return;
         }
-        let signed_out = self.services().sync.watch_session(self.user(), session.token.clone());
         let id = conversation.id;
+        let watch = self
+            .services()
+            .sync
+            .watch_conversation(self.user(), session.token.clone(), id.clone());
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(&self),
             conversation: id.clone(),
@@ -162,6 +189,7 @@ impl Shard {
         let (connection, mut frames) = self.agent().connect(root_of(&id), resolver.clone());
         let (mut page, mut stream) = open_page_socket(socket, self.services().pages, origin);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
+        let mut shown = Shown::default();
         let relay = async {
             'relay: loop {
                 let busy = handling.is_some();
@@ -172,6 +200,13 @@ impl Shard {
                         handling = None;
                         let replies = match handled {
                             Handled::Replies(replies) => replies,
+                            Handled::Opened { draft, replies } => {
+                                shown.draft = Some(draft);
+                                if !self.show_conversation(&id, &mut page, &mut shown).await {
+                                    break 'relay Ending::Gone;
+                                }
+                                replies
+                            }
                             Handled::NotJson => break Ending::NotJson,
                         };
                         for reply in replies {
@@ -226,6 +261,15 @@ impl Shard {
                         Outgoing::Lagged => break Ending::Lagged,
                         Outgoing::Closed => break Ending::Detached,
                     },
+                    () = watch.marked() => {
+                        let marked = watch.take();
+                        if marked.session_ended {
+                            break Ending::SessionEnded;
+                        }
+                        if shown.draft.is_some() && !self.show_conversation(&id, &mut page, &mut shown).await {
+                            break Ending::Gone;
+                        }
+                    }
                     () = page.silent() => {
                         if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
                             break Ending::Gone;
@@ -240,7 +284,6 @@ impl Shard {
         let ending = tokio::select! {
             biased;
             () = self.closed() => Ending::Closing,
-            () = signed_out.marked() => Ending::SessionEnded,
             ending = self.session_expiry(session) => ending,
             ending = relay => ending,
         };
@@ -304,8 +347,8 @@ impl Shard {
             .prepare_frame(
                 conversation,
                 &ClientFrame::Open {
-                    from: None,
-                    edge: None,
+                    agents: None,
+                    draft: None,
                 },
             )
             .await
@@ -422,16 +465,29 @@ impl Shard {
         // A refusal names the command the page sent: a saved message's is
         // its `send_saved`'s, whatever frame it became.
         let command = if from_list { ClientFrameKind::SendSaved } else { frame.kind() };
+        let opened = match &frame {
+            ClientFrame::Open { draft, .. } => Some(draft.unwrap_or(0)),
+            _ => None,
+        };
         let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
                 let taken = connection.handle_as(frame, command).await;
+                if let Some(draft) = opened {
+                    return Handled::Opened { draft, replies: Vec::new() };
+                }
                 if let (true, Some((id, turn))) = (taken, saved) {
                     self.take_saved(conversation, id, turn).await;
                 }
                 Handled::Replies(Vec::new())
             }
             Ok(Prepared::Refused(code, message)) => {
-                Handled::Replies(vec![refused_frame(frame, command, code, message)])
+                let replies = vec![refused_frame(frame, command, code, message)];
+                // A conversation whose tree cannot open, as one with no model
+                // yet, is still shown: its metadata and its draft follow.
+                match opened {
+                    Some(draft) => Handled::Opened { draft, replies },
+                    None => Handled::Replies(replies),
+                }
             }
             Err(error) => {
                 tracing::error!(%conversation, error = &error as &dyn std::error::Error, "a frame was not prepared");
@@ -519,7 +575,7 @@ impl Shard {
     /// it follows has happened and has its own answer.
     async fn take_saved(&self, conversation: &ConversationId, id: String, turn: TurnId) {
         match self.services().control.take_saved(conversation.clone(), id, turn).await {
-            Ok(true) => self.mark(Part::Conversation(conversation.clone())),
+            Ok(true) => self.mark(Part::Metadata(conversation.clone())),
             Ok(false) => {}
             Err(error) => tracing::error!(
                 %conversation,
@@ -539,25 +595,10 @@ impl Shard {
     /// a JSON array of them in order, which the page applies as one change. Every `error`
     /// and `rejected` frame carries the request ID of the socket's upgrade, and every
     /// refused send of `conversation` is logged.
-    async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, mut frames: Vec<ServerFrame>) -> bool {
+    async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
         // An open's handshake starts with `opened`; its size and how long it
         // takes to write are logged, as what a page waits for to open.
         let handshake = matches!(frames.first(), Some(ServerFrame::Opened));
-        // The conversation's row count goes with the state an attach
-        // brings, read once the connection is attached, so a row written
-        // after the count reaches it as its `cost` frame.
-        if handshake {
-            match self.services().control.cost_rows(conversation.clone()).await {
-                Ok(rows) => frames.push(ServerFrame::CostRows { rows }),
-                // The page keeps the cost it holds; the next row's frame
-                // shows a gap if it missed one.
-                Err(error) => tracing::warn!(
-                    %conversation,
-                    error = &error as &dyn std::error::Error,
-                    "a conversation's row count was not sent with its open"
-                ),
-            }
-        }
         let count = frames.len();
         let building = std::time::Instant::now();
         let mut texts = Vec::with_capacity(frames.len());
@@ -618,6 +659,7 @@ impl Shard {
         let assembly = &services.assembly;
         match frame {
             ServerFrame::TranscriptReset {
+                node,
                 start,
                 length,
                 blocks,
@@ -627,6 +669,7 @@ impl Shard {
             } => {
                 let failures = failure_facts(assembly, self.user(), &blocks).await;
                 ServerFrame::TranscriptReset {
+                    node,
                     start,
                     length,
                     blocks,
@@ -636,42 +679,11 @@ impl Shard {
                 }
             }
             ServerFrame::TranscriptPatch {
-                patches, revision, ..
+                node, patches, revision, ..
             } => {
                 let failures = failure_facts(assembly, self.user(), &blocks_added(&patches)).await;
                 ServerFrame::TranscriptPatch {
-                    patches,
-                    revision,
-                    failures,
-                }
-            }
-            ServerFrame::SubagentTranscriptReset {
-                subagent_id,
-                start,
-                length,
-                blocks,
-                revision,
-                ..
-            } => {
-                let failures = failure_facts(assembly, self.user(), &blocks).await;
-                ServerFrame::SubagentTranscriptReset {
-                    subagent_id,
-                    start,
-                    length,
-                    blocks,
-                    revision,
-                    failures,
-                }
-            }
-            ServerFrame::SubagentTranscriptPatch {
-                subagent_id,
-                patches,
-                revision,
-                ..
-            } => {
-                let failures = failure_facts(assembly, self.user(), &blocks_added(&patches)).await;
-                ServerFrame::SubagentTranscriptPatch {
-                    subagent_id,
+                    node,
                     patches,
                     revision,
                     failures,
@@ -679,6 +691,64 @@ impl Shard {
             }
             other => other,
         }
+    }
+
+    /// Sends the page what changed of the conversation itself since `shown`:
+    /// its metadata, and its draft when newer than the page's. A failed read
+    /// is logged and sends nothing, as the next change sends what it read;
+    /// false when the socket is gone.
+    async fn show_conversation(&self, conversation: &ConversationId, page: &mut PageSocket, shown: &mut Shown) -> bool {
+        let services = self.services();
+        let read = async {
+            let Some(record) = services
+                .control
+                .conversation(conversation.clone())
+                .await?
+                .filter(|record| record.owner == *self.user())
+            else {
+                return Ok(None);
+            };
+            let draft_revision = record.draft_revision;
+            let metadata = self.conversation_metadata(record).await?;
+            let draft = if shown.draft.is_some_and(|held| draft_revision > held) {
+                Some(services.control.draft(conversation.clone()).await?)
+            } else {
+                None
+            };
+            Ok::<_, StorageError>(Some((metadata, draft)))
+        };
+        let (metadata, draft) = match read.await {
+            Ok(Some(read)) => read,
+            Ok(None) => return true,
+            Err(error) => {
+                tracing::warn!(
+                    %conversation,
+                    error = &error as &dyn std::error::Error,
+                    "what a page shows of a conversation was not read"
+                );
+                return true;
+            }
+        };
+        let mut frames = Vec::new();
+        if shown.metadata.as_ref() != Some(&metadata) {
+            shown.metadata = Some(metadata.clone());
+            frames.push(ConversationFrame::Conversation {
+                metadata: Box::new(metadata),
+            });
+        }
+        if let Some(draft) = draft {
+            shown.draft = Some(draft.revision);
+            frames.push(ConversationFrame::Draft { draft });
+        }
+        for frame in frames {
+            // The frames' types serialize as JSON objects, which serde_json
+            // never refuses.
+            let text = serde_json::to_string(&frame).expect("a conversation frame serializes to JSON");
+            if page.send(text).await.is_err() {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -849,9 +919,8 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
 /// runtime, which is shutting down.
 async fn serialize(frame: ServerFrame) -> Option<String> {
     let whole = match &frame {
-        ServerFrame::TranscriptReset { .. } | ServerFrame::SubagentTranscriptReset { .. } => true,
-        ServerFrame::TranscriptPatch { patches, .. }
-        | ServerFrame::SubagentTranscriptPatch { patches, .. } => patches
+        ServerFrame::TranscriptReset { .. } => true,
+        ServerFrame::TranscriptPatch { patches, .. } => patches
             .iter()
             .any(|patch| matches!(patch, TranscriptPatch::Truncate { .. })),
         _ => false,

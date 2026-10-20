@@ -11,7 +11,6 @@ use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::summaries;
 use crate::support::{Harness, Session, TestBackend};
 
 /// A new conversation of `master`'s.
@@ -82,12 +81,7 @@ impl Panel<'_> {
     }
 
     async fn summary_revision(&self) -> u64 {
-        summaries(self.backend, self.master)
-            .await
-            .into_iter()
-            .find(|summary| summary.id.as_str() == self.id)
-            .expect("the conversation is listed")
-            .panel_revision
+        crate::conversations::metadata(self.backend, self.master, &self.id).await.panel_revision
     }
 }
 

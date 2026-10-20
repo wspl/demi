@@ -14,7 +14,16 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/conversation-client'
 import { asError, createId, deferred } from '@demicodes/utils'
-import type { ClientContent, EditRequest, MessageComment, RegenerateRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
+import type {
+  AgentEntry,
+  ClientContent,
+  EditRequest,
+  HeldEdge,
+  MessageComment,
+  RegenerateRequest,
+  SavedDelivery,
+  Version,
+} from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
 import { failureHeadline } from './error-detail'
@@ -84,11 +93,31 @@ export interface ConversationRuntimeOptions {
   connect: (signal: AbortSignal) => Promise<ConversationClient>
   onEvent?: (event: ClientSessionEvent) => void
   /**
-   * The children whose transcripts the page shows now, which each connection
-   * names before its `open` (`crates/agent-server/src/server/tree.rs`);
-   * `showSubagents` names them again when they change. /
+   * The nodes besides the root whose messages the page shows now, which each
+   * connection subscribes to before its `open`; `subscribe` and
+   * `unsubscribe` follow a change.
    */
-  shownSubagents?: () => readonly string[]
+  nodes?: () => readonly string[]
+  /** The blocks the page holds of the node `node`, other than the root, which the root's `history` says. */
+  held?: (node: string) => HeldEdge | undefined
+  /** The version of the conversation's agents the page holds; absent before it holds any. */
+  agents?: () => Version | undefined
+  /** The revision of the draft the page holds; absent before it read one. */
+  draft?: () => number | undefined
+  /**
+   * Whether the page shows the transcript before the session opens, as from
+   * what it kept on disk: without, a first opening shows the pane loading,
+   * and offline when it cannot connect. Shown by default.
+   */
+  shown?: () => boolean
+}
+
+/**
+ * When an agent began to wait for its model, as `Date.now()`, from its entry
+ * as it arrived at `receivedAt`; null when it waits for none.
+ */
+export function waitingSince(entry: Pick<AgentEntry, 'waitedMs'>, receivedAt: number): number | null {
+  return entry.waitedMs === null ? null : receivedAt - entry.waitedMs
 }
 
 const OPEN_TIMEOUT_MS = 30_000
@@ -287,8 +316,8 @@ export class ConversationRuntime {
     }
   }
 
-  transcriptVersion(): TranscriptVersion | null {
-    return this.client.value?.transcriptVersion() ?? null
+  transcriptVersion(): Version | null {
+    return this.client.value?.transcriptVersion(this.options.state.id) ?? null
   }
 
   editAndSend(request: EditRequest): Promise<void> {
@@ -311,7 +340,7 @@ export class ConversationRuntime {
    */
   async switchVersion(blockId: string, to: number): Promise<void> {
     const client = await this.ensureOpen()
-    const version = client.transcriptVersion()
+    const version = client.transcriptVersion(this.options.state.id)
     if (version) {
       client.switchVersion(blockId, to, version)
     }
@@ -406,17 +435,22 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).abort()
   }
 
-  /**
-   * Names the children the page shows now to the open connection; a
-   * connection still opening names them once it has, and one made later
-   * before its `open`.
-   */
-  showSubagents(): void {
-    this.client.value?.showSubagents(this.shownSubagents())
+  /** The page shows the node `node`'s messages now: the connection, and each later one, sends them. */
+  subscribeNode(node: string): void {
+    this.client.value?.subscribeTo(node)
   }
 
-  private shownSubagents(): readonly string[] {
-    return this.options.shownSubagents?.() ?? []
+  /** The page stops showing the node `node`'s messages. */
+  unsubscribeNode(node: string): void {
+    this.client.value?.unsubscribeFrom(node)
+  }
+
+  private shown(): boolean {
+    return this.options.shown?.() ?? true
+  }
+
+  private shownNodes(): readonly string[] {
+    return this.options.nodes?.() ?? []
   }
 
   async abortSubagents(): Promise<void> {
@@ -549,7 +583,7 @@ export class ConversationRuntime {
     // conversation's first send, one restored from the archive, a Retry
     // after a failed opening.
     if (!this.opened) {
-      this.options.state.load = 'opening'
+      this.options.state.load = this.shown() ? 'opening' : 'loading'
     }
     const controller = new AbortController()
     this.controller = controller
@@ -567,7 +601,7 @@ export class ConversationRuntime {
       if (wait) {
         // A first opening that cannot connect is still an opening: it says
         // that it connects and shows nothing of a session it never had.
-        this.options.state.load = this.opened ? 'reconnecting' : 'connecting'
+        this.options.state.load = this.opened ? 'reconnecting' : this.shown() ? 'connecting' : 'offline'
         this.connectionFailures += 1
         await this.pause(controller.signal)
       }
@@ -640,31 +674,36 @@ export class ConversationRuntime {
         this.applyEvent(event)
         triggerRef(this.client)
       })
-      // The children the page shows go first, so the open's handshake
-      // brings their transcripts and no other child's.
-      const named = this.shownSubagents()
-      if (named.length > 0) {
-        client.showSubagents(named)
-      }
-      await client.open(() => heldEdge(this.options.state.history))
+      // The nodes the page shows now, whose messages the open's handshake brings.
+      const root = this.options.state.id
+      const named = this.shownNodes()
+      await client.open({
+        root,
+        nodes: named,
+        held: (node) => (node === root ? heldEdge(this.options.state.history) : this.options.held?.(node)),
+        agents: this.options.agents?.(),
+        draft: this.options.draft?.(),
+      })
       attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe
-      const shown = this.shownSubagents()
-      if (shown.length !== named.length || shown.some((id) => !named.includes(id))) {
-        client.showSubagents(shown)
+      const shown = this.shownNodes()
+      for (const node of shown) {
+        client.subscribeTo(node)
       }
-      // A child the page stopped showing while the handshake came, whose
-      // transcript the page let go of, takes none of what it brought; a side
-      // question's, which no page names, goes on.
+      // A node the page stopped showing while the handshake came takes
+      // none of what it brought.
       const dropped = named.filter((id) => !shown.includes(id))
+      for (const node of dropped) {
+        client.unsubscribeFrom(node)
+      }
       // Applied once, then let go: the subscription lives as long as the
       // connection, and the frames it held must not.
       const held = handshake
       handshake = null
       for (const event of held) {
-        const childTranscript = event.type === 'subagent_transcript_reset' || event.type === 'subagent_transcript_patch'
-        if (childTranscript && dropped.includes(event.subagentId)) {
+        const transcript = event.type === 'transcript_reset' || event.type === 'transcript_patch'
+        if (transcript && dropped.includes(event.node)) {
           continue
         }
         this.applyEvent(event)
@@ -700,58 +739,60 @@ export class ConversationRuntime {
     })
   }
 
+  /** The root's entry as it arrived at `receivedAt`. */
+  private takeRoot(entry: AgentEntry, receivedAt: number): void {
+    const state = this.options.state
+    // A failure the session reported is over once the session starts
+    // another action, whichever tab started it; a tab that did not start it
+    // would otherwise keep showing it.
+    if (state.phase === 'idle' && entry.phase !== 'idle') {
+      state.lastError = null
+    }
+    const moved = state.phase !== entry.phase
+    state.phase = entry.phase
+    state.pendingCalls = entry.pendingCalls
+    state.waitingSince = waitingSince(entry, receivedAt)
+    state.contextUsage = entry.context
+    if (moved) {
+      this.settlePendingAction()
+    }
+  }
+
   private applyEvent(event: ClientSessionEvent): void {
     const state = this.options.state
     switch (event.type) {
       case 'transcript_reset':
-        state.history = resetTranscript(state.history, event, event.asked)
-        state.failures = { ...state.failures, ...event.failures }
+        // Another node's messages are the host's, which keeps its record.
+        if (event.node === state.id) {
+          state.history = resetTranscript(state.history, event, event.asked)
+          state.failures = { ...state.failures, ...event.failures }
+        }
         break
       case 'transcript_patch':
-        state.history = applyTranscriptPatches(state.history, event.patches)
-        state.failures = { ...state.failures, ...event.failures }
-        break
-      case 'phase':
-        // A subagent's phase belongs to its record, which the host keeps.
-        if (event.subagentId !== undefined) {
-          break
+        if (event.node === state.id) {
+          state.history = applyTranscriptPatches(state.history, event.patches, performance.now(), event.version)
+          state.failures = { ...state.failures, ...event.failures }
         }
-        // A failure the session reported is over once the session starts
-        // another action, whichever tab started it; a tab that did not
-        // start it would otherwise keep showing it.
-        if (state.phase === 'idle' && event.phase !== 'idle') {
-          state.lastError = null
-        }
-        state.phase = event.phase
-        this.settlePendingAction()
         break
+      case 'agents':
+      case 'agent': {
+        // The root's entry is the conversation's own; the others are the
+        // host's, which keeps their records.
+        const entries = event.type === 'agents' ? event.agents : [event.agent]
+        const entry = entries.find((each) => each.role.kind === 'root')
+        if (entry) {
+          this.takeRoot(entry, event.receivedAt)
+        }
+        break
+      }
       case 'queue':
         state.queue = event.queue
-        break
-      case 'context_usage':
-        // A subagent's usage belongs to its record, which the host keeps;
-        // the root's node is the conversation's id.
-        if (event.node === state.id) {
-          state.contextUsage = event.usage
-        }
         break
       case 'pending_steers':
         state.pendingSteers = event.pendingSteers
         break
-      case 'pending_calls':
-        // A subagent's calls belong to its record, which the host keeps.
-        if (event.subagentId === undefined) {
-          state.pendingCalls = event.pendingCalls
-        }
-        break
       case 'request_output':
         state.requestOutput = event.output
-        break
-      case 'waiting':
-        // So does a subagent's wait.
-        if (event.subagentId === undefined) {
-          state.waitingSince = event.since
-        }
         break
       case 'error': {
         // Worded from its code as the transcript's record of a failed turn

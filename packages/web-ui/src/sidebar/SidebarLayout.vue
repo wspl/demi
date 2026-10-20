@@ -367,13 +367,17 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
       @update:model-value="asideShare = asideShareFor($event, sharedWidth)"
       @commit="emit('asideResizeEnd', asideShareFor($event, sharedWidth))"
     />
-    <!-- On a phone the panel takes the whole screen, sliding in from the right. -->
+    <!--
+      On a phone the panel takes the whole screen, sliding in from the right,
+      above a window of the dock it opened from, such as a subagent's, which
+      stands at the drawer's height over the conversation.
+    -->
     <Transition name="frame-aside" :css="phone" @before-leave="dropPulled" @after-leave="panelSettled">
       <div
         v-if="asideOpen && $slots.aside"
         data-region
         v-bind="{ [KEEPS_WINDOWS]: '' }"
-        :class="phone ? 'frame-aside fixed inset-0 z-40' : 'h-full max-w-full shrink-0'"
+        :class="phone ? 'frame-aside fixed inset-0 z-[45]' : 'h-full max-w-full shrink-0'"
         :style="phone
           ? { '--aside-pull': panelPull === null ? undefined : `${panelPull}px` }
           : { width: `${shownAsideWidth}px` }"

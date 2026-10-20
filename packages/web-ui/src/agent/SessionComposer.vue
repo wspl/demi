@@ -28,7 +28,7 @@ import SavedList from './SavedList.vue'
 import { asksSaveForLater, saveForLaterKeys, type SavedRow } from './saved'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import { compactAfterTurn, type UsageLimits } from './context-usage'
-import type { CostState } from './context-cost'
+import type { CostShown } from './context-cost'
 import ModelSelector from './ModelSelector.vue'
 import WorkflowMenu from './WorkflowMenu.vue'
 import type { WorkflowChoice, WorkflowList } from './workflow-menu'
@@ -130,10 +130,10 @@ const props = withDefaults(
      */
     limits?: UsageLimits | null
     /**
-     * What the conversation cost, or the failure of its read, which the host
-     * holds while the conversation is open and the context card shows.
+     * What the conversation cost, from its agents' metadata, with the calls
+     * the host reads while the context card is open.
      */
-    cost?: CostState | null
+    cost?: CostShown | null
     /**
      * The names of the profiles the conversation's workflow offers now, which
      * the cost's Profiles part shows.
@@ -234,8 +234,10 @@ const emit = defineEmits<{
    * card showed them, otherwise its Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
-  /** Read the cost again after a read that failed. */
+  /** Read the calls again after a read that failed. */
   retryCost: []
+  /** The context card opened or closed, which reads the root's calls or lets them go. */
+  costCalls: [wanted: boolean]
   /**
    * Files to attach; their capsules land where they were dropped, pasted or
    * picked.
@@ -924,6 +926,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @open-instruction="emit('openInstruction', $event)"
             @refresh-limits="emit('refreshLimits', $event)"
             @retry-cost="emit('retryCost')"
+            @cost-calls="emit('costCalls', $event)"
           />
         </template>
 

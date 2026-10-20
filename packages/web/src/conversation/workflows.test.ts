@@ -2,14 +2,16 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createApp, effectScope, nextTick } from 'vue'
 import { conversationSummary, productState } from '../__tests__/product-state'
+import { showMetadata } from '../__tests__/shown-metadata'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from '../state/product'
 import { useConversations } from './store'
 import { useConversationWorkflows } from './workflows'
 
 // The Workflow menu's list (`crates/backend-user-shard/src/conversation/workflows.rs`) as the
-// page reads and follows it, against a played backend: the product channel,
-// the workflows routes and the file watch.
+// page reads it, against a played backend: the product channel, the
+// conversation's metadata and the workflows routes. The page never follows
+// the Host for them: no file watch opens.
 // Cost: no network, a fake WebSocket; a few event-loop turns each.
 
 const realFetch = globalThis.fetch
@@ -41,22 +43,29 @@ class WatchSocket extends EventTarget {
   close(): void {}
 }
 
-/** The conversation's summary when it works in `directory` of the laptop. */
-function at(directory: string) {
-  return conversationSummary(CONVERSATION, 'Work', {
-    cwd: directory,
-    target: { kind: 'device', deviceId: LAPTOP, path: directory },
-  })
+/** Moves the conversation `id` to `directory` of the laptop, as its list entry and its metadata tell the page. */
+function moveTo(id: string, title: string, directory: string, connect = false): void {
+  const summary = conversationSummary(id, title, { target: { kind: 'device', deviceId: LAPTOP, path: directory } })
+  if (connect) {
+    channels.last().connect(productState({ devices: [laptop], conversations: [summary] }))
+  } else {
+    channels.last().send({ type: 'conversation', conversation: summary })
+  }
+  showMetadata(id, { cwd: directory })
 }
 
-/** What the backend answers for the workflows of `directory` at its `answer`th read. */
+/** The workflows of `directory` as the backend read them for its `answer`th answer. */
 function workflowsOf(directory: string, answer: number) {
   return {
     directory: `${directory}/.demi/workflows`,
     unavailable: null,
     workflows: [{ id: 'review', name: `Review of ${directory} (${answer})`, path: `${directory}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['explore'] }],
-    watch: [{ kind: 'folder_details', path: `${directory}/.demi/workflows` }],
   }
+}
+
+/** The backend's answer: the list as it read it, with when. */
+function kept(directory: string, answer: number) {
+  return { state: 'read', list: workflowsOf(directory, answer), readAt: '2026-09-10T00:00:00.000Z' }
 }
 
 beforeEach(() => {
@@ -73,8 +82,8 @@ beforeEach(() => {
     if (path.split('?')[0] === `/api/conversations/${CONVERSATION}/workflows`) {
       read.push(path)
       // The backend reads the conversation's directory as it is now.
-      cwd = useProduct().snapshot!.conversations[0]!.cwd
-      return Response.json(workflowsOf(cwd, read.length), { headers: { 'x-demi-read-at': `e.${read.length}` } })
+      cwd = useConversations().metadataOf(CONVERSATION)!.cwd
+      return Response.json(kept(cwd, read.length))
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [], smallModel: null })
@@ -89,7 +98,7 @@ beforeEach(() => {
   Reflect.set(globalThis, 'WebSocket', Object.assign(route, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 }))
   useProduct().start()
   useConversations()
-  channels.last().connect(productState({ devices: [laptop], conversations: [at('/home/ada/repo-a')] }))
+  moveTo(CONVERSATION, 'Work', '/home/ada/repo-a', true)
 })
 
 afterEach(async () => {
@@ -111,47 +120,68 @@ async function until(done: () => boolean): Promise<void> {
   }
 }
 
-test('a conversation moved to another directory of the same Host lists and watches that directory’s workflows', async () => {
+/** The Workflow menu's list of conversation `id`, as the composer holds it. */
+function listOf(id: string) {
   const store = useConversations()
   const scope = effectScope()
-  // Within an app, as the composer is: its views are on screen.
-  const app = createApp({})
-  const list = scope.run(() => app.runWithContext(() =>
-    useConversationWorkflows(() => store.items.find((item) => item.id === CONVERSATION)!)))!
+  // Within an app, as the composer is.
+  const list = scope.run(() => createApp({}).runWithContext(() =>
+    useConversationWorkflows(() => store.items.find((item) => item.id === id)!)))!
+  return { list, scope }
+}
+
+test('a conversation moved to another directory of the same Host lists that directory’s workflows, and follows no Host', async () => {
+  const { list, scope } = listOf(CONVERSATION)
   await until(() => list.value.state === 'read')
   expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a', 1).workflows })
-  await until(() => sockets.length > 0)
-  sockets[0]!.dispatchEvent(new Event('open'))
-  await until(() => sockets[0]!.sent.length > 0)
-  const subscribed = () => sockets.flatMap((socket) => socket.sent.flatMap((message) => message.subscriptions ?? []))
-  expect(subscribed().map((subscription) => subscription.path)).toEqual(['/home/ada/repo-a/.demi/workflows'])
 
   // The user moves the conversation to repo-b on the same laptop.
-  channels.last().send({ type: 'conversation', conversation: at('/home/ada/repo-b') })
+  moveTo(CONVERSATION, 'Work', '/home/ada/repo-b')
   await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b (2)')
   expect(read).toHaveLength(2)
-  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-b', 2).workflows })
-  await until(() => subscribed().length === 2)
-  expect(subscribed().map((subscription) => subscription.path)).toEqual([
-    '/home/ada/repo-a/.demi/workflows',
-    '/home/ada/repo-b/.demi/workflows',
-  ])
-  // Each change is numbered after the reads so far, as the Host's are.
-  // A change in repo-a, which the conversation left, reads nothing; one in
-  // repo-b, told after it, reads the list again. Once that read's answer
-  // shows, any read the first had started has reached the backend before
-  // it: there is none.
-  const key = (path: string) => subscribed().find((subscription) => subscription.path === path)!.key
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key: key('/home/ada/repo-b/.demi/workflows'), since: 0, epoch: 'e' }) }))
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key: key('/home/ada/repo-a/.demi/workflows'), since: 0, epoch: 'e' }) }))
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'changed', changes: [[key('/home/ada/repo-a/.demi/workflows'), read.length + 1]] }) }))
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'changed', changes: [[key('/home/ada/repo-b/.demi/workflows'), read.length + 1]] }) }))
-  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b (3)')
-  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-b', 3).workflows })
-  expect(read).toHaveLength(3)
+  expect(sockets).toEqual([])
   scope.stop()
 })
 
+// The backend reads the list again when the Host reports a change, and
+// raises the revision the conversation's metadata carries: the page reads
+// the list then, and at no other change of the metadata.
+test('a page reads the list again when the metadata names a newer revision, and only then', async () => {
+  const { list, scope } = listOf(CONVERSATION)
+  await until(() => list.value.state === 'read')
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 1 })
+  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-a (2)')
+  // Another change of the metadata, at the same revision.
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 1, savedRevision: 4 })
+  await nextTick()
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 2 })
+  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-a (3)')
+  expect(read).toHaveLength(3)
+  expect(sockets).toEqual([])
+  scope.stop()
+})
+
+// The backend answers at once, never waiting on the Host: before its first
+// read it says it knows nothing yet, and announces the read when it comes.
+test('a list the backend has not read yet reads until the backend announces it', async () => {
+  const answers = [{ state: 'unknown' }, kept('/home/ada/repo-a', 2)]
+  globalThis.fetch = (async (input) => {
+    const path = String(input)
+    if (path !== `/api/conversations/${CONVERSATION}/workflows`) {
+      throw new Error(`Unexpected request: ${path}`)
+    }
+    read.push(path)
+    return Response.json(answers[read.length - 1])
+  }) as typeof fetch
+  const { list, scope } = listOf(CONVERSATION)
+  await until(() => read.length === 1)
+  await nextTick()
+  expect(list.value).toEqual({ state: 'reading' })
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 1 })
+  await until(() => list.value.state === 'read')
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a', 2).workflows })
+  scope.stop()
+})
 test('a new conversation in a Cloud project reads its project’s workflows and keeps the one the project remembers', async () => {
   const product = useProduct()
   const app = {
@@ -169,7 +199,7 @@ test('a new conversation in a Cloud project reads its project’s workflows and 
     if (path.startsWith(`/api/devices/${CLOUD}/workflows?`)) {
       read.push(path)
       await answered
-      return Response.json(workflowsOf('/home/demi/projects/app', 1), { headers: { 'x-demi-read-at': 'e.1' } })
+      return Response.json(kept('/home/demi/projects/app', 1))
     }
     return backend(input, init)
   }) as typeof fetch
@@ -189,90 +219,5 @@ test('a new conversation in a Cloud project reads its project’s workflows and 
   await until(() => list.value.state === 'read')
   expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
   expect(product.snapshot!.workspaces[0]!.lastWorkflow).toEqual({ type: 'workflow', id: 'review' })
-  scope.stop()
-})
-
-test('a watch that went live after the list was read reads it once more, after its number, and then rests', async () => {
-  // The backend answers from the search it keeps, with that search's
-  // number, unless the page asks for one read at or after a number: then it
-  // searches again and answers with the new one.
-  // A conversation and directory of its own: the kept files and the
-  // watches of the page outlive a test.
-  const other = '7b2e3d4c-5f60-4b7c-9d8e-0f1a2b3c4d5e'
-  channels.last().send({ type: 'conversation', conversation: conversationSummary(other, 'Other', {
-    cwd: '/home/ada/repo-c',
-    target: { kind: 'device', deviceId: LAPTOP, path: '/home/ada/repo-c' },
-  }) })
-  const asked: string[] = []
-  globalThis.fetch = (async (input) => {
-    const url = new URL(String(input), 'http://backend')
-    if (url.pathname !== `/api/conversations/${other}/workflows`)
-      throw new Error(`Unexpected request: ${url}`)
-    asked.push(url.search)
-    // On a later turn, as a network answer comes: a page that asks again
-    // without end then still lets the test see it.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    const after = url.searchParams.get('readAfter')
-    return Response.json(workflowsOf('/home/ada/repo-c', asked.length), { headers: { 'x-demi-read-at': after ?? 'e.10' } })
-  }) as typeof fetch
-  const store = useConversations()
-  const scope = effectScope()
-  const list = scope.run(() => createApp({}).runWithContext(() =>
-    useConversationWorkflows(() => store.items.find((item) => item.id === other)!)))!
-  await until(() => list.value.state === 'read')
-  await until(() => sockets.length > 0)
-  sockets[0]!.dispatchEvent(new Event('open'))
-  await until(() => sockets[0]!.sent.length > 0)
-  const key = sockets[0]!.sent.flatMap((message) => message.subscriptions ?? [])[0]!.key
-  // The Host watches the folder from 11, after the answer held, read at 10.
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key, since: 11, epoch: 'e' }) }))
-  await until(() => asked.length > 2)
-  expect(asked).toEqual(['', '?readAfter=e.11'])
-  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-c', 2).workflows })
-  scope.stop()
-})
-
-test('a conversation whose Host does not run offers no workflows and reads them once its watch goes live', async () => {
-  // The backend holds no search while the Host does not run: no workflows,
-  // no number, and the working directory to watch. Once the Host runs, the
-  // watch goes live and the page asks for an answer read after it.
-  const other = '8c3f4e5d-6071-4c8d-8e9f-1a2b3c4d5e6f'
-  channels.last().send({ type: 'conversation', conversation: conversationSummary(other, 'Asleep', {
-    cwd: '/home/ada/repo-d',
-    target: { kind: 'device', deviceId: LAPTOP, path: '/home/ada/repo-d' },
-  }) })
-  const asked: string[] = []
-  globalThis.fetch = (async (input) => {
-    const url = new URL(String(input), 'http://backend')
-    if (url.pathname !== `/api/conversations/${other}/workflows`)
-      throw new Error(`Unexpected request: ${url}`)
-    asked.push(url.search)
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    const after = url.searchParams.get('readAfter')
-    if (after === null) {
-      return Response.json({
-        directory: null,
-        unavailable: null,
-        workflows: [],
-        watch: [{ kind: 'folder_names', path: '/home/ada/repo-d' }],
-      })
-    }
-    return Response.json(workflowsOf('/home/ada/repo-d', asked.length), { headers: { 'x-demi-read-at': after } })
-  }) as typeof fetch
-  const store = useConversations()
-  const scope = effectScope()
-  const list = scope.run(() => createApp({}).runWithContext(() =>
-    useConversationWorkflows(() => store.items.find((item) => item.id === other)!)))!
-  await until(() => list.value.state === 'read')
-  expect(list.value).toEqual({ state: 'read', workflows: [] })
-  await until(() => sockets.length > 0)
-  sockets[0]!.dispatchEvent(new Event('open'))
-  await until(() => sockets[0]!.sent.some((message) => message.subscriptions?.some((subscription) => subscription.path === '/home/ada/repo-d')))
-  const key = sockets[0]!.sent.flatMap((message) => message.subscriptions ?? [])
-    .find((subscription) => subscription.path === '/home/ada/repo-d')!.key
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key, since: 3, epoch: 'e' }) }))
-  await until(() => asked.length > 2)
-  expect(asked).toEqual(['', '?readAfter=e.3'])
-  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-d', 2).workflows })
   scope.stop()
 })

@@ -86,7 +86,7 @@ import FileView from '@demicodes/web-ui/files/FileView.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides, QUOTED_CODE, SLOT_ROOT } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
-import { galleryAttachmentOrigin, galleryConversationFiles, namedFilesMarkdown } from '../fixtures/message-files'
+import { galleryAttachmentOrigin, galleryConversationFiles, namedCodeFiles, namedFilesMarkdown } from '../fixtures/message-files'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
@@ -2212,7 +2212,7 @@ onBeforeUnmount(() => {
         note="Every link in a message wears an icon, so each reads as the kind of thing it opens. A file of the Host a reply names is a link with the file's icon before its name, the icon the file tree shows, and 0.2em of space on each side, outside its underline, as an agent's link has; a commit link, [text](commit:3f2a9c1), or [text](commit:vendor/parser@3f2a9c1) for a commit of the repository in that folder, read as a relative link's path is, shows the commit icon the branch menu uses for a detached head before its text, spaced the same way, and a click opens the commit in the Change view of the frame's panel; a web page's link shows the link icon, spaced the same way, and opens in a new tab; a link whose text is an image, as a badge's is, wears none. A click on a file opens it in the File view of the frame's panel, and a #L42 after the path opens it at line 42, scrolled there and marked for a moment as a search result is. A link's color says where it leads: a web page's link is in the accent color, as a link on a page is, while a file's and a commit's read as part of the sentence, in the prose's color over a faint underline, as an agent's does, told apart by their icons, the commit icon in orange as Git's own mark; fixed colors for each kind would meet the accent the user picks (Settings › Appearance), an orange accent making the web's links read as commits. A link is one color: code in its text drops code's look and reads as the link's words, in the link's color, while code outside a link keeps its own; a Markdown document's links wear no icon and keep code's monospace and fill in the link's color (Markdown, Edge Cases, Shown As Document). Inline code that reads as a path, one with a slash or a name with an extension and an optional :line, opens too when the Host has the file, as a link of words with the file's icon: the page asks the Host once for the reply's paths together, after the reply is complete. Here the gallery answers for the Host from its demo workspace, so src/auth/token.ts, which it lacks, stays code; a bare name such as cookie is never asked about."
       >
         <GallerySpecimen variant="links, a line, code in links, code paths the Host has and lacks" wide>
-          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="namedFilesMarkdown" />
+          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="namedFilesMarkdown" :code-files="namedCodeFiles(workspace.root)" />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
@@ -3234,6 +3234,7 @@ onBeforeUnmount(() => {
           <SubagentPanel
             :agent-cost="() => agentCost.cost.value"
             @retry-agent-cost="agentCost.retry"
+            @agent-cost-calls="(_id, wanted) => agentCost.calls(wanted)"
             v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
             :agents="agents"
@@ -3269,6 +3270,7 @@ onBeforeUnmount(() => {
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
               @retry-cost="agentCost.retry"
+              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3284,21 +3286,7 @@ onBeforeUnmount(() => {
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
               @retry-cost="agentCost.retry"
-              @compact="agentContext.compact"
-              @open-instruction="agentContext.openInstruction"
-              @refresh-limits="agentContext.refresh"
-            />
-          </GallerySpecimen>
-          <GallerySpecimen variant="while the child's cost is read · the context indicator waits for it">
-            <AgentStatusBar
-              class="w-[46rem]"
-              :run="runLines[2]!"
-              :usage="runLines[2]!.contextUsage"
-              v-bind="agentCompaction(runLines[2]!)"
-              :instructions="[]"
-              :limits="agentContext.limits.value"
-              :cost="null"
-              @retry-cost="agentCost.retry"
+              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3314,6 +3302,7 @@ onBeforeUnmount(() => {
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
               @retry-cost="agentCost.retry"
+              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3329,6 +3318,7 @@ onBeforeUnmount(() => {
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
               @retry-cost="agentCost.retry"
+              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3344,6 +3334,7 @@ onBeforeUnmount(() => {
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
               @retry-cost="agentCost.retry"
+              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3362,6 +3353,7 @@ onBeforeUnmount(() => {
           <SubagentPanel
             :agent-cost="() => agentCost.cost.value"
             @retry-agent-cost="agentCost.retry"
+            @agent-cost-calls="(_id, wanted) => agentCost.calls(wanted)"
             v-model:open="briefOpen"
             v-model:active-id="briefAgentId"
             :agents="briefAgents"
@@ -3472,6 +3464,7 @@ onBeforeUnmount(() => {
               <SubagentPanel
                 :agent-cost="() => agentCost.cost.value"
                 @retry-agent-cost="agentCost.retry"
+                @agent-cost-calls="(_id, wanted) => agentCost.calls(wanted)"
                 v-model:open="coverOpen"
                 v-model:active-id="coverAgentId"
                 :agents="agents"

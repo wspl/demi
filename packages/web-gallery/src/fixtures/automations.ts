@@ -1,6 +1,6 @@
 import type { Block } from '@demicodes/protocol'
 import type { Automation, AutomationConversation, AutomationHost, AutomationRun, AutomationTask, HolidayCountry } from '@demicodes/web-ui/automations/types'
-import { demoModel } from './blocks'
+import { demoModel, inRequests } from './blocks'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import { GALLERY_MARKS, shownAmong } from './device-marks'
 import { DAY, HOUR, MINUTE, ago } from './time'
@@ -369,7 +369,7 @@ export function runConversationBlocks(automation: Automation, run: AutomationRun
   if (reply) {
     blocks.push({ type: 'text', id: `${run.id}-answer`, createdAt: new Date(new Date(asked).getTime() + 40_000).toISOString(), model: demoModel, text: reply })
   }
-  return blocks
+  return inRequests(blocks)
 }
 
 /** The conversations automations wake, as the sidebar lists them: one woken by one automation, one by two. */
@@ -407,5 +407,5 @@ export function wokenConversationBlocks(automation: Automation): Block[] {
     },
     { type: 'text', id: `${automation.id}-start-answer`, createdAt: ago(3 * DAY - 30_000), model: demoModel, text: 'Sure. Each time it wakes me I’ll compare with what we have here.' },
   ]
-  return run ? [...start, ...runConversationBlocks(automation, run)] : start
+  return inRequests(run ? [...start, ...runConversationBlocks(automation, run)] : start)
 }

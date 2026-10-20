@@ -1,10 +1,11 @@
 //! A conversation's history read a page at a time.
 //!
-//! - Pages of whole requests from the latest back.
+//! - Pages that fit a page's bytes, from the latest back.
 //! - A page around a block.
 //! - The refusal of a page whose edge moved.
 //! - The light form and a block read whole.
 
+use demi_conversation_socket_protocol::{PAGE_BYTES, least_light_bytes};
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::Block;
 use demi_web_api_protocol::conversations::{TranscriptPage, WholeBlock};
@@ -17,17 +18,19 @@ use crate::support::{Harness, Session, TestBackend};
 
 async fn page(backend: &TestBackend, session: &Session, query: &str) -> TranscriptPage {
     let read = backend
-        .get(&format!("/api/conversations/{FIRST}/transcript{query}"), Some(session))
+        .get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript{query}"), Some(session))
         .await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     read.json()
 }
 
-// Four requests whose answers are each past half a page: the latest page
-// holds the last request alone, and each page before it one more, back to
-// the start; the page around a block holds that block's request.
+// Four requests whose answers are each past half a page: each page holds
+// the blocks that fit in a page's bytes past its first, wherever a request
+// begins (`crates/conversation-socket-protocol/src/transcript.rs`), and the
+// pages before the latest go back to the start, each ending where the one
+// after it starts; the page around a block holds that block.
 #[tokio::test]
-async fn a_long_conversation_reads_in_pages_of_whole_requests() {
+async fn a_long_conversation_reads_in_pages_that_fit_a_pages_bytes() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -44,9 +47,16 @@ async fn a_long_conversation_reads_in_pages_of_whole_requests() {
     // Every block, as the pages and the block reads give them back.
     let live = transcript(&backend, &master, FIRST).await.blocks;
 
+    let fits = |blocks: &[Block]| {
+        let past_first: usize = blocks[1..].iter().map(least_light_bytes).sum();
+        assert!(past_first <= PAGE_BYTES, "{past_first} bytes past the first block");
+    };
     let latest = page(&backend, &master, "").await;
     assert_eq!(latest.length as usize, live.len());
-    assert_eq!(kinds(&latest.blocks), ["user", "text", "response"]);
+    fits(&latest.blocks);
+    // The last answer's request and the block before it: the answer before
+    // that does not fit.
+    assert_eq!(kinds(&latest.blocks), ["response", "user", "text", "response"]);
     assert_eq!(latest.start as usize + latest.blocks.len(), live.len());
 
     // Back to the start, each page ends where the one after it starts.
@@ -57,13 +67,14 @@ async fn a_long_conversation_reads_in_pages_of_whole_requests() {
         let before = page(&backend, &master, &format!("?before={start}&edge={edge}")).await;
         assert_eq!(before.start as usize + before.blocks.len(), start as usize);
         assert_eq!(before.blocks[0].id(), live[before.start as usize].id());
+        fits(&before.blocks);
         start = before.start;
         edge = before.blocks[0].id().clone();
         pages += 1;
     }
-    assert_eq!(pages, 4);
+    assert!(pages >= 4, "{pages} pages");
 
-    // Around the second answer: its request, which starts with the second message.
+    // Around the second answer: a page that holds it.
     let second = live
         .iter()
         .filter(|block| matches!(block, Block::Text(_)))
@@ -73,23 +84,23 @@ async fn a_long_conversation_reads_in_pages_of_whole_requests() {
         .clone();
     let around = page(&backend, &master, &format!("?around={second}")).await;
     assert!(around.blocks.iter().any(|block| block.id() == &second));
-    assert!(matches!(&around.blocks[0], Block::User(_)));
+    fits(&around.blocks);
 
     // An edge that is no longer at its index: the transcript changed under the page.
     let moved = backend
         .get(
-            &format!("/api/conversations/{FIRST}/transcript?before={}&edge={second}", latest.start),
+            &format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript?before={}&edge={second}", latest.start),
             Some(&master),
         )
         .await;
     assert_eq!(moved.refusal(), (StatusCode::CONFLICT, ErrorCode::TranscriptChanged));
     let missing = backend
-        .get(&format!("/api/conversations/{FIRST}/transcript?around=no-such-block"), Some(&master))
+        .get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript?around=no-such-block"), Some(&master))
         .await;
     assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::BlockNotFound));
     let both = backend
         .get(
-            &format!("/api/conversations/{FIRST}/transcript?before=1&edge={second}&around={second}"),
+            &format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript?before=1&edge={second}&around={second}"),
             Some(&master),
         )
         .await;
@@ -123,7 +134,7 @@ async fn a_page_leaves_out_what_only_an_open_row_shows_and_a_block_reads_whole()
 
     let read = backend
         .get(
-            &format!("/api/conversations/{FIRST}/transcript/blocks/{}", light.id),
+            &format!("/api/conversations/{FIRST}/agents/{FIRST}/blocks/{}", light.id),
             Some(&master),
         )
         .await;

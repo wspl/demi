@@ -498,13 +498,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     // The turn was running before the steer's answer came.
     socket
         .until(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Phase {
-                    subagent_id: None,
-                    phase: SessionPhase::Idle
-                }
-            )
+            crate::conversations::root_phase(frame) == Some(SessionPhase::Idle)
         })
         .await;
     let continued = vendor.requests()[3].json()["messages"].to_string();
@@ -523,7 +517,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     else {
         unreachable!()
     };
-    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+    socket.resubscribe().await;
     let synced = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;

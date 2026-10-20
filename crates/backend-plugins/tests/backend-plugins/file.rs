@@ -15,7 +15,7 @@ use demi_provider_common::{
 use demi_shared_types::FileExtension;
 
 use crate::support::{
-    Fixture, is_idle, reply, resident, scripts, turn, within,
+    Fixture, reply, resident, scripts, turn, within,
 };
 
 /// The results of running `scripts` in one message, with `prepare` run on
@@ -344,7 +344,7 @@ async fn report_with_image(
         if let Some(parts) = requests.borrow().iter().find_map(user_parts) {
             return parts;
         }
-        client.next_until(is_idle).await;
+        client.until_idle().await;
     }
 }
 

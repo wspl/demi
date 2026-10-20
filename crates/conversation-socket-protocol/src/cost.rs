@@ -1,9 +1,7 @@
-//! A conversation's cost as the context card shows it: the token and price
-//! totals of its ledger rows, each agent's price and the main conversation's
-//! turn calls with their cache misses.
-//!
-//! `GET /api/conversations/:id/cost` answers them whole, and the `cost` frame
-//! carries what one new row adds to them.
+//! A conversation's cost as the context card shows it: each agent's kept
+//! totals with its metadata, the conversation's with its own, and an agent's
+//! turn calls with their cache misses, which the cache chart reads when it
+//! opens (`crates/backend-database/src/usage.rs`).
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use schemars::JsonSchema;
@@ -48,27 +46,25 @@ pub struct CostPrice {
     pub output: Option<f64>,
 }
 
-/// One agent's price: the main conversation's, agent 0, or a subagent's,
-/// with the profile it was started with.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+/// What one agent's rows cost, kept as they are written: their totals, and
+/// how many turn calls it made, which tells a page holding its calls whether
+/// it holds them all.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCost {
+    #[garde(dive)]
+    pub totals: CostTotals,
     #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub agent: u64,
-    /// The profile the subagent was started with; null for none and for the
-    /// main conversation.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub profile: Option<String>,
-    #[garde(skip)]
-    pub price: f64,
+    pub calls: u64,
 }
 
-/// One turn call of the main conversation, as the cache chart plots it.
+/// One turn call of an agent, as the cache chart plots it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct CostCall {
+    /// Its number among its agent's turn calls, from 1.
+    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
+    pub number: u64,
     #[garde(skip)]
     pub started_at: Timestamp,
     #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -82,8 +78,8 @@ pub struct CostCall {
     #[schemars(with = "Nullable<f64>")]
     #[garde(skip)]
     pub price: Option<f64>,
-    /// The main conversation answered a compaction between this call and
-    /// the previous one, so the call starts a new prompt.
+    /// Its agent answered a compaction between this call and the previous
+    /// one, so the call starts a new prompt.
     #[garde(skip)]
     pub after_compaction: bool,
     /// Why the call wrote again what an earlier call had cached; null when
@@ -109,3 +105,6 @@ pub enum CacheMiss {
     /// None of the above: the vendor dropped or never stored the prompt.
     NotCached,
 }
+
+serde_plain::derive_display_from_serialize!(CacheMiss);
+serde_plain::derive_fromstr_from_deserialize!(CacheMiss);

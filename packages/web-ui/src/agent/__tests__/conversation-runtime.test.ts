@@ -7,7 +7,12 @@ import { ConversationSocketError, connectConversationClient } from '../../transp
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
 import { ConversationClient, EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
-import { clientHarness, createdAt, model, userBlock } from './agent-harness'
+import { agentsFrame, clientHarness, createdAt, model, rootEntry, subagentEntry, userBlock } from './agent-harness'
+
+/** The root's entry with its session in `phase`, as the whole agents. */
+function phase(phase: RuntimeState['phase']) {
+  return agentsFrame([rootEntry('conversation', phase)])
+}
 
 function state(): RuntimeState {
   return {
@@ -41,9 +46,9 @@ test('the current edit version reacts to connection, snapshots, patches and disc
   const version = computed(() => runtime.transcriptVersion())
   expect(version.value).toBeNull()
   await runtime.connect()
-  h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+  h.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
   expect(version.value).toEqual({ epoch: 'epoch', revision: 1 })
-  h.receive({ type: 'transcript_patch', revision: 2, patches: [{ op: 'truncate', length: 0 }] })
+  h.receive({ type: 'transcript_patch', node: 'conversation', revision: 2, patches: [{ op: 'truncate', length: 0 }] })
   expect(version.value).toEqual({ epoch: 'epoch', revision: 2 })
   runtime.dispose()
   expect(version.value).toBeNull()
@@ -57,11 +62,12 @@ test('the usage the composer shows is the one the session reports, not one read 
   try {
     // A response before the compaction still measures the history the summary
     // replaced.
-    h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
-    h.receive({ type: 'context_usage', node: 'conversation', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [], account: null } })
-    expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [], account: null })
+    h.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+    const usage = { tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [], account: null }
+    h.receive(agentsFrame([rootEntry('conversation', 'idle', { context: usage })]))
+    expect(current.contextUsage).toEqual(usage)
     // A subagent's usage is its record's, never the composer's.
-    h.receive({ type: 'context_usage', node: 'child', usage: { tokens: 70_000, window: 100_000, compactFrom: 50_000, rows: [], account: null } })
+    h.receive({ type: 'agent', revision: 2, agent: subagentEntry('child', 'conversation', 'running', { context: { ...usage, tokens: 70_000 } }) })
     expect(current.contextUsage?.tokens).toBe(6_000)
   } finally {
     runtime.dispose()
@@ -76,6 +82,7 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
     await runtime.connect()
     h.receive({
       type: 'transcript_reset',
+      node: 'conversation',
       start: 0,
       length: 1,
       version: { epoch: 'epoch', revision: 1 },
@@ -133,7 +140,7 @@ test('disposing an open view detaches without sending task-close or abort comman
   await runtime.connect()
   expect(current.load).toBe('ready')
   runtime.dispose()
-  expect(h.sent.map((frame) => frame.type)).toEqual(['open'])
+  expect(h.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open'])
   await expect(runtime.connect()).rejects.toThrow('disposed')
 })
 
@@ -148,13 +155,14 @@ test('retry reconciles an already accepted message before submitting again', asy
     await runtime.connect()
     h.receive({
       type: 'transcript_reset',
+      node: 'conversation',
       start: 0,
       length: 1,
       version: { epoch: 'runtime-test', revision: 1 },
       blocks: [userBlock('user-block', 'persisted-message', 'Already accepted')],
     })
     await runtime.submit([{ type: 'text', text: 'Already accepted' }], 'persisted-message')
-    expect(h.sent.map((frame) => frame.type)).toEqual(['open'])
+    expect(h.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open'])
   } finally {
     runtime.dispose()
   }
@@ -167,13 +175,14 @@ test('send now on a pending steer or a queued message stops nothing and never tu
   try {
     await runtime.connect()
     const steer: PendingSteer = { id: 'steer', turnId: 'turn', model, content: [{ type: 'text', text: 'now' }] }
-    h.receive({ type: 'phase', phase: 'running' })
+    h.receive(phase('running'))
     h.receive({ type: 'pending_steers', pendingSteers: [steer] })
     h.receive({ type: 'queue', queue: [{ id: 'queued', content: [{ type: 'text', text: 'next' }] }] })
     await runtime.interruptPendingSteer('steer')
     await runtime.sendQueuedNow('queued')
     // The session cuts the running round short itself: no Stop, no Continue.
     expect(h.sent).toEqual([
+      { type: 'subscribe', node: 'conversation' },
       { type: 'open' },
       { type: 'steer_now', steerId: 'steer' },
       { type: 'send_queued_message', messageId: 'queued' },
@@ -198,18 +207,18 @@ test.each([
   const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
   try {
     await runtime.connect()
-    h.receive({ type: 'phase', phase: 'running' })
+    h.receive(phase('running'))
     h.receive({ type: 'pending_steers', pendingSteers: kind === 'steer' ? [{ id: 'm', turnId: 'turn-1', model, content }] : [] })
     h.receive({ type: 'queue', queue: kind === 'queued' ? [{ id: 'm', content }] : [] })
     let settled = false
     const removal = runtime.removeWaiting('m').then(() => 'removed', (error: unknown) => error).finally(() => {
       settled = true
     })
-    await waitFor(() => h.sent.length > 1)
+    await waitFor(() => h.sent.length > 2)
     expect(h.sent.at(-1)).toEqual(kind === 'steer' ? { type: 'cancel_pending_steer', steerId: 'm' } : { type: 'dequeue_message', messageId: 'm' })
     // The list's frame comes first, and the agent going idle tells nothing.
     h.receive(kind === 'steer' ? { type: 'pending_steers', pendingSteers: [] } : { type: 'queue', queue: [] })
-    h.receive({ type: 'phase', phase: 'idle' })
+    h.receive(phase('idle'))
     await turn()
     expect(settled).toBe(false)
     h.receive({ type: 'remove_result', id: 'm', outcome })
@@ -243,7 +252,7 @@ for (const fate of ['removed', 'gone on', 'still listed'] as const) {
       await turn()
       lost.receive({ type: 'opened' })
       await opening
-      lost.receive({ type: 'phase', phase: 'running' })
+      lost.receive(phase('running'))
       lost.receive({ type: 'pending_steers', pendingSteers: [steer] })
       const removal = runtime.removeWaiting('s').then(() => 'removed', (error: unknown) => error)
       await turn()
@@ -258,18 +267,18 @@ for (const fate of ['removed', 'gone on', 'still listed'] as const) {
       next.receive({ type: 'opened' })
       await turn()
       const written = { type: 'steer' as const, id: 's', turnId: 'turn', createdAt, model, content }
-      next.receive({ type: 'transcript_reset', start: 0, length: fate === 'gone on' ? 1 : 0, version: { epoch: 'epoch', revision: 1 }, blocks: fate === 'gone on' ? [written] : [] })
-      next.receive({ type: 'phase', phase: 'running' })
+      next.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: fate === 'gone on' ? 1 : 0, version: { epoch: 'epoch', revision: 1 }, blocks: fate === 'gone on' ? [written] : [] })
+      next.receive(phase('running'))
       next.receive({ type: 'queue', queue: [] })
       next.receive({ type: 'pending_steers', pendingSteers: fate === 'still listed' ? [steer] : [] })
       await turn()
       if (fate === 'still listed') {
         // Asked again on the new connection, and settled on its answer.
-        expect(next.sent).toEqual([{ type: 'open' }, { type: 'cancel_pending_steer', steerId: 's' }])
+        expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }, { type: 'cancel_pending_steer', steerId: 's' }])
         next.receive({ type: 'pending_steers', pendingSteers: [] })
         next.receive({ type: 'remove_result', id: 's', outcome: 'removed' })
       } else {
-        expect(next.sent).toEqual([{ type: 'open' }])
+        expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
       }
       const result = await removal
       if (fate === 'gone on') {
@@ -293,7 +302,7 @@ test('a steer the session accepts waits as a pending steer, and one it refuses, 
   const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
   try {
     await runtime.connect()
-    h.receive({ type: 'phase', phase: 'running' })
+    h.receive(phase('running'))
     const accepted = runtime.steer(content, 'first')
     await waitFor(() => h.sent.at(-1)?.type === 'steer')
     expect(h.sent.at(-1)).toEqual({ type: 'steer', steerId: 'first', content })
@@ -307,7 +316,7 @@ test('a steer the session accepts waits as a pending steer, and one it refuses, 
     expect(h.sent.at(-1)).toEqual({ type: 'send', messageId: 'second', content })
     h.receive({ type: 'queue', queue: [{ id: 'second', content }] })
     await refused
-    expect(h.sent.map((frame) => frame.type)).toEqual(['open', 'steer', 'steer', 'send'])
+    expect(h.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open', 'steer', 'steer', 'send'])
     expect(current.lastError).toBeNull()
   } finally {
     runtime.dispose()
@@ -333,7 +342,7 @@ for (const held of [true, false]) {
       await turn()
       lost.receive({ type: 'opened' })
       await opening
-      lost.receive({ type: 'phase', phase: 'running' })
+      lost.receive(phase('running'))
       lost.receive({ type: 'pending_steers', pendingSteers: [] })
       let settled = false
       const steering = runtime.steer(content, 'steer').finally(() => {
@@ -354,17 +363,17 @@ for (const held of [true, false]) {
       next.receive({ type: 'opened' })
       await turn()
       // Nothing goes before the session has shown what it holds.
-      expect(next.sent).toEqual([{ type: 'open' }])
-      next.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
-      next.receive({ type: 'phase', phase: 'running' })
+      expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
+      next.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+      next.receive(phase('running'))
       next.receive({ type: 'queue', queue: [] })
       next.receive({ type: 'pending_steers', pendingSteers: held ? [steer] : [] })
       await turn()
       if (held) {
         await steering
-        expect(next.sent).toEqual([{ type: 'open' }])
+        expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
       } else {
-        expect(next.sent).toEqual([{ type: 'open' }, { type: 'send', messageId: 'steer', content }])
+        expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }, { type: 'send', messageId: 'steer', content }])
         next.receive({ type: 'queue', queue: [{ id: 'steer', content }] })
         await steering
       }
@@ -399,7 +408,7 @@ test('a view whose tree another client disposed opens it again after the first w
     await turn()
     expect(current.load).toBe('ready')
     expect(connects).toBe(2)
-    expect(harnesses[1]!.sent.map((frame) => frame.type)).toEqual(['open'])
+    expect(harnesses[1]!.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open'])
     expect(runtime.connected).toBe(true)
   } finally {
     random.mockRestore()
@@ -414,14 +423,14 @@ test('a failure the session reported is over once another tab starts the next ac
   const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
   try {
     await runtime.connect()
-    h.receive({ type: 'phase', phase: 'running' })
+    h.receive(phase('running'))
     h.receive({ type: 'error', message: 'The provider failed', code: 'provider_error' })
-    h.receive({ type: 'phase', phase: 'idle' })
+    h.receive(phase('idle'))
     expect({ ...current.lastError }).toEqual({ message: 'The turn failed.', requestId: null })
     // Another tab sends: this tab hears only the session start the next action.
-    h.receive({ type: 'phase', phase: 'running' })
+    h.receive(phase('running'))
     expect(current.lastError).toBeNull()
-    expect(h.sent.map((frame) => frame.type)).toEqual(['open'])
+    expect(h.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open'])
   } finally {
     runtime.dispose()
   }
@@ -487,7 +496,7 @@ test('a connection lost before the session answered opens the conversation again
     const lost = sockets.last()
     lost.open()
     await turn()
-    expect(lost.sent).toEqual([{ type: 'open' }])
+    expect(lost.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
     lost.end()
     await turn()
     expect(current.load).toBe('connecting')
@@ -554,11 +563,13 @@ test('a message whose socket is lost before the session confirmed it waits for t
     next.receive({ type: 'opened' })
     await turn()
     expect(next.sent).toEqual([
+      { type: 'subscribe', node: 'conversation' },
       { type: 'open' },
       { type: 'send', messageId: 'message', content: [{ type: 'text', text: 'Hello' }] },
     ])
     next.receive({
       type: 'transcript_reset',
+      node: 'conversation',
       start: 0,
       length: 1,
       version: { epoch: 'epoch', revision: 1 },
@@ -604,9 +615,10 @@ test('a saved message whose socket is lost before the session took it goes again
     await turn()
     next.receive({ type: 'opened' })
     await turn()
-    expect(next.sent).toEqual([{ type: 'open' }, { type: 'send_saved', id: 'saved', turnId: 'turn', delivery: 'message' }])
+    expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }, { type: 'send_saved', id: 'saved', turnId: 'turn', delivery: 'message' }])
     next.receive({
       type: 'transcript_reset',
+      node: 'conversation',
       start: 0,
       length: 1,
       version: { epoch: 'epoch', revision: 1 },
@@ -679,7 +691,7 @@ test('a page back from sleep breaks a conversation socket that still waits for i
     const slept = sockets.last()
     slept.open()
     await turn()
-    expect(slept.sent).toEqual([{ type: 'open' }])
+    expect(slept.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
     // The laptop sleeps for 80 seconds before the session answers `open`.
     jest.setSystemTime(Date.now() + 80_000)
     pageReturned()
@@ -749,20 +761,19 @@ test('the handshake\'s frames are applied once the session opens and are not kep
 
 // A page that hides a child while its open's handshake is on its way lets go of
 // the child's transcript (`crates/agent-server/src/server/tree.rs`). The reset
-// the handshake held for it revived it, stale from then on. A side question's
-// transcript, which no page names, still comes. Cost: one opening.
-test('a child the page hides while the handshake arrives takes nothing of it, and a side question its own', async () => {
+// the handshake held for it revived it, stale from then on. Cost: one opening.
+test('a child the page hides while the handshake arrives takes nothing of it', async () => {
   let shown = ['child']
   let deliver: (frame: unknown) => void = () => {}
   const sent: string[] = []
-  const reset = (subagentId: string) => ({ type: 'subagent_transcript_reset', subagentId, start: 0, length: 0, blocks: [], revision: 1 })
+  const reset = (node: string) => ({ type: 'transcript_reset', node, start: 0, length: 0, blocks: [], version: { epoch: 'e', revision: 1 } })
   const client = new ConversationClient({
     send(frame) {
-      sent.push(frame.type === 'show_subagents' ? `show ${frame.ids.join(',')}` : frame.type)
+      sent.push(frame.type === 'subscribe' || frame.type === 'unsubscribe' ? `${frame.type} ${frame.node}` : frame.type)
       if (frame.type === 'open') {
         deliver({ type: 'opened' })
+        deliver(reset('conversation'))
         deliver(reset('child'))
-        deliver(reset('side'))
         // The user closes the Agents window before the session has opened.
         shown = []
       }
@@ -778,18 +789,18 @@ test('a child the page hides while the handshake arrives takes nothing of it, an
   const runtime = new ConversationRuntime({
     state: state(),
     connect: async () => client,
-    shownSubagents: () => shown,
+    nodes: () => shown,
     onEvent: (event) => {
-      if (event.type === 'subagent_transcript_reset') {
-        applied.push(event.subagentId)
+      if (event.type === 'transcript_reset') {
+        applied.push(event.node)
       }
     },
   })
   try {
     await runtime.connect()
 
-    expect(sent).toEqual(['show child', 'open', 'show '])
-    expect(applied).toEqual(['side'])
+    expect(sent).toEqual(['subscribe conversation', 'subscribe child', 'open', 'unsubscribe child'])
+    expect(applied).toEqual(['conversation'])
   } finally {
     runtime.dispose()
   }
@@ -851,9 +862,9 @@ test('a resume is pending from the request until the next phase event', async ()
   const resumed = runtime.resume()
   expect(s.pendingAction).toBe('resume')
   await waitFor(() => h.sent.at(-1)?.type === 'resume')
-  h.receive({ type: 'phase', phase: 'running' })
+  h.receive(phase('running'))
   expect(s.pendingAction).toBeNull()
-  h.receive({ type: 'phase', phase: 'idle' })
+  h.receive(phase('idle'))
   await resumed
   expect(s.pendingAction).toBeNull()
 })
@@ -863,7 +874,7 @@ test('the agent\'s own retries change nothing the page shows: the row keeps sayi
   const s = state()
   const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
-  h.receive({ type: 'phase', phase: 'running' })
+  h.receive(phase('running'))
   const before = structuredClone(s)
   h.receive({ type: 'retry_scheduled', attempt: 1, delayMs: 1000, code: 'overloaded' })
   expect(s).toEqual(before)
@@ -876,15 +887,15 @@ test('failure facts arrive beside the transcript and accumulate across patches a
   const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
-  h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [], failures: { first: lifts } })
+  h.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [], failures: { first: lifts } })
   expect(s.failures).toEqual({ first: lifts })
-  h.receive({ type: 'transcript_patch', revision: 2, patches: [], failures: { second: { retryAt: null } } })
+  h.receive({ type: 'transcript_patch', node: 'conversation', revision: 2, patches: [], failures: { second: { retryAt: null } } })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
-  h.receive({ type: 'transcript_patch', revision: 3, patches: [] })
+  h.receive({ type: 'transcript_patch', node: 'conversation', revision: 3, patches: [] })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
   // A reset brings the blocks from its start; the page may hold the blocks
   // before it, with their facts.
-  h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 4 }, blocks: [] })
+  h.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: 0, version: { epoch: 'epoch', revision: 4 }, blocks: [] })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
   runtime.dispose()
 })
@@ -903,7 +914,7 @@ test.each([
   await runtime.connect()
   const resumed = runtime.resume().then(() => null, (error: unknown) => error)
   await waitFor(() => h.sent.at(-1)?.type === 'resume')
-  h.receive({ type: 'phase', phase: busy })
+  h.receive(phase(busy))
   h.receive({ type: 'rejected', command: 'resume', code: 'session_busy', params: {}, reason: `Session is busy (${busy})` })
   expect(await resumed).toEqual(failed ? expect.objectContaining({ code: 'session_busy' }) : null)
   expect(s.pendingAction).toBeNull()

@@ -1511,6 +1511,17 @@ async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_as
     let writer = tokio::time::timeout(PATIENCE, asked)
         .await
         .expect("the ask reaches the record");
+    // The second conversation's start waits for the same ask before both
+    // are stopped.
+    let second = "6a1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a04";
+    eventually("the second start shares the ask", || async {
+        let read = kept.backend.get("/api/server/log?limit=1000", Some(&kept.master)).await;
+        read.json::<ServerLog>().lines.iter().any(|line| {
+            line.message == "a start shares the ask of the device's Claude Code versions under way"
+                && line.fields.get("session").and_then(|session| session.as_str()) == Some(second)
+        })
+    })
+    .await;
     for socket in &mut sockets {
         socket.stop().await;
     }

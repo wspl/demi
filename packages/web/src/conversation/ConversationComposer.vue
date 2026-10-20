@@ -136,11 +136,11 @@ const limits = computed(() =>
 const execution = computed(() => executionFor(props.conversation))
 
 /**
- * The Workflow menu's choice, as the record shows it with the changes on
+ * The Workflow menu's choice, as the metadata shows it with the changes on
  * their way, and the project's workflows; none before the first send makes
  * the record.
  */
-const record = computed(() => product.snapshot?.conversations.find((item) => item.id === props.conversation.id) ?? null)
+const record = computed(() => props.conversation.metadata.shown.value)
 const workflowList = useConversationWorkflows(() => props.conversation)
 /**
  * The record's choice, with the changes on their way; a new conversation's
@@ -269,10 +269,11 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :size-refused="sizeRefused"
       :instructions="instructions"
       :limits="limits"
-      :cost="conversation.cost"
+      :cost="store.costShown(conversation)"
       :cost-profiles="costProfiles"
       @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null, $event)"
-      @retry-cost="store.retryCost(conversation)"
+      @retry-cost="store.retryCalls(conversation)"
+      @cost-calls="store.wantCalls(conversation, null, $event)"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"

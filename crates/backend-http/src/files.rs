@@ -16,17 +16,16 @@ use demi_backend_remote_host::{ConditionalRead, byte_stream};
 use demi_backend_runners::files::{
     TEXT_RANGE, TextError, TextRefusal, browse_directory, text_of, text_of_stream,
 };
-use demi_host_interface::{FileKind, FileStat, HostError, HostFs, MkdirOptions, RmOptions};
+use demi_host_interface::{FileStat, HostError, HostFs, MkdirOptions, RmOptions};
 use demi_shared_types::ReadAt;
 use demi_runner_protocol::files::protected_path;
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
     AbsolutePath, ChangeSides, ChangesQuery, CommitName, CommitQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery, LogQuery,
-    ExistingFiles, FileExistence, FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery,
+    FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery,
     UploadQuery, WorkingTreeChanges,
 };
-use futures_util::future::join_all;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use typed_path::Utf8TypedPath;
 
@@ -159,42 +158,6 @@ pub(super) async fn remove(
         Ok(StatusCode::NO_CONTENT)
     })
     .await
-}
-
-/// Which of the paths a message's inline code names are regular files on
-/// the conversation's primary Host: one look for them all, admitted as a user
-/// stream is, which never wakes a stopped Cloud. A path that is not there, that
-/// is not a file, or whose stat fails is left out: the page shows it as text.
-pub(super) async fn exists(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    JsonBody(FileExistence { paths }): JsonBody<FileExistence>,
-) -> Result<Json<ExistingFiles>, ApiError> {
-    let conversation = conversation_id(&id)?;
-    let files = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
-                .look_at_host(&conversation, &cancel, async move |host| {
-                    let stats =
-                        join_all(paths.iter().map(|path| host.host.stat(path.as_str()))).await;
-                    paths
-                        .iter()
-                        .zip(stats)
-                        .filter(|(_, stat)| {
-                            matches!(stat, Ok(FileStat { kind: FileKind::File, .. }))
-                        })
-                        .map(|(path, _)| path.as_str().to_owned())
-                        .collect::<Vec<_>>()
-                })
-                .await
-                .map_err(ApiError::from)
-        })
-        .await??;
-    Ok(Json(ExistingFiles { files }))
 }
 
 /// What a text read answers: the text with its version, or that the file

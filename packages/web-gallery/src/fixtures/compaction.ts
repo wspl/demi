@@ -1,5 +1,5 @@
 import type { Block } from '@demicodes/protocol'
-import { demoModel } from './blocks'
+import { demoModel, inRequests } from './blocks'
 
 /** A compaction as the transcript shows it: running, finished, or failed. */
 export type CompactionCase = 'running' | 'done' | 'failed'
@@ -42,7 +42,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
   if (state === 'failed') {
     return failedCompactionTranscript(true)
   }
-  return [
+  return inRequests([
     ...history,
     {
       type: 'compaction_boundary',
@@ -62,7 +62,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
       boundaryId: 'compaction-boundary',
       compactedTokens: 121_000,
     },
-  ]
+  ])
 }
 
 /**
@@ -71,7 +71,7 @@ export function compactionTranscript(state: CompactionCase): Block[] {
  * Resume; otherwise the turn's own pass failed, and Resume finishes it.
  */
 export function failedCompactionTranscript(outsideTurn: boolean): Block[] {
-  return [
+  return inRequests([
     FIRST,
     ...FIRST_ANSWER,
     SECOND,
@@ -85,7 +85,7 @@ export function failedCompactionTranscript(outsideTurn: boolean): Block[] {
       code: 'auth_expired',
       outsideTurn,
     },
-  ]
+  ])
 }
 
 /**
@@ -95,7 +95,7 @@ export function failedCompactionTranscript(outsideTurn: boolean): Block[] {
  * failed turn behind it still offers Resume.
  */
 export function compactedAfterFailedTurnTranscript(): Block[] {
-  return [
+  return inRequests([
     FIRST,
     {
       type: 'compaction_boundary',
@@ -124,7 +124,7 @@ export function compactedAfterFailedTurnTranscript(): Block[] {
       boundaryId: 'compaction-after-failure-boundary',
       compactedTokens: 60_000,
     },
-  ]
+  ])
 }
 
 /**
@@ -133,5 +133,5 @@ export function compactedAfterFailedTurnTranscript(): Block[] {
  * finished conversation it was.
  */
 export function stoppedCompactTranscript(): Block[] {
-  return [FIRST, ...FIRST_ANSWER, SECOND, ...SECOND_ANSWER]
+  return inRequests([FIRST, ...FIRST_ANSWER, SECOND, ...SECOND_ANSWER])
 }

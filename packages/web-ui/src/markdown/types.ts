@@ -101,14 +101,6 @@ export interface ConversationFiles {
    */
   showInFiles?(target: Pick<MessageFileTarget, 'path' | 'root'>): void
   /**
-   * Which of `paths`, the Host paths a reply's inline code names, are files
-   * there, as the Host answered one question about them all: null until it
-   * answered, or while it cannot, such as while the Cloud is stopped. A
-   * render reads it as it is now and renders again when the answer arrives;
-   * absent, inline code stays code.
-   */
-  codeFiles?(paths: readonly string[]): ReadonlySet<string> | null
-  /**
    * The conversation's attachment `id`, such as `a3`, as a reply of the
    * agent of `node` shows it: null for the conversation's own agent, a
    * subagent's or a side question's id otherwise. A reply shows only what
@@ -180,10 +172,11 @@ export interface MarkdownRenderOptions {
    */
   files?: MessageFiles
   /**
-   * The paths of the message's inline code the Host has as files, which show as
-   * links to them.
+   * The Host files the message's inline code names, by the code that names
+   * each, as the backend kept them with the reply, which show as links to
+   * them.
    */
-  codeFiles?: ReadonlySet<string> | null
+  codeFiles?: ReadonlyMap<string, MessageFileTarget> | null
   /**
    * What shows of each Host image the message names, by its absolute path
    * (`useHostImagesAt`); one it does not name yet is still being read, and

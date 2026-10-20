@@ -8,7 +8,7 @@ import {
   type ClientContent,
   type EditRequest,
   type SessionPhase,
-  type TranscriptVersion,
+  type Version,
 } from '@demicodes/protocol'
 import { reportError } from '../infra/errors'
 import { t } from './locales/text'
@@ -112,7 +112,7 @@ export function editContent(state: MessageEditState): MessageEditContent[] {
  * The edit of a message with its content as it was sent. Only a `user` block
  * is a message the user can edit.
  */
-export function unchangedEditRequest(block: Block, version: TranscriptVersion): MessageEditRequest {
+export function unchangedEditRequest(block: Block, version: Version): MessageEditRequest {
   if (block.type !== 'user') {
     throw new Error('This message cannot be edited')
   }
@@ -128,7 +128,7 @@ export function unchangedEditRequest(block: Block, version: TranscriptVersion): 
  * Opens the editor on a message; one without text gets an empty line to type
  * in.
  */
-export function beginMessageEdit(block: Block, version: TranscriptVersion): SentMessageEdit {
+export function beginMessageEdit(block: Block, version: Version): SentMessageEdit {
   const request = unchangedEditRequest(block, version)
   if (!request.content.some((part) => part.type === 'text')) {
     request.content.push({ type: 'text', text: '' })

@@ -20,7 +20,6 @@ use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, ConversationAttachment};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 
 use crate::conversations::{anthropic_at, create, on_device, working_on};
@@ -227,10 +226,10 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
 // Planted defect it catches: the upload stores the attachment and tells no
 // page, so a page that showed a reply naming `a1` before it existed keeps
 // showing it missing. The job waits on a pipe after the upload until the
-// test has seen the summary, so no other change of the conversation, such as
+// test has seen the metadata, so no other change of the conversation, such as
 // the turn's end, can carry the number first.
 #[tokio::test]
-async fn the_pages_learn_of_a_new_attachment_from_the_summary_as_it_is_stored() {
+async fn the_pages_learn_of_a_new_attachment_from_the_metadata_as_it_is_stored() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -240,16 +239,12 @@ async fn the_pages_learn_of_a_new_attachment_from_the_summary_as_it_is_stored() 
     std::fs::write(format!("{root}/shot.png"), &*PNG).unwrap();
     let gate = format!("{root}/gate");
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
-    let mut page = backend.sync(&master).await;
+    let (mut page, _) = crate::conversations::Socket::shown(&backend, &master, CONVERSATION, 0).await;
 
     let script = "mkfifo gate && demi attachment upload shot.png > /dev/null && read -r go < gate";
     let turn = work.turn(vec![shell("t1", script, 30_000), say("uploaded")]);
     let announced = async {
-        page.until(|event| {
-            matches!(event, SyncEvent::Conversation { conversation }
-                if conversation.id.as_str() == CONVERSATION && conversation.last_attachment == 1)
-        })
-        .await;
+        page.metadata_until(|metadata| metadata.last_attachment == 1).await;
         // Opening the pipe to write waits for the job to read it.
         tokio::fs::write(&gate, b"go\n").await.unwrap();
     };
@@ -371,7 +366,6 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
 // - A fork that shows only its own uploads, so its copied replies lose theirs.
 #[tokio::test]
 async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked_from() {
-    use demi_conversation_socket_protocol::{ServerFrame, SubagentEvent};
     use demi_shared_types::Block;
 
     use crate::conversations::{FIRST, last_text, transcript};
@@ -395,9 +389,7 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
         scripts.root(FIRST, vec![call(id, command), say("dispatched"), say("received")]);
         socket.chat(id, "Go").await;
         std::fs::write(&go, "").unwrap();
-        socket
-            .until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, .. }))
-            .await;
+        socket.until_child_closed().await;
         socket.until_idle().await;
     };
     round(
@@ -411,8 +403,8 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
     let node = |number: u64| {
         tree.subagents
             .iter()
-            .find(|job| job.child.number == number)
-            .map(|job| job.child.subagent_id.as_str().to_owned())
+            .find(|entry| crate::conversations::child_of(entry).number == number)
+            .map(|entry| entry.id.as_str().to_owned())
             .expect("the agent is listed")
     };
     let (child, fork) = (node(1), node(2));

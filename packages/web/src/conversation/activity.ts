@@ -4,12 +4,13 @@ import {
   resetTranscript,
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
+import type { AgentEntry, Version } from '@demicodes/protocol'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
-import type { Conversation } from '../state/types'
-import { sideFor } from './side-records'
+import type { Conversation, SideRecord } from '../state/types'
+import { sideRecord } from './side-records'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followFrame, isTerminalRunning } from '@demicodes/web-ui/agent/terminals'
-import { subagentJobFields } from '@demicodes/web-ui/agent/subagents'
+import { subagentEntryFields } from '@demicodes/web-ui/agent/subagents'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
@@ -28,118 +29,102 @@ export function updateLiveStatus(conversation: Conversation): void {
           : 'idle'
 }
 
+/**
+ * Takes the conversation's agents as `entries` say them at `version`, as
+ * they arrived at `receivedAt`: `whole` when they are every agent, as an
+ * open's answer without the changes since a version lists them, so an agent
+ * they leave out is gone. Each record keeps what the page holds of its
+ * transcript; the root's entry is the runtime's, but for its cost.
+ */
+export function takeAgents(
+  conversation: Conversation,
+  entries: readonly AgentEntry[],
+  version: Version,
+  receivedAt: number,
+  whole: boolean,
+): void {
+  const children = new Map(conversation.subagents.map((agent) => [agent.id, agent]))
+  const sides = new Map(conversation.sides.map((side) => [side.id, side]))
+  const listedChildren = whole ? [] : [...conversation.subagents]
+  const listedSides = whole ? conversation.sides.filter((side) => !side.listed) : [...conversation.sides]
+  for (const entry of entries) {
+    const role = entry.role
+    if (role.kind === 'root') {
+      conversation.cost = entry.cost
+    } else if (role.kind === 'subagent') {
+      const fields = subagentEntryFields(entry, role, receivedAt)
+      const held = children.get(entry.id)
+      if (held) {
+        Object.assign(held, fields)
+        if (!listedChildren.includes(held)) {
+          listedChildren.push(held)
+        }
+      } else {
+        listedChildren.push({ ...fields, history: EMPTY_TRANSCRIPT, failures: {} })
+      }
+    } else {
+      const { kind: _kind, ...side } = role
+      const held = sides.get(entry.id) ?? sideRecord({ id: entry.id, ...side })
+      held.listed = true
+      // A fold on its way stays as the user chose it.
+      held.record = { id: entry.id, ...side, folded: held.folding ? held.folding.intent : side.folded }
+      held.sessionPhase = entry.phase
+      held.pendingCalls = entry.pendingCalls
+      held.waitingSince = entry.waitedMs === null ? null : receivedAt - entry.waitedMs
+      if (!listedSides.includes(held)) {
+        listedSides.push(held)
+      }
+    }
+  }
+  conversation.subagents = listedChildren
+  conversation.sides = listedSides
+  conversation.agentsHeld = version
+}
+
+/** The record of the node `node` other than the root, whose messages it holds. */
+function nodeRecord(conversation: Conversation, node: string): Conversation['subagents'][number] | SideRecord | undefined {
+  return conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
+}
+
 export function applyConversationEvent(
   conversation: Conversation,
   event: ClientSessionEvent,
 ): void {
-  if (event.type === 'subagent') {
-    const fields = subagentJobFields(event.job)
-    const existing = conversation.subagents.find(
-      (agent) => agent.id === fields.id,
-    )
-    if (existing) {
-      // A resume's `started` job is a new round: its start, its end and
-      // what it runs on replace the closed round's.
-      Object.assign(existing, fields)
-      if (event.event === 'closed') {
-        // A closed child runs nothing more; a reopened page learns of the
-        // close without the frames that ended its work before it.
-        existing.sessionPhase = 'idle'
-        existing.waitingSince = null
-        existing.pendingCalls = []
-      }
-    } else {
-      conversation.subagents.push({
-        ...fields,
-        // Its `phase` frame follows the `started` one.
-        sessionPhase: 'idle',
-        history: EMPTY_TRANSCRIPT,
-        pendingCalls: [],
-        waitingSince: null,
-        failures: {},
-        contextUsage: null,
-      })
+  if (event.type === 'agents') {
+    takeAgents(conversation, event.agents, event.version, event.receivedAt, event.since === undefined)
+  } else if (event.type === 'agent') {
+    // The client checked the revision follows the one it holds, which
+    // came with the open's agents.
+    const held = conversation.agentsHeld
+    if (held) {
+      takeAgents(conversation, [event.agent], { epoch: held.epoch, revision: event.revision }, event.receivedAt, false)
     }
-  } else if (
-    event.type === 'subagent_transcript_reset' ||
-    event.type === 'subagent_transcript_patch'
-  ) {
-    // A side question's node streams as a child's does, by its id, and is
-    // no child: a node the page knows as neither is a side question the
-    // list has not named yet, whose frames the page keeps for it.
-    const child = conversation.subagents.find(
-      (agent) => agent.id === event.subagentId,
-    ) ?? sideFor(conversation, event.subagentId)
-    if (child) {
-      if (event.type === 'subagent_transcript_reset') {
-        child.history = resetTranscript(child.history, event)
-      } else {
-        child.history = applyTranscriptPatches(child.history, event.patches)
-      }
-      child.failures = { ...child.failures, ...event.failures }
-    }
-  } else if (event.type === 'pending_calls' && event.subagentId !== undefined) {
-    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
-      ?? sideFor(conversation, event.subagentId)
-    if (child) {
-      child.pendingCalls = event.pendingCalls
-    }
-  } else if (event.type === 'phase' && event.subagentId !== undefined) {
-    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
-      ?? sideFor(conversation, event.subagentId)
-    if (child) {
-      child.sessionPhase = event.phase
-    }
-  } else if (event.type === 'context_usage') {
-    // The root's usage is the runtime's; no child has the root's id.
-    const child = conversation.subagents.find((agent) => agent.id === event.node)
-    if (child) {
-      child.contextUsage = event.usage
-    }
-  } else if (event.type === 'waiting' && event.subagentId !== undefined) {
-    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
-      ?? sideFor(conversation, event.subagentId)
-    if (child) {
-      child.waitingSince = event.since
+  } else if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
+    // The root's messages are the runtime's.
+    const record = event.node === conversation.id ? undefined : nodeRecord(conversation, event.node)
+    if (record) {
+      record.history = event.type === 'transcript_reset'
+        ? resetTranscript(record.history, event, event.asked)
+        : applyTranscriptPatches(record.history, event.patches, performance.now(), event.version)
+      record.failures = { ...record.failures, ...event.failures }
     }
   } else if (event.type === 'opened') {
-    // The open's snapshot brings every running command, and the page's
-    // running commands are those: one that ended or went while the page was
-    // away shows so, and one that still runs comes back with its next frame.
+    // The open's snapshot brings every running command of the nodes the
+    // page shows, and the page's running commands are those: one that ended
+    // or went while the page was away shows so, and one that still runs
+    // comes back with its next frame.
     conversation.terminals = conversation.terminals.filter((terminal) => !isTerminalRunning(terminal.phase))
-  } else if (event.type === 'subagents') {
-    // Every child as the open's snapshot lists it, which the page takes
-    // whole (`crates/agent-server/src/server/tree.rs`). A running child's frames follow
-    // with its state, and its latest page when the page shows it; any other
-    // keeps the transcript the page holds while its revision has not moved,
-    // and is read again when shown otherwise.
-    const held = new Map(conversation.subagents.map((agent) => [agent.id, agent]))
-    conversation.subagents = event.subagents.map((summary) => {
-      const agent = held.get(summary.subagentId)
-      const streams = summary.phase === 'running' && conversation.shownSubagents.includes(summary.subagentId)
-      const current = agent !== undefined && (streams || agent.revision === summary.revision)
-      return {
-        ...subagentJobFields(summary),
-        revision: summary.revision,
-        sessionPhase: 'idle',
-        waitingSince: null,
-        pendingCalls: [],
-        history: current ? agent.history : EMPTY_TRANSCRIPT,
-        failures: current ? agent.failures : {},
-        contextUsage: agent?.contextUsage ?? null,
-      }
-    })
   } else if (event.type === 'shell_output') {
-    // A command's live view, the same for every page
+    // A command's live view, the same for every page that shows its node
     // (`crates/agent-server/src/server/tree/live.rs`): what it adds to the
-    // output shown, under its call while the call runs and in the dock after.
-    // The frame names the command by its call's title and script, which its
-    // record keeps, so its tab needs no call the page holds.
-    const { subagentId, status } = event
+    // output shown, under its call while the call runs and in the dock
+    // after. The frame names the command by its call's title and script,
+    // which its record keeps, so its tab needs no call the page holds.
+    const { node, status } = event
     const current = conversation.terminals.find(
       (terminal) => terminal.id === status.commandId,
     )
-    const record = followFrame(current, status, subagentId, Date.now())
+    const record = followFrame(current, status, node === conversation.id ? undefined : node, Date.now())
     if (current) {
       Object.assign(current, record)
     } else {

@@ -3,57 +3,50 @@ import type { ShownError } from '../infra/errors'
 import { t } from './locales/text'
 
 /**
- * A conversation's cost as the context card shows it
- * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the backend's `GET
- * /conversations/:id/cost`, which the page reads with the conversation as it
- * opens and to which it adds each `cost` frame while the conversation is open;
- * or one subagent's own, `?agent=` its number, which the page reads as it
- * opens the subagent's window.
+ * What a conversation, or one of its agents, cost, as the context card shows
+ * it (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the totals the
+ * backend keeps with each agent's metadata, summed for the conversation, and
+ * each subagent's price, which the Profiles part sums by profile.
  */
 export interface ConversationCostView {
-  /** The number of the conversation's ledger rows the cost includes. */
-  rows: number
   totals: CostTotals
-  agents: AgentCost[]
-  calls: CostCall[]
+  /** The calls its totals count: the agent's own, or every agent's for the conversation. */
+  calls: number
+  /** The main conversation's price and each subagent's; none for one agent's card. */
+  agents: AgentPrice[]
+}
+
+/** One agent's price: the main conversation's, agent 0, or a subagent's, with the profile it was started with. */
+export interface AgentPrice {
+  agent: number
+  profile: string | null
+  price: number
 }
 
 /**
- * The cost of a conversation that has no ledger row yet, as one the page just
- * created.
+ * The turn calls of the agent a card shows, which the cache chart and rate
+ * draw: read when the card opens, the recent ones only, and read on from the
+ * last held as the agent's entry counts more; or the failure of a read,
+ * which the section says with Retry.
  */
-export const NO_COST: ConversationCostView = {
-  rows: 0,
-  totals: {
-    inputTokens: 0,
-    cacheWriteTokens: 0,
-    cacheReadTokens: 0,
-    outputTokens: 0,
-    price: { total: null, input: null, cacheWrite: null, cacheRead: null, output: null },
-  },
-  agents: [],
-  calls: [],
-}
-
-/**
- * The cost as the page holds it while the conversation is open: the read's
- * answer with each frame added, or the failure of the read, which the
- * section says with Retry.
- */
-export type CostState =
-  | { status: 'read', cost: ConversationCostView }
+export type CallsState =
+  | { status: 'reading' }
+  | { status: 'read', calls: CostCall[] }
   | { status: 'failed', error: ShownError }
 
-/** What one new ledger row adds, as the `cost` frame carries it. */
-export interface CostAddition {
-  /** The number of the conversation's ledger rows up to the frame's own. */
-  rows: number
-  totals: CostTotals
-  /** The row's agent; null for a row of none. Its price is the totals'. */
-  agent: number | null
-  profile: string | null
-  /** The row as a turn call of its agent. */
-  call: CostCall | null
+/** What a card's Cost section shows: the cost, and the calls while the card holds them. */
+export interface CostShown {
+  cost: ConversationCostView
+  /** Null while the card is closed, when nothing reads them. */
+  calls: CallsState | null
+}
+
+const NO_PRICE: CostPrice = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
+
+/** The cost of an agent or a conversation that has no ledger row yet. */
+export const NO_COST: AgentCost = {
+  totals: { inputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0, price: NO_PRICE },
+  calls: 0,
 }
 
 /** A sum of prices that may have none: null while no part has one. */
@@ -71,51 +64,56 @@ function addPrices(a: CostPrice, b: CostPrice): CostPrice {
   }
 }
 
-/**
- * `cost` with the row `addition` adds: its totals, its agent's price and its
- * call. The cost of the agent `of` adds only a row of that agent, and counts
- * any other; the conversation's, `of` null, adds every row and the main
- * conversation's calls.
- */
-export function addCost(cost: ConversationCostView, addition: CostAddition, of: number | null = null): ConversationCostView {
-  if (of !== null && addition.agent !== of)
-    return { ...cost, rows: addition.rows }
-  const totals: CostTotals = {
-    inputTokens: cost.totals.inputTokens + addition.totals.inputTokens,
-    cacheWriteTokens: cost.totals.cacheWriteTokens + addition.totals.cacheWriteTokens,
-    cacheReadTokens: cost.totals.cacheReadTokens + addition.totals.cacheReadTokens,
-    outputTokens: cost.totals.outputTokens + addition.totals.outputTokens,
-    price: addPrices(cost.totals.price, addition.totals.price),
-  }
-  const price = addition.totals.price.total
-  const added: AgentCost | null = addition.agent === null || price === null
-    ? null
-    : { agent: addition.agent, profile: addition.profile, price }
-  const agents = added === null
-    ? cost.agents
-    : cost.agents.some((agent) => agent.agent === added.agent)
-      ? cost.agents.map((agent) => (agent.agent === added.agent ? { ...agent, price: agent.price + added.price } : agent))
-      : [...cost.agents, added].sort((a, b) => a.agent - b.agent)
-  return {
-    rows: addition.rows,
-    totals,
-    agents,
-    calls: addition.call === null || addition.agent !== (of ?? 0) ? cost.calls : [...cost.calls, addition.call],
-  }
+/** What `costs` cost together. */
+export function sumCosts(costs: readonly AgentCost[]): AgentCost {
+  return costs.reduce<AgentCost>((sum, cost) => ({
+    totals: {
+      inputTokens: sum.totals.inputTokens + cost.totals.inputTokens,
+      cacheWriteTokens: sum.totals.cacheWriteTokens + cost.totals.cacheWriteTokens,
+      cacheReadTokens: sum.totals.cacheReadTokens + cost.totals.cacheReadTokens,
+      outputTokens: sum.totals.outputTokens + cost.totals.outputTokens,
+      price: addPrices(sum.totals.price, cost.totals.price),
+    },
+    calls: sum.calls + cost.calls,
+  }), NO_COST)
 }
 
 /**
- * What a `cost` frame is to the cost the page holds, by the rows each counts:
- *
- * - `next` when its row follows the held ones, and the page adds it
- * - `held` when the cost includes it already, as a frame that crossed the read
- * - `gap` when rows before it are missing, as frames lost while the connection
- *   was down, and the page reads the cost again
+ * A conversation's cost from its agents' metadata: the main conversation's
+ * own `root`, each subagent's in `subagents`, and the rows of no agent,
+ * `other`, such as its titles'.
  */
-export function costStep(cost: ConversationCostView, addition: CostAddition): 'next' | 'held' | 'gap' {
-  if (addition.rows <= cost.rows)
-    return 'held'
-  return addition.rows === cost.rows + 1 ? 'next' : 'gap'
+export function conversationCost(
+  root: AgentCost,
+  subagents: readonly { number: number, profile: string | null, cost: AgentCost }[],
+  other: AgentCost,
+): ConversationCostView {
+  const whole = sumCosts([root, ...subagents.map((agent) => agent.cost), other])
+  const priced = (agent: number, profile: string | null, cost: AgentCost): AgentPrice[] =>
+    cost.totals.price.total === null ? [] : [{ agent, profile, price: cost.totals.price.total }]
+  return {
+    totals: whole.totals,
+    calls: whole.calls,
+    agents: [
+      ...priced(0, null, root),
+      ...subagents.flatMap((agent) => priced(agent.number, agent.profile, agent.cost)),
+    ],
+  }
+}
+
+/** One agent's own cost, as its window's card shows it. */
+export function agentCost(cost: AgentCost): ConversationCostView {
+  return { totals: cost.totals, calls: cost.calls, agents: [] }
+}
+
+/**
+ * The calls `held` with those a read after its last brought, `read`: a call
+ * the page holds already stays once, and only the recent `CHART_WINDOW` are
+ * kept.
+ */
+export function withCalls(held: readonly CostCall[], read: readonly CostCall[]): CostCall[] {
+  const last = held.at(-1)?.number ?? 0
+  return [...held, ...read.filter((call) => call.number > last)].slice(-CHART_WINDOW)
 }
 
 /**
@@ -142,8 +140,8 @@ export function hitRate(calls: readonly CostCall[]): number | null {
 }
 
 /**
- * The turn calls of the main conversation from which the cache chart, and
- * its switch, shows: with fewer, a line says nothing a user can read and
+ * The turn calls of an agent from which the cache chart, and its switch,
+ * shows: with fewer, a line says nothing a user can read and
  * the rate alone says it.
  */
 export const CHART_CALLS = 4
@@ -165,21 +163,29 @@ export interface CallGroup {
 }
 
 /**
- * The main conversation's turn calls as the chart draws them: groups of `size`
- * calls counted from call 1, the most recent `CHART_POINTS` of them, and the
- * calls they hold, which the cache hit rate counts.
+ * An agent's recent turn calls as the chart draws them: groups of `size`
+ * calls counted from its call 1, the most recent `CHART_POINTS` of them, and
+ * the calls they hold, which the cache hit rate counts.
  *
- * The groups keep their place in the conversation and the window starts at a
- * group's first call, so a new call changes only the last group, never the
- * calls of another point.
+ * The groups keep their place among the agent's calls and the window starts
+ * at a group's first call, so a new call changes only the last group, never
+ * the calls of another point.
  */
 export function chartGroups(calls: readonly CostCall[]): { size: number, groups: CallGroup[], calls: readonly CostCall[] } {
-  const size = Math.max(1, Math.ceil(Math.min(calls.length, CHART_WINDOW) / CHART_POINTS))
-  const start = Math.max(0, Math.ceil(calls.length / size) - CHART_POINTS) * size
+  const last = calls.at(-1)?.number ?? 0
+  const size = Math.max(1, Math.ceil(Math.min(last, CHART_WINDOW) / CHART_POINTS))
+  const first = Math.max(0, Math.ceil(last / size) - CHART_POINTS) * size + 1
+  const shown = calls.filter((call) => call.number >= first)
   const groups: CallGroup[] = []
-  for (let index = start; index < calls.length; index += size)
-    groups.push({ first: index + 1, calls: calls.slice(index, index + size) })
-  return { size, groups, calls: calls.slice(start) }
+  for (const call of shown) {
+    const start = Math.floor((call.number - 1) / size) * size + 1
+    const group = groups.at(-1)
+    if (group?.first === start)
+      (group.calls as CostCall[]).push(call)
+    else
+      groups.push({ first: start, calls: [call] })
+  }
+  return { size, groups, calls: shown }
 }
 
 /**
@@ -190,7 +196,7 @@ export function hasCost(cost: ConversationCostView | null): cost is Conversation
   if (cost === null)
     return false
   const { totals } = cost
-  return cost.calls.length > 0
+  return cost.calls > 0
     || totals.price.total !== null
     || totals.inputTokens + totals.cacheWriteTokens + totals.cacheReadTokens + totals.outputTokens > 0
 }
@@ -212,7 +218,7 @@ export const PROFILE_ROWS = 5
  * with no profile, or with one not in `enabled` (since disabled or deleted),
  * has no row. With no profile row there is no part, and no row.
  */
-export function profileRows(agents: readonly AgentCost[], enabled: readonly string[]): ProfileRow[] {
+export function profileRows(agents: readonly AgentPrice[], enabled: readonly string[]): ProfileRow[] {
   const sums = new Map<string, number>()
   for (const agent of agents) {
     if (agent.agent !== 0 && agent.profile !== null && enabled.includes(agent.profile))

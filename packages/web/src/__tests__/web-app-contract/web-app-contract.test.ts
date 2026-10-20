@@ -27,6 +27,7 @@ import { changeReplacedDraft, loadDraft, saveDraft } from '../../api/drafts'
 import {
   deviceAnswerSchema,
   createdConversationSchema,
+  conversationFrameSchema,
   conversationUpdateSchema,
   devicesSchema,
   modelCatalogSchema,
@@ -34,6 +35,7 @@ import {
   transcriptPageSchema,
   wholeBlockSchema,
   type Claim,
+  type ConversationFrame,
   type ConversationPatch,
   type CreateConversation,
   type ConversationSummary,
@@ -130,7 +132,7 @@ async function createConversation(model?: ModelSelection): Promise<string> {
     await apiRequest('/conversations', { method: 'POST', ...jsonBody(request) }),
     createdConversationSchema,
   )
-  expect(created.conversation.model?.modelId ?? null).toBe(model?.model.id ?? null)
+  expect(created.metadata.model?.modelId ?? null).toBe(model?.model.id ?? null)
   return id
 }
 
@@ -142,15 +144,36 @@ async function patchConversation(id: string, patch: ConversationPatch): Promise<
   expect(update.results.filter((result) => result.status !== 'applied')).toEqual([])
 }
 
-/** The conversation's socket, as the page connects it. */
 /** The root's transcript each client's page holds, as the page folds it from the client's events. */
 const held = new WeakMap<Client, HeldTranscript>()
+/** The conversation's root each client follows, the conversation's id. */
+const roots = new WeakMap<Client, string>()
+/** The conversation frames each client received, as the page decodes them. */
+const conversationFrames = new WeakMap<Client, ConversationFrame[]>()
 
+/**
+ * The conversation's socket, as the page connects it, which its open
+ * subscribes to the root.
+ */
 async function connect(id: string) {
-  const client = await connectConversationClient(webBrowser.socketUrl(`/conversations/${id}/stream`))
+  const frames: ConversationFrame[] = []
+  const client = await connectConversationClient(webBrowser.socketUrl(`/conversations/${id}/stream`), undefined, {
+    conversationFrame: (frame) => {
+      const decoded = conversationFrameSchema.safeParse(frame)
+      if (decoded.success) {
+        frames.push(decoded.data)
+      }
+      return decoded.success
+    },
+  })
   held.set(client, EMPTY_TRANSCRIPT)
+  roots.set(client, id)
+  conversationFrames.set(client, frames)
   client.subscribe((event) => {
     const history = held.get(client) ?? EMPTY_TRANSCRIPT
+    if ((event.type === 'transcript_reset' || event.type === 'transcript_patch') && event.node !== id) {
+      return
+    }
     if (event.type === 'transcript_reset') {
       held.set(client, resetTranscript(history, event, event.asked))
     } else if (event.type === 'transcript_patch') {
@@ -175,7 +198,7 @@ async function openConversation(id: string): Promise<Client> {
   const client = await connect(id)
   try {
     const snapshot = nextEvent(client, (event) => (event.type === 'pending_steers' ? true : undefined))
-    await client.open()
+    await client.open({ root: roots.get(client)! })
     await snapshot
   } catch (error) {
     client.disconnect()
@@ -209,9 +232,22 @@ function nextEvent<T>(client: Client, pick: (event: ClientSessionEvent) => T | u
   return wait
 }
 
+/** The draft at `revision` once `client`'s socket has brought it. */
+async function draftShown(client: Client, revision: number) {
+  const draft = () => conversationFrames.get(client)!.flatMap((frame) => (frame.type === 'draft' && frame.draft.revision === revision ? [frame.draft] : []))[0]
+  await waitFor(() => draft() !== undefined, () => `the socket brought no draft at revision ${revision}`, { timeoutMs: SETTLE_MS })
+  return draft()
+}
+
+/** The root's session phase an agents event brings, if it names the root. */
+function rootPhase(client: Client, event: ClientSessionEvent): string | undefined {
+  const entries = event.type === 'agents' ? event.agents : event.type === 'agent' ? [event.agent] : []
+  return entries.find((entry) => entry.id === roots.get(client))?.phase
+}
+
 /** The next time the session shows `idle`: everything it ran or queued has ended and is saved. */
 function idle(client: Client): Promise<true> {
-  return nextEvent(client, (event) => (event.type === 'phase' && event.phase === 'idle') || undefined)
+  return nextEvent(client, (event) => (rootPhase(client, event) === 'idle') || undefined)
 }
 
 /** The next queue the session shows, as the ids of its messages, once it satisfies `check`. */
@@ -244,11 +280,13 @@ function pageShows(page: ReturnType<typeof openPage>, id: string, check: (summar
 }
 
 /**
- * The transcript the backend serves cold, from the conversation's database:
- * its pages back from the latest, each block then read whole.
+ * The root's transcript the backend serves cold, from the conversation's
+ * database: its pages back from the latest, in their light form, and each
+ * block then read whole.
  */
 async function coldTranscript(id: string) {
-  const path = `/conversations/${id}/transcript`
+  const node = `/conversations/${id}/agents/${id}`
+  const path = `${node}/transcript`
   let page = await readResponse(await apiRequest(path), transcriptPageSchema)
   let light = page.blocks
   while (page.start > 0) {
@@ -257,9 +295,9 @@ async function coldTranscript(id: string) {
   }
   const blocks: Block[] = []
   for (const block of light) {
-    blocks.push((await readResponse(await apiRequest(`${path}/blocks/${block.id}`), wholeBlockSchema)).block)
+    blocks.push((await readResponse(await apiRequest(`${node}/blocks/${block.id}`), wholeBlockSchema)).block)
   }
-  return { blocks }
+  return { light, blocks }
 }
 
 /** A device paired as the page pairs one: its runner prints a code, and the signed-in page claims it. */
@@ -353,7 +391,7 @@ test('a user signs in through the API client, and the session admits the synchro
   try {
     const events: ClientSessionEvent['type'][] = []
     client.subscribe((event) => events.push(event.type))
-    await client.open()
+    await client.open({ root: roots.get(client)! })
     expect(events[0]).toBe('opened')
   } finally {
     client.disconnect()
@@ -368,11 +406,12 @@ test('a conversation created through the API runs a turn, and the client receive
   try {
     const phases: string[] = []
     client.subscribe((event) => {
-      if (event.type === 'phase') {
-        phases.push(event.phase)
+      const phase = rootPhase(client, event)
+      if (phase !== undefined && phase !== phases.at(-1)) {
+        phases.push(phase)
       }
     })
-    await client.open()
+    await client.open({ root: roots.get(client)! })
     // The send resolves when the action it started ends.
     await client.send([text('Say hello')])
     expect(phases).toEqual(['idle', 'running', 'idle'])
@@ -399,7 +438,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
   vendor.reply({ type: 'text', text: 'The probe says contract.' })
   const client = await connect(id)
   try {
-    await client.open()
+    await client.open({ root: roots.get(client)! })
     await client.send([text('Write the probe')])
     const blocks = transcriptOf(client)
     // The switch to the device reaches the model as the context of its next request.
@@ -428,7 +467,7 @@ test('after a reload, the transcript the client assembled from live patches equa
   const live = await connect(id)
   let assembled: Block[]
   try {
-    await live.open()
+    await live.open({ root: id })
     await live.send([text('Run a command')])
     // A send resolves when the socket shows idle, once the turn's save has committed.
     await live.send([text('Answer again')])
@@ -440,7 +479,8 @@ test('after a reload, the transcript the client assembled from live patches equa
   const cold = await coldTranscript(id)
   expect(assembled).toEqual(cold.blocks)
 
-  // The page reloads: a new client opens the conversation and receives the transcript whole.
+  // The page reloads: a new client opens the conversation and receives the
+  // transcript in its pages' light form.
   const reloaded = await connect(id)
   try {
     const reset = Promise.withResolvers<Block[]>()
@@ -449,8 +489,8 @@ test('after a reload, the transcript the client assembled from live patches equa
         reset.resolve(event.blocks)
       }
     })
-    await reloaded.open()
-    expect(await reset.promise).toEqual(cold.blocks)
+    await reloaded.open({ root: id })
+    expect(await reset.promise).toEqual(cold.light)
   } finally {
     reloaded.disconnect()
   }
@@ -722,18 +762,18 @@ test('the page answers a running command\'s prompt, and the command\'s output re
 
 test('a draft saved on one page reaches another, a save over a version the page never showed keeps it to restore, and a stale action is refused', async () => {
   const { deviceId, runner } = await pairedDevice()
-  const id = await createConversation()
+  const id = await createConversation(await scriptedModel())
   const signal = new AbortController().signal
-  const other = openPage()
-  other.start()
+  // Another page shows the conversation, holding its draft at revision 0.
+  const other = await connect(id)
   try {
+    await other.open({ root: id, draft: 0 })
     expect(await loadDraft(id, signal)).toEqual({ revision: 0, text: '', files: [], comments: [], replaced: null })
     const trace = { type: 'remote_file', deviceId, path: join(runner.home, 'trace.txt') } as const
     const first = (await saveDraft(id, { base: 0, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace], comments: [] }, { signal })).draft
     expect(first).toEqual({ revision: 1, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace], comments: [], replaced: null })
-    // The other page learns of the save from the summary, then reads the draft.
-    await pageShows(other, id, (summary) => summary.draftRevision === 1)
-    expect(await loadDraft(id, signal)).toEqual(first)
+    // The other page's socket brings the save as it is.
+    expect(await draftShown(other, 1)).toEqual(first)
 
     // Both pages type on revision 1 at once.
     const mine = await saveDraft(id, { base: 1, text: 'Fix the login bug', files: [], comments: [] }, { signal })
@@ -747,9 +787,9 @@ test('a draft saved on one page reaches another, a save over a version the page 
     const refused = await changeReplacedDraft(id, { action: 'dismiss', revision: 2 }, signal).catch((error: unknown) => error)
     expect(refused).toBeInstanceOf(ApiError)
     expect(refused).toMatchObject({ status: 409, code: 'draft_changed' })
-    await pageShows(other, id, (summary) => summary.draftRevision === 4)
+    expect(await draftShown(other, 4)).toEqual(restored)
   } finally {
-    other.stop()
+    other.disconnect()
   }
 })
 

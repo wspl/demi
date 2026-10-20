@@ -12,9 +12,9 @@
 
 use std::collections::BTreeMap;
 
-use demi_agent_store::{Kind, Rows, StoreError};
+use demi_agent_store::{Checkpoint, Kind, StoreError};
 use demi_agent_transcript::{Earlier, TranscriptLog};
-use demi_conversation_socket_protocol::{BlockVersions, Versions, latest_page_start_within};
+use demi_conversation_socket_protocol::{BlockVersions, Versions, latest_page_start, light};
 use demi_shared_types::{Block, BlockId};
 
 use super::SessionShared;
@@ -57,82 +57,101 @@ pub(crate) async fn position(s: &SessionShared, id: &BlockId) -> Result<Option<u
     s.store.position(id).await
 }
 
-/// The transcript a reset sends: its blocks from `start` to the end, the
-/// transcript's length and the versions among them.
+/// The transcript a reset sends: its blocks from `start` to the end in their
+/// light form, the transcript's length and the versions among them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reset {
     pub start: usize,
     pub length: usize,
     pub blocks: Vec<Block>,
     pub versions: Vec<BlockVersions>,
-    pub version: demi_conversation_socket_protocol::TranscriptVersion,
+    pub version: demi_conversation_socket_protocol::Version,
 }
 
 /// The reset of the session's transcript for a page that holds its blocks up to
 /// `from`, whose block there it holds as `edge`.
 ///
-/// The reset starts from `from` while that block is still `edge`, else from the
-/// start of the latest page, which the window holds
-/// ([`latest_page_start_within`]).
-///
-/// - A reset within the window is read at once, so that it follows every frame
-///   sent before it even while a save waits to commit.
-/// - One from a place before the window holds the session's save order and
-///   reads the blocks the page holds from there from the store.
-pub(crate) async fn reset(s: &SessionShared, from: Option<u32>, edge: Option<&BlockId>) -> Result<Reset, StoreError> {
-    let held = from.and_then(|from| usize::try_from(from).ok());
-    let before = match (held, edge) {
-        (Some(from), Some(edge)) => s
-            .read(|core| from < core.transcript.start())
-            .then(|| (from, edge.clone())),
-        _ => None,
-    };
-    let Some((from, edge)) = before else {
-        return Ok(s.read(|core| {
-            let transcript = &core.transcript;
-            let from = match (held, edge) {
-                (Some(from), Some(edge)) if transcript.get(from).is_some_and(|block| block.id() == edge) => from,
-                _ => latest_page(transcript),
-            };
-            window_reset(transcript, from, Rows::default())
-        }));
-    };
-    let _turn = s.persist_gate.acquire().await;
-    let start = s.read(|core| core.transcript.start());
-    let still = from < start && {
-        let read = s.store.blocks(from..from + 1).await?;
-        read.blocks.first().is_some_and(|block| block.id() == &edge)
-    };
-    let earlier = if still { s.store.blocks(from..start).await? } else { Rows::default() };
-    Ok(s.read(|core| {
+/// The reset starts from `from` while that block is still `edge` and the
+/// blocks from there fit in the latest page, else from the start of the latest
+/// page, which the window holds ([`latest_page`]): a page away for long gets
+/// one page, and what it held before stays a hole it reads when it shows it.
+/// It is read at once, so that it follows every frame sent before it.
+pub(crate) fn reset(s: &SessionShared, from: Option<u32>, edge: Option<&BlockId>) -> Reset {
+    s.read(|core| {
         let transcript = &core.transcript;
-        let from = if still { from } else { latest_page(transcript) };
-        window_reset(transcript, from, earlier)
-    }))
+        held_reset(
+            transcript.start(),
+            transcript.blocks(),
+            transcript.versions(),
+            transcript.version(),
+            from,
+            edge,
+        )
+    })
+}
+
+/// The reset of a closed node's transcript from its last checkpoint, at the
+/// node's `version`, for a page that holds it up to `from` with `edge` there,
+/// by the rules of a live session's ([`reset`]).
+pub fn checkpoint_reset(
+    checkpoint: &Checkpoint,
+    version: demi_conversation_socket_protocol::Version,
+    from: Option<u32>,
+    edge: Option<&BlockId>,
+) -> Reset {
+    held_reset(
+        checkpoint.start,
+        &checkpoint.transcript,
+        &checkpoint.versions,
+        version,
+        from,
+        edge,
+    )
+}
+
+/// The reset of the window of `blocks` from the position `start` on, with
+/// the `versions` of its places, at `version`: from `from` while the block
+/// there is still `edge` and is within the latest page, else from the latest
+/// page's start.
+///
+/// Its blocks are light but the last, which the stream may still be writing:
+/// the patches that follow add to it, so it comes whole, and a page that
+/// reads a light block whole reads the stored one, which a block being
+/// written is not yet.
+fn held_reset(
+    start: usize,
+    blocks: &[Block],
+    versions: &BTreeMap<usize, Versions>,
+    version: demi_conversation_socket_protocol::Version,
+    from: Option<u32>,
+    edge: Option<&BlockId>,
+) -> Reset {
+    let latest = start + latest_page_start(blocks);
+    let at = |position: usize| blocks.get(position.checked_sub(start)?);
+    let from = from
+        .and_then(|from| usize::try_from(from).ok())
+        .zip(edge)
+        .filter(|(from, edge)| *from >= latest && at(*from).is_some_and(|block| block.id() == *edge))
+        .map_or(latest, |(from, _)| from);
+    let mut light = light(&blocks[from - start..]);
+    if let (Some(last), Some(whole)) = (light.last_mut(), blocks.last()) {
+        *last = whole.clone();
+    }
+    Reset {
+        start: from,
+        length: start + blocks.len(),
+        versions: versions
+            .range(from..)
+            .filter_map(|(at, held)| Some(BlockVersions::new(light.get(at - from)?.id().clone(), *held)))
+            .collect(),
+        blocks: light,
+        version,
+    }
 }
 
 /// Where the latest page of a session's transcript starts, which its
 /// window holds: the root's reset and a child's or a side question's
 /// start there alike.
 pub fn latest_page(transcript: &TranscriptLog) -> usize {
-    transcript.start() + latest_page_start_within(transcript.blocks(), transcript.start() == 0)
-}
-
-/// The reset from `from`: `earlier`, the rows before the window from
-/// there, then the window's blocks from there on.
-pub(crate) fn window_reset(transcript: &TranscriptLog, from: usize, earlier: Rows) -> Reset {
-    let mut versions: BTreeMap<usize, Versions> = earlier.versions;
-    versions.extend(transcript.versions().range(from..).map(|(at, held)| (*at, *held)));
-    let mut blocks = earlier.blocks;
-    blocks.extend_from_slice(transcript.from(from));
-    Reset {
-        start: from,
-        length: transcript.len(),
-        versions: versions
-            .iter()
-            .filter_map(|(at, held)| Some(BlockVersions::new(blocks.get(at - from)?.id().clone(), *held)))
-            .collect(),
-        blocks,
-        version: transcript.version(),
-    }
+    transcript.start() + latest_page_start(transcript.blocks())
 }

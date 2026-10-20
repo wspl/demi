@@ -91,11 +91,7 @@ async fn until_waiting(work: &mut Driven<'_>) -> (String, String) {
 async fn until_root_idle(work: &mut Driven<'_>) {
     let idle = async {
         loop {
-            if let ServerFrame::Phase {
-                subagent_id: None,
-                phase: SessionPhase::Idle,
-            } = work.socket.frame().await
-            {
+            if crate::conversations::root_phase(&work.socket.frame().await) == Some(SessionPhase::Idle) {
                 return;
             }
         }
@@ -197,7 +193,7 @@ async fn a_move_while_the_agent_waits_for_its_offline_device_fails_the_command_a
     until_waiting(&mut work).await;
     // The backend says the agent only waits for the device, so the page's
     // move stops nothing.
-    assert!(summary(&backend, &master, FIRST).await.only_waits_for_host);
+    assert!(crate::conversations::metadata(&backend, &master, FIRST).await.only_waits_for_host);
     let beta_home = beta.runner.home_dir().to_owned();
     switch(&backend, &master, FIRST, &beta, &beta_home).await;
     until_root_idle(&mut work).await;

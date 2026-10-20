@@ -33,8 +33,12 @@ use tokio::sync::Notify;
 /// the order that places it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Part {
-    /// The conversation's summary.
+    /// The conversation's sidebar entry and its metadata: a channel sends the
+    /// entry, and the conversation's sockets its metadata.
     Conversation(ConversationId),
+    /// The conversation's metadata or its draft alone, which no sidebar
+    /// entry shows: only the conversation's sockets hear of it.
+    Metadata(ConversationId),
     /// The order of every conversation.
     ConversationOrder,
     Preferences,
@@ -79,13 +83,20 @@ struct Channel {
     /// The session the channel opened with; none for a watch of the
     /// backend's own, which no sign-out ends.
     session: Option<TokenHash>,
-    /// Whether it follows the parts; a conversation socket's watch follows
-    /// only its session's end.
-    follows_parts: bool,
+    /// The parts it follows; a conversation socket's watch follows its
+    /// conversation's part and its session's end.
+    follows: Follows,
     marked: Mutex<Marked>,
     /// Woken by each mark; a mark while the task is busy leaves a permit, so
     /// none is missed.
     wake: Notify,
+}
+
+/// The parts a channel follows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Follows {
+    Every,
+    Conversation(ConversationId),
 }
 
 /// What was marked on a channel since its task last took it.
@@ -110,7 +121,13 @@ impl Channel {
     }
 
     fn mark(&self, part: Part) {
-        if !self.follows_parts {
+        let follows = match &self.follows {
+            Follows::Every => !matches!(part, Part::Metadata(_)),
+            Follows::Conversation(id) => {
+                matches!(&part, Part::Conversation(changed) | Part::Metadata(changed) if changed == id)
+            }
+        };
+        if !follows {
             return;
         }
         self.lock().parts.insert(part);
@@ -129,30 +146,28 @@ impl SyncRegistry {
     /// `session`, for every change marked from now on, until the
     /// registration is dropped.
     pub fn register(&self, user: &UserId, session: TokenHash) -> Registration {
-        self.add(user, Some(session), true)
+        self.add(user, Some(session), Follows::Every)
     }
 
     /// Registers a watch of `user`'s changes for a part of the backend that
     /// follows them as a page does, such as the search index, until the
     /// registration is dropped.
     pub fn watch(&self, user: &UserId) -> Registration {
-        self.add(user, None, true)
+        self.add(user, None, Follows::Every)
     }
 
-    /// Registers a watch of the end of `user`'s session `session`, for a page's
-    /// socket other than its channel.
-    ///
-    /// A conversation socket is such a socket: it closes with its session. The
-    /// watch's `marked` returns once the session is signed out, and for nothing
-    /// else.
-    pub fn watch_session(&self, user: &UserId, session: TokenHash) -> Registration {
-        self.add(user, Some(session), false)
+    /// Registers a watch of `user`'s conversation `conversation` for a socket
+    /// of it opened with the session `session`: the watch's `marked` returns
+    /// once the conversation's part is marked or the session is signed out,
+    /// and for nothing else.
+    pub fn watch_conversation(&self, user: &UserId, session: TokenHash, conversation: ConversationId) -> Registration {
+        self.add(user, Some(session), Follows::Conversation(conversation))
     }
 
-    fn add(&self, user: &UserId, session: Option<TokenHash>, follows_parts: bool) -> Registration {
+    fn add(&self, user: &UserId, session: Option<TokenHash>, follows: Follows) -> Registration {
         let channel = Arc::new(Channel {
             session,
-            follows_parts,
+            follows,
             marked: Mutex::default(),
             wake: Notify::new(),
         });
@@ -261,9 +276,9 @@ impl Drop for Registration {
 }
 
 /// Counts, for each conversation, how many times one of its parts changed since
-/// its shard started, such as its permission requests or its side questions.
+/// its shard started, such as its permission requests.
 ///
-/// The conversation's summary carries the count. A conversation without an
+/// The conversation's metadata carries the count. A conversation without an
 /// entry has changed none. The counts live on the user's shard, which nothing
 /// else reaches.
 #[derive(Default)]

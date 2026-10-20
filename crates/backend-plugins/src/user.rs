@@ -424,14 +424,14 @@ impl Shared {
 
     /// Marks plugin `plugin`'s page state of `scope` changed: the user's
     /// goes to every page of the user; a conversation's raises its revision,
-    /// which the conversation's summary carries.
+    /// which the conversation's metadata carries.
     pub(crate) fn changed(&self, plugin: usize, conversation: Option<&ConversationId>) {
         match conversation {
             None => self.marks.mark(Part::Plugin(self.plugin_id(plugin))),
             Some(conversation) => {
                 let key = (plugin, conversation.clone());
                 *self.revisions.borrow_mut().entry(key).or_default() += 1;
-                self.marks.mark(Part::Conversation(conversation.clone()));
+                self.marks.mark(Part::Metadata(conversation.clone()));
             }
         }
     }
@@ -450,7 +450,7 @@ impl Shared {
             .await?
         {
             PanelOutcome::Changed { revision, effects } => {
-                self.marks.mark(Part::Conversation(conversation.clone()));
+                self.marks.mark(Part::Metadata(conversation.clone()));
                 Ok((revision, effects))
             }
             PanelOutcome::Unchanged { revision } => Ok((revision, Vec::new())),
@@ -702,7 +702,7 @@ impl UserPlugins {
             .close_panel_kinds(self.0.user.clone(), page.panel_kinds.clone())
             .await?;
         for conversation in closed {
-            self.0.marks.mark(Part::Conversation(conversation));
+            self.0.marks.mark(Part::Metadata(conversation));
         }
         Ok(())
     }

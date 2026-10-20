@@ -22,11 +22,11 @@ use serde_json::{Value, json};
 use tokio::time::Instant;
 
 use demi_provider_common::testing::MockVendor;
-use demi_web_api_protocol::conversations::{ConversationSummary, PluginRevision};
+use demi_web_api_protocol::conversations::PluginRevision;
 
 use crate::cloud::{idle_after, the_cloud};
 use crate::holding_edge::HoldingEdge;
-use crate::conversations::{anthropic_at, create, on_device, summaries};
+use crate::conversations::{anthropic_at, create, on_device};
 use crate::support::{Harness, PATIENCE, Session, TestBackend};
 use crate::work::{Driven, say, shell};
 
@@ -430,19 +430,10 @@ async fn a_backend_whose_catalog_serves_no_browser_has_no_tab_list_and_no_tab_me
     backend.close().await;
 }
 
-/// The conversation `id`'s summary as the conversation list carries it.
-async fn summary(backend: &TestBackend, master: &Session, id: &str) -> ConversationSummary {
-    summaries(backend, master)
-        .await
-        .into_iter()
-        .find(|summary| summary.id.as_str() == id)
-        .expect("the conversation is listed")
-}
-
-/// The revisions the summary carries of its plugins' states: the browser's
-/// tab list's.
-fn revisions(summary: &ConversationSummary) -> Vec<PluginRevision> {
-    summary.plugin_revisions.clone()
+/// The revisions the conversation `id`'s metadata carries of its plugins'
+/// states: the browser's tab list's.
+async fn revisions(backend: &TestBackend, master: &Session, id: &str) -> Vec<PluginRevision> {
+    crate::conversations::metadata(backend, master, id).await.plugin_revisions
 }
 
 fn browser_at(revision: u64) -> Vec<PluginRevision> {
@@ -464,8 +455,7 @@ async fn a_job_that_touches_no_browser_leaves_the_tab_list_revision_the_summary_
     create(&backend, &master, &id).await;
     // The paired device's runner lives as long as its handle.
     let (_device, _) = on_device(&harness, &backend, &master, &id).await;
-    let fresh = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&fresh), browser_at(0));
+    assert_eq!(revisions(&backend, &master, &id).await, browser_at(0));
 
     // The browser tells its plugin of its own changes; a job that runs no
     // browser command changes nothing the plugin shows, and its end reads
@@ -473,8 +463,7 @@ async fn a_job_that_touches_no_browser_leaves_the_tab_list_revision_the_summary_
     let mut work = Driven::open(&backend, &master, &vendor, &id, &provider, "/work").await;
     work.turn(vec![shell("t1", "true", 30_000), say("done")])
         .await;
-    let ended = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&ended), browser_at(0));
+    assert_eq!(revisions(&backend, &master, &id).await, browser_at(0));
     backend.close().await;
 }
 

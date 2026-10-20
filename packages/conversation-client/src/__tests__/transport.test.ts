@@ -3,7 +3,7 @@ import { MAX_PAGE_MESSAGE_BYTES } from '@demicodes/protocol'
 import { ConversationClient, SteerRejectedError } from '../client'
 import type { ClientSessionEvent } from '../events'
 import { createWebSocketTransport, type SocketClose, type SocketMessage, type WebSocketLike } from '../transport'
-import { text, user } from './harness'
+import { ROOT, entry, text, user } from './harness'
 
 /** A socket whose other end the test plays: what the client wrote, and what the server says. */
 class FakeSocket implements WebSocketLike {
@@ -64,38 +64,38 @@ test('frames travel as JSON text messages both ways', async () => {
   const client = new ConversationClient(createWebSocketTransport(socket))
   const events: ClientSessionEvent[] = []
   client.subscribe((event) => events.push(event))
-  const opening = client.open()
-  expect(socket.written.map((data) => JSON.parse(data))).toEqual([{ type: 'open' }])
+  const opening = client.open({ root: ROOT })
+  expect(socket.written.map((data) => JSON.parse(data))).toEqual([{ type: 'subscribe', node: ROOT }, { type: 'open' }])
   socket.message(JSON.stringify({ type: 'opened' }))
   await opening
 
   const submitting = client.submit([{ type: 'text', text: 'hello' }], 'm1')
   expect(JSON.parse(socket.written.at(-1) ?? '')).toEqual({ type: 'send', messageId: 'm1', content: [{ type: 'text', text: 'hello' }] })
-  socket.message(JSON.stringify({ type: 'transcript_reset', start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } }))
+  socket.message(JSON.stringify({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } }))
   await submitting
-  socket.message(JSON.stringify({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 }))
-  expect(events.at(-1)).toEqual({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], failures: {} })
+  socket.message(JSON.stringify({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 }))
+  expect(events.at(-1)).toEqual({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], version: { epoch: 'e', revision: 2 }, failures: {} })
 })
 
 // The backend sends the frames it has ready at once in one message, as a
-// turn's end: its last text, the usage and the idle phase.
+// turn's end: its last text and the root's idle entry.
 test('the frames of one message reach the client in their order, within the message\'s event', async () => {
   const socket = new FakeSocket()
   const client = new ConversationClient(createWebSocketTransport(socket))
-  const opening = client.open()
+  const opening = client.open({ root: ROOT })
   socket.message(JSON.stringify([
     { type: 'opened' },
-    { type: 'transcript_reset', start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } },
-    { type: 'phase', phase: 'running' },
+    { type: 'agents', version: { epoch: 'e', revision: 1 }, agents: [entry(ROOT, 'running')] },
+    { type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } },
   ]))
   await opening
   const events: ClientSessionEvent[] = []
   client.subscribe((event) => events.push(event))
   socket.message(JSON.stringify([
-    { type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 },
-    { type: 'phase', phase: 'idle' },
+    { type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 },
+    { type: 'agent', revision: 2, agent: entry(ROOT, 'idle') },
   ]))
-  expect(events.map((event) => event.type)).toEqual(['transcript_patch', 'phase'])
+  expect(events.map((event) => event.type)).toEqual(['transcript_patch', 'agent'])
   expect(socket.closed).toBe(false)
 })
 
@@ -133,7 +133,7 @@ test('a socket the server closes disconnects the client with the close code', ()
 test('a frame over the backend limit is refused as the backend refuses a frame, and the socket stays', async () => {
   const socket = new FakeSocket()
   const client = new ConversationClient(createWebSocketTransport(socket))
-  const opening = client.open()
+  const opening = client.open({ root: ROOT })
   socket.message(JSON.stringify({ type: 'opened' }))
   await opening
   const huge = [{ type: 'text' as const, text: 'é'.repeat(MAX_PAGE_MESSAGE_BYTES / 2) }]

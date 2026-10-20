@@ -19,7 +19,7 @@ use demi_agent_transcript::CutError;
 use demi_conversation_socket_protocol::MediaRef;
 use demi_conversation_socket_protocol::{
     AgentCode, ClientContent, ClientFrame, EditOutcome, EditRequest, Refusal, ServerFrame, TranscriptPatch,
-    TranscriptVersion,
+    Version,
 };
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, UserPart,
@@ -34,8 +34,7 @@ use serde_json::json;
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
-        Fixture, Gate, Model, TestProduct, agent, conversation, held, is_idle, kinds, named_node,
-        open, send, session_of, switch, until,
+        Fixture, Gate, Model, TestProduct, agent, conversation, held, kinds, named_node, send, session_of, switch, until,
     },
 };
 
@@ -59,7 +58,7 @@ pub(crate) fn user_block(fixture: &Fixture, turn: &str) -> BlockId {
 pub(crate) fn edit(
     operation: &str,
     target: &BlockId,
-    version: &TranscriptVersion,
+    version: &Version,
     content: Vec<ClientContent>,
 ) -> ClientFrame {
     ClientFrame::EditAndSend {
@@ -104,7 +103,7 @@ fn rejected(code: AgentCode, reason: &str) -> EditOutcome {
 async fn three_turns(client: &mut TestClient<TestProduct>) {
     for (id, text) in [("m1", "A"), ("m2", "B"), ("m3", "C")] {
         client.send(send(id, text)).await;
-        client.next_until(is_idle).await;
+        client.until_idle().await;
     }
 }
 
@@ -129,7 +128,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     client
         .send(edit("op1", &target, &before.version, client_text("B2")))
         .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
     let accepted = session_of(&fixture).transcript();
     // A repeated request is answered from its receipt; another request
     // under its id, or from the old snapshot, is refused.
@@ -233,7 +232,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         .next_until(|frame| *frame == ServerFrame::Closed)
         .await;
     let mut reopened = fixture.client();
-    reopened.send(open()).await;
+    reopened.open().await;
     reopened.received();
     let replacement_block = user_block(&fixture, turn_id.as_str());
     reopened
@@ -263,7 +262,7 @@ async fn the_page_hears_of_an_edit_only_once_its_save_commits() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let target = user_block(&fixture, "m1");
     let version = session_of(&fixture).transcript().version;
 
@@ -284,7 +283,7 @@ async fn the_page_hears_of_an_edit_only_once_its_save_commits() {
         editing.await;
     }
     // Once it commits, the result and the replacement follow.
-    let answered = client.next_until(is_idle).await;
+    let answered = client.until_idle().await;
     assert!(
         matches!(edit_outcome(&answered), EditOutcome::Accepted { .. }),
         "{answered:#?}"
@@ -314,7 +313,7 @@ async fn a_switch_while_an_edit_is_prepared_lands_after_the_replacements_first_r
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let target = user_block(&fixture, "m1");
     let version = session_of(&fixture).transcript().version;
 
@@ -330,7 +329,7 @@ async fn a_switch_while_an_edit_is_prepared_lands_after_the_replacements_first_r
         gate.release();
         editing.await;
     }
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
     assert!(
         matches!(edit_outcome(&frames), EditOutcome::Accepted { .. }),
         "{frames:#?}"
@@ -354,7 +353,7 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let target = user_block(&fixture, "m1");
 
     client.send(send("m2", "B")).await;
@@ -364,7 +363,7 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
         .await;
     let busy = edit_outcome(&client.received());
     gate.open();
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let before = session_of(&fixture).transcript();
     fixture.store.fail_saves(1);
@@ -377,7 +376,7 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     client
         .send(edit("op2", &target, &before.version, client_text("A2")))
         .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
 
     assert_eq!(
         busy,
@@ -479,7 +478,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     let elsewhere = blobs.put(B64Bytes::new(b"GIF89a".to_vec())).await.unwrap();
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), files);
-    client.send(open()).await;
+    client.open().await;
     client.received();
     let upload = |reference: &str, file_name: &str| ClientContent::Upload {
         r#ref: reference.into(),
@@ -499,7 +498,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
             ],
         })
         .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let target = user_block(&fixture, "m1");
     let version = session_of(&fixture).transcript().version;
     let image_ref = |blob: &BlobRef| ClientContent::Media {
@@ -566,7 +565,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
         },
     ];
     client.send(edit("op4", &target, &version, kept)).await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
 
     assert!(matches!(
         edit_outcome(&frames),
@@ -642,9 +641,9 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     client.send(send("m2", "B")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let blocks = session_of(&fixture).transcript().blocks;
     let answer_a = blocks[1].id().clone();
     let user_b = blocks[3].id().clone();
@@ -685,9 +684,9 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
 
     // The destination opens idle with the prefix, and continues on its own.
     let mut forked = TestClient::connect(&fixture.server, &destination);
-    forked.send(open()).await;
+    forked.open().await;
     let handshake = forked.received();
-    let Some(ServerFrame::TranscriptReset { blocks: seeded, .. }) = handshake.get(1) else {
+    let Some(ServerFrame::TranscriptReset { blocks: seeded, .. }) = handshake.iter().find(|frame| matches!(frame, ServerFrame::TranscriptReset { node, .. } if node == &destination)) else {
         panic!("{handshake:#?}")
     };
     assert_eq!(seeded[..], blocks[..2]);
@@ -698,7 +697,7 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
             content: client_text("U3"),
         })
         .await;
-    forked.next_until(is_idle).await;
+    forked.until_idle().await;
     assert_eq!(script.remaining(), 0);
 }
 
@@ -728,7 +727,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
     );
     let mut client = fixture.opened().await;
     client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let target = user_block(&fixture, "m1");
     let root = conversation();
     let spawn = |prompt: &str| agent(&fixture.server, &root, "spawn", json!({ "prompt": prompt }));
@@ -746,7 +745,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
     );
     assert_eq!(fixture.store.record(&child).unwrap(), live);
     reading.open();
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let delivered = fixture.store.record(&child).unwrap();
     assert!(delivered.closed.is_some() && delivered.delivered);
 
@@ -772,7 +771,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
         gate.release();
         editing.await;
     }
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
     let EditOutcome::Accepted { turn_id } = edit_outcome(&frames) else {
         panic!("{frames:#?}")
     };
@@ -799,7 +798,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
         gate.release();
         assert_eq!(starting.await.code, 0);
     }
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     assert!(model.is_done());
 }
 
@@ -816,7 +815,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
     let store = &fixture.store;
     let mut client = fixture.opened().await;
     client.send(send("m1", "A")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     client.send(ClientFrame::Close {}).await;
     // A child of the root closed before the root saved its completion, as a
     // process that died between the two leaves them.
@@ -841,7 +840,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
     // the completion opens. The root ends idle, the completion undelivered.
     store.fail_saves(usize::MAX);
     let mut client = fixture.client();
-    client.send(open()).await;
+    client.open().await;
     let tree = fixture.server.tree(&conversation()).unwrap();
     until(|| tree.is_quiescent()).await;
     store.fail_saves(0);
@@ -865,13 +864,13 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
 
     // The next save carries the completion; then the edit is accepted.
     client.send(send("m2", "B")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     assert!(store.record(&child).unwrap().delivered);
     let version = session_of(&fixture).transcript().version;
     client
         .send(edit("op2", &target, &version, client_text("A2")))
         .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
     assert!(matches!(
         edit_outcome(&frames),
         EditOutcome::Accepted { .. }
@@ -915,7 +914,7 @@ async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "Why do uploads fail?")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let reply = session_of(&fixture).transcript().blocks[1].id().clone();
     let comments = two_comments(&reply);
     client.send(send("m2", "Check the logs")).await;
@@ -942,7 +941,7 @@ async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
         .collect();
     assert_eq!(pending, [comments.clone()]);
     gate.open();
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let requests = script.requests();
     assert_eq!(
@@ -982,7 +981,7 @@ async fn a_picture_comment_reaches_the_model_as_the_image_then_its_comment() {
         let blob = blobs.put(png.clone()).await.unwrap();
         let mut client = fixture.opened().await;
         client.send(send("m1", "Why do uploads fail?")).await;
-        client.next_until(is_idle).await;
+        client.until_idle().await;
         let reply = session_of(&fixture).transcript().blocks[1].id().clone();
         let [_, timeout] = two_comments(&reply).try_into().unwrap();
         let picture = MessageComment {
@@ -1007,7 +1006,7 @@ async fn a_picture_comment_reaches_the_model_as_the_image_then_its_comment() {
                 comments: vec![timeout, picture],
             })
             .await;
-        client.next_until(is_idle).await;
+        client.until_idle().await;
 
         let requests = script.requests();
         let Some(InferenceItem::UserMessage { content }) = requests[1].items.get(2) else {
@@ -1043,7 +1042,7 @@ async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "Why do uploads fail?")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let reply = session_of(&fixture).transcript().blocks[1].id().clone();
     let comments = two_comments(&reply);
     client
@@ -1053,7 +1052,7 @@ async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
             comments: comments.clone(),
         })
         .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let answer = session_of(&fixture).transcript().blocks[4].id().clone();
 
     let seed = fixture
@@ -1068,7 +1067,7 @@ async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
         .await
         .unwrap();
     let mut forked = TestClient::connect(&fixture.server, &destination);
-    forked.send(open()).await;
+    forked.open().await;
     forked.received();
     forked.send(send("m3", "And the retries?")).await;
     until(|| script.requests().len() == 3).await;
@@ -1094,7 +1093,7 @@ async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_ed
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "Why do uploads fail?")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let reply = session_of(&fixture).transcript().blocks[1].id().clone();
     let comments = two_comments(&reply);
     client
@@ -1104,7 +1103,7 @@ async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_ed
             comments: comments.clone(),
         })
         .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let quoted = TWO_COMMENTS_READ;
     let read = |request: &demi_provider_common::InferenceRequest| match request.items.get(2) {
@@ -1125,7 +1124,7 @@ async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_ed
     client
         .send(edit("op1", &target, &held.version, client_text("Start at 1 MB")))
         .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let edited = session_of(&fixture).transcript();
     let Some(Block::User(replacement)) = edited.blocks.get(3) else {
         panic!("{:?}", edited.blocks)

@@ -378,3 +378,124 @@ impl ContextSource for PluginContext {
         })
     }
 }
+
+/// What the backend keeps of a conversation's agents that their entries
+/// show: each agent's cost, kept with the usage ledger
+/// (`crates/backend-database/src/usage.rs`), and each side question's card.
+pub(crate) struct ShardAgents {
+    /// Weak: the shard owns the agent server that holds the source.
+    pub(crate) shard: Weak<Shard>,
+}
+
+impl demi_agent_server::AgentsSource for ShardAgents {
+    fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, demi_agent_server::KeptAgents> {
+        Box::pin(async move {
+            let mut kept = demi_agent_server::KeptAgents::default();
+            let Some(shard) = self.shard.upgrade() else {
+                return kept;
+            };
+            let conversation = demi_backend_host_access::conversation_of(root);
+            let services = shard.services();
+            match services.control.conversation_costs(conversation.clone()).await {
+                Ok(costs) => {
+                    kept.costs = costs
+                        .into_iter()
+                        .filter_map(|kept| Some((kept.agent?, kept.cost)))
+                        .collect();
+                }
+                // The entries show no cost until the agent's next row.
+                Err(error) => tracing::warn!(
+                    %conversation,
+                    error = &error as &dyn std::error::Error,
+                    "a conversation's kept costs were not read"
+                ),
+            }
+            match services
+                .conversations
+                .read(&conversation, demi_backend_database::side_questions::cards)
+                .await
+            {
+                Ok(cards) => {
+                    kept.cards = cards
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|(id, title, folded)| (id, demi_agent_server::SideCard { title, folded }))
+                        .collect();
+                }
+                // The cards show untitled and open until they change.
+                Err(error) => tracing::warn!(
+                    %conversation,
+                    error = &error as &dyn std::error::Error,
+                    "a conversation's side question cards were not read"
+                ),
+            }
+            kept
+        })
+    }
+}
+
+/// Which paths a complete reply names are files on its conversation's primary
+/// Host: one look for them all, admitted as a user's look is, which never
+/// wakes a stopped Cloud (`crates/backend-host-access/src/stream.rs`).
+pub(crate) struct ShardReplyFiles {
+    /// Weak: the shard owns the agent server that holds the source.
+    pub(crate) shard: Weak<Shard>,
+}
+
+impl demi_agent_server::ReplyFiles for ShardReplyFiles {
+    fn files<'a>(
+        &'a self,
+        root: &'a NodeId,
+        cwd: &'a str,
+        paths: Vec<String>,
+    ) -> LocalBoxFuture<'a, Option<std::collections::HashMap<String, String>>> {
+        Box::pin(async move {
+            let shard = self.shard.upgrade()?;
+            let conversation = conversation_of(root);
+            let host_paths = match shard.host_paths(&conversation).await {
+                Ok(host_paths) => host_paths,
+                Err(error) => {
+                    tracing::warn!(%conversation, error = &error as &dyn std::error::Error, "a reply's code paths were not looked at");
+                    return None;
+                }
+            };
+            let resolved: Vec<(String, String)> = paths
+                .into_iter()
+                .map(|path| {
+                    let on_host = host_paths.resolve(cwd, &path);
+                    (path, on_host)
+                })
+                .collect();
+            // Released with the shard's tasks' cancellation, which a look
+            // needs only to end its wait.
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let looked = shard
+                .host_shard()
+                .look_at_host(&conversation, &cancel, async move |host| {
+                    use demi_host_interface::HostFs as _;
+                    let stats = futures_util::future::join_all(
+                        resolved.iter().map(|(_, on_host)| host.host.stat(on_host.as_str())),
+                    )
+                    .await;
+                    resolved
+                        .into_iter()
+                        .zip(stats)
+                        .filter(|(_, stat)| {
+                            matches!(stat, Ok(demi_host_interface::FileStat { kind: demi_host_interface::FileKind::File, .. }))
+                        })
+                        .map(|(paths, _)| paths)
+                        .collect::<std::collections::HashMap<String, String>>()
+                })
+                .await;
+            match looked {
+                Ok(files) => Some(files),
+                // A stopped Cloud or an offline device cannot say; the reply's
+                // code stays code.
+                Err(error) => {
+                    tracing::info!(%conversation, %error, "a reply's code paths could not be looked at");
+                    None
+                }
+            }
+        })
+    }
+}

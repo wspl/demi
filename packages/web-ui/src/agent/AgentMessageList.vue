@@ -459,7 +459,8 @@ const { height: viewportHeight } = useElementSize(scrollContainer)
 useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
 // Within a screen of an edge that is not the transcript's, the next page is
-// read there. The host reads each page once.
+// read there, and the page before is read while the window shows a stale
+// block. The host reads each page once.
 watch(
   [scrollOffset, () => props.blocks, viewportHeight, () => props.atStart, () => props.atEnd, () => props.revealBlockId],
   () => {
@@ -469,7 +470,9 @@ watch(
     if (!el || paneStatus.value || props.revealBlockId) {
       return
     }
-    if (!props.atStart && el.scrollTop < el.clientHeight) {
+    // A stale block, held from before a reset that could not vouch for it,
+    // is a hole the host reads again while it shows (`resetTranscript`).
+    if ((!props.atStart && el.scrollTop < el.clientHeight) || props.blocks.some((block) => block.stale)) {
       emit('readBefore')
     }
     if (!props.atEnd && distanceFromBottom(el) < el.clientHeight) {

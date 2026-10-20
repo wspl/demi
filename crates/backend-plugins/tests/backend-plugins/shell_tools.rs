@@ -28,7 +28,8 @@ use demi_provider_common::{
     testing::{ScriptedRuntime, Turn},
 };
 use demi_agent_server::{AgentServer, ServerConfig};
-use demi_conversation_socket_protocol::SubagentEvent;
+use demi_agent_server::testing::{agent_entries, entry_in};
+use demi_conversation_socket_protocol::{AgentRole, JobPhase};
 use demi_host_interface::{RpcInvocation, testing::MemoryPort};
 use demi_agent_store::testing::model_reading;
 use demi_shared_types::{
@@ -38,7 +39,7 @@ use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 use serde_json::{Value, json};
 
-use crate::support::{DeviceHost, Fixture, conversation, exec, is_idle, reply, resident, tolerant, turn, within};
+use crate::support::{DeviceHost, Fixture, conversation, exec, reply, resident, tolerant, turn, within};
 
 /// What the model was shown of each tool call it made, by the call's id, in
 /// the order the request carries them.
@@ -256,7 +257,7 @@ async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
             .accept_agent_message(agent_message("The failing test is flaky."))
             .await
             .unwrap();
-        client.next_until(is_idle).await;
+        client.until_idle().await;
 
         let results = results.borrow();
         let flagged = result(&results, "flagged");
@@ -598,7 +599,7 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
             &format!("Command {serve} (Run the test script) ended with exit code 0"),
         )
         .await;
-        client.next_until(is_idle).await;
+        client.until_idle().await;
 
         // The call returned once the start-up output had been quiet for two
         // seconds, long before its thirty.
@@ -812,7 +813,7 @@ async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
             waits = status.wait_for(|status| status.input) => {
                 waits.expect("the session lives while its call runs");
             }
-            _ = client.next_until(is_idle) => panic!("the end report ended the running call's window"),
+            _ = client.until_idle() => panic!("the end report ended the running call's window"),
         }
         // The other command ends, and the look shows both ends; the running
         // call was not cut short meanwhile, and ends once it is let go.
@@ -821,7 +822,7 @@ async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
         assert_eq!(code, 0, "{stderr}");
         assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
         std::fs::write(format!("{}/let-go", fixture.workspace), "").unwrap();
-        client.next_until(is_idle).await;
+        client.until_idle().await;
         let results: Results = Rc::default();
         for request in &script.requests() {
             record(&results, request);
@@ -912,15 +913,14 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
         spawn(&fixture, "Serve until stopped.").await;
-        let started = client
-            .next_until(|frame| {
-                matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Started, .. })
-            })
-            .await;
-        let Some(ServerFrame::Subagent { job, .. }) = started.last() else {
-            unreachable!()
+        let running = |frame: &ServerFrame| {
+            agent_entries(frame)
+                .into_iter()
+                .find(|entry| matches!(&entry.role, AgentRole::Subagent(child) if child.state == JobPhase::Running))
+                .map(|entry| entry.id.clone())
         };
-        let child = job.child.subagent_id.clone();
+        let started = client.next_until(|frame| running(frame).is_some()).await;
+        let child = started.last().and_then(running).expect("the child started");
         let tree = fixture.server.tree(&conversation()).unwrap();
 
         // The child answered and its command runs: it stays live.
@@ -936,11 +936,19 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
         std::fs::write(format!("{}/stop", fixture.workspace), "").unwrap();
         client
             .next_until(|frame| {
-                matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job }
-                    if job.child.subagent_id == child && job.result.as_deref() == Some("The server stopped."))
+                entry_in(frame, &child).is_some_and(|entry| {
+                    matches!(&entry.role, AgentRole::Subagent(child) if child.state == JobPhase::Completed)
+                })
             })
             .await;
-        client.next_until(is_idle).await;
+        client.until_idle().await;
+        // Its result is its last answer, which the root heard.
+        let root = fixture.server.tree(&conversation()).unwrap().root().session().transcript();
+        assert!(
+            root.blocks.iter().any(|block| matches!(block, Block::AgentMessage(receipt)
+                if format!("{:?}", receipt.message).contains("The server stopped."))),
+            "{root:?}"
+        );
         assert_eq!(script.remaining(), 0);
         fixture.stop().await;
     })

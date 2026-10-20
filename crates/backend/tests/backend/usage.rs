@@ -13,12 +13,13 @@
 //! The rows of a Claude Code run, of a title request and of a refused call are
 //! their modules' (`claude`, `titles`, `rotation`).
 
-use demi_conversation_socket_protocol::{ClientFrame, CostCall, ServerFrame};
+use demi_agent_server::testing::root_entry;
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::InstanceMode;
-use demi_web_api_protocol::usage::{ConversationCost, InstanceUsage, UsageTotals};
+use demi_web_api_protocol::usage::{AgentCalls, InstanceUsage, UsageTotals};
 use reqwest::StatusCode;
 
 use serde_json::json;
@@ -319,24 +320,23 @@ async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_n
     backend.close().await;
 }
 
-/// Each call of a conversation reaches its open page as a `cost` frame of what
-/// its row adds, the call itself for a turn call of the main conversation. `GET
-/// /api/conversations/:id/cost` sums the rows, its second call a miss once it
-/// wrote the prompt again (`crates/backend-database/src/usage.rs`).
+/// Each call of a conversation reaches its open page as the root's entry with
+/// its kept cost, which the row's write adds to without reading the ledger
+/// again (`crates/backend-database/src/usage.rs`). `GET
+/// /api/conversations/:id/agents/:node/calls` lists the agent's turn calls
+/// for the cache chart, its second call a miss once it wrote the prompt
+/// again.
 ///
-/// Each frame and the answer count the rows they include, so the page can tell
-/// a frame it holds from one past a gap. A page that opens the conversation
-/// again receives the count with the handshake, which tells it of a row whose
-/// frame it missed.
+/// The entry counts the turn calls it includes, so a page that holds the
+/// calls can tell when it holds them all; a page that opens again receives
+/// the same cost with its handshake. An entry whose models have no price
+/// leaves every price null.
 ///
-/// Each frame names the row's agent. An entry whose models have no price
-/// leaves every price null and lists no agent in the answer.
-///
-/// Planted defect: no frame, which the socket waits for until the test's
-/// timeout.
+/// Planted defect: a cost not announced, which the socket waits for until
+/// the test's timeout.
 // A backend and two answers of a scripted vendor: about half a second.
 #[tokio::test]
-async fn each_call_reaches_the_open_page_as_a_cost_frame_and_the_cost_sums_the_rows() {
+async fn each_call_reaches_the_open_page_as_its_agents_cost_and_the_calls_list_its_turns() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let vendor = MockVendor::start().await;
@@ -351,102 +351,45 @@ async fn each_call_reaches_the_open_page_as_a_cost_frame_and_the_cost_sums_the_r
             "cache_creation_input_tokens": write,
         })
     };
-    let cost_frame = |frame: &ServerFrame| matches!(frame, ServerFrame::Cost { .. });
-    let mut calls: Vec<CostCall> = Vec::new();
-    let mut counts = Vec::new();
-    for (id, (input, write, read)) in [("m1", (1_000, 20_000, 0)), ("m2", (10, 30_000, 0))] {
+    let cost_of = |frame: &ServerFrame| root_entry(frame).map(|entry| entry.cost);
+    let mut totals = Vec::new();
+    for (count, id, (input, write, read)) in [(1, "m1", (1_000, 20_000, 0)), (2, "m2", (10, 30_000, 0))] {
         vendor.respond(message(vec![text_block(0, &["Answer."])], "end_turn", usage(input, write, read), 7));
         let mut frames = socket.chat(id, "Question").await;
-        // The frame follows the row's write, which may come after the turn's end.
-        if !frames.iter().any(cost_frame) {
-            frames = socket.until(cost_frame).await;
+        // The cost follows the row's write, which may come after the turn's end.
+        let counted = |frame: &ServerFrame| cost_of(frame).is_some_and(|cost| cost.calls == count);
+        if !frames.iter().any(counted) {
+            frames = socket.until(counted).await;
         }
-        let Some(ServerFrame::Cost { rows, totals, agent, profile, call }) =
-            frames.into_iter().find(|frame| cost_frame(frame))
-        else {
-            unreachable!()
-        };
-        counts.push(rows);
-        assert_eq!(
-            (totals.input_tokens, totals.cache_write_tokens, totals.output_tokens, totals.price.total, agent, profile),
-            (input, write, 7, None, Some(0), None)
-        );
-        calls.push(call.expect("a turn call of the main conversation"));
+        let cost = frames.iter().rev().find_map(cost_of).expect("the root's cost");
+        totals.push(cost);
     }
+    let last = totals[1].totals;
     assert_eq!(
-        calls.iter().map(|call| (call.cache_write_tokens, call.after_compaction, call.miss)).collect::<Vec<_>>(),
-        [(20_000, false, None), (30_000, false, Some(demi_conversation_socket_protocol::CacheMiss::NotCached))]
+        (last.input_tokens, last.cache_write_tokens, last.output_tokens, last.price.total),
+        (1_010, 50_000, 14, None)
     );
+    assert_eq!(totals[0].totals.input_tokens, 1_000);
 
-    let cost = backend
-        .get(&format!("/api/conversations/{FIRST}/cost"), Some(&master))
+    let calls = backend
+        .get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/calls"), Some(&master))
         .await
-        .json::<ConversationCost>();
+        .json::<AgentCalls>()
+        .calls;
     assert_eq!(
-        (cost.totals.input_tokens, cost.totals.cache_write_tokens, cost.totals.output_tokens),
-        (1_010, 50_000, 14)
+        calls.iter().map(|call| (call.number, call.cache_write_tokens, call.after_compaction, call.miss)).collect::<Vec<_>>(),
+        [(1, 20_000, false, None), (2, 30_000, false, Some(demi_conversation_socket_protocol::CacheMiss::NotCached))]
     );
-    assert_eq!((cost.calls, cost.agents.len(), cost.totals.price.total), (calls, 0, None));
-    assert_eq!((counts, cost.rows), (vec![1, 2], 2));
+    // The calls after the first the page holds.
+    let newer = backend
+        .get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/calls?after=1"), Some(&master))
+        .await
+        .json::<AgentCalls>()
+        .calls;
+    assert_eq!(newer, calls[1..]);
     let mut again = Socket::connect(&backend, &master, FIRST).await;
-    again.open().await;
-    let opened = again.until(|frame| matches!(frame, ServerFrame::CostRows { .. })).await;
-    assert_eq!(opened.last(), Some(&ServerFrame::CostRows { rows: 2 }));
+    let opened = again.open().await;
+    assert_eq!(opened.iter().find_map(cost_of), Some(totals[1]));
     backend.close().await;
 }
 
-/// A ledger row of the conversation `FIRST`, its agent's call of `purpose`,
-/// written directly, `order` milliseconds into the day.
-fn agent_row(harness: &Harness, agent: i64, purpose: &str, input: i64, order: i64) {
-    harness
-        .control_database()
-        .execute(
-            "INSERT INTO usage_ledger (id, user_id, conversation_id, agent, purpose, provider_id, model_id,
-               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, outcome, started_at, ended_at)
-             SELECT ?1, id, ?2, ?3, ?4, 'entry-a', 'model-1', ?5, 10, 2, 1, 'answered', ?6, ?6
-             FROM users WHERE email = 'master@example.test'",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), FIRST, agent, purpose, input, 1_790_000_000_000_i64 + order],
-        )
-        .unwrap();
-}
-
-/// `GET /api/conversations/:id/cost?agent=` answers that agent's own cost:
-/// its rows' totals, its turn calls with a compaction of its own between
-/// them, and itself alone among the agents. Either answer counts every row
-/// of the conversation, which every `cost` frame continues
-/// (`crates/backend-database/src/usage.rs`).
-///
-/// Planted defects: the whole conversation's totals, or the main
-/// conversation's calls, for the agent.
-// A backend and five rows written directly: about a second.
-#[tokio::test]
-async fn the_cost_of_one_agent_holds_its_own_rows_and_calls() {
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    create(&backend, &master, FIRST).await;
-    agent_row(&harness, 0, "turn", 1_000, 1);
-    agent_row(&harness, 1, "turn", 100, 2);
-    agent_row(&harness, 1, "compaction", 50, 3);
-    agent_row(&harness, 1, "turn", 200, 4);
-    agent_row(&harness, 2, "turn", 7, 5);
-    let cost = |query: &'static str| {
-        let backend = &backend;
-        let master = &master;
-        async move {
-            backend
-                .get(&format!("/api/conversations/{FIRST}/cost{query}"), Some(master))
-                .await
-                .json::<ConversationCost>()
-        }
-    };
-    let own = cost("?agent=1").await;
-    assert_eq!((own.rows, own.totals.input_tokens, own.totals.output_tokens), (5, 350, 30));
-    assert_eq!(
-        own.calls.iter().map(|call| (call.input_tokens, call.after_compaction)).collect::<Vec<_>>(),
-        [(100, false), (200, true)]
-    );
-    assert!(own.agents.is_empty(), "{:?}", own.agents);
-    let whole = cost("").await;
-    assert_eq!((whole.rows, whole.totals.input_tokens, whole.calls.len()), (5, 1_357, 1));
-    backend.close().await;
-}

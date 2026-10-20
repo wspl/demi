@@ -136,6 +136,16 @@ pub fn run_of(before: &[Block], block: &Block, sender_below: bool) -> Option<Blo
     Some(block.id().clone())
 }
 
+/// The request `block` belongs to after `before`: its own for a `user`
+/// block, else the request of the block before it, which a window's first
+/// block carries from the store; none before the first `user` block.
+pub fn request_of(before: &[Block], block: &Block) -> Option<BlockId> {
+    match block {
+        Block::User(_) => Some(block.id().clone()),
+        _ => before.last().and_then(|previous| previous.request().cloned()),
+    }
+}
+
 /// Gives every block of `blocks` its run, in order, as storing them one by
 /// one would, where every agent's message came from below.
 ///

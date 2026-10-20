@@ -24,6 +24,8 @@ fn said(text: &str) -> Block {
     Block::Text(TextBlock {
         id: text.try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
+        code_files: None,
         model: test_model(),
         text: text.to_owned(),
         forkable: true,

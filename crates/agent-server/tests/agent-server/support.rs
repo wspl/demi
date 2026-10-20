@@ -14,7 +14,7 @@ use bytes::Bytes;
 
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
-    testing::{ScriptedProviders, TestClient},
+    testing::{NoKeptAgents, ScriptedProviders, TestClient, TestHostFiles, root_entry},
 };
 use demi_agent_store::{AgentTreeStore, Placement, testing::MemoryTreeStore};
 use demi_agent_tools::{
@@ -63,7 +63,6 @@ pub struct TestProduct {
     pub plugin_asked_meanwhile: RefCell<Vec<bool>>,
     /// Holds the next read of where the conversation works until the gate
     /// opens, as a Host that is slow to answer; the read takes it.
-    pub placement_hold: RefCell<Option<Gate>>,
     /// The conversation's Workflow menu choice as its spawns read it.
     pub workflow: RefCell<ConversationProfiles>,
     /// What `demi agent workflows list` reads.
@@ -74,6 +73,9 @@ pub struct TestProduct {
     /// a read of the user's provider entries and model catalog in the
     /// product.
     pub runs_on_reads: Cell<usize>,
+    /// The Host's files a reply's code names, which a reply keeps once it
+    /// ends.
+    pub host_files: Rc<TestHostFiles>,
 }
 
 /// A plugin's context source: it answers its text once per node.
@@ -102,6 +104,7 @@ impl ContextSource for PluginSource {
 impl Default for TestProduct {
     fn default() -> Self {
         Self {
+            host_files: Rc::new(TestHostFiles::default()),
             subagents: RefCell::new(SubagentSettings {
                 enabled: true,
                 max_live: None,
@@ -110,7 +113,6 @@ impl Default for TestProduct {
             }),
             context: RefCell::default(),
             seen: RefCell::default(),
-            placement_hold: RefCell::default(),
             workflow: RefCell::new(ConversationProfiles::Settings),
             workflows: RefCell::default(),
             files: RefCell::default(),
@@ -126,12 +128,6 @@ impl HostResolver for TestProduct {
     type Host = NoHost;
 
     async fn placement(&self, _context: NodeContext<'_>) -> Result<Placement, HostError> {
-        let hold = self.placement_hold.borrow_mut().take();
-        if let Some(hold) = hold {
-            let mut opened = hold.0.subscribe();
-            // The gate lives in the test that holds the read.
-            let _ = opened.wait_for(|open| *open).await;
-        }
         Ok(Placement {
             device: None,
             directory: "/workspace".to_owned(),
@@ -748,6 +744,8 @@ impl Fixture {
             config,
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
+            agents: Rc::new(NoKeptAgents),
+            reply_files: product.host_files.clone(),
         });
         told.server.replace(Rc::downgrade(&server));
         Self {
@@ -762,11 +760,12 @@ impl Fixture {
         TestClient::connect(&self.server, &conversation())
     }
 
-    /// A client that opened the conversation and read its handshake.
+    /// A client that opened the conversation and read its handshake, up to
+    /// the root's transcript.
     pub async fn opened(&self) -> TestClient<TestProduct> {
         let mut client = self.client();
-        client.send(open()).await;
-        let handshake = client.next_until(is_waiting).await;
+        client.open().await;
+        let handshake = client.next_until(is_root_reset).await;
         assert_eq!(
             handshake.first(),
             Some(&ServerFrame::Opened),
@@ -814,13 +813,6 @@ pub fn turn(id: &str) -> TurnId {
     TurnId::try_from(id).unwrap()
 }
 
-pub fn open() -> ClientFrame {
-    ClientFrame::Open {
-        from: None,
-        edge: None,
-    }
-}
-
 /// Switches the conversation's live tree to `model`, as the backend does
 /// once the conversation's record holds it.
 pub async fn switch(fixture: &Fixture, model: ModelSelection) {
@@ -845,17 +837,20 @@ pub fn is_pending_steers(frame: &ServerFrame) -> bool {
     matches!(frame, ServerFrame::PendingSteers { .. })
 }
 
-/// The handshake's last frame before the usage.
-pub fn is_waiting(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::Waiting { .. })
+/// The handshake's last frame for a client subscribed to the root alone:
+/// the root's transcript.
+pub fn is_root_reset(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::TranscriptReset { node, .. } if *node == conversation())
 }
 
+/// The agents' entries, which the handshake brings after `opened`.
+pub fn is_agents(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::Agents { .. })
+}
+
+/// The root's entry with its estimate of the next request.
 pub fn is_context_usage(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::ContextUsage { .. })
-}
-
-pub fn is_idle(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase == demi_shared_types::SessionPhase::Idle)
+    root_entry(frame).is_some_and(|entry| entry.context.is_some())
 }
 
 /// Each block's type, and a tool call's status beside it.
@@ -1332,6 +1327,8 @@ pub fn scripted_host_server_telling(
         ids: Rc::new(SequentialIds::new("id")),
         config: ServerConfig::default(),
         status_changed,
+        agents: Rc::new(NoKeptAgents),
+        reply_files: Rc::new(TestHostFiles::default()),
     })
 }
 

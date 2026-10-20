@@ -1,6 +1,7 @@
+import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
 import type { AgentMessage, Block, JobModel } from '@demicodes/protocol'
 import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { demoModel, inRun, screenshotTool, shellView, thinkingText, withEnd } from './blocks'
+import { demoModel, inRequests, inRun, screenshotTool, shellView, thinkingText, withEnd } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './catalog'
 import { ago } from './time'
@@ -198,6 +199,7 @@ export function workSubagent(): SubagentRecord {
     id: 'ag-suite',
     number: 3,
     onPath: true,
+    parent: 'gallery-work',
     name: 'Find the old suite paths',
     ...runsOn('research', SONNET),
     phase: 'running',
@@ -207,6 +209,7 @@ export function workSubagent(): SubagentRecord {
     failures: {},
     pendingCalls: [],
     waitingSince: null,
+    cost: NO_COST,
     history: wholeHistory([
       user('ag-suite-user', ago(60_000), 'Find the suite paths test/mjsunit/mjsunit.status still names that no longer exist.'),
       ...inRun(shell(
@@ -235,6 +238,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-cookie',
       number: 1,
       onPath: true,
+      parent: 'gallery-work',
       name: 'Find the cookie assertion',
       ...runsOn(null, OPUS),
       phase: 'running',
@@ -246,6 +250,7 @@ export function gallerySubagents(): SubagentRecord[] {
       failures: {},
       pendingCalls: [],
       waitingSince: null,
+      cost: NO_COST,
       history: wholeHistory([
         user(
           'ag-cookie-user',
@@ -276,6 +281,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-logout',
       number: 2,
       onPath: true,
+      parent: 'gallery-work',
       name: 'Check the logout path',
       ...runsOn('frontend', { ...SONNET, effort: 'high', fast: true }, { forkedFrom: 1, cwd: SLOT_ROOT }),
       phase: 'running',
@@ -288,6 +294,7 @@ export function gallerySubagents(): SubagentRecord[] {
       // answered yet: its run's row shimmers meanwhile, and the server tells
       // the wait from then.
       waitingSince: Date.now() - 31_000,
+      cost: NO_COST,
       history: wholeHistory([
         user(
           'ag-logout-user',
@@ -320,6 +327,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-snapshot',
       number: 7,
       onPath: true,
+      parent: 'gallery-work',
       name: 'Snapshot strings',
       ...runsOn('quick', { ...HAIKU, effort: 'off' }),
       phase: 'running',
@@ -331,6 +339,7 @@ export function gallerySubagents(): SubagentRecord[] {
       // Its turn began 12 seconds ago and the model has not answered yet:
       // the view says Requesting from then, however often it opens.
       waitingSince: Date.now() - 12_000,
+      cost: NO_COST,
       history: wholeHistory([
         user(
           'ag-snapshot-user',
@@ -343,6 +352,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-comments',
       number: 4,
       onPath: true,
+      parent: 'gallery-work',
       name: 'Update helper comments',
       ...runsOn(null, OPUS, { round: 2 }),
       phase: 'completed',
@@ -353,6 +363,7 @@ export function gallerySubagents(): SubagentRecord[] {
       failures: {},
       pendingCalls: [],
       waitingSince: null,
+      cost: NO_COST,
       history: wholeHistory([
         user(
           'ag-comments-user',
@@ -381,6 +392,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-fixture',
       number: 6,
       onPath: true,
+      parent: 'gallery-work',
       name: 'Run the fixture server',
       ...runsOn('browser', SONNET),
       phase: 'error',
@@ -391,6 +403,7 @@ export function gallerySubagents(): SubagentRecord[] {
       failures: {},
       pendingCalls: [],
       waitingSince: null,
+      cost: NO_COST,
       history: wholeHistory([
         user(
           'ag-fixture-user',
@@ -423,6 +436,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-ci',
       number: 5,
       onPath: true,
+      parent: 'gallery-work',
       name: 'CI screenshot review',
       ...runsOn('review', { ...OPUS, effort: 'medium' }),
       phase: 'aborted',
@@ -433,6 +447,7 @@ export function gallerySubagents(): SubagentRecord[] {
       failures: {},
       pendingCalls: [],
       waitingSince: null,
+      cost: NO_COST,
       history: wholeHistory([
         user(
           'ag-ci-user',
@@ -483,6 +498,7 @@ export function briefSubagent(): SubagentRecord {
     id: 'ag-flake',
     number: 8,
     onPath: true,
+    parent: 'gallery-work',
     name: 'Find why the login test flakes',
     ...runsOn('research', SONNET),
     phase: 'running',
@@ -492,6 +508,7 @@ export function briefSubagent(): SubagentRecord {
     failures: {},
     pendingCalls: [],
     waitingSince: null,
+    cost: NO_COST,
     history: wholeHistory([
       user('ag-flake-user', ago(30_000), RESEARCH_BRIEF),
       text('ag-flake-text', ago(20_000), 'I will start with the cookie assertions, then the fixture server.'),
@@ -510,6 +527,7 @@ export function slotSubagent(): SubagentRecord {
     id: SLOT_NODE,
     number: 9,
     onPath: true,
+    parent: 'gallery-work',
     name: 'Rename the cookie in the slot',
     ...runsOn('frontend', SONNET, { cwd: `${SLOT_ROOT}/src/auth` }),
     phase: 'running',
@@ -519,6 +537,7 @@ export function slotSubagent(): SubagentRecord {
     failures: {},
     pendingCalls: [],
     waitingSince: null,
+    cost: NO_COST,
     history: wholeHistory(slotBlocks()),
   }
 }
@@ -604,6 +623,7 @@ function bubbleAgent(agent: { id: string, number: number, description: string },
     id: agent.id,
     number: agent.number,
     onPath: true,
+    parent: 'gallery-work',
     name: agent.description,
     ...runsOn('docs', SONNET),
     phase: 'completed',
@@ -614,6 +634,7 @@ function bubbleAgent(agent: { id: string, number: number, description: string },
     failures: {},
     pendingCalls: [],
     waitingSince: null,
+    cost: NO_COST,
     history: wholeHistory(blocks),
   }
 }
@@ -644,7 +665,7 @@ export function bubbleAgents(report: boolean): SubagentRecord[] {
  * keeps its receipt row, as every message from below does.
  */
 export function bubblesMainBlocks(): Block[] {
-  return [
+  return inRequests([
     user('bubbles-user', ago(260_000), 'Tidy the release notes and have someone review them.'),
     ...inRun(
       shell('bubbles-spawn', ago(250_000), 'Start the tidy and the review', 'Spawned agents 3 and 4', 'completed', 'demi agent spawn'),
@@ -653,5 +674,5 @@ export function bubblesMainBlocks(): Block[] {
     text('bubbles-started', ago(195_000), 'Tidy the release notes and Review the notes are at work. I asked the tidy to keep the Upgrading heading.'),
     ...inRun(agentSays('bubbles-from-notes', NOTES, BUBBLES_ROOT, ago(180_000), 'I will keep the Upgrading heading.', 'ag-notes-ack')),
     text('bubbles-text', ago(90_000), 'The release notes are tidied, and the review found one broken table, now fixed.'),
-  ]
+  ])
 }

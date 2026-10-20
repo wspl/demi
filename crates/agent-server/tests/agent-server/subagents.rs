@@ -14,8 +14,9 @@ use demi_agent_store::{
     testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
-    ClientFrame, JobPhase, ServerFrame, ShellStatus, SubagentEvent, TranscriptPatch,
+    AgentRole, ClientFrame, HeldEdge, JobPhase, ServerFrame, ShellStatus, Subagent, TranscriptPatch,
 };
+use demi_agent_server::testing::{agent_entries, entry_in, phase_is};
 use demi_provider_common::{
     InferenceItem, UserPart,
     testing::{Turn, event},
@@ -32,11 +33,8 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    AGENT_CALL, CommandRun, Fixture, Gate, LiveHosts, Model, ScriptedShells, TestProduct, agent, agent_call, conversation,
-    held, is_idle, is_pending_steers, listed_model, named_node, open, request_text, scripted_host_server,
-    scripted_host_server_in, send,
-    shell_call, shell_command, texts, until,
-};
+        AGENT_CALL, CommandRun, Fixture, Gate, LiveHosts, Model, ScriptedShells, TestProduct, agent, agent_call, conversation, held, is_pending_steers, listed_model, named_node, request_text, scripted_host_server, scripted_host_server_in, send, shell_call, shell_command, texts, until,
+    };
 
 pub(crate) fn said(text: &str) -> Turn {
     Turn::Events(vec![event::text(text), event::response(1, 1)])
@@ -84,17 +82,53 @@ pub(crate) fn refused(run: &CommandRun) -> &str {
     &run.stderr
 }
 
-/// Each `subagent` frame as its event, child and phase.
+/// A change of a child's round, as its entries tell it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubagentEvent {
+    /// A round runs that the frames had not shown running.
+    Started,
+    /// A round the frames had shown running, or not at all, is closed.
+    Closed,
+}
+
+/// Each change of a child's round the frames tell, with the child and its
+/// state: a round seen running for the first time starts, and one seen
+/// closed after it ran, or first seen closed, closes.
 pub(crate) fn lifecycle(frames: &[ServerFrame]) -> Vec<(SubagentEvent, NodeId, JobPhase)> {
-    frames
-        .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::Subagent { event, job } => {
-                Some((*event, job.child.subagent_id.clone(), job.child.phase))
+    let mut seen: std::collections::HashMap<NodeId, (u64, JobPhase)> = std::collections::HashMap::new();
+    let mut events = Vec::new();
+    for entry in frames.iter().flat_map(agent_entries) {
+        let AgentRole::Subagent(child) = &entry.role else {
+            continue;
+        };
+        let before = seen.insert(entry.id.clone(), (child.round, child.state));
+        let running = child.state == JobPhase::Running;
+        match before {
+            Some((round, state)) if round == child.round && (state == JobPhase::Running) == running => {}
+            Some((round, _)) if round == child.round && !running => {
+                events.push((SubagentEvent::Closed, entry.id.clone(), child.state));
             }
-            _ => None,
-        })
-        .collect()
+            _ if running => events.push((SubagentEvent::Started, entry.id.clone(), child.state)),
+            None => events.push((SubagentEvent::Closed, entry.id.clone(), child.state)),
+            _ => {}
+        }
+    }
+    events
+}
+
+/// The child `child` as the frame's entry of it says.
+pub(crate) fn child_in<'a>(frame: &'a ServerFrame, child: &NodeId) -> Option<&'a Subagent> {
+    match &entry_in(frame, child)?.role {
+        AgentRole::Subagent(subagent) => Some(subagent),
+        _ => None,
+    }
+}
+
+/// Whether the frame tells a child running.
+pub(crate) fn is_started(frame: &ServerFrame) -> bool {
+    agent_entries(frame)
+        .iter()
+        .any(|entry| matches!(&entry.role, AgentRole::Subagent(child) if child.state == JobPhase::Running))
 }
 
 /// The agent messages written into the root's transcript.
@@ -121,7 +155,7 @@ fn is_receipt_patch(frame: &ServerFrame) -> bool {
 }
 
 pub(crate) fn is_closed(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
-    move |frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job } if &job.child.subagent_id == child)
+    move |frame| child_in(frame, child).is_some_and(|subagent| subagent.state != JobPhase::Running)
 }
 
 pub(crate) fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePhase> {
@@ -144,7 +178,7 @@ async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() 
     let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "start")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let spawned = agent(
         &fixture.server,
         &root(),
@@ -154,13 +188,12 @@ async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() 
     .await;
     let child = named_node(&fixture.store, &spawned);
     let waits = |frame: &ServerFrame, waiting: bool| {
-        matches!(frame, ServerFrame::Waiting { subagent_id: Some(id), waited_ms }
-            if id == &child && waited_ms.is_some() == waiting)
+        entry_in(frame, &child).is_some_and(|entry| entry.waited_ms.is_some() == waiting)
     };
     client.next_until(|frame| waits(frame, true)).await;
 
     let mut second = fixture.client();
-    second.send(open()).await;
+    second.open().await;
     let handshake = second.received();
     assert!(handshake.iter().any(|frame| waits(frame, true)), "{handshake:?}");
 
@@ -172,18 +205,18 @@ async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() 
 /// Whether `frame` carries the child `child`'s transcript.
 fn transcript_of(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
     move |frame| {
-        matches!(frame, ServerFrame::SubagentTranscriptReset { subagent_id, .. }
-            | ServerFrame::SubagentTranscriptPatch { subagent_id, .. } if subagent_id == child)
+        matches!(frame, ServerFrame::TranscriptReset { node, .. }
+            | ServerFrame::TranscriptPatch { node, .. } if node == child)
     }
 }
 
-// A page receives a child's transcript only while it shows the child
-// (`crates/agent-server/src/server/tree.rs`).
+// A page receives a child's transcript only while it subscribes to the
+// child's node (`crates/agent-server/src/server/tree.rs`).
 //
-// A running child's brief streams to nobody until the page names it, which
-// answers with the child's transcript, and its changes follow from then on.
-// Before, every page received every live child's transcript, which made a
-// conversation with large children slow to open.
+// A running child's brief streams to nobody until the page subscribes,
+// which answers with the child's transcript, and its changes follow from
+// then on. Before, every page received every live child's transcript, which
+// made a conversation with large children slow to open.
 #[tokio::test(flavor = "local")]
 async fn a_page_receives_a_childs_transcript_only_once_it_shows_the_child() {
     let gate = Gate::new();
@@ -193,39 +226,35 @@ async fn a_page_receives_a_childs_transcript_only_once_it_shows_the_child() {
     let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "start")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let child = spawn(
         &fixture,
         &root(),
         json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
     )
     .await;
-    let waits = |frame: &ServerFrame| {
-        matches!(frame, ServerFrame::Waiting { subagent_id: Some(id), waited_ms: Some(_) } if id == &child)
-    };
+    let waits = |frame: &ServerFrame| entry_in(frame, &child).is_some_and(|entry| entry.waited_ms.is_some());
     let unshown = client.next_until(waits).await;
 
-    client
-        .send(ClientFrame::ShowSubagents { ids: vec![child.clone()] })
-        .await;
+    client.subscribe(&child).await;
     let shown = client.received();
     gate.open();
     let followed = client.next_until(is_closed(&child)).await;
 
     assert!(!unshown.iter().any(transcript_of(&child)), "{unshown:#?}");
-    let [ServerFrame::SubagentTranscriptReset { blocks, .. }] = shown.as_slice() else {
+    let [ServerFrame::TranscriptReset { blocks, .. }] = shown.as_slice() else {
         panic!("the child's transcript alone: {shown:#?}")
     };
     assert!(brief_of(blocks).contains("Read notes.md"), "{blocks:#?}");
     assert!(
-        followed.iter().any(|frame| matches!(frame, ServerFrame::SubagentTranscriptPatch { subagent_id, .. } if subagent_id == &child)),
+        followed.iter().any(|frame| matches!(frame, ServerFrame::TranscriptPatch { node, .. } if node == &child)),
         "{followed:#?}"
     );
 }
 
-// The children a page names before its `open` are those whose transcripts
-// the open's handshake sends; a page that names none opens with the
-// children's summaries and states, and none of their transcripts.
+// The children a page subscribes to before its `open` are those whose
+// transcripts the open's handshake sends; a page that subscribes to none
+// opens with the children's entries, and none of their transcripts.
 #[tokio::test(flavor = "local")]
 async fn an_open_sends_the_transcripts_of_the_children_the_page_shows_alone() {
     let gate = Gate::new();
@@ -236,16 +265,16 @@ async fn an_open_sends_the_transcripts_of_the_children_the_page_shows_alone() {
     let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "start")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let notes = spawn(&fixture, &root(), json!({ "prompt": "Read notes.md", "description": "notes" })).await;
     let todo = spawn(&fixture, &root(), json!({ "prompt": "Read todo.md", "description": "todo" })).await;
 
     let mut showing = fixture.client();
-    showing.send(ClientFrame::ShowSubagents { ids: vec![todo.clone()] }).await;
-    showing.send(open()).await;
+    showing.subscribe(&todo).await;
+    showing.open().await;
     let shown = showing.received();
     let mut plain = fixture.client();
-    plain.send(open()).await;
+    plain.open().await;
     let summaries_only = plain.received();
     gate.open();
 
@@ -254,6 +283,85 @@ async fn an_open_sends_the_transcripts_of_the_children_the_page_shows_alone() {
     assert!(!summaries_only.iter().any(transcript_of(&notes)), "{summaries_only:#?}");
     assert!(!summaries_only.iter().any(transcript_of(&todo)), "{summaries_only:#?}");
     assert_eq!(lifecycle(&summaries_only).len(), 2, "{summaries_only:#?}");
+}
+
+// A page showed a running child, then lost its connection; the child
+// finished meanwhile. Opening again holding the child as it last showed it,
+// the page receives the child's finished transcript, from its checkpoint, so
+// its window no longer ends at the old half answer. A page that holds the
+// closed transcript reads nothing again, and one that subscribes to the
+// closed child once open receives it too. Before, a closed node answered no
+// version, and the window kept what it showed.
+#[tokio::test(flavor = "local")]
+async fn a_page_that_held_a_child_running_catches_up_with_it_closed() {
+    let gate = Gate::new();
+    let model = Model::default();
+    model.root([said("working"), said("got it")]);
+    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut page = fixture.opened().await;
+    page.send(send("m1", "start")).await;
+    page.until_idle().await;
+    let child = spawn(&fixture, &root(), json!({ "prompt": "Read notes.md", "description": "reader" })).await;
+    page.next_until(|frame| entry_in(frame, &child).is_some_and(|entry| entry.waited_ms.is_some())).await;
+    page.subscribe(&child).await;
+    let held = held_edge(&page.received(), &child);
+    drop(page);
+    let mut observer = fixture.opened().await;
+    gate.open();
+    observer.next_until(is_closed(&child)).await;
+
+    let mut again = fixture.client();
+    again.send(ClientFrame::Subscribe { node: child.clone(), held: Some(held) }).await;
+    again.open().await;
+    let caught_up = again.received();
+    let closed = held_edge(&caught_up, &child);
+    assert!(answers_of(&caught_up, &child).contains("the file says 42"), "{caught_up:#?}");
+
+    let mut holding = fixture.client();
+    holding.send(ClientFrame::Subscribe { node: child.clone(), held: Some(closed) }).await;
+    holding.open().await;
+    let unchanged = holding.received();
+    assert!(!unchanged.iter().any(transcript_of(&child)), "{unchanged:#?}");
+
+    let mut later = fixture.opened().await;
+    later.received();
+    later.subscribe(&child).await;
+    assert!(answers_of(&later.received(), &child).contains("the file says 42"));
+}
+
+/// What a page holds of the node `node` once `frames` reset it: its version,
+/// and its latest block as the edge, from there.
+fn held_edge(frames: &[ServerFrame], node: &NodeId) -> HeldEdge {
+    let reset = frames.iter().rev().find_map(|frame| match frame {
+        ServerFrame::TranscriptReset { node: of, start, blocks, version, .. } if of == node => Some((start, blocks, version)),
+        _ => None,
+    });
+    let Some((start, blocks, version)) = reset else {
+        panic!("a reset of {node}: {frames:#?}")
+    };
+    let last = blocks.len().checked_sub(1).expect("a block");
+    HeldEdge {
+        version: version.clone(),
+        from: start + u32::try_from(last).unwrap(),
+        edge: blocks[last].id().clone(),
+    }
+}
+
+/// The text answers the resets of the node `node` in `frames` carry.
+fn answers_of(frames: &[ServerFrame], node: &NodeId) -> String {
+    frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::TranscriptReset { node: of, blocks, .. } if of == node => Some(blocks),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|block| match block {
+            Block::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The text of the user blocks of `blocks`, where a child's brief is.
@@ -267,23 +375,23 @@ fn brief_of(blocks: &[Block]) -> String {
         .collect()
 }
 
-/// The children an open's snapshot lists, each as its number, its phase
-/// and whether it ended.
+/// The children an open's agents list, each as its number, its state and
+/// whether it ended.
 fn summaries(frames: &[ServerFrame]) -> Vec<(u64, JobPhase, bool)> {
     let lists: Vec<_> = frames
         .iter()
         .filter_map(|frame| match frame {
-            ServerFrame::Subagents { subagents } => Some(subagents),
+            ServerFrame::Agents { agents, .. } => Some(agents),
             _ => None,
         })
         .collect();
     let [list] = lists.as_slice() else {
-        panic!("one snapshot of the children: {frames:?}")
+        panic!("one list of the agents: {frames:?}")
     };
     list.iter()
-        .map(|summary| {
-            let child = &summary.child;
-            (child.number, child.phase, child.ended_at.is_some())
+        .filter_map(|entry| match &entry.role {
+            AgentRole::Subagent(child) => Some((child.number, child.state, child.ended_at.is_some())),
+            _ => None,
         })
         .collect()
 }
@@ -305,17 +413,17 @@ async fn a_reopened_page_is_told_of_the_children_that_ended_while_it_was_away() 
     let fixture = fixture(&model, TestProduct::default());
     let mut page = fixture.opened().await;
     page.send(send("m1", "start")).await;
-    page.next_until(is_idle).await;
+    page.until_idle().await;
     let reader = spawn(
         &fixture,
         &root(),
         json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
     )
     .await;
-    page.next_until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Started, .. }))
+    page.next_until(is_started)
         .await;
     let mut running = fixture.client();
-    running.send(open()).await;
+    running.open().await;
     assert_eq!(summaries(&running.received()), [(1, JobPhase::Running, false)]);
     // The page's connection drops while the reader runs; an observer stays.
     drop(page);
@@ -332,7 +440,7 @@ async fn a_reopened_page_is_told_of_the_children_that_ended_while_it_was_away() 
     observer.next_until(is_closed(&counter)).await;
 
     let mut again = fixture.client();
-    again.send(open()).await;
+    again.open().await;
     let handshake = again.received();
 
     assert_eq!(
@@ -340,66 +448,14 @@ async fn a_reopened_page_is_told_of_the_children_that_ended_while_it_was_away() 
         [(1, JobPhase::Completed, true), (2, JobPhase::Completed, true)],
         "{handshake:?}"
     );
-    // Neither runs, so neither is replayed.
-    assert_eq!(lifecycle(&handshake), []);
-}
-
-/// A child that closes while a page opens, after the open read where the
-/// conversation works and before it attached, ends closed on that page.
-///
-/// Its `closed` frame went before the page was attached, and the snapshot,
-/// taken in the step of the attach, lists it closed
-/// (`crates/agent-server/src/server/tree.rs`). Before, the page never heard of
-/// the close.
-#[tokio::test(flavor = "local")]
-async fn a_child_that_closes_while_a_page_opens_ends_closed_on_that_page() {
-    let gate = Gate::new();
-    let model = Model::default();
-    model.root([said("working"), said("got it")]);
-    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
-    let fixture = fixture(&model, TestProduct::default());
-    let mut observer = fixture.opened().await;
-    observer.send(send("m1", "start")).await;
-    observer.next_until(is_idle).await;
-    let reader = spawn(
-        &fixture,
-        &root(),
-        json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
-    )
-    .await;
-    observer
-        .next_until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Started, .. }))
-        .await;
-
-    // The open waits for where the conversation works; meanwhile the child
-    // answers and closes.
-    let slow = Gate::new();
-    fixture.product.placement_hold.replace(Some(slow.clone()));
-    let mut page = fixture.client();
-    let closing = async {
-        until(|| fixture.product.placement_hold.borrow().is_none()).await;
-        gate.open();
-        observer.next_until(is_closed(&reader)).await;
-        slow.open();
-    };
-    tokio::join!(page.send(open()), closing);
-    let frames = page.received();
-
-    // What the page shows of the child, frame by frame.
-    let mut shown = None;
-    for frame in &frames {
-        match frame {
-            ServerFrame::Subagents { subagents } => {
-                shown = subagents
-                    .iter()
-                    .find(|summary| summary.child.subagent_id == reader)
-                    .map(|summary| summary.child.phase);
-            }
-            ServerFrame::Subagent { job, .. } if job.child.subagent_id == reader => shown = Some(job.child.phase),
-            _ => {}
-        }
-    }
-    assert_eq!(shown, Some(JobPhase::Completed), "{frames:?}");
+    // Neither runs: the list says both closed, and nothing more is told.
+    assert_eq!(
+        lifecycle(&handshake),
+        [
+            (SubagentEvent::Closed, reader.clone(), JobPhase::Completed),
+            (SubagentEvent::Closed, counter.clone(), JobPhase::Completed)
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local")]
@@ -410,7 +466,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "start")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let empty = agent(
         &fixture.server,
@@ -428,7 +484,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     )
     .await;
     let child = named_node(&fixture.store, &spawned);
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
 
     assert_eq!(empty.code, 2, "{empty:?}");
     assert!(empty.stderr.starts_with("error: prompt must not be empty\nUsage: demi agent spawn "), "{empty:?}");
@@ -437,46 +493,30 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert_eq!(spawned.stdout, "subagentId: 1\n");
     let started = frames
         .iter()
-        .find_map(|frame| match frame {
-            ServerFrame::Subagent {
-                event: SubagentEvent::Started,
-                job,
-            } => Some(job.clone()),
-            _ => None,
-        })
+        .find_map(|frame| child_in(frame, &child).filter(|subagent| subagent.state == JobPhase::Running))
         .expect("the child started");
     assert_eq!(
         (
-            &started.child.subagent_id,
-            &started.child.parent_session_id,
-            started.child.description.as_str(),
-            started.child.profile.as_deref(),
-            started.child.phase,
-            started.child.ended_at,
-            started.result.as_deref()
+            &started.parent,
+            started.description.as_str(),
+            started.profile.as_deref(),
+            started.state,
+            started.ended_at
         ),
-        (
-            &child,
-            &root(),
-            "reader",
-            None,
-            JobPhase::Running,
-            None,
-            None
-        )
+        (&root(), "reader", None, JobPhase::Running, None)
     );
     let closed = frames
         .iter()
         .position(is_closed(&child))
         .expect("the child closed");
-    let ServerFrame::Subagent { job, .. } = &frames[closed] else {
-        unreachable!()
-    };
+    let job = child_in(&frames[closed], &child).expect("its entry");
+    assert_eq!(job.state, JobPhase::Completed);
+    assert!(job.ended_at.is_some());
+    // Its result is its transcript's last answer, which the receipt carries.
     assert_eq!(
-        (job.child.phase, job.result.as_deref()),
-        (JobPhase::Completed, Some("the file says 42"))
+        root_receipts(&fixture).last().map(|receipt| receipt.content.as_str()),
+        Some("the file says 42")
     );
-    assert!(job.child.ended_at.is_some());
     let receipt = frames
         .iter()
         .position(is_receipt_patch)
@@ -590,7 +630,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         json!({ "prompt": "task delta", "description": "delta" }),
     )
     .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let alpha = spawn(
         &fixture,
         &root(),
@@ -878,7 +918,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             result: "beta heard".into()
         })
     );
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let senders: Vec<NodeId> = root_receipts(&fixture)
         .into_iter()
         .map(|message| message.sender.clone().unwrap().id)
@@ -926,7 +966,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         json!({ "id": [fixture.number(&alpha)] }),
     )
     .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
 
     assert_eq!(
         aborted.stdout,
@@ -982,13 +1022,12 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     );
 
     let mut reopened = fixture.client();
-    reopened.send(open()).await;
+    reopened.open().await;
     let handshake = reopened.received();
-    let frames = reopened.next_until(is_idle).await;
+    let frames = reopened.until_idle().await;
 
-    let started: Vec<NodeId> = lifecycle(&handshake)
+    let started: Vec<NodeId> = lifecycle(&[handshake, frames].concat())
         .into_iter()
-        .chain(lifecycle(&frames))
         .filter(|(event, ..)| *event == SubagentEvent::Started)
         .map(|(_, id, _)| id)
         .collect();
@@ -1007,7 +1046,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
 /// that `stopping` or has ended as stopped.
 fn is_child_command(child: &NodeId, stopping: bool) -> impl Fn(&ServerFrame) -> bool + '_ {
     move |frame| match frame {
-        ServerFrame::ShellOutput { subagent_id: Some(id), status } if id == child => match **status {
+        ServerFrame::ShellOutput { node, status } if node == child => match **status {
             ShellStatus::Running { stopping: shown, .. } => stopping && shown,
             ShellStatus::Aborted { .. } => !stopping,
             _ => false,
@@ -1018,7 +1057,7 @@ fn is_child_command(child: &NodeId, stopping: bool) -> impl Fn(&ServerFrame) -> 
 
 /// Whether `frame` is the subagent `child`'s phase `phase`.
 fn is_child_phase(child: &NodeId, phase: SessionPhase) -> impl Fn(&ServerFrame) -> bool + '_ {
-    move |frame| matches!(frame, ServerFrame::Phase { subagent_id: Some(id), phase: shown } if id == child && *shown == phase)
+    move |frame| phase_is(frame, child, phase)
 }
 
 /// Polls `show`'s view of agent 1 for the root until its execution is
@@ -1069,10 +1108,12 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
-    page.send(open()).await;
+    page.open().await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
     let child = named_node(&store, &spawned);
+    // The page shows the child, so it hears of the child's commands.
+    page.subscribe(&child).await;
     wait_for_execution(&server, "waiting").await;
 
     // The pages see the child idle beside its command, and a page that
@@ -1081,7 +1122,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Running)), "{frames:?}");
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{frames:?}");
     let mut opening = TestClient::connect(&server, &conversation());
-    opening.send(open()).await;
+    opening.open().await;
     let handshake = opening.received();
     assert!(handshake.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{handshake:?}");
     drop(opening);
@@ -1152,7 +1193,8 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
 
     // A page that opens now finds it stopping in its handshake.
     let mut second = TestClient::connect(&server, &conversation());
-    second.send(open()).await;
+    second.subscribe(&child).await;
+    second.open().await;
     let handshake = second.received();
     assert!(handshake.iter().any(is_child_command(&child, true)), "{handshake:?}");
 
@@ -1198,7 +1240,7 @@ async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) 
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
-    page.send(open()).await;
+    page.open().await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
     let child = named_node(&store, &spawned);
@@ -1282,7 +1324,7 @@ async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
-    page.send(open()).await;
+    page.open().await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
     let child = named_node(&store, &spawned);
@@ -1362,9 +1404,12 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     let shells = Rc::new(ScriptedShells::default());
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
-    page.send(open()).await;
     let stopped = NodeId::try_from("stopped").unwrap();
     let nested = NodeId::try_from("nested").unwrap();
+    // The page shows both children, so it hears of their commands.
+    page.subscribe(&stopped).await;
+    page.subscribe(&nested).await;
+    page.open().await;
     let mut frames = page.received();
     frames.extend(page.next_until(is_child_command(&nested, true)).await);
     assert!(frames.iter().any(is_child_command(&stopped, true)), "{frames:?}");
@@ -1391,7 +1436,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     page.next_until(is_child_command(&stopped, false)).await;
     page.next_until(is_child_command(&nested, false)).await;
     let mut later = TestClient::connect(&server, &conversation());
-    later.send(open()).await;
+    later.open().await;
     let handshake = later.received();
     assert!(
         !handshake.iter().any(|frame| matches!(frame, ServerFrame::ShellOutput { .. })),
@@ -1467,7 +1512,7 @@ async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
                 .any(|block| matches!(block, Block::Wakeup(_)))
         })
     };
-    tokio::join!(page.send(open()), async {
+    tokio::join!(page.open(), async {
         until(written).await;
         assert!(model.requests().is_empty(), "a turn started during the take-up");
         take_up.open();
@@ -1549,6 +1594,7 @@ fn user(id: &str, words: &str) -> Block {
         id: BlockId::try_from(id).unwrap(),
         turn_id: TurnId::try_from(id).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         content: text(words),
         preamble: None,
@@ -1561,6 +1607,8 @@ fn answer(id: &str, words: &str) -> Block {
         entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
+        code_files: None,
         model: test_model(),
         text: words.into(),
         forkable: true,
@@ -1671,7 +1719,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     let opening = tokio::task::spawn_local({
         let client = fixture.client();
         async move {
-            client.send(open()).await;
+            client.open().await;
             client
         }
     });
@@ -1753,7 +1801,14 @@ async fn an_edit_that_leaves_a_childs_start_takes_its_whole_subtree_off_the_curr
     let mut client = fixture.opened().await;
     let tree = fixture.server.tree(&root()).unwrap();
     let on_path = || -> Vec<(u64, bool)> {
-        tree.subagent_jobs(None).into_iter().map(|job| (job.child.number, job.child.on_path)).collect()
+        tree.agents()
+            .1
+            .into_iter()
+            .filter_map(|entry| match entry.role {
+                AgentRole::Subagent(child) => Some((child.number, child.on_path)),
+                _ => None,
+            })
+            .collect()
     };
     assert_eq!(on_path(), [(1, true), (2, true)]);
 
@@ -1766,17 +1821,16 @@ async fn an_edit_that_leaves_a_childs_start_takes_its_whole_subtree_off_the_curr
             demi_agent_server::testing::client_text("start over"),
         ))
         .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
 
     // The pages hear of both: the grandchild's start is still on its
     // parent's path, but its parent is off the conversation's.
     let changed: Vec<(u64, bool)> = frames
         .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::Subagent {
-                event: SubagentEvent::Changed,
-                job,
-            } => Some((job.child.number, job.child.on_path)),
+        .filter(|frame| matches!(frame, ServerFrame::Agent { .. }))
+        .flat_map(agent_entries)
+        .filter_map(|entry| match &entry.role {
+            AgentRole::Subagent(child) => Some((child.number, child.on_path)),
             _ => None,
         })
         .collect();
@@ -1846,16 +1900,12 @@ async fn a_start_under_way_outlives_a_cancelled_call() {
     root_gate.open();
     let frames = client
         .next_until(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Subagent {
-                    event: SubagentEvent::Closed,
-                    ..
-                }
-            )
+            agent_entries(frame)
+                .iter()
+                .any(|entry| matches!(&entry.role, AgentRole::Subagent(child) if child.state != JobPhase::Running))
         })
         .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let child = lifecycle(&frames)[0].1.clone();
     assert_eq!(
@@ -1916,7 +1966,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
     assert!(fixture.server.tree(&root()).is_none());
 
     let reopened = fixture.client();
-    reopened.send(open()).await;
+    reopened.open().await;
     let listed = agent(&fixture.server, &root(), "list", json!({ "all": true })).await;
     let rows: Vec<Vec<&str>> = listed.stdout.lines().skip(1).map(|line| line.split_whitespace().collect()).collect();
     assert_eq!(
@@ -2095,7 +2145,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
         json!({ "id": "parent", "message": "status: delegating" }),
     )
     .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let grandchild_start =
         spawn_during_turn(&fixture, &parent, json!({ "prompt": "task grandchild" }));
     gate.open();
@@ -2104,18 +2154,12 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
     until(|| root_receipts(&fixture).len() == 2).await;
 
     assert_eq!(status.stdout, "sent to 0\n");
-    let closes: Vec<(NodeId, NodeId, JobPhase)> = frames
-        .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::Subagent {
-                event: SubagentEvent::Closed,
-                job,
-            } => Some((
-                job.child.subagent_id.clone(),
-                job.child.parent_session_id.clone(),
-                job.child.phase,
-            )),
-            _ => None,
+    let closes: Vec<(NodeId, NodeId, JobPhase)> = lifecycle(&frames)
+        .into_iter()
+        .filter(|(event, ..)| *event == SubagentEvent::Closed)
+        .map(|(_, id, state)| {
+            let parent = frames.iter().rev().find_map(|frame| child_in(frame, &id)).expect("its entry").parent.clone();
+            (id, parent, state)
         })
         .collect();
     assert_eq!(
@@ -2225,7 +2269,7 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     let listed = agent(&fixture.server, &inner, "list", json!({})).await;
     inner_gate.open();
     client.next_until(is_closed(&outer)).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     // Spawned without a profile under the worker, the grandchild runs the
     // worker's prompt, its added instructions included, and model, with the
@@ -2321,7 +2365,7 @@ async fn a_profile_without_a_model_of_its_own_gives_its_children_their_parents_c
     let inner = inner_start.await.unwrap();
     inner_gate.open();
     client.next_until(is_closed(&outer)).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let inner_asked = &model.requests_of("task inner")[0];
     assert_eq!(inner_asked.model_id, "worker-model");
@@ -2376,7 +2420,7 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     let opening = tokio::task::spawn_local({
         let reopened = fixture.client();
         async move {
-            reopened.send(open()).await;
+            reopened.open().await;
             reopened
         }
     });
@@ -2388,7 +2432,7 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     reading.release();
     let mut reopened = opening.await.unwrap();
     let frames = reopened.next_until(is_closed(&outer)).await;
-    reopened.next_until(is_idle).await;
+    reopened.until_idle().await;
 
     // It waited for the inner child's rerun turn, and closed after it.
     let events: Vec<(SubagentEvent, NodeId)> = lifecycle(&frames)
@@ -2452,7 +2496,7 @@ async fn a_stop_of_the_parent_leaves_its_child_running_and_the_childs_completion
     client.next_until(is_closed(&child)).await;
     // Its completion wakes the stopped root as it would an idle one.
     until(|| model.root_requests().len() == 2).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     assert_eq!(root_receipts(&fixture).len(), 1);
     assert!(model.is_done());
 }
@@ -2496,7 +2540,7 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
     let hosts = Rc::new(LiveHosts::default());
     let server = scripted_host_server_in(providers, shells.clone(), store.clone(), hosts.clone());
     let mut page = TestClient::connect(&server, &root());
-    page.send(open()).await;
+    page.open().await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task stay" })).await;
     let child = named_node(&store, &spawned);
@@ -2520,12 +2564,10 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
 
     server.placement_changed(&root()).await;
     let frames = page
-        .next_until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Changed, .. }))
+        .next_until(|frame| child_in(frame, &child).is_some_and(|subagent| subagent.cwd == "/elsewhere"))
         .await;
-    let Some(ServerFrame::Subagent { job, .. }) = frames.last() else {
-        unreachable!();
-    };
-    assert_eq!(job.child.cwd, "/elsewhere");
+    let job = frames.last().and_then(|frame| child_in(frame, &child)).expect("its entry");
+    assert_eq!(job.cwd, "/elsewhere");
 }
 
 /// A shell call's lists hold only what its agent changed in the working
@@ -2574,7 +2616,7 @@ async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
     let hosts = Rc::new(LiveHosts::default());
     let server = scripted_host_server_in(providers, shells.clone(), store.clone(), hosts.clone());
     let page = TestClient::connect(&server, &root());
-    page.send(open()).await;
+    page.open().await;
     until(|| shells.0.borrow().iter().any(|shell| !shell.started_in.borrow().is_empty())).await;
     assert_eq!(*shells.last().started_in.borrow(), [Some("/workspace/sub".to_owned())]);
     hosts.move_to("/elsewhere");

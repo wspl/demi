@@ -21,9 +21,8 @@ use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
 use serde_json::json;
 
 use crate::support::{
-    LiveHosts, ScriptedShell, ScriptedShells, conversation, is_idle, is_pending_steers, open,
-    scripted_host_server, send,
-};
+        LiveHosts, ScriptedShell, ScriptedShells, conversation, is_pending_steers, scripted_host_server, send,
+    };
 
 /// How often a tree sends its commands' new output, at most.
 const INTERVAL: Duration = Duration::from_millis(250);
@@ -75,10 +74,10 @@ async fn serving() -> (
     let shells = Rc::new(ScriptedShells::default());
     let server = scripted_host_server(providers, shells.clone(), MemoryTreeStore::new());
     let mut first = TestClient::connect(&server, &conversation());
-    first.send(open()).await;
+    first.open().await;
     first.next_until(is_pending_steers).await;
     first.send(send("m1", "Serve.")).await;
-    first.next_until(is_idle).await;
+    first.until_idle().await;
     (server, shells.last(), first, script)
 }
 
@@ -105,7 +104,7 @@ async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the
     // The next page finds the command as it is now in its handshake, and
     // nothing of what waited or came while no page was attached follows.
     let mut second = TestClient::connect(&server, &conversation());
-    second.send(open()).await;
+    second.open().await;
     let handshake = second.received();
     assert_eq!(tails(&handshake), ["one\ntwo\nthree\n"], "{handshake:?}");
     tokio::time::advance(INTERVAL * 2).await;
@@ -131,7 +130,7 @@ async fn a_reopened_page_is_told_of_the_command_that_ended_while_it_was_away() {
     settle().await;
 
     let mut again = TestClient::connect(&server, &conversation());
-    again.send(open()).await;
+    again.open().await;
     let handshake = again.received();
 
     let commands: Vec<bool> = handshake

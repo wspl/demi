@@ -12,7 +12,7 @@ import {
   withWholeBlock,
   type HeldTranscript,
 } from '../transcript'
-import { harness, text } from './harness'
+import { ROOT, harness, text } from './harness'
 
 // The agent's Rust tests record a patch sequence with the transcript it must
 // produce; the one applier and the client must rebuild exactly that
@@ -109,12 +109,32 @@ test('a page joins the windows it meets, and a block the page holds stays as it 
   expect(addPage(EMPTY_TRANSCRIPT, page, false).length).toBe(9)
 })
 
-test('a reset replaces the blocks from its start, and one elsewhere than asked keeps only itself', () => {
+test('a reset replaces the blocks from its start, light but its last, and keeps what the page shows', () => {
   const reset = { start: 9, length: 11, blocks: [text('b9', 'whole'), text('b10', '10')] }
-  expect(shape(resetTranscript(twoWindows(), reset, 9))).toEqual([[2, ['b2', 'b3']], [7, ['b7', 'b8', 'b9', 'b10']]])
-  // The transcript was rewritten under the page: what it held no longer joins.
+  const vouched = resetTranscript(twoWindows(), reset, 9)
+  expect(shape(vouched)).toEqual([[2, ['b2', 'b3']], [7, ['b7', 'b8', 'b9', 'b10']]])
+  // A row opened later reads the light ones whole; the last may still be streaming, and comes whole.
+  expect(heldBlocks(vouched).map((block) => [block.id, block.light ?? false, block.stale ?? false])).toEqual([
+    ['b2', false, false], ['b3', false, false], ['b7', false, false], ['b8', false, false], ['b9', true, false], ['b10', false, false],
+  ])
+  // The transcript was rewritten under the page, or the page was away too
+  // long to name where it stopped: what it shows stays, as a hole that the
+  // page reads again, and a page that arrives replaces it.
   const rewritten = { start: 6, length: 8, blocks: [text('r6', '6'), text('r7', '7')] }
-  expect(shape(resetTranscript(twoWindows(), rewritten, 9))).toEqual([[6, ['r6', 'r7']]])
+  for (const asked of [9, undefined]) {
+    const kept = resetTranscript(twoWindows(), rewritten, asked)
+    expect(shape(kept)).toEqual([[2, ['b2', 'b3']], [6, ['r6', 'r7']]])
+    expect(heldBlocks(kept).map((block) => block.stale ?? false)).toEqual([true, true, false, false])
+    const read = addPage(kept, { start: 2, length: 8, blocks: [text('b2', 'two'), text('b3', 'three'), text('b4', '4'), text('b5', '5')] }, true)
+    expect(shape(read)).toEqual([[2, ['b2', 'b3', 'b4', 'b5', 'r6', 'r7']]])
+    expect(heldBlocks(read).slice(0, 2)).toEqual([{ ...text('b2', 'two'), light: true }, { ...text('b3', 'three'), light: true }])
+  }
+})
+
+test('a block added at the end that no window reaches starts a run of its own', () => {
+  const held = { length: 10, windows: [{ start: 2, blocks: [text('b2', '2'), text('b3', '3')] }] }
+  const added = applyTranscriptPatches(held, [{ op: 'add', index: 10, value: text('n', 'new') }])
+  expect([added.length, shape(added)]).toEqual([11, [[2, ['b2', 'b3']], [10, ['n']]]])
 })
 
 test('the page names its first executing call, or else its last block', () => {
@@ -130,20 +150,23 @@ test('the page names its first executing call, or else its last block', () => {
     endedAt: status === 'executing' ? null : '2026-09-24T12:00:00.000Z', output: [],
     view: null,
   })
-  expect(heldEdge(twoWindows())).toEqual({ from: 9, edge: 'b9' })
-  const running: HeldTranscript = { length: 4, windows: [{ start: 1, blocks: [call('c1', 'completed'), call('c2', 'executing'), text('t', 'x')] }] }
-  expect(heldEdge(running)).toEqual({ from: 2, edge: 'c2' })
-  // A page that holds no window at the end names nothing.
-  expect(heldEdge({ length: 12, windows: twoWindows().windows })).toBeUndefined()
+  const version = { epoch: 'e', revision: 4 }
+  expect(heldEdge({ ...twoWindows(), version })).toEqual({ version, from: 9, edge: 'b9' })
+  const running: HeldTranscript = { length: 4, version, windows: [{ start: 1, blocks: [call('c1', 'completed'), call('c2', 'executing'), text('t', 'x')] }] }
+  expect(heldEdge(running)).toEqual({ version, from: 2, edge: 'c2' })
+  // A page that holds no window at the end, or none a stream vouched for, names nothing.
+  expect(heldEdge({ length: 12, version, windows: twoWindows().windows })).toBeUndefined()
+  expect(heldEdge(twoWindows())).toBeUndefined()
 })
 
-test('open and sync name the blocks the page holds, and the reset says what the client asked', () => {
-  const h = harness()
-  void h.client.open(() => ({ from: 9, edge: 'b9' }))
-  expect(h.sent).toEqual([{ type: 'open', from: 9, edge: 'b9' }])
+test('a subscription names the blocks the page holds, again at a gap, and the reset says what the client asked', () => {
+  const h = harness({ opened: false })
+  const held = { version: { epoch: 'e', revision: 1 }, from: 9, edge: 'b9' }
+  void h.client.open({ root: ROOT, held: () => held })
+  expect(h.sent).toEqual([{ type: 'subscribe', node: ROOT, held }, { type: 'open' }])
   h.receive({ type: 'opened' })
-  h.receive({ type: 'transcript_reset', start: 9, length: 10, blocks: [text('b9', '9')], version: { epoch: 'e', revision: 1 } })
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 9, length: 10, blocks: [text('b9', '9')], version: { epoch: 'e', revision: 1 } })
   expect(h.events.find((event) => event.type === 'transcript_reset')).toMatchObject({ start: 9, asked: 9 })
-  h.receive({ type: 'transcript_patch', patches: [], revision: 3 })
-  expect(h.sent.at(-1)).toEqual({ type: 'sync_transcript', from: 9, edge: 'b9' })
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [], revision: 3 })
+  expect(h.sent.at(-1)).toEqual({ type: 'subscribe', node: ROOT, held })
 })

@@ -528,7 +528,7 @@ impl SessionCore {
         &self,
         operation: &demi_shared_types::OperationId,
         digest: &str,
-        version: &demi_conversation_socket_protocol::TranscriptVersion,
+        version: &demi_conversation_socket_protocol::Version,
     ) -> Result<EditCheck, EditError> {
         if let Some(receipt) = self
             .edits
@@ -557,7 +557,7 @@ impl SessionCore {
     /// Whether the session admits a rewrite of its path made against the
     /// transcript `version`: settled, with nothing waiting, and nothing
     /// changed since.
-    fn check_settled(&self, version: &demi_conversation_socket_protocol::TranscriptVersion) -> Result<(), EditError> {
+    fn check_settled(&self, version: &demi_conversation_socket_protocol::Version) -> Result<(), EditError> {
         if self.disposing {
             return Err(EditError::Closed);
         }
@@ -579,7 +579,7 @@ impl SessionCore {
         &mut self,
         target: BlockId,
         to: u32,
-        version: &demi_conversation_socket_protocol::TranscriptVersion,
+        version: &demi_conversation_socket_protocol::Version,
     ) -> Result<ActionHandle, EditError> {
         // A target before the window is found by the switch, in the store.
         self.check_settled(version)?;
@@ -1927,6 +1927,13 @@ impl SessionCore {
         self.transcript
             .complete_tool_call(tool_use_id, output, is_error, view);
         self.commit();
+    }
+
+    /// Keeps `files` with the complete text `id` (`AgentSession::keep_code_files`).
+    pub(super) fn keep_code_files(&mut self, id: &BlockId, files: Vec<demi_shared_types::CodeFile>) {
+        if self.transcript.keep_code_files(id, files) {
+            self.commit();
+        }
     }
 
     /// Gives the call `id` the view `view`, as its lists change while the

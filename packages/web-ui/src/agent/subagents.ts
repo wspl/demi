@@ -1,4 +1,4 @@
-import type { ContextUsage, JobModel, PendingCall, ProviderFailureFacts, SessionPhase, SubagentJob } from '@demicodes/protocol'
+import type { AgentCost, AgentEntry, ContextUsage, JobModel, JobPhase, PendingCall, ProviderFailureFacts, SessionPhase, Subagent } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
@@ -8,10 +8,10 @@ import { t } from './locales/text'
 import { elapsedBetween } from '../composables/useElapsedTime'
 import { compactAfterTurn } from './context-usage'
 
-export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
+export type SubagentPhase = JobPhase
 
 /**
- * What a child's round runs on and how far it got, as its job says.
+ * What a child's round runs on and how far it got, as its entry says.
  */
 export interface AgentRun {
   /** The profile's name; null for the inherit profile. */
@@ -38,6 +38,8 @@ export interface SubagentRecord extends AgentRun {
    * `agent:<number>`.
    */
   number: number
+  /** The node that spawned it. */
+  parent: string
   name: string
   /**
    * Whether the call that started it is on its parent's current path: the
@@ -45,8 +47,8 @@ export interface SubagentRecord extends AgentRun {
    */
   onPath: boolean
   /**
-   * What its session does while it is live, as its `phase` frames say: a
-   * child idle beside a command it left running shows no Requesting row.
+   * What its session does while it is live, as its entry says: a child idle
+   * beside a command it left running shows no Requesting row.
    */
   sessionPhase: SessionPhase
   startedAt: string
@@ -56,13 +58,6 @@ export interface SubagentRecord extends AgentRun {
    * stream.
    */
   history: HeldTranscript
-  /**
-   * The revision of its transcript as the last open's snapshot listed it, which
-   * tells whether a finished child's held transcript is still current
-   * (`crates/agent-server/src/server/tree.rs`); absent before a snapshot listed
-   * it. /
-   */
-  revision?: number
   /** The calls this agent's model is writing. */
   pendingCalls: PendingCall[]
   /**
@@ -73,11 +68,12 @@ export interface SubagentRecord extends AgentRun {
   /** The failure facts of this agent's error blocks, by block id. */
   failures: Record<string, ProviderFailureFacts>
   /**
-   * How full this agent's next request is, as its session last said;
-   * null until it says, and for a child that ended before the page
-   * opened.
+   * How full this agent's next request is, as its entry says; null for one
+   * that is not live.
    */
   contextUsage: ContextUsage | null
+  /** What its own calls cost, kept by the backend as they are recorded. */
+  cost: AgentCost
 }
 
 /**
@@ -95,31 +91,34 @@ export function agentCompaction(agent: SubagentRecord): { compacting: boolean, u
   }
 }
 
-/**
- * What a child's job sets on its record: who it is, and its round as the job
- * says it now.
- */
-export type SubagentJobFields = Pick<SubagentRecord, 'id' | 'number' | 'name' | 'onPath'> & AgentRun
+/** What a child's entry sets on its record: all of it but what the page holds of its transcript. */
+export type SubagentEntryFields = Omit<SubagentRecord, 'history' | 'failures'>
 
 /**
- * A child's record fields from its job, a `subagent` frame's or the
- * subagents route's: a `started` job of a later round replaces the closed
- * round's start, end, phase and model.
+ * A child's record fields from its entry `entry`, whose role is `child`, as
+ * it arrived at `receivedAt`, as `Date.now()`: a later round's entry replaces
+ * the closed round's start, end, phase and model.
  */
-export function subagentJobFields(job: Omit<SubagentJob, 'parentSessionId' | 'result'>): SubagentJobFields {
+export function subagentEntryFields(entry: AgentEntry, child: Subagent, receivedAt: number): SubagentEntryFields {
   return {
-    id: job.subagentId,
-    number: job.number,
-    name: job.description,
-    onPath: job.onPath,
-    profile: job.profile,
-    model: job.model,
-    round: job.round,
-    forkedFrom: job.forkedFrom,
-    phase: job.phase,
-    startedAt: job.startedAt,
-    endedAt: job.endedAt ?? undefined,
-    cwd: job.cwd,
+    id: entry.id,
+    number: child.number,
+    parent: child.parent,
+    name: child.description,
+    onPath: child.onPath,
+    profile: child.profile,
+    model: child.model,
+    round: child.round,
+    forkedFrom: child.forkedFrom,
+    phase: child.state,
+    startedAt: child.startedAt,
+    endedAt: child.endedAt ?? undefined,
+    cwd: child.cwd,
+    sessionPhase: entry.phase,
+    pendingCalls: entry.pendingCalls,
+    waitingSince: entry.waitedMs === null ? null : receivedAt - entry.waitedMs,
+    contextUsage: entry.context,
+    cost: entry.cost,
   }
 }
 

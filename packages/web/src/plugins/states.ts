@@ -1,7 +1,7 @@
 import { effectScope, reactive, watch, type EffectScope } from 'vue'
 import type { PluginCallError, StateFeed } from '@demicodes/web-ui/plugins/page'
 import { apiRequest, readResponse } from '../api/client'
-import { pluginStateAnswerSchema, type ProductState } from '../api/generated/web-api'
+import { pluginStateAnswerSchema, type ConversationMetadata, type ProductState } from '../api/generated/web-api'
 import { isNewer, type RunRevision } from '../state/revisions'
 import { readFailure } from './errors'
 
@@ -21,21 +21,23 @@ interface Held {
 /**
  * The plugins' conversation states, as a page reads them by revision: while
  * anything follows a plugin's state of a conversation, the page reads it
- * whenever the conversation's summary carries a newer revision than the one it
+ * whenever the conversation's metadata carries a newer revision than the one it
  * holds, a count of another run of the backend included. A read that cannot
  * reach the backend waits for it in the HTTP client and shows no failure
  * (`packages/web-ui/src/plugins/page.ts`). What it read stays for the page's
  * lifetime, so following again shows it at once.
  */
-export function conversationStates(snapshot: () => ProductState | null) {
+export function conversationStates(
+  snapshot: () => ProductState | null,
+  metadataOf: (conversation: string) => ConversationMetadata | null,
+) {
   const held = reactive(new Map<string, Held>())
   /** Each followed state's watch, which outlives the scope of whoever follows first. */
   const watching = new Map<string, EffectScope>()
 
-  function summaryRevision(plugin: string, conversation: string): RunRevision | null {
+  function metadataRevision(plugin: string, conversation: string): RunRevision | null {
     const state = snapshot()
-    const summary = state?.conversations.find((entry) => entry.id === conversation)
-    const revision = summary?.pluginRevisions.find((entry) => entry.plugin === plugin)?.revision
+    const revision = metadataOf(conversation)?.pluginRevisions.find((entry) => entry.plugin === plugin)?.revision
     return state && revision !== undefined ? { run: state.run, revision } : null
   }
 
@@ -82,7 +84,7 @@ export function conversationStates(snapshot: () => ProductState | null) {
       const scope = effectScope(true)
       scope.run(() =>
         watch(
-          () => summaryRevision(plugin, conversation),
+          () => metadataRevision(plugin, conversation),
           (revision) => {
             if (revision !== null && isNewer(revision, entry.held)) {
               void read(entry, plugin, conversation)

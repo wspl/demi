@@ -264,6 +264,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         v-else-if="block.type === 'text'"
         :block-id="block.id"
         :content="block.text"
+        :code-files="block.codeFiles"
         :is-streaming="isTextStreaming"
         :show-footer="showAssistantFooter"
         :created-at="block.createdAt"

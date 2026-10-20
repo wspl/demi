@@ -95,23 +95,27 @@ impl BlockVersions {
     }
 }
 
-/// A transcript's version. The epoch is new each time the session's
-/// transcript is built, at creation and at every restore, so a version taken
+/// A collection's version, which every collection a page keeps in sync
+/// carries: a transcript's, the agents of a conversation.
+///
+/// The epoch is new each time its owner builds the collection, as a session
+/// builds its transcript at creation and at every restore, so a version taken
 /// before a backend restart never matches after it; the revision counts the
-/// patch batches since.
+/// changes since.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TranscriptVersion {
+pub struct Version {
     #[garde(length(chars, min = 1))]
     pub epoch: String,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
 }
 
-/// How many bytes of JSON a page of a transcript holds past its first
-/// request.
+/// How many bytes of JSON a page of a transcript holds at most, past its
+/// first block, wherever requests begin and end: one long request is several
+/// pages.
 pub const PAGE_BYTES: usize = 64 * 1024;
 
 /// How long a call's input a light form keeps whole: a short script, such
@@ -247,21 +251,6 @@ pub fn least_light_bytes(block: &Block) -> usize {
     serde_json::to_vec(&light).map_or(0, |json| json.len())
 }
 
-/// The requests of a transcript of `length` blocks whose `user` blocks are
-/// at `users`, in order: each from a `user` block to the next, the blocks
-/// before the first belonging to the first request.
-pub fn requests(length: usize, users: &[usize]) -> Vec<Range<usize>> {
-    if length == 0 {
-        return Vec::new();
-    }
-    // The first request starts at 0, its `user` block wherever it is.
-    let starts: Vec<usize> = std::iter::once(0)
-        .chain(users.iter().copied().skip(1).filter(|&index| index < length))
-        .collect();
-    let ends = starts.iter().skip(1).copied().chain(std::iter::once(length));
-    starts.iter().copied().zip(ends).map(|(start, end)| start..end).collect()
-}
-
 /// Where a page is taken from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageAt {
@@ -275,36 +264,56 @@ pub enum PageAt {
     Around(usize),
 }
 
-/// The blocks of the page `at` among `requests`, as a range of indices.
+/// How many blocks a page sizes at once, as a reader reads them.
+pub const SIZED_AT_ONCE: usize = 32;
+
+/// The blocks of the page `at` of a transcript of `length` blocks, as a range
+/// of indices.
 ///
-/// - The page holds whole requests from the one `at` names, adding requests
-///   while the page stays within [`PAGE_BYTES`]; at least one request.
-/// - `size` gives a request's bytes, or none when they are more than the room
-///   it is given (what the page has left), so a reader can stop reading a
-///   request that cannot fit. The first request has unbounded room.
-/// - `Around` adds the request after, then the one before, in turn.
-/// - An index past the requests' ends answers an empty page there.
+/// - The page holds blocks from where `at` names, adding blocks while their
+///   sizes stay within [`PAGE_BYTES`]; at least one block.
+/// - `sizes` gives the bytes each block of a range takes in a page, as
+///   [`least_light_bytes`] counts them, for at most [`SIZED_AT_ONCE`] blocks
+///   at a time; none when the blocks could not be read, which ends the page
+///   where it is.
+/// - `Around` adds the block after, then the one before, in turn.
+/// - An index past the transcript's ends answers an empty page there.
 pub fn page(
-    requests: &[Range<usize>],
+    length: usize,
     at: PageAt,
-    mut size: impl FnMut(Range<usize>, usize) -> Option<usize>,
+    mut sizes: impl FnMut(Range<usize>) -> Option<Vec<usize>>,
 ) -> Range<usize> {
-    let Some(last) = requests.last() else {
+    if length == 0 {
         return 0..0;
-    };
-    // The request that holds the block `index`.
-    let holding = |index: usize| requests.partition_point(|request| request.end <= index);
+    }
     let (first, toward_start, toward_end) = match at {
-        PageAt::Latest => (requests.len() - 1, true, false),
+        PageAt::Latest => (length - 1, true, false),
         PageAt::Before(0) => return 0..0,
-        PageAt::Before(index) => (holding(index - 1).min(requests.len() - 1), true, false),
-        PageAt::After(index) if index + 1 >= last.end => return last.end..last.end,
-        PageAt::After(index) => (holding(index + 1), false, true),
-        PageAt::Around(index) => (holding(index).min(requests.len() - 1), true, true),
+        PageAt::Before(index) => ((index - 1).min(length - 1), true, false),
+        PageAt::After(index) if index + 1 >= length => return length..length,
+        PageAt::After(index) => (index + 1, false, true),
+        PageAt::Around(index) => (index.min(length - 1), true, true),
+    };
+    let mut known: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut size_of = |index: usize, downward: bool| -> Option<usize> {
+        if let Some(size) = known.get(&index) {
+            return Some(*size);
+        }
+        let range = if downward {
+            index.saturating_sub(SIZED_AT_ONCE - 1)..index + 1
+        } else {
+            index..(index + SIZED_AT_ONCE).min(length)
+        };
+        let read = sizes(range.clone())?;
+        for (offset, size) in read.into_iter().enumerate() {
+            known.insert(range.start + offset, size);
+        }
+        known.get(&index).copied()
+    };
+    let Some(mut bytes) = size_of(first, toward_start) else {
+        return first..first;
     };
     let (mut low, mut high) = (first, first);
-    // The first request is kept whatever its size.
-    let mut bytes = size(requests[first].clone(), usize::MAX).unwrap_or(usize::MAX);
     let (mut down, mut up) = (toward_start, toward_end);
     // Around a block the page grows after it first, then before.
     let mut next_up = toward_end;
@@ -312,7 +321,7 @@ pub fn page(
         let grow_up = up && (next_up || !down);
         next_up = !grow_up;
         let candidate = if grow_up {
-            (high + 1 < requests.len()).then_some(high + 1)
+            (high + 1 < length).then_some(high + 1)
         } else {
             low.checked_sub(1)
         };
@@ -324,9 +333,7 @@ pub fn page(
             }
             continue;
         };
-        let fits = PAGE_BYTES
-            .checked_sub(bytes)
-            .and_then(|room| size(requests[candidate].clone(), room).filter(|&more| more <= room));
+        let fits = size_of(candidate, !grow_up).filter(|&more| bytes + more <= PAGE_BYTES);
         let Some(more) = fits else {
             break;
         };
@@ -337,59 +344,16 @@ pub fn page(
             low = candidate;
         }
     }
-    requests[low].start..requests[high].end
+    low..high + 1
 }
 
-/// The start of a transcript's latest page, for a reset the page named no
-/// blocks for.
+/// The start of the latest page of `blocks`, a transcript or the window of it
+/// a session holds: no block before the window is read to size it.
 pub fn latest_page_start(blocks: &[Block]) -> usize {
-    latest_page_start_within(blocks, true)
-}
-
-/// The start of the latest page among `blocks`: the transcript's from its start
-/// when `whole`, else a window of it that a session holds.
-///
-/// A window starts inside the request before its first `user` block. The
-/// window's blocks before that block, the end of that request, count as a
-/// request of their own, and the page reaches no further back than the window,
-/// so that no block before it is read to size the page.
-///
-/// For example, a window from a boundary at 23,000 whose first message is at
-/// 23,600 starts its latest page at 23,600 when that request fills the page,
-/// and never at the earlier request's start.
-pub fn latest_page_start_within(blocks: &[Block], whole: bool) -> usize {
-    let users: Vec<usize> = blocks
-        .iter()
-        .enumerate()
-        .filter_map(|(index, block)| matches!(block, Block::User(_)).then_some(index))
-        .collect();
-    let mut requests = requests(blocks.len(), &users);
-    if !whole
-        && let Some(&first) = users.first()
-        && first > 0
-        && let Some(leading) = requests.first_mut()
-    {
-        // The first request starts at its own `user` block, after the
-        // window's leading part.
-        leading.start = first;
-        requests.insert(0, 0..first);
-    }
-    page(&requests, PageAt::Latest, |range, _| {
-        Some(light_bytes(&blocks[range]))
+    page(blocks.len(), PageAt::Latest, |range| {
+        Some(blocks[range].iter().map(least_light_bytes).collect())
     })
     .start
-}
-
-/// Where a reset of `blocks` starts for a page that holds them from `from`,
-/// whose block there it holds as `edge`: at `from` while that block is
-/// still `edge`, and otherwise, or when the page names none or only one of
-/// them, at the start of the latest page.
-pub fn reset_start(blocks: &[Block], from: Option<u32>, edge: Option<&BlockId>) -> usize {
-    let held = from.and_then(|from| usize::try_from(from).ok());
-    match (held, edge) {
-        (Some(from), Some(edge)) if blocks.get(from).is_some_and(|block| block.id() == edge) => from,
-        _ => latest_page_start(blocks),
-    }
 }
 
 /// An index of a transcript as a frame or a page names it.

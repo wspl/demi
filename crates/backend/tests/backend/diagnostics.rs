@@ -225,7 +225,7 @@ async fn a_request_its_client_abandons_logs_its_line() {
         .await
         .expect("the start's search catch-up migrates the database");
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
+    socket.send(&ClientFrame::Open { agents: None, draft: None }).await;
 
     // The page's summary read waits for the migration; its client goes.
     let mut client = tokio::net::TcpStream::connect(backend.address()).await.unwrap();

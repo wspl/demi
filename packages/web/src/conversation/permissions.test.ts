@@ -4,9 +4,11 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { shallowRef } from 'vue'
 import { formatBytes } from '@demicodes/web-ui/files/format'
 import { conversationSummary, productState } from '../__tests__/product-state'
+import { showMetadata } from '../__tests__/shown-metadata'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from '../state/product'
 import { usePermissions } from './permissions'
+import { useConversations } from './store'
 
 // Cost: a played sync channel and a stubbed fetch; milliseconds.
 
@@ -56,14 +58,16 @@ afterEach(() => {
   globalThis.fetch = realFetch
 })
 
-/** The product state of the backend's `run`, whose conversation's requests are at `revision`. */
-function at(run: string, revision: number, waiting: number) {
-  return productState({
+/**
+ * Connects the page to the backend's `run`, whose conversation has `waiting`
+ * requests, and shows the conversation with its requests at `revision`.
+ */
+function connectAt(run: string, revision: number, waiting: number): void {
+  channels.last().connect(productState({
     run,
-    conversations: [
-      conversationSummary(CONVERSATION, 'Skills', { permissionsRevision: revision, permissionRequests: waiting }),
-    ],
-  })
+    conversations: [conversationSummary(CONVERSATION, 'Skills', { permissionRequests: waiting })],
+  }))
+  showMetadata(CONVERSATION, { permissionsRevision: revision })
 }
 
 /** The read's answer: `waiting` requests of Manage Skills at `revision`. */
@@ -85,8 +89,10 @@ function answer(revision: number, waiting: number): () => Response {
 
 test('after the backend started again, the page reads the requests though the new count is lower', async () => {
   const product = useProduct()
+  // The conversations follow the product state from its first, as on the page.
+  useConversations()
   product.start()
-  channels.last().connect(at('run-1', 5, 1))
+  connectAt('run-1', 5, 1)
   const permissions = usePermissions()
   answers.push(answer(5, 1))
   permissions.follow(CONVERSATION)
@@ -97,15 +103,17 @@ test('after the backend started again, the page reads the requests though the ne
   channels.last().end(1001, 'backend_closing')
   product.reconnect()
   answers.push(answer(1, 0))
-  channels.last().connect(at('run-2', 1, 0))
+  connectAt('run-2', 1, 0)
   await until(() => permissions.stateFor(CONVERSATION).requests.length).toBe(0)
   expect(reads.value).toBe(2)
 })
 
 test('a decision shows at once and is not read back; a refused one gives the request back', async () => {
   const product = useProduct()
+  // The conversations follow the product state from its first, as on the page.
+  useConversations()
   product.start()
-  channels.last().connect(at('run-1', 5, 2))
+  connectAt('run-1', 5, 2)
   const permissions = usePermissions()
   answers.push(answer(5, 2))
   permissions.follow(CONVERSATION)
@@ -122,10 +130,12 @@ test('a decision shows at once and is not read back; a refused one gives the req
   expect(reads.value).toBe(1)
 })
 
-test('a page that opens a conversation while its summary arrives reads the requests once', async () => {
+test('a page that opens a conversation while its metadata arrives reads the requests once', async () => {
   const product = useProduct()
+  // The conversations follow the product state from its first, as on the page.
+  useConversations()
   product.start()
-  channels.last().connect(at('run-1', 4, 1))
+  connectAt('run-1', 4, 1)
   const permissions = usePermissions()
   let release!: () => void
   const held = new Promise<void>((resolve) => { release = resolve })
@@ -136,8 +146,8 @@ test('a page that opens a conversation while its summary arrives reads the reque
     return fetch(input, init)
   }) as typeof fetch
   permissions.follow(CONVERSATION)
-  // The summary of the same revision arrives while the read is on its way.
-  channels.last().send({ type: 'conversation', conversation: at('run-1', 5, 1).conversations[0]! })
+  // The metadata of the same revision arrives while the read is on its way.
+  showMetadata(CONVERSATION, { permissionsRevision: 5 })
   await Promise.resolve()
   release()
   await until(() => permissions.stateFor(CONVERSATION).requests.length).toBe(1)
@@ -170,9 +180,11 @@ function credentialRequests(): () => Response {
 
 test('a credential request asks to update a saved credential when the backend says it renews one, and an allowance says when its credential is gone', async () => {
   const product = useProduct()
+  // The conversations follow the product state from its first, as on the page.
+  useConversations()
   product.start()
   // The page lists no credential of the name: the request's own word decides.
-  channels.last().connect(at('run-1', 5, 3))
+  connectAt('run-1', 5, 3)
   const permissions = usePermissions()
   answers.push(credentialRequests())
   permissions.follow(CONVERSATION)
@@ -186,8 +198,10 @@ test('a credential request asks to update a saved credential when the backend sa
 
 test('the values of a credential go with the answer, the card stays until they are accepted, and a refusal is said in the card with the request kept', async () => {
   const product = useProduct()
+  // The conversations follow the product state from its first, as on the page.
+  useConversations()
   product.start()
-  channels.last().connect(at('run-1', 5, 3))
+  connectAt('run-1', 5, 3)
   const permissions = usePermissions()
   answers.push(credentialRequests())
   permissions.follow(CONVERSATION)

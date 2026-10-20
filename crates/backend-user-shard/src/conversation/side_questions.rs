@@ -6,7 +6,9 @@
 //!   conversation's.
 //! - Its follow-ups and Retry are turns of its node.
 //! - It has a fold.
-//! - The list a page reads has a revision that every change raises.
+//! - It is an agent of the conversation: its title and fold, which the backend
+//!   keeps, reach its agent entry as they change
+//!   (`crates/agent-server/src/server/tree/agents.rs`).
 
 use demi_agent_server::AskError;
 use demi_agent_store::SideOf;
@@ -14,10 +16,10 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::side_questions;
 use demi_backend_host_access::root_of;
-use demi_backend_page_sync::Part;
 use demi_shared_types::{NodeId, markdown_quote};
 use demi_web_api_protocol::ids::ConversationId;
-use demi_web_api_protocol::side_questions::{AskRequest, SideQuestion, SideQuestions};
+use demi_conversation_socket_protocol::SideQuestion;
+use demi_web_api_protocol::side_questions::AskRequest;
 
 use crate::shard::Shard;
 
@@ -76,22 +78,6 @@ impl Shard {
         Ok(record)
     }
 
-    /// Every side question of the user's conversation `id`, with the
-    /// revision they were read at.
-    pub async fn side_questions(&self, id: ConversationId) -> Result<SideQuestions, SideRefusal> {
-        let record = self.side_conversation(&id, false).await?;
-        // Read before the list, so a change after the read raises it past
-        // what the page holds.
-        let revision = self.side_revisions().of(&record.id);
-        let side_questions = self
-            .services()
-            .conversations
-            .read(&record.id, side_questions::all)
-            .await?
-            .unwrap_or_default();
-        Ok(SideQuestions { revision, side_questions })
-    }
-
     /// Asks the side question `request` of the user's conversation `id`,
     /// opening its tree when it is closed, and starts the request titling
     /// its card. The same request again answers the side question as it is,
@@ -124,7 +110,6 @@ impl Shard {
         if !created {
             return Ok((asked, false));
         }
-        self.side_changed(&record.id);
         if asked.title.is_none()
             && let Some(selection) = &record.model
         {
@@ -144,7 +129,7 @@ impl Shard {
                                 .await?
                         };
                         if written {
-                            shard.side_changed(&conversation);
+                            shard.card_changed(&conversation, &side).await?;
                         }
                         Ok(())
                     }) as futures_util::future::LocalBoxFuture<'static, Result<(), StorageError>>
@@ -189,7 +174,7 @@ impl Shard {
                 .await?
                 .ok_or(SideRefusal::NotFound)?
         };
-        self.side_changed(&record.id);
+        self.card_changed(&record.id, &side).await?;
         Ok(folded)
     }
 
@@ -211,11 +196,24 @@ impl Shard {
         self.restore_tree(conversation).await.map_err(SideRefusal::Failed)
     }
 
-    /// The conversation's side questions changed: its summary's revision
-    /// goes up, and its pages read the list again.
-    fn side_changed(&self, conversation: &ConversationId) {
-        self.side_revisions().raise(conversation);
-        self.mark(Part::Conversation(conversation.clone()));
+    /// The card of the side question `side` of `conversation` changed: the
+    /// live tree's entry of it shows it as it is now. A tree that is not live
+    /// reads it when it opens.
+    async fn card_changed(&self, conversation: &ConversationId, side: &NodeId) -> Result<(), StorageError> {
+        let Some(tree) = self.agent().tree(&root_of(conversation)) else {
+            return Ok(());
+        };
+        let Some(card) = self.side_question(conversation, side).await.ok() else {
+            return Ok(());
+        };
+        tree.side_card_changed(
+            side,
+            demi_agent_server::SideCard {
+                title: card.title,
+                folded: card.folded,
+            },
+        );
+        Ok(())
     }
 }
 

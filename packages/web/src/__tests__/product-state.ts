@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import { productStateSchema, type ConversationSummary, type ProductState } from '../api/generated/web-api'
+import { productStateSchema, type ConversationMetadata, type ConversationSummary, type ProductState } from '../api/generated/web-api'
 
 /**
  * A product state as the channel's snapshot carries it, for the page's tests: a master
@@ -68,9 +68,27 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
 export function conversationSummary(id: string, title: string | null = null, parts: Partial<ConversationSummary> = {}): ConversationSummary {
   return {
     id, title, pinned: false, archived: false, readRevision: 0, revision: 0, unread: false,
-    pluginsChanged: false, onlyWaitsForHost: false, draftRevision: 0, saved: 0, savedRevision: 0, panelRevision: 0, hostsRevision: 0, lastAttachment: 0, pluginRevisions: [],
-    permissionRequests: 0, unreadPermissionRequests: 0, permissionsRevision: 0, sideQuestionsRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
-    contextVersion: 0, model: null, workflow: { type: 'default' }, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
-    status: 'idle', lastTurn: null, shares: [], automation: null, ...parts,
+    permissionRequests: 0, unreadPermissionRequests: 0, target: { kind: 'cloud' },
+    createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
+    status: 'idle', automation: null, ...parts,
+  }
+}
+
+/**
+ * A cost with no ledger row, as `NO_COST` of `@demicodes/web-ui` says it;
+ * written out, since tests on a happy-dom page import this module before
+ * the page registers, and that module loads Vue's DOM runtime.
+ */
+const NO_COST = {
+  totals: { inputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0, price: { total: null, input: null, cacheWrite: null, cacheRead: null, output: null } },
+  calls: 0,
+}
+
+/** An idle Cloud conversation's metadata as its socket carries it, with `parts` replacing its fields. */
+export function conversationMetadata(id: string, parts: Partial<ConversationMetadata> = {}): ConversationMetadata {
+  return {
+    id, model: null, workflow: { type: 'default' }, cwd: '/home/demi', lastTurn: null, pluginsChanged: false,
+    onlyWaitsForHost: false, otherCost: NO_COST, saved: 0, savedRevision: 0, panelRevision: 0, hostsRevision: 0,
+    workflowsRevision: 0, lastAttachment: 0, pluginRevisions: [], permissionsRevision: 0, shares: [], ...parts,
   }
 }

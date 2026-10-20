@@ -18,6 +18,7 @@ fn user(value: &str) -> Block {
         id: id(value),
         turn_id: TurnId::try_from(value).unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         content: Vec::new(),
         preamble: None,
@@ -30,6 +31,8 @@ fn text(value: &str) -> Block {
         entries: Vec::new(),
         id: id("text"),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
+        code_files: None,
         model: test_model(),
         text: value.into(),
         forkable: false,
@@ -54,6 +57,7 @@ fn thinking() -> Block {
         entries: Vec::new(),
         id: id("thinking"),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         text: "hmm".into(),
         signature: None,
@@ -64,6 +68,7 @@ fn error() -> Block {
     Block::Error(ErrorBlock {
         id: id("error"),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         message: "failed".into(),
         code: None,
@@ -78,6 +83,7 @@ fn response() -> Block {
     Block::Response(ResponseBlock {
         id: id("response"),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         usage: Some(TokenUsage::default()),
     })
@@ -90,6 +96,7 @@ fn tool_call(status: ToolCallStatus) -> Block {
         ended_at: None,
         id: id("call"),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         tool_use_id: "call-1".into(),
         tool_name: "note".into(),
@@ -104,6 +111,7 @@ fn abort() -> Block {
     Block::Abort(AbortBlock {
         id: id("abort"),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         is_resumed: false,
     })

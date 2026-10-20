@@ -323,10 +323,10 @@ async fn a_conversation_database_that_cannot_be_opened_fails_only_that_conversat
     let mut expected = [FIRST, SECOND];
     expected.sort_unstable();
     assert_eq!(listed, expected);
-    let history = |id: &str| format!("/api/conversations/{id}/transcript");
+    let history = |id: &str| format!("/api/conversations/{id}/agents/{id}/transcript");
     assert_eq!(backend.get(&history(FIRST), Some(&master)).await.status, StatusCode::OK);
     // The two reads a page opens a conversation with.
-    for path in [history(SECOND), format!("/api/conversations/{SECOND}/subagents")] {
+    for path in [history(SECOND), format!("/api/conversations/{SECOND}")] {
         let answer = backend.get(&path, Some(&master)).await;
         assert_eq!(
             (answer.status, answer.json::<serde_json::Value>()["code"].as_str()),
@@ -370,13 +370,7 @@ async fn a_change_in_one_session_reaches_the_other_sessions_page_as_one_message(
     create(&backend, &laptop, FIRST).await;
     let mut page = backend.sync(&phone).await;
     let state = page.snapshot().await;
-    assert_eq!(
-        (
-            state.conversations[0].title.as_deref(),
-            state.conversations[0].draft_revision
-        ),
-        (None, 0)
-    );
+    assert_eq!(state.conversations[0].title.as_deref(), None);
 
     // Each change the laptop makes is one message on the phone's page: the
     // message after it is the next change's.
@@ -396,11 +390,8 @@ async fn a_change_in_one_session_reaches_the_other_sessions_page_as_one_message(
         "{}",
         String::from_utf8_lossy(&saved.body)
     );
-    let drafted = page.next().await;
-    assert_eq!(
-        summary(&drafted, FIRST).map(|conversation| conversation.draft_revision),
-        Some(1)
-    );
+    // A draft is no part of the list: its change goes only to the pages
+    // that show the conversation, so the next message is the nickname's.
     let nickname = backend
         .patch("/api/auth/me", &laptop, json!({ "nickname": "Ana" }))
         .await;
@@ -534,6 +525,23 @@ async fn a_turn_shows_on_every_page_as_it_runs_and_stops_and_reading_it_on_one_c
         .await;
     assert_eq!(acknowledged.status, StatusCode::NO_CONTENT);
     until_summary(&mut page, FIRST, |conversation| !conversation.unread).await;
+
+    // Another page acknowledges the same revision: nothing changed, and
+    // nothing is announced, so the next message is the nickname's.
+    let again = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/read"),
+            Some(&phone),
+            json!({ "revision": stopped.revision }),
+        )
+        .await;
+    assert_eq!(again.status, StatusCode::NO_CONTENT);
+    let nickname = backend
+        .patch("/api/auth/me", &laptop, json!({ "nickname": "Ana" }))
+        .await;
+    assert_eq!(nickname.status, StatusCode::OK);
+    let next = page.next().await;
+    assert!(matches!(&next, SyncEvent::User { user } if user.nickname == "Ana"), "{next:?}");
     backend.close().await;
 }
 

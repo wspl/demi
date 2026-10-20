@@ -428,12 +428,13 @@ impl ControlService {
                 }
             }
             // A forward of which the device was an end goes with it, and
-            // so do its exposed ports.
+            // so do its exposed ports and the workflows kept of it.
             transaction.execute(
                 "DELETE FROM port_forwards WHERE listen_device_id = ?1 OR connect_device_id = ?1",
                 [device.as_str()],
             )?;
             transaction.execute("DELETE FROM exposed_ports WHERE device_id = ?1", [device.as_str()])?;
+            transaction.execute("DELETE FROM host_workflows WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(DeviceRemoval {

@@ -91,7 +91,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     Earlier, ForkEnd, IdSource, TranscriptLog, last_answer, last_failure,
 };
-use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, RequestOutput, TranscriptPatch, TranscriptVersion};
+use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, RequestOutput, TranscriptPatch, Version};
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
@@ -111,7 +111,7 @@ pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, ForkSeed, accepted, edit_digest, fork_seed, regenerate_digest,
 };
 pub use retry::RetryPolicy;
-pub use window::{Reset, latest_page};
+pub use window::{Reset, checkpoint_reset, latest_page};
 pub use runtime::{
     CallCommand, CommandLook, InputArrival, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
@@ -205,7 +205,7 @@ impl ModelSwitch {
 pub struct TranscriptSnapshot {
     pub start: usize,
     pub blocks: Vec<Block>,
-    pub version: TranscriptVersion,
+    pub version: Version,
     /// The versions at each place that holds more than one.
     pub versions: std::collections::BTreeMap<usize, demi_conversation_socket_protocol::Versions>,
 }
@@ -603,7 +603,30 @@ pub struct AgentSession {
     shared: Rc<SessionShared>,
 }
 
+/// A session that is not kept alive by whoever holds it, such as a question
+/// still out about one of its blocks.
+#[derive(Clone)]
+pub struct WeakSession(std::rc::Weak<SessionShared>);
+
+impl WeakSession {
+    pub fn upgrade(&self) -> Option<AgentSession> {
+        self.0.upgrade().map(|shared| AgentSession { shared })
+    }
+}
+
 impl AgentSession {
+    pub fn downgrade(&self) -> WeakSession {
+        WeakSession(Rc::downgrade(&self.shared))
+    }
+
+    /// Keeps `files` with the complete text `id` as which of its code spans
+    /// name files on the conversation's Host
+    /// (`crates/agent-server/src/node/reply_files.rs`): once, and only while
+    /// the window holds the text.
+    pub fn keep_code_files(&self, id: &BlockId, files: Vec<demi_shared_types::CodeFile>) {
+        self.shared.update(|core| core.keep_code_files(id, files));
+    }
+
     /// A new session with an empty transcript; its node's first checkpoint is
     /// already in the store.
     pub fn create(init: SessionInit, deps: SessionDeps) -> Self {
@@ -848,7 +871,7 @@ impl AgentSession {
     }
 
     /// The transcript's version, without copying its blocks.
-    pub fn transcript_version(&self) -> TranscriptVersion {
+    pub fn transcript_version(&self) -> Version {
         self.shared.read(|core| core.transcript.version())
     }
 
@@ -896,14 +919,10 @@ impl AgentSession {
     }
 
     /// The transcript a reset sends to a page that holds its blocks up to
-    /// `from`, whose block there is `edge`.
-    ///
-    /// The blocks before the window that the transcript starts with are read
-    /// from the store. Nothing awaits between the reading of the window and the
-    /// return, so a caller that sends it at once sends the transcript as it is
-    /// then.
-    pub async fn reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> Result<Reset, StoreError> {
-        window::reset(&self.shared, from, edge).await
+    /// `from`, whose block there is `edge`: at most its latest page, in its
+    /// light form, read from the window as it is now.
+    pub fn reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> Reset {
+        window::reset(&self.shared, from, edge)
     }
 
     /// The automation's run whose message is the latest the user or an
@@ -1162,7 +1181,7 @@ impl AgentSession {
         &self,
         operation: &demi_shared_types::OperationId,
         digest: &str,
-        version: &TranscriptVersion,
+        version: &Version,
     ) -> Result<EditCheck, EditError> {
         self.shared
             .read(|core| core.check_edit(operation, digest, version))
@@ -1189,7 +1208,7 @@ impl AgentSession {
         &self,
         target: BlockId,
         to: u32,
-        version: &TranscriptVersion,
+        version: &Version,
     ) -> Result<(), Refusal> {
         let handle = self
             .shared

@@ -1216,6 +1216,7 @@ pub mod store_contract {
             id: completion.block_id(),
             turn_id: TurnId::try_from("turn").expect("a test turn id is not empty"),
             created_at: Timestamp::UNIX_EPOCH,
+            request: None,
             model: test_model(),
             message,
         })
@@ -1267,6 +1268,8 @@ pub mod store_contract {
         Block::Text(demi_shared_types::TextBlock {
             id: text.try_into().expect("a test block id is not empty"),
             created_at: Timestamp::UNIX_EPOCH,
+            request: None,
+            code_files: None,
             model: test_model(),
             text: text.to_owned(),
             forkable: true,
@@ -1408,6 +1411,7 @@ pub mod store_contract {
                 id: format!("user-{turn}").as_str().try_into().expect("a test block id is not empty"),
                 turn_id: TurnId::try_from(turn).expect("a test turn id is not empty"),
                 created_at: Timestamp::UNIX_EPOCH,
+                request: None,
                 model: test_model(),
                 content: text(turn),
                 preamble: None,
@@ -1418,6 +1422,7 @@ pub mod store_contract {
             Block::CompactionBoundary(demi_shared_types::CompactionBoundaryBlock {
                 id: name.try_into().expect("a test block id is not empty"),
                 created_at: Timestamp::UNIX_EPOCH,
+                request: None,
                 model: test_model(),
                 summary: format!("summary {name}"),
                 summary_tokens: 10,
@@ -1429,6 +1434,7 @@ pub mod store_contract {
             run: None,
             id: "call".try_into().expect("a test block id is not empty"),
             created_at: Timestamp::UNIX_EPOCH,
+            request: None,
             model: test_model(),
             tool_use_id: "use-1".to_owned(),
             tool_name: "shell".to_owned(),
@@ -1567,6 +1573,7 @@ pub mod store_contract {
             id: "u1".try_into().expect("a test block id is not empty"),
             turn_id: TurnId::try_from("m1").expect("a test turn id is not empty"),
             created_at: Timestamp::UNIX_EPOCH,
+            request: None,
             model: test_model(),
             content: text("brief"),
             preamble: None,

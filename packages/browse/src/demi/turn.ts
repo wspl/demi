@@ -11,7 +11,7 @@
 // `demi.message` waits only for the turn its message starts, which the root's
 // latest ended turn names once it ends.
 import type { Page } from 'playwright'
-import { conversationsSchema, type TurnOutcome } from '@demicodes/web/src/api/generated/web-api'
+import { conversationDetailSchema, type TurnOutcome } from '@demicodes/web/src/api/generated/web-api'
 import type { Slot } from '../slot'
 import { Failure, webBase, type Tool } from '../tool'
 
@@ -33,24 +33,25 @@ export function conversationId(page: Page): string | null {
 }
 
 /**
- * The conversation's status and output revision, as the backend reports
- * them to the signed-in page; null while it has none, as for a new
+ * The conversation's status and output revision, and its metadata's latest
+ * ended turn, as the backend reports them to the signed-in page; null while
+ * it has none, as for a new
  * conversation, which the backend holds once its first message is sent.
  */
 export async function summary(slot: Slot, page: Page, id: string): Promise<Summary | null> {
-  const answer = await page.request.get(`${webBase(slot)}/api/conversations`)
-  if (!answer.ok()) {
-    throw new Failure(`The backend answered ${answer.status()} for the conversations: ${await answer.text()}`)
+  const answer = await page.request.get(`${webBase(slot)}/api/conversations/${encodeURIComponent(id)}`)
+  if (answer.status() === 404) {
+    return null
   }
-  const { conversations } = conversationsSchema.parse(await answer.json())
-  const conversation = conversations.find((entry) => entry.id === id)
-  return conversation
-    ? {
-        status: conversation.status,
-        revision: conversation.revision,
-        lastTurn: conversation.lastTurn && { id: conversation.lastTurn.id, outcome: conversation.lastTurn.outcome },
-      }
-    : null
+  if (!answer.ok()) {
+    throw new Failure(`The backend answered ${answer.status()} for the conversation: ${await answer.text()}`)
+  }
+  const { conversation, metadata } = conversationDetailSchema.parse(await answer.json())
+  return {
+    status: conversation.status,
+    revision: conversation.revision,
+    lastTurn: metadata.lastTurn && { id: metadata.lastTurn.id, outcome: metadata.lastTurn.outcome },
+  }
 }
 
 function running(status: string): boolean {

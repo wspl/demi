@@ -13,12 +13,15 @@ import {
   type SubagentRecord,
 } from '../subagents'
 import { useSessionPanels } from '../useSessionPanels'
+import { NO_COST } from '../context-cost'
 
 function agent(
   partial: Pick<SubagentRecord, 'id' | 'name' | 'phase'> & Partial<SubagentRecord>,
 ): SubagentRecord {
   return {
     number: 1,
+    parent: 'root',
+    cost: NO_COST,
     onPath: true,
     profile: null,
     model: { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false },

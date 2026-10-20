@@ -8,6 +8,8 @@ import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { skillsStateSchema, type SkillsState } from '@demicodes/plugin-skills'
 import { PluginCallError, definePage, pageContext } from '@demicodes/web-ui/plugins/page'
 import { conversationSummary, productState } from '../__tests__/product-state'
+import { showMetadata } from '../__tests__/shown-metadata'
+import { useConversations } from '../conversation/store'
 import { playChannels } from '../__tests__/sync-channel'
 import { useWorkPanel } from '../conversation/work'
 import { useProduct } from '../state/product'
@@ -96,6 +98,8 @@ beforeEach(() => {
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
   channels = playChannels()
+  // The conversations follow the product state from its first, as on the page.
+  useConversations()
   const product = useProduct()
   product.start()
   channels.last().connect(productState({ pluginStates: { skills } }))
@@ -195,9 +199,10 @@ test("an answer of the backend's own rejects at once, even while the banner show
 test("a read of a conversation's plugin state while the backend restarts shows no failure, and reads once it is back", async () => {
   const withBrowser = productState({
     pluginStates: { skills },
-    conversations: [conversationSummary(CONVERSATION, 'Work', { pluginRevisions: [{ plugin: 'browser', revision: 1 }] })],
+    conversations: [conversationSummary(CONVERSATION, 'Work')],
   })
   channels.last().connect(withBrowser)
+  showMetadata(CONVERSATION, { pluginRevisions: [{ plugin: 'browser', revision: 1 }] })
   backendLeaves()
   const scope = effectScope()
   const tabs = scope.run(() => page('browser').plugin.conversation(CONVERSATION).state(z.object({ tabs: z.array(z.string()) })))!

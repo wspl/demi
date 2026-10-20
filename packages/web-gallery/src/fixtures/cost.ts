@@ -1,6 +1,6 @@
 import { ref } from 'vue'
-import type { AgentCost, CacheMiss, CostCall } from '@demicodes/protocol'
-import type { ConversationCostView, CostState } from '@demicodes/web-ui/agent/context-cost'
+import type { CacheMiss, CostCall } from '@demicodes/protocol'
+import type { AgentPrice, ConversationCostView, CostShown } from '@demicodes/web-ui/agent/context-cost'
 import { type GlobalProfiles, workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
 import { demoSubagentProfiles } from './subagent-profiles'
 import { MINUTE } from './time'
@@ -56,7 +56,7 @@ export const MANY_PROFILES: readonly string[] = ['explore', 'reviewer', 'scout',
  * since disabled, which has no row; with each of `MANY_PROFILES`; or without
  * any.
  */
-const SUBAGENTS: Record<'profiles' | 'many' | 'plain', AgentCost[]> = {
+const SUBAGENTS: Record<'profiles' | 'many' | 'plain', AgentPrice[]> = {
   profiles: [
     { agent: 1, profile: 'explore', price: 1.32 },
     { agent: 2, profile: 'explore', price: 1.32 },
@@ -76,9 +76,10 @@ const SUBAGENTS: Record<'profiles' | 'many' | 'plain', AgentCost[]> = {
  * A long conversation's cost: 180 turn calls of the main conversation over
  * three hours and a half, three compactions, three misses of three causes, and
  * subagents started with profiles, without them, or none; or the first
- * `turns` of it, a conversation just started, or more, a giant one.
+ * `turns` of it, a conversation just started, or more, a giant one; with
+ * the recent calls the card reads as it opens, as the backend answers them.
  */
-export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', turns = 180, priced = true): ConversationCostView {
+export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', turns = 180, priced = true): { cost: ConversationCostView, calls: CostCall[] } {
   const random = sequence(7)
   const calls: CostCall[] = []
   let prompt = 0
@@ -95,6 +96,7 @@ export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', turns = 
     const output = Math.round(300 + random() * 2_500)
     const price = (input * RATE.input + cacheWrite * RATE.cacheWrite + cacheRead * RATE.cacheRead + output * RATE.output) / 1e6
     calls.push({
+      number,
       startedAt: new Date(at).toISOString(),
       inputTokens: input,
       cacheWriteTokens: cacheWrite,
@@ -122,8 +124,8 @@ export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', turns = 
       call.price = null
   }
   const unpriced = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
-  return {
-    rows: calls.length + others.length,
+  const cost: ConversationCostView = {
+    calls: calls.length + others.length,
     totals: {
       inputTokens: Math.round(input),
       cacheWriteTokens: Math.round(cacheWrite),
@@ -138,8 +140,9 @@ export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', turns = 
       },
     },
     agents: priced ? [{ agent: 0, profile: null, price: main }, ...others] : [],
-    calls,
   }
+  // The backend answers the recent 400, as the chart draws them.
+  return { cost, calls: calls.slice(-400) }
 }
 
 /** The request id a specimen's failed read names, as the backend's look. */
@@ -147,16 +150,27 @@ const FAILED_REQUEST = 'req_7f3a9c2e41d84b06'
 
 /**
  * What a card specimen holds of its conversation's cost, as the product's
- * store does: the cost read with the conversation, there before the card
- * opens. A `failing` specimen's read failed, and Retry reads it, as the
+ * store does: the cost from the agents' metadata, and the calls the card
+ * reads while it is open, `calls` its opening and closing. A `failing`
+ * specimen's read of the calls failed, and Retry reads them, as the
  * product's would once the backend answers.
  */
 export function useCardCost(subagents: keyof typeof SUBAGENTS | 'none', { failing = false, turns = 180, priced = true } = {}) {
-  const cost = ref<CostState>(failing
-    ? { status: 'failed', error: { message: 'The backend could not be reached.', requestId: FAILED_REQUEST } }
-    : { status: 'read', cost: costFixture(subagents, turns, priced) })
+  const fixture = costFixture(subagents, turns, priced)
+  const read: CostShown['calls'] = { status: 'read', calls: fixture.calls }
+  const cost = ref<CostShown>({
+    cost: fixture.cost,
+    calls: failing ? { status: 'failed', error: { message: 'The backend could not be reached.', requestId: FAILED_REQUEST } } : read,
+  })
   function retry(): void {
-    cost.value = { status: 'read', cost: costFixture(subagents, turns, priced) }
+    cost.value = { ...cost.value, calls: read }
   }
-  return { cost, retry }
+  /** The card opened or closed: an opened one holds the calls read, or the failed read, again. */
+  function calls(wanted: boolean): void {
+    if (wanted && cost.value.calls === null)
+      cost.value = { ...cost.value, calls: failing ? { status: 'failed', error: { message: 'The backend could not be reached.', requestId: FAILED_REQUEST } } : read }
+    else if (!wanted)
+      cost.value = { ...cost.value, calls: null }
+  }
+  return { cost, retry, calls }
 }

@@ -66,8 +66,16 @@ impl Shard {
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
         );
+        // A change of what the sidebar shows goes to every page; one of the
+        // metadata alone, which the sidebar shows none of, only to the pages
+        // that show the conversation.
+        let listed = matches!(
+            change,
+            ConversationChange::Target(_)
+                | ConversationChange::Record(RecordChange::Title(_) | RecordChange::Pinned(_) | RecordChange::Archived(_))
+        );
         let switched = self.apply_change(id, change).await?;
-        self.mark(Part::Conversation(id.clone()));
+        self.mark(if listed { Part::Conversation(id.clone()) } else { Part::Metadata(id.clone()) });
         if reorders {
             self.mark(Part::ConversationOrder);
         }
@@ -435,9 +443,11 @@ impl Shard {
         let Some(record) = control.conversation(id.clone()).await? else {
             return Ok(None);
         };
-        let conversation = self.conversation_summary(record).await?;
+        let conversation = self.conversation_summary(record.clone()).await?;
+        let metadata = self.conversation_metadata(record).await?;
         Ok(Some(ConversationUpdate {
             conversation,
+            metadata,
             results,
         }))
     }

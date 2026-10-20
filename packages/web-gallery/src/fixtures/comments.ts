@@ -1,5 +1,5 @@
 import type { Block } from '@demicodes/protocol'
-import { demoModel } from './blocks'
+import { demoModel, inRequests } from './blocks'
 import { galleryBlobs } from './blobs'
 
 /** The reply the Comments specimens comment on, as the approved prototype drew it. */
@@ -27,14 +27,14 @@ const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).
 
 /** The question and the reply the comments are on. */
 export function commentedConversation(): Block[] {
-  return [
+  return inRequests([
     {
       type: 'user', id: 'comments-question', turnId: 'comments-turn', createdAt: minutesAgo(14), model: demoModel,
       content: [{ type: 'text', text: 'Uploads from the mobile app fail on slow connections. Why, and what should we change?' }],
       preamble: null,
     },
     { type: 'text', id: COMMENTED_REPLY_ID, createdAt: minutesAgo(13), model: demoModel, text: COMMENTED_REPLY },
-  ]
+  ])
 }
 
 /** What each specimen's two comments say, and the words of the reply each quotes. */

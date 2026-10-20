@@ -16,7 +16,6 @@
 
 use std::sync::Arc;
 
-use demi_conversation_socket_protocol::{ServerFrame, SubagentEvent};
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProviderId;
 use demi_web_api_protocol::providers::ProviderAnswer;
@@ -220,17 +219,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     );
     socket.chat("m2", "Use it").await;
     std::fs::write(format!("{root}/go"), "").unwrap();
-    socket
-        .until(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Subagent {
-                    event: SubagentEvent::Closed,
-                    ..
-                }
-            )
-        })
-        .await;
+    socket.until_child_closed().await;
     socket.until_idle().await;
     let edited = synced(&mut page).await;
     assert_eq!(

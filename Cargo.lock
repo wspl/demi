@@ -1835,6 +1835,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "jiff",
+ "regex",
  "reqwest",
  "schemars",
  "serde",

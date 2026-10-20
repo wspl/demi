@@ -161,11 +161,18 @@ test('a link to a line opens the file there', () => {
     .toBe(`<p>${fileLink('/work/docs/execution/runner.md', 'runner.md', 438)} ${fileLink('/etc/hosts', 'range', 3)}</p>\n`)
 })
 
-test('inline code that names a file the Host has opens it as a link of words; any other code, and plain text, stay as they are', () => {
+test('inline code the reply keeps as a file of the Host opens it as a link of words; any other code, and plain text, stay as they are', () => {
   const reply = 'See `src/a.ts:42`, `src/gone.ts`, `README.md`, `runner` and src/b.ts.'
-  // Until the Host answers, all of it is code.
+  // A reply that keeps no files, as one from before they were kept, is all code.
   expect(renderMarkdown(reply, { files, codeFiles: null })).not.toContain('data-file-link')
-  const html = renderMarkdown(reply, { files, codeFiles: new Set(['/work/src/a.ts', '/work/README.md', '/work/src/b.ts']) })
+  const html = renderMarkdown(reply, {
+    files,
+    codeFiles: new Map([
+      ['src/a.ts:42', { path: '/work/src/a.ts', line: 42 }],
+      ['README.md', { path: '/work/README.md', line: null }],
+      ['src/b.ts', { path: '/work/src/b.ts', line: null }],
+    ]),
+  })
   // A link followed by ASCII punctuation keeps no space before it, as any icon
   // link.
   const a = `<a href="/work/src/a.ts" data-file-link data-line="42" class="icon-link icon-link-tight">${lead('data-file-icon="a.ts"', 'src')}/a.ts:42</a>`

@@ -1080,19 +1080,6 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
         stopped.refusal(),
         (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
     );
-    // Which paths a message names are files is a look: the stopped Cloud
-    // says so instead of booting for it.
-    let looked = backend
-        .post(
-            &format!("/api/conversations/{FIRST}/fs/exists"),
-            Some(&master),
-            serde_json::json!({ "paths": ["/home/demi/README.md"] }),
-        )
-        .await;
-    assert_eq!(
-        looked.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::HostStopped)
-    );
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
 
     // Woken, it answers again, with what it wrote before it stopped.

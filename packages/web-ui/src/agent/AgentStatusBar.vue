@@ -14,7 +14,7 @@ import AgentMark from './AgentMark.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import { agentPhaseWords, useMessageAgents } from './agent-links'
 import type { UsageLimits } from './context-usage'
-import type { CostState } from './context-cost'
+import type { CostShown } from './context-cost'
 import { useElapsedTime } from '../composables/useElapsedTime'
 import { useMessageFiles } from '../markdown/message-files'
 import { statusTone } from './conversation-status'
@@ -81,21 +81,21 @@ const props = defineProps<{
    */
   limits: UsageLimits | null
   /**
-   * The child's own cost, which its context card shows without the Profiles
-   * part; null while its first read is on its way, when the context indicator
-   * waits for it, as the conversation's card waits for the conversation's,
-   * so the card never shows the cost arriving late. Absent, the card shows
-   * none.
+   * The child's own cost, from its metadata, which its context card shows
+   * without the Profiles part, with the calls the host reads while the card
+   * is open. Absent, the card shows none.
    */
-  cost?: CostState | null
+  cost?: CostShown | null
 }>()
 
 const emit = defineEmits<{
   compact: []
   openInstruction: [entry: InstructionEntry]
   refreshLimits: [automatic: boolean]
-  /** Read the child's cost again after a read that failed. */
+  /** Read the child's calls again after a read that failed. */
   retryCost: []
+  /** The child's card opened or closed, which reads its calls or lets them go. */
+  costCalls: [wanted: boolean]
 }>()
 
 const icons = useIconPx()
@@ -194,7 +194,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         </template>
       </Tooltip>
       <ContextUsageIndicator
-        v-if="isSubagentRunning(run.phase) && cost !== null"
+        v-if="isSubagentRunning(run.phase)"
         segment
         class="shrink-0"
         :usage="usage"
@@ -208,6 +208,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         @open-instruction="emit('openInstruction', $event)"
         @refresh-limits="emit('refreshLimits', $event)"
         @retry-cost="emit('retryCost')"
+        @cost-calls="emit('costCalls', $event)"
       />
     </div>
   </div>

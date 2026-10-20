@@ -80,7 +80,7 @@ impl Shard {
         };
         match control.add_share(share).await? {
             Added::New(share) => {
-                self.mark(Part::Conversation(record.id));
+                self.mark(Part::Metadata(record.id));
                 Ok(share)
             }
             // Another request shared it meanwhile, or the conversation went:
@@ -121,7 +121,7 @@ impl Shard {
             self.drop_list(&record.id, token).await;
             return Err(ShareRefusal::NoShare);
         };
-        self.mark(Part::Conversation(record.id));
+        self.mark(Part::Metadata(record.id));
         Ok(share)
     }
 
@@ -141,7 +141,7 @@ impl Shard {
         {
             return Err(ShareRefusal::NoShare);
         }
-        self.mark(Part::Conversation(share.conversation.clone()));
+        self.mark(Part::Metadata(share.conversation.clone()));
         self.drop_list(&share.conversation, token).await;
         Ok(())
     }

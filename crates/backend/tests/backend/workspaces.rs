@@ -245,8 +245,9 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_
     assert_eq!(made.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&made.body));
     for id in [&conversation, &second] {
         let listed = summary(&backend, &master, id).await;
+        let cwd = crate::conversations::metadata(&backend, &master, id).await.cwd;
         assert_eq!(
-            (serde_json::to_value(&listed.target).unwrap(), listed.cwd.as_str()),
+            (serde_json::to_value(&listed.target).unwrap(), cwd.as_str()),
             (json!({ "kind": "workspace", "workspaceId": notes }), directory.as_str())
         );
     }

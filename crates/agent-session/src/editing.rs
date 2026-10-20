@@ -39,7 +39,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{CutError, Earlier, ForkEnd, TranscriptLog, before_user, fork_prefix, side_end};
 use demi_command_protocol::canonical_digest;
 use demi_conversation_socket_protocol::{
-    AgentCode, EditRequest, MediaRef, RegenerateRequest, Refusal, TranscriptVersion,
+    AgentCode, EditRequest, MediaRef, RegenerateRequest, Refusal, Version,
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
@@ -70,7 +70,7 @@ pub enum EditContent {
 pub struct EditSubmission {
     pub operation_id: OperationId,
     pub target: BlockId,
-    pub version: TranscriptVersion,
+    pub version: Version,
     /// The new version's content; none for Regenerate, which keeps the
     /// message as it is and makes a new version of its answer.
     pub content: Option<Vec<EditContent>>,

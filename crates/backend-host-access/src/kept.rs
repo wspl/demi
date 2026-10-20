@@ -6,8 +6,14 @@
 //! wakes a Host. The runner's file watch keeps the search current
 //! (`crates/runner-host/src/subscriptions.rs`).
 //!
-//! A request takes what is held. Only the first search of a directory holds the
-//! request, for at most [`FIRST_SEARCH_HOLD`].
+//! An agent's request takes what is held. Only the first search of a directory
+//! holds it, for at most [`FIRST_SEARCH_HOLD`], so that a model's first request
+//! has its instruction files.
+//!
+//! A fact a page shows ([`Shown`]) is stored as each search finds it, with
+//! when, and the page reads what is stored at once, never waiting on the Host
+//! and never following it: a search that finds it changed announces a new
+//! revision to the conversations that use it.
 //!
 //! For example, a conversation in `~/app` asks for its instruction files before
 //! its first request:
@@ -31,7 +37,6 @@ use std::time::Duration;
 use demi_backend_remote_host::{HostEvent, HostSubscriber};
 use demi_runner_protocol::files::Subject;
 use demi_runner_protocol::wire::SUBSCRIPTION_LEASE;
-use demi_shared_types::ReadAt;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, watch};
@@ -41,8 +46,8 @@ use tokio::time::Instant;
 use crate::access::HostAccessError;
 use crate::plugin_files::ReadFilesError;
 
-/// How long the first search of a directory holds the requests that wait
-/// for it.
+/// How long the first search of a directory holds the agents' requests that
+/// wait for it.
 pub const FIRST_SEARCH_HOLD: Duration = Duration::from_secs(5);
 
 /// How often the subscriptions' leases are renewed: twice per lease.
@@ -88,31 +93,19 @@ impl From<ReadFilesError> for SearchError {
 pub type Search<K, T> =
     Box<dyn Fn(ConversationId, DeviceId, K) -> LocalBoxFuture<'static, Result<Found<T>, SearchError>>>;
 
-/// The Host's number before the search that found a value, for a search
-/// that tells it; none for one that does not, which [`Wait::After`] never
-/// takes as read late enough.
-pub type ReadAtOf<T> = fn(&T) -> Option<&ReadAt>;
-
 /// A holder of subscriptions on the conversation's primary Host, with that
 /// Host's device.
 pub type Subscribe =
     Box<dyn Fn(ConversationId) -> LocalBoxFuture<'static, Result<(DeviceId, HostSubscriber), SearchError>>>;
 
-/// What a caller waits for besides a directory's first search.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Wait {
-    /// Nothing: a request to a model, a spawn.
-    First,
-    /// A search under way for a change the runner reported, as long as a
-    /// first search may hold: a page that heard of the change asks for the
-    /// result that holds it.
-    Current,
-    /// As [`Wait::Current`], and a search read at this number or later: a
-    /// page whose watch went live there takes nothing read before it as
-    /// current, however current the backend's own watch keeps it. What is held
-    /// from before it is searched again, once, by a search every such caller
-    /// shares, as long as a first search may hold.
-    After(ReadAt),
+/// A kept fact a page shows: each value a search finds is stored, and a
+/// stored value that changed is announced.
+pub struct Shown<K, T> {
+    /// Stores `T`, found on the Host of the device for `K` now; answers
+    /// whether it differs from what was stored.
+    pub store: Box<dyn Fn(DeviceId, K, &T) -> LocalBoxFuture<'static, Result<bool, String>>>,
+    /// Tells the loaded conversations that use it that it changed.
+    pub announce: Box<dyn Fn(&BTreeSet<ConversationId>)>,
 }
 
 /// One kind of search kept per Host and directory.
@@ -122,8 +115,8 @@ struct Inner<K, T> {
     /// What is searched, for the log.
     what: &'static str,
     search: Search<K, T>,
-    read_at: ReadAtOf<T>,
     subscribe: Subscribe,
+    shown: Option<Shown<K, T>>,
     entries: RefCell<HashMap<(DeviceId, K), Entry<T>>>,
 }
 
@@ -147,13 +140,8 @@ struct State<T> {
     /// Why the last search found nothing, while nothing is held: the
     /// conversation's host access refused it or the Host failed it.
     refused: RefCell<Option<Rc<HostAccessError>>>,
-    /// How many searches began, as `ended` counts them.
-    begun: Cell<u64>,
     /// How many searches ended, found something or not.
     ended: watch::Sender<u64>,
-    /// The runner reported a change that what is held may not hold, or a
-    /// caller asked for a search read later than it: one is due.
-    stale: Cell<bool>,
     /// The Host came online again, on a connection of its own.
     online: Cell<bool>,
     /// Searches again: the Host came online.
@@ -167,14 +155,32 @@ where
     K: Clone + Eq + Hash + 'static,
     T: Clone + 'static,
 {
-    pub fn new(what: &'static str, search: Search<K, T>, read_at: ReadAtOf<T>, subscribe: Subscribe) -> Self {
+    pub fn new(what: &'static str, search: Search<K, T>, subscribe: Subscribe, shown: Option<Shown<K, T>>) -> Self {
         Self(Rc::new(Inner {
             what,
             search,
-            read_at,
             subscribe,
+            shown,
             entries: RefCell::default(),
         }))
+    }
+
+    /// Keeps `key` on `device`, the loaded `conversation`'s primary Host,
+    /// current, starting its search if nobody keeps it yet, without waiting
+    /// for it: a page reads what [`Shown`] stored.
+    pub fn keep(&self, conversation: &ConversationId, device: &DeviceId, key: K) {
+        self.use_entry(conversation, device, key);
+    }
+
+    /// Why the last search of `key` on `device` was refused or failed, while
+    /// nothing is held.
+    pub fn refused(&self, device: &DeviceId, key: K) -> Option<Rc<HostAccessError>> {
+        let entries = self.0.entries.borrow();
+        let state = &entries.get(&(device.clone(), key))?.state;
+        if state.held.borrow().is_some() {
+            return None;
+        }
+        state.refused.borrow().clone()
     }
 
     /// What is held for `key` on `device`, the conversation's primary Host.
@@ -194,7 +200,6 @@ where
         device: &DeviceId,
         key: K,
         loaded: bool,
-        wait: Wait,
     ) -> Result<Option<T>, Rc<HostAccessError>> {
         let state = if loaded {
             Some(self.use_entry(conversation, device, key.clone()))
@@ -220,62 +225,9 @@ where
         let mut ended = state.ended.subscribe();
         // Past the deadline the call takes what is held, or nothing.
         let _ = tokio::time::timeout_at(state.since + FIRST_SEARCH_HOLD, ended.wait_for(|count| *count > 0)).await;
-        if wait != Wait::First && state.stale.get() {
-            let _ = tokio::time::timeout(FIRST_SEARCH_HOLD, ended.wait_for(|_| !state.stale.get())).await;
-        }
-        if let Wait::After(after) = &wait {
-            self.search_after(&state, after).await;
-        }
         match (state.held.borrow().clone(), state.refused.borrow().clone()) {
             (None, Some(refused)) => Err(refused),
             (held, _) => Ok(held),
-        }
-    }
-
-    /// Has what `state` holds read at `after` or later.
-    ///
-    /// A search on its way is waited for, and when what it holds is still from
-    /// before, one more starts, which callers that come meanwhile wait for too.
-    /// Past [`FIRST_SEARCH_HOLD`], or once that search found nothing newer, as
-    /// on a Host that is not running, the caller takes what is held.
-    async fn search_after(&self, state: &State<T>, after: &ReadAt) {
-        let read_after = || {
-            let held = state.held.borrow();
-            held.as_ref().and_then(self.0.read_at).is_some_and(|read_at| read_at.holds(after))
-        };
-        let deadline = Instant::now() + FIRST_SEARCH_HOLD;
-        let mut ended = state.ended.subscribe();
-        // The count of ended searches that includes the one this call started.
-        let mut asked = None;
-        while !read_after() {
-            let now = *ended.borrow_and_update();
-            match asked {
-                Some(searched) if now >= searched => return,
-                Some(_) => {}
-                // None on its way or due: the next to begin is this call's,
-                // and it is due for every caller from now.
-                None if state.begun.get() == now && !state.stale.get() => {
-                    asked = Some(now + 1);
-                    state.stale.set(true);
-                    state.wake.notify_one();
-                }
-                // One on its way or due may read late enough: it is waited for first.
-                None => {}
-            }
-            if tokio::time::timeout_at(deadline, ended.wait_for(|count| *count > now)).await.is_err() {
-                return;
-            }
-        }
-    }
-
-    /// What is held for `key` on `device`, without waiting or keeping it;
-    /// with `after`, only when its search read at that number or later.
-    pub fn held(&self, device: &DeviceId, key: K, after: Option<&ReadAt>) -> Option<T> {
-        let entries = self.0.entries.borrow();
-        let held = entries.get(&(device.clone(), key))?.state.held.borrow().clone()?;
-        match after {
-            Some(after) if !(self.0.read_at)(&held).is_some_and(|read_at| read_at.holds(after)) => None,
-            _ => Some(held),
         }
     }
 
@@ -324,9 +276,7 @@ where
                 users: RefCell::default(),
                 held: RefCell::default(),
                 refused: RefCell::default(),
-                begun: Cell::new(0),
                 ended: watch::Sender::new(0),
-                stale: Cell::new(false),
                 online: Cell::new(false),
                 wake: Notify::new(),
                 since: Instant::now(),
@@ -372,7 +322,6 @@ where
         let Some(conversation) = state.users.borrow().first().cloned() else {
             return;
         };
-        state.begun.set(state.begun.get() + 1);
         if subscriber.is_none() {
             let Some(subscribing) = inner.upgrade().map(|inner| (inner.subscribe)(conversation.clone())) else {
                 return;
@@ -424,6 +373,15 @@ where
                         holder.hold(subject.clone());
                     }
                     watched = wanted;
+                    if let Some(shown) = inner.upgrade().as_deref().and_then(|inner| inner.shown.as_ref()) {
+                        match (shown.store)(device.clone(), key.clone(), &found.value).await {
+                            Ok(true) => (shown.announce)(&state.users.borrow()),
+                            Ok(false) => {}
+                            // The page keeps showing what was stored before;
+                            // the next search stores again.
+                            Err(error) => tracing::warn!(what, %device, %error, "a project search's result was not stored"),
+                        }
+                    }
                     *state.held.borrow_mut() = Some(found.value);
                     state.refused.replace(None);
                 }
@@ -442,7 +400,6 @@ where
                 }
             }
         }
-        state.stale.set(false);
         state.ended.send_modify(|count| *count += 1);
         // Until a subscription says something changed, or the Host comes
         // online again.
@@ -458,10 +415,7 @@ where
                 }
             };
             match heard {
-                HostEvent::Changed(_) => {
-                    state.stale.set(true);
-                    break;
-                }
+                HostEvent::Changed(_) => break,
                 HostEvent::Live { subject, .. } => {
                     if pending.remove(&subject) {
                         went_live = true;
@@ -503,14 +457,46 @@ mod tests {
     use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture};
     use demi_plugin_interface::{HostFile, HostRead};
     use demi_runner_protocol::files::SubscriptionKind;
+    use tokio::sync::mpsc;
 
     use super::*;
     use crate::plugin_files::look_files;
 
+    /// A [`Shown`] that stores in memory and sends each value it announces
+    /// on `announced`, with the conversations it tells.
+    fn shown(announced: mpsc::UnboundedSender<(String, BTreeSet<ConversationId>)>) -> Shown<String, String> {
+        let stored: Rc<RefCell<Option<String>>> = Rc::default();
+        let last = stored.clone();
+        Shown {
+            store: Box::new(move |_, _, value: &String| {
+                let changed = stored.borrow().as_ref() != Some(value);
+                *stored.borrow_mut() = Some(value.clone());
+                Box::pin(async move { Ok(changed) })
+            }),
+            announce: Box::new(move |users| {
+                let value = last.borrow().clone().expect("stored before it is announced");
+                announced.send((value, users.clone())).unwrap();
+            }),
+        }
+    }
+
+    /// Subscriptions on `fixture`'s Host, as the device `device`.
+    fn subscribe(fixture: &RunnerFixture, device: &DeviceId) -> Subscribe {
+        let (host, device) = (fixture.host(), device.clone());
+        Box::new(move |_| {
+            let (host, device) = (host.clone(), device.clone());
+            Box::pin(async move {
+                let subscriber = host.subscriber().map_err(|error| SearchError::Failed(error.to_string()))?;
+                Ok((device, subscriber))
+            })
+        })
+    }
+
     // About a second: a real runner process reads the file and watches it.
     //
     // Planted defect it catches: a release that leaves the subscriptions
-    // held, or a search per call.
+    // held, a search per call, or an edit the runner reports that is never
+    // stored and announced to the conversations that use it.
     #[tokio::test(flavor = "local")]
     async fn a_directory_is_searched_once_kept_by_the_watch_and_released_with_its_last_conversation() {
         let fixture = RunnerFixture::start(FixtureOptions::default()).await;
@@ -544,37 +530,26 @@ mod tests {
             })
         };
         let device = DeviceId::try_from("device-1").unwrap();
-        let subscribe: Subscribe = {
-            let (host, device) = (host.clone(), device.clone());
-            Box::new(move |_| {
-                let (host, device) = (host.clone(), device.clone());
-                Box::pin(async move {
-                    let subscriber = host.subscriber().map_err(|error| SearchError::Failed(error.to_string()))?;
-                    Ok((device, subscriber))
-                })
-            })
-        };
-        let kept = Kept::new("a test's file", search, |_| None, subscribe);
+        let (announced, mut announcements) = mpsc::unbounded_channel();
+        let kept = Kept::new("a test's file", search, subscribe(&fixture, &device), Some(shown(announced)));
         let first = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap();
         let second = ConversationId::try_from("1c7e8f4f-9a4b-4d2f-8e3c-8b2d3f4a5b6c").unwrap();
 
-        assert_eq!(kept.get(&first, &device, path.clone(), true, Wait::First).await.unwrap().as_deref(), Some("one"));
-        assert_eq!(kept.get(&second, &device, path.clone(), true, Wait::First).await.unwrap().as_deref(), Some("one"));
+        assert_eq!(kept.get(&first, &device, path.clone(), true).await.unwrap().as_deref(), Some("one"));
+        assert_eq!(kept.get(&second, &device, path.clone(), true).await.unwrap().as_deref(), Some("one"));
+        assert_eq!(announcements.recv().await.unwrap().0, "one");
         let link = fixture.link().await;
         assert_eq!(link.subscribed(), [subject.clone()]);
 
         // The edit is searched, whether the runner reports it or it came
-        // before the Host watched the file.
+        // before the Host watched the file, and announced to both.
         std::fs::write(&path, "two").unwrap();
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while kept.get(&first, &device, path.clone(), true, Wait::Current).await.unwrap().as_deref() != Some("two") {
-            assert!(Instant::now() < deadline, "the edit was never searched");
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        let (value, users) = announcements.recv().await.unwrap();
+        assert_eq!((value.as_str(), users), ("two", BTreeSet::from([first.clone(), second.clone()])));
         // Taking what is held asks the Host nothing.
         let searched = searches.get();
         for conversation in [&first, &second, &first] {
-            let held = kept.get(conversation, &device, path.clone(), true, Wait::First).await.unwrap();
+            let held = kept.get(conversation, &device, path.clone(), true).await.unwrap();
             assert_eq!(held.as_deref(), Some("two"));
         }
         assert_eq!(searches.get(), searched);
@@ -592,74 +567,44 @@ mod tests {
         fixture.stop().await;
     }
 
-    // About a second: a real runner process holds the subscriptions, the
-    // search answers the number the test sets.
+    // Instant: the search is held until the test lets it go.
     //
-    // Planted defect it catches: a kept answer read before `readAfter`
-    // taken as current, which had the page ask again without end; or a
-    // search per caller, or per call that what is kept already answers.
+    // Planted defect it catches: a page's read that waits for a directory's
+    // first search, as one held it five seconds, or a search that finds what
+    // was stored announcing it again.
     #[tokio::test(flavor = "local")]
-    async fn a_page_asking_after_a_number_takes_what_is_kept_only_when_it_was_read_then_or_later() {
+    async fn keeping_for_a_page_waits_for_no_search_and_only_a_change_is_announced() {
         let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-        let at = |number| ReadAt {
-            epoch: "run-1".to_owned(),
-            number,
-        };
-        // The Host's number now, which a search reads at.
-        let number = Rc::new(Cell::new(10));
-        let searches = Rc::new(Cell::new(0));
-        let search: Search<String, ReadAt> = {
-            let (number, searches) = (number.clone(), searches.clone());
+        let gate = Rc::new(Notify::new());
+        let search: Search<String, String> = {
+            let gate = gate.clone();
             Box::new(move |_, _, _| {
-                searches.set(searches.get() + 1);
-                let read_at = at(number.get());
+                let gate = gate.clone();
                 Box::pin(async move {
-                    tokio::task::yield_now().await;
+                    gate.notified().await;
                     Ok(Found {
-                        value: read_at,
+                        value: "same".to_owned(),
                         watch: Vec::new(),
                     })
                 })
             })
         };
         let device = DeviceId::try_from("device-1").unwrap();
-        let subscribe: Subscribe = {
-            let (host, device) = (fixture.host(), device.clone());
-            Box::new(move |_| {
-                let (host, device) = (host.clone(), device.clone());
-                Box::pin(async move {
-                    let subscriber = host.subscriber().map_err(|error| SearchError::Failed(error.to_string()))?;
-                    Ok((device, subscriber))
-                })
-            })
-        };
-        let kept = Kept::new("the workflows", search, |read_at| Some(read_at), subscribe);
+        let (announced, mut announcements) = mpsc::unbounded_channel();
+        let kept = Kept::new("the workflows", search, subscribe(&fixture, &device), Some(shown(announced)));
         let conversation = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap();
-        let get = |wait| {
-            let (kept, conversation, device) = (&kept, &conversation, &device);
-            async move { kept.get(conversation, device, "/p".to_owned(), true, wait).await.unwrap() }
-        };
 
-        assert_eq!(get(Wait::Current).await, Some(at(10)));
-        // Read at the number asked for: what is kept, without a search.
-        assert_eq!(get(Wait::After(at(10))).await, Some(at(10)));
-        assert_eq!(kept.held(&device, "/p".to_owned(), Some(&at(10))), Some(at(10)));
-        assert_eq!(searches.get(), 1);
-
-        // The page's watch went live at 11, after the search kept: it is
-        // searched again, and the answer read at the Host's number since.
-        number.set(12);
-        assert_eq!(kept.held(&device, "/p".to_owned(), Some(&at(11))), None);
-        assert_eq!(get(Wait::After(at(11))).await, Some(at(12)));
-        assert_eq!(searches.get(), 2);
-        assert_eq!(get(Wait::After(at(11))).await, Some(at(12)));
-        assert_eq!(searches.get(), 2);
-
-        // Two pages asking at once share one search.
-        number.set(14);
-        let (first, second) = tokio::join!(get(Wait::After(at(13))), get(Wait::After(at(14))));
-        assert_eq!((first, second), (Some(at(14)), Some(at(14))));
-        assert_eq!(searches.get(), 3);
+        // The search waits for the gate; keeping for the page returns at once.
+        kept.keep(&conversation, &device, "/p".to_owned());
+        gate.notify_one();
+        assert_eq!(announcements.recv().await.unwrap().0, "same");
+        // The Host comes online again: it is searched again and finds what
+        // was stored, which nobody is told of.
+        kept.online(&device);
+        gate.notify_one();
+        let mut ended = kept.0.entries.borrow()[&(device.clone(), "/p".to_owned())].state.ended.subscribe();
+        ended.wait_for(|count| *count >= 2).await.unwrap();
+        assert!(announcements.try_recv().is_err());
 
         drop(kept);
         fixture.stop().await;

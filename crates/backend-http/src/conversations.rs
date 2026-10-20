@@ -23,7 +23,7 @@ use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_host_interface::{FileKind, FileStat, HostFs};
 use demi_web_api_protocol::conversations::{
-    BatchAnswer, BatchResult, ConversationBatch, ConversationPatch, CreatedConversation,
+    BatchAnswer, BatchResult, ConversationBatch, ConversationDetail, ConversationPatch, CreatedConversation,
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest,
 };
@@ -39,7 +39,7 @@ use super::hosts;
 use super::page_client::PageClient;
 use super::query::QueryParams;
 use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
-use demi_backend_user_shard::conversation::ForkRefusal;
+use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::sync::ChannelSession;
 
@@ -116,12 +116,15 @@ pub(super) async fn create(
         }
         Creation::Unselectable(reason) => return Err(hosts::refused(reason.into())),
     };
-    let conversation = state
+    let (conversation, metadata) = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.conversation_summary(record).await })
+        .call(move |shard, _| async move {
+            let conversation = shard.conversation_summary(record.clone()).await?;
+            Ok::<_, demi_backend_database::StorageError>((conversation, shard.conversation_metadata(record).await?))
+        })
         .await??;
-    Ok((status, Json(CreatedConversation { conversation })))
+    Ok((status, Json(CreatedConversation { conversation, metadata })))
 }
 
 /// `GET /conversations/:id/attachments/:attachment`: an attachment of the
@@ -320,6 +323,7 @@ pub(super) async fn batch(
                     Some(ConversationUpdate {
                         conversation,
                         results,
+                        ..
                     }) => BatchResult::Updated {
                         id: item.id,
                         conversation: Box::new(conversation),
@@ -339,6 +343,40 @@ pub(super) async fn batch(
     Ok((StatusCode::MULTI_STATUS, Json(BatchAnswer { results })))
 }
 
+/// `GET /conversations/:id`: the conversation as the sidebar lists it, its
+/// metadata, and its agents at their version.
+pub(super) async fn detail(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ConversationDetail>, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let detail = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            let id = record.id.clone();
+            let conversation = shard.conversation_summary(record.clone()).await?;
+            let metadata = shard.conversation_metadata(record).await?;
+            let (agents, entries) = shard.conversation_agents(&id).await.map_err(|error| match error {
+                AgentsError::Host(error) => ApiError::from(error),
+                AgentsError::Unreadable(error) => ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorCode::ConversationUnreadable,
+                    error.to_string(),
+                ),
+            })?;
+            Ok::<_, ApiError>(ConversationDetail {
+                conversation,
+                metadata,
+                agents,
+                entries,
+            })
+        })
+        .await??;
+    Ok(Json(detail))
+}
+
 /// `POST /conversations/:id/fork { id, blockId }`: the conversation `id`
 /// with this conversation's history through the assistant text `blockId`,
 /// 201; the same attempt again, 200.
@@ -349,13 +387,14 @@ pub(super) async fn fork(
     JsonBody(ForkRequest { id, block_id }): JsonBody<ForkRequest>,
 ) -> Result<(StatusCode, Json<ForkAnswer>), ApiError> {
     let source = ConversationId::try_from(source).map_err(|_| not_found())?;
-    let (forked, conversation) = state
+    let (forked, conversation, metadata) = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
             let forked = shard.fork(source, id, block_id).await?;
             let conversation = shard.conversation_summary(forked.record.clone()).await?;
-            Ok::<_, ForkRefusal>((forked, conversation))
+            let metadata = shard.conversation_metadata(forked.record.clone()).await?;
+            Ok::<_, ForkRefusal>((forked, conversation, metadata))
         })
         .await?
         .map_err(fork_refused)?;
@@ -364,7 +403,7 @@ pub(super) async fn fork(
     } else {
         StatusCode::OK
     };
-    Ok((status, Json(ForkAnswer { conversation })))
+    Ok((status, Json(ForkAnswer { conversation, metadata })))
 }
 
 fn fork_refused(refusal: ForkRefusal) -> ApiError {
@@ -393,7 +432,8 @@ fn fork_refused(refusal: ForkRefusal) -> ApiError {
 
 /// `POST /conversations/:id/read { revision }`: acknowledges the output the
 /// page showed, 204. The read revision only moves forward; a revision
-/// beyond the conversation's output answers 409 `invalid_revision`.
+/// beyond the conversation's output answers 409 `invalid_revision`. An
+/// acknowledgement that changes nothing announces nothing.
 pub(super) async fn read(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -402,20 +442,20 @@ pub(super) async fn read(
 ) -> Result<StatusCode, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
-    let facts = services
+    let output = services
         .conversations
-        .read(&record.id, tree::summary)
+        .read(&record.id, tree::output_revision)
         .await
         .map_err(ApiError::conversation_unreadable)?
-        .unwrap_or(tree::SummaryFacts::EMPTY);
-    if revision > facts.revision {
+        .unwrap_or_default();
+    if revision > output {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::InvalidRevision,
             "Cannot read beyond current output",
         ));
     }
-    services
+    let read = services
         .control
         .mark_conversation_read(record.id.clone(), revision)
         .await?;
@@ -423,7 +463,9 @@ pub(super) async fn read(
     if services.control.read_automation_runs(record.id.clone()).await? {
         services.sync.mark(&user.id, Part::Automations);
     }
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    if read {
+        services.sync.mark(&user.id, Part::Conversation(record.id));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

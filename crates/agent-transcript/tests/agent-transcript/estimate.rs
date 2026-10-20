@@ -23,6 +23,7 @@ fn user(id: &str, text: &str) -> Block {
         id: id.try_into().unwrap(),
         turn_id: TurnId::try_from("turn").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         content: vec![UserContentBlock::Text { text: text.into() }],
         preamble: Some("not counted".into()),
@@ -34,6 +35,7 @@ fn response(id: &str, input_tokens: u64) -> Block {
     Block::Response(ResponseBlock {
         id: id.try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         usage: Some(TokenUsage {
             input_tokens,
@@ -74,6 +76,8 @@ fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
         entries: Vec::new(),
         id: "t".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
+        code_files: None,
         model: test_model(),
         text: "reply".into(),
         forkable: true,
@@ -100,6 +104,7 @@ fn a_compaction_after_the_latest_response_leaves_no_anchor() {
         entries: Vec::new(),
         id: "b".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         summary: "short summary".into(),
         summary_tokens: 4,
@@ -108,6 +113,7 @@ fn a_compaction_after_the_latest_response_leaves_no_anchor() {
     let marker = Block::CompactionMarker(CompactionMarkerBlock {
         id: "m".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         boundary_id: "b".try_into().unwrap(),
         compacted_tokens: 2_000,
@@ -139,6 +145,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
         id: "u".try_into().unwrap(),
         turn_id: TurnId::try_from("turn").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         content: vec![
             UserContentBlock::Image {
@@ -171,6 +178,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
         ended_at: None,
         id: "c".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
+        request: None,
         model: test_model(),
         tool_use_id: "call-1".into(),
         tool_name: "shoot".into(),

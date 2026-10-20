@@ -1,11 +1,11 @@
 import type {
   Block,
   BlockVersions,
-  PendingCall,
   PendingSteer,
   ProviderFailureFacts,
   ServerFrame,
   TranscriptPatch,
+  Version,
 } from '@demicodes/protocol'
 
 export type ServerFrameOf<Type extends ServerFrame['type']> = Extract<ServerFrame, { type: Type }>
@@ -33,18 +33,14 @@ export type Failures = Record<string, ProviderFailureFacts>
 /**
  * What a `ConversationClient` tells its listeners. Most events are the
  * server frame as it arrived. The transcript events carry what the frame
- * brought, which the page applies to the parts of the transcript it holds;
- * none carries a revision, which the client keeps.
+ * brought of a node, which the page applies to the parts of that node's
+ * transcript it holds; a patch carries no revision, which the client keeps.
  */
 export type ClientSessionEvent =
   | ServerFrameOf<'opened'>
   | ServerFrameOf<'closed'>
   | ServerFrameOf<'edit_result'>
   | ServerFrameOf<'rejected'>
-  | ServerFrameOf<'phase'>
-  | ServerFrameOf<'context_usage'>
-  | ServerFrameOf<'cost'>
-  | ServerFrameOf<'cost_rows'>
   | ServerFrameOf<'queue'>
   | ServerFrameOf<'steer_result'>
   | ServerFrameOf<'remove_result'>
@@ -53,25 +49,37 @@ export type ClientSessionEvent =
   | ServerFrameOf<'shell_write_result'>
   | ServerFrameOf<'retry_scheduled'>
   | ServerFrameOf<'error'>
-  | ServerFrameOf<'subagent'>
-  | ServerFrameOf<'subagents'>
   | ServerFrameOf<'pong'>
+  | (ServerFrameOf<'agents'> & {
+      /**
+       * When it arrived, as `Date.now()`: an agent waits for its model since
+       * then less its `waitedMs`, so no time of the server's is compared with
+       * the page's clock.
+       */
+      receivedAt: number
+    })
+  | (ServerFrameOf<'agent'> & { receivedAt: number })
   | {
-      /** The blocks from `start` on. */
+      /** The node's blocks from `start` on. */
       type: 'transcript_reset'
+      node: string
       start: number
       length: number
       blocks: Block[]
+      version: Version
       /** The versions of its blocks that have others. */
       versions: BlockVersions[]
       /** The facts of the error blocks in `blocks`. */
       failures: Failures
-      /** The index the client named in its `open` or `sync_transcript`; a reset elsewhere means a rewrite. */
+      /** The index the client named when it subscribed; a reset elsewhere means a rewrite. */
       asked: number | undefined
     }
   | {
       type: 'transcript_patch'
+      node: string
       patches: TranscriptPatch[]
+      /** The node's transcript's version after them. */
+      version: Version
       /** The facts of the error blocks the patches bring. */
       failures: Failures
     }
@@ -81,43 +89,9 @@ export type ClientSessionEvent =
       pendingSteers: PendingSteer[]
     }
   | {
-      type: 'pending_calls'
-      /** The subagent whose calls they are; absent for the root's. */
-      subagentId?: string
-      /** The calls the model is writing. */
-      pendingCalls: PendingCall[]
-    }
-  | {
       type: 'request_output'
       /** The output of the request the root agent runs; null when its turn has none. */
       output: RequestOutputReading | null
-    }
-  | {
-      type: 'waiting'
-      /** The subagent that waits; absent for the root. */
-      subagentId?: string
-      /**
-       * When the node began to wait for the model's answer, as `Date.now()`:
-       * the frame's arrival less how long it had waited, so no time of the
-       * server's is compared with the page's clock; null when it waits for
-       * none.
-       */
-      since: number | null
-    }
-  | {
-      type: 'subagent_transcript_reset'
-      subagentId: string
-      start: number
-      length: number
-      blocks: Block[]
-      failures: Failures
-    }
-  | {
-      /** A patch of the subagent's transcript that follows the last one the client saw. */
-      type: 'subagent_transcript_patch'
-      subagentId: string
-      patches: TranscriptPatch[]
-      failures: Failures
     }
   | {
       /** The connection ended; the client does nothing more. */

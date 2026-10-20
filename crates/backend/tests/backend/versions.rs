@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use demi_conversation_socket_protocol::{
-    BlockVersions, ClientFrame, EditOutcome, RegenerateRequest, ServerFrame, TranscriptVersion,
+    BlockVersions, ClientFrame, EditOutcome, RegenerateRequest, ServerFrame, Version,
 };
 use demi_shared_types::{Block, BlockId, UserContentBlock};
 use demi_web_api_protocol::conversations::TranscriptPage;
@@ -21,13 +21,13 @@ use demi_web_api_protocol::search::SearchResults;
 use reqwest::StatusCode;
 
 use crate::conversations::{FIRST, Socket, anthropic, answer, choose, create};
-use crate::editing::{edit, edit_request, idle};
+use crate::editing::{edit_request, edited_turn, idle};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, eventually};
 
 /// The live transcript a fresh reset sends, with its version and the
 /// versions of its blocks.
-async fn sync(socket: &mut Socket) -> (Vec<Block>, TranscriptVersion, Vec<BlockVersions>) {
-    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+async fn sync(socket: &mut Socket) -> (Vec<Block>, Version, Vec<BlockVersions>) {
+    socket.resubscribe().await;
     let frames = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;
@@ -73,7 +73,7 @@ fn versions(block: BlockId, index: u32, count: u32) -> BlockVersions {
 
 /// The conversation's latest page as the history route answers it.
 async fn latest_page(backend: &TestBackend, session: &Session) -> TranscriptPage {
-    let read = backend.get(&format!("/api/conversations/{FIRST}/transcript"), Some(session)).await;
+    let read = backend.get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript"), Some(session)).await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     read.json()
 }
@@ -88,7 +88,7 @@ async fn finds(backend: &TestBackend, session: &Session, word: &str) -> bool {
 /// Switches the place of `block` to version `to`, from the snapshot
 /// `version`, and reads the frames up to the switch's end: the rewrite's
 /// patches, then the new path's context usage before the phase goes idle.
-async fn switch(socket: &mut Socket, block: BlockId, to: u32, version: TranscriptVersion) {
+async fn switch(socket: &mut Socket, block: BlockId, to: u32, version: Version) {
     socket
         .send(&ClientFrame::SwitchVersion {
             block_id: block,
@@ -104,7 +104,7 @@ async fn switch(socket: &mut Socket, block: BlockId, to: u32, version: Transcrip
     assert!(
         frames[patched..]
             .iter()
-            .any(|frame| matches!(frame, ServerFrame::ContextUsage { usage: Some(_), .. })),
+            .any(|frame| demi_agent_server::testing::root_context(frame).is_some()),
         "the new path's usage before the switch ends: {frames:?}"
     );
 }
@@ -133,9 +133,8 @@ async fn an_edit_keeps_the_old_branch_and_switching_back_restores_it_across_a_re
 
     let request = edit_request(&mut socket, "question-bravo", "edit-1", "question-delta").await;
     vendor.respond(answer(&["answer-delta"], 1, 1));
-    let accepted = edit(&mut socket, &ClientFrame::EditAndSend { request }).await;
+    let accepted = edited_turn(&mut socket, &ClientFrame::EditAndSend { request }).await;
     assert!(matches!(accepted, EditOutcome::Accepted { .. }), "{accepted:?}");
-    socket.until(idle).await;
 
     // The new version is the second of its place, on the page and in the
     // history route alike.
@@ -226,9 +225,8 @@ async fn regenerate_adds_a_version_of_the_answer_beside_the_old_one() {
             version,
         },
     };
-    let accepted = edit(&mut socket, &regenerate).await;
+    let accepted = edited_turn(&mut socket, &regenerate).await;
     assert!(matches!(accepted, EditOutcome::Accepted { .. }), "{accepted:?}");
-    socket.until(idle).await;
 
     // The message stays, once, and the model reads it without the old
     // answer.

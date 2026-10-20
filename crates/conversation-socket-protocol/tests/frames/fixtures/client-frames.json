@@ -3,6 +3,34 @@
     "type": "open"
   },
   {
+    "type": "open",
+    "agents": {
+      "epoch": "agents-1",
+      "revision": 4
+    },
+    "draft": 3
+  },
+  {
+    "type": "subscribe",
+    "node": "conv-1"
+  },
+  {
+    "type": "subscribe",
+    "node": "child-1",
+    "held": {
+      "version": {
+        "epoch": "epoch-1",
+        "revision": 12
+      },
+      "from": 40,
+      "edge": "u7"
+    }
+  },
+  {
+    "type": "unsubscribe",
+    "node": "child-1"
+  },
+  {
     "type": "send",
     "messageId": "msg-1",
     "content": [
@@ -157,9 +185,6 @@
   {
     "type": "shell_abort",
     "commandId": "cmd-1"
-  },
-  {
-    "type": "sync_transcript"
   },
   {
     "type": "close"

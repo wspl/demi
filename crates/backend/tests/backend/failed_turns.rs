@@ -269,13 +269,10 @@ impl World {
     /// no phase frame between: the handshake said `running`, so its `chat` would
     /// never see its turn start.
     async fn idle_socket(&self) -> Socket {
-        let idle = ServerFrame::Phase {
-            subagent_id: None,
-            phase: SessionPhase::Idle,
-        };
+        let idle = |frame: &ServerFrame| crate::conversations::root_phase(frame) == Some(SessionPhase::Idle);
         let mut socket = Socket::connect(&self.backend, &self.master, FIRST).await;
-        if !socket.open().await.contains(&idle) {
-            socket.until(|frame| *frame == idle).await;
+        if !socket.open().await.iter().any(idle) {
+            socket.until(idle).await;
         }
         socket
     }

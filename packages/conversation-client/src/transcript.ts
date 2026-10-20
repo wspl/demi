@@ -1,4 +1,4 @@
-import type { Block, BlockVersions, TranscriptPatch, Versions } from '@demicodes/protocol'
+import type { Block, BlockVersions, HeldEdge, TranscriptPatch, Version, Versions } from '@demicodes/protocol'
 
 /** A text or thinking block's text up to `end` reached the page at `at`, its `performance.now()`. */
 export interface TextArrival {
@@ -18,7 +18,7 @@ export interface TextArrival {
  * - A block whose place on the path holds other versions keeps where it stands
  *   among them, `versions`.
  */
-export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[]; versions?: Versions }
+export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[]; versions?: Versions; stale?: true }
 
 /** `blocks`, each with its versions that `versions` lists by block id. */
 function withVersions(blocks: readonly HeldBlock[], versions: readonly BlockVersions[] | undefined): HeldBlock[] {
@@ -40,9 +40,17 @@ function arrived(block: HeldBlock, at: number): HeldBlock {
   return { ...block, arrivals: [...(block.arrivals ?? []), { end: block.text.length, at }] }
 }
 
-/** What a page holds at an index of a transcript: a block, or, in a share's, a row of its own in its place. */
+/**
+ * What a page holds at an index of a transcript: a block, or, in a share's, a
+ * row of its own in its place.
+ *
+ * A `stale` one was held before a reset that could not vouch for it, as after
+ * a long time away or a rewrite under the page: it stays on screen, a hole
+ * the page reads again where it shows it, and the read replaces it.
+ */
 export interface Held {
   id: string
+  stale?: true
 }
 
 /** Consecutive blocks of a transcript the page holds, from the index `start`. */
@@ -59,6 +67,12 @@ export interface TranscriptWindow<B extends Held = HeldBlock> {
 export interface HeldTranscript<B extends Held = HeldBlock> {
   length: number
   windows: readonly TranscriptWindow<B>[]
+  /**
+   * The version of the transcript its latest window is current at, as the
+   * stream's last reset or patch left it; absent while no stream vouched for
+   * it, as for a window only pages were read into.
+   */
+  version?: Version
 }
 
 /**
@@ -70,8 +84,12 @@ export interface HeldTranscript<B extends Held = HeldBlock> {
  * long transcript at each streamed piece then costs plain reads, not a tracked
  * read of every field.
  */
-export function heldTranscript<B extends Held>(length: number, windows: readonly TranscriptWindow<B>[]): HeldTranscript<B> {
-  return Object.freeze({ length, windows })
+export function heldTranscript<B extends Held>(
+  length: number,
+  windows: readonly TranscriptWindow<B>[],
+  version?: Version,
+): HeldTranscript<B> {
+  return Object.freeze(version ? { length, windows, version } : { length, windows })
 }
 
 export const EMPTY_TRANSCRIPT: HeldTranscript = heldTranscript(0, [])
@@ -98,19 +116,19 @@ export function heldBlocks<B extends Held>(held: HeldTranscript<B>): B[] {
 }
 
 /**
- * The blocks the page names when it opens or syncs the stream: the first
- * block of its latest window that may have changed since it read it, its
- * first call that was executing, or else its last block; none without a
- * latest window.
+ * The blocks the page names when it subscribes to a node: the version its
+ * latest window is current at, and the first block of that window that may
+ * have changed since, its first call that was executing, or else its last
+ * block; none without a latest window a stream vouched for.
  */
-export function heldEdge(held: HeldTranscript): { from: number; edge: string } | undefined {
+export function heldEdge(held: HeldTranscript): HeldEdge | undefined {
   const latest = latestWindow(held)
-  if (!latest || latest.blocks.length === 0) {
+  if (!held.version || !latest || latest.blocks.length === 0) {
     return undefined
   }
   const executing = latest.blocks.findIndex((block) => block.type === 'tool_call' && block.status === 'executing')
   const offset = executing >= 0 ? executing : latest.blocks.length - 1
-  return { from: latest.start + offset, edge: latest.blocks[offset]!.id }
+  return { version: { ...held.version }, from: latest.start + offset, edge: latest.blocks[offset]!.id }
 }
 
 /**
@@ -156,7 +174,15 @@ function joined<B extends Held>(
   }
   if (prefer === 'held') {
     place(incoming)
-    meeting.forEach(place)
+    // A stale block is a hole: what arrives replaces it.
+    for (const window of meeting) {
+      window.blocks.forEach((block, offset) => {
+        const at = window.start - start + offset
+        if (!block.stale || blocks[at] === undefined) {
+          blocks[at] = block
+        }
+      })
+    }
   } else {
     meeting.forEach(place)
     place(incoming)
@@ -166,18 +192,31 @@ function joined<B extends Held>(
 
 /**
  * The transcript with the stream's reset in it: its blocks replace every
- * held block from `start` on. A reset that starts elsewhere than at
- * `asked`, the index the page named, means the transcript was rewritten
- * under the page: the page then keeps only the reset.
+ * held block from `start` on, light as a page's are but the last, which the
+ * stream may still be writing and sends whole.
+ *
+ * What the page holds before `start` stays on screen. The reset vouches for
+ * it when it starts at `asked`, the index the page named, whose block the
+ * server found there unchanged; otherwise, as after a long time away, a
+ * rewrite under the page, or a page that named no index, it is stale: a hole
+ * the page reads again where it shows it.
  */
 export function resetTranscript(
   held: HeldTranscript,
-  reset: { start: number; length: number; blocks: Block[]; versions?: readonly BlockVersions[] },
+  reset: { start: number; length: number; blocks: Block[]; versions?: readonly BlockVersions[]; version?: Version },
   asked?: number,
 ): HeldTranscript {
-  const rewritten = asked !== undefined && reset.start !== asked
-  const kept = rewritten ? [] : truncated(held.windows, reset.start)
-  return heldTranscript(reset.length, joined(kept, { start: reset.start, blocks: withVersions(reset.blocks, reset.versions) }, 'incoming'))
+  const vouched = asked !== undefined && reset.start === asked
+  const kept = truncated(held.windows, reset.start).map((window) => vouched
+    ? window
+    : { start: window.start, blocks: window.blocks.map((block): HeldBlock => (block.stale ? block : { ...block, stale: true })) })
+  const last = reset.blocks.length - 1
+  const blocks = reset.blocks.map((block, offset): HeldBlock => (offset === last ? block : { ...block, light: true }))
+  return heldTranscript(
+    reset.length,
+    joined(kept, { start: reset.start, blocks: withVersions(blocks, reset.versions) }, 'incoming'),
+    reset.version,
+  )
 }
 
 /**
@@ -204,7 +243,7 @@ export function addWindow<B extends Held>(
   page: { start: number; length: number; blocks: B[] },
   live: boolean,
 ): HeldTranscript<B> {
-  return heldTranscript(live ? held.length : page.length, joined(held.windows, { start: page.start, blocks: page.blocks }, 'held'))
+  return heldTranscript(live ? held.length : page.length, joined(held.windows, { start: page.start, blocks: page.blocks }, 'held'), held.version)
 }
 
 /** The transcript with `block` whole in place of the held one of its id. */
@@ -217,7 +256,7 @@ export function withWholeBlock(held: HeldTranscript, block: Block): HeldTranscri
     const blocks = [...window.blocks]
     blocks[offset] = block
     return { start: window.start, blocks }
-  }))
+  }), held.version)
 }
 
 /** `windows` without the blocks from `length` on. */
@@ -244,11 +283,14 @@ function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], leng
  *   can share blocks.
  * - Text an `add` or an `append_text` brings is marked as arrived at
  *   `receivedAt`.
+ * - `version` is the transcript's version after them, as the stream that
+ *   brought them counts it; the held one stays without.
  */
 export function applyTranscriptPatches(
   held: HeldTranscript,
   patches: readonly TranscriptPatch[],
   receivedAt: number = performance.now(),
+  version: Version | undefined = held.version,
 ): HeldTranscript {
   let length = held.length
   let windows = [...held.windows]
@@ -265,7 +307,11 @@ export function applyTranscriptPatches(
         }
         break
       }
-      case 'add':
+      case 'add': {
+        const added = arrived(patch.versions ? { ...patch.value, versions: patch.versions } : patch.value, receivedAt)
+        // A block added at the end that no window reaches starts a run of
+        // its own; one added in a gap the page does not hold joins none.
+        const own = patch.index === length && !windows.some((window) => window.start <= patch.index && patch.index <= windowEnd(window))
         length += 1
         windows = windows.map((window) => {
           if (patch.index < window.start) {
@@ -275,12 +321,14 @@ export function applyTranscriptPatches(
             return window
           }
           const blocks = [...window.blocks]
-          const added: HeldBlock = patch.versions ? { ...patch.value, versions: patch.versions } : patch.value
-          blocks.splice(patch.index - window.start, 0, arrived(added, receivedAt))
+          blocks.splice(patch.index - window.start, 0, added)
           return { start: window.start, blocks }
         })
-        // A block added in a gap that the page does not hold joins no window.
+        if (own) {
+          windows.push({ start: patch.index, blocks: [added] })
+        }
         break
+      }
       case 'replace_block':
       case 'append_text':
         windows = windows.map((window) => {
@@ -302,5 +350,5 @@ export function applyTranscriptPatches(
         break
     }
   }
-  return heldTranscript(length, windows)
+  return heldTranscript(length, windows, version)
 }

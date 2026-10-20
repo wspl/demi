@@ -1,10 +1,10 @@
 //! What the web app sends.
 
-use demi_shared_types::{BlobRef, BlockId, CommandId, MessageComment, NodeId, OperationId, TurnId, is_blank};
+use demi_shared_types::{BlobRef, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::TranscriptVersion;
+use crate::{HeldEdge, Version};
 
 /// A frame the web app sends. The connection belongs to one conversation, so
 /// no frame names a session or a working directory.
@@ -18,15 +18,38 @@ use crate::TranscriptVersion;
 pub enum ClientFrame {
     /// Attach this connection to the conversation's tree, restoring it when
     /// it is not live with the model selection the conversation's record
-    /// holds; no frame names a model. `from` and `edge` name the root's
-    /// blocks the page holds, so the reset sends none before them.
+    /// holds; no frame names a model.
+    ///
+    /// It names what the page holds of the conversation, which the open
+    /// answers with the changes since or whole: `agents`, the version of the
+    /// agents it holds, and `draft`, the revision of the draft it holds, which
+    /// the backend answers (`crates/backend-user-shard/src/conversation/socket.rs`).
     Open {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[garde(skip)]
-        from: Option<u32>,
+        #[garde(dive)]
+        agents: Option<Version>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        draft: Option<u64>,
+    },
+    /// Shows the node `node`'s messages on this connection, the root's or any
+    /// other: its transcript streams to the connection from now on, while the
+    /// node is live, until `unsubscribe`. The answer is its
+    /// `transcript_reset` from the blocks the page `held`, or from its latest
+    /// page; nothing when the page holds its current version. A node that is
+    /// not live sends nothing until it starts, which sends its reset. Sent
+    /// before `open`, the open answers it.
+    Subscribe {
         #[garde(skip)]
-        edge: Option<BlockId>,
+        node: NodeId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(dive)]
+        held: Option<HeldEdge>,
+    },
+    /// Ends the subscription to the node `node`'s messages.
+    Unsubscribe {
+        #[garde(skip)]
+        node: NodeId,
     },
     /// Submit a message; its id becomes its turn's id and its queue entry's.
     Send {
@@ -60,7 +83,7 @@ pub enum ClientFrame {
         #[garde(range(min = 1))]
         to: u32,
         #[garde(dive)]
-        version: TranscriptVersion,
+        version: Version,
     },
     /// Add input to the running turn; its id is its `steer` block's.
     Steer {
@@ -120,15 +143,6 @@ pub enum ClientFrame {
         #[garde(skip)]
         subagent_id: NodeId,
     },
-    /// The children whose transcripts this connection shows, the whole set
-    /// each time it changes (`crates/agent-server/src/server/tree.rs`): a child it adds is
-    /// answered with its `subagent_transcript_reset`, and only the children
-    /// it names stream their transcripts to it. Sent before `open`, it names
-    /// the children the open's handshake sends.
-    ShowSubagents {
-        #[garde(skip)]
-        ids: Vec<NodeId>,
-    },
     Retry {},
     Resume {},
     /// Compact the context of `node`, the root when absent: a subagent's
@@ -150,16 +164,6 @@ pub enum ClientFrame {
         #[garde(skip)]
         command_id: CommandId,
     },
-    /// Ask for a fresh transcript, after a gap in the patch revisions, from
-    /// the page's blocks as `open` names them.
-    SyncTranscript {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[garde(skip)]
-        from: Option<u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[garde(skip)]
-        edge: Option<BlockId>,
-    },
     /// Dispose the tree.
     Close {},
 }
@@ -169,6 +173,8 @@ pub enum ClientFrame {
 #[serde(rename_all = "snake_case")]
 pub enum ClientFrameKind {
     Open,
+    Subscribe,
+    Unsubscribe,
     Send,
     EditAndSend,
     Regenerate,
@@ -183,13 +189,11 @@ pub enum ClientFrameKind {
     Abort,
     AbortSubagents,
     AbortSubagent,
-    ShowSubagents,
     Retry,
     Resume,
     Compact,
     ShellWrite,
     ShellAbort,
-    SyncTranscript,
     Close,
 }
 
@@ -200,6 +204,8 @@ impl ClientFrame {
     pub fn kind(&self) -> ClientFrameKind {
         match self {
             Self::Open { .. } => ClientFrameKind::Open,
+            Self::Subscribe { .. } => ClientFrameKind::Subscribe,
+            Self::Unsubscribe { .. } => ClientFrameKind::Unsubscribe,
             Self::Send { .. } => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Regenerate { .. } => ClientFrameKind::Regenerate,
@@ -214,13 +220,11 @@ impl ClientFrame {
             Self::Abort {} => ClientFrameKind::Abort,
             Self::AbortSubagents {} => ClientFrameKind::AbortSubagents,
             Self::AbortSubagent { .. } => ClientFrameKind::AbortSubagent,
-            Self::ShowSubagents { .. } => ClientFrameKind::ShowSubagents,
             Self::Retry {} => ClientFrameKind::Retry,
             Self::Resume {} => ClientFrameKind::Resume,
             Self::Compact { .. } => ClientFrameKind::Compact,
             Self::ShellWrite { .. } => ClientFrameKind::ShellWrite,
             Self::ShellAbort { .. } => ClientFrameKind::ShellAbort,
-            Self::SyncTranscript { .. } => ClientFrameKind::SyncTranscript,
             Self::Close {} => ClientFrameKind::Close,
         }
     }
@@ -286,7 +290,7 @@ pub struct EditRequest {
     pub target_block_id: BlockId,
     /// The transcript version the editor showed; a stale one is refused.
     #[garde(dive)]
-    pub version: TranscriptVersion,
+    pub version: Version,
     /// The complete replacement content.
     #[garde(length(min = 1), dive)]
     pub content: Vec<ClientContent>,
@@ -305,7 +309,7 @@ pub struct RegenerateRequest {
     pub target_block_id: BlockId,
     /// The transcript version the page showed; a stale one is refused.
     #[garde(dive)]
-    pub version: TranscriptVersion,
+    pub version: Version,
 }
 
 /// One part of the content the web app sends. Files are referred to, never

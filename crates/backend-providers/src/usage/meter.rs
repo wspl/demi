@@ -533,11 +533,16 @@ mod tests {
         runtime.run(request.clone()).collect::<Vec<_>>().await;
         runtime.run(request).collect::<Vec<_>>().await;
 
-        let cost = control.conversation_cost(conversation, Vec::new(), None).await.unwrap();
+        let calls = control.agent_calls(conversation.clone(), 0, 0, 100).await.unwrap();
+        let costs = control.conversation_costs(conversation).await.unwrap();
+        let [kept] = costs.as_slice() else {
+            panic!("one agent's cost: {costs:?}")
+        };
+        let totals = &kept.cost.totals;
         let close = |found: Option<f64>, expected: f64| {
             assert!(found.is_some_and(|found| (found - expected).abs() < 1e-9), "{found:?} ≠ {expected}");
         };
-        let prices: Vec<Option<f64>> = cost.calls.iter().map(|call| call.price).collect();
+        let prices: Vec<Option<f64>> = calls.iter().map(|call| call.price).collect();
         assert_eq!(prices[0], None, "{prices:?}");
         close(prices[1], 0.12575);
         // 100 × $5 + 500 × $6.25 + 1,000 × $10 + 30,000 × $0.5 + 10 × $25,
@@ -545,11 +550,11 @@ mod tests {
         close(prices[2], 0.028875);
         assert_eq!(prices[3], None, "{prices:?}");
         close(prices[4], 0.0051);
-        close(cost.totals.price.total, 0.12575 + 0.028875 + 0.0051);
-        close(cost.totals.price.cache_write, 0.125 + 0.013125);
+        close(totals.price.total, 0.12575 + 0.028875 + 0.0051);
+        close(totals.price.cache_write, 0.125 + 0.013125);
         // As the page reads the causes.
         let misses: Vec<serde_json::Value> =
-            cost.calls.iter().map(|call| serde_json::to_value(call.miss).unwrap()).collect();
+            calls.iter().map(|call| serde_json::to_value(call.miss).unwrap()).collect();
         let none = serde_json::Value::Null;
         assert_eq!(misses, [none.clone(), "system_prompt_changed".into(), none.clone(), none.clone(), none]);
         control.close().await.unwrap();

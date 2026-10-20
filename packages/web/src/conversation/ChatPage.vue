@@ -28,7 +28,6 @@ import { useSideQuestions } from './side-questions'
 import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import { attachmentOrigin, useMessageAttachments } from './attachments'
-import { lookupCodeFiles } from '../api/code-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import { readCommitHash } from '@demicodes/web-ui/files/history'
@@ -157,9 +156,6 @@ watch(
   (id) => {
     if (id) {
       permissions.follow(id)
-      if (conversation.value) {
-        sideQuestions.follow(conversation.value)
-      }
     }
   },
   { immediate: true },
@@ -265,7 +261,6 @@ const files = computed<ConversationFiles | undefined>(() => {
       }
       return readCommitHash(history, commit)
     },
-    codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     ...(attachments.value ? { attachment: attachments.value } : {}),
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
       conversation: current.id,
@@ -381,8 +376,9 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"
-    :subagent-cost="(id) => conversation!.subagentCosts[id] ?? null"
-    @retry-subagent-cost="store.retryCost(conversation!, $event)"
+    :subagent-cost="(id) => store.costShown(conversation!, id)"
+    @retry-subagent-cost="store.retryCalls(conversation!, $event)"
+    @subagent-cost-calls="(id, wanted) => store.wantCalls(conversation!, id, wanted)"
     @refresh-limits="card.refreshLimits"
     @open-instruction="card.openInstruction"
     :automations="wakers"

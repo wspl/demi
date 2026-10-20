@@ -3,8 +3,8 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { conversationSummary, productState } from '../__tests__/product-state'
 
 // A reply that names `attachment:a2` before the agent uploads it shows it
-// missing, and once the upload is stored, the conversation's summary on the
-// product channel carries it as the latest attachment and the reply shows
+// missing, and once the upload is stored, the conversation's metadata on its
+// socket carries it as the latest attachment and the reply shows
 // the image in place. The reply is the product's message view on a page of
 // happy-dom, given the conversation's attachments as the conversation page
 // gives them; the backend is a played channel and a stubbed fetch. A few
@@ -21,6 +21,8 @@ const { default: StreamedMarkdown } = await import('@demicodes/web-ui/ui/Streame
 const { provideMessageFiles } = await import('@demicodes/web-ui/markdown/message-files')
 const { provideMediaViewer } = await import('@demicodes/web-ui/files/media-viewer')
 const { useProduct } = await import('../state/product')
+const { useConversations } = await import('./store')
+const { showMetadata } = await import('../__tests__/shown-metadata')
 const { attachmentOrigin, useMessageAttachments } = await import('./attachments')
 const { default: MediaView } = await import('@demicodes/web-ui/files/MediaView.vue')
 const { HostFiles } = await import('@demicodes/web-ui/files/file-cache')
@@ -92,13 +94,16 @@ function changed(element: Element, done: () => boolean): Promise<void> {
   })
 }
 
-test('a reply that named an attachment before its upload shows the image in place once the summary announces it', async () => {
+test('a reply that named an attachment before its upload shows the image in place once the metadata announces it', async () => {
   const stored = new Set<string>()
   const asked = stubBackend(stored)
   const pinia = createPinia()
   const product = useProduct(pinia)
+  // The conversations follow the product state from its first, as on the page.
+  useConversations(pinia)
   product.start()
-  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 1 })] }))
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
+  showMetadata(CONVERSATION, { lastAttachment: 1 })
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -118,10 +123,10 @@ test('a reply that named an attachment before its upload shows the image in plac
   expect(reply.textContent).toContain('No attachment a2 in this conversation')
   expect(asked).toEqual([])
 
-  // The upload stores a2, and the backend sends the conversation's summary.
+  // The upload stores a2, and the conversation's socket sends its metadata.
   stored.add('a2')
   const shown = changed(reply, () => reply.querySelector('img') !== null)
-  channels.last().send({ type: 'conversation', conversation: conversationSummary(CONVERSATION, 'Work', { lastAttachment: 2 }) })
+  showMetadata(CONVERSATION, { lastAttachment: 2 })
   await shown
 
   // The same reply, not one mounted again, shows the image.
@@ -159,8 +164,11 @@ test('a subagent\'s reply shows the attachment it uploaded and a number it did n
   }) as typeof fetch
   const pinia = createPinia()
   const product = useProduct(pinia)
+  // The conversations follow the product state from its first, as on the page.
+  useConversations(pinia)
   product.start()
-  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 3 })] }))
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
+  showMetadata(CONVERSATION, { lastAttachment: 3 })
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -192,8 +200,11 @@ test('an audio attachment shows its inline player with its name and length, and 
   stubBackend(new Set(['a3']), { name: 'welcome.mp3', mediaType: 'audio/mpeg' })
   const pinia = createPinia()
   const product = useProduct(pinia)
+  // The conversations follow the product state from its first, as on the page.
+  useConversations(pinia)
   product.start()
-  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 3 })] }))
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
+  showMetadata(CONVERSATION, { lastAttachment: 3 })
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -263,8 +274,11 @@ test('a file\'s card opens it in the work panel on a click, and only its Downloa
   stubBackend(new Set(['a4']), { name: 'report.pdf', mediaType: 'application/pdf' })
   const pinia = createPinia()
   const product = useProduct(pinia)
+  // The conversations follow the product state from its first, as on the page.
+  useConversations(pinia)
   product.start()
-  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 4 })] }))
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
+  showMetadata(CONVERSATION, { lastAttachment: 4 })
   const opened: [string, string, number][] = []
   const downloads: [string, string][] = []
   const realClick = HTMLAnchorElement.prototype.click
@@ -348,8 +362,11 @@ test('an attachment\'s card opens its file while the conversation\'s Host has it
   stubBackend(new Set(['a14']), { name: 'report.pdf', mediaType: 'application/pdf', source: { host: 'dev-1', path: '/work/report.pdf' } }, present, checked)
   const pinia = createPinia()
   const product = useProduct(pinia)
+  // The conversations follow the product state from its first, as on the page.
+  useConversations(pinia)
   product.start()
-  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 14 })] }))
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
+  showMetadata(CONVERSATION, { lastAttachment: 14 })
   const { host, contents } = openingHost(present)
   const files: string[] = []
   const copies: string[] = []
@@ -413,8 +430,11 @@ test('a picture attachment opens in the Media tab, its file while the Host has i
   stubBackend(new Set(['a15']), { name: 'chart.png', mediaType: 'image/png', source: { host: 'dev-1', path: '/work/chart.png' } }, present, checked)
   const pinia = createPinia()
   const product = useProduct(pinia)
+  // The conversations follow the product state from its first, as on the page.
+  useConversations(pinia)
   product.start()
-  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work', { lastAttachment: 15 })] }))
+  channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
+  showMetadata(CONVERSATION, { lastAttachment: 15 })
   const { host, contents } = openingHost(present)
   let revealed = 0
   const page = document.createElement('div')

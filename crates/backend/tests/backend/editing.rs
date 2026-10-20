@@ -41,6 +41,25 @@ pub(crate) async fn edit(socket: &mut Socket, frame: &ClientFrame) -> EditOutcom
     }
 }
 
+/// Sends the edit `frame` and reads its answer and the end of the turn it
+/// starts, which arrive in either order: a vendor that answers at once can
+/// end the turn before the answer is read.
+pub(crate) async fn edited_turn(socket: &mut Socket, frame: &ClientFrame) -> EditOutcome {
+    socket.send(frame).await;
+    let (mut outcome, mut ran, mut ended) = (None, false, false);
+    while outcome.is_none() || !ended {
+        match socket.frame().await {
+            ServerFrame::EditResult { outcome: answer, .. } => outcome = Some(answer),
+            frame => match crate::conversations::root_phase(&frame) {
+                Some(SessionPhase::Idle) => ended = ran,
+                Some(_) => ran = true,
+                None => {}
+            },
+        }
+    }
+    outcome.expect("the loop ends with the answer")
+}
+
 /// An edit, as operation `operation`, of the user's message `target` into
 /// `replacement`, from the snapshot the editor reads over `socket` now: the
 /// transcript and its version.
@@ -50,7 +69,7 @@ pub(crate) async fn edit_request(
     operation: &str,
     replacement: &str,
 ) -> EditRequest {
-    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+    socket.resubscribe().await;
     let synced = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;
@@ -79,13 +98,7 @@ pub(crate) async fn edit_request(
 
 /// Whether a frame tells the page that the session is idle.
 pub(crate) fn idle(frame: &ServerFrame) -> bool {
-    matches!(
-        frame,
-        ServerFrame::Phase {
-            subagent_id: None,
-            phase: SessionPhase::Idle
-        }
-    )
+    crate::conversations::root_phase(frame) == Some(SessionPhase::Idle)
 }
 
 // Over a second: a real device runs the turns' jobs, and its runner comes back
@@ -129,12 +142,11 @@ async fn an_edit_keeps_the_files_and_answers_its_receipt_on_another_socket_and_a
 
     let asked = vendor.requests().len();
     vendor.respond(answer(&["answer-edited"], 1, 1));
-    let accepted = edit(&mut socket, &repeated).await;
+    let accepted = edited_turn(&mut socket, &repeated).await;
     assert!(
         matches!(accepted, EditOutcome::Accepted { .. }),
         "{accepted:?}"
     );
-    socket.until(idle).await;
     // The model reads the history the edit kept and the new message, on a
     // fresh runtime; the removed turns and their tool result are gone.
     let replayed = vendor.requests()[asked].json()["messages"].to_string();
@@ -282,7 +294,7 @@ async fn a_socket_busy_with_a_frame_answers_a_ping_behind_the_next_one_and_keeps
     tokio::time::timeout(Duration::from_secs(10), hold.until_waiting(1))
         .await
         .expect("the edit reaches its commit");
-    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+    socket.resubscribe().await;
     socket.send_text(r#"{"ping":9}"#.to_owned()).await;
     // The pong comes while the edit still waits: after what the turn sent
     // already, before the edit's result and the sync's reset.
@@ -333,7 +345,7 @@ async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is
         .expect("the turn reaches its save");
     // Meanwhile the page has not seen the turn end: the reset that answers a
     // sync follows every frame sent before it, and none of them says idle.
-    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+    socket.resubscribe().await;
     let meanwhile = socket
         .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
         .await;
@@ -365,11 +377,10 @@ async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is
     hold.release();
     socket.until(idle).await;
     vendor.respond(answer(&["answer-edited"], 1, 1));
-    let outcome = edit(&mut socket, &ClientFrame::EditAndSend { request }).await;
+    let outcome = edited_turn(&mut socket, &ClientFrame::EditAndSend { request }).await;
     assert!(
         matches!(outcome, EditOutcome::Accepted { .. }),
         "{outcome:?}"
     );
-    socket.until(idle).await;
     backend.close().await;
 }
