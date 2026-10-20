@@ -777,7 +777,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           marked as what opened it: the Saved entry's mark, or Edit's pencil.
         -->
         <template v-if="shownEdit || carriesContext()" #context>
-          <span v-if="shownEdit" class="inline-flex items-center text-fg-subtle">
+          <span v-if="shownEdit" class="inline-flex select-none items-center text-fg-subtle">
             <component :is="savedEdit ? NotebookPen : Pencil" :size="ICON_PX.in28" class="mr-1 shrink-0" />
             {{ savedEdit ? t('composer.editingSaved') : t('composer.editingMessage') }}
           </span>
