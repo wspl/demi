@@ -1,8 +1,7 @@
-//! `xtask notices` (`builds-and-releases.md` § Licenses in a release):
-//! writes the third-party notices of what a release ships into the built
-//! web app, which shows them at Settings › About › Acknowledgements and
-//! which a server release carries, its notices copied to the root as
-//! `THIRD-PARTY-NOTICES`.
+//! `xtask notices`: writes the third-party notices of what a release
+//! ships into the built web app, which shows them at Settings › About ›
+//! Acknowledgements and which a server release carries, its notices
+//! copied to the root as `THIRD-PARTY-NOTICES`.
 //!
 //! The Rust crates are those each shipped program links on its own
 //! targets, the vendored ones included, read with cargo-about, which finds

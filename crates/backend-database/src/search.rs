@@ -1,10 +1,10 @@
-//! Each user's search index (`storage.md` § Search index):
-//! `search/<userId>.sqlite`, an FTS5 table over one row per searchable text,
-//! a conversation's title or the text of a message, an answer or a
-//! command's title of any of its agents, with the saved version of each
-//! agent's transcript it was built from. The product's search finds titles
-//! and the root's messages and answers; `demi conversation history search`
-//! finds an agent's own rows.
+//! Each user's search index: `search/<userId>.sqlite`, an FTS5 table over
+//! one row per searchable text, a conversation's title or the text of a
+//! message, an answer or a command's title of any of its agents, with the
+//! saved version of each agent's transcript it was built from. The product's
+//! search finds titles and the root's messages and answers; `demi
+//! conversation history search` finds an agent's own rows. Without an index
+//! a search would open every conversation's database for each query.
 //!
 //! The index is derived from the conversations, so it has no history and no
 //! migration: an index of another schema, or one that fails to open, is
@@ -232,10 +232,9 @@ pub struct FoundMessage {
     pub ranges: Vec<[u32; 2]>,
 }
 
-/// What one save changed of an agent's transcript (`storage.md` § Search
-/// index): the agent's number, the saved version it follows, the one it
-/// brought the transcript to, whose block count is where it cut the rest,
-/// and each block it wrote.
+/// What one save changed of an agent's transcript: the agent's number,
+/// the saved version it follows, the one it brought the transcript to,
+/// whose block count is where it cut the rest, and each block it wrote.
 #[derive(Debug, Clone)]
 pub struct TranscriptChange {
     pub agent: u64,
@@ -537,9 +536,8 @@ impl SearchIndexes {
         .await
     }
 
-    /// Removes the conversation's rows, as its deletion does
-    /// (`storage.md` § Deleting a conversation); one the index does not
-    /// hold removes nothing.
+    /// Removes the conversation's rows, as its deletion does; one the
+    /// index does not hold removes nothing.
     pub async fn remove_conversation(
         &self,
         user: &UserId,

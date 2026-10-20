@@ -1,6 +1,7 @@
 //! A command's whole output in the runner wire's kept-output records
-//! (`crates/runner-jobs/src/kept_output.rs`): what `job_read` streams, and what the
-//! backend stores as the command's output (`storage.md` § Command outputs).
+//! (`crates/runner-jobs/src/kept_output.rs`): what `job_read` streams, and what
+//! the backend stores as the command's output
+//! (`crates/backend-database/src/command_outputs.rs`).
 
 use bytes::Bytes;
 use demi_host_interface::{Missing, OutputRecord, WholeOutput};

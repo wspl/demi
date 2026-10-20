@@ -1,11 +1,11 @@
-//! Uploads (`backend.md` § Media by reference): a file's bytes go to the
-//! caller's blobs with its record, the answer says what the backend read from
-//! them, and a message or a steer that names the upload numbers it as the
-//! conversation's attachment, gives the model the file's native medium and
-//! record, and shows the page the medium by reference. An edit that keeps the
-//! medium names it by that reference, and the model reads its bytes again. A
-//! frame whose media cannot be stored reaches the page as an error, and the
-//! frames after it still arrive. No test calls a real model.
+//! Uploads (`crates/backend-host-access/src/uploads.rs`): a file's bytes go
+//! to the caller's blobs with its record, the answer says what the backend
+//! read from them, and a message or a steer that names the upload numbers it
+//! as the conversation's attachment, gives the model the file's native medium
+//! and record, and shows the page the medium by reference. An edit that keeps
+//! the medium names it by that reference, and the model reads its bytes
+//! again. A frame whose media cannot be stored reaches the page as an error,
+//! and the frames after it still arrive. No test calls a real model.
 
 use std::sync::LazyLock;
 
@@ -570,8 +570,8 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
 
 /// A message with an image enters while the conversation's Host is out of
 /// reach: nothing is written to the Host at a send, so a slow or broken link
-/// never holds it (`backend.md` § Media by reference). Before, the send
-/// waited to write the file there, and failed when the device could not
+/// never holds it (`crates/backend-host-access/src/uploads.rs`). Before, the
+/// send waited to write the file there, and failed when the device could not
 /// fetch it. A paired device whose runner stopped; under a second.
 #[tokio::test]
 async fn a_message_with_an_image_enters_while_the_host_is_out_of_reach() {

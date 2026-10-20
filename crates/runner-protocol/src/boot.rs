@@ -1,5 +1,5 @@
 //! The private, temporary credential file supplied to a managed runner
-//! (`managed-hosts.md` § Managed boot credential).
+//! (`crates/machine-manager/src/sandbox/files.rs`).
 
 use serde::{Deserialize, Serialize};
 
@@ -7,13 +7,14 @@ use crate::values::{BackendUrl, DeviceToken};
 
 /// Where a managed runner reaches its backend: the backend's runner socket,
 /// whose directory the machine manager mounts into the sandbox
-/// (`managed-hosts.md` § Backend socket). The record's URL still names the
+/// (`crates/backend-http/src/lib.rs`). The record's URL still names the
 /// backend's origin.
 pub const BACKEND_SOCKET: &str = "/run/demi-backend/runners.sock";
 
 /// A managed runner's temporary directory, on the system image and private
 /// to `demi`: the runner's environment names it as `TMPDIR`, and the runner
-/// empties it when it starts, once per boot (`managed-hosts.md` § Images).
+/// empties it when it starts, once per boot
+/// (`crates/machine-manager/src/storage/mod.rs`).
 pub const TEMPORARY_DIRECTORY: &str = "/var/lib/demi/tmp";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

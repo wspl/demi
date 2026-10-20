@@ -61,9 +61,8 @@ pub enum Selection {
     },
     /// A directory on a paired device as a release before projects by
     /// directory kept it, until the device's runner first reports its home
-    /// (`upgrades.md` § What crosses releases); and the directory of a
-    /// conversation whose device was revoked, which no longer runs. No move
-    /// selects it.
+    /// (`crates/server/src/main.rs`); and the directory of a conversation
+    /// whose device was revoked, which no longer runs. No move selects it.
     Directory { device_id: DeviceId, path: String },
 }
 

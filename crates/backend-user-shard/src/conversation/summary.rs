@@ -57,7 +57,7 @@ impl Shard {
         // A conversation whose database cannot be opened, as one a build
         // that does not know its schema made, is listed without its facts:
         // it alone fails to open, and the user's other conversations and
-        // pages work on (`storage.md` § Schemas and migrations).
+        // pages work on (`crates/backend-database/src/lib.rs`).
         let facts = match self
             .services()
             .conversations

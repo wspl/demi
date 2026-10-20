@@ -1,9 +1,8 @@
-//! The users' subagent settings (`storage.md` § Control records;
-//! `crates/agent-server/src/server/tree/profiles.rs`): each user's Subagents switch and
-//! limits, a user with no row having subagents on at the default limits,
-//! and each user's subagent profiles. A write takes values its caller
-//! checked; a profile's name is unique among its user's, which the write
-//! that sets it checks in its own transaction.
+//! The users' subagent settings (//! `crates/agent-server/src/server/tree/profiles.rs`): each user's Subagents
+//! switch and limits, a user with no row having subagents on at the default
+//! limits, and each user's subagent profiles. A write takes values its caller
+//! checked; a profile's name is unique among its user's, which the write that
+//! sets it checks in its own transaction.
 
 use std::num::NonZeroU32;
 

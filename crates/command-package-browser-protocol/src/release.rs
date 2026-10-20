@@ -1,9 +1,9 @@
 //! The pinned Chrome for Testing release, and the Chrome runtime release
-//! Linux Hosts start it with. Nothing
-//! resolves a moving channel: a release names each platform's archive, and
-//! the runtime's archives, by URL, size and digest, which `demi browser
-//! install` downloads (`builds-and-releases.md` § Chrome for Testing,
-//! § Chrome runtime).
+//! Linux Hosts start it with. Nothing resolves a moving channel: a release
+//! names each platform's archive, and the runtime's archives, by URL, size
+//! and digest, which `demi browser install` downloads
+//! (`crates/xtask/src/browser.rs`,
+//! `crates/command-package-browser-chrome/src/driver/installation.rs`).
 
 use std::collections::BTreeMap;
 
@@ -23,7 +23,7 @@ pub const RUNTIME_FONTS: &str = "Chrome runtime fonts";
 /// The file of each runtime archive that names its installation: a library
 /// in the directory of the libraries, which holds `gio/modules` too, and
 /// the fontconfig file, which finds the fonts relative to itself
-/// (`builds-and-releases.md` § Chrome runtime).
+/// (`crates/command-package-browser-chrome/src/driver/installation.rs`).
 pub const RUNTIME_LIBRARIES_ENTRY: &str = "lib/libnss3.so";
 pub const RUNTIME_FONTS_ENTRY: &str = "fontconfig/fonts.conf";
 
@@ -98,7 +98,8 @@ pub struct ReleasePlatform {
 
 /// The Chrome runtime release a Chrome release runs with on Linux: the
 /// libraries' archive of each Linux target, and the fonts' archive they all
-/// share (`builds-and-releases.md` § Chrome runtime).
+/// share
+/// (`crates/command-package-browser-chrome/src/driver/installation.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ChromeRuntime {

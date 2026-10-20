@@ -80,7 +80,7 @@ convention:
 
 The runner wire has its own field names and MessagePack encoding, fixed by
 `runner-protocol` and its corpus; its optional and nullable fields follow the
-rule above. [Storage](../backend/storage.md) owns the
+rule above. `crates/backend-database/src/lib.rs` owns the
 storage encodings: column types, times in the database, digests, sealed
 credentials and password hashes.
 
@@ -140,10 +140,10 @@ These are the points where values enter, and what a failure does:
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
 | A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field (`crates/backend-http/src/plugins.rs`) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
-| A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
+| A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error (`crates/machine-manager/src/lib.rs`) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing (`crates/runner/src/main.rs`) |
 | A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged (`crates/command-package-browser-chrome/src/live.rs`) |
-| A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
+| A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted (`crates/backend-database/src/lib.rs`) |
 | A sealed credential document | The vault | The error names the field path and the kind of failure, never the value (`crates/backend-providers/src/lib.rs`) |
 | Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |
 | A tool call's input from the model | The tool | The model receives the tool's error (`crates/agent-tools/src/lib.rs`) |

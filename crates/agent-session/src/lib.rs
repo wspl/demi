@@ -742,8 +742,8 @@ impl AgentSession {
             persister: RefCell::new(None),
         });
         // The session's work logs where its start was asked, such as a
-        // socket's frame or a request (`backend.md` § Request IDs and the
-        // server log).
+        // socket's frame or a request
+        // (`crates/backend-http/src/request_id.rs`).
         let worker = tokio::task::spawn_local(
             worker::run(Rc::downgrade(&shared), shared.work.clone()).in_current_span(),
         );

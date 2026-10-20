@@ -1,5 +1,5 @@
-//! The page's own error reports and the server log (`backend.md` § Request
-//! IDs and the server log).
+//! The page's own error reports and the server log
+//! (`crates/backend-http/src/request_id.rs`).
 
 use demi_shared_types::{MAX_SAFE_INTEGER, RequestId, Timestamp};
 use garde::Validate;

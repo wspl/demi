@@ -1,6 +1,6 @@
-//! The Linux interfaces the manager uses instead of administration tools
-//! (`managed-hosts.md` § Linux control): mounts, loop devices, filesystem
-//! freezes and trims, and namespace threads.
+//! The Linux interfaces the manager uses instead of administration tools:
+//! mounts, loop devices, filesystem freezes and trims, and namespace
+//! threads.
 
 pub mod freeze;
 pub mod loopdev;

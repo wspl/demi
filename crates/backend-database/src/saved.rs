@@ -1,8 +1,7 @@
-//! Messages saved for later (`storage.md` § Control records): each conversation's list,
-//! newest first, and its revision, which the conversation's draft row keeps. Every
-//! change of the list raises the revision in the transaction that makes it; a save and
-//! an edit change the draft in the same transaction, so a message is never both saved
-//! and in the draft.
+//! Messages saved for later: each conversation's list, newest first, and its revision,
+//! which the conversation's draft row keeps. Every change of the list raises the
+//! revision in the transaction that makes it; a save and an edit change the draft in
+//! the same transaction, so a message is never both saved and in the draft.
 
 use demi_shared_types::{Timestamp, TurnId};
 use demi_web_api_protocol::drafts::{DraftWritten, Revisions};

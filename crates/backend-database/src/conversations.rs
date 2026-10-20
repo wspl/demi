@@ -1,13 +1,13 @@
-//! The conversation databases (`storage.md` § Conversation state and
-//! transactions): one file per conversation under `conversations/`, holding
-//! its agent tree. A conversation's handle is stable; the writer connection
-//! behind it opens on demand, on a thread of its own, and at most a fixed
-//! number of writers are open at once, the least recently used closing
-//! first. Closing one loses nothing: the next call opens it again. A read
-//! that needs no live session takes a short-lived read-only connection on
-//! the blocking pool instead, which takes no writer and never creates a
-//! file. A test may hold the commits of the checkpoints (`CommitHold`) and
-//! the migrations of the databases (`MigrationHold`).
+//! The conversation databases: one file per conversation under
+//! `conversations/`, holding its agent tree. A conversation's handle is
+//! stable; the writer connection behind it opens on demand, on a thread of
+//! its own, and at most a fixed number of writers are open at once, the
+//! least recently used closing first. Closing one loses nothing: the next
+//! call opens it again. A read that needs no live session takes a
+//! short-lived read-only connection on the blocking pool instead, which
+//! takes no writer and never creates a file. A test may hold the commits of
+//! the checkpoints (`CommitHold`) and the migrations of the databases
+//! (`MigrationHold`).
 
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -26,9 +26,9 @@ use super::{StorageError, schema, sqlite};
 pub const MAX_WRITERS: NonZeroUsize = NonZeroUsize::new(64).expect("64 is not zero");
 
 /// How a migration of a conversation's database reads a blob its values
-/// name, in the conversation owner's namespace (`storage.md` § Schemas and
-/// migrations); none when the namespace does not hold it. It is called on
-/// the database's thread, which waits for it, never on an async task.
+/// name, in the conversation owner's namespace; none when the namespace
+/// does not hold it. It is called on the database's thread, which waits
+/// for it, never on an async task.
 pub trait ConversationBlobs: Send + Sync {
     fn read(&self, conversation: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String>;
 }
@@ -167,11 +167,11 @@ impl ConversationStores {
         failures
     }
 
-    /// Removes the conversation's database (`storage.md` § Deleting a
-    /// conversation): its writer closes, under the file's opening turn so
-    /// none opens meanwhile, and its file goes with the write-ahead log and
-    /// the shared memory beside it. A file already gone is no failure, so a
-    /// deletion that a start finishes may remove it again.
+    /// Removes the conversation's database: its writer closes, under the
+    /// file's opening turn so none opens meanwhile, and its file goes with
+    /// the write-ahead log and the shared memory beside it. A file already
+    /// gone is no failure, so a deletion that a start finishes may remove
+    /// it again.
     pub async fn remove(&self, conversation: &ConversationId) -> Result<(), StorageError> {
         let file = DatabaseFile::of(conversation);
         let _turn = self.0.opening.acquire(file.clone()).await;
@@ -423,12 +423,12 @@ impl Drop for CommitHold {
 }
 
 /// A hold on the migrations of the conversations' databases, for the
-/// scenarios that race a read against a migration (`storage.md` § Schemas
-/// and migrations). From `Backend::hold_migrations` until it is released or
-/// dropped, a migration holds its database's write lock and waits before it
-/// changes the database, on the thread that migrates it: where a long
-/// migration, such as one that rewrites every block of a large
-/// conversation, keeps its database.
+/// scenarios that race a read against a migration. From
+/// `Backend::hold_migrations` until it is released or dropped, a migration
+/// holds its database's write lock and waits before it changes the
+/// database, on the thread that migrates it: where a long migration, such
+/// as one that rewrites every block of a large conversation, keeps its
+/// database.
 #[cfg(feature = "testing")]
 pub struct MigrationHold {
     holds: Arc<MigrationHolds>,

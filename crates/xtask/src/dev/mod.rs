@@ -1,11 +1,97 @@
-//! `xtask dev` (`backend.md` § One-command development backend): the
-//! backend executable on a temporary data directory, or on one `--data`
-//! names and keeps, with the backend
-//! scenarios' scripted machine manager, whose runners run on this machine as
-//! the Cloud, set up as the web app contract suite starts the backend
-//! (`scenarios.md` § Web app contract suite), with a master account and the
-//! development models `.env` turns on (a real one, the echo model) seeded
-//! through the web API.
+//! `xtask dev`: a backend for the web app to talk to, on a temporary data
+//! directory, or on one `--data` names and keeps, with the backend scenarios'
+//! scripted machine manager, whose runners run on this machine as the Cloud, set up
+//! as the web app contract suite starts the backend, with a master account and the
+//! development models `.env` turns on (a real one, the echo model) seeded through
+//! the web API. For work on the web app alone it needs no machine manager, Cloud
+//! image or model account. For example, a developer runs it, starts the page with
+//! the command it prints, signs in with the account the sign-in page fills in,
+//! picks the model `.env` names, asks for `uname -a`, and the agent runs it on the
+//! Cloud.
+//!
+//! It runs, until Ctrl-C, a termination, a hang-up or the end of the program that
+//! started it, and however it ends it stops what it started and removes its data
+//! directory. The backend, the manager and the runners run in process groups of
+//! their own, so the terminal's interrupt reaches only `xtask`, which stops them in
+//! order on every exit, the failure of a start included: the backend first, since
+//! it closes its connection to the manager as it shuts down, then the manager,
+//! whose input it closes and which ends its runners with it, then it removes the
+//! data directory. A process that does not stop in time, 10 seconds for the
+//! backend and 5 for the manager, is killed. Only a kill of `xtask` itself leaves
+//! the backend running. The backend is `target/debug/demi-backend` in isolated mode
+//! with the public URL `http://127.0.0.1:<port>`, and the command passes on none of
+//! its own `DEMI_*` variables, which the backend and the runner would refuse. The
+//! server release beside the data directory is assembled anew on each run and
+//! holds only `commands/` and `release.json`, with a release of each command
+//! program the build made for this machine's target only, which make the
+//! operations of `demi.file`, `demi.browser` and the others available on the Cloud
+//! and on a paired device of this target (the conversation browser works once the
+//! agent has run `demi browser install`). The manager gives its Cloud's runners the
+//! artifact cache `.cache/dev-artifacts` in the repository, which outlives every
+//! run, so a Cloud installs each program and Chrome once rather than at every
+//! wake or run.
+//!
+//! It does not cover what needs the real services: this Cloud isolates nothing and
+//! has no image, so a Cloud reset or a guest's network rules do not behave as on a
+//! real machine, and a paired device of another target finds no program for it.
+//!
+//! # A development backend with a real Cloud
+//!
+//! A backend with the real machine manager runs on the developer's machine with the
+//! native programs just built, assembled into a server release of the targets in
+//! use, which the backend publishes into the local store of its data directory and
+//! serves its runners from itself. For example, on an x86_64 Linux machine that is
+//! also its own Cloud's execution host, the Hosts in use are the machine as a
+//! paired device and the Cloud guest, both `x86_64-unknown-linux-musl`:
+//!
+//! 1. Build the runner, the command programs, the backend and the machine manager
+//!    for that target and assemble a server release of it. A root is assembled
+//!    once: to try a changed program, assemble a new one.
+//!
+//!    ```sh
+//!    bun xtask native build --target x86_64-unknown-linux-musl \
+//!      --package demi-runner --package demi-file --package demi-fetch \
+//!      --package demi-browser --package demi-claude-code --package demi-mobile \
+//!      --package demi-backend --package demi-machine-manager
+//!    bun xtask server-release --output /opt/demi/dev-<build> \
+//!      --files /opt/demi/dev-<build>-files \
+//!      --target x86_64-unknown-linux-musl --server x86_64-unknown-linux-musl
+//!    ```
+//!
+//! 2. Build the Cloud image into the root's `image/` (`cloud-guest-image/README.md`)
+//!    and install the machine manager from the root
+//!    (`crates/machine-manager/scripts/install-managed-hosts.sh`). The Cloud's
+//!    runner reaches the backend through its runner socket, which the backend makes
+//!    in `/run/demi-backend/`: create that directory, mode 0755, owned by the user
+//!    who runs the backend. The runner comes from the Cloud image, so a runner
+//!    change reaches the Cloud through an image refresh (`docs/cloud/images.md`);
+//!    a command program's change reaches it through the object store.
+//! 3. Build the backend with the one Cargo selection and start it from the
+//!    repository root with the root and the public URL the Cloud's runner,
+//!    the installers and the local store's downloads use:
+//!
+//!    ```sh
+//!    cargo build --workspace --all-targets --features demi-runner/test-fixtures
+//!    DEMI_RELEASE=/opt/demi/dev-<build> \
+//!    DEMI_BACKEND_DATA=~/.demi/development \
+//!    DEMI_INSTANCE_MODE=isolated \
+//!    DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
+//!    target/debug/demi-backend
+//!    ```
+//!
+//! 4. Run the web application, create the first account, and pair the machine with
+//!    the installer, which installs the runner from the runner release and prints a
+//!    pairing code to claim in the page:
+//!
+//!    ```sh
+//!    curl -fsSL http://<address the guest reaches>:3271/install.sh | sh
+//!    ```
+//!
+//! The variables left out keep their defaults: the backend listens on `0.0.0.0:3271`
+//! and connects to the manager's default socket, the object store is local in the
+//! data directory, and the instance secret is generated there. The root has no
+//! `web/`, so the backend serves no web app and Vite serves the page. On a Mac the
+//! manager runs in a Lima VM (`docs/guides/mac-development.md`).
 
 mod account;
 mod codex;
@@ -347,9 +433,9 @@ async fn seed_data(
 /// serves: a development release of each command program the build made,
 /// for this machine's target, its descriptor in the root's `commands/` and
 /// its compressed copy among the release's files, and nothing else, since
-/// Vite serves the page and the scripted manager starts its runners itself
-/// (`backend.md` § One-command development backend). Each run assembles it
-/// anew from the programs built now. Answers the root.
+/// Vite serves the page and the scripted manager starts its runners
+/// itself. Each run assembles it anew from the programs built now. Answers
+/// the root.
 async fn release_root(root: &Path) -> Result<PathBuf, Error> {
     // Never cancelled: an interrupt drops the whole session instead.
     let cancel = CancellationToken::new();

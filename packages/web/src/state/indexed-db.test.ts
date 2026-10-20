@@ -4,7 +4,7 @@ import { waitFor } from '@demicodes/utils'
 import { reportError, reportPageErrorsWith, type PageErrorReport } from '@demicodes/web-ui/infra/errors'
 import { IndexedDatabase } from './indexed-db'
 
-// Only a defect is reported (`backend.md` § The page's own errors): a full
+// Only a defect is reported (`packages/web-ui/src/infra/errors.ts`): a full
 // quota is the browser's storage failing, while a write the store refuses,
 // as a duplicate key, is the page's own defect. fake-indexeddb stands in for
 // the browser's database; a few milliseconds.

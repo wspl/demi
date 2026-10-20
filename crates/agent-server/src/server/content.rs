@@ -26,10 +26,11 @@ pub enum FileReference {
 }
 
 /// Where the backend resolves the files of one frame's content
-/// (`backend.md` § Media by reference): an upload is written to the
-/// conversation's Host and becomes its native media block, when it has one,
-/// then its attachment record, or the text that says it is unavailable; a
-/// remote file becomes its reference once its device may be read.
+/// (`crates/backend-host-access/src/uploads.rs`): an upload is written to
+/// the conversation's Host and becomes its native media block, when it has
+/// one, then its attachment record, or the text that says it is
+/// unavailable; a remote file becomes its reference once its device may be
+/// read.
 pub trait ContentResolver {
     /// The files `files` stand for, in the order given. All of one frame's
     /// references are resolved together, so that none is granted unless all

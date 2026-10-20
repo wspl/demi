@@ -1,13 +1,12 @@
-//! What names a user's blobs (`storage.md` § Deleting a conversation): the
-//! records a collection of the user's namespace reads before it removes a
-//! blob. In the control database, the drafts of the user's conversations and
-//! the messages they keep saved for later, and the plugins' values and Host
-//! directories; in each of the user's
-//! conversation databases, its blocks with their media and edit copies, the
-//! messages its checkpoints keep queued, the conversation's attachments,
-//! the records of its commands' outputs and the shares' snapshots. An upload
-//! record names its blob too, but only a recent one keeps it: an upload
-//! goes with its blob.
+//! What names a user's blobs: the records a collection of the user's
+//! namespace reads before it removes a blob. In the control database, the
+//! drafts of the user's conversations and the messages they keep saved for
+//! later, and the plugins' values and Host directories; in each of the
+//! user's conversation databases, its blocks with their media and edit
+//! copies, the messages its checkpoints keep queued, the conversation's
+//! attachments, the records of its commands' outputs and the shares'
+//! snapshots. An upload record names its blob too, but only a recent one
+//! keeps it: an upload goes with its blob.
 
 use std::collections::BTreeSet;
 

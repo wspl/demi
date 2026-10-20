@@ -1,6 +1,31 @@
-//! Sandbox networking (`managed-hosts.md` § Networking): a network namespace
-//! and veth pair per running sandbox, configured through netlink, and one
-//! firewall table for all of them.
+//! Sandbox networking: a dedicated network namespace and veth pair per running
+//! sandbox, configured through netlink, from which `runsc` builds its isolated
+//! stack, and one firewall table for all of them (`ruleset`). There are no guest
+//! taps and no per-user host port publications.
+//!
+//! The policy allows outbound public traffic, replies to established
+//! connections and the configured resolver on TCP and UDP port 53, and denies
+//! every other private, loopback, link-local, metadata, multicast, reserved and
+//! other-tenant destination, the host's own services included, on forwarded
+//! traffic and on traffic addressed to the host. The backend is not among the
+//! allowed: a Cloud reaches it through the runner socket, never the network. No
+//! other infrastructure transport is an alternate route for conversation
+//! operations: the runner's connection carries files, commands and browser
+//! streams through normal Host access.
+//!
+//! - IPv6 is off, on the host end of each veth pair and in the sandbox's
+//!   namespace, so that it cannot bypass the IPv4 policy. A host whose kernel
+//!   runs without IPv6 has none to turn off, and a boot there skips that step.
+//! - The resolver is an address reachable from the sandbox, never a container
+//!   engine's loopback resolver. Filtering is by destination address, so DNS
+//!   rebinding does not grant private-network access. An exception for a private
+//!   resolver is an exact endpoint, not a whole subnet, and an address change
+//!   needs revalidation and a rule update.
+//! - Another service's firewall is not rewritten: Docker, for example, can leave
+//!   a `FORWARD` policy of `DROP`, which an accepting rule in this table does
+//!   not override, so an operator configures that service's integration rules for
+//!   the Cloud interfaces and verifies public egress and private refusal through
+//!   a real sandbox.
 
 #[cfg(target_os = "linux")]
 mod netlink;

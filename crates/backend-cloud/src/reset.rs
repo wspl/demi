@@ -1,5 +1,7 @@
-//! A Cloud reset (`managed-hosts.md` § System reset): a clean system on the
-//! base the reset selected, with the home kept. Its intent is durable: the
+//! A Cloud reset: a clean system on the base the reset selected, with the home
+//! kept. The owner can reset through the backend even when the runner, the
+//! shell or the system files are broken, so a reset never runs repair commands
+//! inside the broken sandbox, and interrupted side effects are not replayed. Its intent is durable: the
 //! operation id the page chose, the base, the phase it reached and its
 //! failure are written before each step, so a retry of the same id resumes
 //! the same operation and a backend that stopped in the middle of one
@@ -11,7 +13,14 @@
 //! of those whose files are on the Cloud end. It then flushes the Cloud and
 //! lets its runner go, which ends every command still running on it, an
 //! attached conversation's among them, waits for the operations that held
-//! the Cloud to let go, and saves, rebuilds and boots it.
+//! the Cloud to let go, and saves, rebuilds and boots it. A failed save of the
+//! home blocks publication and keeps the working home; before the manager
+//! publishes, recovery keeps the prior pair, and after it uses the new pair and
+//! may retry the boot. Admission stays held until an authoritative state is
+//! established, and a terminal failure is surfaced to the operations that wait.
+//! Success is reported only when the runner is ready. The device, its projects
+//! and its history are unchanged, and each agent node sees the reset in its next
+//! persisted context.
 
 use std::rc::Rc;
 
@@ -242,8 +251,8 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capac
     }
 }
 
-/// Recovers before the backend serves (`backend.md` § Startup and shutdown):
-/// the manager keeps the machines it runs and recovers its incomplete
+/// Recovers before the backend serves (`crates/backend/src/backend.rs`): the
+/// manager keeps the machines it runs and recovers its incomplete
 /// operations, and each reset this backend left unfinished finishes its disk
 /// step, which is idempotent by its id, is announced, and is recorded as
 /// failed so that a retry boots the Cloud. Nothing boots here. Answers the

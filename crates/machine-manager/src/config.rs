@@ -120,7 +120,7 @@ struct Cli {
     mem_mib: NonZeroU32,
     /// The memory limit of the Claude Code machine's sandbox, in MiB, with
     /// the limits on: every user's CLI processes share it
-    /// (`managed-hosts.md` § The Claude Code machine).
+    /// (`crates/backend-cloud/src/lib.rs`).
     #[arg(long, env = "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB", value_name = "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB", default_value = "4096", value_parser = decimal::<NonZeroU32>)]
     claude_code_mem_mib: NonZeroU32,
     /// The IPv4 pool the sandboxes' networks come from.
@@ -174,7 +174,7 @@ pub struct Config {
     pub runsc: PathBuf,
     pub image: PathBuf,
     pub backend_url: url::Url,
-    /// The backend's runner socket (`managed-hosts.md` § Backend socket).
+    /// The backend's runner socket (`crates/backend-http/src/lib.rs`).
     pub runner_socket: PathBuf,
     /// Each sandbox's cgroup limits; `None` with `DEMI_MANAGED_LIMITS=off`,
     /// which runs sandboxes without cgroups.
@@ -184,7 +184,30 @@ pub struct Config {
     pub dns: Vec<Ipv4Addr>,
 }
 
-/// One sandbox's cgroup v2 limits (`managed-hosts.md` § Resource limits).
+/// One sandbox's cgroup v2 limits. They are a capability the operator turns on
+/// or off with one setting, `DEMI_MANAGED_LIMITS`: the choice belongs to the
+/// execution host, not to the kind of deployment, so a production host without
+/// the cgroup v2 controllers runs with them off and a development VM that has
+/// them runs with them on. Only the setting decides, and the manager never
+/// falls back from one mode to the other. With them on, each sandbox runs in a
+/// cgroup of its own limited to the CPU budget (a scheduling budget, not a
+/// virtual CPU allocation), the memory limit with no swap, which the sandbox
+/// sees as its total memory, and a host `pids.max`, covering the Sentry and the
+/// Gofer too, and the temporary mounts count toward memory. With them off the
+/// manager creates, changes and reads no cgroup and every `runsc` command adds
+/// `--ignore-cgroups`, without which `runsc` would create one for each sandbox;
+/// the sandbox shares the host's CPUs and memory without a bound and sees the
+/// host's memory as its total, and a CPU budget or memory limit configured
+/// with them off is an error, since nothing would apply it. The log says which
+/// mode runs (a warning at startup with them off, and the readiness line in
+/// both); nothing else reports it, and the backend does not learn it. In both
+/// modes the sandbox process has `RLIMIT_NPROC` and `RLIMIT_NOFILE` limits
+/// that gVisor enforces inside the sandbox, which are not the host's `pids.max`:
+/// gVisor maps no sandbox process to a host PID. `RLIMIT_NPROC` limits
+/// ordinary-user jobs, not sandbox root, so CPU and memory remain the boundary
+/// for sudo workloads, and with the limits off there is none: capacity is
+/// reserved for the host and the manager rather than treating 16 devices as
+/// safe on every VPS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     pub cpus: NonZeroU32,

@@ -189,8 +189,7 @@ pub fn carry_out(layout: &Layout, services: &dyn Services, mut journal: Journal)
                     // The return undoes step 4, so the journal goes back to
                     // it: a return that does not finish leaves the next run
                     // to switch to the release again, never to start the
-                    // one the return pointed `current` at
-                    // (`upgrades.md` § Interruptions).
+                    // one the return pointed `current` at.
                     journal.record(&path, Step::Switching)?;
                     return_to_from(layout, services, &backend, &journal)?;
                     Journal::remove(&path)?;

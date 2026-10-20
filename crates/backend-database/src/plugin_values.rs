@@ -1,10 +1,9 @@
-//! The users' plugin choices and plugin values (`storage.md` § Control
-//! records; `plugins.md` § A user's plugins, § The contract): whether a user
-//! has each plugin on, a plugin with no row being on; each plugin's JSON
-//! documents for a user, by key, each with the revision a conditional write
-//! names and the blobs it names; and each plugin's Host directories for a
-//! user. The control database decodes a document only as JSON; its plugin
-//! decodes it into its own type.
+//! The users' plugin choices and plugin values (`plugins.md` § A user's
+//! plugins, § The contract): whether a user has each plugin on, a plugin
+//! with no row being on; each plugin's JSON documents for a user, by key,
+//! each with the revision a conditional write names and the blobs it names;
+//! and each plugin's Host directories for a user. The control database
+//! decodes a document only as JSON; its plugin decodes it into its own type.
 
 use std::collections::BTreeMap;
 

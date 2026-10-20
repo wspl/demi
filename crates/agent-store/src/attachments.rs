@@ -1,8 +1,9 @@
-//! What an uploaded file becomes (`backend.md` § Media by reference): the media
-//! type and, for a text file, the opening the upload is recorded with, and the
-//! blocks it becomes in a message once the backend has written it to the
-//! conversation's Host. The backend's upload route and its content resolution
-//! both use these rules; the agent never reads a file's bytes itself.
+//! What an uploaded file becomes (`crates/backend-host-access/src/uploads.rs`):
+//! the media type and, for a text file, the opening the upload is recorded
+//! with, and the blocks it becomes in a message once the backend has written it
+//! to the conversation's Host. The backend's upload route and its content
+//! resolution both use these rules; the agent never reads a file's bytes
+//! itself.
 
 use demi_command_protocol::sniff_media_type;
 use demi_shared_types::{

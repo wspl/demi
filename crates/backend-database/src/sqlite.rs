@@ -1,5 +1,5 @@
-//! The settings every database connection opens with (`storage.md`), and the
-//! errors of a connection's own thread.
+//! The settings every database connection opens with, and the errors of a
+//! connection's own thread.
 
 use std::time::Duration;
 

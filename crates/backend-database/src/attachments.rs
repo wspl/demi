@@ -1,6 +1,6 @@
-//! Attachment records (`storage.md` § Control records, § Attachment and
-//! transcript media): an upload's owner, media type, size, content hash and
-//! a text file's snippet; the bytes are in the owner's blobs.
+//! Attachment records (`crates/backend-blobs/src/blobs.rs`): an upload's
+//! owner, media type, size, content hash and a text file's snippet; the
+//! bytes are in the owner's blobs.
 
 use demi_shared_types::{BlobRef, Timestamp};
 use demi_web_api_protocol::ids::{AttachmentId, UserId};

@@ -91,9 +91,14 @@ where
     }
 }
 
-/// Small frames leave a network connection at once (`backend.md` § Runtime
-/// model). A connection that keeps Nagle's algorithm still works, only
-/// later, so it is served anyway.
+/// Small frames leave a network connection at once. The runner and
+/// conversation sockets carry small messages whose latency matters, and with
+/// Nagle's algorithm on, a small message written while an earlier one is
+/// unacknowledged waits for the acknowledgement, which the peer may delay by
+/// tens of milliseconds: the device token a claimed runner receives follows
+/// its pairing code and would wait for the runner to acknowledge the code. A
+/// connection that keeps the algorithm still works, only later, so it is
+/// served anyway.
 pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
     if let Err(error) = stream.set_nodelay(true) {
         tracing::debug!("a connection keeps Nagle's algorithm: {error}");
@@ -101,13 +106,12 @@ pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
 }
 
 /// Keeps a runner socket connection from queueing more than a Cloud's
-/// sandbox reads at once (`managed-hosts.md` § Backend socket). gVisor reads
-/// at most the host socket's default send buffer per call, however much is
-/// queued, and the runner takes a short read for an empty socket, so bytes
-/// left behind after a sender finished were never read
-/// (google/gvisor#15639). A quarter of the default, which Linux doubles,
-/// stays under one read. Remove this once the pinned gVisor reads a stream
-/// socket up to the reader's buffer.
+/// sandbox reads at once. gVisor reads at most the host socket's default
+/// send buffer per call, however much is queued, and the runner takes a
+/// short read for an empty socket, so bytes left behind after a sender
+/// finished were never read (google/gvisor#15639). A quarter of the default,
+/// which Linux doubles, stays under one read. Remove this once the pinned
+/// gVisor reads a stream socket up to the reader's buffer.
 ///
 /// Only Linux: on a Mac the sandbox reads the socket Lima forwards inside
 /// its VM, whose queue this connection's buffer does not bound.

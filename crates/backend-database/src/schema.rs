@@ -1,11 +1,10 @@
-//! The schemas of the control database and of each conversation's database
-//! (`storage.md` § Schemas and migrations): one SQL text each, applied to a
-//! new database in a transaction, whose digest is the version a database
-//! records, and the history of the schemas published releases shipped
-//! before it, each with the migration to the next. Times are integer
-//! milliseconds since the Unix epoch; a closed set is text a CHECK limits;
-//! JSON columns are text their reader decodes and validates; sealed values
-//! are BLOBs.
+//! The schemas of the control database and of each conversation's database:
+//! one SQL text each, applied to a new database in a transaction, whose
+//! digest is the version a database records, and the history of the schemas
+//! published releases shipped before it, each with the migration to the
+//! next. Times are integer milliseconds since the Unix epoch; a closed set
+//! is text a CHECK limits; JSON columns are text their reader decodes and
+//! validates; sealed values are BLOBs.
 
 use std::{collections::HashMap, path::Path};
 
@@ -511,42 +510,42 @@ CREATE INDEX automation_calls_by_delivery ON automation_calls (automation_id, de
 ";
 
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
-/// data of, to the current one, in two steps. First the usage ledger keeps
-/// a row per vendor call (`crates/backend-database/src/usage.rs`), a managed
+/// data of, to the current one, in two steps. First the usage ledger keeps a
+/// row per vendor call (`crates/backend-database/src/usage.rs`), a managed
 /// device says which managed machine it is, and a Claude Code account may
 /// hold no secret, [`CONTROL_FROM_0_1_22_DEV_20261016T043704Z`]. Then where a
-/// conversation runs decides its project (`upgrades.md` § What crosses
-/// releases): a device keeps the home its runner last reported, none until
-/// its runner's next hello; a Cloud workspace's directory loses a trailing
-/// separator, and the user has one workspace per device and directory, of
-/// several the oldest, which the others' conversations and pending moves
-/// move to; a Cloud workspace at the Cloud's home goes, its conversations
-/// running in the home; a workspace selection keeps its device and
-/// directory; a Cloud conversation in a directory of its own choosing moves
-/// to the Cloud's home, `/home/demi`, a conversation's directory under
-/// `/home/demi/sessions`, or else the workspace of its directory, made when
-/// there is none; and a permission request of a category and a host at
-/// once, which only the removed `demi conversation move` raised, goes. A
-/// paired device's workspaces and conversations wait for its runner to
-/// resolve their directories when it first reports its home (`devices.rs`).
+/// conversation runs decides its project (`crates/server/src/main.rs`): a
+/// device keeps the home its runner last reported, none until its runner's
+/// next hello; a Cloud workspace's directory loses a trailing separator, and
+/// the user has one workspace per device and directory, of several the
+/// oldest, which the others' conversations and pending moves move to; a Cloud
+/// workspace at the Cloud's home goes, its conversations running in the home;
+/// a workspace selection keeps its device and directory; a Cloud conversation
+/// in a directory of its own choosing moves to the Cloud's home,
+/// `/home/demi`, a conversation's directory under `/home/demi/sessions`, or
+/// else the workspace of its directory, made when there is none; and a
+/// permission request of a category and a host at once, which only the
+/// removed `demi conversation move` raised, goes. A paired device's
+/// workspaces and conversations wait for its runner to resolve their
+/// directories when it first reports its home (`devices.rs`).
 fn control_from_0_1_22_dev_20261016t043704z(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_FROM_0_1_22_DEV_20261016T043704Z)?;
     control_by_directory(transaction, blobs)
 }
 
 /// The usage ledger's step of [`control_from_0_1_22_dev_20261016t043704z`],
-/// to the ledger that keeps a row per vendor call with
-/// its agent, turn, purpose, account, ids, outcome, observed quota and
-/// times (`crates/backend-database/src/usage.rs`). A row written before keeps
-/// null for what it lacked; its `created_at`, written as its response
-/// ended, is its `ended_at`. A call's counts are null when the vendor
-/// reported none. In the same schema a managed device says which managed
-/// machine it is, the user's Cloud or the master's Claude Code machine
-/// (`managed-hosts.md` § The Claude Code machine), and a subscription
-/// account may hold no secret, as a Claude Code account whose CLI keeps its
-/// sign-in does, and says whether the vendor signed it out
-/// (`crates/provider-claude-code/src/account.rs`). Every managed device of the
-/// earlier schema is a Cloud. A Claude Code account keeps the tokens it
+/// to the ledger that keeps a row per vendor call with its agent, turn,
+/// purpose, account, ids, outcome, observed quota and times
+/// (`crates/backend-database/src/usage.rs`). A row written before keeps null
+/// for what it lacked; its `created_at`, written as its response ended, is
+/// its `ended_at`. A call's counts are null when the vendor reported none.
+/// In the same schema a managed device says which managed machine it is, the
+/// user's Cloud or the master's Claude Code machine
+/// (`crates/backend-cloud/src/lib.rs`), and a subscription account may hold
+/// no secret, as a Claude Code account whose CLI keeps its sign-in does, and
+/// says whether the vendor signed it out
+/// (`crates/provider-claude-code/src/account.rs`). Every managed device of
+/// the earlier schema is a Cloud. A Claude Code account keeps the tokens it
 /// holds until its first use hands them over. No table refers to
 /// `provider_credentials`, so it is made again.
 const CONTROL_FROM_0_1_22_DEV_20261016T043704Z: &str = "
@@ -1032,8 +1031,8 @@ mod fork_format_1 {
 }
 
 /// From the control schema with a conversation's workflow to the one that
-/// keeps the edits of messages saved for later and their sends for a day
-/// (`storage.md` § Control records): two new tables, empty.
+/// keeps the edits of messages saved for later and their sends for a day:
+/// two new tables, empty.
 const CONTROL_FROM_WORKFLOWS: &str = "
 -- An edit of a message saved for later, by the page's id for it, with its
 -- answer, kept a day so the same edit sent again answers as it first did.
@@ -1070,11 +1069,11 @@ ALTER TABLE conversations ADD COLUMN workflow_kind TEXT NOT NULL DEFAULT 'defaul
 ALTER TABLE conversations ADD COLUMN workflow_id TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL));
 ";
 
-/// From the control schema with the messages saved for later to the one
-/// with administered accounts (`storage.md` § Control records): an account
-/// is enabled and has chosen its own password, as every account that
-/// exists did, and was last active when its latest session was; a session was not made by an administrator's code; each
-/// user's one handoff code becomes their handoff code of its kind, and
+/// From the control schema with the messages saved for later to the one with
+/// administered accounts: an account is enabled and has chosen its own
+/// password, as every account that exists did, and was last active when its
+/// latest session was; a session was not made by an administrator's code;
+/// each user's one handoff code becomes their handoff code of its kind, and
 /// no sign-in code exists. The codes' table is rebuilt, since SQLite changes
 /// a primary key only so.
 const CONTROL_FROM_SAVED_MESSAGES: &str = "
@@ -1102,10 +1101,9 @@ ALTER TABLE handoff_codes_new RENAME TO handoff_codes;
 ";
 
 /// From the control schema with the signed-in browsers to the one with the
-/// messages saved for later (`storage.md` § Control records): a new table,
-/// empty, and each draft's row gains the revision of the list, 0 while
-/// nothing was saved. The drafts' table is rebuilt, since SQLite adds a
-/// column only after its last.
+/// messages saved for later: a new table, empty, and each draft's row
+/// gains the revision of the list, 0 while nothing was saved. The drafts'
+/// table is rebuilt, since SQLite adds a column only after its last.
 const CONTROL_FROM_SIGNED_IN_BROWSERS: &str = "
 CREATE TABLE conversation_drafts_next (
   conversation_id   TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
@@ -1134,11 +1132,11 @@ CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, 
 ";
 
 /// From the control schema with passkeys to the one with the signed-in
-/// browsers and handoff codes (`storage.md` § Control records): each
-/// session gets an id, and the browser it signed in from, which no session
-/// before kept, reads `Web Browser`; when it signed in and was last active,
-/// which none kept either, read its last renewal, 30 days before its
-/// expiry. No session was verified. The handoff codes start empty.
+/// browsers and handoff codes: each session gets an id, and the browser it
+/// signed in from, which no session before kept, reads `Web Browser`; when
+/// it signed in and was last active, which none kept either, read its last
+/// renewal, 30 days before its expiry. No session was verified. The handoff
+/// codes start empty.
 const CONTROL_FROM_PASSKEYS: &str = "
 CREATE TABLE web_sessions_new (
   token_hash     TEXT PRIMARY KEY,
@@ -1170,8 +1168,8 @@ CREATE TABLE handoff_codes (
 ";
 
 /// From the control schema with the users' credentials to the one with
-/// passkeys (`storage.md` § Passwords and credentials at rest): two new
-/// tables, empty.
+/// passkeys (`crates/backend/src/config/secret.rs`): two new tables,
+/// empty.
 const CONTROL_FROM_CREDENTIALS: &str = "
 CREATE TABLE passkeys (
   id           TEXT PRIMARY KEY,
@@ -1450,18 +1448,17 @@ ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
 ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 ";
 
-/// From 0.1.28's conversation schema, shipped through 0.1.32, of
-/// transcript block format 11 and checkpoint state format 5, to the current
-/// one, of block format 12 and state format 6, in which an attachment record
-/// names the file by its number in the conversation's `attachment`
-/// sequence, `a7`, instead of its path on the Host, since a send no longer
-/// writes the file there (`backend.md` § Media by reference): see
-/// [`number_attachments`]. An attachment keeps the node of the agent that
-/// uploaded it, whose replies alone show it (`storage.md` § Conversation state
-/// and transactions). No release kept it: a file a message holds, which this
-/// step or an earlier one numbered, is the user's, and every other row, an
-/// agent's upload, is the upload of the agent whose text first delivered it as
-/// a block, or the root's when none did, so a reply that showed it still does.
+/// From 0.1.28's conversation schema, shipped through 0.1.32, of transcript
+/// block format 11 and checkpoint state format 5, to the current one, of block
+/// format 12 and state format 6, in which an attachment record names the file
+/// by its number in the conversation's `attachment` sequence, `a7`, instead of
+/// its path on the Host, since a send no longer writes the file there
+/// (`crates/backend-host-access/src/uploads.rs`): see [`number_attachments`].
+/// An attachment keeps the node of the agent that uploaded it, whose replies
+/// alone show it. No release kept it: a file a message holds, which this step
+/// or an earlier one numbered, is the user's, and every other row, an agent's
+/// upload, is the upload of the agent whose text first delivered it as a
+/// block, or the root's when none did, so a reply that showed it still does.
 fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE attachments ADD COLUMN node_id TEXT;")?;
     number_attachments(transaction)?;
@@ -2404,7 +2401,7 @@ ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 C
 /// From 0.1.16's control schema: a device keeps the runner release its
 /// runner reports, which a device migrated from 0.1.16 learns at its
 /// runner's next hello; and a conversation's deletion is recorded as
-/// pending until its last step (`storage.md` § Deleting a conversation).
+/// pending until its last step.
 const CONTROL_FROM_0_1_16: &str = "
 ALTER TABLE devices ADD COLUMN runner_version TEXT;
 CREATE TABLE conversation_deletions (
@@ -2964,8 +2961,8 @@ impl DatabaseKind {
     }
 }
 
-/// What this build does with a database as it opens it (`upgrades.md`
-/// § Prepare).
+/// What this build does with a database as it opens it
+/// (`crates/server/src/main.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemaFit {
     /// It records this build's schema and opens as it is.
@@ -4131,10 +4128,9 @@ CREATE TABLE attachments (
 ) STRICT;
 ";
 
-/// One agent tree (`storage.md` § Conversation state and transactions): the
-/// root node's id is the conversation's, and its descendants are subagents.
-/// A node row carries identity and relationship; its checkpoint is the state
-/// row's JSON and its block rows.
+/// One agent tree: the root node's id is the conversation's, and its
+/// descendants are subagents. A node row carries identity and relationship;
+/// its checkpoint is the state row's JSON and its block rows.
 const CONVERSATION_V1: &str = r"
 CREATE TABLE nodes (
   id               TEXT PRIMARY KEY,
@@ -4720,15 +4716,14 @@ mod tests {
 
     /// A conversation of 0.1.21 whose messages named their files by their
     /// paths opens through every step since: the steps that read blocks and
-    /// states with the current types see each record numbered, one number
-    /// per file, its path and its bytes, in the transcript and the queue.
-    /// Before, the first such step stopped at the record's path, so the
-    /// conversation never opened. The files the messages hold stay the
-    /// user's, numbered by an early step as they are, and only the agent's
-    /// upload of 0.1.21 is the root's (`storage.md`). Planted defect this
-    /// catches: the last step taking every row an early step numbered for the
-    /// root's upload, so the root's replies show the user's files. One small
-    /// database, milliseconds.
+    /// states with the current types see each record numbered, one number per
+    /// file, its path and its bytes, in the transcript and the queue. Before,
+    /// the first such step stopped at the record's path, so the conversation
+    /// never opened. The files the messages hold stay the user's, numbered by
+    /// an early step as they are, and only the agent's upload of 0.1.21 is
+    /// the root's. Planted defect this catches: the last step taking every
+    /// row an early step numbered for the root's upload, so the root's
+    /// replies show the user's files. One small database, milliseconds.
     #[test]
     fn a_conversation_of_0_1_21_with_files_opens_through_every_step_with_them_numbered() {
         use demi_shared_types::{Block, BlobRef, UserContentBlock};
@@ -7571,19 +7566,18 @@ mod tests {
         }
     }
 
-    /// The control migration to projects by directory (`upgrades.md`
-    /// § What crosses releases): a Cloud conversation in a directory of its
-    /// own choosing moves to the Cloud's home, a conversation's directory
-    /// under `/home/demi/sessions` or the workspace of its directory, made
-    /// when there is none; one in its own directory, a project's and a
-    /// paired device's stay; workspaces of one directory, a Cloud's in two
-    /// spellings included, become the oldest, with the others'
-    /// conversations; a Cloud workspace at the home goes, its conversations
-    /// running in the home; every device's home is unknown until its next
-    /// hello.
-    /// Planted defect this catches: a Cloud directory left outside
-    /// projects, or a workspace selection that loses its directory.
-    /// One small database, milliseconds.
+    /// The control migration to projects by directory
+    /// (`crates/server/src/main.rs`): a Cloud conversation in a directory
+    /// of its own choosing moves to the Cloud's home, a conversation's
+    /// directory under `/home/demi/sessions` or the workspace of its
+    /// directory, made when there is none; one in its own directory, a
+    /// project's and a paired device's stay; workspaces of one directory, a
+    /// Cloud's in two spellings included, become the oldest, with the
+    /// others' conversations; a Cloud workspace at the home goes, its
+    /// conversations running in the home; every device's home is unknown
+    /// until its next hello. Planted defect this catches: a Cloud directory
+    /// left outside projects, or a workspace selection that loses its
+    /// directory. One small database, milliseconds.
     #[test]
     fn the_migration_puts_each_cloud_conversation_where_its_directory_says() {
         let (_directory, path, mut connection) =

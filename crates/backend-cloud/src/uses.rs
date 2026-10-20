@@ -1,16 +1,15 @@
 //! How the user's conversations use the Cloud: as the `target` their files and
-//! commands are on, or `attached` as an extra Host. Every role keeps the
-//! Cloud awake while the conversation works; an idle stop and a reset hold
-//! the conversations whose files are on the Cloud and leave an attached one
-//! alone: it runs on its own target. A conversation's `provider` role names
-//! the Claude Code machine, never the user's Cloud, and the work on that
-//! machine holds it instead (`managed-hosts.md` § The Claude Code machine).
-//! The `provider`
-//! role is derived, never stored: a node of the conversation's tree, the root
-//! or any subagent, infers with a provider that needs a process on a Host,
-//! and the provider's placement says which device that is; the same placement
-//! starts the process, so the role and the process cannot name different
-//! machines. The lifecycle knows roles; it does not know providers.
+//! commands are on, or `attached` as an extra Host. Every role keeps the Cloud
+//! awake while the conversation works; an idle stop and a reset hold the
+//! conversations whose files are on the Cloud and leave an attached one alone:
+//! it runs on its own target. A conversation's `provider` role names the
+//! Claude Code machine, never the user's Cloud, and the work on that machine
+//! holds it instead. The `provider` role is derived, never stored: a node of
+//! the conversation's tree, the root or any subagent, infers with a provider
+//! that needs a process on a Host, and the provider's placement says which
+//! device that is; the same placement starts the process, so the role and the
+//! process cannot name different machines. The lifecycle knows roles; it does
+//! not know providers.
 //!
 //! A reset reaches a conversation through the `target` and `provider` roles
 //! only, since those conversations cannot work without the device. A

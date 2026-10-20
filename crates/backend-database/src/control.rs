@@ -1,7 +1,8 @@
-//! The control service (`storage.md` § Control records): every read and
-//! write of `control.sqlite`, each one closure and one transaction on the
-//! database's own thread. Operations take owned input, so no caller holds a
-//! transaction open across a wait.
+//! The control service: every read and write of `control.sqlite`, each one
+//! closure and one transaction on the database's own thread. Operations
+//! take owned, serializable input, so no caller holds a transaction open
+//! across a wait and a control service in another process could serve them
+//! unchanged.
 
 use std::path::Path;
 use std::sync::Arc;

@@ -370,15 +370,22 @@ impl Shard {
         &self.forks
     }
 
-    /// Ends the user's work in order (`backend.md` § Startup and shutdown):
-    /// the synchronization channels close; the idle watches stop, and a
-    /// retirement already running finishes; title requests are aborted; the
-    /// conversation sockets end, and so do the restores of trees with no
-    /// page attached; open file transfers and user streams end, and stay
-    /// closed; the agent turns are aborted, and the commands they watched
-    /// run on; a reset or transition of the Cloud finishes, and a running
-    /// Cloud keeps running; the runner connections close, and then the pipes
-    /// fail. Nothing on a Host stops.
+    /// Ends the user's work in order: the synchronization channels close;
+    /// the idle watches stop, and a retirement already running finishes;
+    /// title requests are aborted; the conversation sockets end, and so do
+    /// the restores of trees with no page attached; open file transfers and
+    /// user streams end, and stay closed; the agent turns are aborted, and
+    /// the commands they watched run on; a reset or transition of the Cloud
+    /// finishes, and a running Cloud keeps running; the runner connections
+    /// close, and then the pipes fail. Nothing on a Host stops.
+    ///
+    /// The order has reasons. The channels go first, so no page is sent what
+    /// the steps below change; a page reads the state again from the next
+    /// backend. The sockets end before the agents, so no tree opens and no
+    /// frame reaches a tree after its shutdown. A root's running turn is
+    /// marked in `interrupted_turns` before it is aborted, so the next start
+    /// resumes it however far the shutdown got. Transfers and user streams
+    /// end before the Cloud stops, so the Cloud can still save.
     async fn close(&self) {
         self.closing.cancel();
         self.sync_channels.close();
@@ -656,7 +663,7 @@ impl ShardPool {
         };
         // The master's shard holds the Claude Code machine, which every
         // shard and the providers' sign-ins and probes reach through it
-        // (`managed-hosts.md` § The Claude Code machine).
+        // (`crates/backend-cloud/src/lib.rs`).
         let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
         if shared.claude_machine.set(machine.clone()).is_err() {
             tracing::error!("the Claude Code machine was set twice; the first is kept");

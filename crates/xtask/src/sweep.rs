@@ -1,5 +1,5 @@
-//! `xtask sweep` (`builds-and-releases.md`): removes the build products no
-//! current build uses from the checkout's Cargo build directory.
+//! `xtask sweep`: removes the build products no current build uses from
+//! the checkout's Cargo build directory.
 //!
 //! Cargo never removes a unit it no longer builds. Every change of
 //! `Cargo.lock`, of a feature or of a flag gives the affected units new
@@ -23,9 +23,8 @@ use std::time::{Duration, SystemTime};
 use serde::Deserialize;
 
 /// The builds whose products the sweep keeps, as `cargo` arguments: the one
-/// selection's type check and test build (`builds-and-releases.md`
-/// § Validation), and the build `bun xtask` makes before every command,
-/// `bun xtask dev` and `bun run test` among them.
+/// selection's type check and test build, and the build `bun xtask` makes
+/// before every command, `bun xtask dev` and `bun run test` among them.
 const BUILDS: [&[&str]; 3] = [
     &[
         "check",

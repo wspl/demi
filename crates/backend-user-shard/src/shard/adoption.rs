@@ -229,9 +229,8 @@ impl Shard {
     /// (`crates/backend-database/src/selection.rs`). The record answers
     /// what settles a paired device's first home, which its caller runs
     /// while the connection serves, since the runner resolves its
-    /// directories (`upgrades.md` § What crosses releases). None once the
-    /// shard is closing, whose close ends every connection it published
-    /// before.
+    /// directories (`crates/server/src/main.rs`). None once the shard is
+    /// closing, whose close ends every connection it published before.
     fn bind(
         self: &Rc<Self>,
         device: &DeviceId,
@@ -550,9 +549,9 @@ impl Shard {
 }
 
 /// Has the runner of `access` resolve each directory `first` names, then
-/// records the device's first home (`upgrades.md` § What crosses releases).
-/// A directory gone is kept as it is; a runner that went away leaves the
-/// home unrecorded, which its next hello settles again.
+/// records the device's first home (`crates/server/src/main.rs`). A
+/// directory gone is kept as it is; a runner that went away leaves the home
+/// unrecorded, which its next hello settles again.
 async fn settle_first_home(access: Option<RemoteHost>, seen: DeviceRecorder, device: DeviceId, first: FirstHome) {
     let Some(access) = access else {
         return;

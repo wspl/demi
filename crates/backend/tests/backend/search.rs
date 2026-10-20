@@ -1,4 +1,4 @@
-//! Finding a conversation (`storage.md` § Search index): a query lists the
+//! Finding a conversation (`crates/backend-database/src/search.rs`): a query lists the
 //! conversations whose title matches first, then those whose messages do, each group
 //! most recently active first, archived ones marked; a match is the newest message that
 //! holds every word, steers among them, with the line around it and the words' places

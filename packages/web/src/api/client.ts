@@ -177,12 +177,12 @@ const AWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
 
 /**
  * Whether a request failed because the backend could not be reached, not
- * because it answered: no answer came (no network, no connection, no answer
- * in time), a proxy in front of the backend said it is away, or the backend
- * said it is shutting down and did not do the request (`backend.md`
- * § Startup and shutdown). Every other answer of the backend's own carries its
- * `{ code, message }` body, so an error with another code is the backend's
- * answer, whatever its status.
+ * because it answered: no answer came (no network, no connection, no answer in
+ * time), a proxy in front of the backend said it is away, or the backend said
+ * it is shutting down and did not do the request
+ * (`crates/backend/src/backend.rs`). Every other answer of the backend's own
+ * carries its `{ code, message }` body, so an error with another code is the
+ * backend's answer, whatever its status.
  */
 function unreachable(error: unknown): boolean {
   if (error instanceof TypeError) {

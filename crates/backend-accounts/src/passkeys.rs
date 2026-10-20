@@ -1,9 +1,24 @@
-//! Passkeys (`backend.md` § Authentication and ownership): signing in with one,
-//! without an email first, and adding one to an account, each in two requests
-//! around the browser's own step. `webauthn-rs` makes every challenge and does
-//! every check; this module keeps the challenges in the control store between
-//! the two requests, finds the account a passkey names, and names a new
-//! passkey.
+//! Passkeys: signing in with one, without an email first, and adding one to an
+//! account, each in two requests around the browser's own step. `webauthn-rs`
+//! makes every challenge and does every check; this module keeps the challenges in
+//! the control store between the two requests, finds the account a passkey names,
+//! and names a new passkey.
+//!
+//! - Synced passkeys are the common case: registration asks for no attestation and
+//!   no authenticator attachment, so the browser saves the passkey in its password
+//!   manager, which syncs it; such a passkey reports itself backed up and usually
+//!   keeps no signature counter, and both are accepted. Registration asks for a
+//!   discoverable credential, which password managers always make, and sign-in
+//!   names none, so neither the autofill nor the button needs an email first. User
+//!   verification is required, so a passkey proves both the device and the person.
+//! - A passkey names its account by the user's id, never the email, so an email
+//!   change keeps it.
+//! - Challenges live in the control database, since a sign-in's two requests may
+//!   reach different workers. A failed passkey sign-in is not counted toward the
+//!   address lockout, since a signature cannot be guessed.
+//! - No passkey is offered at an IP address, which browsers make none for: a
+//!   development backend answers at `127.0.0.1`, so a check of passkeys starts it
+//!   with a `localhost` public URL.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;

@@ -1,6 +1,76 @@
-//! The repository's development commands (`crates-and-packages.md`
-//! § xtask). `bun xtask` builds the workspace and runs them
-//! (`builds-and-releases.md`).
+//! The repository's development commands. `bun xtask` builds the one Cargo
+//! selection, which holds xtask, and runs `target/debug/xtask`. An xtask built on
+//! its own, as `cargo run --package xtask` builds it, would resolve the features
+//! of every crate it shares with the workspace differently and keep a second copy
+//! of the backend and its dependencies, built again whenever either changes, so
+//! the repository has no Cargo alias for it. The release workflow is the one
+//! exception: on its hosted runners it builds xtask alone, without the developer
+//! features that compile the backend (`contracts`, `dev`, `logos`).
+//!
+//! The same commands run in two places: on a developer's machine, whose cross
+//! tools compile the targets of the Hosts in use whatever its platform, and in the
+//! release workflow, which builds every release, a deploy's pre-release included,
+//! on GitHub's hosted runners, each platform's targets on a runner of that
+//! platform. A developer builds and packages only the targets of the Hosts in
+//! use: trying a runner change on an x86_64 Linux machine that is also its own
+//! Cloud's execution host needs `x86_64-unknown-linux-musl` alone, which the
+//! machine runs as a paired device and the Cloud guest runs too. A published
+//! release carries all six.
+//!
+//! ```text
+//! native build      compiles each executable for its targets
+//!    |                into the Cargo target directory
+//!    v
+//! native package    one release directory per executable
+//!    |
+//!    v
+//! server-release    one server release for a Linux target: the backend, the
+//!    |                manager, the web app, the packages' manifests, and the
+//!    |                release's files, each program for each target
+//!    +-- the release and its files --> the Cloud image build (`cloud_image`)
+//!    +-- the release ----------------> a Linux server, whose backend takes each
+//!                                      program from the files when a Host first
+//!                                      needs it
+//! ```
+//!
+//! Every Rust check selects the same thing, the whole workspace with the runner's
+//! `test-fixtures` feature, which builds the fixture programs the tests start:
+//! Cargo unifies features over what one command selects, so a command that chose
+//! one crate or other features would build its own copy of every shared
+//! dependency. A test that starts another program, a runner or `demi-file`, starts
+//! the one Cargo built into the target directory it runs from and builds nothing
+//! itself. A whole-selection `cargo test` builds every program first, because
+//! Cargo builds a package's executables for that package's integration tests, so
+//! every crate whose program a test starts has an integration test binary; one
+//! test target builds only what it links, so before running one alone that starts
+//! another crate's program, build the selection. The release workflow builds and
+//! publishes and runs no check; developers run the checks on their machines, and
+//! release acceptance runs the shared Rust suite on each platform that ships a
+//! feature and checks the artifacts and installers on each (a Linux executable
+//! with an ELF interpreter or a shared-library dependency fails; Windows
+//! exercises the PowerShell installer and Linux and macOS the shell installer,
+//! with registration separation, release reuse and draining upgrades; each
+//! installer and publication fixture runs three times per platform).
+//!
+//! ```sh
+//! cargo check --workspace --all-targets --features demi-runner/test-fixtures
+//! cargo test --workspace --features demi-runner/test-fixtures   # --test <name>: one target
+//! bun run test            # the TypeScript tests; builds the programs they start first
+//! ```
+//!
+//! The ignored suites take their resources from the environment, and their
+//! module documentation gives each command: the Chrome tests of
+//! `command-package-browser` (`DEMI_TEST_CHROME`, one at a time, and on Linux
+//! `DEMI_TEST_CHROME_RUNTIME`), the backend's `real_browser`, `claude_code` and
+//! `real_cloud` suites (the last as root through
+//! `crates/machine-manager/scripts/cloud-suite.sh`, which on a Mac runs in the
+//! Lima VM). The machine manager's tests that need root run as root with the
+//! manager's unit test executable and `--include-ignored`, each in mount and
+//! network namespaces of its own. The TypeScript tests take the programs from
+//! `DEMI_TEST_PROGRAMS`, which `bun run test` sets, and an ordinary run starts no
+//! Chrome and no Cloud suite. `crates/command-sdk/examples/benchmark.rs` is a
+//! standalone synthetic service and client that measures the machine and build
+//! it runs on; it never calls a model.
 
 #[cfg(test)]
 mod boundaries;

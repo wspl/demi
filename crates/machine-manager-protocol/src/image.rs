@@ -1,8 +1,22 @@
-//! The Cloud image manifest (`images.md` § Release artifacts): what a base
-//! archive holds and the build inputs it was made from. The packaging
-//! command validates a manifest with it before publishing, and the manager
-//! validates a release with it before importing. The SHA-256 of the exact
-//! manifest bytes is the base version.
+//! The Cloud image manifest: what a base archive holds and the build inputs
+//! it was made from. The packaging command validates a manifest with it before
+//! publishing, and the manager validates a release with it before importing.
+//! The SHA-256 of the exact manifest bytes is the base version, so one hash
+//! names one immutable build.
+//!
+//! The archive is a prepared root filesystem, not an OCI runtime
+//! configuration: the manager generates each boot's bundle, and image content
+//! cannot select runtime flags, privileged mounts, cgroups, network exceptions
+//! or credentials. What the manager relies on in a base (the `demi` user,
+//! init, the runner's directories and `/opt/demi` as the place of Demi's
+//! programs) is the base's format, which `formatVersion` names; a release that
+//! changes any of it changes the format. The manager boots every base whose
+//! format it supports, and a release that ends the support for one resets each
+//! Cloud on it to the configured base at its next wake, keeping its home. The
+//! embedded artifacts' identities must match the backend's selected releases,
+//! or the runner downloads each mismatch on the first command after every wake
+//! and reset; since the image and the backend come from one server release,
+//! they match.
 
 use std::collections::BTreeMap;
 
@@ -150,8 +164,8 @@ pub enum ManifestError {
 
 /// Where Demi's own programs live in every image: the runner, its alias and
 /// the embedded command packages. The machine manager mounts the configured
-/// image's over the pinned one's at every boot (`managed-hosts.md` § Demi's
-/// programs in a Cloud).
+/// image's over the pinned one's at every boot
+/// (`crates/machine-manager/src/sandbox/mod.rs`).
 pub const PROGRAMS_PATH: &str = "/opt/demi";
 /// Where the runner executable lives in every image.
 pub const RUNNER_PATH: &str = "/opt/demi/bin/demi-runner";

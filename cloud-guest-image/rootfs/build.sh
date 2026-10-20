@@ -1,12 +1,35 @@
 #!/usr/bin/env bash
-# Builds a Cloud image release (images.md § Build pipeline) as root on a Linux
-# builder, for the builder's architecture. This script is the first stage:
+# Builds a Cloud image release as root on a Linux builder, for the builder's
+# architecture. This script is the first stage:
 # Ubuntu 26.04 from Ubuntu's container root filesystem that ubuntu.json pins,
 # its packages brought up to date, the packages of packages.txt and tini, the
 # guest user `demi` (uid 1000) with passwordless sudo, and the file overlay.
 # The second stage is `xtask cloud-image package`, built for this builder: it
 # embeds the runner and the command packages of a server release, taken from
 # the release's files, and publishes the verified root archive and manifest.
+# The steps of this stage drive a package manager inside the tree, which is
+# why a shell script runs them.
+#
+# The container image is checked against a digest pinned in the repository:
+# a digest fetched beside the archive would prove only that the download
+# arrived intact, not that it is the file that was reviewed. The build brings
+# the packages up to date from the archive's mirrors, so an image carries the
+# security updates published by its build, whatever the serial's age; a pin
+# moves to a newer serial when Canonical removes the old one, and for a newer
+# Ubuntu release. The tree gets no device credentials, host checkout paths,
+# package-registry credentials, machine ids copied from the builder or
+# temporary package caches. It keeps the setuid files the sandbox profile
+# needs, sudo among them, and extraction must preserve them: they run only
+# inside gVisor. It holds mount points for `/home`, `/run`, `/tmp`, `/dev`,
+# `/proc` and `/dev/shm` and mounts none of them, and service startup is off
+# during package installation, since the sandbox needs no systemd boot or
+# distribution service manager; the entry process and the home initialization
+# belong to the machine manager. The second stage runs a Linux build of `xtask`
+# for the builder's architecture, cross-compiled by the developer's machine
+# or, in the release workflow, built by the runner for itself; on a Linux
+# builder the one Cargo selection's `target/debug/xtask` works too, since the
+# release's files are local and it downloads nothing. The script's downloads,
+# the container image and the packages, go through the builder's HTTPS proxy.
 #
 # Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
 #          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
@@ -157,7 +180,9 @@ in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
 # The runner's Host log, its job output and the temporary directory its
 # TMPDIR names live on the system layer, so the log outlives a stop and a
-# wake, and a build's temporary files do not fill /tmp's memory (`crates/runner/src/host_log.rs`, managed-hosts.md § Images). The runner makes its job root and
+# wake, and a build's temporary files do not fill /tmp's memory
+# (`crates/runner/src/host_log.rs`, `crates/machine-manager/src/storage/mod.rs`).
+# The runner makes its job root and
 # temporary directory in /var/lib/demi itself, as a Cloud on an earlier base
 # needs.
 # Made inside the tree, where `demi` is a name: uutils' install on the build

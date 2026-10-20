@@ -1,5 +1,30 @@
-//! The `demi-machine-manager` executable: the one place the manager is assembled
-//! (`managed-hosts.md` § Startup and recovery).
+//! The `demi-machine-manager` executable: the one place the manager is
+//! assembled.
+//!
+//! Before it serves a request the manager validates its configuration and checks
+//! that it runs as root in a private mount namespace, that its programs resolve
+//! and that `runsc` reports exactly the pinned version; takes its two locks (a
+//! second manager on the same state or runtime directory is refused, and the
+//! error names the path); recovers a namespace an earlier manager saved
+//! (`namespace`); with the resource limits on, requires the cgroup v2 CPU,
+//! memory and PID controllers and enables them for the sandboxes, and with them
+//! off touches no cgroup; stops and saves every device left behind
+//! (`recovery`), then migrates its records when they are in an earlier release's
+//! format (`storage::state`); installs the network policy, imports the
+//! configured base unless an upgrade imported it already (`--import`) and
+//! collects the bases nothing needs; pins its own mount namespace; probes with a
+//! small image that storage can be mounted, frozen and copied; and opens its
+//! socket. Readiness goes to systemd last, whose unit has no start timeout, since
+//! a first import or a large recovery can take minutes.
+//!
+//! On SIGTERM the manager stops accepting connections, stops and saves every
+//! device, and then fails the requests still waiting, so none can start a
+//! sandbox after the drain. It releases the namespace handle only if the drain
+//! succeeded; otherwise the service's stop-post command runs the recovery
+//! (`--recover`), limited to fencing and saving, since a stopped service neither
+//! resolves names nor installs firewall rules. Stopping has no timeout either:
+//! the drain and the recovery check and publish filesystems, and killing a check
+//! midway does more harm than waiting.
 
 #[cfg(not(target_os = "linux"))]
 fn main() -> std::process::ExitCode {
@@ -9,8 +34,8 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(target_os = "linux")]
 fn main() -> std::process::ExitCode {
-    // A panic leaves its report on standard error (`builds-and-releases.md`
-    // § Build profiles).
+    // A panic leaves its report on standard error
+    // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
     use tracing_subscriber::{fmt, prelude::*};
 
@@ -74,11 +99,12 @@ mod service {
     type Failure = Box<dyn Error>;
 
     /// Imports the configured release's image beside a running manager, as
-    /// an upgrade does before it stops that manager (`upgrades.md`
-    /// § Prepare), and prints its base version. Bases are immutable
-    /// directories published under their own names, and a running manager
-    /// reads none it was not configured with, so the import takes none of
-    /// the manager's locks and needs no private namespace.
+    /// an upgrade does before it stops that manager
+    /// (`crates/server/src/main.rs`), and prints its base version. Bases
+    /// are immutable directories published under their own names, and a
+    /// running manager reads none it was not configured with, so the
+    /// import takes none of the manager's locks and needs no private
+    /// namespace.
     async fn import(config: Config) -> Result<(), Failure> {
         let runsc = config.runsc.clone();
         let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;

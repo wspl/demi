@@ -72,7 +72,7 @@ demi-provider-minimax = { path = "../provider-minimax" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
-# The management socket's name and default (`upgrades.md` § Prepare).
+# The management socket's name and default (`crates/server/src/main.rs`).
 demi-runner-protocol = { path = "../runner-protocol" }
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"

@@ -1,8 +1,8 @@
-//! Device records (`storage.md` § Control records): who owns a device, how
-//! it came to be, and the hash of its current token, which finds the device
-//! of a runner's hello or pipe request through one index lookup, and what
-//! its runner last reported its artifact cache holds. Whether a device is
-//! online is its runner connection's, not a record's.
+//! Device records: who owns a device, how it came to be, and the hash of
+//! its current token, which finds the device of a runner's hello or pipe
+//! request through one index lookup, and what its runner last reported its
+//! artifact cache holds. Whether a device is online is its runner
+//! connection's, not a record's.
 
 use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
@@ -71,8 +71,8 @@ pub struct DeviceRecord {
     /// runner first connected.
     pub runner_instance: Option<u64>,
     /// When a Cloud's latest boot completed, as its runner connected: its
-    /// lifetime cap counts from it (`managed-hosts.md` § Lifecycle and
-    /// capacity). None for a paired device and a Cloud that never booted.
+    /// lifetime cap counts from it (`crates/backend-cloud/src/lib.rs`).
+    /// None for a paired device and a Cloud that never booted.
     pub cloud_started_at: Option<Timestamp>,
     /// How pages reach it (`packages/web/src/direct/index.ts`).
     pub route: DeviceRoute,
@@ -94,15 +94,15 @@ pub struct DeviceRecord {
 impl DeviceRecord {
     /// Whether the device is one of `user`'s Hosts: theirs, and not the
     /// Claude Code machine, which is in no user's Hosts though its record
-    /// is the master's (`managed-hosts.md` § The Claude Code machine).
+    /// is the master's (`crates/backend-cloud/src/lib.rs`).
     pub fn is_host_of(&self, user: &UserId) -> bool {
         self.user == *user && self.machine != Some(ManagedMachine::ClaudeCode)
     }
 }
 
-/// A managed device's machine (`managed-hosts.md` § The Claude Code
-/// machine): each user's Cloud, or the Claude Code machine, whose record
-/// belongs to the instance's master and which is in no user's Hosts.
+/// A managed device's machine (`crates/backend-cloud/src/lib.rs`): each
+/// user's Cloud, or the Claude Code machine, whose record belongs to the
+/// instance's master and which is in no user's Hosts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManagedMachine {
     Cloud,
@@ -139,7 +139,7 @@ impl ManagedMachine {
 /// home the backend never heard, which holds projects or conversations an
 /// earlier release left in its directories, the directories its runner
 /// resolves before [`ControlService::settle_first_home`] records the home
-/// and puts them where they belong (`upgrades.md` § What crosses releases).
+/// and puts them where they belong (`crates/server/src/main.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirstHome {
     pub home: String,
@@ -465,11 +465,11 @@ impl ControlService {
     /// to without a directory of its own. The first home a paired device
     /// reports since the upgrade that began keeping it moves each of its
     /// conversations the earlier release left in a directory of it to its
-    /// home or the workspace of that directory (`upgrades.md` § What
-    /// crosses releases), which changes no directory they work in. A paired
-    /// device whose mark has no number yet, or whose logo the report
-    /// changes, takes one more than the highest number among its user's
-    /// other devices of its new logo.
+    /// home or the workspace of that directory
+    /// (`crates/server/src/main.rs`), which changes no directory they work
+    /// in. A paired device whose mark has no number yet, or whose logo the
+    /// report changes, takes one more than the highest number among its
+    /// user's other devices of its new logo.
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
@@ -557,14 +557,13 @@ impl ControlService {
     }
 
     /// Records `home` as `device`'s first and puts what an earlier release
-    /// left on it where its directories say, each as its runner resolved
-    /// it in `resolved`, or as it is kept when the runner could not
-    /// (`upgrades.md` § What crosses releases): workspaces of one directory
-    /// become the oldest of them, with their conversations; one at the home
-    /// goes, and its conversations run in the home; and each conversation
-    /// outside a project moves to the home or its directory's workspace,
-    /// made when there is none. Nothing when the home was recorded
-    /// meanwhile.
+    /// left on it where its directories say, each as its runner resolved it
+    /// in `resolved`, or as it is kept when the runner could not
+    /// (`crates/server/src/main.rs`): workspaces of one directory become
+    /// the oldest of them, with their conversations; one at the home goes,
+    /// and its conversations run in the home; and each conversation outside
+    /// a project moves to the home or its directory's workspace, made when
+    /// there is none. Nothing when the home was recorded meanwhile.
     pub async fn settle_first_home(
         &self,
         device: DeviceId,

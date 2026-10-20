@@ -1,9 +1,8 @@
-//! The runners step of an upgrade's preparation (`upgrades.md` § Prepare):
-//! the running backend hears which runner release comes next, over its
-//! management socket, and has its connected paired devices download it
-//! while it still serves; this waits for them, saying how many have it, and
-//! goes on once all have or after its limit, naming those that have not:
-//! they download after the switch.
+//! The runners step of an upgrade's preparation: the running backend hears
+//! which runner release comes next, over its management socket, and has its
+//! connected paired devices download it while it still serves; this waits
+//! for them, saying how many have it, and goes on once all have or after
+//! its limit, naming those that have not: they download after the switch.
 
 use std::{
     io::{self, BufRead as _, BufReader, Write},

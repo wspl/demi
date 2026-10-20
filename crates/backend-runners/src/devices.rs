@@ -730,12 +730,12 @@ impl DeviceRecorder {
 
     /// Records what `device`'s runner said in its hello: its operating
     /// system, its release, its instance, its home and why it will not
-    /// start by itself after a restart, and that it was
-    /// connected just now, and advances the execution contexts the report
-    /// changes (`crates/backend-database/src/selection.rs`). Answers the
+    /// start by itself after a restart, and that it was connected just
+    /// now, and advances the execution contexts the report changes
+    /// (`crates/backend-database/src/selection.rs`). Answers the
     /// directories the runner resolves before a paired device's first home
-    /// is recorded, when an earlier release left any (`upgrades.md` § What
-    /// crosses releases).
+    /// is recorded, when an earlier release left any
+    /// (`crates/server/src/main.rs`).
     pub async fn hello(
         &self,
         device: DeviceId,

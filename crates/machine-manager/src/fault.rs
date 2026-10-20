@@ -1,7 +1,8 @@
-//! Crash points for acceptance (`managed-hosts.md` § Verification): a
-//! manager built with the `fault-injection` feature aborts at the point
-//! `DEMI_MACHINE_MANAGER_FAULT` names, and the next start must recover with nothing
-//! left behind. Other builds ignore every point.
+//! Crash points for acceptance
+//! (`crates/backend/tests/backend/real_cloud.rs`): a manager built with the
+//! `fault-injection` feature aborts at the point `DEMI_MACHINE_MANAGER_FAULT`
+//! names, and the next start must recover with nothing left behind. Other
+//! builds ignore every point.
 
 /// Aborts the process here when this point is the injected fault.
 pub fn point(name: &str) {

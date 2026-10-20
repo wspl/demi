@@ -77,7 +77,7 @@ threads: one per open SQLite connection; the blocking pool for disk,
 
 The edge uses axum. axum requires handler futures to be `Send`, which costs
 nothing because edge handlers are thin: they parse, authenticate, and call a
-shard or a shared service. [Backend](../backend/backend.md) owns the modules;
+shard or a shared service. `crates/backend/src/lib.rs` owns the modules;
 [The user shard](#the-user-shard) owns the rules of the boundary.
 
 The shard threads are Demi's own small pool of `LocalRuntime` threads fed by a
@@ -218,7 +218,7 @@ owned data in both directions, `Send` pipe ends, leases and marks:
   ends. The edge copies bytes while it holds the lease; dropping the lease
   releases the admission in the shard, and the shard can end the lease itself,
   for example when the conversation is archived.
-- A process on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine),
+- A process on the Claude Code machine (`crates/backend-cloud/src/lib.rs`),
   which the master's shard holds, crosses once per start to the user whose
   request it serves: its standard streams as `Send` pipe ends and its end as
   a `Send` future, relayed by a task on the master's shard.
@@ -227,7 +227,7 @@ owned data in both directions, `Send` pipe ends, leases and marks:
   on a shared provider entry, marks the changed part in the registry of open
   synchronization channels. The mark adds the part to each of the user's
   channels and wakes their tasks, which read the part in the shard
-  ([Page synchronization](../backend/backend.md#page-synchronization)).
+  (`crates/backend-user-shard/src/sync/mod.rs`).
 
 **Call semantics.** A shard call always runs to completion. When the requester
 leaves, the edge cancels the call's token, and only waits observe it, such as
@@ -244,7 +244,7 @@ entry, the vault and the control records, are `Send + Sync`.
 
 **Threads and users.** A user is the unit of placement at both levels: a
 multi-worker deployment pins each user to one worker process
-([Deployment and user ownership](../backend/backend.md#deployment-and-user-ownership)),
+(`crates/backend/src/lib.rs`),
 and inside a process each user is pinned to one shard thread. The backend
 starts with one shard thread. More threads are configuration, provided
 per-user state stays in the shard and cross-user state stays in shared
@@ -378,7 +378,7 @@ and the edge cuts the response short so it never looks complete.
 The machine manager never cancels a device operation: shutdown drains the
 device queues. A checkpoint's frozen window is one synchronous job whose guard
 always thaws the filesystem. Each program's shutdown order is in its own
-document, for example the backend's in [Backend](../backend/backend.md).
+document, for example the backend's in `crates/backend/src/lib.rs`.
 
 ## Tests and time
 
@@ -407,4 +407,4 @@ document, for example the backend's in [Backend](../backend/backend.md).
   reaches. Its database still answers on threads of its own.
 - **Real programs are built binaries.** A test that needs a real runner or
   another program starts the binary Cargo built into the target directory the
-  test runs from ([Validation](../delivery/builds-and-releases.md#validation)).
+  test runs from (`crates/xtask/src/main.rs`).

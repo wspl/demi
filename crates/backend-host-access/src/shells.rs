@@ -252,7 +252,8 @@ impl ShowWait for Shown<'_> {
 /// ended, as blobs of the conversation owner's: the copies of their edits
 /// (`crates/agent-store/src/media.rs`), read from the job's Host inside its
 /// host access, and their whole outputs, each with its record in the
-/// conversation's database (`storage.md` § Command outputs).
+/// conversation's database
+/// (`crates/backend-database/src/command_outputs.rs`).
 struct Keeper {
     conversation: ConversationId,
     /// The node whose commands these are.
@@ -270,8 +271,9 @@ impl Keeper {
     /// Records `command`, which runs as the job `job`, and while `unsent`
     /// waits to start: the job first, by its device, so a runner's hello
     /// finds its conversation, then the command in the conversation's
-    /// database (`storage.md` § Command outputs). A command recorded as
-    /// waiting is recorded again as sent once its job starts.
+    /// database (`crates/backend-database/src/command_outputs.rs`). A
+    /// command recorded as waiting is recorded again as sent once its job
+    /// starts.
     async fn record(&self, command: &CommandId, job: &str, start: &KeptStart, unsent: Option<&UnsentStart>) {
         let indexed = self
             .control
@@ -371,7 +373,7 @@ async fn read_copies(
 impl CommandKeeper for Keeper {
     /// Records the job in the control database first, by its device, so a
     /// runner's hello finds its conversation, then the command in the
-    /// conversation's (`storage.md` § Command outputs).
+    /// conversation's (`crates/backend-database/src/command_outputs.rs`).
     fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()> {
         Box::pin(self.record(command, job, start, None))
     }

@@ -55,12 +55,11 @@ interface Reply {
 const TITLE_REQUEST = 'You are a title generator.'
 
 /**
- * An Anthropic-compatible Messages endpoint the suite scripts
- * (`scenarios.md` § Web app contract suite). The backend's Anthropic API
- * provider calls it as it calls the vendor: each turn request is answered
- * with the next scripted reply as the vendor's event stream, a title request
- * with the next scripted title, and every request is recorded, so a test
- * reads what the model received. No request reaches a real model.
+ * An Anthropic-compatible Messages endpoint the suite scripts. The backend's
+ * Anthropic API provider calls it as it calls the vendor: each turn request
+ * is answered with the next scripted reply as the vendor's event stream, a
+ * title request with the next scripted title, and every request is recorded,
+ * so a test reads what the model received. No request reaches a real model.
  */
 export function startScriptedAnthropic() {
   const replies: Reply[] = []

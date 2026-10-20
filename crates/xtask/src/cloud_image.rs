@@ -1,15 +1,29 @@
-//! `xtask cloud-image package` (`images.md` § Build pipeline): the
-//! second stage of a Cloud image build, which
-//! `cloud-guest-image/rootfs/build.sh` runs as root on a Linux builder of
-//! the image's architecture, with an `xtask` built for that architecture.
-//! Into the Ubuntu tree the script made, it installs, from a server release
-//! and its files, the runner and its `demi` alias that the runner release
-//! names, each command package's executable under its content-addressed
-//! path, each checked against its release's record. It reads the package
-//! inventory from the tree's dpkg database without running a program of the
-//! image, writes the root archive with GNU tar, checks the manifest the way
-//! the machine manager decodes it, publishes the release directory through
-//! `artifact`'s release publication and prints the base version.
+//! `xtask cloud-image package`: the second stage of a Cloud image build, which
+//! `cloud-guest-image/rootfs/build.sh` runs as root on a Linux builder of the
+//! image's architecture, with an `xtask` built for that architecture. Into the
+//! Ubuntu tree the script made, it installs, from a server release and its files,
+//! the runner and its `demi` alias that the runner release names, each command
+//! package's executable under its content-addressed path, each checked against its
+//! release's record. It reads the package inventory from the tree's dpkg database
+//! without running a program of the image (the packages dpkg records as installed,
+//! with their versions: a package whose installation did not finish fails the
+//! build, and one removed with only its configuration left is not installed), and
+//! takes the Ubuntu release from the tree's own os-release. It writes the root
+//! archive with GNU tar, which keeps numeric ownership, ACLs and extended
+//! attributes, checks the manifest the way the machine manager decodes it,
+//! publishes the release directory through `artifact`'s release publication and
+//! prints the base version.
+//!
+//! Everything of Demi's own lies under `/opt/demi`, which the machine manager
+//! replaces with the configured image's at every boot, whatever image a Cloud is
+//! pinned to: `/opt/demi/bin/demi-runner` and its alias `/opt/demi/bin/demi` (with
+//! `/usr/bin/demi-runner` and `/usr/bin/demi` as links to them), and each command
+//! package's executable at `/opt/demi/artifacts/<sha256>/<executable>`, from which
+//! the runner starts command services instead of downloading them, after checking
+//! each against the backend's pinned descriptor. The image also makes the runner's
+//! two directories, private to `demi`: `/var/lib/demi` and `/var/log/demi`.
+//! Nothing is compiled, pulled or extracted on an ordinary wake, and a Docker
+//! daemon plays no part.
 
 use std::collections::BTreeMap;
 use std::io::Write as _;
@@ -277,9 +291,9 @@ async fn command_packages(commands: &Path) -> Result<Vec<(String, PathBuf)>, Err
 
 /// Installs the runner of `release`, whose compressed copy is among `files`, as
 /// `/opt/demi/bin/demi-runner` with `demi` as its alias beside it, and links
-/// both from `/usr/bin`: everything of Demi's lies under `/opt/demi`, which
-/// a Cloud takes from the configured image (`images.md` § Root filesystem
-/// contents).
+/// both from `/usr/bin`: everything of Demi's lies under `/opt/demi`, which a
+/// Cloud takes from the configured image
+/// (`cloud-guest-image/rootfs/packages.txt`).
 async fn install_runner(
     root: &Path,
     files: &Path,

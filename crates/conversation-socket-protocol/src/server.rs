@@ -15,8 +15,8 @@ use serde_with::rust::unwrap_or_skip;
 use crate::{AgentCost, BlockVersions, ClientFrameKind, CostCall, CostTotals, TranscriptPatch, TranscriptVersion};
 
 /// What the providers read out of the error blocks a frame carries, by block
-/// id (`backend.md` § Failure facts). Attached when the frame is sent, never
-/// stored.
+/// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
+/// Attached when the frame is sent, never stored.
 pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 
 /// A frame the backend sends on a conversation's socket. Every frame for one
@@ -285,8 +285,9 @@ pub enum ServerFrame {
         #[garde(dive)]
         diagnostics: Option<ProviderErrorDiagnostics>,
         /// The request ID of the socket's upgrade, which the socket gives
-        /// every `error` frame it sends (`backend.md` § Request IDs and the
-        /// server log); the agent's frames leave it to the socket.
+        /// every `error` frame it sends
+        /// (`crates/backend-http/src/request_id.rs`); the agent's frames
+        /// leave it to the socket.
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",

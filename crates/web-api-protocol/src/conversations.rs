@@ -378,8 +378,8 @@ pub struct NodeQuery {
 }
 
 /// One page of an agent's transcript: whole requests, its blocks in their light
-/// form, with the failure facts of its error blocks (`backend.md` § Failure
-/// facts).
+/// form, with the failure facts of its error blocks
+/// (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptPage {

@@ -1,6 +1,6 @@
 //! The users' passkeys and the challenges of their sign-ins and additions
-//! (`storage.md` § Control records, § Passwords and credentials at rest;
-//! `backend.md` § Authentication and ownership). A passkey is stored as
+//! (`crates/backend/src/config/secret.rs`,
+//! `crates/backend-accounts/src/passkeys.rs`). A passkey is stored as
 //! `webauthn-rs` encodes it, and a challenge as the state `webauthn-rs`
 //! finishes it with; the accounts service decides when each is written.
 

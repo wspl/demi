@@ -1,15 +1,14 @@
-//! The conversation's attachments, the files its messages sent and those
-//! the agent uploaded (`crates/backend-host-access/src/attachment_commands.rs`,
-//! `storage.md` § Conversation state and transactions): a sent file's
-//! bytes, and those `demi attachment upload` stores, are a blob of the conversation owner's
-//! namespace, and the conversation's `attachments` table holds one row per
-//! attachment, keyed by its number in the conversation's `attachment`
-//! sequence, with the file's name, its media type, its size, an image's or a
-//! video's size in pixels, its blob, and the node of the agent that
-//! uploaded it, none for a file the user sent. A row is written once, or
-//! copied into a Fork's destination, and never changes. A reply shows only
-//! the attachments its own agent uploaded, or the agent it was forked from
-//! for the history it copied: the page asks for each as [`read_shown`] reads it, and a
+//! The conversation's attachments, the files its messages sent and those the
+//! agent uploaded (`crates/backend-host-access/src/attachment_commands.rs`): a
+//! sent file's bytes, and those `demi attachment upload` stores, are a blob of
+//! the conversation owner's namespace, and the conversation's `attachments`
+//! table holds one row per attachment, keyed by its number in the conversation's
+//! `attachment` sequence, with the file's name, its media type, its size, an
+//! image's or a video's size in pixels, its blob, and the node of the agent that
+//! uploaded it, none for a file the user sent. A row is written once, or copied
+//! into a Fork's destination, and never changes. A reply shows only the
+//! attachments its own agent uploaded, or the agent it was forked from for the
+//! history it copied: the page asks for each as [`read_shown`] reads it, and a
 //! share keeps each as [`SHOWN`] pairs it.
 
 use std::fmt;

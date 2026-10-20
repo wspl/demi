@@ -1,9 +1,9 @@
-//! The user's Cloud machine in the user's shard (`managed-hosts.md`
-//! § Lifecycle and capacity): one phase, which carries what exists only in
-//! it (the capacity permit while the machine is not stopped, the idle watch
-//! and the maintenance loop while it runs, the reset while one holds it),
-//! and the transitions that change it, each a task of the shard, so a
-//! requester that goes away never cuts a boot or a save short.
+//! The user's Cloud machine in the user's shard: one phase, which carries
+//! what exists only in it (the capacity permit while the machine is not
+//! stopped, the idle watch and the maintenance loop while it runs, the
+//! reset while one holds it), and the transitions that change it, each a
+//! task of the shard, so a requester that goes away never cuts a boot or a
+//! save short.
 //!
 //! ```text
 //!        admission                 idle stop, lifetime cap, close
@@ -66,8 +66,8 @@ pub(crate) fn sandbox_machine(device: &DeviceRecord) -> SandboxMachine {
 }
 
 /// The capacities the backend names for the disks of `device`, a managed
-/// machine (`managed-hosts.md` § Lifecycle and capacity): its account's
-/// Cloud storage, and always the default for the Claude Code machine.
+/// machine: its account's Cloud storage, and always the default for the
+/// Claude Code machine.
 pub(crate) async fn capacity(
     control: &ControlService,
     device: &DeviceRecord,
@@ -151,10 +151,9 @@ pub struct CloudAdmission {
 /// waits.
 pub(crate) type Transition = Shared<LocalBoxFuture<'static, Result<(), CloudError>>>;
 
-/// The user's managed machines, in the user's shard: the Cloud, and for
-/// the master the Claude Code machine (`managed-hosts.md` § The Claude Code
-/// machine), each made on the first need, and whether the shard is closing
-/// them.
+/// The user's managed machines, in the user's shard: the Cloud, and for the
+/// master the Claude Code machine, each made on the first need, and whether
+/// the shard is closing them.
 #[derive(Default)]
 pub struct Cloud {
     machine: RefCell<Option<Rc<Machine>>>,
@@ -726,10 +725,10 @@ impl dyn CloudShard {
     }
 
     /// The manager reported that the device's sandbox exited without being
-    /// asked to stop (`managed-hosts.md` § Lifecycle and capacity). A running
-    /// machine is off: its runner goes, and the death counts for the crash
-    /// loop, as one during a boot does. One while the backend saves or resets
-    /// the machine is its own doing and is ignored.
+    /// asked to stop. A running machine is off: its runner goes, and the
+    /// death counts for the crash loop, as one during a boot does. One while
+    /// the backend saves or resets the machine is its own doing and is
+    /// ignored.
     pub async fn cloud_died(&self, device: &DeviceId) {
         let Some(machine) = self
             .cloud()
@@ -828,11 +827,10 @@ impl dyn CloudShard {
         }
     }
 
-    /// Closes the Cloud with its shard (`backend.md` § Startup and shutdown):
-    /// no admission after this, its schedules end, and a reset or a
-    /// transition under way finishes. A running machine keeps running, and
-    /// the next backend takes it over (`managed-hosts.md` § Control and
-    /// ownership).
+    /// Closes the Cloud with its shard (`crates/backend/src/backend.rs`): no
+    /// admission after this, its schedules end, and a reset or a transition
+    /// under way finishes. A running machine keeps running, and the next
+    /// backend takes it over (`crates/machine-manager-protocol/src/lib.rs`).
     pub async fn close_cloud(&self) {
         self.cloud().stop();
         for machine in self.cloud().machines() {

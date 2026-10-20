@@ -6,8 +6,8 @@ import { dismissToast, toasts } from '../toast'
 
 // An error the page shows names the request it came from, and a failure the
 // page found itself is reported to the backend, whose ID the toast then names
-// (`backend.md` § Request IDs and the server log). A reporter stand-in in
-// place of the backend; no I/O, a few milliseconds.
+// (`crates/backend-http/src/request_id.rs`). A reporter stand-in in place of
+// the backend; no I/O, a few milliseconds.
 
 let stopReports: (() => void) | null = null
 

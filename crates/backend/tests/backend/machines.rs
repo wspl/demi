@@ -1,17 +1,16 @@
-//! A machine manager the tests script (`scenarios.md` § System under
-//! test): it serves the manager's socket with `machine-manager-protocol`, as the
-//! real manager does, and runs each Cloud's sandbox as a real runner
-//! process whose home survives a stop, a wake and a reset. Operations of one
-//! device run one at a time, in arrival order; a device's first wake makes
-//! its storage. It records every call, and a test can hold a reset, fail
-//! one, keep a wake from starting its runner, or kill a runner as a crash
-//! would, which the manager reports as a death to every connection; a call
-//! whose handling panics is answered with the panic, never left waiting; its
-//! `reconcile` keeps the sandboxes that run, as the real manager's does. It
-//! mounts no image and isolates nothing: a stop clears the runner's state
-//! but its log and its job directories, as a Cloud's `/run/demi` goes with
-//! it while its system image, which holds those two, stays; a reset clears
-//! them too; both keep its home.
+//! A machine manager the tests script: it serves the manager's socket with
+//! `machine-manager-protocol`, as the real manager does, and runs each Cloud's
+//! sandbox as a real runner process whose home survives a stop, a wake and a
+//! reset. Operations of one device run one at a time, in arrival order; a
+//! device's first wake makes its storage. It records every call, and a test can
+//! hold a reset, fail one, keep a wake from starting its runner, or kill a
+//! runner as a crash would, which the manager reports as a death to every
+//! connection; a call whose handling panics is answered with the panic, never
+//! left waiting; its `reconcile` keeps the sandboxes that run, as the real
+//! manager's does. It mounts no image and isolates nothing: a stop clears the
+//! runner's state but its log and its job directories, as a Cloud's `/run/demi`
+//! goes with it while its system image, which holds those two, stays; a reset
+//! clears them too; both keep its home.
 
 use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
@@ -202,7 +201,7 @@ impl ScriptedManager {
     }
 
     /// The Claude Code machine, once the manager made its storage
-    /// (`managed-hosts.md` § The Claude Code machine).
+    /// (`crates/backend-cloud/src/lib.rs`).
     pub fn claude_code_machine(&self) -> String {
         let machines = self.of(SandboxMachine::ClaudeCode);
         let [machine] = machines.as_slice() else {
@@ -407,7 +406,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
     let json = |value: serde_json::Value| Ok(value);
     match call {
         // The sandboxes that run stay running, and the manager reports them
-        // (`managed-hosts.md` § Control and ownership).
+        // (`crates/machine-manager-protocol/src/lib.rs`).
         MachineCall::Reconcile(_) => {
             shared.record("reconcile".into());
             let devices: Vec<String> = shared.lock().guests.keys().cloned().collect();

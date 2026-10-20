@@ -16,8 +16,8 @@ bzip2 = "0.6"
 clap = { version = "4", features = ["derive"] }
 demi-backend-database = { path = "../backend-database" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
-# The next runner release's record and the backend's management socket
-# (`upgrades.md` § Prepare).
+# The next runner release's record and the backend's management
+# socket.
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-cli = { path = "../shared-cli" }

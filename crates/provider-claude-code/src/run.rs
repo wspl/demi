@@ -65,7 +65,7 @@ pub(crate) struct ClaudeCodeRuntime {
     /// The hold of the machine for the session's action that infers here,
     /// from its first request to its end, across the tool calls between its
     /// requests, so a CLI that waits on a long tool keeps its machine awake
-    /// (`managed-hosts.md` § The Claude Code machine).
+    /// (`crates/backend-cloud/src/lib.rs`).
     action: Option<WorkLease>,
 }
 

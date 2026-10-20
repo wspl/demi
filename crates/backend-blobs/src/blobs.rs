@@ -1,11 +1,18 @@
-//! Attachment and transcript media (`storage.md` § Attachment and transcript
-//! media, § The object store): each user's bytes under `blobs/<user>/`, named
-//! by their SHA-256 in lowercase hexadecimal. A name identifies bytes only
-//! within its user's namespace, so knowing another user's hash reaches
-//! nothing of theirs. A collection of the namespace lists it and deletes
-//! the blobs nothing names (`storage.md` § Deleting a conversation); every
+//! Attachment and transcript media: each user's bytes under `blobs/<user>/`,
+//! named by their SHA-256 in lowercase hexadecimal. A name identifies bytes
+//! only within its user's namespace, so knowing another user's hash reaches
+//! nothing of theirs. A collection of the namespace lists it and deletes the
+//! blobs nothing names (`crates/backend-database/src/deletions.rs`); every
 //! put of a blob the namespace holds already is remembered for a day, since
 //! it writes nothing that would show its age.
+//!
+//! A blob is published before any row or frame that names it: an upload
+//! before a message can name it, a fitted image before its message reaches
+//! the session, a tool's medium before its result enters the transcript, an
+//! edit copy before the block that lists it, and a command's output before
+//! its record. No transaction spans SQLite and the object store, so a
+//! database failure can leave an unreferenced blob, which the collection
+//! removes later, but never a committed row that names unpublished bytes.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -44,9 +51,9 @@ pub struct StoredBlob {
 }
 
 /// How long a blob stays whatever names it, in milliseconds: a day after its
-/// object was written or it was put again (`storage.md` § Deleting a
-/// conversation). A blob is stored before the row that names it, and the
-/// day covers the wait.
+/// object was written or it was put again
+/// (`crates/backend-database/src/deletions.rs`). A blob is stored before the
+/// row that names it, and the day covers the wait.
 pub const GRACE_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Every user's blob namespace, with the puts of blobs that existed already.
@@ -131,11 +138,14 @@ pub struct UserBlobs {
 }
 
 impl UserBlobs {
-    /// Stores `bytes` and answers their name (`storage.md` § The object
-    /// store). A name always names the same bytes, so a blob the namespace
-    /// holds already is success: the put asks first whether it exists, and
-    /// sends its bytes only when it does not, so repeated uploads of one file
-    /// store it once and send it once.
+    /// Stores `bytes` and answers their name. A name always names the same
+    /// bytes, so a blob the namespace holds already is success: the put asks
+    /// first whether it exists, and sends its bytes only when it does not, so
+    /// repeated uploads of one file store it once and send it once. On S3 a
+    /// new blob costs a HEAD and a PUT, one round trip more than the PUT
+    /// alone, but a blob that exists costs the HEAD alone, where a
+    /// conditional PUT would send the whole body, up to the upload cap,
+    /// before S3 refused it.
     pub async fn put(&self, bytes: Bytes) -> Result<BlobRef, ObjectError> {
         let (bytes, blob) = with_name(bytes).await?;
         self.store(&blob, bytes).await?;

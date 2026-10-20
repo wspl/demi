@@ -1,5 +1,4 @@
-//! Startup and shutdown (`backend.md` § Startup and shutdown,
-//! § Configuration).
+//! Startup and shutdown.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::os::unix::fs::PermissionsExt as _;

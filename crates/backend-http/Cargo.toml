@@ -52,15 +52,14 @@ futures-util.workspace = true
 garde.workspace = true
 http-body = "1"
 # The edge serves its connections itself, each with an idle deadline and a
-# close handle (`backend.md` § Runtime model).
+# close handle (`crates/backend/src/lib.rs`).
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 mime = "0.3"
 # A local store's command artifact, served as it was stored.
 object_store.workspace = true
 percent-encoding = "2"
-# The send buffer of a runner socket connection (`managed-hosts.md` § Backend
-# socket).
+# The send buffer of a runner socket connection.
 rustix = { version = "1", features = ["net"] }
 serde.workspace = true
 serde_json.workspace = true

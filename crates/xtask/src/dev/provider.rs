@@ -1,5 +1,4 @@
-//! The real model `xtask dev` can seed (`backend.md` §
-//! One-command development backend), from the `DEMI_DEV_PROVIDER_*`
+//! The real model `xtask dev` can seed, from the `DEMI_DEV_PROVIDER_*`
 //! variables: all four name one model of an OpenAI-compatible Chat
 //! Completions endpoint, or none is set, and two optional ones list the
 //! model's thinking efforts and the file types it reads natively.

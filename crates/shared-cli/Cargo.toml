@@ -16,7 +16,7 @@ bench = false
 [features]
 # The programs that run on a Host, the runner and the command programs, turn
 # it on: built for a musl target, they allocate with mimalloc
-# (`builds-and-releases.md` § Memory allocator).
+# (`crates/xtask/src/native/build.rs`).
 host-allocator = ["dep:mimalloc"]
 
 [dependencies]

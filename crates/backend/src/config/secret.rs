@@ -1,8 +1,13 @@
-//! The instance secret (`storage.md` § Passwords and credentials at rest):
-//! 32 random bytes, `DEMI_INSTANCE_SECRET` when that is set, otherwise the
-//! data directory's `instance-secret` file, which the first start creates
-//! readable only by its owner. Each key the backend needs derives from it
-//! with HKDF-SHA256 under a label of its own.
+//! The instance secret: 32 random bytes, `DEMI_INSTANCE_SECRET` when that
+//! is set, otherwise the data directory's `instance-secret` file, which
+//! the first start creates readable only by its owner. Each key the
+//! backend needs derives from it with HKDF-SHA256 under a label of its
+//! own, so no key can stand in for another.
+//!
+//! Sealing protects credentials when the database leaks alone; it is not key
+//! management, and whoever holds both the database and the secret opens every
+//! credential. A deployment sets `DEMI_INSTANCE_SECRET` to keep the secret
+//! apart from the data it protects, or when several backends must share it.
 
 use std::fmt;
 use std::io;

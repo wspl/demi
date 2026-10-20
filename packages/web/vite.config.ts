@@ -154,8 +154,7 @@ export default defineConfig({
   build: {
     // The npm packages the bundle holds, each with its license and the
     // text of its license file, from the bundle's own module graph:
-    // `xtask notices` reads it (`builds-and-releases.md` § Licenses in a
-    // release).
+    // `xtask notices` reads it (`crates/xtask/src/notices.rs`).
     license: { fileName: '.vite/license.json' },
     rollupOptions: {
       input: {
@@ -177,7 +176,7 @@ export default defineConfig({
     proxy: {
       // The proxy keeps the page's Host, which the page's Origin names: that
       // is how the backend knows this page for the product's and lets it act
-      // (backend.md § Authentication and ownership).
+      // (`crates/backend-http/src/gate.rs`).
       '/api': {
         target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
         ws: true,

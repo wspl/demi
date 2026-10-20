@@ -1,4 +1,4 @@
-//! The login lockout (`backend.md` § Authentication and ownership).
+//! The login lockout.
 
 use std::collections::HashMap;
 use std::sync::Mutex;

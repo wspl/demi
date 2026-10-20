@@ -136,7 +136,7 @@ pub trait ProductPort {
     fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>>;
 
     /// `plaintext` sealed as `user`'s secret `name` of `plugin`, by the one
-    /// owner of sealing (`storage.md` § Passwords and credentials at rest).
+    /// owner of sealing (`crates/backend/src/config/secret.rs`).
     fn seal(&self, user: &UserId, plugin: &str, name: &str, plaintext: &[u8]) -> Vec<u8>;
 
     /// What `sealed` holds as that secret; none when it does not open.

@@ -1,7 +1,8 @@
-//! The manager's exclusive locks (`managed-hosts.md` § Control and
-//! ownership): one on its state directory, one on its runtime directory, so
-//! a second manager on either is refused. The kernel releases them when the
-//! process ends, however it ends.
+//! The manager's exclusive locks
+//! (`crates/machine-manager-protocol/src/lib.rs`): one on its state
+//! directory, one on its runtime directory, so a second manager on either
+//! is refused. The kernel releases them when the process ends, however it
+//! ends.
 
 use std::{
     io,

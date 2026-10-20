@@ -416,7 +416,7 @@ conversation's operations need a request about a conversation: a `command`, a
 | Service | Operations | Requests | Meaning |
 | --- | --- | --- | --- |
 | Command | Stdout, stderr, stdin, live stdin | `command` | The rpc port of the call: its IO. A command that makes an image writes its bytes, which the model views with `demi file view` (`crates/runner-jobs/src/commands/command_output.rs`) |
-| Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
+| Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision (`crates/backend-database/src/control.rs`) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
 | | Read files | A conversation's | Several paths on the conversation's primary Host, if it is running; for a `command`, on the Host its job runs on, a relative path resolved against the job's directory as that Host resolves it ([Reading a conversation's files](#reading-a-conversations-files)) |
@@ -436,7 +436,7 @@ for one plugin among the others.
 
 Values and directories name the blobs they use, and a blob one of them
 names is never removed
-([Deleting a conversation](../backend/storage.md#deleting-a-conversation)). A value changes by versioned compare-and-set: a write names the
+(`crates/backend-database/src/deletions.rs`). A value changes by versioned compare-and-set: a write names the
 revision it read and fails when another write came first.
 
 ### Secrets
@@ -445,7 +445,7 @@ A secret is a value a plugin keeps for a user that must not be readable from
 the database, such as an API key or an OAuth token. It is a value of its own
 kind beside the plugin's JSON values, with the same versioned compare-and-set,
 sealed as provider credentials are
-([Passwords and credentials at rest](../backend/storage.md#passwords-and-credentials-at-rest)):
+(`crates/backend/src/config/secret.rs`):
 AES-256-GCM under a key derived from the instance secret, with the plugin,
 the user and the secret's name as its additional data, so a sealed value
 copied to another row does not open. Only the plugin that wrote a secret

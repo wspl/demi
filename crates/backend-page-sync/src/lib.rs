@@ -1,6 +1,8 @@
 //! The registry of each user's open synchronization channels, a shared
-//! service (`backend.md` § Page synchronization). Whoever commits a change
-//! a page shows marks the changed part in it, from any thread: the mark adds
+//! service. Whoever commits a change a page shows marks the changed part in
+//! it, after the commit and from any thread, because some changes come from
+//! outside the user's shard: a shared instance's provider entries serve every
+//! user, so a change of one marks the channels of every user. The mark adds
 //! the part to the set of each of the user's channels and wakes the
 //! channel's task, which reads the part in the shard when it can send it. A
 //! channel holds at most one mark per part however far its page falls

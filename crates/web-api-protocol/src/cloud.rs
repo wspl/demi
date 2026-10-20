@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::{DeviceId, OperationId};
 
-/// Where the user's Cloud is in its lifecycle (`managed-hosts.md`
-/// § Lifecycle and capacity): `unallocated` until its first use makes it,
-/// `off` while no sandbox runs, `booting` until its runner connects,
-/// `running`, `saving` while it stops, and `resetting` while a reset holds
-/// it.
+/// Where the user's Cloud is in its lifecycle
+/// (`crates/backend-cloud/src/lib.rs`): `unallocated` until its first use
+/// makes it, `off` while no sandbox runs, `booting` until its runner
+/// connects, `running`, `saving` while it stops, and `resetting` while a
+/// reset holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CloudState {
@@ -22,9 +22,9 @@ pub enum CloudState {
     Resetting,
 }
 
-/// A reset's phase (`managed-hosts.md` § System reset): it stops the Cloud,
-/// saves its disks, rebuilds the system on the base the reset selected and
-/// boots, and ends `ready` or `failed`.
+/// A reset's phase (`crates/backend-cloud/src/reset.rs`): it stops the
+/// Cloud, saves its disks, rebuilds the system on the base the reset
+/// selected and boots, and ends `ready` or `failed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResetPhase {
@@ -91,8 +91,8 @@ pub struct CloudStatus {
     #[schemars(with = "Nullable<CloudVolumes>")]
     pub volumes: Option<CloudVolumes>,
     /// The server runs another Cloud image than the one the Cloud's system
-    /// is on, which a reset moves it to (`managed-hosts.md` § Demi's
-    /// programs in a Cloud).
+    /// is on, which a reset moves it to
+    /// (`crates/machine-manager/src/sandbox/mod.rs`).
     pub newer_image: bool,
 }
 

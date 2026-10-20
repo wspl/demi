@@ -1,5 +1,5 @@
 //! The account's signed-in browsers, verifying the session, and handing the
-//! account to a phone by a code (`backend.md` § Authentication and ownership).
+//! account to a phone by a code (`crates/backend-http/src/gate.rs`).
 
 use std::borrow::Cow;
 

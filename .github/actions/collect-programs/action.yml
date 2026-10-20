@@ -1,8 +1,7 @@
 # Collects the executables the job's `xtask native build` wrote, with
 # their paths in the Cargo target directory, as one workflow artifact, and
 # their debug files, one per executable and target, named as the release
-# publishes them beside its assets (docs/delivery/builds-and-releases.md
-# § Build profiles). No device downloads a debug file.
+# publishes them beside its assets. No device downloads a debug file.
 name: Collect programs
 description: Uploads the job's built executables as one tar archive and their debug files.
 inputs:

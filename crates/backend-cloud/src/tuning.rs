@@ -1,5 +1,4 @@
-//! How the backend runs each user's Cloud (`managed-hosts.md` § Lifecycle
-//! and capacity).
+//! How the backend runs each user's Cloud.
 
 use std::time::Duration;
 

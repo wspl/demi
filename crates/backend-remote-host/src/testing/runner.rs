@@ -135,7 +135,7 @@ impl RunnerFixture {
             .route("/api/offers/{id}", get(offer))
             .with_state(edge);
         // As the backend's edge does, every accepted socket sends small
-        // frames at once (`backend.md` § Runtime model). One that keeps
+        // frames at once (`crates/backend/src/lib.rs`). One that keeps
         // Nagle's algorithm still works, only later, so a failure is ignored.
         let listener = listener.tap_io(|stream| {
             let _ = stream.set_nodelay(true);

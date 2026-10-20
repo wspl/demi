@@ -95,7 +95,7 @@ fn uuid(text: &str) -> Result<(), NotUuid> {
 demi_shared_types::id!(
     /// A conversation's id, which the web app chooses: a UUID, kept in the
     /// case it arrived in. No two conversations have ids that differ only in
-    /// case (`storage.md` § Encodings and digests).
+    /// case (`crates/backend-database/src/columns.rs`).
     ConversationId,
     check = uuid,
     error = NotUuid,
@@ -123,7 +123,7 @@ demi_shared_types::id!(
 
 demi_shared_types::id!(
     /// A Cloud reset's id, which the page chooses: a UUID. A retry with the
-    /// same id is the same reset (`managed-hosts.md` § System reset).
+    /// same id is the same reset (`crates/backend-cloud/src/reset.rs`).
     OperationId,
     check = uuid,
     error = NotUuid,

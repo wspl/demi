@@ -1,9 +1,9 @@
-//! The Cloud suite (`scenarios.md` § Cloud suite; `managed-hosts.md`
-//! § Verification): the backend against a real machine manager, its
-//! gVisor/systrap sandboxes and the shipped Cloud image, with a scripted
-//! model. An ordinary run ignores every test here; `cloud-suite.sh` runs
-//! them as root against a manager of its own, with the variables that say
-//! where the manager, its state and the image's command releases are.
+//! The Cloud suite (`crates/machine-manager/scripts/cloud-suite.sh`): the
+//! backend against a real machine manager, its gVisor/systrap sandboxes
+//! and the shipped Cloud image, with a scripted model. An ordinary run
+//! ignores every test here; `cloud-suite.sh` runs them as root against a
+//! manager of its own, with the variables that say where the manager, its
+//! state and the image's command releases are.
 //!
 //! The tests reach the Cloud as a conversation does: the model's shell jobs,
 //! the conversation's file and browser routes, and the Cloud's status and
@@ -15,6 +15,22 @@
 //! Each test takes tens of seconds: a Cloud boots in seconds, and a stop, a
 //! wake and a reset each save or boot it once more. The checkpoint's test
 //! takes minutes, as long as installing Chrome takes.
+//!
+//! A fake manager certifies neither filesystem durability nor sandbox
+//! isolation, and one backend cannot show worker fencing. The suite runs with
+//! the resource limits off and in a stand-in execution host, so release
+//! acceptance checks by hand what it cannot: the limits on, and the
+//! out-of-memory death (a host with the cgroup v2 controllers); the tools'
+//! installers, public HTTPS and the DNS path (a sandbox that reaches the
+//! internet); copies on XFS and btrfs; the live view's frames and input; a full
+//! disk; a restart at each publication boundary, the manager's recovery and
+//! cleanup after cancellation or an injected fault (a manager built with fault
+//! injection and restarted under a live backend); and the phases inside the
+//! manager that no report names (storage setup, `runsc` start, runner
+//! authentication, checkpoint pause). Linux amd64 and arm64 are acceptance
+//! environments of their own. A single observed start duration is no
+//! end-to-end startup promise, and a passing run does not establish production
+//! capacity, latency under concurrent load or behavior at host power loss.
 
 use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -55,7 +71,7 @@ const PATIENCE: Duration = Duration::from_secs(240);
 /// that outlasts it keeps running.
 const WATCH_MS: u64 = 240_000;
 
-/// What the Cloud suite's environment supplies (`scenarios.md` § Cloud suite).
+/// What the Cloud suite's environment supplies (`crates/machine-manager/scripts/cloud-suite.sh`).
 struct Environment {
     /// The manager's socket.
     socket: PathBuf,
@@ -74,7 +90,7 @@ impl Environment {
     fn read() -> Self {
         let variable = |name: &str| {
             std::env::var(name).unwrap_or_else(|_| {
-                panic!("the Cloud suite needs {name} (scenarios.md § Cloud suite)")
+                panic!("the Cloud suite needs {name}")
             })
         };
         Self {
@@ -108,7 +124,7 @@ impl Environment {
     /// releases, serve the Clouds' runners on the runner socket the manager
     /// mounts, and give them the URL the manager allows. A Cloud stops a moment
     /// after the test lets go of its conversation's file gate, whose lease is
-    /// the conversation's work (`scenarios.md` § System under test).
+    /// the conversation's work.
     fn harness(&self) -> Harness {
         let mut harness = Harness::new();
         harness.machines = Some(self.socket.clone());
@@ -128,7 +144,7 @@ impl Environment {
     }
 
     /// Where the manager keeps `generation` of `device`
-    /// (`managed-hosts.md` § Images).
+    /// (`crates/machine-manager/src/storage/mod.rs`).
     fn generation(&self, device: &str, state: &MachineImageState) -> PathBuf {
         self.data
             .join("images")
@@ -456,7 +472,7 @@ fn names_in_image(image: &Path, path: &str) -> Vec<String> {
 }
 
 /// Where the runner keeps its job directories on a Cloud, in the system
-/// image's upper layer (`managed-hosts.md` § Images).
+/// image's upper layer (`crates/machine-manager/src/storage/mod.rs`).
 const JOBS_IN_SYSTEM_IMAGE: &str = "/upper/var/lib/demi/jobs";
 
 /// A package this suite builds and installs in the Cloud with dpkg, which
@@ -470,7 +486,7 @@ sudo -n dpkg -i probe.deb > /dev/null"#;
 
 // Tens of seconds: the Cloud boots, stops when idle, wakes and is saved.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn a_cloud_runs_as_uid_1000_for_every_conversation_and_keeps_a_system_package_and_home_across_a_stop()
  {
     const TEST: &str = "identity and persistence";
@@ -625,10 +641,10 @@ async fn a_cloud_runs_as_uid_1000_for_every_conversation_and_keeps_a_system_pack
 /// limit left them depended on where the connection's reads fell against the
 /// end of the answer: about one write in twenty of sizes like these did,
 /// until the runner socket kept its connections within one read
-/// (`managed-hosts.md` § Backend socket; google/gvisor#15639). An
-/// attachment is written whole, as a Claude Code session file is, which is
-/// what fills the connection; a file uploaded through the file routes goes
-/// as its request's body arrives.
+/// (`crates/backend-http/src/lib.rs`; google/gvisor#15639). An attachment is
+/// written whole, as a Claude Code session file is, which is what fills the
+/// connection; a file uploaded through the file routes goes as its request's
+/// body arrives.
 const LARGE_WRITES: usize = 40;
 const LARGE_WRITE_SIZES: std::ops::Range<usize> = 300_000..3_000_000;
 
@@ -649,7 +665,7 @@ fn numbered_lines(size: usize) -> Vec<u8> {
 // socket's workaround one of the writes never ends, and the test fails at
 // its hang guard.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn attachments_larger_than_the_sandbox_reads_at_once_arrive_whole() {
     const TEST: &str = "large file write";
     let _one = one_at_a_time().await;
@@ -705,7 +721,7 @@ async fn attachments_larger_than_the_sandbox_reads_at_once_arrive_whole() {
 // Tens of seconds: the Cloud boots, stops when idle, and wakes at a larger
 // size, which enlarges its images before they are mounted.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn a_cloud_saved_at_1_gb_wakes_at_the_larger_size_its_account_names_with_its_files() {
     const TEST: &str = "capacity";
     const GIB: u64 = 1 << 30;
@@ -780,7 +796,7 @@ async fn a_cloud_saved_at_1_gb_wakes_at_the_larger_size_its_account_names_with_i
 // Tens of seconds: the Cloud boots, resets twice, stops once, and fails one
 // boot, which waits for its runner for as long as the harness allows.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_its_home() {
     const TEST: &str = "reset";
     let _one = one_at_a_time().await;
@@ -898,8 +914,8 @@ const APT_WATCH_MS: u64 = 600_000;
 const CHROME_DOWNLOAD_WATCH_MS: u64 = 600_000;
 
 /// What the tests' scripts use beyond the base, which holds neither Python
-/// nor `ip` (`images.md` § Root filesystem contents): a test installs them
-/// with apt, as an agent would, from the Cloud's Ubuntu mirror.
+/// nor `ip` (`cloud-guest-image/rootfs/packages.txt`): a test installs
+/// them with apt, as an agent would, from the Cloud's Ubuntu mirror.
 const TOOLS: &str = "sudo -n apt-get update -qq > /dev/null && \
     sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
     python3 iproute2 > /dev/null && echo tools-installed";
@@ -954,7 +970,7 @@ time.sleep(600)
 // as the network does, Chrome starts in it, the checkpoint copies
 // both images, and one conversation's idle window passes.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process_until_the_idle_conversations_release()
  {
     const TEST: &str = "checkpoint";
@@ -1137,7 +1153,7 @@ for line in sys.stdin:
 // Tens of seconds: two Clouds boot, apt installs Python and ip in each, and
 // each refused connection waits for its three-second timeout.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn two_users_clouds_run_at_once_and_reach_nothing_private_over_the_network_not_even_the_backend() {
     const TEST: &str = "network";
     let _one = one_at_a_time().await;
@@ -1216,7 +1232,7 @@ async fn two_users_clouds_run_at_once_and_reach_nothing_private_over_the_network
     )
     .await;
     // A Cloud reaches its backend through the runner socket, never over the
-    // network (`managed-hosts.md` § Networking).
+    // network (`crates/machine-manager/src/network/mod.rs`).
     for expected in [
         "backend refused",
         "host-service refused",
@@ -1236,7 +1252,7 @@ async fn two_users_clouds_run_at_once_and_reach_nothing_private_over_the_network
 
 // Tens of seconds: the Cloud boots, dies, and boots again.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn a_cloud_whose_sandbox_is_killed_reports_a_death_and_boots_again_with_its_files() {
     const TEST: &str = "runtime loss";
     let _one = one_at_a_time().await;
@@ -1301,7 +1317,7 @@ async fn a_cloud_whose_sandbox_is_killed_reports_a_death_and_boots_again_with_it
 
 // Tens of seconds: the Cloud boots, stops when idle and boots again.
 #[tokio::test]
-#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
+#[ignore = "the Cloud suite: needs a machine manager and the suite's variables (`crates/machine-manager/scripts/cloud-suite.sh`)"]
 async fn a_cloud_whose_system_lacks_the_temporary_directory_boots_and_makes_it() {
     const TEST: &str = "no temporary directory";
     let _one = one_at_a_time().await;

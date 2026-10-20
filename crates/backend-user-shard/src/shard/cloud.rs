@@ -1,7 +1,8 @@
-//! The shard's side of the user's Cloud (`managed-hosts.md`): what the
-//! Cloud needs of the shard (`CloudShard`), with the holds of the user's
-//! conversations an idle stop and a reset take, and the routing of the
-//! machine manager's death events to the shards.
+//! The shard's side of the user's Cloud
+//! (`crates/machine-manager/src/lib.rs`): what the Cloud needs of the
+//! shard (`CloudShard`), with the holds of the user's conversations an
+//! idle stop and a reset take, and the routing of the machine manager's
+//! death events to the shards.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -197,7 +198,7 @@ impl Shard {
 }
 
 /// Routes each death the machine manager reports to the shard of the
-/// device's owner (`backend.md` § Runtime model), until the backend closes.
+/// device's owner (`crates/backend/src/lib.rs`), until the backend closes.
 pub async fn route_deaths(
     mut deaths: mpsc::Receiver<demi_machine_manager_protocol::DeviceId>,
     services: Arc<Services>,

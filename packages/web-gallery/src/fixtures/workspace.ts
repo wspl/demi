@@ -357,7 +357,7 @@ function tree(): MemoryDirectory {
       ]),
       'demi-next': dir(files('docs/demi-next', [
         'backend.md', 'overview.md', 'product.md', 'roadmap.md', 'runner.md',
-        '`crates/backend-host-access/src/lib.rs`', 'storage.md', 'web-application.md',
+        'sessions-and-targets.md', 'storage.md', 'web-application.md',
       ])),
       guides: dir(files('docs/guides', ['getting-started.md', 'deploying.md'])),
       'guide.pdf': assetFile('/fixtures/preview/guide.pdf', 734, at),

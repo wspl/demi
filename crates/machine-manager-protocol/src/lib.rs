@@ -1,7 +1,23 @@
-//! The contract between the backend and the Cloud machine manager
-//! (`managed-hosts.md`): the manager socket's messages and their line codec,
-//! the record of a device's stored images, the Cloud image manifest, and the
-//! pinned gVisor runtime. Both ends link this crate, so each is defined once.
+//! The contract between the backend and the Cloud machine manager: the manager
+//! socket's messages and their line codec, the record of a device's stored
+//! images, the Cloud image manifest, and the pinned gVisor runtime. Both ends
+//! link this crate, so each is defined once.
+//!
+//! The backend and the manager of a deployment run one release, so the wire
+//! accepts one version. The manager's first message on every connection is
+//! `hello`, naming the wire version; a backend of another version closes the
+//! connection unused and fails the call that opened it, its start's `reconcile`
+//! among them, with an error that names both versions.
+//!
+//! - A line holds one message, at most 1 MiB. A line that is longer, is not
+//!   valid UTF-8 JSON, names an unknown operation or carries malformed parameters
+//!   drops its connection, and lines behind it are not served; the manager keeps
+//!   serving its other connections. An invalid device id or base version is an
+//!   ordinary error reply, and the connection stays usable.
+//! - Requests on one connection run concurrently, and replies arrive in
+//!   completion order, matched to their requests by id. A reply for a connection
+//!   that has closed is discarded and its operation still completes. A death
+//!   event goes to every connection.
 
 pub mod image;
 pub mod runtime;
@@ -9,8 +25,8 @@ mod state;
 mod wire;
 
 /// The format of the manager's state directory's records, which
-/// `<data>/format` names (`managed-hosts.md` § Startup and recovery). A
-/// release that changes a record raises it and migrates the earlier formats.
+/// `<data>/format` names (`crates/machine-manager/src/main.rs`). A release
+/// that changes a record raises it and migrates the earlier formats.
 pub const STATE_FORMAT: u32 = 1;
 
 pub use state::{

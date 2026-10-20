@@ -1,8 +1,8 @@
-//! The development backend's model (`backend.md` § One-command development
-//! backend): an Anthropic-compatible Messages endpoint on the loopback
-//! interface that answers every request with the text of its last user
-//! message, as the vendor's event stream. The backend's Anthropic API
-//! provider calls it as it calls the vendor, so no request reaches a model.
+//! The development backend's model: an Anthropic-compatible Messages
+//! endpoint on the loopback interface that answers every request with the
+//! text of its last user message, as the vendor's event stream. The
+//! backend's Anthropic API provider calls it as it calls the vendor, so no
+//! request reaches a model.
 
 use std::net::Ipv4Addr;
 

@@ -1,7 +1,20 @@
-//! The journal of a move between releases (`upgrades.md` § Interruptions):
-//! which move, and the step it reached, written durably before each step.
-//! A `demi-server` that finds it finishes the move. The release a move goes
-//! to writes and reads its journal, so its format is that release's own.
+//! The journal of a move between releases: which move, and the step it
+//! reached, written durably before each step. A `demi-server` that finds it
+//! finishes the move. The release a move goes to writes and reads its
+//! journal, so its format is that release's own.
+//!
+//! Every step can be taken twice: a service stops or starts twice harmlessly,
+//! the copy of the databases is made anew from databases no release has
+//! opened since, and `current` and the units are written whole. The return
+//! after a failed start undoes the step that pointed `current` at the new
+//! release, so the journal goes back to that step before the return begins and
+//! is removed once the old release runs again. A return that is killed, or
+//! whose old release does not start either, leaves the journal there and the
+//! next command finishes the upgrade from it, returning once more if the new
+//! release still does not start. A journal left at the later step would
+//! report the wrong release: taking that step again would start the old
+//! release the return pointed `current` at, and the step after it would report
+//! the new one.
 
 use std::{io, path::Path};
 

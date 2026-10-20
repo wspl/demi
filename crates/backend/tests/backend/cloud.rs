@@ -1,19 +1,20 @@
-//! The Cloud through the backend (`managed-hosts.md`,
-//! `crates/backend-database/src/selection.rs`, `crates/backend-cloud/src/uses.rs`, `crates/backend-user-shard/src/lifecycle/mod.rs`): the first uses of two conversations
-//! boot one Cloud, which keeps nothing of an ended command, an idle Cloud
-//! stops, and the next operation wakes it, the model learns the home the
-//! Cloud's runner reports once and not again at each wake, a conversation
-//! that idles on a Cloud another keeps running hears its release there, one
-//! archived while the Cloud is stopped does not wake it, a Cloud the manager
-//! stopped without a word boots again, a conversation that left the Cloud still
-//! reaches it, a reset keeps home and identity and tells the model, a failed
-//! reset resumes, a reset holds the conversations that need the Cloud and
-//! leaves the ones that only have it attached, capacity counts across users,
-//! a Cloud that keeps dying stops booting until a reset, a boot whose runner
-//! never connects fails, a shutdown saves the Cloud, and each wake names the
-//! size its account's Cloud disks have then. The machine manager
-//! is the scripted one; each Cloud's runner is real, and the model is an
-//! Anthropic endpoint the test scripts.
+//! The Cloud through the backend (`crates/machine-manager/src/lib.rs`,
+//! `crates/backend-database/src/selection.rs`,
+//! `crates/backend-cloud/src/uses.rs`,
+//! `crates/backend-user-shard/src/lifecycle/mod.rs`): the first uses of two
+//! conversations boot one Cloud, which keeps nothing of an ended command, an idle
+//! Cloud stops, and the next operation wakes it, the model learns the home the
+//! Cloud's runner reports once and not again at each wake, a conversation that
+//! idles on a Cloud another keeps running hears its release there, one archived
+//! while the Cloud is stopped does not wake it, a Cloud the manager stopped
+//! without a word boots again, a conversation that left the Cloud still reaches
+//! it, a reset keeps home and identity and tells the model, a failed reset
+//! resumes, a reset holds the conversations that need the Cloud and leaves the
+//! ones that only have it attached, capacity counts across users, a Cloud that
+//! keeps dying stops booting until a reset, a boot whose runner never connects
+//! fails, a shutdown saves the Cloud, and each wake names the size its account's
+//! Cloud disks have then. The machine manager is the scripted one; each Cloud's
+//! runner is real, and the model is an Anthropic endpoint the test scripts.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -1215,8 +1216,7 @@ async fn shutdown_ends_an_open_download_and_leaves_the_cloud_running() {
     let url = backend.url.clone();
     backend.close_reporting().await.unwrap();
     // The download ended rather than held the shutdown, and the Cloud runs
-    // on: the shutdown neither saves it nor asks the manager anything
-    // (`backend.md` § Startup and shutdown).
+    // on: the shutdown neither saves it nor asks the manager anything.
     drop(download);
     assert!(harness.manager.running(&device));
     let calls = harness.manager.calls();
@@ -1272,9 +1272,9 @@ async fn a_backend_restart_keeps_the_cloud_and_a_command_on_it_reports_its_end()
 
 /// A Cloud taken over at a backend start keeps its lifetime cap's clock:
 /// the cap counts from the boot its record keeps, not from the start
-/// (`managed-hosts.md` § Lifecycle and capacity). Here the Cloud booted two
-/// hours before a start whose cap is one hour, so the start stops it at
-/// once. Several seconds: the Cloud boots once, and the call that leaves a
+/// (`crates/backend-cloud/src/lib.rs`). Here the Cloud booted two hours
+/// before a start whose cap is one hour, so the start stops it at once.
+/// Several seconds: the Cloud boots once, and the call that leaves a
 /// command holding it waits for two quiet seconds.
 #[tokio::test]
 async fn a_cloud_taken_over_at_a_backend_start_keeps_its_lifetime_cap_clock() {

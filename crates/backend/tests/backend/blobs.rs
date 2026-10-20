@@ -1,6 +1,7 @@
-//! Transcript media by reference (`backend.md` § Media by reference): the
-//! blob route serves the caller's own blobs, inert and cached for good, and
-//! by byte range, so a player can play and seek a video.
+//! Transcript media by reference
+//! (`crates/backend-host-access/src/uploads.rs`): the blob route serves the
+//! caller's own blobs, inert and cached for good, and by byte range, so a
+//! player can play and seek a video.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -9,8 +10,8 @@ use sha2::{Digest, Sha256};
 use crate::support::Harness;
 
 /// Stores `bytes` in `user`'s namespace where the object store of the data
-/// directory keeps them (`storage.md` § Ownership and layout), and answers
-/// their name.
+/// directory keeps them (`crates/backend-database/src/lib.rs`), and
+/// answers their name.
 fn store_blob(harness: &Harness, user: &str, bytes: &[u8]) -> String {
     let name = hex::encode(Sha256::digest(bytes));
     let directory = harness.data_dir().join("blobs").join(user);

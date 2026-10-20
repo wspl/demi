@@ -1,5 +1,6 @@
-//! The backend's client of the machine manager's socket (`managed-hosts.md`
-//! § Control and ownership), against a peer the tests script.
+//! The backend's client of the machine manager's socket
+//! (`crates/machine-manager-protocol/src/lib.rs`), against a peer the tests
+//! script.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -200,7 +201,7 @@ async fn a_death_reaches_the_router_and_close_disconnects_without_a_word_until_t
     assert_eq!(deaths.recv().await.unwrap().as_str(), "dev-1");
 
     // The close leaves the manager's sandboxes running: it asks nothing,
-    // and disconnects (`managed-hosts.md` § Control and ownership).
+    // and disconnects (`crates/machine-manager-protocol/src/lib.rs`).
     client.close().await;
     assert!(peer.closed().await, "the close sent a request");
 

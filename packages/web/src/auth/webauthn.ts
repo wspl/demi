@@ -1,12 +1,11 @@
 import { coded } from '@demicodes/web-ui/infra/errors'
 /**
- * The browser's side of passkeys (`backend.md` § Authentication and
- * ownership): the options the backend gives, handed to
- * `navigator.credentials`, and the browser's answer as the JSON the backend
- * reads; and the signal methods that tell the password manager what the
- * backend holds. Everything here is feature-detected: a browser without
- * `PublicKeyCredential` is offered no passkeys, and one without a signal
- * method is told nothing.
+ * The browser's side of passkeys (`crates/backend-accounts/src/passkeys.rs`): the
+ * options the backend gives, handed to `navigator.credentials`, and the
+ * browser's answer as the JSON the backend reads; and the signal methods
+ * that tell the password manager what the backend holds. Everything here is
+ * feature-detected: a browser without `PublicKeyCredential` is offered no
+ * passkeys, and one without a signal method is told nothing.
  */
 import { base64urlDecode, base64urlEncode } from '@demicodes/utils'
 import type {

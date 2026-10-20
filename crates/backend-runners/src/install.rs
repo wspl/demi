@@ -1,4 +1,4 @@
-//! The runner installers (`builds-and-releases.md` § Packaging): a shell script
+//! The runner installers (`crates/xtask/src/native/package.rs`): a shell script
 //! for macOS and Linux and a PowerShell script for Windows, each naming the
 //! backend and one runner release. A script downloads its platform's runner from
 //! the backend, checks its SHA-256, installs it under an installation of its own

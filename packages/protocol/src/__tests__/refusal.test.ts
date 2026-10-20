@@ -4,8 +4,7 @@ import { schemaRefusal } from '../refusal'
 
 // A schema's refusal of a received value names where it failed and what was
 // expected, never the value: the page reports it to the server's log
-// (`backend.md` § Request IDs and the server log). No I/O; under a
-// millisecond.
+// (`crates/backend-http/src/request_id.rs`). No I/O; under a millisecond.
 
 test('a refusal names paths and types, and none of the value it refused', () => {
   const schema = z.strictObject({

@@ -1,40 +1,47 @@
-//! The real Claude Code CLI through the backend (`scenarios.md` § Real
-//! machine acceptance, `crates/provider-claude-code/src/lib.rs`): the Claude
-//! Code machine installs Demi's
-//! copy of the CLI from a local distribution and verifies it, and a
+//! The real Claude Code CLI through the backend (//! `crates/provider-claude-code/src/lib.rs`): the Claude Code machine installs
+//! Demi's copy of the CLI from a local distribution and verifies it, and a
 //! conversation infers through it as in the product. The CLI declares Demi's
-//! SDK MCP server and offers the model its tools, streams reasoning and
-//! text, runs a batch of tool calls through Demi and sends back their
-//! results, reports usage, stops in the middle of a stream, and reports a
-//! vendor error as the request's failure. It prints back each user message
-//! it takes, before the `result` that answers it, and answers a command it
-//! does not offer itself, never printing it back. Each new process, for another
-//! model and effort, after another provider's turn or after a stop,
-//! resumes the session the blocks hold: its first request begins with the
-//! last request of the process before it, with no account of the CLI's
-//! machine. It reads the account's sign-in, which an earlier release's
-//! record handed to the account's directory, and runs in a directory of its
-//! own under it that goes with it. Every assertion is on what the product
-//! observes: the transcript, the frames, the usage ledger and what the
-//! vendor received. No scenario has the vendor refuse the sign-in: the CLI
-//! would then renew it at Anthropic's own token endpoint.
+//! SDK MCP server and offers the model its tools, streams reasoning and text,
+//! runs a batch of tool calls through Demi and sends back their results,
+//! reports usage, stops in the middle of a stream, and reports a vendor error
+//! as the request's failure. It prints back each user message it takes, before
+//! the `result` that answers it, and answers a command it does not offer
+//! itself, never printing it back. Each new process, for another model and
+//! effort, after another provider's turn or after a stop, resumes the session
+//! the blocks hold: its first request begins with the last request of the
+//! process before it, with no account of the CLI's machine. It reads the
+//! account's sign-in, which an earlier release's record handed to the account's
+//! directory, and runs in a directory of its own under it that goes with it.
+//! Every assertion is on what the product observes: the transcript, the frames,
+//! the usage ledger and what the vendor received. No scenario has the vendor
+//! refuse the sign-in: the CLI would then renew it at Anthropic's own token
+//! endpoint.
 //!
 //! The suite runs only when `DEMI_TEST_CLAUDE_CODE` names the CLI's
 //! executable, as an ordinary user, since the CLI refuses the provider's
 //! permission mode as root, with `SSL_CERT_FILE` naming
-//! `claude_code/distribution-ca.pem` (`builds-and-releases.md` §
-//! Validation). Nothing reaches the vendor's service: the CLI's inference
-//! goes to the scripted vendor on 127.0.0.1, which the Cloud's runner names
-//! in `ANTHROPIC_BASE_URL`; the runner's environment is the suite's own, so
-//! no proxy of the machine's reaches the CLI; the CLI's non-essential
-//! traffic, telemetry and error reporting are off; and the account's tokens
-//! are made up. The account is stored as a sign-in would store it, since
-//! the CLI's own sign-in reaches only the vendor.
+//! `claude_code/distribution-ca.pem`. Nothing
+//! reaches the vendor's service: the CLI's inference goes to the scripted
+//! vendor on 127.0.0.1, which the Cloud's runner names in
+//! `ANTHROPIC_BASE_URL`; the runner's environment is the suite's own, so no
+//! proxy of the machine's reaches the CLI; the CLI's non-essential traffic,
+//! telemetry and error reporting are off; and the account's tokens are made
+//! up. The account is stored as a sign-in would store it, since the CLI's
+//! own sign-in reaches only the vendor.
 //!
 //! The distribution serves HTTPS, since `demi.claude-code` downloads nothing
 //! else, with the certificate in `claude_code/`. The backend in this process
 //! and the Cloud's `demi.claude-code` trust its CA through `SSL_CERT_FILE`, which
-//! the machine's roots of the one selection's reqwest read.
+//! the machine's roots of the one selection's reqwest read; a selection
+//! without them fails the install with an unknown issuer. The CA's key was
+//! discarded, and its certificate and the distribution's expire on 2126-09-03.
+//!
+//! ```sh
+//! DEMI_TEST_CLAUDE_CODE=<claude> \
+//! SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem \
+//!   cargo test --workspace --features demi-runner/test-fixtures --test backend \
+//!   -- --ignored claude_code
+//! ```
 
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
@@ -146,7 +153,7 @@ fn version_of(path: &std::ffi::OsStr) -> String {
 /// gets it for `demi.claude-code`.
 fn trusted_ca() -> String {
     let named = std::env::var("SSL_CERT_FILE").expect(
-        "SSL_CERT_FILE names claude_code/distribution-ca.pem (builds-and-releases.md § Validation)",
+        "SSL_CERT_FILE names claude_code/distribution-ca.pem",
     );
     let read = std::fs::read(&named).unwrap_or_default();
     assert_eq!(
@@ -417,7 +424,7 @@ fn carries(frame: &ServerFrame, text: &str) -> bool {
 // installs `demi.claude-code`, which downloads and verifies the CLI (240 MB for
 // 2.1.283), and each new CLI process takes about half a second to start.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batch_through_demi_in_one_process()
  {
     let world = World::start().await;
@@ -690,7 +697,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
 // turn of another provider, since what it proves is what one process's
 // session gives the next.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn each_new_process_resumes_the_session_the_blocks_hold_and_its_first_request_begins_with_the_last_one()
  {
     let world = World::start().await;
@@ -961,7 +968,7 @@ async fn each_new_process_resumes_the_session_the_blocks_hold_and_its_first_requ
 
 // Several seconds: see the first scenario.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process_answers_the_next()
 {
     let world = World::start().await;
@@ -1030,7 +1037,7 @@ async fn a_vendor_error_fails_the_request_in_the_clis_words_and_the_kept_process
 
 // Several seconds: see the first scenario.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn a_call_of_a_tool_the_request_does_not_offer_is_answered_by_the_cli_and_the_turn_goes_on() {
     let world = World::start().await;
     let mut socket = world.conversation().await;
@@ -1122,7 +1129,7 @@ async fn a_call_of_a_tool_the_request_does_not_offer_is_answered_by_the_cli_and_
 
 // Several seconds: see the first scenario.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn the_cli_reads_the_sign_in_handed_to_its_accounts_directory_and_runs_in_a_directory_of_its_own() {
     let world = World::start().await;
     let mut socket = world.conversation().await;
@@ -1174,7 +1181,7 @@ async fn the_cli_reads_the_sign_in_handed_to_its_accounts_directory_and_runs_in_
 /// starts the installed CLI and its turn ends.
 // Several seconds: see the first scenario.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn the_installed_cli_starts_while_the_package_answers_nothing() {
     let world = World::start().await;
     let mut service = PackageService::of(&world.harness);
@@ -1297,7 +1304,7 @@ async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<Str
 // One process of the supplied CLI and two answers of the scripted vendor:
 // a few seconds, most of it the CLI's start.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn the_cli_prints_back_each_user_message_it_takes_before_the_result_that_answers_it() {
     let written = ["First receipt.", "Second receipt."];
     let printed = printed(&written, &["First answer.", "Second answer."], 2).await;
@@ -1320,7 +1327,7 @@ async fn the_cli_prints_back_each_user_message_it_takes_before_the_result_that_a
 // Two processes of the supplied CLI and one answer of the scripted vendor:
 // a few seconds.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
 async fn a_command_the_cli_does_not_offer_gets_a_result_with_no_model_call_and_is_never_printed_back() {
     let printed_for_command = printed(&["/cost"], &[], 1).await;
     assert!(

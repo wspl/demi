@@ -91,8 +91,8 @@ impl Shard {
         let primary = self.host_shard().resolve_target(&record).await?;
         let attached = control.attached_hosts(record.id.clone()).await?;
         let mut lines = vec![marker, self.primary_host_line(&primary).await?];
-        // A Cloud reset is announced to a node once (`managed-hosts.md`
-        // § System reset).
+        // A Cloud reset is announced to a node once
+        // (`crates/backend-cloud/src/reset.rs`).
         if let Some(reset) = control.announced_cloud_reset(record.id.clone()).await? {
             let reset = format!("[Cloud reset {reset}]");
             if !seen.iter().any(|text| text.contains(&reset)) {

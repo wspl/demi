@@ -1,8 +1,8 @@
-//! The provider records of the control store (`storage.md` § Control
-//! records): entries with their configuration still sealed, subscription
-//! accounts with their sealed secrets, versions and quota snapshots, and each
-//! entry's model catalog record. Sealing and opening belong to the vault;
-//! these operations store and read the sealed bytes.
+//! The provider records of the control store: entries with their
+//! configuration still sealed, subscription accounts with their sealed
+//! secrets, versions and quota snapshots, and each entry's model catalog
+//! record. Sealing and opening belong to the vault; these operations store
+//! and read the sealed bytes.
 
 use demi_shared_types::{ProviderModelList, QuotaSnapshot, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
@@ -31,9 +31,8 @@ pub struct CatalogRecord {
 }
 
 /// What the control migration that re-encodes the API-key entries' sealed
-/// configurations (`storage.md` § Schemas and migrations) works with: the
-/// vault, which alone holds the key they are sealed under and knows their
-/// format.
+/// configurations works with: the vault, which alone holds the key they
+/// are sealed under and knows their format.
 pub trait ResealConfigs: Send + Sync {
     /// Entry `id` of `family`'s configuration `sealed`, opened, decoded and
     /// checked in the format the schema before names, and sealed again in

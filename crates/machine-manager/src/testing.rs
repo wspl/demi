@@ -1,7 +1,8 @@
-//! Fixtures for the tests that import a Cloud image (`images.md` § Release
-//! artifacts): a release directory with its archive and manifest. The
-//! crate's unit tests use them, and so do the manager's process tests
-//! (`tests/manager`) through the `testing` feature.
+//! Fixtures for the tests that import a Cloud image
+//! (`crates/machine-manager-protocol/src/image.rs`): a release directory
+//! with its archive and manifest. The crate's unit tests use them, and so
+//! do the manager's process tests (`tests/manager`) through the `testing`
+//! feature.
 
 use std::{io::Write, path::Path};
 

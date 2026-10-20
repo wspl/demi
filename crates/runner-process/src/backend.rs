@@ -1,8 +1,9 @@
-//! How the runner reaches its backend (`crates/runner-protocol/src/wire/mod.rs`): over the network at the backend's URL, or, for a Cloud, through
-//! the backend's runner socket that the machine manager mounts into the
-//! sandbox (`managed-hosts.md` § Backend socket). Through the socket the URL
-//! still names the backend's origin, which requests carry as their host, but
-//! no TLS crosses the socket.
+//! How the runner reaches its backend (`crates/runner-protocol/src/wire/mod.rs`):
+//! over the network at the backend's URL, or, for a Cloud, through the backend's
+//! runner socket that the machine manager mounts into the sandbox
+//! (`crates/backend-http/src/lib.rs`). Through the socket the URL still names the
+//! backend's origin, which requests carry as their host, but no TLS crosses the
+//! socket.
 
 use std::{io, path::PathBuf, str::FromStr};
 

@@ -1,7 +1,7 @@
-// The Git branch the backend is built from, which picks the media catalog
-// it downloads (`package-versioning.md` § Rust executables): the release
-// workflow's `GITHUB_REF_NAME`, else the checkout's branch, else none, for a
-// checkout on no branch or outside Git.
+// The Git branch the backend is built from, which picks the media catalog it
+// downloads (`crates/xtask/src/native/package.rs`): the release workflow's
+// `GITHUB_REF_NAME`, else the checkout's branch, else none, for a checkout
+// on no branch or outside Git.
 use std::process::Command;
 
 fn main() {

@@ -1,6 +1,5 @@
-//! The tree store over a conversation's database (`storage.md`
-//! § Conversation state and transactions): a node's record is
-//! its `nodes` row, and its checkpoint is that row's state with the node's
+//! The tree store over a conversation's database: a node's record is its
+//! `nodes` row, and its checkpoint is that row's state with the node's
 //! `blocks` rows. Creating, saving, closing, reopening and deleting a node
 //! are each one transaction on the conversation's writer connection, where
 //! rows are also serialized and decoded. Every row read is decoded and
@@ -8,12 +7,18 @@
 //!
 //! Blocks hold their media by reference, and a checkpoint that holds media
 //! bytes is refused; each node's session reaches the conversation owner's
-//! blob namespace through its store (`storage.md` § Attachment and
-//! transcript media).
+//! blob namespace through its store (`crates/backend-blobs/src/blobs.rs`).
 //!
 //! The same readings serve what the web app reads without a live session: a
 //! conversation's summary facts and its history, on a read-only connection,
 //! which keep the media references.
+//!
+//! A block's row changes only while the block is produced; once settled it
+//! is never rewritten or deleted. An edit, Regenerate, a retry or an unwind
+//! adds rows on a new branch and moves the node's current leaf, so `blocks`
+//! is a tree of rows, each naming the row it follows. The node's current
+//! path (`path`) is derived from them and stored beside them for page reads:
+//! with the search index, one of the two stored copies of derived data.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{ControlFlow, Range};
@@ -50,9 +55,9 @@ use super::{conversation_attachments, running, sequences};
 /// What a tree store tells after each commit that writes a node's
 /// checkpoint, closes, reopens or deletes a node, with that node: a
 /// conversation's summary reads its root's checkpoint. A commit that writes
-/// the root's checkpoint also tells what it changed for the search index
-/// (`storage.md` § Search index), extracted on the database's thread, where
-/// the decoded blocks stay; the others tell none.
+/// the root's checkpoint also tells what it changed for the search index,
+/// extracted on the database's thread, where the decoded blocks stay; the
+/// others tell none.
 pub type Saved = Rc<dyn Fn(&NodeId, Option<TranscriptChange>)>;
 
 /// One conversation's agent tree in its database, with its owner's blobs.
@@ -1507,10 +1512,10 @@ fn integer(value: u64) -> i64 {
     i64::try_from(value).expect("a count fits the column")
 }
 
-/// What a conversation's summary is built from (`storage.md` § Conversation
-/// state and transactions): the root's phase and output revision, the kind
-/// of its latest terminal block and its latest ended turn, read without
-/// loading the transcript, and the number of its latest attachment.
+/// What a conversation's summary is built from: the root's phase and output
+/// revision, the kind of its latest terminal block and its latest ended
+/// turn, read without loading the transcript, and the number of its latest
+/// attachment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryFacts {
     pub phase: SessionPhase,
@@ -1750,12 +1755,11 @@ fn ended_turn(
     })
 }
 
-/// Which saved state of the root's transcript a reader saw (`storage.md`
-/// § Search index): its output revision and its block count. Every save
-/// that changes the transcript changes one of them: a save of output, or one
-/// that removes rows, advances the revision, and a save of input alone adds
-/// blocks. The transcript's own version, its epoch and revision, lives only in
-/// the running session.
+/// Which saved state of the root's transcript a reader saw: its output
+/// revision and its block count. Every save that changes the transcript
+/// changes one of them: a save of output, or one that removes rows, advances
+/// the revision, and a save of input alone adds blocks. The transcript's own
+/// version, its epoch and revision, lives only in the running session.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SavedVersion {
     pub revision: u64,

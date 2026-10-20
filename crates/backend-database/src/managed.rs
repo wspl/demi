@@ -1,7 +1,7 @@
-//! The records of each user's Cloud (`storage.md` § Control records,
-//! `managed-hosts.md` § System reset): its reset operations, the token each
-//! boot mints, the announcement of a reset to the user's conversations, and
-//! which of the user's conversations use the Cloud.
+//! The records of each user's Cloud (`crates/backend-cloud/src/reset.rs`):
+//! its reset operations, the token each boot mints, the announcement of a
+//! reset to the user's conversations, and which of the user's conversations
+//! use the Cloud.
 
 use demi_machine_manager_protocol::BaseVersion;
 use demi_shared_types::ModelSelection;

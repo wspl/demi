@@ -210,8 +210,8 @@ pub trait AgentTreeStore {
     fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>>;
 
     /// What the conversation holds of its command `command`, which ended
-    /// (`storage.md` § Command outputs): how it ended, and its output; none
-    /// for a command it does not have.
+    /// (`crates/backend-database/src/command_outputs.rs`): how it ended,
+    /// and its output; none for a command it does not have.
     fn command_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -225,16 +225,18 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>>;
 
     /// The commands `node` ran that the conversation records running
-    /// (`storage.md` § Command outputs), which the node takes up again when
-    /// it is restored (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// (`crates/backend-database/src/command_outputs.rs`), which the node
+    /// takes up again when it is restored
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
     fn running_commands<'a>(
         &'a self,
         node: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>>;
 
     /// Records that `node` has looked to `seen` in the output of the
-    /// conversation's command `command`, which runs (`storage.md` § Command
-    /// outputs); nothing for a command that does not run.
+    /// conversation's command `command`, which runs
+    /// (`crates/backend-database/src/command_outputs.rs`); nothing for a
+    /// command that does not run.
     fn record_place<'a>(
         &'a self,
         command: &'a CommandId,

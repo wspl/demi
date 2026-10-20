@@ -1,5 +1,5 @@
 //! Handing the account to a phone by a code, and the account's signed-in
-//! browsers, at the edge (`backend.md` § Authentication and ownership): a code
+//! browsers, at the edge (`crates/backend-accounts/src/sessions.rs`): a code
 //! needs a session verified in the last five minutes, opens a page of the
 //! product once within ten minutes, in the phone's own session of the account
 //! when it has one and else in a session of its own, which the laptop's page
@@ -296,9 +296,9 @@ async fn signing_another_browser_out_closes_its_pages() {
 }
 
 /// A conversation socket closes with its session as it expires
-/// (`backend.md` § Authentication and ownership): at the expiry it holds
-/// from its open, unless a request renewed the session meanwhile, by the
-/// shard's timer on the paused clock.
+/// (`crates/backend-http/src/gate.rs`): at the expiry it holds from its
+/// open, unless a request renewed the session meanwhile, by the shard's
+/// timer on the paused clock.
 #[tokio::test(flavor = "local")]
 async fn a_conversation_socket_closes_as_its_session_expires() {
     let mut harness = Harness::new();

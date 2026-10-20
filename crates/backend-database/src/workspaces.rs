@@ -1,9 +1,8 @@
-//! Workspace records (`storage.md` § Control records): a named directory on
-//! one of the user's devices, which conversations can target. A workspace is
-//! a pointer: it owns no files, and the user has one per device and
-//! directory. A new workspace joins the user's others at the end of their
-//! order. It keeps the model settings and the workflow
-//! the project's next conversation starts with.
+//! Workspace records: a named directory on one of the user's devices, which
+//! conversations can target. A workspace is a pointer: it owns no files, and
+//! the user has one per device and directory. A new workspace joins the
+//! user's others at the end of their order. It keeps the model settings and
+//! the workflow the project's next conversation starts with.
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;

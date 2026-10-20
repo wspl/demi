@@ -149,7 +149,7 @@ pub type CliStarter = Arc<dyn Fn(&CliSite) -> CliStart + Send + Sync>;
 /// A hold of the placement's machine for one piece of work in flight on
 /// it: a run, a sign-in or a usage probe, for its whole life. The machine
 /// does not stop while one is held, and taking one wakes it
-/// (`managed-hosts.md` § The Claude Code machine). Dropping it lets go.
+/// (`crates/backend-cloud/src/lib.rs`). Dropping it lets go.
 pub struct WorkLease(#[allow(dead_code, reason = "held for its drop")] Box<dyn Any>);
 
 impl WorkLease {

@@ -1,7 +1,7 @@
-//! Sealed credentials (`storage.md` § Passwords and credentials at rest): a
-//! typed JSON document encrypted with AES-256-GCM under a key derived from
-//! the instance secret, bound to the row it belongs to, and stored as one
-//! BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag. The
+//! Sealed credentials (`crates/backend/src/config/secret.rs`): a typed JSON
+//! document encrypted with AES-256-GCM under a key derived from the
+//! instance secret, bound to the row it belongs to, and stored as one BLOB
+//! of a random 12-byte nonce, the ciphertext and the 16-byte tag. The
 //! plugins' secrets are sealed here too (`plugins.md` § Secrets), through
 //! the product's side of the plugin host's port, and so are the values of
 //! the users' credentials.

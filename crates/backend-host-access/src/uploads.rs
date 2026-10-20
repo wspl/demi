@@ -1,13 +1,13 @@
-//! The uploads a frame's content names (`backend.md` § Media by reference):
-//! an upload of the conversation's owner takes the conversation's next
-//! attachment number, `a7`, from the sequence `demi attachment upload` takes
-//! its numbers from, and becomes its native media block, when it has one,
-//! then its attachment record. Nothing is written to a Host: a command that
-//! needs the file fetches it with `demi attachment download`. The medium
-//! references the upload's own blob, or the blob of the image fitted from
-//! it, which is stored here, and its bytes go to the session with it. An
-//! upload that is gone, another user's, or whose bytes are missing becomes
-//! the text that says it is not available.
+//! The uploads a frame's content names: an upload of the conversation's owner
+//! takes the conversation's next attachment number, `a7`, from the sequence
+//! `demi attachment upload` takes its numbers from, and becomes its native
+//! media block, when it has one, then its attachment record. Nothing is written
+//! to a Host, so a slow or broken link to it never holds a send and no stopped
+//! Cloud wakes for one: a command that needs the file fetches it with `demi
+//! attachment download`. The medium references the upload's own blob, or the
+//! blob of the image fitted from it, which is stored here, and its bytes go to
+//! the session with it. An upload that is gone, another user's, or whose bytes
+//! are missing becomes the text that says it is not available.
 
 use demi_agent_store::attachments::{Upload, unavailable, upload_blocks};
 use demi_agent_store::media::HeldMedia;

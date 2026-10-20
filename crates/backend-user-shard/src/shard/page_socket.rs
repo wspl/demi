@@ -1,14 +1,14 @@
-//! A socket to a page: the synchronization channel and the conversation
-//! sockets, which the shard serves (`backend.md` § Page synchronization), and
-//! the file watch, the direct channel's signaling and the user streams, which
-//! the edge serves. Each sends its protocol's heartbeat once it has sent nothing
-//! else for the heartbeat interval, so that the page can tell a quiet socket from
-//! one that died without a close, and each ends with a close frame that a page which
-//! stopped reading cannot hold up (`backend.md` § Startup and shutdown). Each but a
-//! user stream, which carries bytes alone, answers the page's `{ ping: id }` with
-//! `pong` at once, ahead of any message its owner has yet to send, whatever the
-//! owner is doing meanwhile: the page asks so as it returns, to learn whether the
-//! socket is still alive. The ping never reaches the owner.
+//! A socket to a page: the synchronization channel and the conversation sockets,
+//! which the shard serves, and the file watch, the direct channel's signaling and
+//! the user streams, which the edge serves. Each sends its protocol's heartbeat once
+//! it has sent nothing else for the heartbeat interval, so that the page can tell a
+//! quiet socket from one that died without a close, and each ends with a close frame
+//! that a page which stopped reading cannot hold up
+//! (`crates/backend/src/backend.rs`). Each but a user stream, which carries bytes
+//! alone, answers the page's `{ ping: id }` with `pong` at once, ahead of any
+//! message its owner has yet to send, whatever the owner is doing meanwhile: the
+//! page asks so as it returns, to learn whether the socket is still alive. The ping
+//! never reaches the owner.
 //!
 //! So that a pong never waits for the owner, one writer task per socket
 //! sends everything the socket sends: the owner's messages, one at a time

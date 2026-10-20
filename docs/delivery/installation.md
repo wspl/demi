@@ -55,7 +55,7 @@ uninstall.
 ## The bootstrap
 
 `install.sh` is an asset of every release, beside `demi-server-<target>` for
-the two Linux targets ([Release workflow](builds-and-releases.md#release-workflow)).
+the two Linux targets (`.github/workflows/release.yml`).
 It takes one parameter of its own, `--prerelease`, and does only what a
 shell must: it checks that it runs as root on Linux, picks the target from
 the machine's architecture, downloads that `demi-server` and the release's
@@ -97,10 +97,10 @@ and composes the command.
 
 | Parameter | Meaning |
 | --- | --- |
-| `--domain <name>` | Required. The domain the product is reached at; the public URL is `https://<name>`. An IP address is refused ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)). |
+| `--domain <name>` | Required. The domain the product is reached at; the public URL is `https://<name>`. An IP address is refused (`crates/backend/src/config/mod.rs`). |
 | `--mode shared\|isolated` | Required, with no default (`crates/backend-providers/src/vault/entries.rs`). |
 | `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
-| `--storage local\|s3` | Where the object store lives ([The object store](../backend/storage.md#the-object-store)). Default `local`. |
+| `--storage local\|s3` | Where the object store lives (`crates/backend-blobs/src/store.rs`). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`; a machine without the cgroup v2 controllers is refused unless it is `off`. |
@@ -110,13 +110,13 @@ and composes the command.
 | `--no-input` | Never ask, as without a terminal ([A person or an agent](#a-person-or-an-agent)). |
 
 A setting with no parameter keeps its default, as
-[Configuration](../backend/backend.md#configuration) and
+`crates/backend/src/config/mod.rs` and
 [Cloud setup](../cloud/setup.md#configuration) give them; an operator who
 needs another adds it to `/opt/demi/config/demi.env` and restarts the services.
 
 ## HTTPS
 
-Demi does not terminate TLS ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)),
+Demi does not terminate TLS (`crates/backend/src/config/mod.rs`),
 and `setup` sets up none either: the operator provides what serves the
 domain over HTTPS and forwards to the backend, and tells `setup` where
 the backend listens. The two usual arrangements differ only in that address:
@@ -162,10 +162,10 @@ operator does next, and exits with a status other than 0.
 3. **Fetch the release** into `/opt/demi/releases/<version>`, as an upgrade
    does ([Fetch](upgrades.md#fetch)), and the gVisor version its manager
    pins into `/opt/demi/gvisor/<version>/`
-   ([gVisor runtime](builds-and-releases.md#gvisor-runtime)).
+   (`crates/server/src/gvisor.rs`).
 4. **Check that the machine can run Cloud**, with the release's own manager,
    `demi-machine-manager --check-host`: everything its start checks before it
-   serves ([Startup and recovery](../cloud/managed-hosts.md#startup-and-recovery)),
+   serves (`crates/machine-manager/src/main.rs`),
    on the state directory and with the limits the parameters give, without
    starting anything. A machine that fails is refused with the manager's
    reasons, such as a missing cgroup controller, or SELinux
@@ -181,7 +181,7 @@ operator does next, and exits with a status other than 0.
 7. **Check from outside**: an HTTPS request to the public URL answers with a
    valid certificate, and one naming another origin answers 403
    `forbidden_origin`, which shows the proxy passes `Origin`
-   ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
+   (`crates/backend-http/src/gate.rs`).
    A proxy that is not set up yet fails this step with what it must do; the
    run stops with the server running, and the same command checks again once
    the proxy is there.
@@ -189,7 +189,9 @@ operator does next, and exits with a status other than 0.
 ## Distributions
 
 `setup` reads `/etc/os-release` and installs the packages with the
-distribution's own package manager:
+distribution's own package manager. It recognizes a family by `ID` or `ID_LIKE`
+and checks no version: the versions below are the ones it is meant for, and the
+Cloud check of step 4 decides whether an older machine can run Demi.
 
 | Distribution | Package manager | bsdtar's package |
 | --- | --- | --- |
@@ -207,12 +209,3 @@ and a Cloud booted and ran commands on Fedora 44 and Rocky Linux 10.2. Arch's
 package names come from its repositories; `setup` has not run on an Arch
 machine yet. openSUSE is not offered. Each distribution offered needs Linux 5.14 or later, systemd
 and cgroup v2, which their current releases have.
-
-## Acceptance
-
-`install.sh` and `setup` run end to end on a fresh Ubuntu machine, behind a
-reverse proxy the test sets up, and the server serves the setup page at its
-domain with a valid certificate, with the local store and with `s3`.
-A second `setup` of a finished server is refused, one that stopped before
-the proxy was ready continues, and the server then moves with `demi-server
-upgrade` as any other.

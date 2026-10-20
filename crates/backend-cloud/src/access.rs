@@ -46,8 +46,8 @@ impl dyn CloudShard {
     }
 
     /// The Claude Code machine, made on its first use and woken when it is
-    /// stopped, for the shard of the instance's master, whose record it is
-    /// (`managed-hosts.md` § The Claude Code machine).
+    /// stopped, for the shard of the instance's master, whose record it
+    /// is.
     pub async fn claude_code_access(&self) -> Result<MachineAccess, CloudError> {
         let device = self
             .control()

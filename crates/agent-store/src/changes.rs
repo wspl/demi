@@ -617,9 +617,10 @@ pub fn later_in_request(blocks: &[Block], index: usize) -> Vec<usize> {
 /// Gives each block of a stored transcript, in order, its run and each
 /// shell call's view its lists, as the session gave them as it stored each
 /// block, from the edit copies `read` gives: what a conversation stored
-/// before the lists existed becomes what a new one stores (`storage.md`
-/// § Schemas and migrations). A blob `read` fails on stops it with the
-/// failure; one the namespace does not hold leaves its file named alone.
+/// before the lists existed becomes what a new one stores
+/// (`crates/backend-database/src/lib.rs`). A blob `read` fails on stops it
+/// with the failure; one the namespace does not hold leaves its file named
+/// alone.
 pub fn relist<E>(
     blocks: &mut [Block],
     mut read: impl FnMut(&BlobRef) -> Result<Option<Bytes>, E>,

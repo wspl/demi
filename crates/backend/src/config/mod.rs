@@ -1,5 +1,39 @@
-//! The backend's configuration (`backend.md` § Configuration), and the
-//! instance secret with the keys derived from it.
+//! The backend's configuration, and the instance secret with the keys derived
+//! from it.
+//!
+//! The backend and the machine manager of a deployment read one
+//! configuration, the environment file `/opt/demi/config/demi.env` that both
+//! services load, or the same settings as flags. Each parses its settings
+//! into one typed configuration and validates all of it before anything
+//! starts. The prefix `DEMI_MANAGED_` belongs to the machine manager, which
+//! refuses a `DEMI_MANAGED_*` variable it does not read; the backend leaves
+//! those names to it and refuses every other `DEMI_*` variable that none of
+//! its settings reads, such as a misspelt `DEMI_BACKEND_LISTENN`, rather than
+//! leave the setting at its default. The settings the manager shares with the
+//! backend (`DEMI_RELEASE`, `DEMI_BACKEND_PUBLIC_URL`,
+//! `DEMI_MACHINE_MANAGER_SOCKET`, `DEMI_BACKEND_RUNNER_SOCKET`) are the
+//! backend's names, so the backend's check covers them and one file serves
+//! both programs without either ignoring a misspelling. `--check-config`
+//! validates as a start would and exits, which an upgrade runs with the next
+//! release before it stops anything.
+//!
+//! `DEMI_INSTANCE_MODE` and `DEMI_BACKEND_PUBLIC_URL` have no default: whoever
+//! deploys decides them, and nothing chooses for them.
+//!
+//! A server leaves `DEMI_RELEASE` out, so that the backend and the machine
+//! manager run the release of their own executables: the directory above the
+//! one that holds the running executable, as `current_exe` reports it.
+//!
+//! Demi does not terminate TLS: the public URL names a domain, and something
+//! in front of the backend holds the certificate. A domain, not an IP address,
+//! because the web app needs a secure context (browsers give a page
+//! `crypto.randomUUID()` and the clipboard only over HTTPS or on
+//! `localhost`) and neither proxy issues a certificate for a public IP
+//! address; development is the exception, with the page on `localhost`. A
+//! Cloud does not reach the backend at that URL: its runner connects through
+//! the runner socket, and the URL only names the origin its requests carry.
+//! Either proxy must pass each request's `Origin` and `Host` unchanged (see
+//! `backend-http`'s `gate`).
 
 pub(crate) mod secret;
 
@@ -69,7 +103,7 @@ pub struct Config {
     pub check_config: bool,
     /// Development only: the Codex sign-in the master account's first
     /// entry is signed in with, which `xtask dev` writes
-    /// (`backend.md` § One-command development backend)
+    /// (`crates/xtask/src/dev/mod.rs`)
     #[arg(long, hide = true, value_name = "FILE")]
     pub dev_codex_account: Option<PathBuf>,
     /// The server release root [default: the directory above the one that
@@ -185,7 +219,7 @@ pub struct Config {
     pub log: Targets,
 }
 
-/// Where the one object store lives (`storage.md` § The object store).
+/// Where the one object store lives (`crates/backend-blobs/src/store.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum StorageKind {
     Local,
@@ -220,7 +254,7 @@ pub enum ConfigError {
 }
 
 impl Config {
-    /// The server release root (`builds-and-releases.md` § Server release):
+    /// The server release root (`crates/xtask/src/server_release.rs`):
     /// `DEMI_RELEASE`, or the directory above the one that holds this
     /// executable.
     pub fn release(&self) -> Result<PathBuf, ConfigError> {
@@ -344,18 +378,19 @@ fn dev_codex_account(path: &Path, now: demi_shared_types::Timestamp) -> Result<S
 /// Everything `Backend::start` needs: the configured values, and the parts a
 /// test replaces.
 pub struct BackendConfig {
-    /// The data directory (`storage.md` § Ownership and layout).
+    /// The data directory (`crates/backend-database/src/lib.rs`).
     pub data_dir: PathBuf,
-    /// The machine manager's Unix socket (`managed-hosts.md` § Control and
-    /// ownership): every deployment has Cloud.
+    /// The machine manager's Unix socket
+    /// (`crates/machine-manager-protocol/src/lib.rs`): every deployment
+    /// has Cloud.
     pub machines_socket: PathBuf,
     /// The Unix socket the backend serves its Clouds' runners on
-    /// (`managed-hosts.md` § Backend socket); none serves them only on the
+    /// (`crates/backend-http/src/lib.rs`); none serves them only on the
     /// network, as a test's backend does.
     pub runner_socket: Option<PathBuf>,
     /// The management socket an upgrade names the next runner release on
-    /// (`upgrades.md` § Prepare); none, as for a test's backend, takes no
-    /// such request.
+    /// (`crates/server/src/main.rs`); none, as for a test's backend,
+    /// takes no such request.
     pub manage_socket: Option<PathBuf>,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,

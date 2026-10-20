@@ -1,8 +1,37 @@
-//! One boot's OCI runtime configuration (`managed-hosts.md` § Isolation and
-//! joining): the prepared root, UID 1000's process under init, the runtime
-//! mounts, the network namespace and, with the resource limits on, the
-//! cgroup and its limits. The profile is code, not configuration: only the
-//! paths, the slot and the limits vary.
+//! One boot's OCI runtime configuration: the prepared root, UID 1000's process
+//! under init, the runtime mounts, the network namespace and, with the resource
+//! limits on, the cgroup and its limits. The profile is code, not configuration:
+//! only the paths, the slot and the limits vary, and a workload cannot supply
+//! annotations, host paths, runtime flags or network or cgroup identities.
+//!
+//! The isolation boundary is the gVisor sandbox, not a workspace, a Docker
+//! namespace or a hardware VM: each user gets a separate Sentry, filesystem view,
+//! network namespace and, with the limits on, resource group. What stays trusted
+//! is the Linux kernel, the manager, the `runsc` distribution and the image
+//! builder. Operations the product does not support return errors; they never
+//! widen isolation, and the profile changes only with a design and acceptance
+//! update, never as a per-user escape hatch. The product supports ordinary Linux
+//! development and conversation browsers, not arbitrary kernel features or
+//! privileged nested Docker.
+//!
+//! - `noNewPrivileges` is off so that sudo works. The initial process has empty
+//!   effective, permitted, inheritable and ambient sets; setuid programs may
+//!   gain only what the bounding set lists, which excludes host administration,
+//!   module loading, raw devices and network administration. Test sudo and
+//!   Chrome with exactly this set; Chrome runs without its own sandbox on Linux.
+//! - Only the prepared root, this device's home, the runtime mounts and the
+//!   directory of the backend's runner socket reach the Gofer: no checkout, Mac
+//!   home, Docker socket, manager state, arbitrary host path or other user's
+//!   mount. `/proc` and the devices are sandbox views, and the host's sysfs and
+//!   writable cgroups are not mounted. No privileged mode, host networking,
+//!   unconfined runtime seccomp, host PID namespace or runtime socket is exposed,
+//!   and `runsc`'s standard Directfs profile stays.
+//! - The runtime's inputs are pinned in `runtime/release.json`: upstream's
+//!   gVisor release, the same version on amd64 and arm64, and the SHA-512 of each
+//!   architecture's archive. The manager is built with that manifest and refuses
+//!   to start unless the configured `runsc` reports exactly the pinned version.
+//!   A new pin passes the acceptance and the probes of the bugs earlier versions
+//!   had (`runtime/README.md`) and changes no user storage format.
 
 use std::{collections::HashSet, path::Path};
 
@@ -61,8 +90,8 @@ pub struct Boot<'a> {
     /// to the backend (`crates/runner/src/update.rs`).
     pub runner_release: &'a str,
     /// The directory of the backend's runner socket, which the sandbox sees
-    /// where its runner looks for the socket (`managed-hosts.md` § Backend
-    /// socket).
+    /// where its runner looks for the socket
+    /// (`crates/backend-http/src/lib.rs`).
     pub backend_socket: &'a Path,
 }
 
@@ -120,8 +149,8 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
             "LANG=C.UTF-8".into(),
             "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin".into(),
             format!("{RELEASE_ENV}={}", boot.runner_release),
-            // On the system image, not the 256 MiB `/tmp` in memory
-            // (`managed-hosts.md` § Images).
+            // On the system image, not the 256 MiB `/tmp` in
+            // memory.
             format!("TMPDIR={TEMPORARY_DIRECTORY}"),
         ])
         .capabilities(capabilities)

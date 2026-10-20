@@ -1,7 +1,7 @@
-//! The account records of the control store (`storage.md` § Control
-//! records, § Passwords and credentials at rest): an account with its
-//! password hash, the hashes that stand for session and device tokens and
-//! for email-change codes, and the policies and outcomes of sessions and
+//! The account records of the control store
+//! (`crates/backend/src/config/secret.rs`): an account with its password
+//! hash, the hashes that stand for session and device tokens and for
+//! email-change codes, and the policies and outcomes of sessions and
 //! challenges. The accounts service decides the policies; storage keeps the
 //! records they govern.
 
@@ -55,7 +55,7 @@ impl fmt::Debug for PasswordHash {
 
 /// The SHA-256 of a session or device token, or of a handoff code, in
 /// lowercase hexadecimal: what storage keeps instead of the token
-/// (`storage.md` § Passwords and credentials at rest).
+/// (`crates/backend/src/config/secret.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenHash(String);
 

@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 use crate::ModelMediaKind;
 
 /// A blob's name: the SHA-256 of its bytes in lowercase hexadecimal
-/// (`storage.md` § Encodings and digests). A blob belongs to its owner's
-/// namespace, so a name grants no access across users.
+/// (`crates/backend-database/src/columns.rs`). A blob belongs to its
+/// owner's namespace, so a name grants no access across users.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
 #[serde(try_from = "String")]
 pub struct BlobRef(String);

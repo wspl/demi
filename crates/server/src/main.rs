@@ -1,9 +1,44 @@
-//! `demi-server` (`upgrades.md`): the server's program for its own
-//! installation. `upgrade` fetches a release beside the current one and hands
-//! the move to that release's own `demi-server`; `rollback` hands it to the
-//! release the last upgrade replaced; `status` says where the server is;
-//! `runtime` fetches the gVisor version this release pins. A move
-//! interrupted at any step is finished by the next command.
+//! `demi-server`: the server's program for its own installation. `upgrade`
+//! fetches a release beside the current one and hands the move to that release's
+//! own `demi-server`; `rollback` hands it to the release the last upgrade
+//! replaced; `status` says where the server is; `runtime` fetches the gVisor
+//! version this release pins; `setup` installs a first release. A move
+//! interrupted at any step is finished by the next command. It downloads through
+//! the artifact library, changes nothing outside the layout (`layout`), never
+//! edits the configuration, touches no data directory but `snapshots/` and a
+//! restore, and asks systemd to start and stop only Demi's two services.
+//!
+//! A server runs one release at a time, and every part of Demi on it follows
+//! that release. Nothing negotiates versions: the backend, the machine manager,
+//! the web app, the runners and the command programs of a deployment are always
+//! built from one workspace version, so none of the wires between them accepts
+//! another. Only these meet a part of another release, each a contract that a
+//! release never breaks:
+//!
+//! - The release's assets: the installed `demi-server` downloads the next release
+//!   by the asset names and the `SHA256SUMS` file of the release workflow, so
+//!   their names and that file's format never change.
+//! - A runner's update: a paired device's runner of any earlier release must
+//!   understand that the backend serves another one and how to fetch it, so the
+//!   release check before the runner's socket opens, its headers and the body of
+//!   its 409 answer never change and fields are only added.
+//! - Stored data: the databases, the manager's records and the object store's
+//!   keys outlive every release, and a release reads what every earlier one wrote
+//!   through its migrations. Objects are immutable, and a release never rewrites
+//!   one or changes what a key means.
+//! - A pinned Cloud base: the manager boots a Cloud on the base it is pinned to,
+//!   which an earlier release built, so what it needs of a base is the base's
+//!   format.
+//! - The configuration file belongs to the installation: each program refuses a
+//!   setting it does not read, so a renamed or removed setting is reported, never
+//!   silently ignored.
+//!
+//! A server therefore upgrades from any release in the schema history to any
+//! later one directly, since each release migrates from every earlier format. A
+//! migration that moves a stored thing to its new place, such as a Claude Code
+//! sign-in kept in an account's record, or a conversation outside a project in a
+//! directory other than its home, stays until the history starts again with the
+//! first formal release.
 
 mod data;
 mod fetch;
@@ -81,8 +116,8 @@ enum Action {
 }
 
 fn main() -> ExitCode {
-    // A panic leaves its report on standard error (`builds-and-releases.md`
-    // § Build profiles).
+    // A panic leaves its report on standard error
+    // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
     let cli = Cli::parse();
     let layout = Layout::new(cli.root.clone());

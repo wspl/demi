@@ -1,8 +1,7 @@
-//! The users' push subscriptions (`storage.md` § Control records): one per
-//! session, which it serves, with its push service's endpoint, the browser's
-//! keys and the events it chose. A session's end deletes its subscription, and
-//! one whose session expired is not sent to. Each is decoded as it is read, and
-//! encoded only as it is written.
+//! The users' push subscriptions: one per session, which it serves, with its
+//! push service's endpoint, the browser's keys and the events it chose. A
+//! session's end deletes its subscription, and one whose session expired is not
+//! sent to. Each is decoded as it is read, and encoded only as it is written.
 
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::push::{BrowserAuth, BrowserKey, PushEndpoint, PushEvents, PushSubscriptionKeys};

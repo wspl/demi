@@ -84,9 +84,10 @@ pub trait CommandKeeper {
     /// Records that `command` runs as the job `job` on the environment's
     /// Host, before the job starts, so that a backend that starts again
     /// takes it up, its reports name it by its title, and an interrupted
-    /// call's command keeps its interval (`storage.md` § Command outputs);
-    /// a record of it as not yet sent becomes one of it as sent. A failure
-    /// to record it is the keeper's to log: the command runs all the same.
+    /// call's command keeps its interval
+    /// (`crates/backend-database/src/command_outputs.rs`); a record of it
+    /// as not yet sent becomes one of it as sent. A failure to record it
+    /// is the keeper's to log: the command runs all the same.
     fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()>;
 
     /// Records that `command` waits to start as the job `job` until its
@@ -115,8 +116,9 @@ pub trait CommandKeeper {
 
     /// Records that the model has seen `command`'s output as far as `seen`,
     /// in its record as running, so that a backend that starts again shows
-    /// only what it has not seen (`storage.md` § Command outputs). A failure
-    /// to record it is the keeper's to log.
+    /// only what it has not seen
+    /// (`crates/backend-database/src/command_outputs.rs`). A failure to
+    /// record it is the keeper's to log.
     fn looked<'a>(&'a self, command: &'a CommandId, seen: Seen) -> LocalBoxFuture<'a, ()>;
 
     /// Records the command's end, `end`, with its whole output and the

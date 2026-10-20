@@ -1,15 +1,14 @@
-//! The failure facts of a transcript's error blocks (`backend.md` § Failure
-//! facts): each error block with a failure record is read by the provider
-//! its model selection names, and the facts travel beside the blocks, never
-//! stored. The conversation socket's transcript frames and the history
-//! route both read them here. A usage limit of a subscription entry with
-//! several accounts is read against them too
+//! The failure facts of a transcript's error blocks: each error block with a
+//! failure record is read by the provider its model selection names, and the
+//! facts travel beside the blocks, never stored. The conversation socket's
+//! transcript frames and the history route both read them here. A usage limit
+//! of a subscription entry with several accounts is read against them too
 //! (`crates/backend-providers/src/llm/rotation.rs`): under rotation its moment
-//! is the earliest one among the
-//! accounts once every one is used up, and without rotation the dock
-//! offers the account with the most room now. A request to a port its
-//! device had not exposed names the port, which the page offers to expose
-//! or to try again, and one to an offline device names the device.
+//! is the earliest one among the accounts once every one is used up, and
+//! without rotation the dock offers the account with the most room now. A
+//! request to a port its device had not exposed names the port, which the page
+//! offers to expose or to try again, and one to an offline device names the
+//! device.
 
 use std::collections::HashMap;
 use std::sync::Arc;

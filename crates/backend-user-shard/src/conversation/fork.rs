@@ -281,9 +281,9 @@ fn refused(error: ForkError) -> ForkRefusal {
     }
 }
 
-/// Publishes the reserved destinations whose root committed before they
-/// were published (`backend.md` § Startup and shutdown); the others stay
-/// hidden until their attempt is retried. It runs before the backend serves.
+/// Publishes the reserved destinations whose root committed before they were
+/// published (`crates/backend/src/backend.rs`); the others stay hidden until
+/// their attempt is retried. It runs before the backend serves.
 pub async fn recover_forks(
     control: &ControlService,
     conversations: &ConversationStores,

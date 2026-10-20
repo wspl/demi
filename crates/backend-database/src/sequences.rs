@@ -1,9 +1,8 @@
-//! A conversation's sequences (`storage.md` § Conversation state and
-//! transactions): the next number of each sequence the model sees, commands,
-//! agents, browser tabs, simulators and attachments. A number is advanced past
-//! in its own statement before it is given out, so a crash leaves a gap and
-//! never gives a number twice; a Fork's destination goes on from its source's
-//! next numbers.
+//! A conversation's sequences: the next number of each sequence the model
+//! sees, commands, agents, browser tabs, simulators and attachments. A number
+//! is advanced past in its own statement before it is given out, so a crash
+//! leaves a gap and never gives a number twice; a Fork's destination goes on
+//! from its source's next numbers.
 
 use demi_shared_types::Sequence;
 use rusqlite::{Connection, params};

@@ -289,8 +289,7 @@ pub enum ErrorCode {
     /// The Host failed the operation in a way no other code names.
     HostOperationFailed,
     /// The request could act with the user's session and came from a page
-    /// that is not the product's (`backend.md` § Authentication and
-    /// ownership).
+    /// that is not the product's (`crates/backend-http/src/gate.rs`).
     ForbiddenOrigin,
     /// No user stream has that name.
     UnknownStream,

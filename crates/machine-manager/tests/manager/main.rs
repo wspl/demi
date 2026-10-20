@@ -1,10 +1,9 @@
-//! The manager as a process (`managed-hosts.md` § Startup and recovery,
-//! § Resource limits): the built executable, started the way its unit starts
-//! it, in a stand-in execution host. Root runs these with `--ignored`. They
-//! leave the machine as they found it: the host is PID 1 of new PID, mount and
-//! network namespaces with its own `/proc`, `/run` and cgroup root, so the
-//! managers' namespace handle, locks, firewall and cgroups exist only there,
-//! and its end kills everything inside. Its own binary: it starts the
+//! The manager as a process: the built executable, started the way its unit
+//! starts it, in a stand-in execution host. Root runs these with `--ignored`.
+//! They leave the machine as they found it: the host is PID 1 of new PID,
+//! mount and network namespaces with its own `/proc`, `/run` and cgroup root,
+//! so the managers' namespace handle, locks, firewall and cgroups exist only
+//! there, and its end kills everything inside. Its own binary: it starts the
 //! manager as root in namespaces of its own, which the unit tests, run as an
 //! ordinary user, must not share.
 #![cfg(target_os = "linux")]
@@ -74,7 +73,7 @@ impl Cgroups {
 /// `fs/namespace.c` then refuses to bind it into the host's namespace, which
 /// fails the manager's pin at random. Namespaces made on one CPU are numbered
 /// in the order they are made. A real host's namespace is the initial one,
-/// numbered before all others (`managed-hosts.md` § Startup and recovery).
+/// numbered before all others.
 fn namespace_cpu() -> String {
     let allowed = rustix::thread::sched_getaffinity(None).unwrap();
     (0..rustix::thread::CpuSet::MAX_CPU)
