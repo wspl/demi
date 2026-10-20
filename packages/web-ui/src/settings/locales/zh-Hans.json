@@ -272,7 +272,7 @@
       "keywords": "轻量模型,标题,快速模型,haiku,flash,轮次",
       "modelKeywords": "标题模型,haiku,flash,自动",
       "sameProviderKeywords": "隐私,同一供应商",
-      "sendKeywords": "引导,排队,回车",
+      "sendKeywords": "Steer,引导,插话,排队,回车",
       "restartKeywords": "重启,更新,继续",
       "retryKeywords": "用量限制,额度,重置"
     },

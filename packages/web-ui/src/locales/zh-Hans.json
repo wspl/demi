@@ -31,7 +31,7 @@
       "sameProviderDescription": "轻量请求只发送到对话所用的供应商。",
       "messages": "消息",
       "sendWhileRunning": "智能体工作时按 Enter",
-      "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",
+      "sendWhileRunningDescription": "“Steer”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",
       "resumeAfterRestart": "Demi 重新启动后继续",
       "resumeAfterRestartDescription": "轮次因 Demi 重新启动（例如更新）而停止时，在重新启动后继续。",
       "resumeAtRetry": "用量限额重置后继续",
@@ -54,7 +54,7 @@
     }
   },
   "sendWay": {
-    "steer": "引导",
+    "steer": "Steer",
     "queue": "添加到队列"
   },
   "dates": {
