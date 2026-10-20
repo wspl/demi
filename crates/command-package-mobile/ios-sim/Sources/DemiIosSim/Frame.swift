@@ -47,10 +47,14 @@ struct DeviceLooks {
     self.mask = mask.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
   }
 
-  /// The radius of the screen's corners in a screen of `pixels`, as its
-  /// mask draws them; 0 without a mask.
-  func cornerRadius(pixels: CGSize, screenPoints: CGSize) -> Double {
-    mask.flatMap(ScreenMask.init)?.cornerRadius(pixels: pixels, screenPoints: screenPoints) ?? 0
+  /// The screen's top left corner in an upright screen of `pixels`, as its
+  /// mask draws it, shown turned `quarterTurns`; empty, a square corner,
+  /// without a mask. The mask's four corners are alike, and a quarter turn
+  /// lays the corner's upright edge level, which swaps its two distances
+  /// and so the order of its points.
+  func corner(pixels: CGSize, screenPoints: CGSize, quarterTurns: Int) -> [CGPoint] {
+    let upright = mask.flatMap(ScreenMask.init)?.corner(pixels: pixels, screenPoints: screenPoints) ?? []
+    return quarterTurns % 2 == 0 ? upright : upright.reversed().map { CGPoint(x: $0.y, y: $0.x) }
   }
 }
 
@@ -60,8 +64,8 @@ struct DrawnFrame {
   let width: Int
   let height: Int
   let screen: CGRect
-  /// The radius of the screen's corners, in the frame's pixels.
-  let cornerRadius: Double
+  /// The screen's corner, as its top left one, in the frame's pixels.
+  let corner: [CGPoint]
 }
 
 /// Draws the frame of `looks`'s chrome around a screen of `screenPoints`
@@ -111,5 +115,5 @@ func drawFrame(
   let upright = CGSize(width: layout.screen.width * backing, height: layout.screen.height * backing)
   return DrawnFrame(
     png: png as Data, width: image.width, height: image.height, screen: screen,
-    cornerRadius: looks.cornerRadius(pixels: upright, screenPoints: screenPoints))
+    corner: looks.corner(pixels: upright, screenPoints: screenPoints, quarterTurns: quarterTurns))
 }

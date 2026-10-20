@@ -9,7 +9,9 @@ import { afterEach, expect, test } from 'bun:test'
 // DeviceView over a live session whose stream the test plays, on a page of
 // happy-dom; happy-dom lays nothing out, so the area's size is what the
 // test's ResizeObserver reports, as a browser's layout would. A drag waits
-// for the settle the view itself waits for, about 150 ms.
+// for the settle the view itself waits for, about 150 ms. Under a drawn
+// frame's image, the picture reaches past the screen's shape, the shape its
+// hole is cut in, under the bezel, so only the hole's edge shows.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 
@@ -44,11 +46,12 @@ window.ResizeObserver = class {
 
 await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, nextTick } = await import('vue')
-const { LIVE_CONTROL_FRAME, SQUARE_CORNERS } = await import('@demicodes/plugin-sdk')
+const { LIVE_CONTROL_FRAME, SQUARE_CORNERS, scaledCorners, screenPath } = await import('@demicodes/plugin-sdk')
 const { default: DeviceView } = await import('@demicodes/plugin-mobile/live/DeviceView.vue')
 const { MobileSession } = await import('@demicodes/plugin-mobile/live/session')
 type LiveModuleMessage = import('@demicodes/plugin-mobile/generated/plugin').LiveModuleMessage
 type LiveViewerMessage = import('@demicodes/plugin-mobile/generated/plugin').LiveViewerMessage
+type LiveFrame = import('@demicodes/plugin-mobile/generated/plugin').LiveFrame
 type UserStreamHandlers = import('@demicodes/plugin-sdk').UserStreamHandlers
 
 let unmount: (() => void) | null = null
@@ -68,8 +71,8 @@ function framed(message: LiveModuleMessage): Uint8Array {
   return bytes
 }
 
-/** The view of device m1, a screen of 400 × 800 points, in an area the test sizes; what it sends goes to `sent`. */
-async function viewing() {
+/** The view of device m1, a screen of 400 × 800 points in `frame`, in an area the test sizes; what it sends goes to `sent`. */
+async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] }) {
   const sent: LiveViewerMessage[] = []
   let heard: (() => void) | null = null
   const streams: UserStreamHandlers[] = []
@@ -115,7 +118,7 @@ async function viewing() {
     orientation: 'portrait',
     pointsWidth: 400,
     pointsHeight: 800,
-    frame: { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] },
+    frame,
   }))
   await nextTick()
   const canvas = root.querySelector('canvas')!
@@ -186,4 +189,72 @@ test('the scroll wheel turns the device’s screen by as far in its points', asy
   expect(turn.defaultPrevented).toBe(true)
   const turns = view.sent.flatMap((message) => message.type === 'input' && message.input.type === 'wheel' ? [message.input] : [])
   expect(turns).toEqual([{ type: 'wheel', x: 100 * scale, y: 200 * scaleY, deltaX: 0, deltaY: 120 * scale, modifiers: 0 }])
+})
+
+/** The points a path passes through, arcs' ends included. */
+function pathPoints(path: string): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = []
+  for (const [, command, numbers] of path.matchAll(/([MLA])([^MLAZ]*)/g)) {
+    const values = numbers!.trim().split(/\s+/).map(Number)
+    const [x, y] = command === 'A' ? values.slice(5) : values
+    points.push({ x: x!, y: y! })
+  }
+  return points
+}
+
+/** The smallest distance from `point` to the closed outline through `outline`. */
+function distance(point: { x: number; y: number }, outline: { x: number; y: number }[]): number {
+  let nearest = Infinity
+  for (let index = 0; index < outline.length; index += 1) {
+    const [from, to] = [outline[index]!, outline[(index + 1) % outline.length]!]
+    const length = (to.x - from.x) ** 2 + (to.y - from.y) ** 2
+    const along = length === 0 ? 0 : Math.max(0, Math.min(1, ((point.x - from.x) * (to.x - from.x) + (point.y - from.y) * (to.y - from.y)) / length))
+    nearest = Math.min(nearest, Math.hypot(from.x + along * (to.x - from.x) - point.x, from.y + along * (to.y - from.y) - point.y))
+  }
+  return nearest
+}
+
+/** Whether `point` lies inside the closed outline through `outline`. */
+function inside(point: { x: number; y: number }, outline: { x: number; y: number }[]): boolean {
+  let crossings = 0
+  for (let index = 0; index < outline.length; index += 1) {
+    const [from, to] = [outline[index]!, outline[(index + 1) % outline.length]!]
+    if ((from.y > point.y) !== (to.y > point.y) && point.x < from.x + ((point.y - from.y) / (to.y - from.y)) * (to.x - from.x)) {
+      crossings += 1
+    }
+  }
+  return crossings % 2 === 1
+}
+
+test('under a drawn frame’s image the picture reaches past the hole’s edge, under the bezel', async () => {
+  // A corner flatter than a circle, as a framebuffer mask's, reaching 60
+  // of the frame's pixels along each edge.
+  const curve = Array.from({ length: 25 }, (_, index) => {
+    const angle = (Math.PI / 2) * (index / 24)
+    return { x: 60 - 60 * Math.cos(angle) ** 0.5, y: 60 - 60 * Math.sin(angle) ** 0.5 }
+  })
+  const corner = { kind: 'curve' as const, points: curve }
+  const corners = { topLeft: corner, topRight: corner, bottomRight: corner, bottomLeft: corner }
+  const view = await viewing({
+    kind: 'image',
+    png: 'UE5H',
+    width: 440,
+    height: 860,
+    screen: { x: 20, y: 30, width: 400, height: 800 },
+    corners,
+  })
+  const width = parseFloat(view.canvas.style.width)
+  const height = parseFloat(view.canvas.style.height)
+  // The hole, in the canvas's own pixels, as the frame's image cuts it.
+  const hole = pathPoints(screenPath({ left: 0, top: 0, width, height }, scaledCorners(corners, width / 400)))
+  const clip = pathPoints(view.canvas.style.clipPath.match(/path\('(.*)'\)/)![1]!)
+  const pixel = 1 / window.devicePixelRatio
+  // Past the hole's edge by more than its antialiasing, and not far into the bezel.
+  for (const point of hole) {
+    expect(distance(point, clip)).toBeGreaterThanOrEqual(pixel)
+  }
+  for (const point of clip) {
+    expect(inside(point, hole)).toBe(false)
+    expect(distance(point, hole)).toBeLessThanOrEqual(3 * pixel)
+  }
 })

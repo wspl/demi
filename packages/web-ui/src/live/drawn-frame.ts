@@ -164,9 +164,9 @@ export function screenPath(box: FrameBox, corners: ScreenCorners, offset = 0): s
   return `${commands.join(' ')} Z`
 }
 
-/** The CSS `clip-path` that cuts a `width` × `height` screen to its `corners`. */
-export function screenClip(width: number, height: number, corners: ScreenCorners): string {
-  return `path('${screenPath({ left: 0, top: 0, width, height }, corners)}')`
+/** The CSS `clip-path` that cuts a `width` × `height` screen to its `corners`, grown by `offset` all round. */
+export function screenClip(width: number, height: number, corners: ScreenCorners, offset = 0): string {
+  return `path('${screenPath({ left: 0, top: 0, width, height }, corners, offset)}')`
 }
 
 /** The silhouette around `screen`, concentric with its `corners`, with `buttons`. */

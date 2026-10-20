@@ -21,7 +21,7 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
-    live::LiveCorners,
+    live::{LiveCorner, LiveCornerPoint, LiveCorners},
     mobile::{Appearance, Orientation, MobilePlatform, PowerState, SCREENSHOT_LONG_SIDE},
 };
 use demi_live_view::stream::CaptureEvent;
@@ -468,6 +468,22 @@ impl IosDevice {
     }
 }
 
+/// The screen's corners from the corner the helper traces on the
+/// framebuffer mask, the shape the frame's hole is cut with: the mask's four
+/// corners are alike, and a mask that leaves its corner square has none.
+fn mask_corners(corner: Vec<LiveCornerPoint>) -> LiveCorners {
+    if corner.len() < 2 {
+        return LiveCorners::round(0.0);
+    }
+    let corner = LiveCorner::Curve { points: corner };
+    LiveCorners {
+        top_left: corner.clone(),
+        top_right: corner.clone(),
+        bottom_right: corner.clone(),
+        bottom_left: corner,
+    }
+}
+
 fn orientation_name(orientation: Orientation) -> &'static str {
     match orientation {
         Orientation::Portrait => "portrait",
@@ -654,8 +670,8 @@ impl Device for IosDevice {
             #[derive(Deserialize)]
             #[serde(rename_all_fields = "camelCase", untagged)]
             enum Answered {
-                Drawn { width: u32, height: u32, screen: Placed, corner_radius: f64 },
-                Undrawn { corner_radius: f64 },
+                Drawn { width: u32, height: u32, screen: Placed, corner: Vec<LiveCornerPoint> },
+                Undrawn { corner: Vec<LiveCornerPoint> },
             }
             #[derive(Deserialize)]
             struct Placed {
@@ -668,9 +684,7 @@ impl Device for IosDevice {
             let answered: Answered = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the device's frame does not read: {error}")))?;
             Ok(Some(match answered {
-                // The helper reads the framebuffer mask's radius; its four
-                // corners are alike.
-                Answered::Drawn { width, height, screen, corner_radius } => Frame::Image {
+                Answered::Drawn { width, height, screen, corner } => Frame::Image {
                     png: answer
                         .blob
                         .ok_or_else(|| DriverError::Failed("the iOS helper sent no frame".into()))?,
@@ -682,10 +696,10 @@ impl Device for IosDevice {
                         width: screen.width,
                         height: screen.height,
                     },
-                    corners: LiveCorners::round(corner_radius),
+                    corners: mask_corners(corner),
                 },
-                Answered::Undrawn { corner_radius } => Frame::Drawn {
-                    corners: LiveCorners::round(corner_radius),
+                Answered::Undrawn { corner } => Frame::Drawn {
+                    corners: mask_corners(corner),
                 },
             }))
         })

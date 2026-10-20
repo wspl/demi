@@ -120,21 +120,49 @@ private func expect(_ rect: CGRect, _ x: Double, _ y: Double, _ width: Double, _
   expect(layout.pieces[5].rect.applying(layout.transform), 743 - 4.5 - 48, 5, 48, 48, "the turned top left corner")
 }
 
-@Test func theScreensCornersAreTheMasksRadius() throws {
-  // A mask whose corners are circles of 30 points, drawn into a screen of
-  // the same size: the picture is rounded to 30, which meets the frame's
-  // cut-out. Read where the mask's top row turns opaque, it would be about
-  // 24.5, and the picture's corners would leave a gap. Milliseconds.
+@Test func theScreensCornerFollowsTheMasksEdge() throws {
+  // A mask whose corners are flatter than a circle, as Apple's are: each
+  // reaches 60 points along its edges on a superellipse of power 4, which
+  // lies about 4 points further out on the diagonal than the circle of the
+  // same open area. Drawn into a screen of the same size, every point of
+  // the corner lies on the mask's edge within a third of a pixel, so the
+  // picture's clip and the frame's hole, cut with the mask, are one shape.
+  // Milliseconds.
+  let reach = 60.0
+  let power = 4.0
+  let box = CGRect(x: 0, y: 0, width: 300, height: 600)
+  // The edge's distance from the corner's centre at `angle` from level.
+  let edge = { (angle: Double) in reach / pow(pow(abs(cos(angle)), power) + pow(abs(sin(angle)), power), 1 / power) }
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("mask-\(UUID().uuidString).pdf")
   defer { try? FileManager.default.removeItem(at: url) }
-  var box = CGRect(x: 0, y: 0, width: 300, height: 600)
-  let pdf = try #require(CGContext(url as CFURL, mediaBox: &box, nil))
+  var media = box
+  let pdf = try #require(CGContext(url as CFURL, mediaBox: &media, nil))
   pdf.beginPDFPage(nil)
-  pdf.addPath(CGPath(roundedRect: box, cornerWidth: 30, cornerHeight: 30, transform: nil))
+  // Each corner's arc about its centre, a quarter turn of it per corner.
+  let centres = [
+    CGPoint(x: box.maxX - reach, y: box.minY + reach), CGPoint(x: box.maxX - reach, y: box.maxY - reach),
+    CGPoint(x: box.minX + reach, y: box.maxY - reach), CGPoint(x: box.minX + reach, y: box.minY + reach),
+  ]
+  for (index, centre) in centres.enumerated() {
+    for step in 0...400 {
+      let angle = (Double(index) - 1 + Double(step) / 400) * .pi / 2
+      let point = CGPoint(x: centre.x + edge(angle) * cos(angle), y: centre.y + edge(angle) * sin(angle))
+      if index == 0 && step == 0 { pdf.move(to: point) } else { pdf.addLine(to: point) }
+    }
+  }
+  pdf.closePath()
   pdf.fillPath()
   pdf.endPDFPage()
   pdf.closePDF()
   let mask = try #require(ScreenMask(url))
-  let radius = mask.cornerRadius(pixels: CGSize(width: 300, height: 600), screenPoints: CGSize(width: 300, height: 600))
-  #expect(abs(radius - 30) < 0.5, "the radius reads \(radius)")
+  let corner = mask.corner(pixels: box.size, screenPoints: box.size)
+  try #require(corner.count >= 8)
+  #expect(corner.first!.x == 0 && corner.first!.y > 45, "the corner leaves the upright edge at \(corner.first!)")
+  #expect(corner.last!.y == 0 && corner.last!.x > 45, "the corner meets the level edge at \(corner.last!)")
+  for point in corner {
+    let across = reach - point.x
+    let down = reach - point.y
+    let off = hypot(across, down) - edge(atan2(down, across))
+    #expect(abs(off) < 0.34, "\(point) lies \(off) pixels off the mask's edge")
+  }
 }
