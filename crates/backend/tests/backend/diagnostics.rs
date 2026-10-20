@@ -63,24 +63,29 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(
-            "/api/credentials",
+            "/api/automations",
             Some(&master),
             json!({
-                "name": "Deploy key", "keep": "always",
-                "fields": [{ "name": "key", "label": "Key", "kind": "secret", "value": "s3cret-value" }]
+                "name": "Pull requests",
+                "trigger": { "kind": "url" },
+                "timeZone": "UTC",
+                "target": { "kind": "new", "target": { "kind": "cloud" } },
+                "prompt": "Review what the pull request changed.",
+                "paused": true
             }),
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    let credential = created.json::<serde_json::Value>()["credential"]["id"]
+    let automation = created.json::<serde_json::Value>()["automation"]["id"]
         .as_str()
         .unwrap()
         .to_owned();
-    // The shard logs that a page read the values.
+    // The shard logs that a page showed the automation's secret.
     let revealed = backend
-        .get(&format!("/api/credentials/{credential}/values"), Some(&master))
+        .get(&format!("/api/automations/{automation}/secret"), Some(&master))
         .await;
     assert_eq!(revealed.status, StatusCode::OK);
+    let secret = revealed.json::<serde_json::Value>()["secret"].as_str().unwrap().to_owned();
     let id = request_id(&revealed);
 
     let revealed_line = || async {
@@ -88,7 +93,7 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
             .await
             .lines
             .into_iter()
-            .find(|line| line.message == "a page revealed a credential's values")
+            .find(|line| line.message == "a page revealed an automation's secret")
     };
     eventually("the shard's line is in the log", || async {
         revealed_line().await.is_some()
@@ -100,9 +105,9 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
     assert_eq!(line.fields["request_id"], json!(id));
     assert_eq!(line.fields["user_id"], json!(master.user.id.as_str()));
     assert_eq!(line.fields["method"], json!("GET"));
-    // The line names the credential, never its value.
+    // The line names the automation, never its secret.
     let text = serde_json::to_string(&line).unwrap();
-    assert!(!text.contains("s3cret-value"), "{text}");
+    assert!(!text.contains(&secret), "{text}");
 
     // Every request logs one line as it is answered, a refused one
     // included, so any ID a user copies finds at least its request.

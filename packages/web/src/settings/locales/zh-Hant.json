@@ -3,9 +3,6 @@
     "invalidCredentials": "這不是你目前的密碼。",
     "invalidCode": "該驗證碼錯誤或已過期。請使用最新的驗證碼。"
   },
-  "credentials": {
-    "showFailed": "無法顯示該值"
-  },
   "devices": {
     "revokeFailed": "無法撤銷裝置",
     "renameFailed": "無法重新命名裝置",

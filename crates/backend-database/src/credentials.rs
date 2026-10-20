@@ -117,17 +117,6 @@ pub struct NewCredential {
     pub keep_until: Option<Timestamp>,
 }
 
-/// A change of a credential: what it names changes.
-#[derive(Debug, Clone, Default)]
-pub struct CredentialChange {
-    pub name: Option<String>,
-    pub note: Option<String>,
-    /// The whole list; a field without a value keeps the one it has.
-    pub fields: Option<Vec<(CredentialField, Option<String>)>>,
-    /// The new removal time, none for always.
-    pub keep_until: Option<Option<Timestamp>>,
-}
-
 /// Why a credential was not saved or changed, in words for the user, who
 /// reads them as they are.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -137,9 +126,6 @@ pub enum CredentialRefusal {
     /// The name of the other credential, as it is saved.
     #[error("Another credential is named \u{201c}{0}\u{201d}. Choose another name.")]
     NameTaken(String),
-    /// A new field, by its label, sent without a value.
-    #[error("Enter a value for the new field \u{201c}{0}\u{201d}.")]
-    MissingValue(String),
 }
 
 /// What the expiry of a user's credentials removed, and what is next.
@@ -267,76 +253,6 @@ impl ControlService {
             transaction.commit()?;
             Ok(Ok(Saved {
                 credential: stored.dto(&new.values),
-                conversations: conversations.into_iter().collect(),
-            }))
-        })
-        .await
-    }
-
-    /// Changes the user's credential `id`, sealing its values again under
-    /// its name, in one transaction, and answers it as Settings lists it.
-    pub async fn change_user_credential(
-        &self,
-        user: UserId,
-        id: UserCredentialId,
-        change: CredentialChange,
-        seal: Arc<dyn CredentialSeal>,
-    ) -> Result<Result<Saved, CredentialRefusal>, StorageError> {
-        self.call(move |connection, now| {
-            let transaction = connection.transaction()?;
-            let Some(stored) = by_id(&transaction, &user, &id)? else {
-                return Ok(Err(CredentialRefusal::NotFound));
-            };
-            let name = change.name.unwrap_or_else(|| stored.name.clone());
-            // A change of the name's case alone keeps it this credential's.
-            if let Some(other) = named(&transaction, &user, &name)?.filter(|other| other.id != id) {
-                return Ok(Err(CredentialRefusal::NameTaken(other.name)));
-            }
-            let old = values_of(&transaction, &stored, &*seal)?;
-            let (fields, values) = match change.fields {
-                None => (stored.fields.clone(), old),
-                Some(fields) => {
-                    let mut values = BTreeMap::new();
-                    let mut kept = Vec::with_capacity(fields.len());
-                    for (field, value) in fields {
-                        let value = match value.or_else(|| old.get(&field.name).cloned()) {
-                            Some(value) => value,
-                            None => {
-                                return Ok(Err(CredentialRefusal::MissingValue(
-                                    field.label.into_string(),
-                                )));
-                            }
-                        };
-                        values.insert(field.name.clone(), value);
-                        kept.push(field);
-                    }
-                    (kept, values)
-                }
-            };
-            let note = change.note.unwrap_or_else(|| stored.note.clone());
-            let keep_until = change.keep_until.unwrap_or(stored.keep_until);
-            let sealed = seal.seal(&user, &name, to_json(&values).as_bytes());
-            transaction.execute(
-                "UPDATE user_credentials
-                 SET name = ?3, note = ?4, fields = ?5, sealed = ?6, keep_until = ?7, updated_at = ?8
-                 WHERE id = ?1 AND user_id = ?2",
-                params![
-                    id.as_str(),
-                    user.as_str(),
-                    name,
-                    note,
-                    to_json(&fields),
-                    sealed,
-                    keep_until.map(Timestamp::as_millisecond),
-                    now.as_millisecond()
-                ],
-            )?;
-            let changed = by_id(&transaction, &user, &id)?.expect("the credential was just written");
-            // A rename changes the requests of the old name and of the new one.
-            let conversations = waiting_for(&transaction, &user, &[&stored.name, &changed.name])?;
-            transaction.commit()?;
-            Ok(Ok(Saved {
-                credential: changed.dto(&values),
                 conversations: conversations.into_iter().collect(),
             }))
         })

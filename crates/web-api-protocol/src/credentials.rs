@@ -124,26 +124,8 @@ pub struct NewField {
     pub value: String,
 }
 
-/// A field as a change sends it: without a value, the field keeps the one
-/// it has.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ChangedField {
-    #[garde(length(chars, min = 1, max = FIELD_NAME_MAX), pattern(r"^[a-z0-9_-]+$"))]
-    pub name: String,
-    #[garde(length(chars, min = 1, max = LABEL_MAX))]
-    #[schemars(with = "Trimmed")]
-    pub label: Trimmed,
-    #[garde(skip)]
-    pub kind: FieldKind,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(inner(length(bytes, max = VALUE_MAX_BYTES)))]
-    pub value: Option<String>,
-}
-
 /// A field as Settings lists it: a visible field with its value, a secret one
-/// without, which only the reveal reads.
+/// without, which only an agent reads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedField {
@@ -207,13 +189,6 @@ pub struct CredentialAnswer {
     pub credential: CredentialDto,
 }
 
-/// `GET /credentials/:id/values`: every field's value by the field's name,
-/// for Settings' reveal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct CredentialValues {
-    pub values: BTreeMap<String, String>,
-}
-
 /// `POST /credentials`: a new credential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -228,30 +203,6 @@ pub struct NewCredential {
     pub fields: Vec<NewField>,
     #[garde(skip)]
     pub keep: Keep,
-}
-
-/// `PATCH /credentials/:id`: the parts it names change, and the others stay.
-/// `fields` is the whole list; a field sent without a value keeps the one it
-/// has.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CredentialPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "CredentialName")]
-    #[garde(dive)]
-    pub name: Option<CredentialName>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(skip)]
-    pub note: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Vec<ChangedField>")]
-    #[garde(dive, custom(changed_fields))]
-    pub fields: Option<Vec<ChangedField>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Keep")]
-    #[garde(skip)]
-    pub keep: Option<Keep>,
 }
 
 /// The answer to a credential request: every field's value by its name.
@@ -279,18 +230,6 @@ pub fn distinct<'a>(names: impl IntoIterator<Item = &'a str>) -> garde::Result {
 }
 
 fn distinct_new(fields: &[NewField], _: &()) -> garde::Result {
-    distinct(fields.iter().map(|field| field.name.as_str()))
-}
-
-/// A patch's whole list: one to ten fields, each named once. Each field's
-/// own rules are checked where the list dives into it.
-fn changed_fields(fields: &Option<Vec<ChangedField>>, _: &()) -> garde::Result {
-    let Some(fields) = fields else {
-        return Ok(());
-    };
-    if fields.is_empty() || fields.len() > FIELDS_MAX {
-        return Err(garde::Error::new(format!("holds one to {FIELDS_MAX} fields")));
-    }
     distinct(fields.iter().map(|field| field.name.as_str()))
 }
 

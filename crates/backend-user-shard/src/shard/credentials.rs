@@ -1,6 +1,6 @@
 //! The user's credentials in their shard.
 //!
-//! - What Settings › Credentials reads and changes.
+//! - What Settings › Credentials lists, creates and deletes.
 //! - The sealing of their values by the product's one owner of sealing.
 //! - The expiry of the ones kept for a while: one timer for the user's nearest
 //!   expiry, which each change of the credentials rearms. A removal past due,
@@ -12,14 +12,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_database::StorageError;
-use demi_backend_database::credentials::{Saved, 
-    CredentialChange, CredentialRefusal, CredentialSeal, NewCredential as NewRecord,
-    keep_until,
+use demi_backend_database::credentials::{
+    CredentialRefusal, CredentialSeal, NewCredential as NewRecord, Saved, keep_until,
 };
 use demi_backend_page_sync::Part;
 use demi_backend_providers::vault::seal::{Row, VaultKey};
 use demi_web_api_protocol::credentials::{
-    CredentialDto, CredentialField, CredentialPatch, CredentialValues, NewCredential,
+    CredentialDto, CredentialField, NewCredential,
 };
 use demi_web_api_protocol::ids::{UserCredentialId, UserId};
 use tokio::sync::Notify;
@@ -102,44 +101,7 @@ impl Shard {
         Ok(self.saved(saved))
     }
 
-    /// `PATCH /credentials/:id`: a rename seals the values again under the
-    /// new name in the same transaction.
-    pub async fn change_credential(
-        &self,
-        id: UserCredentialId,
-        patch: CredentialPatch,
-    ) -> Result<CredentialDto, CredentialError> {
-        let control = &self.services().control;
-        let change = CredentialChange {
-            name: patch.name.map(|name| name.into_string()),
-            note: patch.note,
-            fields: patch.fields.map(|fields| {
-                fields
-                    .into_iter()
-                    .map(|field| {
-                        (
-                            CredentialField {
-                                name: field.name,
-                                label: field.label,
-                                kind: field.kind,
-                            },
-                            field.value,
-                        )
-                    })
-                    .collect()
-            }),
-            keep_until: patch
-                .keep
-                .map(|keep| keep_until(control.now(), keep))
-                .transpose()?,
-        };
-        let saved = control
-            .change_user_credential(self.user().clone(), id, change, self.vault_seal())
-            .await??;
-        Ok(self.saved(saved))
-    }
-
-    /// A credential was saved or changed: every page receives it, and each
+    /// A credential was saved: every page receives it, and each
     /// conversation with a credential request of its name waiting reads its
     /// requests again, whose renewal follows it.
     fn saved(&self, saved: Saved) -> CredentialDto {
@@ -148,22 +110,6 @@ impl Shard {
         }
         self.mark_credentials();
         saved.credential
-    }
-
-    /// `GET /credentials/:id/values`, for Settings' reveal; it is logged by
-    /// the credential's name, never by a value.
-    pub async fn credential_values(
-        &self,
-        id: UserCredentialId,
-    ) -> Result<CredentialValues, CredentialError> {
-        let (stored, values) = self
-            .services()
-            .control
-            .user_credential_values(self.user().clone(), id, self.vault_seal())
-            .await?
-            .ok_or(CredentialRefusal::NotFound)?;
-        tracing::info!(credential = %stored.name, "a page revealed a credential's values");
-        Ok(CredentialValues { values })
     }
 
     /// `DELETE /credentials/:id`, and `demi credentials remove`: the

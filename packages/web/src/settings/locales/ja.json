@@ -3,9 +3,6 @@
     "invalidCredentials": "現在のパスワードではありません。",
     "invalidCode": "コードが間違っているか、期限切れです。最新のコードを使ってください。"
   },
-  "credentials": {
-    "showFailed": "値を表示できませんでした"
-  },
   "devices": {
     "revokeFailed": "デバイスのアクセスを取り消せませんでした",
     "renameFailed": "デバイス名を変更できませんでした",

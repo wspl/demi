@@ -3,9 +3,6 @@
     "invalidCredentials": "현재 비밀번호가 아닙니다.",
     "invalidCode": "코드가 잘못되었거나 만료되었습니다. 최신 코드를 사용하십시오."
   },
-  "credentials": {
-    "showFailed": "값을 표시할 수 없습니다"
-  },
   "devices": {
     "revokeFailed": "기기의 페어링을 해제할 수 없습니다",
     "renameFailed": "기기 이름을 변경할 수 없습니다",

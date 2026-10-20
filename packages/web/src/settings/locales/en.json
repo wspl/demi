@@ -3,9 +3,6 @@
     "invalidCredentials": "That is not your current password.",
     "invalidCode": "That code is wrong or expired. Use the newest one."
   },
-  "credentials": {
-    "showFailed": "Could Not Show the Value"
-  },
   "devices": {
     "revokeFailed": "Could Not Revoke Device",
     "renameFailed": "Could Not Rename Device",

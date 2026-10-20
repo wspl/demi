@@ -25,8 +25,8 @@
 //!
 //! The command line the model wrote, which the transcript keeps, holds the
 //! `$(…)` as written, never its value. Demi writes no value into the transcript,
-//! a log or a frame to the page, but the Settings page's reveal. A value enters
-//! the transcript only when an agent's command prints it.
+//! a log or a frame to the page, but a visible field's in Settings' list. A
+//! value enters the transcript only when an agent's command prints it.
 //!
 //! # Allowance and keeping
 //!

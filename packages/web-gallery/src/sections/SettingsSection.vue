@@ -32,7 +32,7 @@ import GalleryAgent from '../components/GalleryAgent.vue'
 import { createSmallModelState } from '../fixtures/small-model'
 import CredentialDialog from '@demicodes/web-ui/settings/CredentialDialog.vue'
 import type { SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
-import { createCredentialState, demoCredentials } from '../fixtures/credentials'
+import { createCredentialState } from '../fixtures/credentials'
 import SubagentProfileDialog from '@demicodes/web-ui/settings/SubagentProfileDialog.vue'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { createSubagentState, demoSubagentProfiles } from '../fixtures/subagent-profiles'
@@ -243,22 +243,13 @@ function pinnedEditor(id: string | null) {
 /** The Credentials section without a credential: its list says how one comes. */
 const noCredentials = createCredentialState([])
 
-/** A credential pinned in its editor, which closes from its buttons and opens again from Open. */
-function pinnedCredentialEditor(id: string | null) {
-  return { open: ref(true), credential: demoCredentials().find((candidate) => candidate.id === id) ?? null }
-}
-const newCredentialEditor = pinnedCredentialEditor(null)
-const editedCredentialEditor = pinnedCredentialEditor('cred-linear')
+/** New Credential pinned open, which closes from its buttons and opens again from Open. */
+const newCredentialEditor = { open: ref(true) }
 
-async function savedCredential(editor: ReturnType<typeof pinnedCredentialEditor>, draft: SettingsCredentialDraft) {
+async function savedCredential(draft: SettingsCredentialDraft) {
   await slow()
-  editor.open.value = false
+  newCredentialEditor.open.value = false
   productWould(`The product would save the credential ${draft.name}`)
-}
-
-function deletedCredential(editor: ReturnType<typeof pinnedCredentialEditor>) {
-  editor.open.value = false
-  productWould(`The product would delete the credential ${editor.credential?.name}`)
 }
 
 const inheritEditor = pinnedEditor(null)
@@ -521,7 +512,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Credentials"
-        note="The user’s credentials, each with its fields and a tag for their kind, Kept until and Last used. The eye of a secret field first asks Confirm It’s You, as a browser not confirmed in the last five minutes does (any password but “wrong” confirms), then reads its value and shows it, and asks nothing again for five minutes; the value goes when the pointer or the focus leaves the row; the Linear sign-in’s user name is visible, its password hidden. Click a row or Edit to change it; New Credential adds one. Every write waits a beat, and a name another credential has is refused."
+        note="The user’s credentials, each a row of three lines: its name, its note on one line cut with an ellipsis (the GitHub token’s is too long), and its visible fields with Kept until and Last used. A secret field shows nothing: the Linear sign-in shows its user name and nothing of its password. Delete… asks first, then removes the row; New Credential… adds one. A credential is not edited. Every write waits a beat, and a name another credential has is refused."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
           <GalleryCredentials :state="full.credentials" />
@@ -539,33 +530,15 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Credential Editor · New"
-        note="A new credential: one empty hidden field, kept always, so nothing says when it goes. Every input starts and ends at the same edges. A field’s name is made from its label and shown under it. Create Credential stays off until the name, the labels and the values are filled; a problem shows under its input once the input is left. Add Field adds a row, up to ten; a row’s ⋯ menu makes it secret or visible and deletes it, except the last."
+        note="A new credential: one empty secret field, kept always, so nothing says when it goes. Every input starts and ends at the same edges. A field’s name is made from its label and shown under it. Create Credential stays off until the name, the labels and the values are filled; a problem shows under its input once the input is left. Add Field adds a row, up to ten; a row’s ⋯ menu makes it secret or visible and deletes it, except the last."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!newCredentialEditor.open.value" size="md" @click="newCredentialEditor.open.value = true">Open</Button>
           <CredentialDialog
             :is-open="newCredentialEditor.open.value"
             :overlay-store="appOverlayStore"
-            :credential="newCredentialEditor.credential"
             @close="newCredentialEditor.open.value = false"
-            @save="savedCredential(newCredentialEditor, $event)"
-          />
-        </GalleryOverlayWell>
-      </GallerySection>
-
-      <GallerySection
-        title="Credential Editor · Edit"
-        note="The Linear sign-in in its editor, kept for an hour: under its note it says when it is removed, beside Keep Always, which keeps it always once saved. Its user name is visible and its password hidden; its fields keep their names, and a value left empty keeps the saved one."
-      >
-        <GalleryOverlayWell size="tall">
-          <Button v-if="!editedCredentialEditor.open.value" size="md" @click="editedCredentialEditor.open.value = true">Open</Button>
-          <CredentialDialog
-            :is-open="editedCredentialEditor.open.value"
-            :overlay-store="appOverlayStore"
-            :credential="editedCredentialEditor.credential"
-            @close="editedCredentialEditor.open.value = false"
-            @save="savedCredential(editedCredentialEditor, $event)"
-            @delete="deletedCredential(editedCredentialEditor)"
+            @save="savedCredential($event)"
           />
         </GalleryOverlayWell>
       </GallerySection>
