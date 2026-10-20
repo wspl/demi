@@ -49,10 +49,20 @@ export const draftSchema = z.object({
       requestId: z.string().optional(),
       /** The message saved for later it was sent from, which a retry sends again from the list as the same turn. */
       saved: z.string().optional(),
+      /** An edit changed the saved message before it was sent: a retry sends the message as edited. */
+      edited: z.literal(true).optional(),
       /** The ids of the messages sent after it, in the order they were sent, before the first of which that shows it stands while not delivered. */
       followers: z.array(z.string()).default([]),
     }),
   ),
+  /**
+   * The Saves of saved messages' edits the backend has not confirmed, each
+   * the message's id with its new text and files, which go again after a
+   * reload.
+   */
+  savedWrites: z
+    .array(z.object({ id: z.string(), text: z.string(), files: z.array(draftFileSchema) }))
+    .default([]),
   /** The messages the backend did not save, which the list shows as Not Saved until their user retries or deletes them. */
   notSaved: z
     .array(z.object({ id: z.string(), text: z.string(), files: z.array(draftFileSchema), reason: z.string() }))
@@ -111,7 +121,7 @@ export type SavedFile = z.infer<typeof fileSchema>
  * record's shape, whose upgrade turns the previous release's records into
  * the new one.
  */
-const DRAFTS_VERSION = 4
+const DRAFTS_VERSION = 5
 
 /** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
 const pendingSendV1Schema = z.looseObject({
@@ -133,6 +143,14 @@ const draftV3Schema = z.looseObject({
 })
 
 /**
+ * A record as version 4 stored it, whose edit in progress, always of a sent
+ * message, named no kind, before a saved message was edited too.
+ */
+const draftV4Schema = z.looseObject({
+  messageEdit: z.looseObject({}).nullable().optional(),
+})
+
+/**
  * Upgrades the draft database from `oldVersion`:
  *
  * - A new one gets its store.
@@ -143,6 +161,7 @@ const draftV3Schema = z.looseObject({
  * - One of version 3 drops an edit in progress whose message names a file by
  *   its path on the Host, which the backend has since numbered, so the rest of
  *   the draft stays and the user opens the edit again.
+ * - One of version 4 marks an edit in progress as a sent message's.
  *
  * A record of another shape stays as it was, and its read reports it.
  */
@@ -180,6 +199,12 @@ function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
       )
       if (edited.success && byPath) {
         value = { ...edited.data, messageEdit: null }
+      }
+    }
+    if (oldVersion < 5) {
+      const edited = draftV4Schema.safeParse(value)
+      if (edited.success && edited.data.messageEdit) {
+        value = { ...edited.data, messageEdit: { kind: 'message', ...edited.data.messageEdit } }
       }
     }
     if (value !== cursor.value) {

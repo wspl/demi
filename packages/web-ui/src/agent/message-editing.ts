@@ -61,7 +61,7 @@ export const messageEditRequestSchema = editRequestSchema.omit({ content: true }
 export type MessageEditRequest = z.infer<typeof messageEditRequestSchema>
 
 /**
- * An edit in progress, in one of these phases:
+ * An edit of a sent message in progress, in one of these phases:
  *
  * - `sending`: an edit the user sent from the editor.
  * - `regenerating`: a Regenerate sent without opening it, which `regenerate`
@@ -72,12 +72,41 @@ export type MessageEditRequest = z.infer<typeof messageEditRequestSchema>
  * A failure is told by a toast at the moment it happens; the state itself
  * carries no message.
  */
-export const messageEditStateSchema = z.object({
+export const sentMessageEditSchema = z.object({
+  kind: z.literal('message'),
   phase: z.enum(['editing', 'sending', 'regenerating', 'uncertain']),
   request: messageEditRequestSchema,
   regenerate: z.literal(true).optional(),
 })
+export type SentMessageEdit = z.infer<typeof sentMessageEditSchema>
+
+/**
+ * An edit of the message saved for later `savedId`, opened as `editId`. Save
+ * writes its content back to the message in its place and Send sends it, each
+ * ending it at once, so it is only ever being edited.
+ */
+export const savedMessageEditSchema = z.object({
+  kind: z.literal('saved'),
+  phase: z.literal('editing'),
+  savedId: z.string().min(1),
+  editId: z.string().min(1),
+  content: z.array(messageEditContentSchema),
+})
+export type SavedMessageEdit = z.infer<typeof savedMessageEditSchema>
+
+/** The edit the composer shows: of a sent message, or of a saved one. */
+export const messageEditStateSchema = z.discriminatedUnion('kind', [sentMessageEditSchema, savedMessageEditSchema])
 export type MessageEditState = z.infer<typeof messageEditStateSchema>
+
+/** What names the edit's opening of the editor, new for each. */
+export function editKey(state: MessageEditState): string {
+  return state.kind === 'message' ? state.request.operationId : state.editId
+}
+
+/** What the edited message holds now. */
+export function editContent(state: MessageEditState): MessageEditContent[] {
+  return state.kind === 'message' ? state.request.content : state.content
+}
 
 /**
  * The edit of a message with its content as it was sent. Only a `user` block
@@ -99,16 +128,28 @@ export function unchangedEditRequest(block: Block, version: TranscriptVersion): 
  * Opens the editor on a message; one without text gets an empty line to type
  * in.
  */
-export function beginMessageEdit(block: Block, version: TranscriptVersion): MessageEditState {
+export function beginMessageEdit(block: Block, version: TranscriptVersion): SentMessageEdit {
   const request = unchangedEditRequest(block, version)
   if (!request.content.some((part) => part.type === 'text')) {
     request.content.push({ type: 'text', text: '' })
   }
-  return { phase: 'editing', request }
+  return { kind: 'message', phase: 'editing', request }
+}
+
+/**
+ * Opens the editor on the message saved for later `savedId`, holding
+ * `content`; one without text gets an empty line to type in.
+ */
+export function beginSavedEdit(savedId: string, content: MessageEditContent[]): SavedMessageEdit {
+  const opened = structuredClone(toRaw(content))
+  if (!opened.some((part) => part.type === 'text')) {
+    opened.push({ type: 'text', text: '' })
+  }
+  return { kind: 'saved', phase: 'editing', savedId, editId: crypto.randomUUID(), content: opened }
 }
 
 export function editHasContent(state: MessageEditState): boolean {
-  return state.request.content.some((part) => part.type !== 'text' || part.text.trim())
+  return editContent(state).some((part) => part.type !== 'text' || part.text.trim())
 }
 
 /** The web app exposes editing only for the latest explicit user submission. */
@@ -201,15 +242,15 @@ export function messageEditSuffixIds(
 /**
  * Keep each draft detached; Vue proxies must not enter persisted request data.
  */
-export function changeMessageEditContent(
-  state: MessageEditState,
+export function changeMessageEditContent<State extends MessageEditState>(
+  state: State,
   change: (content: MessageEditContent[]) => void,
-): MessageEditState {
+): State {
   if (state.phase !== 'editing') {
     return state
   }
   const next = structuredClone(toRaw(state))
-  change(next.request.content)
+  change(editContent(next))
   return next
 }
 
@@ -220,7 +261,7 @@ export function changeMessageEditContent(
  */
 export interface MessageEditHost {
   get(): MessageEditState | null
-  set(state: MessageEditState | null): void
+  set(state: SentMessageEdit | null): void
   send(request: MessageEditRequest, regenerate: boolean): Promise<void>
 }
 
@@ -229,7 +270,7 @@ export interface MessageEditHost {
  */
 export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
   const draft = host.get()
-  if (!draft || draft.phase === 'sending' || draft.phase === 'regenerating' || !editHasContent(draft)) {
+  if (draft?.kind !== 'message' || draft.phase === 'sending' || draft.phase === 'regenerating' || !editHasContent(draft)) {
     return
   }
   const regenerate = draft.phase === 'uncertain' && draft.regenerate === true
@@ -256,18 +297,24 @@ async function sendMessageEdit(
   phase: 'sending' | 'regenerating',
 ): Promise<void> {
   const regenerate = phase === 'regenerating'
-  host.set(regenerate ? { phase, request, regenerate } : { phase, request })
+  const current = () => {
+    const state = host.get()
+    return state?.kind === 'message' && state.request.operationId === request.operationId
+  }
+  host.set(regenerate ? { kind: 'message', phase, request, regenerate } : { kind: 'message', phase, request })
   try {
     await host.send(request, regenerate)
-    if (host.get()?.request.operationId === request.operationId) {
+    if (current()) {
       host.set(null)
     }
   } catch (error) {
     const rejected = error instanceof EditRejectedError
-    if (host.get()?.request.operationId === request.operationId) {
+    if (current()) {
       // A refused Regenerate opens the editor on the message, whose Save is an
       // edit.
-      host.set(rejected || !regenerate ? { phase: rejected ? 'editing' : 'uncertain', request } : { phase: 'uncertain', request, regenerate })
+      host.set(rejected || !regenerate
+        ? { kind: 'message', phase: rejected ? 'editing' : 'uncertain', request }
+        : { kind: 'message', phase: 'uncertain', request, regenerate })
     }
     reportError(
       rejected ? t('transcript.edit.rejected') : t('transcript.edit.unconfirmed'),
@@ -279,5 +326,7 @@ async function sendMessageEdit(
 
 /** A page reload loses the in-flight response, not the submitted request. */
 export function restoreMessageEdit(state: MessageEditState | null): MessageEditState | null {
-  return state?.phase === 'sending' || state?.phase === 'regenerating' ? { ...state, phase: 'uncertain' } : state
+  return state?.kind === 'message' && (state.phase === 'sending' || state.phase === 'regenerating')
+    ? { ...state, phase: 'uncertain' }
+    : state
 }

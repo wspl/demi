@@ -1,18 +1,16 @@
 import { apiRequest, jsonBody, readResponse } from './client'
 import {
-  draftWrittenSchema,
   fromDraftAnswerSchema,
   savedAnswerSchema,
   savedListSchema,
   savedRemovedSchema,
-  type DraftWritten,
   type FromDraftAnswer,
   type Revisions,
   type SavedAnswer,
-  type SavedEdit,
   type SavedFromDraft,
   type SavedList,
   type SavedSave,
+  type SavedWrite,
 } from './generated/web-api'
 
 /** A conversation's messages saved for later. */
@@ -38,13 +36,10 @@ export async function postSaved(conversationId: string, save: SavedSave, signal:
   return readResponse(response, savedAnswerSchema)
 }
 
-/**
- * The edit `edit.op`: moves the message into the draft, and the draft into
- * the list as `edit.id`; answers the draft, with the revisions after it.
- */
-export async function editSaved(conversationId: string, messageId: string, edit: SavedEdit, signal: AbortSignal): Promise<DraftWritten> {
-  const response = await apiRequest(`${savedPath(conversationId, messageId)}/edit`, { method: 'POST', signal, ...jsonBody(edit) })
-  return readResponse(response, draftWrittenSchema)
+/** Writes an edit's Save: the message holds `write` in its place, and the draft is left as it is. */
+export async function putSaved(conversationId: string, messageId: string, write: SavedWrite, signal: AbortSignal): Promise<SavedAnswer> {
+  const response = await apiRequest(savedPath(conversationId, messageId), { method: 'PUT', signal, ...jsonBody(write) })
+  return readResponse(response, savedAnswerSchema)
 }
 
 /** Deletes the message; one gone already answers the same. Answers the revisions after it. */

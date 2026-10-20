@@ -10,10 +10,13 @@ import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/his
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
+  beginSavedEdit,
+  editHasContent,
   regenerateMessage,
   restoreMessageEdit,
   sentEditRequest,
   submitMessageEdit,
+  type MessageEditContent,
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
@@ -86,7 +89,7 @@ import {
   type TranscriptPage,
   type WorkflowChoice,
 } from '../api/generated/web-api'
-import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
@@ -98,7 +101,7 @@ import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
-import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
+import { composerWriting, createRecordSync, draftFile, editedMessage, newRecord, type Message, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
 import { createConversationCopies } from './offline'
 import { readConversationCopy, type AgentCopy } from '../state/offline'
@@ -411,6 +414,7 @@ export const useConversations = defineStore('conversations', () => {
       comments: [],
       record: newRecord(),
       notSaved: [],
+      savedWrites: [],
       files: [],
       attachmentIds: [],
       pendingSends: [],
@@ -585,6 +589,7 @@ export const useConversations = defineStore('conversations', () => {
       text: unsaved ? conversation.draft : '',
       comments: unsaved ? conversation.comments.map((comment) => structuredClone(toRaw(comment))) : [],
       notSaved: conversation.notSaved.map((row) => structuredClone(toRaw(row))),
+      savedWrites: conversation.savedWrites.map((write) => structuredClone(toRaw(write))),
       // A conversation with a record holds its model settings there.
       model: local ? { ...conversation.model } : null,
       // And its Workflow menu choice; Default goes unwritten.
@@ -863,6 +868,7 @@ export const useConversations = defineStore('conversations', () => {
         // otherwise, once read.
         recordSync.restore(conversation, draft.base)
         conversation.notSaved = draft.notSaved
+        conversation.savedWrites = draft.savedWrites
         conversation.draft = draft.text
         conversation.comments = draft.comments
         conversation.files = draft.files.map(savedAttachment)
@@ -911,6 +917,11 @@ export const useConversations = defineStore('conversations', () => {
     // The page starts from what storage held: saving the restored draft
     // unchanged could only replace a newer one another tab saved since.
     changedDraft(conversation.id, persisted(conversation))
+    // A Save the backend did not confirm goes again, and shows meanwhile; once
+    // answered, the stored draft lets it go.
+    for (const write of conversation.savedWrites) {
+      void writeSaved(conversation, write)
+    }
     // A file of a message not delivered whose upload did not finish failed
     // with it: its capsule says so, as before the page closed, and only the
     // dock's Retry uploads it again. One with nothing to upload from is gone,
@@ -2602,39 +2613,108 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Edit on a message of the list: it goes into the composer and leaves the
-   * list at once; a message the composer holds is saved for later in its
-   * place, its files uploaded first, so it is kept whole. A message not
-   * saved goes into the composer the same way, the composer's message saved
-   * for later first.
+   * Edit on a message of the list: it opens in the composer's edit mode and
+   * stays in the list in its place, and the draft waits unchanged until the
+   * edit ends. An edit of another saved message gives way, its changes
+   * dropped. A message not saved opens the same way. `message` is what the
+   * edit opens with, the message as the list holds it unless an edited send
+   * of it came back undelivered.
    */
-  async function editSaved(conversation: Conversation, id: string): Promise<void> {
-    if (conversation.archived) {
+  function editSaved(conversation: Conversation, id: string, message?: Message): void {
+    const open = conversation.messageEdit
+    if (conversation.archived || (open?.kind === 'message' && open.phase !== 'editing')) {
       return
     }
-    try {
-      await uploaded(conversation)
-    } catch (error) {
-      report(t('failures.editMessage'), error)
+    const listed = conversation.notSaved.find((row) => row.id === id) ??
+      conversation.record.shown.value?.saved.find((each) => each.id === id)
+    const opened = message ?? listed
+    if (!opened) {
       return
     }
-    const notSaved = conversation.notSaved.find((row) => row.id === id)
-    const message = conversation.record.shown.value?.saved.find((each) => each.id === id)
-    if (notSaved) {
-      if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
-        void recordSync.saveForLater(conversation, crypto.randomUUID(), composerWriting(conversation).writing)
+    conversation.messageEdit = beginSavedEdit(id, savedEditContent(conversation, opened))
+  }
+
+  /** A saved message as its edit holds it: its text, and each file where its mark stands. */
+  function savedEditContent(conversation: Conversation, message: Message): MessageEditContent[] {
+    return storedMessageContent<MessageEditContent>(message.text, message.files.map((file): MessageEditContent[] => {
+      if (file.type === 'upload') {
+        return [{
+          type: 'upload',
+          ref: file.ref,
+          fileName: file.fileName,
+          mediaType: file.mediaType,
+          sha256: file.sha256,
+          ...(file.snippet ? { snippet: file.snippet } : {}),
+        }]
       }
-      conversation.notSaved = conversation.notSaved.filter((row) => row !== notSaved)
-      // The comments waiting meanwhile stay; a message of the list has none.
-      showWriting(conversation, { ...notSaved, comments: conversation.comments })
-    } else if (message) {
-      void recordSync.edit(conversation, message)
-    } else {
+      const shown = draftAttachment(conversation, file)
+      return [{ type: 'remote_file', deviceId: file.deviceId, path: file.path, host: shown.kind === 'reference' ? shown.host : file.deviceId }]
+    }))
+  }
+
+  /**
+   * Save on a saved message's edit: the message holds the edit in its place
+   * at once, and the edit ends. A message not saved is saved again with it,
+   * under its own id. One another page deleted meanwhile stays, as edited,
+   * in the list as Not Saved.
+   */
+  function saveSavedEdit(conversation: Conversation): void {
+    const edit = conversation.messageEdit
+    if (edit?.kind !== 'saved' || conversation.archived || !editHasContent(edit)) {
       return
     }
-    if (conversation.id === product.activeConversationId) {
-      composerFocusRequests.value += 1
+    const message = editedMessage(edit.content)
+    conversation.messageEdit = null
+    const row = conversation.notSaved.find((each) => each.id === edit.savedId)
+    if (row) {
+      conversation.notSaved = conversation.notSaved.map((each) => each === row ? { ...row, ...message } : each)
+      void recordSync.resave(conversation, row.id, message)
+      return
     }
+    const write = { id: edit.savedId, ...message }
+    conversation.savedWrites = [...conversation.savedWrites.filter((each) => each.id !== write.id), write]
+    saveDrafts()
+    void writeSaved(conversation, write)
+  }
+
+  /**
+   * Writes a saved message's edit, `write`, which the web browser keeps until
+   * the backend answers it: confirmed, or refused, when the edit stands as
+   * Not Saved. A page that lets the conversation go before the answer keeps
+   * it, for the next page to send again.
+   */
+  async function writeSaved(conversation: Conversation, write: Conversation['savedWrites'][number]): Promise<void> {
+    const signal = lifetime.signal
+    await recordSync.rewrite(conversation, write.id, { text: write.text, files: write.files })
+    if (signal.aborted) {
+      return
+    }
+    conversation.savedWrites = conversation.savedWrites.filter((each) => each !== write)
+    saveDrafts()
+  }
+
+  /**
+   * Send on the edit the composer shows: a sent message's goes as its edit;
+   * a saved message's goes the way the composer chose, `way`, as the edit
+   * holds it, and leaves the list as Send on its row does. A message not
+   * saved goes as a message of the composer's, and leaves the list.
+   */
+  function submitEdit(conversation: Conversation, way: SendWay): Promise<void> {
+    const edit = conversation.messageEdit
+    if (edit?.kind !== 'saved') {
+      return submitMessageEdit(editHost(conversation))
+    }
+    if (conversation.archived || !editHasContent(edit)) {
+      return Promise.resolve()
+    }
+    conversation.messageEdit = null
+    const message = editedMessage(edit.content)
+    const row = conversation.notSaved.find((each) => each.id === edit.savedId)
+    if (row) {
+      conversation.notSaved = conversation.notSaved.filter((each) => each !== row)
+    }
+    sendListed(conversation, row ? null : edit.savedId, message, way, true)
+    return Promise.resolve()
   }
 
   /**
@@ -2650,13 +2730,24 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation.archived || !message) {
       return
     }
+    sendListed(conversation, id, message, way, false)
+  }
+
+  /**
+   * Sends `message` from the list as the saved message `id`, `edited` when an
+   * edit changed it, or, without an id, as a message of the composer's.
+   */
+  function sendListed(conversation: Conversation, id: string | null, message: Message, way: SendWay, edited: boolean): void {
     const files = message.files.map((file) => draftAttachment(conversation, file))
     conversation.files = [
       ...conversation.files,
       ...files.filter((file) => !conversation.files.some((held) => held.id === file.id)),
     ]
-    const pending = addPendingSend(conversation, way, message.text, files.map((file) => file.id), { saved: id })
-    recordSync.hideSent(conversation, id, pending.id)
+    const fileIds = files.map((file) => file.id)
+    const pending = addPendingSend(conversation, way, message.text, fileIds, id ? { saved: id, edited } : {})
+    if (id) {
+      recordSync.hideSent(conversation, id, pending.id)
+    }
     void deliverInOrder(conversation, pending)
   }
 
@@ -2666,6 +2757,10 @@ export const useConversations = defineStore('conversations', () => {
    * alone. A refused deletion brings the message back, and the toast goes.
    */
   async function deleteSaved(conversation: Conversation, id: string): Promise<void> {
+    const open = conversation.messageEdit
+    if (open?.kind === 'saved' && open.savedId === id) {
+      conversation.messageEdit = null
+    }
     const notSaved = conversation.notSaved.find((row) => row.id === id)
     if (notSaved) {
       conversation.notSaved = conversation.notSaved.filter((row) => row !== notSaved)
@@ -2709,7 +2804,7 @@ export const useConversations = defineStore('conversations', () => {
     way: SendWay,
     text: string,
     fileIds: string[],
-    { comments = [], saved }: { comments?: MessageComment[]; saved?: string } = {},
+    { comments = [], saved, edited }: { comments?: MessageComment[]; saved?: string; edited?: boolean } = {},
   ): PendingSend {
     if (conversation.persistence === 'draft') {
       conversation.persistence = 'pending'
@@ -2717,7 +2812,7 @@ export const useConversations = defineStore('conversations', () => {
     const id = crypto.randomUUID()
     // Plain copies: the page keeps its messages on their way in the web browser's storage.
     const carried = comments.map((comment) => ({ ...comment }))
-    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, comments: carried, error: null, followers: [], ...(saved ? { saved } : {}) }]
+    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, comments: carried, error: null, followers: [], ...(saved ? { saved } : {}), ...(edited ? { edited: true as const } : {}) }]
     sentNow(conversation, id)
     return conversation.pendingSends.find((pending) => pending.id === id)!
   }
@@ -2803,21 +2898,7 @@ export const useConversations = defineStore('conversations', () => {
         await deliverSaved(conversation, pending, pending.saved, way)
         return
       }
-      if (files.length !== pending.fileIds.length || files.length !== markCount(pending.text)) {
-        throw new Error('A file of this message is no longer available. Attach it again.')
-      }
-      const [references] = await Promise.all([
-        Promise.all(files.map(async (file): Promise<ClientContent> => {
-          if (!isComposerFile(file)) {
-            return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
-          }
-          const upload = await uploads.uploaded(file)
-          return { type: 'upload', ref: upload.id, fileName: file.name }
-        })),
-        persistConversation(conversation),
-      ])
-      // Each file where its capsule stands in the text.
-      const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
+      const [content] = await Promise.all([sentContent(conversation, pending), persistConversation(conversation)])
       const runtime = await runtimeFor(conversation)
       await (way === 'steer' ? runtime.steer(content, pending.id, pending.comments) : runtime.submit(content, pending.id, pending.comments))
       clearSubmission(conversation, pending.id)
@@ -2862,10 +2943,30 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
+   * The content a message on its way sends: its text with each file where its
+   * mark stands, once the file's upload is done. A message never goes
+   * without a file of it: one that cannot be uploaded rejects.
+   */
+  async function sentContent(conversation: Conversation, pending: PendingSend): Promise<ClientContent[]> {
+    const files = filesById(conversation, pending.fileIds)
+    if (files.length !== pending.fileIds.length || files.length !== markCount(pending.text)) {
+      throw new Error('A file of this message is no longer available. Attach it again.')
+    }
+    const references = await Promise.all(files.map(async (file): Promise<ClientContent> => {
+      if (!isComposerFile(file)) {
+        return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
+      }
+      const upload = await uploads.uploaded(file)
+      return { type: 'upload', ref: upload.id, fileName: file.name }
+    }))
+    return joinMessageContent(pending.text, references.map((reference) => [reference]))
+  }
+
+  /**
    * Delivers a message from the list, `saved`, as the turn `pending.id`: the
-   * backend sends it and takes it off the list. One gone from the list,
-   * which another page sent or deleted, is sent by nobody, and its row here
-   * goes too.
+   * backend sends it, as an edit changed it when it did, and takes it off the
+   * list. One gone from the list, which another page sent or deleted, is sent
+   * by nobody, and its row here goes too; an edited one goes as edited.
    */
   async function deliverSaved(conversation: Conversation, pending: PendingSend, saved: string, way: 'message' | 'steer'): Promise<void> {
     // A message saved a moment ago is on the backend's list only once its
@@ -2873,7 +2974,8 @@ export const useConversations = defineStore('conversations', () => {
     await recordSync.settled(conversation)
     const runtime = await runtimeFor(conversation)
     const delivery = way === 'steer' ? 'steer' : pending.way === 'queue' ? 'queue' : 'message'
-    if (await runtime.sendSaved(saved, pending.id, delivery)) {
+    const content = pending.edited ? await sentContent(conversation, pending) : undefined
+    if (await runtime.sendSaved(saved, pending.id, delivery, content)) {
       clearSubmission(conversation, pending.id)
     } else {
       dropSubmission(conversation, pending.id, 'withdrawn')
@@ -2991,8 +3093,12 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     if (pending.saved) {
+      // An edited one opens as it was sent, so the edit is not lost.
+      const edited = pending.edited
+        ? { text: pending.text, files: filesById(conversation, pending.fileIds).flatMap((file) => draftFile(file) ?? []) }
+        : undefined
       backToList(conversation, id)
-      void editSaved(conversation, pending.saved)
+      editSaved(conversation, pending.saved, edited)
       return
     }
     const marks = markCount(pending.text)
@@ -3513,7 +3619,8 @@ export const useConversations = defineStore('conversations', () => {
     clearComments,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
-    submitEdit: (conversation: Conversation) => submitMessageEdit(editHost(conversation)),
+    submitEdit,
+    saveSavedEdit,
     regenerate: (conversation: Conversation, request: MessageEditRequest) =>
       regenerateMessage(editHost(conversation), request),
     switchVersion: (conversation: Conversation, blockId: string, to: number) =>

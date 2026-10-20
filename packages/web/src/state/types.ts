@@ -99,6 +99,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   record: Raw<RecordSlot>
   /** The messages the backend did not save, newest first, which the list shows as Not Saved; only this page has them. */
   notSaved: NotSaved[]
+  /** The Saves of saved messages' edits on their way, which the web browser keeps until the backend confirms them. */
+  savedWrites: SavedDraft['savedWrites']
   /** Every file the composer carries, those of the message first, in its order. */
   files: ProductAttachment[]
   /** The files the message has, in the order of its capsules; the composer's document says so. */

@@ -16,6 +16,7 @@ import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences, SavedMessage, WorkspaceDto } from '../api/generated/web-api'
+import { changeMessageEditContent, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { useSession } from '../auth/session'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
@@ -169,8 +170,6 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
 
 /** The messages saved for later the backend keeps, by conversation, newest first. */
 let serverSaved: Map<string, SavedMessage[]>
-/** The answers of the edits the backend made, by their operation id. */
-let serverEdits: Map<string, unknown>
 
 /** The conversation's revisions of its draft and its list, as every write answers them. */
 function revisionsOf(id: string) {
@@ -180,8 +179,8 @@ function revisionsOf(id: string) {
 /**
  * The backend's routes of messages saved for later: the list, with the revision the
  * conversation's summary carries; a save of the composer's message, which empties the
- * draft, and a plain one, each under the page's id; an edit, kept by its operation id;
- * and a deletion, which a message gone already answers the same.
+ * draft, and a plain one, each under the page's id; the write of an edit's Save, in
+ * the message's place; and a deletion, which a message gone already answers the same.
  */
 function savedRoute(id: string, method: string, path: string, body: Record<string, unknown>): Response {
   const summary = records.find((item) => item.id === id)!
@@ -191,7 +190,7 @@ function savedRoute(id: string, method: string, path: string, body: Record<strin
     summary.savedRevision += 1
     summary.saved = serverSaved.get(id)!.length
   }
-  const [, messageId, action] = /^\/saved(?:\/([^/]+))?(?:\/([^/]+))?$/.exec(path) ?? []
+  const [, messageId] = /^\/saved(?:\/([^/]+))?$/.exec(path) ?? []
   if (method === 'GET') {
     return Response.json({ revision: summary.savedRevision, messages })
   }
@@ -202,26 +201,15 @@ function savedRoute(id: string, method: string, path: string, body: Record<strin
     }
     return Response.json({ revisions: revisionsOf(id) })
   }
-  if (action === 'edit') {
-    const kept = serverEdits.get(body.op as string)
-    if (kept) {
-      return Response.json(kept)
-    }
-    const moved = messages.find((message) => message.id === messageId)
-    if (!moved) {
+  if (method === 'PUT') {
+    const written = messages.find((message) => message.id === messageId)
+    if (!written) {
       return Response.json({ requestId: 'req_test000000000001', code: 'saved_not_found', message: 'No such message saved for later' }, { status: 404 })
     }
-    const rest = messages.filter((message) => message !== moved)
-    const draft = { revision: current.revision + 1, text: moved.text, files: moved.files, comments: current.comments, replaced: current.replaced }
-    serverDrafts.set(id, draft)
-    summary.draftRevision = draft.revision
-    serverSaved.set(id, current.text.trim() || current.files.length
-      ? [{ id: body.id as string, text: current.text, files: current.files, savedAt: '2026-09-09T00:00:00.000Z' }, ...rest]
-      : rest)
+    const message = { ...written, text: body.text as string }
+    serverSaved.set(id, messages.map((each) => each === written ? message : each))
     raise()
-    const answer = { draft, revisions: revisionsOf(id) }
-    serverEdits.set(body.op as string, answer)
-    return Response.json(answer)
+    return Response.json({ message, revisions: revisionsOf(id) })
   }
   const message: SavedMessage = { id: body.id as string, text: body.text as string, files: [], savedAt: '2026-09-09T00:00:00.000Z' }
   if (!messages.some((each) => each.id === message.id)) {
@@ -249,7 +237,6 @@ beforeEach(async () => {
   workspaces = []
   serverDrafts = new Map()
   serverSaved = new Map()
-  serverEdits = new Map()
   FakeXhr.gate = null
   FakeXhr.failures = 0
   rejectCreate = false
@@ -4071,7 +4058,7 @@ test('the list waits for the new conversations this web browser keeps, so a relo
     expect(store.listStatus).toBe('loading')
     const now = '2026-09-09T00:00:00.000Z'
     listed.resolve({ drafts: [{
-      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [], comments: [],
+      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [], savedWrites: [], comments: [],
       text: 'Fix the login bug',
       local: {
         phase: 'draft',
@@ -4104,7 +4091,7 @@ test('unsent drafts lead the list, newest first, live and after a reload whether
 
   // The drafts as this web browser's storage gives them back, in no particular order.
   const kept = [older, newer].map((id): draftStorage.SavedDraft => ({
-    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [], comments: [],
+    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [], savedWrites: [], comments: [],
     text: id === older ? 'Older draft' : 'Newer draft',
     local: {
       phase: 'draft',
@@ -4678,7 +4665,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
     setActivePinia(pinia)
     signOut = signIn({
       messageEdit: null, pendingSends: [], local: null, base: 1, text: 'Fix the lo',
-      model: null, files: [], scroll: null, notSaved: [], comments: [],
+      model: null, files: [], scroll: null, notSaved: [], savedWrites: [], comments: [],
     })
     const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)
     jest.useFakeTimers()
@@ -5158,68 +5145,146 @@ test('a save refused after its user typed on loses nothing: the message stands a
 
 // The reviewer's second sequence: composer D, Edit A, Edit B, A refused, B
 // accepted, B pressed while A still waits for the save of D.
-test('two edits in a row, the first refused: nothing is lost and no message is listed twice', async () => {
+/** The open edit of a saved message with its text changed to `text`, as the composer's editor changes it. */
+function typeInEdit(conversation: { messageEdit: MessageEditState | null }, text: string): void {
+  conversation.messageEdit = changeMessageEditContent(conversation.messageEdit!, (content) => {
+    content.splice(0, content.length, { type: 'text', text })
+  })
+}
+
+// The edit of a saved message is the composer's edit mode: the message stays
+// in its place in the list, and the draft is never touched. Before, Edit moved
+// the message into the draft and the draft into the list.
+test('Edit on a saved message opens it beside the draft, another Edit replaces it, and Save writes it in its place', async () => {
   const signOut = signIn()
   const { store, first } = await openWithSaved([savedMessage('a', 'Message A'), savedMessage('b', 'Message B')])
-  const held = holdWrites({ drafts: true })
+  const held = holdWrites()
   try {
     first.draft = 'Draft D'
-    await store.editSaved(first, 'a')
-    await until(() => held.waiting.length === 1, 'the save of what the composer held reaches the backend first')
-    expect(held.waiting[0]!.body).toMatchObject({ text: 'Draft D' })
-    expect([first.draft, listed(first)]).toEqual(['Message A', ['Draft D', 'Message B']])
-    await store.editSaved(first, 'b')
-    expect([first.draft, listed(first)]).toEqual(['Message B', ['Message A', 'Draft D']])
+    store.editSaved(first, 'a')
+    typeInEdit(first, 'Message A, half edited')
+    store.editSaved(first, 'b')
+    expect(JSON.parse(JSON.stringify(first.messageEdit))).toMatchObject({ kind: 'saved', savedId: 'b', content: [{ type: 'text', text: 'Message B' }] })
+    expect([first.draft, listed(first)]).toEqual(['Draft D', ['Message A', 'Message B']])
 
+    typeInEdit(first, 'Message B, edited')
+    store.saveSavedEdit(first)
+    expect([first.messageEdit, first.draft, listed(first)]).toEqual([null, 'Draft D', ['Message A', 'Message B, edited']])
+    await until(() => held.waiting.length === 1, 'the write reaches the backend')
+    expect(held.waiting[0]).toMatchObject({ method: 'PUT', path: `/api/conversations/${FIRST}/saved/b`, body: { text: 'Message B, edited', files: [] } })
     await held.waiting[0]!.pass()
-    await until(() => held.waiting.length === 2, 'the first edit reaches the backend')
-    held.waiting[1]!.answer(refusal('saved_not_found', 404))
-    await until(() => held.waiting.length === 3, 'the second edit reaches the backend')
-    // A stays listed; B's edit now moves the draft as the backend holds it, D.
-    expect([first.draft, listed(first), first.notSaved]).toEqual(['Message B', ['Draft D', 'Message A'], []])
-    await held.waiting[2]!.pass()
     await readAgain(first)
-    expect([first.draft, listed(first), first.notSaved, first.record.pending()]).toEqual(['Message B', ['Draft D', 'Message A'], [], []])
+    expect([first.draft, listed(first), first.notSaved, first.record.pending('saved').length]).toEqual(['Draft D', ['Message A', 'Message B, edited'], [], 0])
   } finally {
     held.restore()
     signOut()
   }
 })
 
-test('an edit refused leaves the message in the list and what the composer held as Not Saved, shown once', async () => {
+test('Save of a saved message another page deleted meanwhile keeps the edit as Not Saved, and Delete of the one edited ends the edit', async () => {
   const signOut = signIn()
-  const { store, first } = await openWithSaved([savedMessage('a', 'Message A')])
+  const { store, first } = await openWithSaved([savedMessage('a', 'Message A'), savedMessage('b', 'Message B')])
+  try {
+    store.editSaved(first, 'a')
+    typeInEdit(first, 'Message A, edited')
+    serverSaved.set(FIRST, [savedMessage('b', 'Message B')])
+    records[0]!.savedRevision += 1
+    store.saveSavedEdit(first)
+    await until(() => first.notSaved.length === 1, 'the edit stands as Not Saved')
+    await readAgain(first)
+    expect([listed(first), first.notSaved.map(({ text }) => text)]).toEqual([['Message B'], ['Message A, edited']])
+
+    store.editSaved(first, 'b')
+    await store.deleteSaved(first, 'b')
+    expect([first.messageEdit, listed(first)]).toEqual([null, []])
+  } finally {
+    signOut()
+  }
+})
+
+// A refused write of a saved message touches the list alone. Before, an edit
+// that read as the draft did, refused for a message another page deleted,
+// also emptied the draft.
+test('a refused Save of an edit that reads as the draft leaves the draft as it is', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('a', 'Old text')])
+  try {
+    first.draft = 'Same text'
+    store.editSaved(first, 'a')
+    typeInEdit(first, 'Same text')
+    serverSaved.set(FIRST, [])
+    records[0]!.savedRevision += 1
+    store.saveSavedEdit(first)
+    await until(() => first.notSaved.length === 1, 'the edit stands as Not Saved')
+    await readAgain(first)
+    expect([first.draft, first.notSaved.map(({ text }) => text)]).toEqual(['Same text', ['Same text']])
+    await settle()
+    expect(first.draft).toBe('Same text')
+  } finally {
+    signOut()
+  }
+})
+
+// Opening an edit keeps the stored Markdown as it is; only a send trims.
+// Before, the edit opened with the send's rules, so a Save unchanged trimmed
+// the message.
+test('a saved message opened and saved unchanged keeps its text and files exactly', async () => {
+  const signOut = signIn()
+  const shot: DraftFile = { type: 'upload', ref: 'u1', fileName: 'shot.png', mediaType: 'image/png', sha256: 'a'.repeat(64) }
+  const text = `    code example\n${ATTACHMENT_MARK}\n`
+  const { store, first } = await openWithSaved([{ ...savedMessage('a', text), files: [shot] }])
   const held = holdWrites()
   try {
-    first.draft = 'Draft K'
-    await store.editSaved(first, 'a')
-    await until(() => held.waiting.length === 1, 'the edit reaches the backend')
-    held.waiting[0]!.answer(refusal('conversation_archived'))
-    await until(() => first.notSaved.length === 1, 'the composer\'s message stands as Not Saved')
-    expect([first.draft, listed(first), first.notSaved.map(({ text }) => text)]).toEqual(['', ['Message A'], ['Draft K']])
+    store.editSaved(first, 'a')
+    store.saveSavedEdit(first)
+    await until(() => held.waiting.length === 1, 'the write reaches the backend')
+    expect(held.waiting[0]!.body).toEqual({ text, files: [{ type: 'upload', ref: 'u1', fileName: 'shot.png' }] })
   } finally {
     held.restore()
     signOut()
   }
 })
 
-// The reviewer's fifth finding: the list the edit made arrives before its answer.
-test('an edit whose list is read before its answer lists what the composer held once', async () => {
-  const signOut = signIn()
-  const { store, first } = await openWithSaved([savedMessage('a', 'Message A')])
+// A Save the backend has not confirmed is kept in the web browser and goes
+// again after a reload. Before, the edit went at the press, and a reload
+// before the answer lost it.
+test('a Save not yet confirmed survives a reload and goes again by itself', async () => {
+  let signOut = signIn()
+  const kept = new Map<string, draftStorage.SavedDraft>()
+  const keep = () => spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    kept.set(id, structuredClone(draft))
+  })
+  let writes = keep()
+  let opened = await openWithSaved([savedMessage('a', 'Message A'), savedMessage('b', 'Message B')])
   const held = holdWrites()
   try {
-    first.draft = 'Draft K'
-    await store.editSaved(first, 'a')
-    await until(() => held.waiting.length === 1, 'the edit reaches the backend')
-    const answer = await held.waiting[0]!.apply()
-    await readAgain(first)
-    expect([first.draft, listed(first)]).toEqual(['Message A', ['Draft K']])
-    answer()
-    await until(() => first.record.pending().length === 0, 'the edit leaves')
-    expect([first.draft, listed(first)]).toEqual(['Message A', ['Draft K']])
+    opened.store.editSaved(opened.first, 'a')
+    typeInEdit(opened.first, 'Message A, edited')
+    opened.store.saveSavedEdit(opened.first)
+    await until(() => held.waiting.length === 1, 'the write is on its way')
+    await until(() => (kept.get(FIRST)?.savedWrites ?? []).length === 1, 'the page keeps it')
+    expect(kept.get(FIRST)?.savedWrites).toEqual([{ id: 'a', text: 'Message A, edited', files: [] }])
+    held.restore()
+    signOut()
+    opened.store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+
+    // The next page: the backend still holds the message as it was.
+    pinia = createPinia()
+    setActivePinia(pinia)
+    signOut = signIn(kept.get(FIRST)!)
+    writes = keep()
+    useConversations()
+    await connect()
+    opened = await openWithSaved([savedMessage('a', 'Message A'), savedMessage('b', 'Message B')])
+    const { first } = opened
+    await until(() => serverSaved.get(FIRST)?.[0]?.text === 'Message A, edited', 'the Save goes again')
+    expect(listed(first)).toEqual(['Message A, edited', 'Message B'])
+    await until(() => (kept.get(FIRST)?.savedWrites ?? []).length === 0, 'the confirmed Save is let go')
   } finally {
     held.restore()
+    writes.mockRestore()
     signOut()
   }
 })
@@ -5294,23 +5359,49 @@ test('sending a saved message shows it on its way at once as a turn of its own, 
 })
 
 // Edit on a message from the list that was not delivered edits it as the
-// list's Edit does: it goes into the composer and is neither on its way nor
-// listed; Delete takes it from the list.
-test('Edit on a saved message not delivered puts it in the composer, and Delete takes it from the list', async () => {
+// list's Edit does: it is listed again and opens in the edit mode, the draft
+// as it was; an edited one opens as it was edited. Delete takes it from the
+// list.
+test('Edit on a saved message not delivered opens it for editing as it was sent, and Delete takes it from the list', async () => {
   const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next'), savedMessage('ipv6', 'Then the IPv6')])
   const restore = await withStubModel(first)
   const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockRejectedValue(new Error('The session cannot take it.'))
   try {
-    store.sendSaved(first, 'dns', 'send')
+    first.draft = 'Draft D'
+    store.editSaved(first, 'dns')
+    typeInEdit(first, 'Check example.com’s DNS next')
+    await store.submitEdit(first, 'send')
     await until(() => first.pendingSends[0]?.error != null, 'the send fails')
     store.editSend(first, first.pendingSends[0]!.id)
-    await until(() => first.draft === 'Check prod’s DNS next', 'the message is in the composer')
-    expect([listed(first), first.pendingSends]).toEqual([['Then the IPv6'], []])
+    expect(JSON.parse(JSON.stringify(first.messageEdit))).toMatchObject({ kind: 'saved', savedId: 'dns', content: [{ type: 'text', text: 'Check example.com’s DNS next' }] })
+    expect([first.draft, listed(first), first.pendingSends]).toEqual(['Draft D', ['Check prod’s DNS next', 'Then the IPv6'], []])
     store.sendSaved(first, 'ipv6', 'send')
     await until(() => first.pendingSends[0]?.error != null, 'the send fails')
     store.deleteSend(first, first.pendingSends[0]!.id)
-    expect([listed(first), first.pendingSends]).toEqual([[], []])
-    await until(() => (serverSaved.get(FIRST) ?? []).length === 0, 'the backend lists neither')
+    expect([listed(first), first.pendingSends]).toEqual([['Check prod’s DNS next'], []])
+    await until(() => (serverSaved.get(FIRST) ?? []).length === 1, 'the backend lists the one left')
+  } finally {
+    send.mockRestore()
+    restore()
+  }
+})
+
+// Send on a saved message's edit goes as the edit holds it, from the list, as
+// the list's Send does; the draft stays as it was.
+test('Send on a saved message\'s edit sends the edit as the message from the list, and the draft stays', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next'), savedMessage('ipv6', 'Then the IPv6')])
+  const restore = await withStubModel(first)
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockResolvedValue(true)
+  try {
+    first.draft = 'Draft D'
+    store.editSaved(first, 'dns')
+    typeInEdit(first, 'Check example.com’s DNS next')
+    await store.submitEdit(first, 'send')
+    expect([first.messageEdit, first.draft, listed(first)]).toEqual([null, 'Draft D', ['Then the IPv6']])
+    expect(first.pendingSends.map(({ text, saved, edited }) => ({ text, saved, edited })))
+      .toEqual([{ text: 'Check example.com’s DNS next', saved: 'dns', edited: true }])
+    await until(() => send.mock.calls.length === 1, 'the session is asked to send it')
+    expect(send.mock.calls[0]).toEqual(['dns', expect.any(String), 'message', [{ type: 'text', text: 'Check example.com’s DNS next' }]])
   } finally {
     send.mockRestore()
     restore()

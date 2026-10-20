@@ -24,8 +24,11 @@ import { transferCopiedMessage } from './message-input/copied-message'
  *   conversation's messages saved for later.
  * - The `list` slot is a panel under that row.
  * - The `context` slot is a row at the top of the box, for what the message
- *   carries besides its text, such as a batch of comments. The owner opens the
- *   shell while it shows, so the row stands over the message.
+ *   carries besides its text, such as a batch of comments, or for what an edit
+ *   edits. The owner opens the shell while it shows, so the row stands over
+ *   the message. A row that is one line of text captioning the message
+ *   (`captioned`), such as what an edit edits, stands right over its first
+ *   line.
  *
  * The list opens and closes in 150 ms. The layout takes its new shape at once,
  * so the transcript above resizes once. The frame glides from where it was
@@ -51,6 +54,8 @@ const props = defineProps<{
   focused?: boolean
   expanded?: boolean
   dropping?: boolean
+  /** The `context` row is one line of text that captions the message. */
+  captioned?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -151,6 +156,7 @@ onBeforeUnmount(() => {
         showDrop ? 'outline-transparent' : focused ? 'outline-line-focus' : 'outline-line',
         expanded ? 'composer-shell-expanded' : 'composer-shell-capsule',
         $slots.context ? 'composer-shell-context' : '',
+        $slots.context && captioned ? 'composer-shell-captioned' : '',
       ]"
       :data-dropping="showDrop ? '' : undefined"
     >

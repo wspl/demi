@@ -85,6 +85,11 @@ pub enum ClientFrame {
         turn_id: TurnId,
         #[garde(skip)]
         delivery: SavedDelivery,
+        /// The message as an edit changed it, sent in place of what the list
+        /// holds; omitted for the message as it is.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(dive)]
+        content: Option<Vec<ClientContent>>,
     },
     CancelPendingSteer {
         #[garde(skip)]

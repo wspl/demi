@@ -11,9 +11,11 @@ import {
   regenerateMessage,
   restoreMessageEdit,
   sentEditRequest,
+  editContent,
   submitMessageEdit,
   unchangedEditRequest,
   type MessageEditState,
+  type SentMessageEdit,
   type MessageEditRequest,
 } from '../message-editing'
 import { createdAt, model, userBlock } from './agent-harness'
@@ -77,7 +79,7 @@ test('only the target and its suffix are muted; an accepted rewrite removes the 
   expect([...messageEditSuffixIds([{ id: 'A' }, { id: 'B-edited' }], 'B')]).toEqual([])
 })
 
-function draft(): MessageEditState {
+function draft(): SentMessageEdit {
   return beginMessageEdit({
     ...userBlock('user-B', 'turn-B', 'unused'),
     content: [
@@ -95,18 +97,18 @@ test('editing a reactive multipart draft remains serializable and preserves the 
     if (first.type === 'text') first.text = 'updated'
   })
   const saved = structuredClone(toRaw(reactive(changed)))
-  expect(saved.request.content.slice(1)).toEqual(toRaw(original.request.content).slice(1))
+  expect(editContent(saved).slice(1)).toEqual(toRaw(original.request.content).slice(1))
   expect(original.request.content[0]).toEqual({ type: 'text', text: 'first\nsecond' })
 })
 
 test('duplicate save is blocked and the complete detached draft is retained until acceptance', async () => {
-  let state: MessageEditState | null = draft()
+  let state: SentMessageEdit | null = draft()
   const original = state
   const accepted = deferred<void>()
   const requests: MessageEditRequest[] = []
   const host = {
     get: () => state,
-    set: (next: MessageEditState | null) => { state = next },
+    set: (next: SentMessageEdit | null) => { state = next },
     send: async (request: MessageEditRequest) => {
       requests.push(request)
       await accepted.promise
@@ -128,8 +130,9 @@ test('duplicate save is blocked and the complete detached draft is retained unti
 })
 
 test('lost confirmation survives reload and retries exactly the same operation and content', async () => {
-  let state: MessageEditState | null = draft()
-  const request = structuredClone(state.request)
+  const opened = draft()
+  let state: MessageEditState | null = opened
+  const request = structuredClone(opened.request)
   const requests: MessageEditRequest[] = []
   const host = {
     get: () => state,
@@ -149,18 +152,18 @@ test('lost confirmation survives reload and retries exactly the same operation a
 })
 
 test('explicit rejection restores editing with the draft and attachments intact', async () => {
-  let state: MessageEditState | null = draft()
+  let state: SentMessageEdit | null = draft()
   const request = structuredClone(state.request)
   await submitMessageEdit({
     get: () => state,
     set: (next) => { state = next },
     send: async () => { throw new EditRejectedError({ code: 'save_failed', reason: 'save failed' }) },
   })
-  expect(state).toEqual({ phase: 'editing', request })
+  expect(state).toEqual({ kind: 'message', phase: 'editing', request })
 })
 
 test('a late result cannot clear a different editor or conversation draft', async () => {
-  let state: MessageEditState | null = draft()
+  let state: SentMessageEdit | null = draft()
   const accepted = deferred<void>()
   const pending = submitMessageEdit({
     get: () => state,
@@ -179,13 +182,13 @@ test('Regenerate sends the message unchanged without the editor; a lost answer l
     ...userBlock('user-B', 'turn-B', 'unused'),
     content: [{ type: 'image' as const, source: { type: 'ref' as const, ref: SHA('a'), mediaType: 'image/png' } }],
   }
-  let state: MessageEditState | null = null
+  let state: SentMessageEdit | null = null
   const phases: (string | undefined)[] = []
   const requests: MessageEditRequest[] = []
   const regenerates: boolean[] = []
   const host = {
     get: () => state,
-    set: (next: MessageEditState | null) => { state = next },
+    set: (next: SentMessageEdit | null) => { state = next },
     send: async (request: MessageEditRequest, regenerate: boolean) => {
       phases.push(state?.phase)
       requests.push(request)
@@ -199,7 +202,7 @@ test('Regenerate sends the message unchanged without the editor; a lost answer l
   // in the editor.
   expect(requests[0]!.content).toEqual(block.content)
   expect(phases).toEqual(['regenerating'])
-  expect(host.get()).toEqual({ phase: 'uncertain', request, regenerate: true })
+  expect(host.get()).toEqual({ kind: 'message', phase: 'uncertain', request, regenerate: true })
   // While an edit is in progress, Regenerate sends nothing; Retry sends the
   // same operation, a Regenerate again, which the session recognizes.
   await regenerateMessage(host, unchangedEditRequest(block, { epoch: 'epoch', revision: 4 }))

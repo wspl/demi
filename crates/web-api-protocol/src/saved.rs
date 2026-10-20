@@ -9,7 +9,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::drafts::{ConversationDraft, DraftFile, Revisions};
-use crate::ids::{SavedEditId, SavedMessageId};
+use crate::ids::SavedMessageId;
 
 /// The most messages a conversation keeps saved for later.
 pub const SAVED_MAX: usize = 200;
@@ -46,16 +46,16 @@ pub struct SavedSave {
     pub files: Vec<ClientContent>,
 }
 
-/// `POST /conversations/:id/saved/:messageId/edit`: the page's id for this
-/// edit, by which the backend answers it again for a day, and the id the
-/// page gives the message the draft becomes, when the draft holds one.
+/// `PUT /conversations/:id/saved/:messageId`, as an edit's Save sends it:
+/// the message's new Markdown and its files in the order of their marks, as
+/// a draft's `PUT` names them. The message keeps its place in the list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SavedEdit {
+pub struct SavedWrite {
     #[garde(skip)]
-    pub op: SavedEditId,
-    #[garde(skip)]
-    pub id: SavedMessageId,
+    pub text: String,
+    #[garde(dive)]
+    pub files: Vec<ClientContent>,
 }
 
 /// A message saved for later.
@@ -80,8 +80,8 @@ pub struct SavedList {
     pub messages: Vec<SavedMessage>,
 }
 
-/// `POST /conversations/:id/saved`'s answer: the message as saved, with
-/// the revisions after it.
+/// `POST /conversations/:id/saved`'s and `PUT .../saved/:messageId`'s
+/// answer: the message as saved, with the revisions after it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SavedAnswer {
     pub message: SavedMessage,

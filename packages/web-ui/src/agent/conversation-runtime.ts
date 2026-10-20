@@ -204,8 +204,9 @@ export class ConversationRuntime {
 
   /**
    * Sends the message saved for later `id` the way the composer chose, as the
-   * message `turnId`. The backend takes it off the list once the session takes
-   * it, and keeps it when the session refuses it.
+   * message `turnId`, as the list holds it or as an edit changed it,
+   * `content`. The backend takes it off the list once the session takes it,
+   * and keeps it when the session refuses it.
    *
    * A connection lost before the session answered fails nothing. Once the
    * conversation is open again, a send the session holds already is not sent
@@ -214,9 +215,9 @@ export class ConversationRuntime {
    * composer's steer would.
    *
    * Answers false when the list no longer held it, as another page sent or
-   * deleted it first, and nothing was sent.
+   * deleted it first, and nothing was sent; an edited one goes as edited.
    */
-  async sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<boolean> {
+  async sendSaved(id: string, turnId: string, delivery: SavedDelivery, content?: ClientContent[]): Promise<boolean> {
     this.options.state.lastError = null
     let way = delivery
     for (;;) {
@@ -225,7 +226,7 @@ export class ConversationRuntime {
         return true
       }
       try {
-        await client.sendSaved(id, turnId, way)
+        await client.sendSaved(id, turnId, way, content)
         return true
       } catch (error) {
         if (error instanceof SavedGoneError) {

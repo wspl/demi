@@ -404,25 +404,24 @@ async fn waiting_comments_reach_every_session_and_stay_in_the_draft_when_its_tex
     assert_eq!((message.text.as_str(), draft.text.as_str()), ("Otherwise go ahead", ""));
     assert_eq!(draft.comments, vec![edited.clone()]);
 
-    // Edit on it brings the text back beside the comment, which no saved
-    // message takes.
+    // An edit's Save writes the saved message in its place; the draft, its
+    // text and its comment, stays as it was.
     let typed = save_comments(&backend, &laptop, &id, draft.revision, "Also check retries", &[edited.clone()]).await;
-    let opened = backend
-        .post(
-            &format!("/api/conversations/{id}/saved/{}/edit", message.id),
-            Some(&laptop),
-            json!({ "op": uuid::Uuid::new_v4().to_string(), "id": uuid::Uuid::new_v4().to_string() }),
+    let written = backend
+        .put(
+            &format!("/api/conversations/{id}/saved/{}", message.id),
+            &laptop,
+            json!({ "text": "Otherwise go ahead, with retries", "files": [] }),
         )
         .await;
-    assert_eq!(opened.status, StatusCode::OK, "{}", String::from_utf8_lossy(&opened.body));
-    let after = read(&backend, &laptop, &id).await;
-    assert_eq!((after.text.as_str(), after.comments.clone()), ("Otherwise go ahead", vec![edited]));
+    assert_eq!(written.status, StatusCode::OK, "{}", String::from_utf8_lossy(&written.body));
+    assert_eq!(read(&backend, &laptop, &id).await, typed);
     let list = backend
         .get(&format!("/api/conversations/{id}/saved"), Some(&laptop))
         .await
         .json::<SavedList>();
     assert_eq!(
         list.messages.iter().map(|each| each.text.as_str()).collect::<Vec<_>>(),
-        [typed.text.as_str()]
+        ["Otherwise go ahead, with retries"]
     );
 }
