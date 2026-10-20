@@ -370,7 +370,7 @@ ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cl
 /// provider makes images has an Image Generation switch, on for every entry
 /// stored before (`providers.md` § Provider management); a device keeps why
 /// it will not start its runner by itself, which no device stored before
-/// has said (`runner.md` § Starting with the computer).
+/// has said (`crates/runner/src/autostart.rs`).
 const CONTROL_FROM_0_1_25: &str = "
 ALTER TABLE providers ADD COLUMN image_generation INTEGER NOT NULL DEFAULT 1 CHECK (image_generation IN (0, 1));
 ALTER TABLE devices ADD COLUMN autostart_unavailable TEXT;
@@ -7540,8 +7540,8 @@ mod tests {
     }
 
     /// A device stored by 0.1.25 keeps its record and has said nothing yet
-    /// of starting its runner by itself (`runner.md` § Starting with the
-    /// computer), which its runner's next hello records.
+    /// of starting its runner by itself (`crates/runner/src/autostart.rs`),
+    /// which its runner's next hello records.
     /// Planted defect this catches: a migration that leaves the column out,
     /// so reading any device of an upgraded server fails.
     /// One small database, milliseconds.

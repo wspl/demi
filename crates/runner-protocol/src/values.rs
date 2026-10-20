@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[error("{0}")]
 pub struct ValueError(String);
 
-/// A backend's URL (`runner.md` § Connection and identity): `http`, `https`,
+/// A backend's URL (`crates/runner-protocol/src/wire/mod.rs`): `http`, `https`,
 /// `ws` or `wss`, naming a host, without credentials or a fragment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

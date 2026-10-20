@@ -25,7 +25,7 @@ use crate::{
 pub struct HostServer {
     default_cwd: PathBuf,
     /// The connection's file system watches, which a direct channel's
-    /// watches share (`runner.md` § Watching files).
+    /// watches share (`crates/runner-host/src/subscriptions.rs`).
     shared_watches: Watches,
     output: mpsc::Sender<wire::Frame>,
     filesystem: TaskTracker,
@@ -51,7 +51,7 @@ impl HostServer {
     pub fn new(output: mpsc::Sender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient) -> Self {
         let cancel = CancellationToken::new();
         // The working tree's changes and the backend's subscriptions share
-        // one watch per tree (`runner.md` § Watching files).
+        // one watch per tree (`crates/runner-host/src/subscriptions.rs`).
         let watches = Watches::default();
         let (subscriptions, reports) = Subscriptions::new(watches.clone(), default_cwd.clone());
         let reporting = AbortOnDropHandle::new(tokio::spawn(report(reports, output.clone(), cancel.clone())));
@@ -125,7 +125,7 @@ impl HostServer {
         })
     }
 
-    /// Runs `reply` once `capacity` has a slot (`runner.md` § Load) and sends
+    /// Runs `reply` once `capacity` has a slot (`crates/runner-host/src/lib.rs`) and sends
     /// what it answers; a request whose connection closes while it waits or
     /// runs ends without an answer.
     fn admit(
@@ -171,7 +171,7 @@ impl HostServer {
     }
 
     /// Subscribes, renews or ends a subscription of the backend's
-    /// (`runner.md` § Watching files), which reports as messages of its
+    /// (`crates/runner-host/src/subscriptions.rs`), which reports as messages of its
     /// own until it ends.
     pub fn handle_watch(&self, message: Inbound) -> io::Result<()> {
         if self.cancel.is_cancelled() {

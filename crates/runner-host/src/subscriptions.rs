@@ -1,15 +1,30 @@
-//! Subscriptions (`runner.md` § Watching files): what one client, the
-//! backend's connection or a page's direct `watch`, subscribed to, each
-//! followed through the connection's shared watches (`crate::watches`), and
-//! reported by its id alone: `live` once its watch runs, `failed` when it
-//! cannot, and in batches every 100 ms, each that changed once with the
-//! number of its latest change. A subscription is a lease that runs 10
-//! minutes from its subscribe or its last renew.
+//! Subscriptions: what one client, the backend's connection or a page's direct
+//! `watch`, subscribed to of a Host's files, each followed through the connection's
+//! shared watches (`crate::watches`) and reported by its id alone: the runner never
+//! sends a path or content. For example, a page keeps `src/app.ts`'s text and the
+//! working tree's changes list; the agent edits the file and runs `cargo check`,
+//! which writes 20,000 files under the ignored `target/`: two subscriptions are
+//! reported changed, once each, and nothing for `target/`.
 //!
-//! One owner task per client keeps the subscriptions; the watches' threads
-//! match what they receive against an index of the subscriptions that
-//! follow them and note the ids that changed, so a change nobody
-//! subscribed to costs a lookup and sends nothing.
+//! One owner task per client keeps the subscriptions; the watches' threads match what
+//! they receive against an index of the subscriptions that follow them and note the
+//! ids that changed, so a change nobody subscribed to costs a lookup and sends
+//! nothing. Changes are gathered for `WATCH_GATHER` and each subscription is sent at
+//! most once per batch, with the highest number it saw, which is why a batch names no
+//! paths and needs no size limit. Starting and stopping a shared platform watch run
+//! on the blocking pool, never on the control thread, so the last subscriber
+//! releases its watch without waiting for a join, and closing also ends a watch still
+//! being started, so neither a late start nor a direct channel leaves one behind.
+//!
+//! An ignored path changes no `worktree` subscription (`crate::ignore`), but a `file`
+//! or `folder` subscription inside an ignored folder, such as a log under `target/` a
+//! page shows, changes as any other. A git directory concerns only its own
+//! repository: in a checkout with nested repositories a commit in `src/v8` changes
+//! `src/v8`'s subscriptions and none of `src`'s. When the platform says it dropped
+//! events, the subscriptions the drop concerns changed, reported as any change:
+//! FSEvents' `MustScanSubDirs` names a folder and only the subscriptions under it;
+//! the other flags and inotify's overflow concern every subscription on that stream;
+//! a drop outside the working tree changes nothing inside it.
 
 use crate::git::GitDirs;
 use std::{
@@ -297,7 +312,7 @@ fn rebound(subject: &mut Subject, path: &Path) -> bool {
 }
 
 /// Whether a change at `path` changes a working tree's list or its last
-/// commit (`runner.md` § Watching files).
+/// commit.
 fn tree_changed(subject: &Subject, path: &Path, metadata: bool, entry: bool, ignored: bool) -> bool {
     match subject {
         Subject::Worktree { root, repo: Some(repo) } => {

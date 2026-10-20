@@ -1,4 +1,4 @@
-//! A stream pipe's source end (`runner.md` § Host operations): the runner
+//! A stream pipe's source end (`crates/runner-protocol/src/wire/pipe_frames.rs`): the runner
 //! sends the bytes of a network or service stream's output in binary
 //! messages of a WebSocket, which the backend's pipe route accepted, and ends
 //! the pipe with a normal close frame, or fails it with one that carries the

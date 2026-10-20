@@ -179,7 +179,7 @@ async fn login_profiles_apply_per_job_without_replacing_owned_context_or_cwd() {
 
 /// A drive path as Windows writes it with forward slashes, `C:/…`, works
 /// for `cd`, redirections, utilities and a program's own path
-/// (`runner.md` § Windows paths).
+/// (`crates/runner-shell/src/lib.rs`).
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn windows_drive_paths_work_for_cd_redirection_utilities_and_executables() {

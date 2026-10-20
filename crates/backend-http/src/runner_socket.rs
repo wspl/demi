@@ -1,4 +1,4 @@
-//! A runner's socket at the edge (`runner.md` § Connection and identity).
+//! A runner's socket at the edge (`crates/runner-protocol/src/wire/mod.rs`).
 //! The runner's first message is its hello, which must come within the
 //! hello deadline. A known token moves the socket into the shard of the
 //! device's owner; a runner without one waits here for its user to claim the

@@ -24,8 +24,7 @@ export const DEVICE_STATE_LABEL: Record<DeviceState, TitleText> = {
 
 /**
  * A device's state, with how much of the runner release it moves to its
- * runner has downloaded while that download moves (`runner.md` § Runner
- * updates): ahead while it is online, or after its server switched while it
+ * runner has downloaded while that download moves (`crates/runner/src/update.rs`): ahead while it is online, or after its server switched while it
  * updates; null or absent while none moves.
  */
 export interface DeviceStatus {

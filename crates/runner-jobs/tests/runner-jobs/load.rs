@@ -1,5 +1,5 @@
 //! No command the backend implements is refused for how many others are in
-//! flight (`runner.md` § Load).
+//! flight (`crates/command-sdk/src/descriptors.rs`).
 
 use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale, LocalInvocation};
 use demi_runner_jobs::testing::Dispatch;

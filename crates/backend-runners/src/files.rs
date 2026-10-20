@@ -30,8 +30,7 @@ pub const TEXT_RANGE: ByteRange = ByteRange {
     length: Some(EDIT_FILE_BYTES as u64 + 1),
 };
 
-/// One file of a Host as text, with one request (`runner.md` § Host
-/// operations), read as [`TEXT_RANGE`] says.
+/// One file of a Host as text, with one request (`crates/runner-host/src/lib.rs`), read as [`TEXT_RANGE`] says.
 pub async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextError> {
     text_of_stream(fs.read_stream(path, TEXT_RANGE).await?).await
 }
@@ -49,8 +48,7 @@ pub async fn text_of_stream(mut stream: ByteStream) -> Result<String, TextError>
 }
 
 /// A directory's entries with their metadata, which the listing carries,
-/// so the whole answer is one request to the Host (`runner.md` § Host
-/// operations), and the Host's number before it listed.
+/// so the whole answer is one request to the Host (`crates/runner-host/src/lib.rs`), and the Host's number before it listed.
 pub async fn browse_directory(
     host: &RemoteHost,
     path: &str,

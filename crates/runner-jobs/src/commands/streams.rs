@@ -1,7 +1,16 @@
-//! User streams the backend opens on a resident native service (`runner.md`
-//! § Service streams): invoke the declared operation with the stream's command
-//! context, then carry bytes between the invocation and the two pipes the
-//! request named.
+//! User streams the backend opens on a resident native service: a `service_open`
+//! names the stream, its command context, the declared operation and two pipes,
+//! `input` (delivered to the invocation as input chunks when it asks for them) and
+//! `output` (its standard output); its standard error goes to the Host log. The
+//! runner starts the invocation in the resident service that holds the
+//! conversation's state, starting the service when needed, and answers
+//! `service_opened` or `service_error`; no bytes move before that answer. The input
+//! pipe ending ends the invocation's input; its completion ends the output pipe,
+//! which is how the backend learns the stream is over; a failing pipe or a closed
+//! connection cancels it. `service_done` carries the exit code and the bounded tail
+//! of standard error, since a one-shot call has no page to tell: its caller learns a
+//! failure and its words from this message, not from a stream that merely ended. The
+//! runner does not parse what flows through.
 
 use std::{
     collections::HashMap,
@@ -185,7 +194,7 @@ impl ServiceStreams {
     }
 }
 
-/// A user stream to open (`runner.md` § Service streams): the operation of
+/// A user stream to open: the operation of
 /// the package, with what its invocation receives as a command's does.
 pub struct StreamStart {
     pub stream_id: String,
@@ -493,7 +502,7 @@ impl Bindings {
     }
 }
 
-/// Where one stream's lines go in the Host's log (`runner.md` § Host log):
+/// Where one stream's lines go in the Host's log (`crates/runner/src/host_log.rs`):
 /// its invocation's standard error under the stream's own source, the
 /// runner's words about it under `runner`, both with its conversation.
 #[derive(Clone)]

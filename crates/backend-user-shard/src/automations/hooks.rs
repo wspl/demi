@@ -321,7 +321,7 @@ impl Shard {
     }
 
     /// Writes each call's body to the conversation's scratch directory on
-    /// its Host, never the project (`runner.md` § Scratch directory), and
+    /// its Host, never the project (`crates/runner-jobs/src/scratch.rs`), and
     /// answers each file's path, none for an empty body.
     pub(crate) async fn write_bodies(
         &self,

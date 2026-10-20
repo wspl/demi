@@ -1,5 +1,4 @@
-//! A user's devices as their runners connect (`runner.md` § Connection and
-//! identity): each device has one slot holding its connection, `Online` with
+//! A user's devices as their runners connect: each device has one slot holding its connection, `Online` with
 //! the connection's link or `Offline` with the account its runner last
 //! reported, and every Host handle of the device watches that slot. A device
 //! holds one live connection; a new hello with its token is refused while
@@ -129,7 +128,7 @@ pub struct Devices {
 }
 
 /// One device's connection, which its Hosts watch, and its jobs, which
-/// outlive each connection (`runner.md` § Command lifetime).
+/// outlive each connection.
 struct DeviceSlot {
     link: watch::Sender<DeviceLink>,
     jobs: DeviceJobs,
@@ -152,9 +151,17 @@ struct DeviceSlot {
     target: RefCell<Option<String>>,
 }
 
-/// A runner's update as the backend shows it (`runner.md` § Runner
-/// updates): until `until`, which each byte of its download served moves
-/// on, unless the device's next hello comes first.
+/// A runner's update as the backend shows it: until `until`, which each byte
+/// of its download served moves on, unless the device's next hello comes
+/// first.
+///
+/// The backend counts the bytes it serves of a runner executable to the device
+/// whose token the request carries, and the device's state carries the progress,
+/// announced at most once a second. A prefetch shows the device online with its
+/// percent; from the 409 that named the executable until its next hello the device
+/// is updating, for as long as its download moves, so a slow link that keeps
+/// receiving shows updating, never offline. It shows offline once no byte was
+/// served to it for the window and no hello came.
 pub struct Updating {
     until: Cell<Instant>,
     /// Ends the window for the device's pages; dropped, it stops.
@@ -820,7 +827,7 @@ mod tests {
     /// from the first 409, whatever its retries, and then as offline until
     /// its next hello; a download served to it moves the window on, and
     /// shows a device whose window ended as updating again; after the hello
-    /// an update shows again (`runner.md` § Runner updates).
+    /// an update shows again (`crates/runner/src/update.rs`).
     #[tokio::test(start_paused = true)]
     async fn an_update_shows_from_its_first_409_while_its_download_moves() {
         let devices = Devices::default();

@@ -8,7 +8,7 @@
 //! profiles). And, on a musl target, the memory allocator of the programs
 //! that run on a Host (`builds-and-releases.md` § Memory allocator). And
 //! raising a program's soft limit on open files, which the runner and the
-//! backend do as they start (`runner.md` § Load, `backend.md` § Startup and
+//! backend do as they start (`crates/runner/src/main.rs`, `backend.md` § Startup and
 //! shutdown).
 
 use std::{ffi::OsString, io::Write as _};

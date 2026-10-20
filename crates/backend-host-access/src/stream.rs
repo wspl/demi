@@ -7,7 +7,7 @@
 //! JSON answer to its end. Neither wakes a stopped Cloud unless the call is
 //! work the user starts. An open stream is the conversation's activity, and
 //! so is a call that operates the Host; a call that only looks is not
-//! (`resource-lifecycle.md` § Activity).
+//! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 
 use std::collections::HashMap;
 use std::sync::Arc;

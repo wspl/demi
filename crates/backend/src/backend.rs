@@ -655,7 +655,7 @@ impl Backend {
     }
 
     /// The paths `user`'s device `device` is subscribed to on its runner
-    /// now, by every holder (`runner.md` § Watching files).
+    /// now, by every holder (`crates/runner-host/src/subscriptions.rs`).
     #[cfg(feature = "testing")]
     pub async fn subscribed(
         &self,

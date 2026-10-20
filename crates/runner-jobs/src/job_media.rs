@@ -1,10 +1,13 @@
-//! A job's media (`runner.md` § Pipes and output): the images, videos and
-//! PDF documents `demi file view` hands to the job, whatever its stdout is,
-//! numbered from 1 in the order they reach the runner and kept in
-//! `media/<n>` of the job's directory within the job's bounds. Each one's
-//! line goes into the job's output as it arrives, and each one kept is
-//! announced to the backend as `job_medium`
-//! (`crates/command-package-file/src/files.rs`).
+//! A job's media: the images, videos and PDF documents `demi file view` hands to the
+//! job, whatever its stdout is, kept in `media/<n>` of the job's directory, numbered
+//! from 1 in arrival order, within [`JOB_MEDIA`] media and [`JOB_MEDIA_BYTES`]; one
+//! beyond the bounds is read to its end and dropped, and its line says it was not
+//! kept. Each medium's line goes into the job's output as it arrives, and the
+//! command that returned it ends only once the line is written ([`Arrival`]), so
+//! nothing the job prints afterwards overtakes it. A kept medium is announced as
+//! `job_medium` once written, so the backend knows each medium even when the
+//! connection is lost before the job ends; every `job_medium` of a job precedes its
+//! `job_exit`.
 
 use std::{
     io,

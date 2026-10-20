@@ -1,4 +1,4 @@
-//! Pipe records (`runner.md` § Pipes and output): every byte stream between
+//! Pipe records (`crates/runner-protocol/src/wire/pipe_frames.rs`): every byte stream between
 //! processes. A pipe has a source and a sink; an end on a device is that
 //! runner's HTTP exchange with the backend (a `PUT` body or a stream pipe's
 //! WebSocket from the source, `GET` by the sink), an end in this process is
@@ -856,7 +856,7 @@ impl DeviceSink {
     }
 
     /// The response body, which goes out at once, before the source is
-    /// there, in the pipe's frames (`runner.md` § Pipes and output): its
+    /// there, in the pipe's frames (`crates/runner-protocol/src/wire/pipe_frames.rs`): its
     /// bytes in data frames, an idle frame after [`wire::PIPE_IDLE`] without
     /// a frame, so an edge that ends a silent response keeps it, and its end
     /// in an end frame, with the cause when it failed. Reading the source to

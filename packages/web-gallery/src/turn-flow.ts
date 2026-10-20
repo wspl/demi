@@ -1275,7 +1275,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * End Command: the command shows Stopping… until its runner, simulated
-   * here, says that it ended (`runner.md` § Cancellation and completion).
+   * here, says that it ended (`crates/runner-shell/src/job.rs`).
    */
   function abortTerminal(id: string): void {
     const terminal = state.terminals.find((entry) => entry.id === id)

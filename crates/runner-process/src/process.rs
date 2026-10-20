@@ -34,9 +34,8 @@ pub struct SpawnOptions {
 }
 
 /// What a process the runner starts gets besides its command: the umask and
-/// resource limits its job's `umask` and `ulimit` set (`runner.md`
-/// § Builtins that act on a process). Nothing set, it gets the runner's own,
-/// and the open-file limits the runner was started with (`runner.md` § Load).
+/// resource limits its job's `umask` and `ulimit` set (`crates/runner-shell/src/process_builtins.rs`). Nothing set, it gets the runner's own,
+/// and the open-file limits the runner was started with (`crates/command-sdk/src/descriptors.rs`).
 #[derive(Debug, Clone, Default)]
 pub struct ChildAttributes {
     /// The file mode creation mask; absent, the process inherits the runner's.
@@ -382,8 +381,7 @@ async fn pump<T: AsyncRead + Unpin>(
 static STARTED_WITH: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
 
 /// Keeps the soft and hard open-file limits the runner was started with,
-/// once it raised its soft limit from `soft` to `raised` (`runner.md`
-/// § Load), so that every process it starts gets them back. Without a raise
+/// once it raised its soft limit from `soft` to `raised` (`crates/command-sdk/src/descriptors.rs`), so that every process it starts gets them back. Without a raise
 /// the processes inherit the runner's own, which are the same.
 #[cfg(unix)]
 pub fn keep_started_open_file_limit(soft: u64, hard: u64, raised: u64) {
@@ -395,7 +393,7 @@ pub fn keep_started_open_file_limit(soft: u64, hard: u64, raised: u64) {
 /// The limits a process the runner starts gets for `resource` unless its
 /// job's `ulimit` set others: for open files the ones the runner was started
 /// with, otherwise the runner's own, which the process inherits
-/// (`runner.md` § Load).
+/// (`crates/command-sdk/src/descriptors.rs`).
 #[cfg(unix)]
 pub fn child_limit(resource: rlimit::Resource) -> io::Result<(u64, u64)> {
     match STARTED_WITH.get() {
@@ -406,7 +404,7 @@ pub fn child_limit(resource: rlimit::Resource) -> io::Result<(u64, u64)> {
 
 /// The runner's own file mode creation mask, which a process it starts
 /// inherits unless its job's `umask` set another. Nothing in the runner
-/// changes it (`runner.md` § Builtins that act on a process), so it is read
+/// changes it (`crates/runner-shell/src/process_builtins.rs`), so it is read
 /// once: from `/proc` on Linux, elsewhere by setting a strict mask and
 /// restoring the old one, which the runner does as it starts, before any job
 /// runs.
@@ -434,7 +432,7 @@ pub fn umask() -> u32 {
     })
 }
 
-/// Windows has no mask (`runner.md` § Builtins that act on a process): a
+/// Windows has no mask (`crates/runner-shell/src/process_builtins.rs`): a
 /// job's shell shows `022`, the mask a Unix runner most often has, until
 /// its `umask` sets another, and nothing applies either.
 #[cfg(windows)]
@@ -444,8 +442,8 @@ pub fn umask() -> u32 {
 
 /// Gives a process the runner starts its attributes before it runs its
 /// program: the open-file limits the runner was started with, the ones it
-/// would have from a terminal (`runner.md` § Load), and what its job's
-/// `umask` and `ulimit` set (`runner.md` § Builtins that act on a process).
+/// would have from a terminal (`crates/command-sdk/src/descriptors.rs`), and what its job's
+/// `umask` and `ulimit` set (`crates/runner-shell/src/process_builtins.rs`).
 /// A program that uses `select()`, or that closes every descriptor up to its
 /// limit, misbehaves with the runner's raised limit. Each call adds a hook,
 /// so a command needs one call.
@@ -506,7 +504,7 @@ pub fn wrap(command: Command, group: bool, attributes: &ChildAttributes) -> Comm
 /// Starts a process with `attempt`, which tries to spawn it once. Every process
 /// the runner starts, a service, a raw process, a job's external command or a
 /// utility's child program, starts this way, so none fails for a condition
-/// that passes (`runner.md` § Load; `StartRetry` says which).
+/// that passes (`crates/command-sdk/src/descriptors.rs`; `StartRetry` says which).
 pub async fn start<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     let mut retry = StartRetry::default();
     loop {
@@ -590,8 +588,7 @@ pub struct ProcessorTime {
 }
 
 /// Waits for `child` to end and reaps it, with the processor time it used,
-/// which the system keeps only until the reaping (`runner.md` § Builtins
-/// that act on a process). Dropped while it waits, it has reaped nothing.
+/// which the system keeps only until the reaping (`crates/runner-shell/src/process_builtins.rs`). Dropped while it waits, it has reaped nothing.
 /// A time it cannot read counts as none: it only shortens what `time`
 /// reports, while the wait itself goes on.
 pub async fn wait_timed(child: &mut dyn ChildWrapper) -> io::Result<(ExitStatus, ProcessorTime)> {
@@ -778,7 +775,7 @@ pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
     sent.map_err(io::Error::from)
 }
 
-/// Windows has no signals (`runner.md` § Builtins that act on a process):
+/// Windows has no signals (`crates/runner-shell/src/process_builtins.rs`):
 /// signal 0 asks whether the process `target` runs, and any other ends it
 /// with `TerminateProcess` and the exit status 128 plus the signal, the
 /// status a shell gives a process that signal ended on Unix. A negative
@@ -867,7 +864,7 @@ pub fn signal_process(pid: i32, signal: i32) -> io::Result<()> {
 
 /// The variable that names a job in the environment of every process the job
 /// starts, by which a stop finds the processes that left the job's groups
-/// (`runner.md` § Cancellation and completion).
+/// (`crates/runner-shell/src/job.rs`).
 pub const JOB_ID_ENV: &str = "DEMI_JOB_ID";
 
 /// A process a stop of its job reaches by its own id, outside the job's
@@ -880,8 +877,7 @@ pub struct Stray {
     started: u64,
 }
 
-/// The processes a stop of job `job` signals one by one (`runner.md`
-/// § Cancellation and completion): of the runner's user, the runner aside,
+/// The processes a stop of job `job` signals one by one (`crates/runner-shell/src/job.rs`): of the runner's user, the runner aside,
 /// and outside the job's process groups, whose ids `grouped` holds, each
 /// one that carries the job's id in its environment, each of `known` that
 /// still runs, and every descendant, by parent process id, of those and of
@@ -973,8 +969,7 @@ fn process_group(pid: i32) -> Option<i32> {
 
 /// Ends once none of `strays` runs: each is gone, a zombie that only waits
 /// for its parent, or its id another process's, as a stop waits for the
-/// processes it killed outside the job's groups (`runner.md` § Cancellation
-/// and completion). They are no children of the runner's, so no wait tells
+/// processes it killed outside the job's groups (`crates/runner-shell/src/job.rs`). They are no children of the runner's, so no wait tells
 /// when they end: this asks the system every 25 ms, as [`group_ended`] does.
 #[cfg(unix)]
 pub async fn strays_ended(mut strays: Vec<Stray>) {
@@ -1001,8 +996,7 @@ pub async fn strays_ended(mut strays: Vec<Stray>) {
 }
 
 /// Ends once no process of the group `group` is left, as a stop waits for
-/// every process of a group it signalled (`runner.md` § Cancellation and
-/// completion). No call tells when a group empties: this asks the system
+/// every process of a group it signalled (`crates/runner-shell/src/job.rs`). No call tells when a group empties: this asks the system
 /// every 25 ms, as a utility waits for its child.
 #[cfg(unix)]
 pub async fn group_ended(group: i32) {

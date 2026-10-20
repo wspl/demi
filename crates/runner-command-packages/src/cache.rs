@@ -1040,7 +1040,7 @@ async fn cached(
 }
 
 /// Runs `attempt` until it does not fail for want of an open file, waiting
-/// for one between attempts (`runner.md` § Load). A download has no
+/// for one between attempts (`crates/command-sdk/src/descriptors.rs`). A download has no
 /// overall deadline: its client fails a connection that makes no progress.
 async fn attempts<T, F>(
     cancel: &CancellationToken,

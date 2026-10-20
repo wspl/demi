@@ -83,7 +83,7 @@ Related contracts define the surrounding behavior:
 
 - [Command declarations](commands.md): CLI parsing and manifest semantics.
 - [Local forwarding](commands.md#external-command-clients): external clients and endpoint access.
-- [Runner jobs](runner.md#shell-jobs): brush, profiles, and whole-job cleanup.
+- Runner jobs (`crates/runner-shell/src/lib.rs`): brush, profiles, and whole-job cleanup.
 - [Crates and packages](../architecture/crates-and-packages.md#module-layout): source module layout and ownership.
 
 ## Bind an exact package
@@ -155,7 +155,7 @@ version.
 Command definitions and catalogs remain fixed for the backend's lifetime. New
 definitions take effect when the backend restarts. The catalog does not support
 live updates. Existing contexts retain their pinned binding. Connection loss and
-context disposal follow the [runner command lifetime](runner.md#command-lifetime).
+context disposal follow the runner command lifetime (`crates/runner/src/connection/kept.rs`).
 
 ## Downloads
 
@@ -264,7 +264,7 @@ The runner takes the first of these that it has for an artifact's digest:
 
 The download request names the artifact's exact digest and target and the
 live work it serves: the job and the hash of the manifest it runs with, or a
-[service stream](runner.md#service-streams). The runner knows which: it
+service stream (`crates/runner-jobs/src/commands/streams.rs`). The runner knows which: it
 installs an executable for the job or stream that needs the service, and a
 program's request names the invocation it serves, which the runner started
 for one job or one stream.
@@ -471,7 +471,7 @@ it checks a download instead of trusting it as it trusts a cache entry:
   it. A copy that matched is used in place, like a cache hit, and is not read
   again while the process runs.
 - A copy that does not match is not used. The runner writes why to the
-  [Host log](runner.md#host-log) and downloads the artifact into its cache;
+  Host log (`crates/runner/src/host_log.rs`) and downloads the artifact into its cache;
   since the cache comes first, later uses take that download. The runner
   never depends on the copy: the backend locates every artifact it grants,
   so a damaged image costs a download, not a command.
@@ -615,7 +615,7 @@ nothing; instead the registry asks again once the second release has ended,
 and stops the service.
 
 A status check that fails, or does not answer within 5 seconds, keeps the service and writes
-the failure to the [Host log](runner.md#host-log): a service that cannot say
+the failure to the Host log (`crates/runner/src/host_log.rs`): a service that cannot say
 what it holds is not a service that holds nothing, and shutting it down would
 end every conversation it serves. For example, when the connection switches to
 a new `demi.browser` release, the service that ran the earlier release loses its
@@ -625,7 +625,7 @@ service stays, and so does every other conversation's browser.
 A service is retired against its leases only as faulty: when it exits, breaks
 the protocol, fails a conversation release, or keeps a handler past its
 cancellation grace. Losing the backend connection shuts every service down
-([Command lifetime](runner.md#command-lifetime)).
+(`crates/runner/src/connection/kept.rs`).
 
 ## Command context
 
@@ -638,7 +638,7 @@ backend, the runner, and every native service link:
 
 | Field | Meaning |
 | --- | --- |
-| `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it ([Pipes and output](runner.md#pipes-and-output)). |
+| `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it (`crates/runner-jobs/src/tasks.rs`). |
 | `caller` | Who started the work: `agent`, with the agent's `number` as the model knows it ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), or `user`, for a [user stream](#user-streams). |
 | `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the web app last reported for the conversation's user ([User preferences](../product/web-api-settings.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
 | `colorScheme` | `light` or `dark`, the scheme the web app last reported for the user, `light` until it reports one; the conversation browser starts with it (`crates/command-package-browser-chrome/src/driver/launch.rs`). |
@@ -688,7 +688,7 @@ This section is the port through which every such capability attaches, and it
 is deliberately the only one. The runtime provides mechanism, identity and
 release, and no policy: it does not know what a tool holds, why, or for how
 long. The backend provides one policy, the conversation idle rule in
-[Conversation idle and Host resource release](resource-lifecycle.md), and no
+`crates/backend-user-shard/src/lifecycle/mod.rs`, and no
 mechanism specific to any tool. A tool that needs more than this port is
 evidence that the port is missing a generic capability, not a reason to give
 that tool a path of its own through the runner or the backend.
@@ -716,7 +716,7 @@ Service shutdown releases every held conversation, all of them at once rather
 than one after another, so the whole release fits the shutdown deadline. Failed
 cleanup retires the faulty service and reports it, rather than claiming a
 successful release. Which events lead the backend to send a release is defined
-in [Conversation idle and Host resource release](resource-lifecycle.md).
+in `crates/backend-user-shard/src/lifecycle/mod.rs`.
 
 ### Conversation numbers
 
@@ -768,7 +768,7 @@ Service                        Runner                          Backend
   one beyond that, or one that repeats an id still in flight, is refused.
 - The stream ends with the service. Service shutdown ends it, and a request
   still waiting fails. A lost backend connection stops the runner's services
-  in any case ([Command lifetime](runner.md#command-lifetime)).
+  in any case (`crates/runner/src/connection/kept.rs`).
 
 ### Messages to the plugin
 
@@ -851,7 +851,7 @@ operation `browser.live`. The declarations are fixed with the command tree for
 the backend's lifetime, and a page can open only a declared name.
 
 When the user opens a stream, the backend asks the conversation's Host runner
-for a [service stream](runner.md#service-streams). The runner invokes the
+for a service stream (`crates/runner-jobs/src/commands/streams.rs`). The runner invokes the
 operation with `POST /v1/invoke`, the contract every command uses, in the
 resident service that holds the conversation's state: the invocation uses the
 same package binding as the conversation's jobs, so it reaches the same
@@ -870,7 +870,7 @@ what the operation wrote to its standard error, which a JSON invocation writes
 as `{ error: { code, message, details } }`. The failure also retains the bounded
 standard output, so a package whose contract puts its error document there can
 validate and report it without losing its cause
-([Service streams](runner.md#service-streams)). The
+(`crates/runner-jobs/src/commands/streams.rs`). The
 conversation browser's tab methods (`crates/plugin-browser/src/page.rs`), a
 plugin's package calls, call `browser.tabs`, `browser.open` and `browser.close`
 this way, so a tab the user
@@ -887,7 +887,7 @@ invocation's completion ends the page's connection.
 Protocol version 1 uses direct HTTP/2 requests. The shared SDK owns process IO.
 Handlers use logical output writers. Executable stdout contains only protocol
 bytes. Process stderr carries service diagnostics, which the runner drains
-independently into the [Host's log](runner.md#host-log) line by line. The runner
+independently into the Host's log (`crates/runner/src/host_log.rs`) line by line. The runner
 also keeps the last part of that output, so when a service exits or breaks the
 protocol, every call that fails with it reports the service's exit status and
 that tail.
@@ -911,7 +911,7 @@ the caller asked for `json`, `cwd`, `env`, the
 [command context](#command-context), for a job that records edits, its
 `edits` context, and, for an invocation a job's command makes, whether its
 stdin is the job's own input, `liveInput`
-([A job's own input](runner.md#a-jobs-own-input)), and the media types the
+(`crates/runner-process/src/stdio.rs`), and the media types the
 job may show the model, `viewable`
 (`crates/command-package-file/src/files.rs`). Each subsequent stdin chunk has a four-byte big-endian length
 and at most 64 KiB of binary payload.
@@ -996,7 +996,7 @@ These limits apply:
 | Cooperative cancellation grace | 5 seconds |
 
 These are fixed SDK limits. The number of invocations is not limited
-([Load](runner.md#load)). Each stream has its own flow-control window and
+(`crates/runner/src/main.rs`). Each stream has its own flow-control window and
 output queue, and the connection's window is the largest HTTP/2 allows, so the
 connection never becomes the constraint: a slow consumer holds back only its
 own invocation, and memory grows with the invocations running. The service's
@@ -1251,7 +1251,7 @@ and the runner, which keeps the compressed bytes to resume them, would
 receive the executable under the `.zst` name. A paired device's runner
 downloads its updates from it, with its device token in `Demi-Runner-Token`
 so the backend counts its progress, and decompresses them as it does any
-artifact ([Runner updates](runner.md#runner-updates)).
+artifact (`crates/runner/src/update.rs`).
 `GET /runner-artifacts/<release>/<target>/<file>` answers the same file
 decompressed as it streams, for the installers, which know only the backend
 and have no zstd. Both stream from S3 as from the data directory.

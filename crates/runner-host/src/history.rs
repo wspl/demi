@@ -1,7 +1,9 @@
-//! A repository's history, answered in process with gitoxide for the Change
-//! view's Commits mode (`runner.md` § Working tree): the local branches, a
-//! branch's first-parent log by pages, and one commit's files against its
-//! first parent with the branches it is on.
+//! A repository's history, answered in process with gitoxide for the Change view's
+//! Commits mode: the local branches (most recently committed first), a branch's
+//! first-parent log by pages, and one commit's files against its first parent (a
+//! merge compares with its first parent, as GitHub and VS Code show it) with the
+//! branches it is on. A commit is named by an id or an abbreviation of at least 7 hex
+//! digits; one that names two commits is `ambiguous`.
 
 use std::{
     cell::RefCell,

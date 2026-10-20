@@ -2,7 +2,7 @@
 //! result }` and `git_ok { id, readAt, op, result }`, where `op` names the
 //! call and decides the type of `result`, and `readAt` is the Host's number
 //! taken as the runner received the call, before it read anything
-//! (`runner.md` § Watching files). Their serde is written by hand, because
+//! (`crates/runner-host/src/subscriptions.rs`). Their serde is written by hand, because
 //! the keys follow the message tag in the order `id`, `readAt`, `op`,
 //! `result`, and `op` must be read before `result` can be decoded.
 

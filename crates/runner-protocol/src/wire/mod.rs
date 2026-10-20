@@ -1,5 +1,43 @@
-//! The runner wire: MessagePack frames over the runner's WebSocket
-//! (`runner.md` § Connection and identity).
+//! The runner wire: MessagePack frames over the runner's WebSocket, which the
+//! runner opens outbound to the backend. Both ends decode every message into these
+//! types and validate it at entry ([`decode`]); a message that fails closes the
+//! connection, since its sender broke the protocol, and the closing side names the
+//! message's type and the decoding error in the close frame's reason ([`refusal`]).
+//!
+//! ```text
+//!   runner                                              backend
+//!     | GET /api/runner + release, target, token headers --> |  release check
+//!     | <---------------------- 409 + RunnerUpdate            |  (release module)
+//!     | ==================== WebSocket ====================== |
+//!     | hello ---------------------------------------------> |  token lookup
+//!     | <------------------------- hello_ok or hello_error    |
+//! ```
+//!
+//! A hello for a device that already has a connection is more often the same runner
+//! coming back than a second one, since a network that drops a connection without
+//! closing it leaves the backend holding a socket nobody answers. So the backend
+//! pings the held connection and waits up to 5 seconds: one that answers keeps the
+//! device and the new hello is refused with `already_connected`; one that does not
+//! is closed and the new hello answered (a connection whose liveness checks are
+//! paused, as a Cloud's are while it is checkpointed, counts as answering). A laptop
+//! whose Wi-Fi blinked reconnects within about 5 seconds instead of being refused
+//! until the heartbeat gives the old socket up.
+//!
+//! A connection's end ends everything it carries. The backend's work for it, such as
+//! an `rpc` handler committing its change, gets [`END_GRACE`] to finish and the rest
+//! is aborted, and only then is the device offline and a new hello for it answered:
+//! otherwise a `demi browser` call whose handler waits for the very device its
+//! connection served would keep that connection from ending, and every new
+//! connection of the device would wait behind it until the backend restarted.
+//!
+//! A message is at most [`MAX_MESSAGE_BYTES`], eight times the largest regular
+//! message (a 5,000-file working tree list, a shell command as long as a model can
+//! write, about 0.5 MiB each). One connection carries everything, so a message in
+//! flight holds up the rest: at 4 MiB it still leaves within the 30-second write
+//! deadline on an uplink of a little over 1 Mbit/s, and a full inbound queue of
+//! eight stays within 32 MiB. Bulk bytes therefore never travel in a message: file
+//! contents and command IO go through pipes ([`PipeFrame`]). A full queue never
+//! closes the connection, only a message that breaks the protocol does.
 
 mod encoding;
 mod kept;
@@ -32,14 +70,14 @@ use std::time::Duration;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-/// The wire's version, which a runner's hello names.
+/// The wire's version, which a runner's hello names. A hello of another
+/// version is refused, whatever release headers the socket opened with.
 pub const VERSION: u32 = 54;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
-/// backend's stop and the runner's own alike (`runner.md` § Cancellation
-/// and completion).
+/// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
 /// How often a runner asks its connection whether the backend is there, and
-/// how long one unanswered counts as lost (`runner.md` § Command lifetime).
+/// how long one unanswered counts as lost (`crates/runner/src/connection/kept.rs`).
 pub const RUNNER_PING_INTERVAL: Duration = Duration::from_secs(30);
 pub const RUNNER_PING_TIMEOUT: Duration = Duration::from_secs(60);
 /// The most background tasks a `job_outliving` names, and the most bytes of
@@ -51,7 +89,7 @@ pub const JOB_TASK_LINE_BYTES: usize = 256;
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends, and how much of
 /// its newest bytes beyond them it sends while nobody follows it: the model's
-/// view of a running command (`runner.md` § Pipes and output).
+/// view of a running command (`crates/runner-jobs/src/tasks.rs`).
 pub const JOB_VIEW_BYTES: usize = 8 * 1024;
 /// The most bytes one message beyond a stream's first [`JOB_VIEW_BYTES`]
 /// carries while the backend follows the job: 4,096 characters of up to four
@@ -64,18 +102,17 @@ pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
 /// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most.
 pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
 /// The most bytes of one binary message of a stream pipe's WebSocket
-/// (`runner.md` § Host operations): the runner splits larger writes.
+/// (`crates/runner-host/src/lib.rs`): the runner splits larger writes.
 pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
 /// The most bytes of a WebSocket close frame's reason.
 const CLOSE_REASON_BYTES: usize = 123;
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// How long the runner gathers the subscriptions that changed before it
-/// reports them, each once (`runner.md` § Watching files).
+/// reports them, each once (`crates/runner-host/src/subscriptions.rs`).
 pub const WATCH_GATHER: Duration = Duration::from_millis(100);
 /// How long a subscription's lease runs from the `fs_subscribe` or the
-/// `fs_renew` that started it, as each end counts it (`runner.md`
-/// § Watching files, `web-api-hosts.md` § File watch).
+/// `fs_renew` that started it, as each end counts it (`crates/runner-host/src/subscriptions.rs`, `web-api-hosts.md` § File watch).
 pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 /// The most subscriptions one `fs_changed` names; more changed at once go
 /// in as many messages as they take, within the frame limit.
@@ -142,7 +179,7 @@ pub fn decode<M: DeserializeOwned + garde::Validate<Context = ()>>(
 
 /// Why a message cannot be decoded, naming its type and the decoding error,
 /// as the side that closes the connection over it says
-/// (`runner.md` § Connection and identity): `cannot decode job_start:
+///: `cannot decode job_start:
 /// unknown field `shell``. A message whose type cannot be read is named
 /// as a message.
 pub fn refusal(bytes: &[u8], error: &WireError) -> String {
@@ -165,7 +202,7 @@ pub fn close_reason(reason: &str) -> &str {
 }
 
 /// A reply over [`MAX_MESSAGE_BYTES`] fails its own request instead of the
-/// connection (`runner.md` § Connection and identity): `refuse` builds that
+/// connection: `refuse` builds that
 /// request's error from the reason.
 pub fn within_limit(
     reply: Frame,

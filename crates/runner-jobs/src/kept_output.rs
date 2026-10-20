@@ -1,10 +1,12 @@
-//! A job's kept output (`runner.md` § Pipes and output): every read of its
-//! stdout and stderr, in the order the runner read them, as records of the
-//! wire's kept output, within `JOB_KEPT_BYTES` of records. The first
-//! `JOB_KEPT_PART_BYTES` stay whole in `head`. The rest goes to segments, of
-//! which the newest hold at most `JOB_KEPT_PART_BYTES`: the oldest segment
-//! goes as new output comes, and the output it held is left out. `job_read`
-//! streams a snapshot of it, while the job runs and after.
+//! A job's kept output: every read of its stdout and stderr, in the order the
+//! runner read them, one record per read in the wire's encoding, which the backend
+//! decodes with the wire's types. The bound counts the records' bytes, so it bounds
+//! the disk exactly: up to `JOB_KEPT_BYTES` every read is kept; beyond that the
+//! first half stays whole in `head`, the last half in segments of 1 MiB of which
+//! the oldest goes as new reads come, and one record between them counts the bytes
+//! left out. A job that prints without end, such as `yes`, therefore holds at most
+//! 16 MiB of the device's disk. `job_read` streams a snapshot, while the job runs
+//! and after.
 
 use std::{
     collections::VecDeque,
@@ -65,7 +67,7 @@ impl KeptOutput {
     pub async fn create(directory: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
         tokio::fs::create_dir(&directory).await?;
         let head = directory.join("head");
-        // Out of open files, the output waits for one (`runner.md` § Load).
+        // Out of open files, the output waits for one (`crates/command-sdk/src/descriptors.rs`).
         let file =
             demi_command_sdk::descriptors::retry(cancel, || tokio::fs::File::create(&head)).await?;
         Ok(Self {

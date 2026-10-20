@@ -117,7 +117,7 @@ impl Shard {
     /// rows of a conversation it no longer finds (`search.rs`). A start runs them for each deletion it finds pending; the
     /// Hosts need no release then, since a runner that lost its connection
     /// to the backend ended what it held for every conversation
-    /// (`resource-lifecycle.md` § Conversation release).
+    /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     pub async fn finish_deletion(&self, id: &ConversationId) -> Result<(), StorageError> {
         let services = self.services();
         services.conversations.remove(id).await?;

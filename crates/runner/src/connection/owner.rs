@@ -86,7 +86,7 @@ pub struct Registered {
     pub paths: ContextPaths,
     pub pipes: PipeClient,
     pub log: HostLogReader,
-    /// The job root (`runner.md` § Pipes and output).
+    /// The job root (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,
     /// Where each conversation has its scratch directory.
     pub scratch: Scratch,
@@ -111,8 +111,7 @@ pub struct Registered {
 impl Registered {
     /// Tells the person at the console, once per process, that the device
     /// is paired as `name` and how to remove the runner again; an installer
-    /// shows them these lines (`runner.md` § Installation, pairing and
-    /// removal). A managed guest's runner, which nobody pairs, says nothing.
+    /// shows them these lines (`crates/runner/src/console.rs`). A managed guest's runner, which nobody pairs, says nothing.
     fn announce_paired(&self, name: &str) {
         if let Some(removal) = &self.removal {
             self.management.tell_paired(name, removal);
@@ -261,15 +260,13 @@ impl Owner<'_> {
                 _ = management.stop.cancelled() => return Ok(End::Stopped),
                 // Asked to remove itself, the runner asks its backend to
                 // revoke the device, which ends the connection with
-                // `revoked` (`runner.md` § Installation, pairing and
-                // removal).
+                // `revoked` (`crates/runner/src/removal.rs`).
                 _ = management.removing.cancelled(), if !self.revoke_asked && management.phase() == Phase::Online => {
                     self.revoke_asked = true;
                     let revoke = wire::encode(&wire::Outbound::Revoke {}).map_err(io::Error::other)?;
                     self.send(revoke).await?;
                 }
-                // Draining waits for the jobs that run (`runner.md`
-                // § Connection and identity).
+                // Draining waits for the jobs that run (`crates/runner/src/connection/mod.rs`).
                 _ = management.draining.cancelled(), if self.kept.jobs.is_empty() => {
                     return Ok(End::Stopped);
                 }
@@ -450,8 +447,7 @@ impl Owner<'_> {
 
     /// Downloads runner release `release`, whose executable `expected`
     /// describes, into the installation while the runner serves, and tells
-    /// the backend how it went; the Host log keeps a failure (`runner.md`
-    /// § Runner updates). A connection that ends stops the download, whose
+    /// the backend how it went; the Host log keeps a failure (`crates/runner/src/update.rs`). A connection that ends stops the download, whose
     /// bytes the next download resumes from.
     fn prefetch(&mut self, release: String, expected: demi_shared_artifacts::Digest) {
         let installed = self.registered.installed.clone();
@@ -508,8 +504,7 @@ impl Owner<'_> {
                 let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     // The services end what they hold; the runner holds no
-                    // files of the conversation (`resource-lifecycle.md`
-                    // § Conversation release).
+                    // files of the conversation (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
                     let result = tokio::select! {
                         _ = closed.cancelled() => return Work::Done,
                         result = services.release_conversation(&conversation_id) => result,
@@ -825,7 +820,7 @@ impl Owner<'_> {
                 let mut values = registered.env.clone();
                 values.extend(env.clone());
                 // The login profile the job reads and its `$HOME` name one
-                // home (`runner.md` § Shell jobs), also when neither the
+                // home (`crates/runner-shell/src/lib.rs`), also when neither the
                 // request nor the device's environment names one.
                 values
                     .entry("HOME".to_owned())
@@ -883,8 +878,7 @@ impl Owner<'_> {
     }
 
     /// Ends everything the connection owns: requests, raw processes and
-    /// streams stop; the jobs and the services run on (`runner.md`
-    /// § Command lifetime).
+    /// streams stop; the jobs and the services run on (`crates/runner/src/connection/kept.rs`).
     async fn close(&mut self) {
         self.live.closed.cancel();
         self.kept.disconnected();

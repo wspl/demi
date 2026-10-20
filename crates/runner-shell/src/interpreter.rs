@@ -36,7 +36,7 @@ pub async fn execute(
     options: ShellOptions,
 ) -> Result<ShellResult, brush_core::Error> {
     // A directory that does not exist fails the job before its script runs
-    // (`runner.md` § Shell jobs). Standard output stays the script's alone,
+    // (`crates/runner-shell/src/lib.rs`). Standard output stays the script's alone,
     // so a job whose stdout is piped elsewhere carries no line of the
     // runner's.
     if !options.cwd.try_exists()? {
@@ -49,7 +49,7 @@ pub async fn execute(
     }
     let cwd = options.cwd;
     // Every copy the shell makes of these goes through the job's scope, which
-    // waits out a lack of open files (`runner.md` § Load).
+    // waits out a lack of open files (`crates/command-sdk/src/descriptors.rs`).
     let control: Arc<dyn FileControl> = Arc::new(options.scope.clone());
     let fds = HashMap::from([
         (
@@ -159,7 +159,7 @@ pub(crate) fn scope(shell: &Shell) -> io::Result<Scope> {
 
 /// Login profiles configure user tools; the runner's own variables, its
 /// `DEMI_*` names, stay authoritative. `TMPDIR` is the device's, which a
-/// profile may set as for any other program (`runner.md` § Shell jobs).
+/// profile may set as for any other program (`crates/runner-shell/src/lib.rs`).
 fn restore_execution_context(
     shell: &mut Shell,
     env: &BTreeMap<String, String>,
@@ -221,8 +221,7 @@ fn execute_utility(
         let stdin = Arc::new(invocation_file(&context, 0)?);
         let scope = scope(context.shell)?;
         // The utility's files and the programs it starts get the umask and
-        // limits of the shell that ran it (`runner.md` § Builtins that act on
-        // a process).
+        // limits of the shell that ran it (`crates/runner-shell/src/process_builtins.rs`).
         let attributes = crate::scope::child_attributes(context.shell.child_attributes());
         #[cfg(unix)]
         let umask = attributes

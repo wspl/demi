@@ -1,12 +1,18 @@
-//! The installation's job directories (`runner.md` § Pipes and output): each
-//! shell job keeps its kept output, its media and its recorded edits in
-//! `<job root>/job-<random>/`. The job root is `jobs/` in a
-//! paired device's installation state, and `/var/lib/demi/jobs` on a Cloud's
-//! system image. A job's directory lasts until the backend has what it needs
-//! of the job: its `job_release`, or, for what a runner that ended left, the
-//! next runner's start. A connection loss keeps it, with the job's exit once
-//! the job ended, which the next connection reports again (`runner.md`
-//! § Command lifetime).
+//! The installation's job directories: each shell job keeps its kept output, its
+//! media and its recorded edits in `<job root>/job-<random>/`, private to its user.
+//! The job root is `jobs/` of a paired device's installation state; a Cloud's is
+//! `/var/lib/demi/jobs` on its system image, since its installation state is in
+//! `/run/demi`, which every boot makes anew and whose memory the kept output of a
+//! few busy jobs could outgrow.
+//!
+//! A job's directory lasts until the backend has what it needs of the job: it sends
+//! `job_release` once it has read the job's end, the kept output when it needed it,
+//! the media it did not hold and the edit copies. A connection loss keeps every
+//! directory for the next connection, with the job's exit once it ended; one whose
+//! job the backend has no command for is removed with the job. A runner removes
+//! every directory in its job root when it starts: what a runner that ended without
+//! cleanup left. So the Host keeps nothing of a command once it has ended, which is
+//! why a conversation release has no files to remove.
 
 use std::collections::HashMap;
 use std::io;
@@ -223,8 +229,7 @@ impl JobDirectories {
 
     /// What a new connection hears again of the jobs not released yet, so
     /// that it misses nothing a lost connection carried: each job's
-    /// `job_medium`s, then its exit once it ended (`runner.md` § Command
-    /// lifetime).
+    /// `job_medium`s, then its exit once it ended (`crates/runner/src/connection/kept.rs`).
     pub fn announcements(&self) -> Vec<wire::Frame> {
         let mut frames = Vec::new();
         for held in self.lock().values() {

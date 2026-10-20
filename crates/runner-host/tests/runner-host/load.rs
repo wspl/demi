@@ -1,5 +1,5 @@
 //! No Host request is refused for how many others are in flight
-//! (`runner.md` § Load): bounded Host work waits for a slot.
+//! (`crates/runner-host/src/lib.rs`): bounded Host work waits for a slot.
 
 use demi_runner_host::host::HostServer;
 use demi_runner_process::pipes::PipeClient;

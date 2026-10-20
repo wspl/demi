@@ -11,7 +11,7 @@ use crate::Error;
 
 /// How a staged file's name starts, before its random part: a process
 /// killed while it writes leaves the file behind, and the name says whose it
-/// is (`runner.md` § File contents).
+/// is (`crates/runner-host/src/files.rs`).
 const STAGED_PREFIX: &str = ".demi-partial-";
 
 /// Whether a publication may replace what is at its path.

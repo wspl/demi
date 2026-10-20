@@ -39,7 +39,7 @@ export interface TerminalRecord {
   lostReason?: string
   /**
    * While it runs: a stop waits for its runner to say that it ended
-   * (`runner.md` § Cancellation and completion), as a live frame said.
+   * (`crates/runner-shell/src/job.rs`), as a live frame said.
    */
   stopping?: boolean
   /**

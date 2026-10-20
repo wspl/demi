@@ -1,5 +1,5 @@
 //! Signals by the names and numbers a command line gives them, for `kill`
-//! and `timeout` (`runner.md` § Builtins that act on a process). Windows has
+//! and `timeout` (`crates/runner-shell/src/process_builtins.rs`). Windows has
 //! no signals, but the job's shell takes every Unix name and number there
 //! too, numbered as on Linux, as uucore's table for Windows numbers them, so
 //! a status of 128 plus a signal's number is the one a script tests on

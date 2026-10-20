@@ -1,8 +1,19 @@
-//! One registration (`runner.md` § Connection and identity): the
-//! installation state and its lock, the device token, the local command
-//! endpoint, the service registry and the reconnect loop. Each backend
-//! connection in turn is served by its own owner
+//! One registration: the installation state and its lock, the device token, the
+//! local command endpoint, the service registry and the reconnect loop. Each
+//! backend connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
+//!
+//! Each registration has its own credentials, artifact cache, local endpoint and
+//! selected runner release, keyed by the normalized backend URL under an OS lock,
+//! so separate registrations share no authorization context (`DEMI_ARTIFACTS` can
+//! name a cache they share).
+//!
+//! A lost connection is retried after 250 ms, doubling up to 10 s; a connection
+//! that went online starts that over when it ends, so a Host that was online for
+//! hours reconnects at once after a drop rather than after the wait an earlier
+//! outage grew to. The Host log keeps one line per distinct failure while it
+//! repeats, and one again after a connection that went online, so each drop leaves
+//! its reason before the next *online* line.
 
 use crate::autostart::Supervision;
 use crate::connection::{self, Connected, End, Kept, Registered, Transport};
@@ -43,15 +54,15 @@ pub struct Options {
     /// The artifact cache (`native-runtime.md` § Install
     /// artifacts).
     pub artifacts: PathBuf,
-    /// The Host's log, which `main` opened (`runner.md` § Host log).
+    /// The Host's log, which `main` opened (`crates/runner/src/host_log.rs`).
     pub log: HostLogReader,
     /// The job root, where each shell job keeps its output under its
-    /// conversation (`runner.md` § Pipes and output).
+    /// conversation (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,
     pub executable: PathBuf,
     pub cwd: PathBuf,
     /// The device environment, which jobs, raw processes and resident
-    /// services start from (`runner.md` § Host operations).
+    /// services start from (`crates/runner/src/environment.rs`).
     pub env: BTreeMap<String, String>,
     pub runner: wire::RunnerInfo,
     pub token: Option<DeviceToken>,
@@ -70,8 +81,7 @@ pub struct Options {
     /// device, for an `uninstall` that found no active runner.
     pub removing: bool,
     /// The registration with the system's service manager that this runner
-    /// keeps, for an installation an installer made (`runner.md` § Starting
-    /// with the computer).
+    /// keeps, for an installation an installer made (`crates/runner/src/autostart.rs`).
     pub autostart: Option<crate::autostart::Registration>,
 }
 
@@ -80,25 +90,25 @@ pub enum Ending {
     Stopped,
     /// The backend runs another runner release, which is in place: the
     /// successor starts once this registration has let everything go
-    /// (`runner.md` § Runner updates).
+    /// (`crates/runner/src/update.rs`).
     Replaced(Successor),
     /// The backend revoked the device, with the projects of these names:
     /// the installation goes once this registration has let everything go
-    /// (`runner.md` § Installation, pairing and removal).
+    /// (`crates/runner/src/removal.rs`).
     Removed(Vec<String>),
     /// The runner was asked to remove itself, and asked its backend to
     /// revoke the device: the `uninstall` that asked removes the
     /// installation.
     Uninstalled(Revocation),
     /// Another runner of the installation holds its lock, so this one
-    /// never started (`runner.md` § Starting with the computer).
+    /// never started (`crates/runner/src/autostart.rs`).
     Held,
     /// The backend refused the runner's hello, for the reason its code
     /// says.
     Refused(wire::HelloErrorCode),
     /// The service manager runs the installation's runner from here on,
     /// which this one, which the manager did not start, handed it to
-    /// (`runner.md` § Starting with the computer).
+    /// (`crates/runner/src/autostart.rs`).
     HandedOver,
     /// The installation's state is one no start can change, which the log
     /// says.
@@ -184,7 +194,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     // images are Linux only, so a Windows runner does not look.
     let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
     // A resident service finds the installation, as a job does, by
-    // DEMI_HOME (`runner.md` § Host operations), whoever called it.
+    // DEMI_HOME (`crates/runner/src/environment.rs`), whoever called it.
     let mut services_env = options.env.clone();
     services_env.insert(
         "DEMI_HOME".to_owned(),
@@ -266,7 +276,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         outcome = reconnect(&registered, &mut kept) => outcome,
         never = revocation_window(&registered) => match never {},
     };
-    // A runner that ends loses its jobs (`runner.md` § Command lifetime).
+    // A runner that ends loses its jobs (`crates/runner/src/connection/kept.rs`).
     kept.close().await;
     let management = &registered.management;
     // A drain, and a removal's answer to its `uninstall`, end before the
@@ -313,7 +323,7 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
         let result = connection(registered, kept).await;
         // A connection that went online starts the retries over: its failure
         // is a new one, logged and retried after the first delay, however
-        // long ago the last failure was (`runner.md` § Host log).
+        // long ago the last failure was (`crates/runner/src/host_log.rs`).
         if management.phase() == Phase::Online {
             failure = None;
             delay = Duration::from_millis(250);
@@ -334,8 +344,7 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
                 {
                     // The new runner cannot take the jobs over: they are
                     // stopped, and the backend learns from its hello that
-                    // they were lost to the update (`runner.md` § Runner
-                    // updates).
+                    // they were lost to the update (`crates/runner/src/update.rs`).
                     Ok(successor) => {
                         kept.stop_jobs(registered).await;
                         return Ok(Ending::Replaced(successor));
@@ -391,8 +400,7 @@ const REVOCATION_WAIT: Duration = Duration::from_secs(10);
 
 /// Once the runner is asked to remove itself, gives its backend a bounded
 /// time to revoke the device, then drains; a backend it cannot reach keeps
-/// listing the device until the user revokes it (`runner.md` § Installation,
-/// pairing and removal). It never ends: the registration ends instead.
+/// listing the device until the user revokes it (`crates/runner/src/removal.rs`). It never ends: the registration ends instead.
 async fn revocation_window(registered: &Registered) -> Infallible {
     let management = &registered.management;
     management.removing.cancelled().await;

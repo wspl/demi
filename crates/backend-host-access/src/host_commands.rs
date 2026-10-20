@@ -18,6 +18,20 @@
 //! runner socket. Like the agent's own jobs, its admission installs the
 //! user's Host directories there before it starts and tells the shard when
 //! it ended.
+//!
+//! An agent pairs a computer it reaches without the user typing the code: it runs
+//! the command `install-command` prints, the one Add Device shows, on the computer,
+//! reads the pairing code the installer shows and passes it to `pair`, which claims
+//! it for the conversation's user as Add Device does and attaches the new device:
+//!
+//! ```text
+//! agent                          the computer                   backend
+//!   | ssh ... '<install command>' -> runner starts, waits
+//!   | <-- "Enter this pairing code in Add Device: WCXP-..."
+//!   | demi host pair WCXP-... -----------------------------------> claim
+//!   |                              runner gets its device token <-+
+//!   | <-- "Paired as DESKTOP-PLU; attached as DESKTOP-PLU"
+//! ```
 
 use std::collections::BTreeMap;
 use std::future::Future;

@@ -1,6 +1,28 @@
-//! The builtins that would act on the runner's own process, which every job
-//! shares: in a job each acts for the job's shell instead, or refuses
-//! (`runner.md` § Builtins that act on a process).
+//! The builtins that would act on the runner's own process, which every job shares:
+//! in a job each acts for the job's shell instead, or refuses. In bash `exec`
+//! replaces the shell, `ulimit` and `umask` set the limits and mask it and its
+//! children have, `kill $$` signals it and `suspend` stops it. A job's shell has no
+//! process of its own, so a job that ran `exec node server.js` the bash way would
+//! turn the runner into `node`, ending every other job and the device's connection,
+//! and a job's `umask 000` would make every file the runner creates afterwards
+//! writable by anyone. A job's shell starts with what the runner gives the processes
+//! it starts: the runner's umask and limits, and for open files the limits the runner
+//! was started with.
+//!
+//! The runner's own mask is the one it was started with (the installer keeps the
+//! installation's files private with `077` but starts the runner with the mask of the
+//! shell the user ran it in, so a file the agent makes gets the mode the user's own
+//! programs would give it), and it still applies beneath a job's `umask` inside the
+//! runner: there a job's mask can only take permissions away. A job's limits apply to
+//! its processes only; its builtins and utilities run in the runner with the
+//! runner's limits.
+//!
+//! These builtins and `timeout` are the job's on Windows too, never a program of the
+//! same name there (`timeout.exe` waits for a key press, Git's `kill.exe` knows no
+//! task id). Windows has no signals, so `kill` and `timeout` end what they would
+//! signal and report 128 plus the Linux number, which a script tests as on Linux; it
+//! has no mask or limits, so `umask` only remembers and `ulimit` shows `unlimited`
+//! and refuses to set.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -19,8 +41,7 @@ use brush_core::{
 
 /// Puts the runner's builtins in place of brush's of the same name, and
 /// adds those brush lacks on a system, as it lacks `kill`, `suspend`,
-/// `ulimit` and `umask` on Windows (`runner.md` § Builtins that act on a
-/// process). Help text and a builtin's special status stay brush's.
+/// `ulimit` and `umask` on Windows. Help text and a builtin's special status stay brush's.
 pub(crate) fn register(registrations: &mut HashMap<String, Registration<DefaultShellExtensions>>) {
     registrations.insert("exec".into(), builtins::builtin::<Exec, _>().special());
     registrations.insert(
@@ -188,8 +209,7 @@ fn fg(
 
 /// `disown` would let a task outlive its job; here it keeps the task in its
 /// job, which runs on while the task does and whose stop stops it, so it
-/// succeeds and changes nothing else (`runner.md` § Background tasks and
-/// timeouts).
+/// succeeds and changes nothing else (`crates/runner-shell/src/work.rs`).
 fn disown(
     _context: ExecutionContext<'_>,
     _args: Vec<CommandArg>,
@@ -206,7 +226,7 @@ static BRUSH_KILL: std::sync::OnceLock<builtins::CommandExecuteFunc<DefaultShell
 static BRUSH_WAIT: std::sync::OnceLock<builtins::CommandExecuteFunc<DefaultShellExtensions>> =
     std::sync::OnceLock::new();
 
-/// `wait`, as bash's (`runner.md` § Background tasks and timeouts): `wait
+/// `wait`, as bash's (`crates/runner-shell/src/work.rs`): `wait
 /// <id>` waits for a background task or a process the job started and gives
 /// its status, the task's last or 128 plus the signal that ended it; `wait`
 /// alone waits for every task and gives 0. Its options are brush's.
@@ -356,7 +376,7 @@ fn suspend(
 /// Bash's usage of `kill`.
 const KILL_USAGE: &str = "kill: usage: kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l [sigspec]";
 
-/// `kill`, as bash's (`runner.md` § Background tasks and timeouts): the
+/// `kill`, as bash's (`crates/runner-shell/src/work.rs`): the
 /// default signal is `TERM`; a background task's id, or a job spec,
 /// signals the whole task; a process ID or the negative of a process
 /// group ID signals that process or group; the runner itself is refused
@@ -713,7 +733,7 @@ fn show_limits(
 
 /// `umask`, for the processes the job's shell starts from then on and
 /// the files its redirections and standard utilities create
-/// (`runner.md` § Builtins that act on a process). The runner's own
+///. The runner's own
 /// umask never changes. Windows has no mask: there the shell keeps and
 /// shows its own, which nothing applies.
 fn umask(
@@ -854,7 +874,7 @@ mod unix {
     }
 
     /// `ulimit`, for the processes the job's shell starts from then on
-    /// (`runner.md` § Builtins that act on a process). The runner's own
+    ///. The runner's own
     /// limits, which its builtins and standard utilities share, never change.
     pub(super) fn ulimit(
         context: ExecutionContext<'_>,
@@ -979,7 +999,7 @@ mod unix {
 }
 
 /// The builtins' parts that Windows, which has no signals and no resource
-/// limits, has of its own (`runner.md` § Builtins that act on a process).
+/// limits, has of its own.
 #[cfg(windows)]
 mod windows {
     use std::io::Write;

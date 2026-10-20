@@ -256,7 +256,7 @@ impl Scope {
     }
 
     /// Runs `make`, which makes descriptors; out of open files it tries
-    /// again until one closes or the job ends (`runner.md` § Load). It runs
+    /// again until one closes or the job ends (`crates/command-sdk/src/descriptors.rs`). It runs
     /// on a shell thread, which may block.
     pub(crate) fn descriptors<T>(&self, mut make: impl FnMut() -> io::Result<T>) -> io::Result<T> {
         demi_command_sdk::descriptors::retry_blocking(|| {
@@ -539,7 +539,7 @@ impl FileControl for Scope {
 
 impl ExecutionHost for Scope {
     /// A background task is a part of the job of its own, numbered within
-    /// the job (`runner.md` § Background tasks and timeouts).
+    /// the job (`crates/runner-shell/src/work.rs`).
     fn background_task(&self) -> io::Result<Option<BackgroundTask>> {
         self.check()?;
         let task = self.part();
@@ -666,8 +666,7 @@ impl ExecutionHost for Scope {
                 group.ended(shell_status(*status));
             }
             // After a signal that ends a process, the rest of the group ends
-            // in its own time, unless it is killed (`runner.md`
-            // § Cancellation and completion); otherwise it ends with its
+            // in its own time, unless it is killed (`crates/runner-shell/src/job.rs`); otherwise it ends with its
             // leader.
             let signalled = group.signalled();
             if !signalled && let Err(error) = process::kill(child.as_mut()) {
@@ -715,8 +714,7 @@ pub(crate) fn shell_status(status: std::process::ExitStatus) -> u8 {
 }
 
 /// The attributes a process gets from the shell that starts it: what its
-/// job's `umask` and `ulimit` set (`runner.md` § Builtins that act on a
-/// process).
+/// job's `umask` and `ulimit` set (`crates/runner-shell/src/process_builtins.rs`).
 pub(crate) fn child_attributes(
     attributes: &brush_core::execution_host::ChildAttributes,
 ) -> ChildAttributes {

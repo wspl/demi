@@ -1,5 +1,4 @@
-//! The platform's file system watches (`runner.md` § Watching files,
-//! § Working tree), each numbering the events it receives as it receives
+//! The platform's file system watches (`crates/runner-host/src/subscriptions.rs`, `crates/runner-host/src/git.rs`), each numbering the events it receives as it receives
 //! them (`crate::numbers`); reading a file changes nothing. A watch reaches
 //! one of three ways:
 //!
@@ -20,6 +19,16 @@
 //!
 //! A tree in a repository says of each path whether git ignores it, by the
 //! repository's rules (`crate::ignore`).
+//!
+//! On macOS a file or folder outside the working tree is watched alone with kqueue,
+//! never through a stream over its parent's whole tree, at most `MAX_SINGLE_WATCHES`
+//! of them (a `folder_details` subscription there is an FSEvents stream over that
+//! folder alone, since kqueue does not see its entries' contents change). kqueue
+//! sees its own node removed or renamed, not a folder above it, so outside the
+//! working tree a rename of a folder above a subscription goes unseen until the node
+//! itself changes. FSEvents can take seconds to start a stream when the system is
+//! busy, so `fs_subscribe` does not wait for it: `live`, with its `since`, says when
+//! changes from then on are covered.
 
 use std::path::{Path, PathBuf};
 
@@ -271,7 +280,12 @@ mod platform {
     }
 
     /// Adds the watches of the folders a tree gains, off notify's own
-    /// thread, which would wait for itself.
+    /// thread, which would wait for itself. The thread receives an explicit
+    /// stop message: it must not wait for all folder-event senders to
+    /// disappear, since the watcher it owns owns one of those senders. Its
+    /// queue is bounded; if it fills, the watch reports failure rather than
+    /// silently missing new folders. Failure to start the thread is a watch
+    /// failure too.
     struct FolderAdder {
         added: mpsc::SyncSender<FolderChange>,
         thread: Option<std::thread::JoinHandle<()>>,

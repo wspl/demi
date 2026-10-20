@@ -84,7 +84,7 @@ pub trait HostShard {
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn HostShard>;
     /// Starts the conversation's idle watch unless one runs, as each Host
-    /// admission does (`resource-lifecycle.md` § Idle window).
+    /// admission does (`crates/backend-user-shard/src/lifecycle/mod.rs`).
     fn track_idle(&self, conversation: &ConversationId);
     /// The Host directories of the user's plugins, which each job installs
     /// before it starts (`plugins.md` § Host directories).

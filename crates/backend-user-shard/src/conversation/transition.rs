@@ -10,7 +10,7 @@
 //! ended, and its file gate reserved; sends the conversation release to the
 //! devices it leaves; and commits, advancing the execution-context revision
 //! when the context changed, whether the devices took the release or not
-//! (`resource-lifecycle.md` § A release that fails). A transition waits for
+//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). A transition waits for
 //! no other work: a conversation that is busy refuses it. The shard reserves
 //! the idle tree; host access holds the rest and runs the transition's steps
 //! (`demi_backend_host_access::transition`).

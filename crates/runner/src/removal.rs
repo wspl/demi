@@ -1,11 +1,20 @@
-//! Removing a paired device's runner (`runner.md` § Installation, pairing
-//! and removal): the command that does it, which the runner tells the person
-//! at its console once it is paired, and the removal of its installation's
-//! directory, with everything in it: the device token, the releases, the
-//! log, and the artifact cache unless `DEMI_ARTIFACTS` named one elsewhere.
-//! Other backends' installations each have a directory of their own. A home
-//! directory, a directory that contains it, or a filesystem root keeps
-//! everything but the runner's own files.
+//! Removing a paired device's runner: the command that does it, which the runner
+//! tells the person at its console once it is paired, and the removal of its
+//! installation's directory with everything in it: the device token, the releases,
+//! the log, and the artifact cache unless `DEMI_ARTIFACTS` named one elsewhere
+//! (which runners of several backends may share).
+//!
+//! `run uninstall` asks the backend, when it can reach it, to revoke the device
+//! (nothing refuses; a backend it cannot reach keeps listing the device, offline,
+//! until the user revokes it), drains the runner, then removes the directory, only
+//! when it holds an installation and is neither the user's home, nor a directory
+//! that contains it, nor a filesystem root: a runner that ran with a mistaken
+//! `DEMI_HOME`, such as the home directory, wrote its state there and still never
+//! removes it ([`kept_whole`]); there it removes only the files it wrote. Revoking
+//! the device in Settings removes the runner too, as `uninstall` does, without
+//! asking again. A runner that was offline learns of a revocation only as a refusal
+//! of its token, which a backend that lost its data would also give, so it stops and
+//! logs the removal command rather than removing itself.
 
 use std::{
     io,
@@ -113,8 +122,7 @@ impl Removed {
 }
 
 /// Whether `directory` must stay whole: the user's home directory, a
-/// directory that contains it, or the root of a filesystem
-/// (`runner.md` § Installation, pairing and removal).
+/// directory that contains it, or the root of a filesystem.
 fn kept_whole(directory: &Path, home: Option<&Path>) -> io::Result<bool> {
     let directory = directory.canonicalize()?;
     let home = home.and_then(|home| home.canonicalize().ok());

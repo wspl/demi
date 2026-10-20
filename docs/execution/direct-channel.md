@@ -203,12 +203,12 @@ when the channel ends, on every path. The backend then
 knows the stream as it knows a stream it opened:
 
 - **Activity.** It is conversation activity, as an open relay stream is
-  ([Activity](resource-lifecycle.md#activity)), so a live view watched only
+  (`crates/backend-user-shard/src/lifecycle/mod.rs`), so a live view watched only
   over the direct channel keeps the conversation from its idle release.
 - **Artifacts.** The runner asks the backend for the artifacts the stream
   needs, its service's executable or what its invocation asks for while it
   runs, naming the stream as it names a relay stream
-  ([Service streams](runner.md#service-streams)). The backend answers while
+  (`crates/runner-jobs/src/commands/streams.rs`). The backend answers while
   the stream is open, for the artifacts a stream of that name may install,
   as for a relay stream ([Install artifacts](native-runtime.md#install-artifacts)).
   For example, a plugin's service that never ran on the device installs its
@@ -216,12 +216,12 @@ knows the stream as it knows a stream it opened:
   would over the relay's.
 
 The runner carries each one out as it carries out the backend's request for
-the same thing ([Host operations](runner.md#host-operations)): the same
+the same thing (`crates/runner-host/src/lib.rs`): the same
 functions, the same limits, the same atomic writes, the same
-[subscriptions](runner.md#watching-files), shared with the backend's, and the
+subscriptions (`crates/runner-host/src/subscriptions.rs`), shared with the backend's, and the
 same numbers, since the runner counts its events once per process. A
 `stream` starts the invocation as a `service_open` does
-([Service streams](runner.md#service-streams)), with a `user` caller in the
+(`crates/runner-jobs/src/commands/streams.rs`), with a `user` caller in the
 conversation the header names.
 
 Flow control is the data channel's own. The runner keeps at most 256 KiB

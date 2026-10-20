@@ -545,7 +545,7 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
         process.exit.await,
         ProcessEnd::Lost("runner disconnected".into())
     );
-    // The job outlives the connection (`runner.md` § Command lifetime).
+    // The job outlives the connection (`crates/runner/src/connection/kept.rs`).
     assert!(job.ended().is_none());
     assert_eq!(demi_host_interface::Host::identity(&host), identity);
     // Offline, a process and a job end at once, and a call fails.
@@ -1392,7 +1392,7 @@ async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
 /// While nobody follows a job, the runner sends each stream's newest bytes
 /// beyond its view, again with every message; the model's view of the
 /// running command holds the newest `JOB_VIEW_BYTES`, which continue,
-/// overlap or replace the ones before (`runner.md` § Pipes and output).
+/// overlap or replace the ones before (`crates/runner-jobs/src/tasks.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_running_command_holds_each_streams_newest_bytes_beyond_its_view() {
     let device = device();
@@ -2200,7 +2200,7 @@ async fn an_unanswered_ping_ends_the_connection_unless_liveness_is_paused() {
 
 // A message the backend cannot decode ends the connection, and the
 // refusal names its type and the decoding error, which the work lost with
-// the connection says (`runner.md` § Connection and identity). A few
+// the connection says (`crates/runner-protocol/src/wire/mod.rs`). A few
 // milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
@@ -2242,7 +2242,7 @@ async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
 /// whole output is what the backend received: each stream's first bytes,
 /// then, beyond what was left out, its newest bytes, which the runner sent
 /// before the job's end; so the output's end, where a build says what
-/// failed, still shows (`runner.md` § Pipes and output).
+/// failed, still shows (`crates/runner-jobs/src/tasks.rs`).
 #[tokio::test(flavor = "local")]
 async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
     let device = device();
@@ -2721,7 +2721,7 @@ async fn a_job_whose_runner_comes_back_without_it_keeps_what_arrived_and_says_th
 /// Output its runner printed while no connection served, which the read
 /// after the new connection did not deliver, is not counted as received
 /// although later output was: the command's end reads the kept output, and
-/// its whole output holds it (`runner.md` § Pipes and output). A few
+/// its whole output holds it (`crates/runner-jobs/src/tasks.rs`). A few
 /// milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_command_whose_output_the_backend_missed_ends_with_it_read_from_its_host() {
@@ -2846,7 +2846,7 @@ async fn a_call_waiting_when_its_command_is_stopped_never_acts_on_a_later_releas
 }
 
 /// A stop while the runner's connection is away reaches the job once the
-/// runner is back (`runner.md` § Cancellation and completion): meanwhile
+/// runner is back (`crates/runner-shell/src/job.rs`): meanwhile
 /// the command shows stopping and still runs; the new connection carries
 /// `TERM`, and `KILL` once the grace passed without the job's end; and the
 /// command turns stopped only when the runner reports that end. Before, the
@@ -2946,7 +2946,7 @@ async fn a_recorded_job_not_listed_after_a_restart_is_lost_for_what_the_record_t
 
 /// A job the runner lists that the backend has no command for is stopped
 /// with `TERM`, and its exit releases its directory; one that ended
-/// already is released at once (`runner.md` § Command lifetime). A few
+/// already is released at once (`crates/runner/src/connection/kept.rs`). A few
 /// milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_the_backend_has_no_command_for_is_stopped_and_released() {

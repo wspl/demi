@@ -126,7 +126,7 @@ jobs:
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
       # Demi's own certificate, the same in every release, so macOS keeps
       # the user's grants to the runner across updates
-      # (docs/execution/runner.md § Starting with the computer). Signed
+      # (`crates/runner/src/autostart.rs`). Signed
       # before packaging, which hashes the program as it ships.
       - name: Sign the runner
         if: runner.os == 'macOS' && matrix.group == 'runner'

@@ -891,7 +891,7 @@ fn next_line(at: usize, page: u64, pages: u64) -> String {
 
 /// Saves a message's file in the calling agent's scratch directory on the
 /// Host the calling job runs on, inside the one the Host's runner names
-/// (`runner.md` § Scratch directory), as `<name>-<file name>` or the first
+/// (`crates/runner-jobs/src/scratch.rs`), as `<name>-<file name>` or the first
 /// free name after it, and answers the path. A call stopped before the file
 /// is written, `cancel`, writes nothing.
 async fn save<A>(

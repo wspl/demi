@@ -142,8 +142,7 @@ async fn a_reopened_page_is_told_of_the_command_that_ended_while_it_was_away() {
     assert_eq!(commands, [false], "{handshake:?}");
 }
 
-/// A command that runs is the conversation's work (`resource-lifecycle.md`
-/// § Runtime), so a tree no page is attached to stays live while one of its
+/// A command that runs is the conversation's work (`crates/backend-user-shard/src/lifecycle/mod.rs`), so a tree no page is attached to stays live while one of its
 /// commands runs, and its idle time starts once the last one ended.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_detached_tree_stays_live_while_its_command_runs_and_goes_after_its_idle_time() {

@@ -106,7 +106,7 @@ async fn spawn_failure_distinguishes_missing_cwd_from_missing_executable() {
 }
 
 /// A program still open for writing starts once it is closed, instead of
-/// failing with "Text file busy" (`runner.md` § Load). The runner causes that
+/// failing with "Text file busy" (`crates/command-sdk/src/descriptors.rs`). The runner causes that
 /// state itself: a child that another of its threads forks holds a file the
 /// runner has just written, such as a service executable, open for writing
 /// until the child runs its own program. Linux refuses to run such a file;

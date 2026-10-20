@@ -28,9 +28,9 @@ paired. Operators handling sensitive prompts should know where data rests:
   ([Passwords and credentials at rest](docs/backend/storage.md#passwords-and-credentials-at-rest)).
 - **Hosts.** A job's full output stays in files on its Host, and the backend
   receives bounded views
-  ([Pipes and output](docs/execution/runner.md#pipes-and-output)). Each runner
+  (Pipes and output (`crates/runner-jobs/src/tasks.rs`)). Each runner
   keeps a Host log of its own and its services' diagnostics in its data
-  directory ([Host log](docs/execution/runner.md#host-log)).
+  directory (Host log (`crates/runner/src/host_log.rs`)).
 - **Claude Code.** The selected account's token reaches the Claude Code CLI on
   the user's Cloud through the process environment, and never reaches a paired
   device ([Data and credentials](docs/overview.md#data-and-credentials)). The

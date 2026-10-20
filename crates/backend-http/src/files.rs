@@ -210,7 +210,7 @@ enum TextRead {
 /// A file's text: UTF-8 without a NUL byte, up to the size an edit keeps,
 /// with its version as the ETag. A request whose `If-None-Match` names the
 /// file's version answers 304, and its text never leaves the Host
-/// (`runner.md` § File contents). A file that is binary or too large is an
+/// (`crates/runner-host/src/files.rs`). A file that is binary or too large is an
 /// answer like any other, with its ETag and number.
 pub(super) async fn text(
     State(state): State<AppState>,
@@ -559,8 +559,7 @@ pub(super) async fn changed_file(
         if let Some(commit) = commit {
             return commit_sides(host, &tree_root(host, directory), before, path.as_str(), commit.as_str()).await;
         }
-        // The two sides do not wait for each other (`runner.md` § Host
-        // operations).
+        // The two sides do not wait for each other (`crates/runner-host/src/lib.rs`).
         let root = tree_root(host, directory);
         let working = format!("{root}/{}", path.as_str());
         let (committed, working) = tokio::join!(

@@ -1,6 +1,6 @@
 #![cfg(all(unix, feature = "test-fixtures"))]
 //! With no open file left, each of these waits until one closes, then
-//! finishes (`runner.md` § Load): pipes, filesystem and working-tree
+//! finishes (`crates/runner/src/main.rs`): pipes, filesystem and working-tree
 //! requests, file transfers, process and job starts, a running job's
 //! pipelines, redirections and utilities, native service starts and local
 //! command connections; a cancelled job stops waiting. Last, the
@@ -225,7 +225,7 @@ async fn backend() -> u16 {
                         .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
                         .await;
                 } else {
-                    // One data frame (`runner.md` § Pipes and output).
+                    // One data frame (`crates/runner-protocol/src/wire/pipe_frames.rs`).
                     let mut frame = bytes::BytesMut::new();
                     demi_runner_protocol::wire::encode_data(b"ok", &mut frame);
                     let mut answer = format!(
@@ -436,7 +436,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         // A job's start waits for its descriptors. Every descriptor is freed
         // after: the job's login shell then reads the system profile, which
         // belongs to the machine and can hold more open files at once than
-        // 128 (`runner.md` § Shell jobs). What a running job's pipelines and
+        // 128 (`crates/runner-shell/src/lib.rs`). What a running job's pipelines and
         // redirections do without descriptors is a known gap (§ Load).
         let cwd = root_path.clone();
         starved("shell job start", Freed::All, async move {

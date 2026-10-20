@@ -122,8 +122,7 @@ pub struct Services {
     /// The runner releases paired devices follow.
     pub runner_releases: RunnerReleases,
     /// The runner release an upgrade announced as next, which the
-    /// connected paired devices download ahead (`runner.md` § Runner
-    /// updates).
+    /// connected paired devices download ahead (`crates/runner/src/update.rs`).
     pub prefetches: Prefetches,
     /// The STUN servers pages and runners ask for their public address
     /// (`direct-channel.md` § Making the channel).

@@ -67,7 +67,7 @@ pub struct DeviceRecord {
     /// before its runner first connected.
     pub runner_version: Option<String>,
     /// The instance its runner last named in its hello: a number each start
-    /// of the runner draws (`runner.md` § Command lifetime); none before its
+    /// of the runner draws (`crates/runner/src/connection/kept.rs`); none before its
     /// runner first connected.
     pub runner_instance: Option<u64>,
     /// When a Cloud's latest boot completed, as its runner connected: its
@@ -87,7 +87,7 @@ pub struct DeviceRecord {
     /// (`sessions-and-targets.md` § Resolve a target).
     pub home: Option<String>,
     /// Why it will not start its runner by itself after a restart, as its
-    /// runner last reported (`runner.md` § Starting with the computer);
+    /// runner last reported (`crates/runner/src/autostart.rs`);
     /// none when it does, or before its runner first said.
     pub autostart_unavailable: Option<AutostartUnavailable>,
 }

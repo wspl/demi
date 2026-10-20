@@ -1,5 +1,4 @@
-//! A job's background tasks and `timeout` (`runner.md` § Background tasks
-//! and timeouts): `$!` names a task by an id above every process ID, which
+//! A job's background tasks and `timeout` (`crates/runner-shell/src/work.rs`): `$!` names a task by an id above every process ID, which
 //! `kill`, `wait` and `jobs -p` take; `kill` stops the whole task, and
 //! `wait` gives bash's statuses; `timeout` stops its command as `kill` stops
 //! a task, with GNU's statuses; `disown` and `nohup` keep a task in its job,

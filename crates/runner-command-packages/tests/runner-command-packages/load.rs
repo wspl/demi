@@ -1,5 +1,5 @@
 //! No native call is refused for how many others are in flight
-//! (`runner.md` § Load).
+//! (`crates/command-sdk/src/descriptors.rs`).
 
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,

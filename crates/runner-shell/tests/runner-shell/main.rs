@@ -49,7 +49,7 @@ fn same_errors(expected: &str, actual: &str) -> bool {
 }
 
 /// A job's environment that names `root` as its home, so the job reads no
-/// login profile of the machine's user (`runner.md` § Shell jobs).
+/// login profile of the machine's user (`crates/runner-shell/src/lib.rs`).
 fn home(root: &std::path::Path) -> std::collections::BTreeMap<String, String> {
     std::collections::BTreeMap::from([("HOME".to_owned(), root.to_string_lossy().into_owned())])
 }

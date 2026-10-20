@@ -4,6 +4,11 @@
 //! claim creates the device and hands the waiting runner its token, and the
 //! runner's socket moves into the user's shard. Each user may try ten codes
 //! a minute.
+//!
+//! An agent pairs a computer it reaches without the user typing the code (`demi host
+//! pair`): the code is proof enough, since it reaches only the runner's output and
+//! its log, which only an account that runs commands on that computer reads, so an
+//! agent holding it already controls the computer.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};

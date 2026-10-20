@@ -142,7 +142,7 @@ fn request_origin(https: bool, headers: &HeaderMap) -> Result<Url, ApiError> {
 /// (`native-runtime.md` § Runner releases). The compressed copy answers a
 /// Range request from a byte on with 206, and what it serves a paired
 /// device whose token the request carries counts as that device's
-/// download (`runner.md` § Runner updates).
+/// download (`crates/runner/src/update.rs`).
 pub(super) async fn artifact(
     State(state): State<AppState>,
     Path((release, target, file)): Path<(String, String, String)>,
@@ -227,8 +227,7 @@ pub(super) async fn artifact(
 }
 
 /// `stored`, whose bytes count as `device`'s download as they are served:
-/// its shard hears of each, until the download ends (`runner.md` § Runner
-/// updates). Without a device, nothing counts.
+/// its shard hears of each, until the download ends (`crates/runner/src/update.rs`). Without a device, nothing counts.
 async fn counted(state: &AppState, device: Option<DeviceRecord>, stored: Stored) -> Stored {
     let Some(device) = device else {
         return stored;

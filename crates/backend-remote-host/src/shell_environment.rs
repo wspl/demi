@@ -1,5 +1,5 @@
 //! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a Host
-//! reached through its runner (`runner.md` § Shell jobs). Every exec is one
+//! reached through its runner (`crates/runner-shell/src/lib.rs`). Every exec is one
 //! job; the record holds the model's view of its output, the head while it runs
 //! and the whole output once it ended, and the pages' view, which also holds
 //! the newest output the runner sends while a page watches and the job is
@@ -708,8 +708,7 @@ impl RemoteShellEnvironment {
         ended: EndedJob<'_>,
     ) {
         let EndedJob { job, end, streams } = ended;
-        // The reads the completion needs go out together (`runner.md`
-        // § Host operations): the edits' copies, the kept output and the
+        // The reads the completion needs go out together (`crates/runner/src/environment.rs`): the edits' copies, the kept output and the
         // media.
         let retained = async {
             if end.files.is_empty() && end.path_changes.is_empty() {
@@ -1007,7 +1006,7 @@ impl RemoteShellEnvironment {
 
     /// Stops a running command: asks it to end, and its job's task ends it
     /// when it does not, and settles it once its runner says that the job
-    /// ended, or it is lost (`runner.md` § Cancellation and completion).
+    /// ended, or it is lost (`crates/runner-shell/src/job.rs`).
     /// Returns once the stop is asked.
     fn stop_command(&self, command: &CommandId) -> Result<(), ShellError> {
         let record = self.record(command)?;
@@ -1325,8 +1324,7 @@ fn push_reason(output: &mut Vec<OutputRecord>, reason: &str) -> String {
     text
 }
 
-/// What the backend received of one stream of a job (`runner.md` § Pipes
-/// and output).
+/// What the backend received of one stream of a job (`crates/runner-jobs/src/tasks.rs`).
 #[derive(Default)]
 struct Received {
     /// Where the stream's part of the output it holds ends: its first bytes,

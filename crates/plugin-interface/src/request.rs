@@ -31,7 +31,7 @@ pub enum Request {
     /// context source, may add a context block (`plugins.md` § Prompt text
     /// and context): `seen` holds the text of its own blocks the model
     /// receives, oldest first, `cwd` is the node's working directory and
-    /// `paths` how its Host writes paths (`runner.md` § Windows paths).
+    /// `paths` how its Host writes paths (`crates/runner-shell/src/lib.rs`).
     /// `project` is what the plugin's project search last found in the
     /// conversation's project directory, for a plugin that declares one;
     /// none until a search answered.

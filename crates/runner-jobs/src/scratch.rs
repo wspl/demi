@@ -1,9 +1,21 @@
-//! Each conversation's scratch directory (`runner.md` § Scratch directory):
-//! `<DEMI_HOME>/scratch/<conversation id>/`, made at the conversation's
-//! first job on the Host and removed once its conversation no longer
-//! exists. `DEMI_SCRATCH` names the calling agent's own: the conversation's
-//! directory for the root agent, its `agent-<number>/` folder for a
-//! subagent.
+//! Each conversation's scratch directory, for the files only the agent needs (a
+//! screenshot it looks at, a probe script): `<DEMI_HOME>/scratch/<conversation
+//! id>/`, made at the conversation's first job on the Host. It shows in no pill and
+//! no Change view, and it is still there an hour later, which `/tmp` does not
+//! promise. `DEMI_SCRATCH` names the calling agent's own: the conversation's
+//! directory for the root agent, an `agent-<number>/` folder inside it for each
+//! subagent, so two subagents that both save `shots/before.png` overwrite nothing
+//! of each other's, while the parent still reads what a child saved by the path the
+//! child reports. The runner's hello names the scratch root, so what the backend
+//! writes into a conversation's scratch goes to that directory whatever a job's
+//! environment says.
+//!
+//! It goes with the conversation; archiving keeps it. The hello's answer names the
+//! user's conversations that still exist, and the runner removes every scratch
+//! directory not among them ([`Scratch::keep_only`]), so a Host that was offline
+//! when a conversation was deleted cleans up as soon as it connects, with nothing
+//! to remember in between. A backend that cannot read the conversations drops the
+//! connection rather than name none, which would remove every directory.
 
 use std::{
     collections::HashSet,

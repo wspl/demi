@@ -99,7 +99,7 @@ pub struct DeviceMark {
 
 /// Whether a device's runner serves it: `online` while its runner is
 /// connected, `updating` while it replaces itself with the backend's runner
-/// release (`runner.md` § Runner updates), `offline` otherwise.
+/// release (`crates/runner/src/update.rs`), `offline` otherwise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceState {
@@ -112,7 +112,7 @@ pub enum DeviceState {
 /// reported; `state` says whether its runner serves it now;
 /// `download_percent` is how much of a runner executable this backend has
 /// served it, while it serves one, as a device downloads its next runner
-/// ahead or updates (`runner.md` § Runner updates), null otherwise; `home` is
+/// ahead or updates (`crates/runner/src/update.rs`), null otherwise; `home` is
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
@@ -125,8 +125,7 @@ pub enum DeviceState {
 /// paired device to start its runner again, null for the Cloud;
 /// `autostart_unavailable` is why the device will not start its runner by
 /// itself after a restart, as its runner last reported it, null when it
-/// does or before its runner first said (`runner.md` § Starting with
-/// the computer).
+/// does or before its runner first said (`crates/runner/src/autostart.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -217,7 +216,7 @@ pub struct RevokedDevice {
     pub removed: Vec<WorkspaceId>,
 }
 
-/// One line of a Host's log (`runner.md` § Host log).
+/// One line of a Host's log (`crates/runner/src/host_log.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceLogLine {

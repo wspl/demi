@@ -109,7 +109,7 @@ output live on their execution targets. The backend receives bounded shell
 output views and can request target files when needed. Runner messages carry
 requests, replies and small values; HTTP pipes stream file contents and command
 IO. [Storage](backend/storage.md) defines persistence, and
-[runner IO](execution/runner.md#pipes-and-output) defines output and pipe
+runner IO (`crates/runner-jobs/src/tasks.rs`) defines output and pipe
 lifetimes.
 
 The backend vault stores configured provider credentials, encrypted with the

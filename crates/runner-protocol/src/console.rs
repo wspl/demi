@@ -1,6 +1,6 @@
 //! The lines a paired device's runner writes to its output, its log, that
 //! the installers read to show the person at the terminal how pairing goes
-//! (`runner.md` § Installation, pairing and removal). Each line starts with
+//! (`crates/runner/src/console.rs`). Each line starts with
 //! one of these prefixes and ends with its value.
 
 /// Before each pairing code the runner receives.
@@ -13,13 +13,12 @@ pub const PAIRED: &str = "demi-runner: paired as ";
 pub const REMOVAL: &str = "demi-runner: remove this runner with: ";
 
 /// Before why the device will not start its runner by itself after a
-/// restart, which the installers show as it is (`runner.md` § Starting
-/// with the computer).
+/// restart, which the installers show as it is (`crates/runner/src/autostart.rs`).
 pub const NO_AUTOSTART: &str =
     "demi-runner: this device will not start Demi by itself after a restart: ";
 
 /// The line a runner the service manager did not start writes once it
 /// handed the installation over to the manager's runner and ends
-/// (`runner.md` § Starting with the computer); whoever follows the log goes
+/// (`crates/runner/src/autostart.rs`); whoever follows the log goes
 /// on with the manager's runner.
 pub const HANDED_OVER: &str = "demi-runner: the service manager runs the runner from here on";

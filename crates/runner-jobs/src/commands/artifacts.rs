@@ -52,7 +52,7 @@ impl ArtifactResolver for JobArtifacts {
     }
 }
 
-/// For a user stream's service (`runner.md` § Service streams): the open
+/// For a user stream's service (`crates/runner-jobs/src/commands/streams.rs`): the open
 /// stream authorizes its artifact.
 pub struct StreamArtifacts {
     connection: ConnectionHandle,

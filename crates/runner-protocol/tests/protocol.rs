@@ -159,7 +159,7 @@ fn nested_values_are_validated_where_the_message_enters() {
 }
 
 /// The runner names a job's directory after its conversation, and a release
-/// removes that directory (`runner.md` § Pipes and output): every place the
+/// removes that directory (`crates/runner-jobs/src/tasks.rs`): every place the
 /// wire carries a conversation's name refuses one that could name another
 /// path.
 #[test]
@@ -527,7 +527,7 @@ fn records_round_trip_and_a_second_gap_is_refused() {
 }
 
 /// A backend's URL names a host over HTTP or a WebSocket, and never carries
-/// credentials or a fragment (`runner.md` § Connection and identity): the
+/// credentials or a fragment (`crates/runner-protocol/src/wire/mod.rs`): the
 /// installation, the claim and the boot record are refused otherwise.
 #[test]
 fn a_backend_url_names_a_host_without_credentials_or_a_fragment() {

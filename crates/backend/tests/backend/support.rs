@@ -1200,7 +1200,7 @@ pub fn pattern(length: usize, seed: u8) -> Vec<u8> {
 pub const GNU_UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host.";
 
 /// What a context block says after where shells start: where the files
-/// only the agent needs go (`runner.md` § Scratch directory).
+/// only the agent needs go (`crates/runner-jobs/src/scratch.rs`).
 pub const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation.";
 
 /// What a context block says of the standard utilities on a paired device

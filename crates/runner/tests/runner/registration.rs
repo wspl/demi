@@ -1,8 +1,8 @@
-//! A registration (`runner.md` § Connection and identity): the runner says
+//! A registration (`crates/runner/src/connection/mod.rs`): the runner says
 //! its protocol, logs its start, runs a job whose declared command is a
 //! builtin of its shell, answers `status` while it runs, and on `drain`
 //! ends its connection with a close frame and releases the installation.
-//! Its removal (`runner.md` § Installation, pairing and removal): a revoked
+//! Its removal (`crates/runner/src/removal.rs`): a revoked
 //! runner removes its installation, a refused one keeps it, and `uninstall`
 //! asks the backend to revoke the device and removes the installation.
 
@@ -147,7 +147,7 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
 /// network that goes away does, is retried after the first delay however
 /// long the backend stayed away before it, and its error reaches the Host
 /// log each time, though it is the same error as the failures before
-/// (`runner.md` § Host log). About 5 s: four failed connections grow the
+/// (`crates/runner/src/host_log.rs`). About 5 s: four failed connections grow the
 /// delay to 4 s before the runner goes online.
 #[tokio::test]
 async fn an_online_connection_that_fails_starts_its_retries_and_its_log_over() {
@@ -225,8 +225,7 @@ async fn exited(host: &mut Host) {
 }
 
 /// A runner whose device the user revoked hears it from its backend and
-/// removes its installation (`runner.md` § Installation, pairing and
-/// removal).
+/// removes its installation (`crates/runner/src/removal.rs`).
 #[tokio::test]
 async fn a_runner_whose_device_is_revoked_removes_its_installation() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -270,7 +269,7 @@ async fn a_runner_refused_at_its_hello_keeps_its_installation_and_says_how_to_re
 /// `uninstall` asks the active runner to remove itself: the runner asks its
 /// backend to revoke the device and ends, and the installation goes, while
 /// an artifact cache `DEMI_ARTIFACTS` names and another backend's
-/// installation stay (`runner.md` § Installation, pairing and removal).
+/// installation stay (`crates/runner/src/removal.rs`).
 #[tokio::test]
 async fn uninstall_removes_the_installation_and_keeps_a_shared_cache_and_other_installations() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -376,8 +375,7 @@ async fn uninstall_leaves_a_directory_without_an_installation_as_it_was() {
 
 /// An installation in the user's home directory, or in a directory that
 /// contains it, as a mistaken `DEMI_HOME` makes, loses only the runner's own
-/// files: the directory stays with everything else in it (`runner.md`
-/// § Installation, pairing and removal). The home is a directory the test
+/// files: the directory stays with everything else in it (`crates/runner/src/removal.rs`). The home is a directory the test
 /// made, never the real one.
 #[tokio::test]
 async fn uninstall_keeps_a_home_and_its_parent_and_removes_only_the_runners_files() {
@@ -434,8 +432,7 @@ async fn uninstall_keeps_a_home_and_its_parent_and_removes_only_the_runners_file
 /// stays, here a pairing code that has expired since, and `start` reads
 /// the log from where it ended, so it reports what this runner says, that it
 /// cannot connect. A log that has passed 10 MiB becomes `runner.log.1`,
-/// replacing the one before, and the runner starts a new one (`runner.md`
-/// § Installation, pairing and removal).
+/// replacing the one before, and the runner starts a new one (`crates/runner/src/console.rs`).
 // Under a second: the runner starts twice, its backend's port refusing it
 // each time, and the test writes a log of 10 MiB.
 #[tokio::test]
@@ -489,7 +486,7 @@ async fn start_appends_to_the_log_reads_it_from_where_it_ended_and_starts_it_aga
 /// control or a terminal window starts a program, cannot make a session of
 /// its own; it starts again in one and this process ends. So the
 /// terminal's Ctrl-C reaches no runner, and the runner has no controlling
-/// terminal (`runner.md` § Installation, pairing and removal). Skipped
+/// terminal (`crates/runner/src/console.rs`). Skipped
 /// where the system gives no pseudo-terminal.
 // Under a second: the runner starts twice, its backend's port refusing it.
 #[cfg(unix)]

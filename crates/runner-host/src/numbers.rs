@@ -1,4 +1,4 @@
-//! The runner's numbers (`runner.md` § Watching files): one count of the
+//! The runner's numbers (`crates/runner-host/src/subscriptions.rs`): one count of the
 //! file system events the process received, which only grows, and the
 //! epoch that names this run of the process. Every event takes the next
 //! number as a watch receives it; every read takes the count before it

@@ -1,8 +1,18 @@
-//! What a job runs beside its shell work, which every part of the job
-//! shares: its background tasks, by the ids `$!` names them by, and the
-//! process groups each part of it started, which a signal to that part
-//! reaches (`runner.md` § Background tasks and timeouts, § Cancellation and
-//! completion).
+//! What a job runs beside its shell work, which every part of the job shares: its
+//! background tasks, by the ids `$!` names them by, and the process groups each part
+//! started, which a signal to that part reaches.
+//!
+//! A script that starts a dev server with `(cd app && bun run dev) &`, then `kill
+//! $server; wait $server`, must stop the subshell and everything it started, `bun`
+//! and the backend it runs included, and get `143`; in bash the same `kill` signals
+//! only the subshell's process and the dev server runs on, holding its port. A
+//! background task runs in the runner, so no operating-system process stands for it:
+//! `$!` names it with an id no process ID takes ([`FIRST_TASK`]), and `kill`, `wait`
+//! and `jobs -p` take it wherever bash takes a process ID. `kill` on a task's id
+//! stops its shell work at its next step and sends `SIGTERM` to every process group
+//! it started (`KILL` kills them and the rest of its work). `disown` and `nohup`
+//! keep a task in its job, since the runner leaves no process that no command stands
+//! for: a server meant to outlive a script runs as a command of its own.
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
@@ -271,7 +281,7 @@ impl Work {
     }
 
     /// Sends `signal` to `part` of the job as a `kill` sends it to a task
-    /// (`runner.md` § Background tasks and timeouts): `KILL` ends its shell
+    ///: `KILL` ends its shell
     /// work and kills its processes; a signal that ends a process ends its
     /// shell work at its next step and reaches every process group it
     /// started, whose processes then end in their own time; any other only

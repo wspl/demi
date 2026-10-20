@@ -21,7 +21,7 @@ pub async fn handle(
     cancel: &CancellationToken,
 ) -> Option<Result<Frame, wire::WireError>> {
     let id = message.fs_request_id()?;
-    // Before anything is read (`runner.md` § Watching files).
+    // Before anything is read (`crates/runner-host/src/numbers.rs`).
     let read_at = crate::numbers::read_at();
     let refuse = |code: Option<String>, message: String| {
         wire::encode(&Outbound::FsError {
@@ -222,7 +222,7 @@ pub async fn call(
 
 /// The directory's entries, each with its own metadata, as `lstat` reads
 /// it, and a symbolic link's target with what is there, so a listing
-/// answers in one reply (`runner.md` § Host operations).
+/// answers in one reply (`crates/runner-host/src/lib.rs`).
 pub(crate) async fn list(
     path: &Path,
     cancel: &CancellationToken,
@@ -290,8 +290,7 @@ pub(crate) fn symbolic_link(path: &Path) -> io::Result<wire::SymbolicLink> {
 
 /// What a link leads to, from the metadata found by following it, as
 /// whether it is a file and whether a directory. A failure to follow it is
-/// never a failure of the listing it is part of (`runner.md` § Host
-/// operations): nothing there, a name on the way that does not exist or is
+/// never a failure of the listing it is part of (`crates/runner-host/src/lib.rs`): nothing there, a name on the way that does not exist or is
 /// no directory, is a missing target; any other failure, a directory on the
 /// way that may not be searched, a loop of links, a failing disk, is an
 /// unreadable one with the system's reason.
@@ -309,7 +308,7 @@ pub(crate) fn link_target(followed: io::Result<(bool, bool)>) -> wire::LinkTarge
     }
 }
 
-/// Out of open files, reading a directory waits for one (`runner.md` § Load).
+/// Out of open files, reading a directory waits for one (`crates/command-sdk/src/descriptors.rs`).
 async fn read_dir(path: &Path, cancel: &CancellationToken) -> io::Result<fs::ReadDir> {
     demi_command_sdk::descriptors::retry(cancel, || fs::read_dir(path)).await
 }
@@ -440,7 +439,7 @@ fn copy_entry<'a>(
             return symlink(&fs::read_link(source).await?, destination).await;
         }
         if metadata.is_file() {
-            // Out of open files, the copy waits for one (`runner.md` § Load).
+            // Out of open files, the copy waits for one (`crates/command-sdk/src/descriptors.rs`).
             demi_command_sdk::descriptors::retry(cancel, || fs::copy(source, destination)).await?;
             return Ok(());
         }

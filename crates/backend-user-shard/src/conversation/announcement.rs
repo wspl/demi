@@ -46,12 +46,10 @@ const CONTEXT: &str = "[Execution context ";
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";
 
-/// What every block says of a job's standard utilities (`runner.md`
-/// § Standard utilities).
+/// What every block says of a job's standard utilities (`crates/runner-shell/src/utilities.rs`).
 const UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host";
 
-/// Where the agent keeps the files only it needs (`runner.md` § Scratch
-/// directory), which every block says after where shells start.
+/// Where the agent keeps the files only it needs (`crates/runner-jobs/src/scratch.rs`), which every block says after where shells start.
 const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation.";
 
 /// Where a Mac keeps its own, BSD utilities, which a block for a Mac adds.

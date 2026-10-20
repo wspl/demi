@@ -58,7 +58,7 @@ pub struct Boot<'a> {
     /// sandbox has none.
     pub cgroup: Option<Cgroup<'a>>,
     /// The release of the runner the sandbox runs, which the runner names
-    /// to the backend (`runner.md` § Runner updates).
+    /// to the backend (`crates/runner/src/update.rs`).
     pub runner_release: &'a str,
     /// The directory of the backend's runner socket, which the sandbox sees
     /// where its runner looks for the socket (`managed-hosts.md` § Backend
@@ -92,7 +92,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
     let process = ProcessBuilder::default()
         .terminal(false)
         // The runner and its jobs make files with the usual mask 022, not the
-        // manager's own 077 (`runner.md` § Builtins that act on a process).
+        // manager's own 077 (`crates/runner-shell/src/process_builtins.rs`).
         .user(
             UserBuilder::default()
                 .uid(USER_ID)

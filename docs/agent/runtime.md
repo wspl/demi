@@ -114,7 +114,7 @@ A running action holds a lease on its tree's admission. A target switch or an
 archive reserves the idle tree through the same admission
 ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
 and a running turn is conversation activity
-([Activity](../execution/resource-lifecycle.md#activity)).
+(`crates/backend-user-shard/src/lifecycle/mod.rs`).
 
 ### A turn
 

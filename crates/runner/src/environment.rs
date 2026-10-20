@@ -1,9 +1,22 @@
-//! The device environment (`runner.md` § Host operations): the user's login
-//! environment, which the runner reads at its start from the account's login
-//! shell, as VS Code resolves a shell's environment, so that a runner a
-//! service manager started gives its jobs the `PATH` the user's own shell
-//! files set (`runner.md` § Starting with the computer); and on macOS the
-//! `LANG` Terminal would set.
+//! The device environment: the user's login environment, which the runner reads at
+//! its start from the account's login shell, run as an interactive login shell as VS
+//! Code resolves a shell's environment. A service manager gives the runner a small
+//! environment (on macOS the user's `PATH`, Homebrew's, nvm's, lives in zsh's
+//! files, which a job's login shell never reads), so the environment comes from the
+//! user's shell, not from whoever started the runner, the same after a restart as
+//! from a terminal. A shell that fails or takes over 10 s leaves the runner's own,
+//! and the log says so.
+//!
+//! `DEMI_*` names and, on Windows, the `=C:`-style per-drive entries are taken
+//! away: the first configure the runner or belong to whatever started it, and none
+//! is meant for the programs it starts (a job that reads `DEMI_RELEASE_ID` to
+//! choose a release would otherwise read the runner's); cmd keeps the second and no
+//! program may be given them back. The same environment reaches jobs, raw processes
+//! and resident services, and runner-owned variables (the endpoint, the context
+//! handle, `DEMI_HOME`, the alias directory on `PATH`) override caller values. On
+//! macOS the `LANG` Terminal sets and no profile does is completed ([`complete`])
+//! from the user's language with UTF-8, since `ls` and `git` print a non-ASCII file
+//! name as question marks without it.
 
 use std::collections::BTreeMap;
 
@@ -154,8 +167,7 @@ fn account_shell() -> Option<String> {
     (!shell.is_empty()).then(|| shell.to_owned())
 }
 
-/// Sets `LANG` in `env` when unset, as Terminal does on macOS (`runner.md`
-/// § Starting with the computer).
+/// Sets `LANG` in `env` when unset, as Terminal does on macOS.
 pub fn complete(env: &mut BTreeMap<String, String>) {
     #[cfg(target_os = "macos")]
     if !env.contains_key("LANG") {

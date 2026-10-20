@@ -1,5 +1,5 @@
 //! The runners a test starts in sessions of their own, as an installer and
-//! `run start` start them (`runner.md` § Installation, pairing and removal):
+//! `run start` start them (`crates/runner/src/console.rs`):
 //! no kill of the test's process tree or group reaches them, so a test that
 //! ends without stopping them, or is killed, leaves them running for good.
 //! [`DetachedRunners`] stops them when it drops, and when the test process

@@ -1088,7 +1088,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
 
     // A second conversation keeps the Cloud running while the first goes
     // idle, its mapper ended: the first hears its release there, which
-    // closes its Chrome (`resource-lifecycle.md` § Conversation release).
+    // closes its Chrome (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     let mut second = on_cloud(&backend, &master, &master, &vendor, SECOND, "/b").await;
     let busy = backend
         .file_gate(&master, SECOND)
@@ -1292,7 +1292,7 @@ async fn a_cloud_whose_sandbox_is_killed_reports_a_death_and_boots_again_with_it
     .await;
     measured(TEST, "boot after the death and command", started.elapsed());
     // The home outlived the death. The new runner removed the job
-    // directories the dead one left (`runner.md` § Pipes and output), so only this
+    // directories the dead one left (`crates/runner-jobs/src/tasks.rs`), so only this
     // job's own is there.
     assert!(back.contains("before-death\n1"), "{back}");
     drop(working);

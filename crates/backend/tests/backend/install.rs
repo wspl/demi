@@ -459,8 +459,7 @@ async fn pairs(
 }
 
 /// An installer shows why the device will not start its runner by itself
-/// after a restart, as its runner says it (`runner.md` § Starting with the
-/// computer); here the directory of the runner's registration is a file.
+/// after a restart, as its runner says it (`crates/runner/src/autostart.rs`); here the directory of the runner's registration is a file.
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -665,7 +664,7 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
 /// A runner that replaces itself with its backend's release stops its jobs
 /// first, with `TERM` as a stop does, since the new runner cannot take them
 /// over; its hello tells the backend they were lost to the update
-/// (`runner.md` § Runner updates).
+/// (`crates/runner/src/update.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB) and
 // starts it, the call that starts the command waits for two quiet seconds,
 // and the runner downloads the backend's new release.
@@ -738,7 +737,7 @@ fn mode(path: &Path) -> u32 {
 /// the runner it started running. An installer that finds its runner
 /// running and waiting to be paired asks it to write its state again and
 /// shows the code it waits with, not the lines of an earlier pairing that
-/// its log holds (`runner.md` § Installation, pairing and removal).
+/// its log holds (`crates/runner/src/console.rs`).
 // Several seconds: the first installer downloads this build's runner
 // (170 MB) and starts it; the second finds it running.
 #[tokio::test]
@@ -799,8 +798,7 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
 }
 
 /// An installer shows the codes of the runner it started and no earlier
-/// runner's, whose lines its log keeps (`runner.md` § Installation, pairing
-/// and removal).
+/// runner's, whose lines its log keeps (`crates/runner/src/console.rs`).
 // Several seconds (8 s here under load): the installer downloads this build's
 // runner (170 MB) from its backend, verifies it and starts it, and shows a
 // code, which the test lets expire at once, before it shows the one claimed;
@@ -894,7 +892,7 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_as_the_u
 /// control, with dash as `sh`, as on Debian: the pipeline is the terminal's
 /// foreground job, led by the program that fetches the installer. The
 /// installer shows the code, says the device is paired, and exits with 0
-/// (`runner.md` § Installation, pairing and removal). Skipped where the
+/// (`crates/runner/src/console.rs`). Skipped where the
 /// system gives no pseudo-terminal, or has no dash or bash.
 // Several seconds: the installer downloads this build's runner (170 MB),
 // verifies it and starts it.
@@ -938,8 +936,7 @@ async fn an_installer_piped_into_dash_at_a_terminal_pairs_and_exits_with_0() {
 
 /// The command a paired device shows starts its stopped runner again in
 /// the background: `run start` of the installation its runner reported,
-/// here one the person named apart from the default (`runner.md`
-/// § Installation, pairing and removal).
+/// here one the person named apart from the default (`crates/runner/src/console.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, and the runner starts a second time.
 #[tokio::test]
@@ -986,8 +983,7 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
 }
 
 /// An installer run with `DEMI_HOME` installs the runner into the directory
-/// it names, not under `~/.demi/instances` (`runner.md` § Installation,
-/// pairing and removal): the removal command it shows and the start command
+/// it names, not under `~/.demi/instances` (`crates/runner/src/console.rs`): the removal command it shows and the start command
 /// the paired device shows name that directory's launcher.
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it.
@@ -1151,8 +1147,7 @@ async fn ask_socket(
 /// A runner the backend sends to an update names its device with its token,
 /// and the device shows as updating from that first 409 until its next hello
 /// or the window ends, which a retry does not extend; a runner of an earlier
-/// release names none, and its device shows as offline (`runner.md`
-/// § Runner updates).
+/// release names none, and its device shows as offline (`crates/runner/src/update.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, and the window passes once.
 #[tokio::test]
@@ -1251,7 +1246,7 @@ async fn prefetch(socket: &Path, release: &str, root: &Path) -> PrefetchProgress
 /// one that speaks a wire version this backend does not: the paired
 /// device's runner downloads it ahead, connected throughout, and once the
 /// server switches, its update finds the executable in place and downloads
-/// nothing (`runner.md` § Runner updates).
+/// nothing (`crates/runner/src/update.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, the runner downloads it again ahead, and the updated
 // runner starts.
@@ -1314,7 +1309,7 @@ async fn a_runner_downloads_the_next_release_ahead_and_its_update_downloads_noth
 /// offline, for as long as its download moves, however long past the
 /// window that ends an update without one; its pages hear its progress on
 /// the synchronization channel; once its bytes stop, the window passes and
-/// it shows as offline (`runner.md` § Runner updates).
+/// it shows as offline (`crates/runner/src/update.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, the download is read at a slow link's pace past the
 // window, and the window passes once.

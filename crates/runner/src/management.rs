@@ -40,17 +40,15 @@ pub struct Request {
 pub enum Action {
     Status,
     Drain,
-    /// Asks the backend to revoke the device, then drains (`runner.md`
-    /// § Installation, pairing and removal).
+    /// Asks the backend to revoke the device, then drains (`crates/runner/src/removal.rs`).
     Uninstall,
     /// Writes the runner's pairing state to its log again, for an installer
-    /// that finds it running (`runner.md` § Installation, pairing and
-    /// removal); the answer is the status, which carries no code.
+    /// that finds it running (`crates/runner/src/removal.rs`); the answer is the status, which carries no code.
     Announce,
 }
 
 /// What came of asking the backend to revoke the device, which `uninstall`
-/// reports (`runner.md` § Installation, pairing and removal).
+/// reports (`crates/runner/src/removal.rs`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Revocation {
@@ -95,8 +93,7 @@ struct Snapshot {
     jobs: usize,
 }
 
-/// The installation's status and its drain (`runner.md` § Connection and
-/// identity). The registration sets the phase and the connection the job
+/// The installation's status and its drain (`crates/runner/src/registration.rs`). The registration sets the phase and the connection the job
 /// count; the management endpoint reads a snapshot of both.
 pub struct Management {
     secret: String,

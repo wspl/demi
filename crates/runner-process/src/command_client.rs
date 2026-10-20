@@ -289,7 +289,7 @@ enum Liveness {
     /// Nothing holds the lock, or there is none: it stopped or crashed.
     Gone,
     /// The lock cannot be read without an open file; the client waits and
-    /// looks again (`runner.md` § Load).
+    /// looks again (`crates/command-sdk/src/descriptors.rs`).
     Unknown,
 }
 

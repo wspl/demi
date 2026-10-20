@@ -1,11 +1,13 @@
-//! The backend WebSocket (`runner.md` § Connection and identity): one owner
-//! task reads messages into a queue of eight and writes the queued replies.
-//! When the queue is full the reader waits, so the backend's writes wait too;
-//! only a message that breaks the protocol closes the connection. A
-//! connection the runner ends on purpose, as a drain or a stop does, ends
-//! with a close frame. The runner pings the backend, and counts a
-//! connection it hears nothing on for a while as lost, as one the network
-//! dropped without closing it is (`runner.md` § Command lifetime).
+//! The backend WebSocket: one owner task reads messages into a queue of eight and
+//! writes the queued replies. When the queue is full the reader waits, so the
+//! backend's writes wait too; only a message that breaks the protocol closes the
+//! connection (the limits and why: `demi_runner_protocol::wire`). A message the
+//! runner cannot decode ends the connection with a close frame naming its type and
+//! the decoding error. A connection the runner ends on purpose, as a drain or a
+//! stop does, ends in order: the queued messages, a close frame, and up to
+//! `CLOSE_TIMEOUT` for the backend's, so the backend sees the runner leave rather
+//! than lose it. The runner pings the backend and counts a connection it hears
+//! nothing on as lost, as one the network dropped without closing it is.
 
 use std::{io, time::Duration};
 
@@ -68,7 +70,7 @@ pub fn socket_url(backend: &Backend) -> io::Result<url::Url> {
 }
 
 /// What asking for the socket gave: the socket, or the release the backend
-/// requires first (`runner.md` § Runner updates).
+/// requires first (`crates/runner/src/update.rs`).
 pub enum Connected {
     Open(Transport),
     Update(RunnerUpdate),
@@ -216,7 +218,7 @@ impl Transport {
             match ended {
                 // The connection closes over a message the runner cannot
                 // decode, naming it, so the backend reports why it ended
-                // (`runner.md` § Connection and identity).
+                // (`crates/runner/src/connection/mod.rs`).
                 Some(Ok(Some(refusal))) => {
                     let frame = CloseFrame {
                         code: CloseCode::Invalid,
@@ -235,7 +237,7 @@ impl Transport {
             // The runner ends this connection on purpose: what is queued
             // goes first, then a close frame, and the connection ends with
             // the backend's answer, so the backend sees the runner leave
-            // rather than lose it (`runner.md` § Connection and identity).
+            // rather than lose it (`crates/runner/src/connection/mod.rs`).
             let close = async {
                 while let Ok(message) = controls.try_recv().or_else(|_| outgoing.try_recv()) {
                     write(&mut writer, message).await?;

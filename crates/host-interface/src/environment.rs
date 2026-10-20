@@ -99,8 +99,7 @@ pub trait ShellEnvironment {
 
     /// Stops a running command: asks it to end, and ends it when it does
     /// not, and returns once the stop is asked; [`ended`](Self::ended) waits
-    /// for the end, which only the command's runner reports (`runner.md`
-    /// § Cancellation and completion). A command that is not running stays
+    /// for the end, which only the command's runner reports (`crates/runner-shell/src/job.rs`). A command that is not running stays
     /// as it is.
     fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>>;
 
@@ -194,7 +193,7 @@ pub struct JobCaller {
 
 /// How long a running command's Host has been unreachable, as far as Demi
 /// knows, and how long its runner keeps the command without a connection
-/// (`runner.md` § Command lifetime).
+/// (`crates/runner/src/connection/kept.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unreachable {
     pub away_ms: u64,
@@ -260,7 +259,7 @@ pub struct CommandStatus {
 }
 
 /// A stream's newest bytes beyond its start, which the runner sends while
-/// a command runs (`runner.md` § Pipes and output).
+/// a command runs (`crates/runner-jobs/src/tasks.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Newest {
     pub stream: StreamKind,

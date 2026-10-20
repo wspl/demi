@@ -3,8 +3,9 @@
 
 use std::time::Duration;
 
-/// When Demi reclaims what a conversation uses on a Host
-/// (`resource-lifecycle.md` § Idle window). Tests shorten the times.
+/// When Demi reclaims what a conversation uses on a Host, one idle window
+/// for the conversation's release and for a Cloud's stop (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+/// Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct LifecycleTuning {
     /// How long a conversation, or every conversation using the Cloud, stays
@@ -100,8 +101,7 @@ impl Default for MediaTuning {
     }
 }
 
-/// How the backend treats runner connections (`runner.md` § Connection and
-/// identity, `backend.md` § Authentication and ownership). Tests shorten
+/// How the backend treats runner connections (`crates/runner-protocol/src/wire/mod.rs`, `backend.md` § Authentication and ownership). Tests shorten
 /// the times.
 #[derive(Debug, Clone, Copy)]
 pub struct RunnerTuning {

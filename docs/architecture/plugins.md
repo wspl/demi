@@ -172,7 +172,7 @@ own context blocks that the model receives, the ones from the last
 `compaction_boundary` on, oldest first, with the node's working directory, how
 its Host writes paths (`HostPaths`: joining, a path's last name, the
 directories up to the root, so `C:\Users\alex\app` walks up to `C:\` on
-Windows; [Windows paths](../execution/runner.md#windows-paths)) and the id of
+Windows; Windows paths (`crates/runner-shell/src/lib.rs`)) and the id of
 its current input turn, and answers new text or nothing. Each
 answer becomes one block, tagged with its source. The blocks are appended
 before the request and saved at once, so a request never carries a context
@@ -223,7 +223,7 @@ yet, before the job starts:
   the user deletes by hand while the connection lasts comes back at the next
   connection. Installations on one shard take turns.
 - An installation writes each directory with one request
-  ([Host operations](../execution/runner.md#host-operations)): the runner
+  (`crates/runner-host/src/lib.rs`): the runner
   writes the files into a temporary directory beside the final one, makes
   every file and directory read-only, keeping a file's executable bit, and
   then renames it into place. A directory that exists is
@@ -249,7 +249,7 @@ example, `plugin-skills` looks for the skills a repository holds in its
 
 One request of the port names several paths, and the reply answers each, and
 it reaches the Host as one request too
-([Host operations](../execution/runner.md#host-operations)):
+(`crates/runner-host/src/lib.rs`):
 whether it exists, its kind, a directory's entries, a file's bytes up to a
 bound the request gives with its size, or that the Host could not read it,
 such as for want of permission. A symbolic link at a path is followed; a
@@ -262,7 +262,7 @@ uses ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-
   answers that the Host is not running, and the plugin uses what it knew
   before, or nothing.
 - A read is a look, not activity: it keeps no Cloud awake
-  ([Activity](../execution/resource-lifecycle.md#activity)).
+  (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 - A read takes the conversation's file gate only while it is admitted, so a
   target switch or an archive ends it instead of waiting for it.
 
@@ -271,7 +271,7 @@ project's files, as `plugin-skills`' project skills do, declares
 `projectSearch` in its manifest and answers `ProjectSearch` for a Host and
 a directory with what it found and what to watch: the paths its search read
 or would read, each a watch subject of the runner's
-[file watch](../execution/runner.md#watching-files), the directories it
+file watch (`crates/runner-host/src/subscriptions.rs`), the directories it
 listed and the files it parsed or looked for included, whether they exist
 yet or not, so a skill created, added to a group or repaired is seen. Its
 answer depends on the Host and the directory alone, never on a
@@ -311,7 +311,7 @@ registered. A stream, a page state or a page method one of whose
 operations the startup catalog does not serve does not exist, as such a
 command group does not. A package call says what it does on the Host, which
 decides whether it wakes a stopped Cloud and whether it is activity
-([Activity](../execution/resource-lifecycle.md#activity)): it **starts** work,
+(`crates/backend-user-shard/src/lifecycle/mod.rs`): it **starts** work,
 such as opening a tab, and wakes the Host; it **operates** on what runs
 there, such as closing a tab, which is activity but never wakes; or it
 **looks**, such as listing the tabs, which neither wakes nor is activity.

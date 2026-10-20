@@ -1,6 +1,6 @@
 //! The Cloud through the backend (`managed-hosts.md`,
 //! `sessions-and-targets.md` § Resolve a target, § How a conversation uses a
-//! device, `resource-lifecycle.md`): the first uses of two conversations
+//! device, `crates/backend-user-shard/src/lifecycle/mod.rs`): the first uses of two conversations
 //! boot one Cloud, which keeps nothing of an ended command, an idle Cloud
 //! stops, and the next operation wakes it, the model learns the home the
 //! Cloud's runner reports once and not again at each wake, a conversation

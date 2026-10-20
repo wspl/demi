@@ -1,4 +1,4 @@
-//! The job table (`runner.md` § Command lifetime, § Pipes and output): what
+//! The job table (`crates/runner/src/connection/kept.rs`, `crates/runner-jobs/src/tasks.rs`): what
 //! a job keeps of its output and which views of it the backend is sent,
 //! with jobs the test plays through a job shell of its own.
 
@@ -271,7 +271,7 @@ fn stream_bytes(records: &[KeptRecord], stream: OutputStream) -> Vec<u8> {
 /// grew beyond them with its newest `JOB_VIEW_BYTES`, the last of which
 /// leaves before its end; its end gives each stream's length, and its
 /// directory lasts until its release
-/// (`runner.md` § Pipes and output).
+/// (`crates/runner-jobs/src/tasks.rs`).
 #[tokio::test]
 async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
     let root = tempfile::tempdir().unwrap();
@@ -474,8 +474,7 @@ async fn written(directories: &JobDirectories, bytes: usize) {
 /// each stream's first `JOB_VIEW_BYTES`: at once when following starts, then
 /// at most one message every `JOB_LIVE_INTERVAL`, each of at most
 /// `JOB_LIVE_BYTES`, and its last output before its exit; unfollowed, how
-/// long a stream grew with its newest `JOB_VIEW_BYTES` (`runner.md` § Pipes
-/// and output). About half a
+/// long a stream grew with its newest `JOB_VIEW_BYTES` (`crates/runner-jobs/src/tasks.rs`). About half a
 /// second: the job prints a line every 10 ms for that long, so that its
 /// output spans a few intervals.
 #[tokio::test]

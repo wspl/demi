@@ -699,8 +699,7 @@ pub enum ShellStatus {
         #[serde(flatten)]
         #[garde(dive)]
         command: CommandView,
-        /// A stop waits for its runner to say that it ended (`runner.md`
-        /// § Cancellation and completion): the pages tag it *Stopping…*.
+        /// A stop waits for its runner to say that it ended (`crates/runner-shell/src/job.rs`): the pages tag it *Stopping…*.
         /// Present only then.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         #[garde(skip)]

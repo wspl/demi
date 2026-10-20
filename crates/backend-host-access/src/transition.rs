@@ -5,8 +5,7 @@
 //! reserved by the shard, the file transfers, user streams and the one-shot
 //! calls admitted like them ended, and the file gate reserved. It sends the
 //! conversation release to the devices it leaves, then commits, whether the
-//! devices took the release or not (`resource-lifecycle.md` § A release that
-//! fails). The shard's `transition` is the one entry every change of a
+//! devices took the release or not (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The shard's `transition` is the one entry every change of a
 //! conversation goes through.
 
 use demi_backend_database::conversation_index::{
@@ -295,8 +294,8 @@ impl dyn HostShard + '_ {
 
     /// The conversation release on every Host the conversation reaches, primary
     /// and attached, for an archive and for its idle watch. Only reading the
-    /// Hosts fails it: a Host that did not take the release hears it again
-    /// (`release_on`).
+    /// Hosts fails it: a Host that did not take the release is not sent it
+    /// again (`release_on`).
     pub async fn release_everywhere(
         &self,
         record: &ConversationRecord,

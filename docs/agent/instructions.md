@@ -95,7 +95,7 @@ directory, a subagent too, a profile's included.
   waits for the Host. For each Host and working directory a loaded
   conversation's nodes use, the source searches once, through the
   conversation's host access in the form that never wakes a Host, and
-  subscribes with the runner's [file watch](../execution/runner.md#watching-files)
+  subscribes with the runner's file watch (`crates/runner-host/src/subscriptions.rs`)
   to each file the search reads or would read, whether it exists yet or not;
   when a subscription says one changed, it searches again in the background.
   A request uses the result held at that moment. Only the first search of a

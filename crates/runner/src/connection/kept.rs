@@ -1,10 +1,21 @@
-//! What the runner keeps through a connection loss (`runner.md` § Command
-//! lifetime): its jobs with their directories and execution contexts, and
-//! the requests its jobs' commands make of the backend. A connection serves
-//! them while it lasts; without one, the jobs run on however long it takes,
-//! their messages go nowhere, and their commands' requests wait for the next
-//! connection. Only the runner's end stops them, as when the backend refuses
-//! it.
+//! What the runner keeps through a connection loss: its jobs with their
+//! directories and execution contexts, and the requests its jobs' commands make of
+//! the backend. A connection serves them while it lasts; without one, the jobs run
+//! on however long it takes, their commands' requests wait for the next
+//! connection, and the messages the runner would have sent about them are not
+//! queued, since the next connection reads what it needs from the kept output. A
+//! laptop whose Wi-Fi drops for two minutes in the middle of a test suite therefore
+//! delivers the suite's end and its output to the conversation as if the
+//! connection had never dropped.
+//!
+//! Only the runner's end stops them: a backend that refuses the runner (the device
+//! was revoked or removed) has them stopped as a stop does, since nobody will read
+//! them again, and a runner that ends (a crash, an update, a Cloud's stop) loses
+//! its jobs, whose shell work runs in its process. The hello lists the jobs with
+//! the runner's instance, a number each start draws, so that the backend tells a
+//! runner that kept its jobs from one that started anew; a job the backend has no
+//! command for is stopped. The runner notices a loss itself: it pings the backend
+//! and counts a connection unanswered for `RUNNER_PING_TIMEOUT` as lost.
 
 use std::sync::Arc;
 
@@ -180,7 +191,7 @@ impl Kept {
     }
 
     /// Stops every job as a stop does and waits for each to end, as a
-    /// runner that replaces itself does (`runner.md` § Runner updates). A
+    /// runner that replaces itself does (`update`). A
     /// killed job ends a second later whatever its in-process work does
     /// (§ Cancellation and completion), so the update never waits on one.
     pub async fn stop_jobs(&mut self, registered: &Registered) {
@@ -218,8 +229,7 @@ async fn sleep_until(at: Option<Instant>) {
 
 /// Passes each job message on to the connection that serves, waiting for
 /// room in its queue; without one, the message goes nowhere, since the next
-/// connection reads what it needs from the jobs' kept output (`runner.md`
-/// § Command lifetime).
+/// connection reads what it needs from the jobs' kept output.
 async fn forward(
     mut messages: mpsc::Receiver<wire::Frame>,
     output: watch::Receiver<Option<mpsc::Sender<wire::Frame>>>,

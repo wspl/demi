@@ -1,5 +1,5 @@
 //! Work through a conversation on paired devices (`sessions-and-targets.md`,
-//! `commands.md`, `runner.md`, `edit-tracking.md`): the model's shell tool
+//! `commands.md`, `crates/runner/src/main.rs`, `edit-tracking.md`): the model's shell tool
 //! runs where the conversation works, and the files it makes stay with the
 //! target they were made on. A switch moves the work and leaves the
 //! departed device reachable through `demi host shell`, whose pipes carry
@@ -576,7 +576,7 @@ async fn a_runner_that_ends_in_the_middle_of_a_command_loses_it_and_its_next_sta
         .await;
     until_exists(&started).await;
     // The command waits for the runner, whose next start's hello lists no
-    // job: it was lost with the runner (`runner.md` § Command lifetime).
+    // job: it was lost with the runner (`crates/runner/src/connection/kept.rs`).
     alpha.runner.kill().await;
     alpha.runner.start_again();
     backend.until_online(&master, alpha.id(), true).await;
@@ -1055,7 +1055,7 @@ EOF"#;
 }
 
 /// Behind an edge that holds each request's body until it ends, as
-/// Cloudflare's does (`runner.md` § Host operations), `demi host shell`
+/// Cloudflare's does (`crates/runner-host/src/lib.rs`), `demi host shell`
 /// passes the far job's output and its own input on as they come: the far
 /// job prints a line, then waits for an answer that the caller writes only
 /// once it read that line, and prints the answer back. Before, the far

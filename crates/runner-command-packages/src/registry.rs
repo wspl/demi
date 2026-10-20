@@ -359,7 +359,7 @@ impl ServiceHandle {
     }
 
     /// Stops every service, as losing the backend connection does
-    /// (`runner.md` § Command lifetime), and waits until each has ended.
+    /// (`crates/runner/src/connection/kept.rs`), and waits until each has ended.
     pub async fn stop_all(&self) {
         let (reply, answer) = oneshot::channel();
         if self.requests.send(Request::StopAll { reply }).await.is_ok() {
@@ -750,8 +750,7 @@ impl Owner {
     }
 
     fn release(&mut self, conversation: String, reply: oneshot::Sender<Result<(), String>>) {
-        // A release never starts a service (`resource-lifecycle.md`
-        // § Conversation release): only running ones hold conversations.
+        // A release never starts a service (`crates/backend-user-shard/src/lifecycle/conversations.rs`): only running ones hold conversations.
         let running: Vec<_> = self
             .entries
             .iter()

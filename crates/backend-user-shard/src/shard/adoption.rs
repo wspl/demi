@@ -1,4 +1,4 @@
-//! Runner adoption (`runner.md` § Connection and identity): the shard of a
+//! Runner adoption (`crates/runner-protocol/src/wire/mod.rs`): the shard of a
 //! device's owner takes the socket the edge accepted, binds it to the device
 //! with the connection's policy, and serves it until either end closes it;
 //! the revocation that ends a device's connection for good; and a device's
@@ -36,11 +36,10 @@ use super::policy::ShardPolicy;
 const REPLACED: &str = "replaced by a new connection of the device's runner";
 
 /// How often a device's pages hear of its download's progress, at most
-/// (`runner.md` § Runner updates).
+/// (`crates/runner/src/update.rs`).
 const DOWNLOAD_ANNOUNCED_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// What a runner's hello says of the jobs it keeps (`runner.md` § Command
-/// lifetime).
+/// What a runner's hello says of the jobs it keeps (`crates/runner/src/connection/kept.rs`).
 pub struct KeptJobs {
     /// The number this start of the runner drew.
     pub instance: u64,
@@ -80,7 +79,7 @@ impl Shard {
             }
         };
         // The user's conversations, archived ones included, whose scratch
-        // directories the runner keeps (`runner.md` § Scratch directory).
+        // directories the runner keeps (`crates/runner-jobs/src/scratch.rs`).
         // Without them the runner would remove every one, so a runner whose
         // welcome cannot name them is dropped and connects again.
         let conversations = match self
@@ -347,7 +346,7 @@ impl Shard {
     }
 
     /// Shows `device` as updating: its runner was just sent to the
-    /// backend's runner release (`runner.md` § Runner updates), from the
+    /// backend's runner release (`crates/runner/src/update.rs`), from the
     /// first such 409 until its next hello, or until the window of the
     /// runners' tuning passes without a byte of its download served; a
     /// retry's 409 changes nothing.
@@ -387,8 +386,7 @@ impl Shard {
     }
 
     /// Counts what a download of a runner executable has served `device`,
-    /// as `served` announces it until the download ends (`runner.md`
-    /// § Runner updates): the device's state carries the progress, its
+    /// as `served` announces it until the download ends (`crates/runner/src/update.rs`): the device's state carries the progress, its
     /// pages hear of it at most once a second, and while it moves an
     /// update the device was sent to shows on.
     pub fn runner_downloading(self: &Rc<Self>, device: DeviceId, mut served: watch::Receiver<Download>) {
@@ -427,8 +425,7 @@ impl Shard {
     }
 
     /// Has the runner of each of the user's paired devices that is
-    /// connected download `next` ahead while it serves (`runner.md`
-    /// § Runner updates): each is counted at once, and `next` hears how its
+    /// connected download `next` ahead while it serves (`crates/runner/src/update.rs`): each is counted at once, and `next` hears how its
     /// download went, a connection that ends failing it.
     pub async fn prefetch(self: &Rc<Self>, next: Arc<NextRelease>) {
         let devices = match self.services().control.paired_devices(self.user().clone()).await {

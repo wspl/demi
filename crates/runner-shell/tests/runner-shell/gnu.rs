@@ -1,5 +1,5 @@
 //! A job's standard utilities and its shell's own builtins behave as GNU's
-//! and bash's do (`runner.md` § Standard utilities): their messages, exit
+//! and bash's do (`crates/runner-shell/src/utilities.rs`): their messages, exit
 //! statuses and options, the paths they take, the copies `cp` makes, and the
 //! programs a utility starts.
 
@@ -180,8 +180,7 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
         ("kill 999999", 1, "", "kill: (999999) - No such process\n"),
         #[cfg(unix)]
         ("kill -- -999999", 1, "", "kill: (-999999) - No such process\n"),
-        // Windows has no process groups (`runner.md` § Builtins that act on
-        // a process).
+        // Windows has no process groups (`crates/runner-shell/src/process_builtins.rs`).
         #[cfg(windows)]
         ("kill -- -999999", 1, "", "kill: (-999999) - Windows has no process groups\n"),
         ("kill %9", 1, "", "kill: %9: no such job\n"),
