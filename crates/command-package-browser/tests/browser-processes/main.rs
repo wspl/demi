@@ -1,5 +1,5 @@
 //! The `demi-browser` tests that read the whole process table of this test
-//! process, in their own binary.
+//! process, in its own binary.
 //!
 //! Each counts every Chrome the test process started and every descendant left
 //! behind, so a Chrome another test of the same process runs at the same time

@@ -73,6 +73,7 @@ profiles:
 
       What you never change:
       - Code, string literals and identifiers: every line `git diff -U0` shows as changed is a comment line.
+      - Comment text a check or a tool reads: the phrase "its own binary" at the top of a test file (the crate boundary check), and a `name.md § Section` citation whose section exists.
       - Doc comments that become product text: on items deriving clap's `Parser`, `Args`, `Subcommand` or `ValueEnum` or schemars' `JsonSchema`, and any doc comment a macro turns into help text, a schema description or a prompt.
       - SQL text in `crates/backend-database` (the `.sql` files and the SQL inside `schema.rs` strings), `cloud-guest-image/rootfs/overlay/etc/skel/.bashrc`, `vendor/`, generated files, gitignored files and CHANGELOG files.
 
