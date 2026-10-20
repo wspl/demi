@@ -343,6 +343,9 @@ public struct ChromeLayout {
   }
 }
 
+/// The most points a traced corner keeps.
+private let largestCorner = 96
+
 /// The device type's framebuffer mask, the screen's shape: a PDF's first page.
 public struct ScreenMask {
   let page: CGPDFPage
@@ -373,27 +376,70 @@ public struct ScreenMask {
     context.drawPDFPage(page)
   }
 
-  /// The radius of the screen's corners in a screen of `pixels`: the
-  /// circle's that leaves the corner as open as the mask does. A corner of
-  /// radius r leaves r²(1 − π/4) of its square uncovered, and the mask's
-  /// antialiased pixels cover their share of area, so the open area of the
-  /// mask's top left quarter gives r. Read where the top row turns opaque,
-  /// it was a fifth less, which left a gap between the picture's corners
-  /// and the frame.
-  public func cornerRadius(pixels: CGSize, screenPoints: CGSize) -> Double {
+  /// The screen's top left corner in a screen of `pixels`, as the mask
+  /// draws it: the line where the mask turns half opaque, from where it
+  /// leaves the upright edge to where it meets the level one, in pixels from
+  /// the corner. Empty where the mask leaves the corner square.
+  ///
+  /// The frame's hole is cut with this mask, so the picture's clip, drawn
+  /// from these points, follows the hole exactly; a circle of any radius
+  /// strays from the mask's smooth corner by pixels along the diagonal.
+  public func corner(pixels: CGSize, screenPoints: CGSize) -> [CGPoint] {
     let side = Int(min(pixels.width, pixels.height) / 2)
-    guard side > 0,
+    guard side > 1,
       let context = CGContext(
         data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side,
         space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)
-    else { return 0 }
+    else { return [] }
     // The context is the mask's top left quarter, origin at the top left.
     context.translateBy(x: 0, y: Double(side))
     context.scaleBy(x: 1, y: -1)
     draw(in: CGRect(origin: .zero, size: pixels), screenPoints: screenPoints, context)
-    guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return 0 }
-    let open = (0..<(side * side)).reduce(0.0) { $0 + 1 - Double(data[$1]) / 255 }
-    return (open / (1 - .pi / 4)).squareRoot()
+    guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return [] }
+    let alpha = { (x: Int, y: Int) in Double(data[y * side + x]) / 255 }
+    // Short of whole by more than the rounding of a straight edge.
+    let opaque = 0.99
+    // Where a line of pixels turns half opaque, between the centres of the
+    // two pixels it turns between; nil if it never does.
+    func crossing(_ value: (Int) -> Double) -> Double? {
+      var previous = value(0)
+      if previous >= 0.5 { return 1 - previous }
+      for index in 1..<side {
+        let next = value(index)
+        if next >= 0.5 { return Double(index) - 0.5 + (0.5 - previous) / (next - previous) }
+        previous = next
+      }
+      return nil
+    }
+    // The corner leaves the upright edge below the lowest row whose edge
+    // pixel is not wholly opaque, and meets the level edge right of the
+    // rightmost such column: a smooth corner meets its edges tangentially,
+    // a fraction of a pixel in for many pixels.
+    guard let lowest = (0..<side).last(where: { alpha(0, $0) < opaque }),
+      let rightmost = (0..<side).last(where: { alpha($0, 0) < opaque }), lowest > 0, rightmost > 0
+    else { return [] }
+    let start = Double(lowest + 1)
+    // The steep half read along rows, up from the upright edge; the level
+    // half along columns, each where it crosses its line more squarely.
+    var points = [CGPoint(x: 0, y: start)]
+    for row in stride(from: lowest, through: 0, by: -1) {
+      let y = Double(row) + 0.5
+      guard let x = crossing({ alpha($0, row) }) else { continue }
+      if x > y { break }
+      points.append(CGPoint(x: x, y: y))
+    }
+    let across = points.last?.x ?? 0
+    for column in 0..<side {
+      let x = Double(column) + 0.5
+      guard x > across, x < Double(rightmost + 1), let y = crossing({ alpha(column, $0) }), y < x else { continue }
+      points.append(CGPoint(x: x, y: y))
+    }
+    points.append(CGPoint(x: Double(rightmost + 1), y: 0))
+    // A few dozen points follow the curve to a fraction of a pixel.
+    let step = max(1, (points.count + largestCorner - 1) / largestCorner)
+    return points.enumerated().compactMap { index, point in
+      index % step == 0 || index == points.count - 1 ? point : nil
+    }
   }
 
 }

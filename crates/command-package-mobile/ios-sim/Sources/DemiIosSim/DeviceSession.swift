@@ -227,9 +227,9 @@ final class DeviceSession: @unchecked Sendable {
   // MARK: The frame
 
   /// The device's frame for a view of `area` pixels at `backing` pixels
-  /// per point, turned as the picture is, with the radius of the screen's corners in its pixels; that
-  /// radius alone, in the screen's upright points, when Xcode installed no
-  /// frame for the device type.
+  /// per point, turned as the picture is, with the screen's corner in its
+  /// pixels; that corner alone, in the screen's points, when Xcode installed
+  /// no frame for the device type.
   func frame(area: CGSize, backing: Double) throws -> ([String: Any], Data?) {
     let (turn, surface) = lock.withLock { (self.turn, self.surface) }
     let looks = DeviceLooks(simulator: simulator)
@@ -241,14 +241,19 @@ final class DeviceSession: @unchecked Sendable {
             "x": drawn.screen.minX, "y": drawn.screen.minY, "width": drawn.screen.width,
             "height": drawn.screen.height,
           ],
-          "cornerRadius": drawn.cornerRadius,
+          "corner": cornerPoints(drawn.corner, scale: 1),
         ], drawn.png
       )
     }
     let pixels = surface.map { CGSize(width: IOSurfaceGetWidth($0), height: IOSurfaceGetHeight($0)) } ?? .zero
-    let radius = looks.cornerRadius(pixels: pixels, screenPoints: portraitPoints)
+    let corner = looks.corner(pixels: pixels, screenPoints: portraitPoints, quarterTurns: turn.frameTurns)
     let scale = pixels.width > 0 ? portraitPoints.width / pixels.width : 0
-    return (["cornerRadius": radius * scale], nil)
+    return (["corner": cornerPoints(corner, scale: scale)], nil)
+  }
+
+  /// `corner`'s points at `scale`, as the reply carries them.
+  private func cornerPoints(_ corner: [CGPoint], scale: Double) -> [[String: Double]] {
+    corner.map { ["x": $0.x * scale, "y": $0.y * scale] }
   }
 
   // MARK: Input

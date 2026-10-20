@@ -98,10 +98,32 @@ const drawnFrame = computed(() => {
   }
   return { corners: layout.value?.corners ?? SQUARE_CORNERS, buttons: drawn.buttons }
 })
-/** The picture cut to the screen's corners, which the device draws black. */
-const clip = computed(() => {
+/**
+ * How far the picture reaches past the screen's edge under a drawn frame's
+ * image, in device pixels: past the hole's antialiased edge, and well within
+ * the bezel's opaque rim.
+ */
+const UNDER_BEZEL = 2
+
+/** The screen's shape, which the screen-off overlay over the frame takes. */
+const screenShape = computed(() => {
   const placed = placement.value
   return placed && layout.value ? screenClip(placed.width, placed.height, layout.value.corners) : undefined
+})
+/**
+ * The picture cut to the screen's corners, which the device draws black.
+ * Under a drawn frame's image, whose hole is cut in the same shape, it
+ * reaches a little past that shape, so the hole's own edge is the only one
+ * that shows: two antialiased edges on one line let the area's background
+ * through between them, a light seam around the corners.
+ */
+const clip = computed(() => {
+  const placed = placement.value
+  if (!placed || !layout.value) {
+    return undefined
+  }
+  const offset = layout.value.image ? UNDER_BEZEL / window.devicePixelRatio : 0
+  return screenClip(placed.width, placed.height, layout.value.corners, offset)
 })
 const activity = computed(() => watching.value ? props.session.state.activity : { active: false })
 const mark = computed(() => {
@@ -376,7 +398,7 @@ function composed(event: CompositionEvent): void {
         top: `${placement.top}px`,
         width: `${placement.width}px`,
         height: `${placement.height}px`,
-        clipPath: clip,
+        clipPath: screenShape,
       }"
       @pointerdown="down"
     >

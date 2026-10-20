@@ -16,7 +16,7 @@ use tokio::{
     sync::watch,
 };
 
-use demi_command_package_mobile_protocol::live::{LiveCorners, LiveFrame, LiveModuleMessage};
+use demi_command_package_mobile_protocol::live::{LiveCorner, LiveCornerPoint, LiveCorners, LiveFrame, LiveModuleMessage};
 use demi_mobile::{
     driver::Result,
     ios::{BLOB, CONTROL, Connection, Launch, VIDEO},
@@ -210,10 +210,10 @@ async fn serve(
                     json!({
                         "width": 400, "height": 800,
                         "screen": { "x": 20.0, "y": 30.0, "width": 360.0, "height": 740.0 },
-                        "cornerRadius": 40.0,
+                        "corner": [{ "x": 0.0, "y": 40.0 }, { "x": 12.0, "y": 12.0 }, { "x": 40.0, "y": 0.0 }],
                     })
                 }
-                "frame" => json!({ "cornerRadius": 55.0 }),
+                "frame" => json!({ "corner": [] }),
                 "tap" => {
                     focused = true;
                     json!({})
@@ -385,13 +385,18 @@ async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
         LiveFrame::Image { png, width, height, screen, corners } => {
             assert_eq!((png.as_str(), *width, *height), ("UE5H", 400, 800));
             assert_eq!((screen.x, screen.y, screen.width, screen.height), (20.0, 30.0, 360.0, 740.0));
-            assert_eq!(*corners, LiveCorners::round(40.0));
+            // The corner the helper traced on the mask, in each of the four.
+            let traced = LiveCorner::Curve {
+                points: [(0.0, 40.0), (12.0, 12.0), (40.0, 0.0)].map(|(x, y)| LiveCornerPoint { x, y }).to_vec(),
+            };
+            assert_eq!([&corners.top_left, &corners.top_right, &corners.bottom_right, &corners.bottom_left], [&traced; 4]);
         }
         other => panic!("the installed frame came as {other:?}"),
     }
     match &frames[1] {
         LiveFrame::Drawn { corners, buttons } => {
-            assert_eq!(*corners, LiveCorners::round(55.0));
+            // A mask that leaves its corners square.
+            assert_eq!(*corners, LiveCorners::round(0.0));
             assert!(!buttons.is_empty(), "the drawn frame shows the iPhone's buttons");
         }
         other => panic!("the drawn frame came as {other:?}"),
