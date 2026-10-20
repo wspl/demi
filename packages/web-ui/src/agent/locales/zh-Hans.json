@@ -8,7 +8,6 @@
     "sent": "已发送",
     "writeFirst": "请先输入评论。",
     "title": "评论",
-    "sendNow": "Steer",
     "pictureFailed": "无法评论图片"
   },
   "ask": {
@@ -94,7 +93,6 @@
       "showMore": "显示更多",
       "showLess": "收起",
       "sendsNext": "将在智能体的下一步发送",
-      "sendNow": "Steer",
       "recall": "撤回",
       "recalled": "消息已撤回",
       "notDelivered": "此消息未能送达。",

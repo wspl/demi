@@ -31,7 +31,7 @@
       "sameProviderDescription": "輕量請求只傳送到對話所用的供應商。",
       "messages": "訊息",
       "sendWhileRunning": "智慧體執行時按 Enter",
-      "sendWhileRunningDescription": "「Steer」會將訊息傳送給進行中的輪次，「加入佇列」會等它結束。{keys} 則使用另一種方式。",
+      "sendWhileRunningDescription": "「引導」會將訊息傳送給進行中的輪次，「加入佇列」會等它結束。{keys} 則使用另一種方式。",
       "resumeAfterRestart": "Demi 重新啟動後繼續",
       "resumeAfterRestartDescription": "輪次因 Demi 重新啟動（例如更新）而停止時，在重新啟動後繼續。",
       "resumeAtRetry": "使用上限重設後繼續",
@@ -54,7 +54,7 @@
     }
   },
   "sendWay": {
-    "steer": "Steer",
+    "steer": "引導",
     "queue": "加入佇列"
   },
   "dates": {

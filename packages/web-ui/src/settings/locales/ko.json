@@ -272,7 +272,7 @@
       "keywords": "경량 모델,제목,빠른 모델,haiku,flash,턴",
       "modelKeywords": "제목 모델,haiku,flash,자동",
       "sameProviderKeywords": "개인정보,같은 제공업체",
-      "sendKeywords": "Steer,조정,대기열,Enter",
+      "sendKeywords": "조정,대기열,Enter",
       "restartKeywords": "재시작,업데이트,계속",
       "retryKeywords": "사용량 한도,할당량,재설정"
     },

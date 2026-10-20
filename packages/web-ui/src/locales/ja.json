@@ -31,7 +31,7 @@
       "sameProviderDescription": "軽量リクエストを、会話で使っているプロバイダーにだけ送ります。",
       "messages": "メッセージ",
       "sendWhileRunning": "エージェントの作業中に Enter を押したとき",
-      "sendWhileRunningDescription": "「Steer」は実行中のターンにメッセージを送ります。「キューに追加」はターンの終了を待ちます。{keys} でもう一方になります。",
+      "sendWhileRunningDescription": "「今すぐ反映」は実行中のターンにメッセージを送ります。「キューに追加」はターンの終了を待ちます。{keys} でもう一方になります。",
       "resumeAfterRestart": "Demi の再起動後に再開",
       "resumeAfterRestartDescription": "アップデートなどで Demi が再起動して停止したターンを、再起動後に再開します。",
       "resumeAtRetry": "利用上限のリセット後に再開",
@@ -54,7 +54,7 @@
     }
   },
   "sendWay": {
-    "steer": "Steer",
+    "steer": "今すぐ反映",
     "queue": "キューに追加"
   },
   "dates": {
