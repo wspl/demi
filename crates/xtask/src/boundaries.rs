@@ -156,15 +156,12 @@ static WORKSPACE: LazyLock<Workspace> = LazyLock::new(|| {
             .manifest_path
             .parent()
             .expect("a manifest lies in its member's directory");
-        let name = directory
-            .file_name()
-            .and_then(OsStr::to_str)
-            .expect("a member's directory has a name");
+        let name = member_name(directory, &package.name);
         assert!(
-            !directories.values().any(|known| known == name),
-            "two members lie in directories named {name}"
+            !directories.values().any(|known| *known == name),
+            "two members are named {name}"
         );
-        directories.insert(directory, name.to_owned());
+        directories.insert(directory, name);
     }
     let mut members = BTreeMap::new();
     for package in &metadata.packages {
@@ -194,6 +191,34 @@ static WORKSPACE: LazyLock<Workspace> = LazyLock::new(|| {
         packages: metadata.packages,
     }
 });
+
+/// The name of the member in `directory` whose package is `package`: its
+/// directory's, or, for a part of a plugin's directory
+/// (`crates/plugin-<name>/<part>`), the directory of `crates/` its package
+/// names, as `ARCHITECTURE.md` § Names gives it: a library's package without
+/// `demi-`, and a command package's program as `command-package-<program>`.
+fn member_name(directory: &Path, package: &str) -> String {
+    let named = |path: &Path| {
+        path.file_name()
+            .and_then(OsStr::to_str)
+            .expect("a member's directory has a name")
+            .to_owned()
+    };
+    let in_plugin = directory
+        .parent()
+        .is_some_and(|parent| named(parent).starts_with("plugin-"));
+    if !in_plugin {
+        return named(directory);
+    }
+    let bare = package
+        .strip_prefix("demi-")
+        .expect("a member's package is demi-<name>");
+    if bare.starts_with("plugin-") || bare.starts_with("command-package-") {
+        bare.to_owned()
+    } else {
+        format!("command-package-{bare}")
+    }
+}
 
 /// The lines of the `text` block in the document's Rust crate graph section,
 /// each `name -> dependency, dependency` or `name -> none`.

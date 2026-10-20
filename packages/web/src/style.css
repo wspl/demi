@@ -3,5 +3,5 @@
 @import '@demicodes/web-ui/styles/product-appearance.css';
 
 @source '../../web-ui/src';
-@source '../../plugin-*/src/**/*';
+@source '../../../crates/plugin-*/page/src/**/*';
 @source '.';

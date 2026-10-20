@@ -4,7 +4,7 @@ import { conversationSummarySchema, draftFileSchema, workflowChoiceSchema } from
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
-import { IndexedDatabase } from '../state/indexed-db'
+import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 
 /**
  * The upload the backend took: the attachment id a message names the file

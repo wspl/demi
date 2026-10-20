@@ -644,7 +644,7 @@ async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() 
 }
 
 /// The Chrome runtime's archives are tar archives compressed with zstd
-/// (`crates/command-package-browser-chrome/src/driver/installation.rs`):
+/// (`crates/plugin-browser/command-chrome/src/driver/installation.rs`):
 /// one installs as a zip archive does, its empty directories with it, and
 /// its entry is found the same way. Bytes of neither kind install nothing.
 #[tokio::test]

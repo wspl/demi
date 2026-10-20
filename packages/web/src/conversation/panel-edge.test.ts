@@ -16,6 +16,7 @@ const { createApp, defineComponent, h, nextTick, ref } = await import('vue')
 const { default: SidebarLayout } = await import('@demicodes/web-ui/sidebar/SidebarLayout.vue')
 const { createOverlayStore } = await import('@demicodes/web-ui/overlay/overlayStore')
 const { definePage, pageContext, providePage } = await import('@demicodes/web-ui/plugins/page')
+const { createPinia } = await import('pinia')
 const { default: LiveView } = await import('@demicodes/plugin-browser/live/LiveView.vue')
 const { LiveSession } = await import('@demicodes/plugin-browser/live/session')
 type LiveTab = import('@demicodes/plugin-browser/generated/plugin').LiveTab
@@ -70,6 +71,7 @@ function host(): PageHost {
     openSettings: unused,
     openLink: unused,
     overlays: createOverlayStore(),
+    pinia: createPinia(),
   }
 }
 
@@ -86,6 +88,7 @@ async function openLiveTab() {
           if (bytes[4] === 1)
             sent.push(JSON.parse(decoder.decode(bytes.subarray(5))) as LiveViewerMessage)
         },
+        watched: () => {},
         close: () => stream?.closed('closed'),
       }
     },
@@ -100,7 +103,7 @@ async function openLiveTab() {
   const page = definePage({ plugin: 'browser' })
   const Tab = defineComponent(() => {
     providePage(pageContext(host(), page))
-    return () => h(LiveView, { session, tab: TAB, shown: true, panel: { width: 390, height: 800 }, snap: { x: 0, y: 0 } })
+    return () => h(LiveView, { session, tab: TAB, kept: null, shown: true, panel: { width: 390, height: 800 }, snap: { x: 0, y: 0 } })
   })
   const root = document.createElement('div')
   document.body.append(root)

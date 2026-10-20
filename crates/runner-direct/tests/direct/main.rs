@@ -199,7 +199,7 @@ async fn text_lists_folders_and_deletes_answer_as_the_relay() {
 }
 
 #[tokio::test]
-async fn a_stream_carries_bytes_both_ways_and_an_unknown_name_is_refused() {
+async fn a_stream_carries_bytes_both_ways_tells_whether_its_page_watches_and_refuses_an_unknown_name() {
     let fake = Fake::default();
     let direct = runner(&fake);
     let page = connected(&direct, "p1").await;
@@ -208,8 +208,13 @@ async fn a_stream_carries_bytes_both_ways_and_an_unknown_name_is_refused() {
     assert_eq!(stream.next().await.json(), json!({ "ok": true }));
     stream.binary(b"hello");
     assert_eq!(stream.next().await, Heard::Binary(Bytes::from_static(b"echo:hello")));
+    // The page's word on whether it watches goes to the backend, not to the
+    // stream's invocation.
+    stream.text(r#"{"watched":false}"#);
+    stream.text(r#"{"watched":true}"#);
     stream.binary(b"again");
     assert_eq!(stream.next().await, Heard::Binary(Bytes::from_static(b"echo:again")));
+    assert_eq!(*fake.watched.borrow(), [false, true]);
     // The stream's request names it by the id its activity gave it.
     let opened = [("live_view".to_owned(), "s1".to_owned())];
     assert_eq!(fake.held.lock().unwrap().streams, opened);

@@ -845,7 +845,7 @@ const changeStale = useChangeTab('commits', 'src/auth/cookie.ts', {
 const browserWork = useWorkTabs('change', { path: '' })
 /** The browser tab the specimen shows, as its kind reads it. */
 const shownBrowserTab = computed(() => {
-  const tab = selectedTab(browserWork.panel.value, browserWork.kinds)
+  const tab = selectedTab(browserWork.panel.value, browserWork.kinds.value)
   const parsed = tab?.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
   return parsed?.success ? (parsed.data.tab ?? null) : null
 })
@@ -870,6 +870,12 @@ function closeOnDevice() {
 /** Ends the conversation's browser, as a release or a stopped Cloud does: the shown tab opens again at once. */
 function endBrowser() {
   browserWork.browser.end()
+}
+/** Turns the browser plugin off or on, as Settings does, while the panel stays open. */
+function switchBrowserPlugin() {
+  const on = !browserWork.enabled('browser')
+  browserWork.setEnabled('browser', on)
+  productWould(on ? 'Turn On the Browser Plugin' : 'Turn Off the Browser Plugin')
 }
 /** Stops the Cloud, as an idle Cloud stops: the shown tab opens again at once, starting the Cloud first. */
 function stopCloud() {
@@ -3874,6 +3880,12 @@ onBeforeUnmount(() => {
               <span>The shown tab opens its page again at once; the others when shown.</span>
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" @click="switchBrowserPlugin">
+                {{ browserWork.enabled('browser') ? 'Turn Off the Browser Plugin' : 'Turn On the Browser Plugin' }}
+              </Button>
+              <span>Off, its tabs leave the strip and its browser ends; the other tabs stay.</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" @click="stopCloud">Stop the Cloud</Button>
               <span>The shown tab opens again, saying what starts: the Cloud, then the browser.</span>
             </div>
@@ -3937,7 +3949,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Simulators"
-        note="The conversation’s simulators in the work panel, the mobile plugin’s `mobile` kind (`packages/plugin-mobile/src/index.ts`). The panel opens no device of its own: Open a Simulator as the Agent opens one as demi mobile open does, an iPhone first, then an iPad, then an Android emulator, and its tab joins the strip. A device’s tab and its toolbar, before the name, show its system’s logo, drawn as a device’s mark draws one: Apple for the iPhone and the iPad, the Android robot’s head for the Android emulator. A device’s tab shows its toolbar: the device’s name and, in grey and in parentheses, its model, such as Work iPhone (iPhone 17 Pro); where both do not fit the model is left out, where the name does not fit either the name too, and on a phone, whose tab names the device; Rotate Left, Rotate Right and Toggle Appearance turn and recolour the screen; Home and Lock press the buttons, and on the Android emulator Back, which leaves Settings; Volume Up and Down press theirs, which the gallery’s screen does not draw, so a toast says what the simulator would show; Screenshot and Record save on this computer, as a download does. Record shows Stop Recording while the device records, whoever started it: Record as the Agent starts or stops the agent’s recording of the first device, and the toolbar follows. Each control runs the operation of the command that does the same. The picture sits in the device’s frame; this Host has neither Xcode’s frames nor Android Studio’s device art, so the view draws the device itself in the look of Xcode’s frames: a black body with an even bezel concentric with the screen’s corners, the Android emulator’s the smooth curve its system UI draws, a metal edge, and its buttons as short bars, which turns with the device. A click on the screen is a tap, a drag a swipe; tapping the home screen’s upper half opens Settings, Home returns, and the scroll wheel scrolls Settings, as a swipe of its turn would on a device. On a panel too narrow for every control, the controls at the end go into the More menu (») at the toolbar’s end, as a macOS window’s toolbar puts them; narrow the window to see it. While the agent uses the device, from its first command until three seconds after its last, the view says The agent is using this device, and rings where it tapped; the panel’s own controls are the user’s and show neither. The controls that only send input, Home, Lock, the volume keys, Back, the rotations and Toggle Appearance, act on the press with no spinner. Lock turns the screen off: the picture keeps its last frame dimmed under Screen Off with Wake, and Wake, a tap or a key turns it on again; Sleep as the Device turns each screen off as a device’s own sleep does. Closing a device’s tab closes the device."
+        note="The conversation’s simulators in the work panel, the mobile plugin’s `mobile` kind (`crates/plugin-mobile/page/src/index.ts`). The panel opens no device of its own: Open a Simulator as the Agent opens one as demi mobile open does, an iPhone first, then an iPad, then an Android emulator, and its tab joins the strip. A device’s tab and its toolbar, before the name, show its system’s logo, drawn as a device’s mark draws one: Apple for the iPhone and the iPad, the Android robot’s head for the Android emulator. A device’s tab shows its toolbar: the device’s name and, in grey and in parentheses, its model, such as Work iPhone (iPhone 17 Pro); where both do not fit the model is left out, where the name does not fit either the name too, and on a phone, whose tab names the device; Rotate Left, Rotate Right and Toggle Appearance turn and recolour the screen; Home and Lock press the buttons, and on the Android emulator Back, which leaves Settings; Volume Up and Down press theirs, which the gallery’s screen does not draw, so a toast says what the simulator would show; Screenshot and Record save on this computer, as a download does. Record shows Stop Recording while the device records, whoever started it: Record as the Agent starts or stops the agent’s recording of the first device, and the toolbar follows. Each control runs the operation of the command that does the same. The picture sits in the device’s frame; this Host has neither Xcode’s frames nor Android Studio’s device art, so the view draws the device itself in the look of Xcode’s frames: a black body with an even bezel concentric with the screen’s corners, the Android emulator’s the smooth curve its system UI draws, a metal edge, and its buttons as short bars, which turns with the device. A click on the screen is a tap, a drag a swipe; tapping the home screen’s upper half opens Settings, Home returns, and the scroll wheel scrolls Settings, as a swipe of its turn would on a device. On a panel too narrow for every control, the controls at the end go into the More menu (») at the toolbar’s end, as a macOS window’s toolbar puts them; narrow the window to see it. While the agent uses the device, from its first command until three seconds after its last, the view says The agent is using this device, and rings where it tapped; the panel’s own controls are the user’s and show neither. The controls that only send input, Home, Lock, the volume keys, Back, the rotations and Toggle Appearance, act on the press with no spinner. Lock turns the screen off: the picture keeps its last frame dimmed under Screen Off with Wake, and Wake, a tap or a key turns it on again; Sleep as the Device turns each screen off as a device’s own sleep does. Closing a device’s tab closes the device."
       >
         <GallerySpecimen variant="tabs · the conversation’s simulators · live" wide>
           <div class="gallery-frame flex h-[34rem] overflow-hidden">

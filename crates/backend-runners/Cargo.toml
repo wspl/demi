@@ -53,6 +53,6 @@ url = { version = "2", features = ["serde"] }
 [dev-dependencies]
 demi-backend-blobs = { path = "../backend-blobs", features = ["testing"] }
 demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
+demi-command-package-browser-protocol = { path = "../plugin-browser/protocol" }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

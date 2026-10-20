@@ -7,7 +7,7 @@
     "types": ["bun"],
     "paths": {
       "@demicodes/web-ui/*": ["./src/*"],
-      "@demicodes/*": ["../*/src/index.ts"]
+      "@demicodes/*": ["../*/src/index.ts", "../../crates/*/page/src/index.ts"]
     }
   },
   "include": ["src"],

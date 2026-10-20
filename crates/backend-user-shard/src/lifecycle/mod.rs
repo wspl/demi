@@ -33,14 +33,17 @@
 //! - while a job or an admitted Host operation runs (an operation the user does
 //!   on what runs there, such as closing a tab, is admitted and ends at once, so
 //!   it restarts the window);
-//! - while a user stream is open, such as the live browser view: someone watches
-//!   the Host and may operate it.
+//! - while a user stream its page watches is open, such as the live browser
+//!   view: someone watches the Host and may operate it.
 //!
 //! A look at what runs there, such as listing the browser's tabs, is retention,
 //! not activity, because the page makes it by itself each time it is shown again
-//! and after each tool call. The page closes its view while it is hidden, so a
-//! page left open keeps its conversation, and its Cloud, active only while it is
-//! visible.
+//! and after each tool call. So is a stream the page keeps open while nobody
+//! watches it, to show its last picture at once on return
+//! (`crates/runner-protocol/src/direct.rs`, `StreamWatched`): a view whose tab is
+//! hidden, whose panel is closed or whose page is hidden is unwatched, so a page
+//! left open keeps its conversation, and its Cloud, active only while someone
+//! looks at the view.
 //!
 //! # The window
 //!

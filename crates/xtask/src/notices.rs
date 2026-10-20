@@ -78,34 +78,34 @@ struct Library {
 /// packages:
 ///
 /// - idb's libraries and guest bridge, in demi-mobile's iOS helper
-///   (`crates/command-package-mobile/build.rs`).
+///   (`crates/plugin-mobile/command/build.rs`).
 /// - openatx's UI automation server, demi-mobile's Android helper.
 /// - Cisco's OpenH264 binary, which demi-mobile downloads for the Android view
 ///   and whose binary license asks the product to credit it
-///   (`crates/command-package-mobile/build.rs`).
+///   (`crates/plugin-mobile/command/build.rs`).
 /// - The vendors' marks the web app shows, models.dev's and Simple Icons'
 ///   (`crates/backend-providers/src/llm/vendors.rs`).
 /// - The Android robot, an Android emulator's logo
-///   (`packages/plugin-mobile/src/index.ts`), whose license asks for its
+///   (`crates/plugin-mobile/page/src/index.ts`), whose license asks for its
 ///   attribution.
 const LIBRARIES: [Library; 6] = [
     Library {
         name: "idb",
         version: "1.7.6",
         license: "MIT",
-        notice: "crates/command-package-mobile/ios-sim/LICENSE-idb",
+        notice: "crates/plugin-mobile/command/ios-sim/LICENSE-idb",
     },
     Library {
         name: "android-uiautomator-server-jar",
         version: "0.4.0",
         license: "MIT",
-        notice: "crates/command-package-mobile/android/LICENSE-u2",
+        notice: "crates/plugin-mobile/command/android/LICENSE-u2",
     },
     Library {
         name: "OpenH264",
         version: "2.6.0",
         license: "BSD-2-Clause",
-        notice: "crates/command-package-mobile/android/LICENSE-openh264",
+        notice: "crates/plugin-mobile/command/android/LICENSE-openh264",
     },
     Library {
         name: "models.dev logos",

@@ -11,11 +11,21 @@
 //! registers the provider families, and a user turns each on or off while the
 //! backend runs.
 //!
-//! A plugin's commands reach a conversation only when its tree opens, though
-//! every other contribution follows a switch at once or at the next request. A
-//! node's capability index is part of its system prompt, which is rendered
-//! once, and a change in the middle of a conversation would change what the
-//! model was told it may run.
+//! A plugin lives while the user has it on (`decisions/0008-plugin-architecture.md`):
+//!
+//! ```text
+//!              on                          off
+//! instance     made at its first request   dropped with its tasks
+//! commands     in every open tree          gone: a call fails as any
+//!                                          unknown command does
+//! Hosts        opened again on demand      its packages' services stop
+//! panel tabs   opened again on demand      closed
+//! data         kept either way
+//! ```
+//!
+//! An open tree's commands follow a switch at once, but its system prompt,
+//! which is rendered once, keeps listing the commands it opened with until it
+//! opens again, which a reload offers.
 //!
 //! Plugins are trusted with every user's data: a plugin serves every user of
 //! the backend, and choosing the plugins is the deployment's decision, made
@@ -41,5 +51,5 @@ pub mod testing;
 pub use user::{
     ReadOn,
     ContextAsk, Lost, PageCall, PageCallError, PanelError, PluginToolset, ProductPort,
-    SwitchError, UserPlugins, VideoJob,
+    SwitchError, Switched, UserPlugins, VideoJob,
 };

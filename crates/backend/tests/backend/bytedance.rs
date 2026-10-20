@@ -30,7 +30,7 @@ use crate::subagents::{Scripts, say, shell, tree_among};
 use crate::support::Harness;
 
 /// Two seconds of a tone, the plugin's fixture.
-const SPEECH: &[u8] = include_bytes!("../../../plugin-audio/tests/plugin-audio/fixtures/speech.mp3");
+const SPEECH: &[u8] = include_bytes!("../../../plugin-audio/plugin/tests/plugin-audio/fixtures/speech.mp3");
 
 fn json_answer(status: u16, body: serde_json::Value) -> MockResponse {
     MockResponse::status(status).header("content-type", "application/json").chunk(body.to_string())

@@ -15,6 +15,7 @@
 mod file;
 mod frames;
 mod hosts;
+mod lifecycle;
 mod marathon;
 mod outbound;
 mod registry;

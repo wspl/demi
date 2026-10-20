@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { forceCloseDatabase, IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { closeDraftStorage, draftSchema, readDraft, readLocalDrafts, writeDraft, type SavedDraft } from './drafts'
-import { newerStorage } from '../state/indexed-db'
+import { newerStorage } from '@demicodes/web-ui/infra/indexed-db'
 
 // Draft storage keeps a structured clone of what a write stores, and a read
 // validates it with `draftSchema`: a saved draft comes back whole or not at all.

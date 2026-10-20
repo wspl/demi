@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { mobilePage } from '@demicodes/plugin-mobile'
 import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
@@ -14,9 +14,10 @@ import {
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
+import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
 import {
-  bindPages,
   intentKind,
+  useBoundKinds,
   type AnyPluginPage,
   type ConversationFileService,
 } from '@demicodes/web-ui/plugins/page'
@@ -82,7 +83,9 @@ export function useGalleryWork(
     }
     return page.plugin === 'browser' ? browserPage({ pictures }) : page.plugin === 'mobile' ? mobilePage({ pictures }) : page
   })
-  const enabled = () => true
+  /** The plugins the specimen has turned off, as the user turns one off in Settings. */
+  const off = reactive(new Set<string>())
+  const enabled = (plugin: string) => !off.has(plugin)
   const backend = new GalleryPanel()
   const plugin = galleryBrowserPlugin(browser, backend)
   // The conversation's simulators, whose plugin opens and closes devices for the panel's `mobile` tabs.
@@ -196,6 +199,7 @@ export function useGalleryWork(
 
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin }, {
     files,
+    enabled,
     hostStarting: () => browser.hostStarting.value,
     intents: {
       open: (_conversation, request) => openIn(request),
@@ -209,11 +213,34 @@ export function useGalleryWork(
       },
     },
   })
-  const bound = bindPages(shown, host, CONVERSATION)
-  onBeforeUnmount(() => bound.dispose())
-  const kinds = bound.kinds
+  const kinds = useBoundKinds(() => shown.filter((page) => enabled(page.plugin)), host, () => CONVERSATION)
+  /**
+   * Turns `plugin` on or off while the panel is open, as the user does in
+   * Settings: turned off, the backend closes its kinds' tabs in the panel and
+   * releases what its packages hold on the Host, such as the browser, and the
+   * shell disposes its stores; the other plugins' tabs and stores stay.
+   */
+  function setEnabled(pluginId: string, on: boolean) {
+    if (on) {
+      off.delete(pluginId)
+      return
+    }
+    off.add(pluginId)
+    const owned = new Set(shown.find((page) => page.plugin === pluginId)?.kinds?.map((kind) => kind.kind) ?? [])
+    for (const tab of tabs.tabs.value.filter((entry) => owned.has(entry.kind))) {
+      if (tab.kind === 'mobile') {
+        // Its package closes the simulator, as the release of the plugin's Host resources does.
+        mobile.removed(tab)
+      }
+      backend.apply({ type: 'remove', id: tab.id })
+    }
+    if (pluginId === 'browser') {
+      browser.end()
+    }
+    disposePluginStores(host.pinia, pluginId)
+  }
   /** What the panel shows, as its strip marks it. */
-  const selected = computed(() => shownSelection(panel.value, kinds))
+  const selected = computed(() => shownSelection(panel.value, kinds.value))
 
   /** A file pill, through the `edit` intent. */
   function selectEdit(edit: RequestEditSelection) {
@@ -251,6 +278,8 @@ export function useGalleryWork(
     mobile,
     agentShows,
     agentOpens,
+    enabled,
+    setEnabled,
     host,
     select,
     add,

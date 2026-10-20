@@ -2,7 +2,6 @@ import { t } from './locales/text'
 import {
   computed,
   defineComponent,
-  effectScope,
   h,
   inject,
   onScopeDispose,
@@ -15,6 +14,7 @@ import {
   type PropType,
 } from 'vue'
 import { schemaRefusal } from '@demicodes/protocol'
+import type { Pinia } from 'pinia'
 import { z } from 'zod'
 import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
 import type { HostArtifact } from '../devices/installed'
@@ -29,6 +29,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import type { SettingsGroupId, SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
+import { pluginCache, type PluginCache } from './cache'
+import { pluginStore, type PluginStore } from './stores'
 import type { OpenUserStream } from './streams'
 import type { Operation } from '../ui/operations'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
@@ -64,6 +66,11 @@ import type { HeadlineText, SentenceText } from '../ui/ui-text'
  *   first whether any page does, and shows plain text otherwise.
  * - What follows from a tab being created or closed, such as the browser closing
  *   its own tab, is the plugin's work on the backend, never the page's.
+ * - What a page keeps live, such as a device's connection and last picture,
+ *   lives in its stores (`./stores.ts`), from the plugin's first use while the
+ *   user has it on until it is turned off; a component that shows it only
+ *   follows it. The panel binds only the pages' kinds and holds no session,
+ *   each page's apart, so turning one plugin on or off touches no other's.
  *
  * `web-ui` knows no plugin, no plugin's kind and no plugin's types, imports no
  * Node module, and ships no control-plane transport of its own: it consumes an
@@ -213,6 +220,8 @@ export interface PageHost {
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
+  /** The shell's Pinia, which holds the plugins' stores. */
+  pinia: Pinia
   /**
    * Opens a web page in a new tab, such as a vendor's sign-in.
    *
@@ -280,6 +289,10 @@ export interface PageContext {
   }
   readonly overlays: OverlayStore
   files(conversation: string): ConversationFileService
+  /** The plugin's store `store`, made at its first use (`./stores.ts`). */
+  store<T extends object>(store: PluginStore<T>): T
+  /** The plugin's disk cache (`./cache.ts`). */
+  readonly cache: PluginCache
   /**
    * The page's operation of the plugin's `action` on what `key` names, such as
    * `operation('set_source_enabled', source)` for a skill source's switch.
@@ -291,22 +304,22 @@ export interface PageContext {
 }
 
 /** A kind's tab as the page's functions see it. */
-export interface KindTab<Session> {
+export interface KindTab {
   conversation: string
-  /** The page's panel session of the conversation. */
-  session: Session
+  /** The page's context, whose stores hold what the page keeps live (`./stores.ts`). */
+  page: PageContext
 }
 
 /**
  * A work panel kind, declared once on its page. Its functions are methods, so kinds of different
  * data fit one list.
  */
-export interface PanelKind<Data, Session = undefined> {
+export interface PanelKind<Data> {
   /** Its id, unique across plugins. */
   kind: string
   /** A tab's `data`, checked where saved state enters the page. */
   schema: z.ZodType<Data>
-  title(data: Data, tab: KindTab<Session>): string
+  title(data: Data, tab: KindTab): string
   /**
    * What makes a tab of a kind that is not pinned the one it is, such as an
    * attachment's number: an intent whose new data has the key of a tab the strip
@@ -322,17 +335,18 @@ export interface PanelKind<Data, Session = undefined> {
    * A picture the strip shows in place of the mark, such as a web page's
    * icon, as an image URL; null while there is none. Read reactively.
    */
-  icon?(data: Data, tab: KindTab<Session>, id: string): string | null
+  icon?(data: Data, tab: KindTab, id: string): string | null
   /**
    * Whether the tab `id` is at work, such as a page that loads, read
    * reactively: the strip shows a spinner in place of its mark meanwhile.
    */
-  busy?(data: Data, tab: KindTab<Session>, id: string): boolean
+  busy?(data: Data, tab: KindTab, id: string): boolean
   /**
    * The tab's content.
    *
-   * - Props: `conversation`, `session`, `tabId`, `data`, and `shown`, whether the
-   *   tab is the panel's selection.
+   * - Props: `conversation`, `tabId`, `data`, and `shown`, whether the tab is the
+   *   panel's selection. What it keeps live beyond its mount is in its page's
+   *   stores.
    * - Emits `update` with the tab's next `data`, and `close` to have the panel close
    *   the tab as its user would.
    */
@@ -347,7 +361,7 @@ export interface PanelKind<Data, Session = undefined> {
    * What the tab's menu offers before its Close commands, such as a
    * browser tab's Reload, read when the menu opens.
    */
-  commands?(data: Data, tab: KindTab<Session>, id: string): readonly TabCommand[]
+  commands?(data: Data, tab: KindTab, id: string): readonly TabCommand[]
   /**
    * How many times something asked that the user see the tab, from its
    * data. When the count rises above the one the page last applied for the
@@ -379,30 +393,18 @@ export interface PluginSettingsSection {
   sidebar?: true
 }
 
-/** What a panel session may do when it ends, besides its effect scope stopping. */
-export interface PanelSession {
-  dispose?(): void
-}
-
 /** What a page contributes to the shell. */
-export interface PluginPage<Session extends PanelSession | undefined = undefined> {
+export interface PluginPage {
   /** Its plugin's id, imported from its generated module. */
   plugin: string
   /** A section of the settings dialog. */
   settings?: PluginSettingsSection
   /** The kinds of tab it shows in the work panel. */
-  kinds?: readonly PanelKind<unknown, Session>[]
-  /**
-   * What runs for a conversation while its panel is open with the plugin on. It runs in its own
-   * effect scope, which stops with it, and its `dispose`, if it has one, is called then.
-   */
-  panel?(conversation: string, page: PageContext): Session
+  kinds?: readonly PanelKind<unknown>[]
 }
 
 /** A page, checked: its kinds' ids are its own once. */
-export function definePage<Session extends PanelSession | undefined = undefined>(
-  page: PluginPage<Session>,
-): PluginPage<Session> {
+export function definePage(page: PluginPage): PluginPage {
   const ids = (page.kinds ?? []).map((kind) => kind.kind)
   const repeated = ids.find((id, index) => ids.indexOf(id) !== index)
   if (repeated !== undefined) {
@@ -412,7 +414,7 @@ export function definePage<Session extends PanelSession | undefined = undefined>
 }
 
 /** Any page, as the registry lists them. */
-export type AnyPluginPage = PluginPage<PanelSession | undefined>
+export type AnyPluginPage = PluginPage
 
 const PAGE_HOST: InjectionKey<PageHost> = Symbol('page-host')
 const PAGE_CONTEXT: InjectionKey<PageContext> = Symbol('page-context')
@@ -612,7 +614,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       }
     },
   }
-  return {
+  const context: PageContext = {
     plugin: {
       state<T>(schema: z.ZodType<T>) {
         const state = readState(() => host.userState(page.plugin), schema)
@@ -656,8 +658,11 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     errors,
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),
+    store: (store) => pluginStore(host.pinia, hostNumber(host), page.plugin, store, context),
+    cache: pluginCache(page.plugin),
     operation: (action, key) => ({ action, target: `plugin:${hostNumber(host)}:${page.plugin}:${key}` }),
   }
+  return context
 }
 
 /** The component of a page with the page's context below it, made once for the page it was given. */
@@ -689,45 +694,50 @@ export const PageScope = defineComponent({
   },
 })
 
-/** A page's kinds for one conversation's panel, and the session behind them. */
-export interface BoundKinds {
-  kinds: PanelTabKind[]
-  dispose(): void
+/**
+ * The panel's kinds of `page` for `conversation`: each kind's functions and
+ * components bound to the conversation and the page's context.
+ */
+export function bindPage(page: AnyPluginPage, host: PageHost, conversation: string): PanelTabKind[] {
+  const context = pageContext(host, page)
+  const tab: KindTab = { conversation, page: context }
+  return (page.kinds ?? []).map((kind) => bindKind(kind, tab, context))
 }
 
 /**
- * The panel's kinds of `pages` for `conversation`, with each page's panel
- * session made, until `dispose`: each kind's functions and components bound
- * to the conversation, its session and its page's context.
+ * The panel's kinds of the pages `pages()` names now, in their order, for
+ * `conversation()`. Each page is bound apart (`bindPage`): a page that joins is
+ * bound, and the others keep the kinds they had, so turning one plugin on or
+ * off remounts no other's tab; a change of conversation binds every page anew.
  */
-export function bindPages(pages: readonly AnyPluginPage[], host: PageHost, conversation: string): BoundKinds {
-  const scope = effectScope(true)
-  const bound = scope.run(() =>
-    pages.map((page) => {
-      const context = pageContext(host, page)
-      const session = page.panel?.(conversation, context)
-      const tab: KindTab<PanelSession | undefined> = { conversation, session }
-      const kinds = (page.kinds ?? []).map((kind) => bindKind(kind, tab, context))
-      return { kinds, session }
-    }),
-  )!
-  return {
-    kinds: bound.flatMap((page) => page.kinds),
-    dispose() {
-      for (const page of bound) {
-        page.session?.dispose?.()
+export function useBoundKinds(
+  pages: () => readonly AnyPluginPage[],
+  host: PageHost,
+  conversation: () => string | null,
+): ComputedRef<PanelTabKind[]> {
+  const bound = shallowRef(new Map<string, PanelTabKind[]>())
+  let boundFor: string | null = null
+  watch(
+    [() => pages().map((page) => page.plugin).join(), conversation],
+    () => {
+      const now = conversation()
+      const kept = now === boundFor ? bound.value : new Map<string, PanelTabKind[]>()
+      const next = new Map<string, PanelTabKind[]>()
+      if (now !== null) {
+        for (const page of pages()) {
+          next.set(page.plugin, kept.get(page.plugin) ?? bindPage(page, host, now))
+        }
       }
-      scope.stop()
+      boundFor = now
+      bound.value = next
     },
-  }
+    { immediate: true },
+  )
+  return computed(() => [...bound.value.values()].flat())
 }
 
 /** `kind` as the panel shows it for one conversation. */
-function bindKind(
-  kind: PanelKind<unknown, PanelSession | undefined>,
-  tab: KindTab<PanelSession | undefined>,
-  context: PageContext,
-): PanelTabKind {
+function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext): PanelTabKind {
   const content = defineComponent({
     props: {
       tabId: { type: String, required: true },
@@ -742,7 +752,6 @@ function bindKind(
       return () =>
         h(kind.content, {
           conversation: tab.conversation,
-          session: tab.session,
           tabId: props.tabId,
           data: props.data,
           shown: props.shown,
@@ -779,7 +788,7 @@ export function intentKind(
   pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
   intent: IntentName,
-): PanelKind<unknown, PanelSession | undefined> | null {
+): PanelKind<unknown> | null {
   for (const page of pages) {
     if (!enabled(page.plugin)) {
       continue

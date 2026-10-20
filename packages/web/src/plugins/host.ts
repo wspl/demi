@@ -1,5 +1,8 @@
+import { getActivePinia } from 'pinia'
+import { watch } from 'vue'
 import { z } from 'zod'
 import type { PageHost } from '@demicodes/web-ui/plugins/page'
+import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
 import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
@@ -12,6 +15,7 @@ import { packageInstalled } from '../state/installed'
 import { useResources } from '../state/resources'
 import { useSettingsAddress } from '../settings/address'
 import { executionFor } from '../targets/execution'
+import { pluginEnabled } from './enabled'
 import { callFailure } from './errors'
 import { PLUGIN_PAGES } from './generated/pages'
 import { conversationStates } from './states'
@@ -30,6 +34,8 @@ import { conversationStates } from './states'
  *   not run, from the Cloud's state there.
  * - The shell's own services: the conversations' files, intents and panels, and
  *   the settings dialog.
+ * - The app's Pinia, which holds the plugins' stores; a plugin the user turns
+ *   off has its stores disposed then, and only its own.
  */
 /**
  * Opens a tab now, in the click that asked for it, and sends it to `url`
@@ -58,6 +64,10 @@ async function openLink(url: string | Promise<string>): Promise<void> {
 }
 
 export function productPageHost(): PageHost {
+  const pinia = getActivePinia()
+  if (!pinia) {
+    throw new Error('the plugin pages\' host is made in the app, which has its Pinia')
+  }
   const product = useProduct()
   const work = useWorkPanel()
   const resources = useResources()
@@ -72,6 +82,17 @@ export function productPageHost(): PageHost {
     }
     const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
     return { deviceId: executionFor(summary).deviceId, packages }
+  }
+  // Each plugin is watched on its own, so a switch of one leaves the others' stores alone.
+  for (const page of PLUGIN_PAGES) {
+    watch(
+      () => pluginEnabled(product.snapshot, page.plugin),
+      (enabled) => {
+        if (!enabled) {
+          disposePluginStores(pinia, page.plugin)
+        }
+      },
+    )
   }
   return {
     userState: (plugin) => product.snapshot?.pluginStates[plugin],
@@ -125,5 +146,6 @@ export function productPageHost(): PageHost {
     openSettings: (section) => void settings.open(section),
     openLink,
     overlays: appOverlayStore,
+    pinia,
   }
 }

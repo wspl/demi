@@ -1,4 +1,4 @@
-//! `demi file` as the model runs it (`crates/command-package-file/src/files.rs`): each
+//! `demi file` as the model runs it (`crates/plugin-file/command/src/files.rs`): each
 //! script is one `shell` call on a real runner,
 //! whose `file` commands run in the `demi.file` package the workspace
 //! built.
@@ -383,7 +383,7 @@ async fn the_end_report_of_a_background_job_carries_the_media_it_viewed() {
 
 /// A stdout with a stray byte that is not UTF-8 is text, which shows that byte
 /// as U+FFFD. Only a NUL in its first 8 KiB or a media type makes it binary
-/// (`crates/command-package-file/src/files.rs`).
+/// (`crates/plugin-file/command/src/files.rs`).
 ///
 /// The script is the one a model ran in a small repository: `cat` prints a
 /// Latin-1 line, and `grep -I` holds back the lines of a git object and a

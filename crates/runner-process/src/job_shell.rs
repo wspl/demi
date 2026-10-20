@@ -68,7 +68,7 @@ pub trait ShellJob: Send + Sync {
     /// Reads what the job's stdout pipe holds now, without waiting for
     /// more, into [`ShellJob::output`]; the answer comes once those chunks
     /// are there, so what follows them follows everything written before
-    /// (`crates/command-package-file/src/files.rs`).
+    /// (`crates/plugin-file/command/src/files.rs`).
     fn drain_stdout(&self) -> oneshot::Receiver<()>;
 
     /// Stops the job for a signal that ends it, which its exit reports:

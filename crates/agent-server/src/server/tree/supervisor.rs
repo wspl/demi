@@ -797,7 +797,7 @@ impl<H: HostResolver> Tree<H> {
             },
             None => owner.instructions().clone(),
         };
-        let inherited = owner.inherited_commands().clone();
+        let inherited = owner.inherited_commands();
         let can_spawn = record.can_spawn_subagents;
         let commands = server
             .runtime_commands(&inherited, can_spawn)

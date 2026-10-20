@@ -50,7 +50,7 @@ fn a_gap_inside_a_line_keeps_the_numbering_of_the_raw_bytes() {
 
 /// A stdout is binary when its first 8 KiB hold a NUL byte or it begins as a
 /// media type, as git and GNU diff decide
-/// (`crates/command-package-file/src/files.rs`). Any other stdout is text, and
+/// (`crates/plugin-file/command/src/files.rs`). Any other stdout is text, and
 /// a byte that is not UTF-8 costs one U+FFFD, where before it hid the whole
 /// output.
 #[test]

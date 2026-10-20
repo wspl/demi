@@ -367,6 +367,19 @@ pub struct WriteEnd {
     pub end: bool,
 }
 
+/// The page's message on a user stream, a direct `stream` channel or a
+/// relayed stream's socket, in the user stream's own layer beside the
+/// plugin's bytes: whether anyone watches it now. A stream starts watched; one
+/// that is not keeps no conversation, Host or Cloud active
+/// (`crates/backend-user-shard/src/lifecycle/mod.rs`), and the page keeps it
+/// open to show what it last showed at once when it is watched again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct StreamWatched {
+    pub watched: bool,
+}
+
 /// A text message the page sends on a channel after its header.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PageMessage {

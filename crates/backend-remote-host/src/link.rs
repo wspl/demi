@@ -120,6 +120,11 @@ pub trait LinkPolicy {
         name: String,
     ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>>;
 
+    /// The page watches an admitted direct stream of `conversation` again,
+    /// after it said nobody did: the lease that holds the conversation
+    /// active again, as the stream's admission's did, or why there is none.
+    fn watch_stream(&self, conversation: String) -> LocalBoxFuture<'static, Result<GateLease, String>>;
+
     /// A native service on the device told its plugin something, or its
     /// state was lost (`crates/command-protocol/src/messages.rs`). The
     /// connection hands its events on one after another, in the order the
@@ -340,11 +345,13 @@ struct State {
 }
 
 /// A direct stream the runner reported open: what its close cancels, the
-/// policy's admission of it, and once admitted the lease that holds its
-/// conversation active.
+/// policy's admission of it, whether its page watches it, and once admitted
+/// and while watched the lease that holds its conversation active.
 struct DirectStream {
+    conversation: String,
     cancel: CancellationToken,
     admitted: watch::Sender<Admitted>,
+    watched: bool,
     lease: Option<GateLease>,
 }
 
@@ -380,6 +387,7 @@ pub(crate) enum Expected {
     Git(&'static str),
     Log,
     Release,
+    PackageRelease,
     Sync,
     Prefetch,
     Service,
@@ -926,6 +934,17 @@ impl Link {
         }
     }
 
+    /// Asks the runner to stop the services of `packages`, which ends what
+    /// they hold for every conversation. It waits at most as long as a
+    /// conversation release.
+    pub async fn release_packages(&self, packages: Vec<String>) -> Result<(), HostError> {
+        let release = self.call(Expected::PackageRelease, |id| Inbound::PackageRelease { id, packages });
+        match tokio::time::timeout(RELEASE_TIMEOUT, release).await {
+            Ok(result) => result.map(|_| ()),
+            Err(_) => Err(HostError::interrupted("Package release timed out")),
+        }
+    }
+
     /// Introduces a page, or another runner, to the runner with its offer for peer `peer`,
     /// which replaces the peer of that id, and waits for the runner's
     /// answer; the caller bounds the wait. The runner asks the STUN servers
@@ -1283,6 +1302,7 @@ impl Link {
                 None => self.answer(&id, Expected::Release, Answer::Done),
                 Some(error) => self.refuse(&id, HostError::failed(None, error)),
             },
+            Outbound::PackageReleased { id } => self.answer(&id, Expected::PackageRelease, Answer::Done),
             Outbound::JobRead { id, error } => match error {
                 None => self.answer(&id, Expected::JobRead, Answer::Done),
                 Some(error) => self.refuse(&id, HostError::failed(None, error)),
@@ -1357,6 +1377,7 @@ impl Link {
                 conversation,
                 open,
             } => self.direct_stream(stream, name, conversation, open),
+            Outbound::DirectStreamWatched { stream, watched } => self.direct_stream_watched(stream, watched),
             Outbound::DirectCandidate { peer, candidate } => {
                 self.tell_peer(&peer, PeerEvent::Candidate(candidate));
             }
@@ -1816,8 +1837,10 @@ impl Link {
                 return;
             }
             let opened = DirectStream {
+                conversation: conversation.clone(),
                 cancel: cancel.clone(),
                 admitted: watch::Sender::new(Admitted::Waiting),
+                watched: true,
                 lease: None,
             };
             state.direct_streams.insert(stream.clone(), opened);
@@ -1836,7 +1859,8 @@ impl Link {
             };
             match admission {
                 Ok(admission) => {
-                    open.lease = Some(admission.lease);
+                    // One its page stopped watching meanwhile holds nothing.
+                    open.lease = open.watched.then_some(admission.lease);
                     open.admitted.send_replace(Admitted::Yes(Grant {
                         packages: admission.package.into_iter().collect(),
                         resolver: admission.resolver,
@@ -1847,6 +1871,50 @@ impl Link {
                 Err(error) => {
                     tracing::warn!(device = %link.0.device, %conversation, "a direct stream was not admitted: {error}");
                     open.admitted.send_replace(Admitted::No);
+                }
+            }
+        });
+    }
+
+    /// Whether the page watches the open direct stream `stream` now: only a
+    /// watched one holds its conversation active
+    /// (`crates/runner-protocol/src/direct.rs`). A stream not yet admitted
+    /// takes its lease at its admission while it is watched.
+    fn direct_stream_watched(&self, stream: String, watched: bool) {
+        let (conversation, cancel) = {
+            let mut state = self.0.state.borrow_mut();
+            let Some(open) = state.direct_streams.get_mut(&stream) else {
+                return;
+            };
+            open.watched = watched;
+            if !watched {
+                open.lease = None;
+                return;
+            }
+            let admitted = matches!(*open.admitted.borrow(), Admitted::Yes(_));
+            if !admitted || open.lease.is_some() {
+                return;
+            }
+            (open.conversation.clone(), open.cancel.clone())
+        };
+        let lease = self.0.policy.watch_stream(conversation.clone());
+        let link = self.clone();
+        self.spawn("direct stream watch", async move {
+            let lease = tokio::select! {
+                // A stream that closed meanwhile holds nothing.
+                _ = cancel.cancelled() => return,
+                lease = lease => lease,
+            };
+            let mut state = link.0.state.borrow_mut();
+            let Some(open) = state.direct_streams.get_mut(&stream) else {
+                return;
+            };
+            match lease {
+                // Unwatched again, or watched twice, it keeps what it holds.
+                Ok(lease) if open.watched && open.lease.is_none() => open.lease = Some(lease),
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(device = %link.0.device, %conversation, "a direct stream watched again holds nothing: {error}");
                 }
             }
         });

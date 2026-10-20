@@ -32,7 +32,7 @@ pub const MAX_NUMBERS: u32 = 16;
 pub enum ServiceSequence {
     /// The conversation browser's tabs.
     Tab,
-    /// The simulators `demi mobile` opens (`crates/command-package-mobile/src/operations.rs`).
+    /// The simulators `demi mobile` opens (`crates/plugin-mobile/command/src/operations.rs`).
     Device,
 }
 

@@ -12,7 +12,10 @@
 //! - the spawn restriction;
 //! - the role that sets the lifecycle policy.
 //!
-//! The role is never a depth, and every child has its parent's commands.
+//! The role is never a depth, and every child has its parent's commands. A
+//! node's commands change while it lives when the product's do, as a plugin
+//! turned on or off changes them, but its capability index, part of its system
+//! prompt, stays as it was rendered.
 //!
 //! A child starts with an empty transcript: isolation is the point, so Demi
 //! never rewrites or summarizes the parent's conversation into it. Its context
@@ -172,8 +175,22 @@ impl<H: HostResolver> Node<H> {
     /// The commands the node's shell offers: the product's, with the
     /// `demi agent` group grafted. The backend's command router dispatches
     /// the node's `rpc` calls through them.
-    pub fn commands(&self) -> &Rc<CommandSet> {
-        &self.runtime.commands
+    pub fn commands(&self) -> Rc<CommandSet> {
+        self.runtime.commands.borrow().clone()
+    }
+
+    /// The node's commands are `commands`, `inherited` with the node's
+    /// `demi agent` group grafted, from now on: its shells' jobs offer them
+    /// as they start, and its jobs' calls run in them. Its capability index
+    /// stays.
+    pub(crate) fn replace_commands(&self, inherited: Rc<CommandSet>, commands: Rc<CommandSet>) {
+        self.runtime.inherited.replace(inherited);
+        self.runtime.commands.replace(commands.clone());
+        if let Err(error) = self.runtime.environments.replace_commands(&commands) {
+            // The catalog serves every set the product composes, so this is a
+            // defect; the shell keeps the commands it had.
+            tracing::error!(node = %self.runtime.node, %error, "a shell refused the node's new commands");
+        }
     }
 
     /// The caller a job the node's call `tool_use_id` of `turn` starts
@@ -380,8 +397,8 @@ impl<H: HostResolver> Node<H> {
 
     /// The product's commands a child of this node inherits: this node's,
     /// before the `demi agent` graft, which every node of the tree shares.
-    pub(crate) fn inherited_commands(&self) -> &Rc<CommandSet> {
-        &self.runtime.inherited
+    pub(crate) fn inherited_commands(&self) -> Rc<CommandSet> {
+        self.runtime.inherited.borrow().clone()
     }
 
     /// The instructions of the node's system prompt, which a child without
@@ -479,8 +496,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     preamble: Option<String>,
     /// The product's context sources, in their order.
     context: Rc<[Rc<dyn ContextSource>]>,
-    inherited: Rc<CommandSet>,
-    commands: Rc<CommandSet>,
+    inherited: RefCell<Rc<CommandSet>>,
+    commands: RefCell<Rc<CommandSet>>,
     admission: ActivityGate,
     lifecycle: ActivityGate,
     store: Rc<dyn AgentTreeStore>,
@@ -1198,8 +1215,8 @@ pub(crate) async fn assemble<H: HostResolver>(
         index,
         preamble,
         context,
-        inherited,
-        commands,
+        inherited: RefCell::new(inherited),
+        commands: RefCell::new(commands),
         admission,
         lifecycle: ActivityGate::new(),
         numbers: Rc::new(StoreNumbers(store.clone())),

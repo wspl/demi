@@ -61,13 +61,19 @@ export {
   type PageContext,
   type PagePlugin,
   type PanelKind,
-  type PanelSession,
   type PluginCallOptions,
   type PluginPage,
   type PluginSettingsSection,
   type PluginState,
 } from '@demicodes/web-ui/plugins/page'
 export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'
+// What a page keeps live while its plugin is on, apart from the panel
+// (`decisions/0008-plugin-architecture.md`): its stores, which its page
+// context's `store` reaches, its sessions by key that outlive the views
+// watching them, and its disk cache.
+export { definePluginStore, type PluginStore } from '@demicodes/web-ui/plugins/stores'
+export { KEPT_SESSIONS, KeptSessions, type KeptSession, type SessionWatch } from '@demicodes/web-ui/plugins/kept'
+export { PLUGIN_CACHE_BYTES, type PluginCache } from '@demicodes/web-ui/plugins/cache'
 export type {
   OpenUserStream,
   StreamBytes,
@@ -96,7 +102,7 @@ export {
   type ReconnectWait,
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
-// The live view (`packages/plugin-mobile/src/index.ts`): its frames, the decoder that
+// The live view (`crates/plugin-mobile/page/src/index.ts`): its frames, the decoder that
 // shows its pictures, and the viewer's input in the picture's coordinates,
 // which every source's view shares.
 export * from '@demicodes/web-ui/live/protocol'

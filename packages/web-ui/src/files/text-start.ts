@@ -5,7 +5,7 @@ import type { FileContents } from './types'
 
 /**
  * Whether a file whose first bytes are `bytes` is binary by the rule the text
- * route refuses a file by (`crates/command-package-file/src/files.rs`): a NUL
+ * route refuses a file by (`crates/plugin-file/command/src/files.rs`): a NUL
  * byte in its first 8 KiB.
  */
 export function isBinary(bytes: Uint8Array): boolean {
@@ -19,7 +19,7 @@ export function isBinary(bytes: Uint8Array): boolean {
  *   large file shows whole characters.
  * - Any other byte that is not UTF-8 shows as U+FFFD.
  * - It is null when the bytes are binary by the rule the text route refuses a
- *   file by (`crates/command-package-file/src/files.rs`): a NUL byte in their
+ *   file by (`crates/plugin-file/command/src/files.rs`): a NUL byte in their
  *   first 8 KiB.
  *
  * The media types that rule also names have their own viewers, chosen by the

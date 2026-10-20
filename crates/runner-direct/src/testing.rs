@@ -273,7 +273,7 @@ impl PageChannel {
         match self.heard.recv().await {
             Some(Input::Text(text)) => Heard::Text(text),
             Some(Input::Bytes(bytes)) => Heard::Binary(bytes),
-            Some(Input::End | Input::Watch(_)) => unreachable!("a raw channel hears messages as they come"),
+            Some(Input::End | Input::Watch(_) | Input::Watched(_)) => unreachable!("a raw channel hears messages as they come"),
             None => Heard::Closed,
         }
     }

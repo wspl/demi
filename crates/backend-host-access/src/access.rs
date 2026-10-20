@@ -893,4 +893,22 @@ impl dyn HostShard + '_ {
             tracing::warn!(device = %device, conversation, "the conversation release failed: {error}");
         }
     }
+
+    /// Lifecycle access (§ Lifecycle access): stops the services of
+    /// `packages` on every device whose runner is connected, which ends what
+    /// they hold for each of the user's conversations, as turning their plugin
+    /// off asks (`crates/backend-plugins/src/lib.rs`).
+    ///
+    /// It wakes nothing, for the reason [`Self::release_on`] gives: a device
+    /// that is not connected holds no services. A release that fails is
+    /// logged with the Host and the reason, and fails nothing: the services
+    /// end with the runner's next connection at the latest.
+    pub async fn release_packages(&self, packages: &[String]) {
+        let releases = self.devices().links().into_iter().map(|(device, link)| async move {
+            if let Err(error) = link.release_packages(packages.to_vec()).await {
+                tracing::warn!(device = %device, ?packages, "the package release failed: {error}");
+            }
+        });
+        join_all(releases).await;
+    }
 }

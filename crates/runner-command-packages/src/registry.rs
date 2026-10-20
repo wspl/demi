@@ -31,7 +31,9 @@
 //!
 //! Against its leases a service is retired only as faulty: it exits, breaks the
 //! protocol, fails a conversation release, or keeps a handler past the
-//! cancellation grace. Losing the backend connection stops every service.
+//! cancellation grace. Losing the backend connection stops every service, and
+//! the backend stops a package's services when the user turns its plugin off
+//! (`crates/backend-plugins/src/lib.rs`).
 //!
 //! For example, a job whose manifest names `demi.browser` holds a lease on its
 //! artifact while the job runs, and the installed manifest holds another. When
@@ -201,7 +203,9 @@ enum Request {
         conversation: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
-    StopAll {
+    /// Stops the services of the packages named, or every service.
+    Stop {
+        packages: Option<Vec<String>>,
         reply: oneshot::Sender<()>,
     },
     Close,
@@ -388,8 +392,19 @@ impl ServiceHandle {
     /// Stops every service, as losing the backend connection does
     /// (`crates/runner/src/connection/kept.rs`), and waits until each has ended.
     pub async fn stop_all(&self) {
+        self.stop(None).await;
+    }
+
+    /// Stops the services of `packages`, by their ids, and waits until each
+    /// has ended: a service that stops releases every conversation it
+    /// holds, and the next caller of a package starts it again.
+    pub async fn stop_packages(&self, packages: Vec<String>) {
+        self.stop(Some(packages)).await;
+    }
+
+    async fn stop(&self, packages: Option<Vec<String>>) {
         let (reply, answer) = oneshot::channel();
-        if self.requests.send(Request::StopAll { reply }).await.is_ok() {
+        if self.requests.send(Request::Stop { packages, reply }).await.is_ok() {
             // A closed registry has stopped everything already.
             let _closed = answer.await;
         }
@@ -503,7 +518,7 @@ enum Work {
         result: Result<(), String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
-    StoppedAll {
+    Stopped {
         reply: oneshot::Sender<()>,
     },
 }
@@ -576,15 +591,17 @@ impl Owner {
                 conversation,
                 reply,
             } => self.release(conversation, reply),
-            Request::StopAll { reply } => {
-                let ending = self.retire_where(|_| true);
+            Request::Stop { packages, reply } => {
+                let ending = self.retire_where(|_, current| {
+                    packages.as_ref().is_none_or(|packages| packages.contains(&current.id))
+                });
                 self.work.spawn(async move {
                     for mut state in ending {
                         let _ended = state
                             .wait_for(|state| matches!(state, State::Ended(_)))
                             .await;
                     }
-                    Work::StoppedAll { reply }
+                    Work::Stopped { reply }
                 });
             }
             Request::Close => unreachable!("the owner loop ends on close"),
@@ -834,8 +851,8 @@ impl Owner {
             } => {
                 // Failed cleanup retires the faulty service before the
                 // release is answered (`crates/command-protocol/src/conversation.rs`).
-                let ending = self.retire_where(|(digest, generation)| {
-                    failed.contains(&(digest.to_owned(), generation))
+                let ending = self.retire_where(|digest, current| {
+                    failed.contains(&(digest.to_owned(), current.generation))
                 });
                 let result = if errors.is_empty() {
                     Ok(())
@@ -866,24 +883,24 @@ impl Owner {
                     self.consider(&digest);
                 }
             }
-            Work::StoppedAll { reply } => {
+            Work::Stopped { reply } => {
                 let _gone = reply.send(());
             }
         }
     }
 
-    /// Stops the current services `selected` picks by digest and generation
+    /// Stops the current services `selected` picks by digest and service
     /// and returns what to watch for their ends. Their leases stay: the next
     /// caller starts a new service.
     fn retire_where(
         &mut self,
-        selected: impl Fn((&str, u64)) -> bool,
+        selected: impl Fn(&str, &Current) -> bool,
     ) -> Vec<watch::Receiver<State>> {
         let mut ending = Vec::new();
         for (digest, entry) in &mut self.entries {
             let Some(current) = entry
                 .current
-                .take_if(|current| selected((digest.as_str(), current.generation)))
+                .take_if(|current| selected(digest.as_str(), current))
             else {
                 continue;
             };

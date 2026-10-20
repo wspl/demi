@@ -208,7 +208,7 @@ pub enum Sequence {
     Tab,
     /// Simulators `demi mobile` opens, from 1: `m2`. The `demi.mobile`
     /// service reserves them as it opens devices
-    /// (`crates/command-package-mobile/src/operations.rs`).
+    /// (`crates/plugin-mobile/command/src/operations.rs`).
     Device,
     /// The conversation's attachments, from 1: `a3`. Each file a message
     /// sends and each one `demi attachment upload` stores takes one

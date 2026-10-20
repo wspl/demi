@@ -55,7 +55,7 @@ impl CommandCatalog {
         Ok(CommandSelection(Rc::new(Selection {
             manifest,
             wire,
-            resolver: self.resolver.clone(),
+            catalog: self.clone(),
         })))
     }
 }
@@ -69,12 +69,18 @@ struct Selection {
     manifest: Manifest,
     /// The manifest as the wire carries it, written once.
     wire: Value,
-    resolver: Rc<dyn ArtifactResolver>,
+    /// The catalog it was selected from.
+    catalog: CommandCatalog,
 }
 
 impl CommandSelection {
     pub fn manifest(&self) -> &Manifest {
         &self.0.manifest
+    }
+
+    /// The selection of `commands` from the catalog this one came from.
+    pub fn of(&self, commands: &CommandSet) -> Result<CommandSelection, ManifestError> {
+        self.0.catalog.select(commands)
     }
 
     pub fn hash(&self) -> &str {
@@ -90,6 +96,6 @@ impl CommandSelection {
     }
 
     pub(crate) fn resolver(&self) -> Rc<dyn ArtifactResolver> {
-        self.0.resolver.clone()
+        self.0.catalog.resolver.clone()
     }
 }

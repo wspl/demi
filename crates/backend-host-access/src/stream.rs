@@ -12,8 +12,10 @@
 //! that the Host is stopped. Work the user starts from the view, such as
 //! opening a new conversation browser tab, is ordinary demand and wakes it.
 //!
-//! An open stream is the conversation's activity, and so is a call that
-//! operates the Host. A call that only looks is not
+//! An open stream is the conversation's activity while its page watches it,
+//! and so is a call that operates the Host. A stream the page keeps open
+//! unwatched (`crates/runner-protocol/src/direct.rs`, `StreamWatched`) is not,
+//! nor is a call that only looks
 //! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 //!
 //! Once admitted, a stream does not hold the conversation's file gate, so a
@@ -24,6 +26,7 @@
 //! afterwards.
 
 use std::collections::HashMap;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -35,10 +38,11 @@ use demi_backend_runners::native::NativeCatalog;
 use demi_command_declarations::NativeOperation;
 use demi_command_protocol::CommandCaller;
 use demi_host_interface::HostErrorKind;
-use demi_shared_gates::GateLease;
+use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use serde_json::{Map, Value};
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
@@ -93,6 +97,9 @@ pub struct UserStream {
     pub to_host: PipeWriter,
     /// The invocation's output, which ends when the invocation completes.
     pub from_host: PipeReader,
+    /// Whether the page watches the stream now, which it starts as: only a
+    /// watched stream holds the conversation active.
+    pub watched: watch::Sender<bool>,
     pub lease: Lease,
 }
 
@@ -185,10 +192,19 @@ impl dyn HostShard + '_ {
             .await;
         let refused = match opened {
             Ok(Ok(service)) => {
-                let lease = self.lease_stream(access.open, access.watching, service, input, output);
+                let (watched, watching) = watch::channel(true);
+                let watching = access.watching.map(|lease| Watching {
+                    lease: Some(lease),
+                    gate: self.conversations().slot(&access.conversation).streams.clone(),
+                    shard: Rc::downgrade(&self.this()),
+                    conversation: access.conversation.clone(),
+                    watched: watching,
+                });
+                let lease = self.lease_stream(access.open, watching, service, input, output);
                 return Ok(UserStream {
                     to_host,
                     from_host,
+                    watched,
                     lease,
                 });
             }
@@ -342,7 +358,7 @@ impl dyn HostShard + '_ {
     fn lease_stream(
         &self,
         open: OpenTransfer,
-        watching: Option<GateLease>,
+        watching: Option<Watching>,
         service: ServiceStream,
         input: Pipe,
         output: Pipe,
@@ -350,16 +366,58 @@ impl dyn HostShard + '_ {
         let (lease, released) = Lease::new(open.ended.clone());
         let ended = open.ended.clone();
         self.tasks().spawn_local(async move {
+            let follow = async {
+                let Some(mut watching) = watching else {
+                    return std::future::pending().await;
+                };
+                watching.follow().await;
+            };
             tokio::select! {
                 () = released => {}
                 () = ended.cancelled() => {}
+                () = follow => {}
             }
             input.fail("the user stream ended");
             output.fail("the user stream ended");
             drop(service);
-            drop(watching);
             drop(open);
         });
         lease
+    }
+}
+
+/// A stream's hold on its conversation's activity: its lease of the stream
+/// gate while its page watches it.
+struct Watching {
+    lease: Option<GateLease>,
+    gate: ActivityGate,
+    /// Weak: the shard owns the task that holds this.
+    shard: Weak<dyn HostShard>,
+    conversation: ConversationId,
+    watched: watch::Receiver<bool>,
+}
+
+impl Watching {
+    /// Takes and lets go of the lease as the page says, until the edge lets
+    /// go of the stream. The gate is never reserved
+    /// (`crates/backend-host-access/src/access.rs`), so a lease comes at
+    /// once.
+    async fn follow(&mut self) {
+        while self.watched.changed().await.is_ok() {
+            let watched = *self.watched.borrow_and_update();
+            match (watched, self.lease.is_some()) {
+                (true, false) => {
+                    self.lease = Some(self.gate.enter(Purpose::Demand).await);
+                    // Unwatched, it may have let the conversation go idle,
+                    // which ended its idle watch; the activity starts one,
+                    // as a Host admission does.
+                    if let Some(shard) = self.shard.upgrade() {
+                        shard.track_idle(&self.conversation);
+                    }
+                }
+                (false, true) => self.lease = None,
+                _ => {}
+            }
+        }
     }
 }

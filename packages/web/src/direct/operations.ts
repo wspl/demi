@@ -12,7 +12,7 @@ import type { FileText, FileUploadOptions } from '@demicodes/web-ui/files/types'
 import type { OpenUserStream, StreamBytes, UserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { LiveFrameSplitter, frameKind } from '@demicodes/web-ui/live/frames'
 import { REFUSED_FRAME } from '@demicodes/web-ui/live/link'
-import { LIVE_ACK_FRAME } from '@demicodes/protocol'
+import { LIVE_ACK_FRAME, type StreamWatched } from '@demicodes/protocol'
 import type { WatchLink } from '@demicodes/web-ui/files/watch-channel'
 import { reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { relayWatchLink, watchReceiver, watchText, type OpenConversationWatchLink } from '../conversation/file-watch'
@@ -237,6 +237,8 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
     const route = routeOf()
     const peer = route?.device.current()
     let ended = false
+    /** The page's last word on whether it watches, which a stream that takes over is told. */
+    let watched = true
     let stream: UserStream
     const end = (reason: string) => {
       if (ended)
@@ -261,6 +263,7 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
       if (ended)
         return
       stream = onRelay()
+      stream.watched(watched)
       for (const bytes of unsent)
         stream.send(bytes)
     }
@@ -277,6 +280,10 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
     }) ?? (() => {})
     return {
       send: (bytes) => stream.send(bytes),
+      watched(now) {
+        watched = now
+        stream.watched(now)
+      },
       close() {
         ended = true
         stopMoving()
@@ -312,6 +319,8 @@ function openLive(
   let closed = false
   const queued: StreamBytes[] = []
   let send: ((bytes: StreamBytes) => void) | null = null
+  let watched = true
+  let sayWatched: (() => void) | null = null
   const channels: OperationChannel<unknown>[] = []
   // Closes the channels still opening, which `channels` holds only once open.
   const opening = new AbortController()
@@ -379,6 +388,11 @@ function openLive(
       const channel = frameKind(bytes) === LIVE_ACK_FRAME ? video : control
       void channel.sendBytes(bytes).catch(() => {})
     }
+    // The runner takes the stream as watched until the page says otherwise;
+    // a channel that fails ends the view, which the catch below sees.
+    sayWatched = () => void control.sendText(JSON.stringify({ watched } satisfies StreamWatched)).catch(() => {})
+    if (!watched)
+      sayWatched()
     for (const bytes of queued.splice(0))
       send(bytes)
     // The stream's end ends the view; its video channel ends with it.
@@ -425,6 +439,12 @@ function openLive(
       else
         queued.push(bytes)
     },
+    watched(now) {
+      if (now === watched)
+        return
+      watched = now
+      sayWatched?.()
+    },
     close() {
       if (closed)
         return
@@ -446,6 +466,8 @@ function openDirect(
   let closed = false
   const queued: StreamBytes[] = []
   let send: ((bytes: StreamBytes) => void) | null = null
+  let watched = true
+  let sayWatched: (() => void) | null = null
   let close = () => {}
   void (async () => {
     let channel: OperationChannel<Opened> | undefined
@@ -469,6 +491,10 @@ function openDirect(
     }
     const open = channel
     send = (bytes) => void open.sendBytes(bytes).catch(() => {})
+    // A channel that fails ends the stream, which its reads below see.
+    sayWatched = () => void open.sendText(JSON.stringify({ watched } satisfies StreamWatched)).catch(() => {})
+    if (!watched)
+      sayWatched()
     for (const bytes of queued.splice(0))
       send(bytes)
     try {
@@ -492,6 +518,12 @@ function openDirect(
         send(bytes)
       else
         queued.push(bytes)
+    },
+    watched(now) {
+      if (now === watched)
+        return
+      watched = now
+      sayWatched?.()
     },
     close() {
       closed = true

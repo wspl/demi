@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { browserPage } from '@demicodes/plugin-browser'
-import { browserTabKind } from '@demicodes/plugin-browser/live/kind'
+import { BROWSER_TAB_KIND } from '@demicodes/plugin-browser/live/store'
 import { changesPage } from '@demicodes/plugin-changes'
 import { fileBrowserPage } from '@demicodes/plugin-file-browser'
 import { galleryBrowser } from '../fixtures/live-browser'
@@ -52,7 +52,7 @@ function openPage(): void {
   const title = `${TITLES[opened % TITLES.length]!}${round > 0 ? ` ${round + 1}` : ''}`
   opened += 1
   // The body never shows here, so no picture is shown; the title names the tab.
-  work.add(browserTabKind.kind, { url: 'https://example.test/', title })
+  work.add(BROWSER_TAB_KIND, { url: 'https://example.test/', title })
 }
 
 function closeTabs(ids: string[]): void {

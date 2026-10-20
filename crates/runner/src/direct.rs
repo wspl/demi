@@ -9,9 +9,11 @@
 //!
 //! It tells the backend each stream's opening (`direct_stream`), before the
 //! stream asks the backend for its artifacts as a stream the backend opened
-//! does, and its closing. The backend counts an open stream as the
+//! does, its closing, and whether its page watches it
+//! (`direct_stream_watched`). The backend counts an open, watched stream as the
 //! conversation's activity, so a live view watched only over the direct channel
-//! keeps the conversation from its idle release.
+//! keeps the conversation from its idle release, and one the page only keeps
+//! does not.
 //!
 //! Every peer closes when the connection to the backend ends.
 
@@ -87,27 +89,61 @@ impl ReportedStream {
     /// connection ended first: the backend's end of it ended what it knew
     /// of the stream already.
     fn report(&self, open: bool) -> impl Future<Output = ()> + Send + 'static {
-        let report = Outbound::DirectStream {
-            stream: self.stream.clone(),
-            name: self.name.clone(),
-            conversation: self.conversation.clone(),
-            open,
-        };
-        let backend = self.backend.clone();
-        let closed = self.closed.clone();
-        async move {
-            let frame = match wire::encode(&report) {
-                Ok(frame) => frame,
-                Err(error) => {
-                    tracing::warn!("a direct stream's report encoding failed: {error}");
-                    return;
-                }
-            };
-            tokio::select! {
-                _ = closed.cancelled() => {}
-                // A connection that ended has no backend left to tell.
-                _ = backend.send(frame) => {}
+        send_report(
+            Outbound::DirectStream {
+                stream: self.stream.clone(),
+                name: self.name.clone(),
+                conversation: self.conversation.clone(),
+                open,
+            },
+            self.backend.clone(),
+            self.closed.clone(),
+        )
+    }
+
+    /// What tells the backend whether the stream's page watches it, in the
+    /// order the page said it.
+    fn watched(&self) -> Box<dyn Fn(bool) + Send + Sync> {
+        let (backend, control, closed, stream) = (
+            self.backend.clone(),
+            self.control.clone(),
+            self.closed.clone(),
+            self.stream.clone(),
+        );
+        // One task sends them all, so the backend hears them in order.
+        let (said, mut saying) = mpsc::unbounded_channel::<bool>();
+        control.spawn(async move {
+            while let Some(watched) = saying.recv().await {
+                let report = Outbound::DirectStreamWatched { stream: stream.clone(), watched };
+                send_report(report, backend.clone(), closed.clone()).await;
             }
+        });
+        Box::new(move |watched| {
+            // The task ended only with the connection, which has no backend
+            // left to tell.
+            let _ = said.send(watched);
+        })
+    }
+}
+
+/// Sends `report` to the backend, unless the connection ended first.
+fn send_report(
+    report: Outbound,
+    backend: mpsc::Sender<wire::Frame>,
+    closed: CancellationToken,
+) -> impl Future<Output = ()> + Send + 'static {
+    async move {
+        let frame = match wire::encode(&report) {
+            Ok(frame) => frame,
+            Err(error) => {
+                tracing::warn!("a direct stream's report encoding failed: {error}");
+                return;
+            }
+        };
+        tokio::select! {
+            _ = closed.cancelled() => {}
+            // A connection that ended has no backend left to tell.
+            _ = backend.send(frame) => {}
         }
     }
 }
@@ -394,6 +430,7 @@ impl Operations for HostOperations {
             stream.report(true).await;
             StreamActivity {
                 stream: stream.stream.clone(),
+                watched: stream.watched(),
                 held: Box::new(stream),
             }
         })

@@ -809,6 +809,7 @@ export function galleryBrowser(
     }
     return {
       send: (bytes) => browser.receive(bytes),
+      watched: () => {},
       close: () => {
         views.delete(browser)
         browser.stop()

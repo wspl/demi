@@ -68,6 +68,7 @@ mod workflow;
 pub mod testing;
 
 use std::{
+    cell::RefCell,
     rc::Rc,
     sync::{Arc, LazyLock},
     time::Duration,
@@ -224,7 +225,10 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub directory: &'a dyn Directory,
     /// The node's agent number.
     pub agent: u64,
-    pub commands: &'a Rc<CommandSet>,
+    /// The node's commands, which an environment made now offers; a change
+    /// reaches the environments made before through
+    /// [`Environments::replace_commands`].
+    pub commands: &'a RefCell<Rc<CommandSet>>,
     /// The node's feed, which its environments are made with.
     pub feed: &'a Rc<dyn PageFeed>,
     /// The conversation's numbers, which its environments are made with.
@@ -265,11 +269,12 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             .host(context)
             .await
             .map_err(|error| CallError::Failed(error.to_string()))?;
+        let commands = self.commands.borrow().clone();
         let scope = EnvironmentScope {
             root: self.root,
             node: self.node,
             agent: self.agent,
-            commands: self.commands,
+            commands: &commands,
             feed: self.feed,
             numbers: self.numbers,
         };

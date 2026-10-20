@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import { httpStatusLine } from '@demicodes/utils'
 import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
@@ -55,19 +56,34 @@ export interface GalleryShell {
   hostStarting?(): boolean
   /** What the specimen says the product would do with a page it opens in a new tab. */
   openLink?: PageHost['openLink']
+  /** Whether the user has `plugin` on, read reactively; every plugin is, unless the specimen says. */
+  enabled?(plugin: string): boolean
 }
 
-/** A page host over `plugins` and the specimen's `shell`; a plugin it lacks refuses as the backend would. */
+/**
+ * A page host over `plugins` and the specimen's `shell`: a plugin it lacks
+ * refuses as the backend would, and so does one the specimen has turned off,
+ * its calls with `plugin_disabled` and its streams closed with it. Each host
+ * holds a Pinia of its own, so a specimen's plugin stores are its alone.
+ */
 export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: GalleryShell = {}): PageHost {
+  const enabled = (plugin: string) => shell.enabled?.(plugin) ?? true
   const fixture = (plugin: string): GalleryPlugin => {
     const found = plugins[plugin]
     if (!found) {
       throw new PluginCallError('unknown_plugin', `No plugin "${plugin}"`)
     }
+    if (!enabled(plugin)) {
+      // As the backend's plugin call route answers it.
+      throw new PluginCallError('plugin_disabled', `The plugin "${plugin}" is turned off`, {
+        type: 'status',
+        status: '409 Conflict',
+      })
+    }
     return found
   }
   return {
-    userState: (plugin) => plugins[plugin]?.state?.(),
+    userState: (plugin) => (enabled(plugin) ? plugins[plugin]?.state?.() : undefined),
     followState: (plugin, conversation) => {
       const follow = fixture(plugin).followState
       if (!follow) {
@@ -77,10 +93,18 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     },
     call: async (plugin, method, params, conversation) => fixture(plugin).call(method, params, conversation),
     stream: (name) => {
-      for (const plugin of Object.values(plugins)) {
+      for (const [id, plugin] of Object.entries(plugins)) {
         const stream = plugin.streams?.[name]
-        if (stream) {
-          return stream
+        if (!stream) {
+          continue
+        }
+        return (handlers, options) => {
+          if (enabled(id)) {
+            return stream(handlers, options)
+          }
+          // As the backend closes the stream of a plugin that is off, after the page has its stream.
+          queueMicrotask(() => handlers.closed('plugin_disabled'))
+          return { send: () => {}, watched: () => {}, close: () => {} }
         }
       }
       throw new PluginCallError('unknown_stream', `No user stream "${name}"`)
@@ -107,6 +131,7 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       productWould('Open the Page in a New Tab')
     }),
     overlays: appOverlayStore,
+    pinia: createPinia(),
   }
 }
 

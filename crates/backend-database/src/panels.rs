@@ -109,21 +109,84 @@ impl ControlService {
                 Err(Refused::TooLarge) => return Ok(PanelOutcome::TooLarge),
             };
             let revision = revision + 1;
-            transaction.execute(
-                "INSERT INTO conversation_panels (conversation_id, revision, document, updated_at) VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT (conversation_id) DO UPDATE SET revision = excluded.revision, document = excluded.document, updated_at = excluded.updated_at",
-                params![
-                    conversation.as_str(),
-                    i64::try_from(revision).expect("a revision fits in 63 bits"),
-                    to_json(&document),
-                    now.as_millisecond()
-                ],
-            )?;
+            store(&transaction, &conversation, revision, &document, now.as_millisecond())?;
             transaction.commit()?;
             Ok(PanelOutcome::Changed { revision, effects })
         })
         .await
     }
+
+    /// Removes the tabs of `kinds` from every panel of `owner`'s
+    /// conversations, archived ones included, in one transaction, and
+    /// answers the conversations whose panel changed. The plugin that owns
+    /// the kinds is off, and a tab only it draws would show as one that
+    /// cannot be shown once its conversation is unarchived.
+    pub async fn close_panel_kinds(
+        &self,
+        owner: UserId,
+        kinds: Vec<String>,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let panelled = {
+                let mut statement = transaction.prepare(
+                    "SELECT conversations.id FROM conversations
+                     JOIN conversation_panels ON conversation_panels.conversation_id = conversations.id
+                     WHERE conversations.user_id = ?1
+                       AND json_array_length(conversation_panels.document, '$.tabs') > 0",
+                )?;
+                statement
+                    .query_map([owner.as_str()], |row| row.get::<_, String>(0))?
+                    .map(|id| {
+                        let id = id?;
+                        decode("conversations", "id", ConversationId::try_from(id.as_str()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let mut changed = Vec::new();
+            for conversation in panelled {
+                let (revision, mut document) = stored(&transaction, &conversation)?;
+                let removals: Vec<PanelChange> = document
+                    .tabs
+                    .iter()
+                    .filter(|tab| kinds.contains(&tab.kind))
+                    .map(|tab| PanelChange::Remove { id: tab.id.clone() })
+                    .collect();
+                if removals.is_empty() {
+                    continue;
+                }
+                document
+                    .apply_all(removals)
+                    .expect("removing tabs takes no room");
+                store(&transaction, &conversation, revision + 1, &document, now.as_millisecond())?;
+                changed.push(conversation);
+            }
+            transaction.commit()?;
+            Ok(changed)
+        })
+        .await
+    }
+}
+
+/// Writes the conversation's panel at `revision`.
+fn store(
+    connection: &Connection,
+    conversation: &ConversationId,
+    revision: u64,
+    document: &PanelDocument,
+    now: i64,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT INTO conversation_panels (conversation_id, revision, document, updated_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (conversation_id) DO UPDATE SET revision = excluded.revision, document = excluded.document, updated_at = excluded.updated_at",
+        params![
+            conversation.as_str(),
+            i64::try_from(revision).expect("a revision fits in 63 bits"),
+            to_json(document),
+            now
+        ],
+    )?;
+    Ok(())
 }
 
 /// The conversation's revision and document; 0 and the empty one before

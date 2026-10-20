@@ -46,7 +46,8 @@
 //! - Stream admission serves user streams, one-shot user calls that must not
 //!   wake the Host and a plugin's reads of a conversation's files.
 //! - Lifecycle access is the conversation release, which a stopped Cloud hears
-//!   after its next wake.
+//!   after its next wake, and the release of a package's services for every
+//!   conversation, which a plugin turned off asks of each connected Host.
 //! - Device access is the owner's work on a device whose runner is connected: a
 //!   direct channel, the device log, browsing directories to choose a target, a
 //!   port forward's listener. It takes no file gate and checks no

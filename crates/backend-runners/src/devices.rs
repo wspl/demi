@@ -286,6 +286,16 @@ impl Devices {
         self.slots.borrow().get(device).and_then(|slot| slot.live())
     }
 
+    /// The devices whose runners are connected now, each with its
+    /// connection.
+    pub fn links(&self) -> Vec<(DeviceId, Link)> {
+        self.slots
+            .borrow()
+            .iter()
+            .filter_map(|(device, slot)| Some((device.clone(), slot.live()?)))
+            .collect()
+    }
+
     pub fn online(&self, device: &DeviceId) -> bool {
         self.link(device).is_some()
     }

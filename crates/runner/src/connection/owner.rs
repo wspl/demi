@@ -523,6 +523,25 @@ impl Owner<'_> {
                     Work::Done
                 });
             }
+            Inbound::PackageRelease { id, packages } => {
+                let services = self.registered.services.clone();
+                let control = self.live.control.clone();
+                let closed = self.live.closed.clone();
+                self.work.spawn(async move {
+                    tokio::select! {
+                        _ = closed.cancelled() => return Work::Done,
+                        () = services.stop_packages(packages) => {}
+                    }
+                    match wire::encode(&wire::Outbound::PackageReleased { id }) {
+                        Ok(reply) => {
+                            // A disconnected backend no longer needs an acknowledgement.
+                            let _ = control.send(reply).await;
+                        }
+                        Err(error) => tracing::warn!("invalid release acknowledgement: {error}"),
+                    }
+                    Work::Done
+                });
+            }
             Inbound::Prefetch {
                 release,
                 sha256,

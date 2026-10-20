@@ -15,20 +15,14 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
-      "@demicodes/*": ["./packages/*/src/index.ts"]
+      "@demicodes/*": ["./packages/*/src/index.ts", "./crates/*/page/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts", "crates/command-package-browser-chrome/src/driver/capture"],
+  "include": ["packages/*/src", "scripts", "crates/plugin-browser/command-chrome/src/driver/capture"],
   "exclude": [
     "packages/browse",
     "packages/web-ui",
     "packages/plugin-sdk",
-    "packages/plugin-browser",
-    "packages/plugin-mobile",
-    "packages/plugin-changes",
-    "packages/plugin-file-browser",
-    "packages/plugin-skills",
-    "packages/plugin-web",
     "packages/web-gallery",
     "packages/web"
   ]

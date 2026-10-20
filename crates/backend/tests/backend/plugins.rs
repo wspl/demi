@@ -1,9 +1,10 @@
 //! A user's plugins (`crates/backend-plugins/src/lib.rs`).
 //!
 //! A plugin turned off leaves the user's pages at once and refuses its page
-//! calls. An open conversation keeps the commands its tree opened with and
-//! offers a reload, which opens the tree with the commands of the plugins the
-//! user has on.
+//! calls. An open conversation loses its commands at once, a call failing as
+//! one of an unknown command does, but its system prompt keeps listing them,
+//! and it offers a reload, which opens the tree with the commands of the
+//! plugins the user has on.
 
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::testing::{MockResponse, MockVendor};
@@ -12,7 +13,11 @@ use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::json;
 
+use std::sync::Arc;
+
+use crate::agent_profiles::{assert_shows, last_root};
 use crate::conversations::{FIRST, Socket, answer, anthropic, choose, create};
+use crate::subagents::{Scripts, say, shell, tree_on};
 use crate::support::{Harness, Session, TestBackend};
 
 async fn switch(
@@ -34,7 +39,7 @@ fn system(vendor: &MockVendor, index: usize) -> String {
 }
 
 #[tokio::test]
-async fn an_open_conversation_keeps_its_commands_until_a_reload_opens_it_with_the_plugins_on() {
+async fn an_open_conversations_prompt_lists_its_commands_until_a_reload_opens_it_with_the_plugins_on() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -71,7 +76,7 @@ async fn an_open_conversation_keeps_its_commands_until_a_reload_opens_it_with_th
     let skills = plugins.iter().find(|plugin| plugin.id == "skills").unwrap();
     assert!(!skills.enabled);
 
-    // Until the reload, the tree keeps the commands it opened with.
+    // Until the reload, the tree's prompt lists the commands it opened with.
     vendor.respond(answer(&["two"], 1, 1));
     socket.chat("m2", "second").await;
     assert!(system(&vendor, 1).contains("demi skills"));
@@ -173,5 +178,34 @@ async fn a_plugin_turned_off_leaves_the_page_and_refuses_its_calls_until_it_is_o
         unknown.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::UnknownPlugin)
     );
+    backend.close().await;
+}
+
+// About a second: a real device runs the model's two shell jobs.
+//
+// Planted defect this catches: the switch leaving the open trees' commands as
+// they opened, which runs `demi skills list` as before.
+#[tokio::test]
+async fn a_plugin_turned_off_takes_its_commands_from_an_open_conversation_as_if_they_never_were() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, _root, _provider) =
+        tree_on(&scripts, Harness::new()).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let calls = "demi skills list >/dev/null 2>&1; echo \"skills $?\"; demi nonesuch list 2>&1";
+    scripts.root(
+        FIRST,
+        vec![shell("t1", calls), say("listed"), shell("t2", calls), say("gone")],
+    );
+    socket.chat("m1", "List the skills").await;
+    assert_shows(&last_root(&scripts), "skills 0\nerror: unrecognized subcommand 'nonesuch'\n");
+
+    assert_eq!(
+        switch(&backend, &master, "skills", false).await,
+        StatusCode::NO_CONTENT
+    );
+    socket.chat("m2", "List them again").await;
+    // The usage error the shell gives a group the conversation never had.
+    assert_shows(&last_root(&scripts), "skills 2\nerror: unrecognized subcommand 'nonesuch'\n");
     backend.close().await;
 }

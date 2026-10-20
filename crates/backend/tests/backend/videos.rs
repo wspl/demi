@@ -39,7 +39,7 @@ use crate::support::Harness;
 use crate::usage::{Row, rows};
 
 /// One second of 64×36 px with a sound track, the plugin's fixture.
-const CLIP: &[u8] = include_bytes!("../../../plugin-video/tests/plugin-video/fixtures/clip.mp4");
+const CLIP: &[u8] = include_bytes!("../../../plugin-video/plugin/tests/plugin-video/fixtures/clip.mp4");
 
 /// A `device` family whose accounts make the videos `videos` scripts, and
 /// the scripts of its logins.

@@ -410,6 +410,66 @@ mod tests {
         pool.close().await;
     }
 
+    // Four windows of real time: the stream stays open, unwatched for one
+    // window until the release, then watched for two, and the release comes a
+    // full window after it closed.
+    //
+    // Planted defect this catches: a kept stream that holds its conversation
+    // whether or not it is watched, which never releases it while open.
+    #[tokio::test(flavor = "local")]
+    async fn a_kept_unwatched_stream_lets_its_conversation_go_idle_and_watching_it_again_counts() {
+        let data = tempfile::tempdir().unwrap();
+        let (services, owner, devices) = fixture(data.path(), &["laptop"]).await;
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
+        pool.shards()
+            .of(&owner)
+            .call(move |shard, _| async move {
+                let id = ConversationId::try_from(ID).unwrap();
+                let (released, played) = runners(&shard, &devices).await;
+                shard.transition(&id, on(&devices[0])).await.unwrap();
+                let watched = |watched| Outbound::DirectStreamWatched {
+                    stream: "direct".to_owned(),
+                    watched,
+                };
+                played[0]
+                    .say(&Outbound::DirectStream {
+                        stream: "direct".to_owned(),
+                        name: "echo".to_owned(),
+                        conversation: ID.to_owned(),
+                        open: true,
+                    })
+                    .await;
+                let unwatched = Instant::now();
+                played[0].say(&watched(false)).await;
+                until_released(&released, 1).await;
+                let at = released.borrow()[0].1;
+                assert!(at - unwatched >= WINDOW, "{:?}", at - unwatched);
+                until_retired(&shard, &id).await;
+
+                // Watched again, it holds the conversation until it closes.
+                played[0].say(&watched(true)).await;
+                tokio::time::sleep(WINDOW * 2).await;
+                assert_eq!(released.borrow().len(), 1, "a watched stream is activity");
+                let closed = Instant::now();
+                played[0]
+                    .say(&Outbound::DirectStream {
+                        stream: "direct".to_owned(),
+                        name: "echo".to_owned(),
+                        conversation: ID.to_owned(),
+                        open: false,
+                    })
+                    .await;
+                until_released(&released, 2).await;
+                let at = released.borrow()[1].1;
+                assert!(at - closed >= WINDOW, "{:?}", at - closed);
+            })
+            .await
+            .unwrap();
+        pool.close().await;
+    }
+
     // A window and a half of real time: the switch comes half a window after
     // the activity, and the release it leads to a full window after it.
     #[tokio::test(flavor = "local")]

@@ -2,7 +2,7 @@
 //!
 //! The scenarios cover the page's socket, the backend's admission and relay,
 //! the runner's service stream and a resident native service, and an open
-//! stream as the conversation's activity
+//! stream as the conversation's activity while its page watches it
 //! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 //!
 //! The streams bind the runner's test fixture package
@@ -380,6 +380,54 @@ async fn an_open_stream_keeps_the_cloud_it_watches_awake_until_it_closes() {
         stopped >= closed + window,
         "the Cloud stopped {:?} after the stream closed",
         stopped.saturating_duration_since(closed)
+    );
+    backend.close().await;
+}
+
+/// Tells the backend whether the page watches the stream.
+async fn watch(echo: &mut Socket, watched: bool) {
+    let said = json!({ "watched": watched }).to_string();
+    echo.send(Message::Text(said.into())).await.unwrap();
+}
+
+// Several seconds: the Cloud boots, and it stops an idle window after the page
+// stops watching, the stream open. That watching a kept stream again counts is
+// the lifecycle's own test
+// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+//
+// Planted defect this catches: the page's word ignored, which keeps the Cloud
+// up for as long as the stream is open.
+#[tokio::test]
+async fn a_kept_stream_nobody_watches_lets_the_cloud_stop() {
+    let window = Duration::from_millis(400);
+    let mut harness = Harness::new().with_native_fixture();
+    harness.lifecycle = idle_after(window);
+    harness.cloud.sweep = Duration::from_millis(50);
+    let (backend, master) = harness.start_set_up().await;
+    let created = backend
+        .post("/api/conversations", Some(&master), json!({ "id": ON_CLOUD }))
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let listed = backend
+        .get(&format!("/api/conversations/{ON_CLOUD}/fs"), Some(&master))
+        .await;
+    assert_eq!(listed.status, StatusCode::OK);
+    let device = the_cloud(&harness);
+    let mut echo = socket(&backend, &master, ON_CLOUD, "echo").await;
+    answered(&mut echo).await;
+
+    let unwatched = Instant::now();
+    watch(&mut echo, false).await;
+    // The word is the stream layer's: the plugin's bytes still flow.
+    answered(&mut echo).await;
+    let stopped = harness
+        .manager
+        .arrival(&format!("hibernate:{device}"), PATIENCE)
+        .await;
+    assert!(
+        stopped >= unwatched + window,
+        "the Cloud stopped {:?} after the page stopped watching",
+        stopped.saturating_duration_since(unwatched)
     );
     backend.close().await;
 }

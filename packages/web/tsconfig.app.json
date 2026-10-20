@@ -23,13 +23,14 @@
         "../web-ui/src/*"
       ],
       "@demicodes/plugin-browser/*": [
-        "../plugin-browser/src/*"
+        "../../crates/plugin-browser/page/src/*"
       ],
       "@demicodes/plugin-mobile/*": [
-        "../plugin-mobile/src/*"
+        "../../crates/plugin-mobile/page/src/*"
       ],
       "@demicodes/*": [
-        "../*/src/index.ts"
+        "../*/src/index.ts",
+        "../../crates/*/page/src/index.ts"
       ]
     }
   },

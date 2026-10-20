@@ -178,9 +178,10 @@ test('no production source of a package a page loads imports a Node built-in', (
 test('built exports name their sources, and the root paths mirror them', () => {
   const { paths } = readJson('tsconfig.json', rootTsconfig).compilerOptions
   const violations: string[] = []
-  // Every root entry resolves through the one wildcard, so it must be `src/index.ts`.
-  if (paths[`${SCOPE}*`]?.join() !== './packages/*/src/index.ts')
-    violations.push(`tsconfig.json: ${SCOPE}* must map to ./packages/*/src/index.ts`)
+  // Every root entry resolves through the one wildcard, so it must be `src/index.ts`, of a
+  // package under packages/ or of a plugin's page under crates/.
+  if (paths[`${SCOPE}*`]?.join() !== './packages/*/src/index.ts,./crates/*/page/src/index.ts')
+    violations.push(`tsconfig.json: ${SCOPE}* must map to ./packages/*/src/index.ts, then ./crates/*/page/src/index.ts`)
   for (const pkg of packages) {
     for (const [entry, target] of Object.entries(pkg.manifest.exports ?? {})) {
       // A string target is source the consumer compiles (web-ui's `./*`).

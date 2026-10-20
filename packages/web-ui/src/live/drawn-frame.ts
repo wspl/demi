@@ -1,6 +1,6 @@
 /**
  * A device drawn as a black silhouette around its screen
- * (`packages/plugin-mobile/src/index.ts`), in the look of the frames Xcode
+ * (`crates/plugin-mobile/page/src/index.ts`), in the look of the frames Xcode
  * installs: the frame a view draws itself when the device's own is not
  * installed.
  *

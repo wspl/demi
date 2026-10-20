@@ -11,7 +11,7 @@ const emit = defineEmits<{ close: [] }>()
   <WorkPanel
     :panel="work.panel.value"
     :pinned="work.pinned.value"
-    :kinds="work.kinds"
+    :kinds="work.kinds.value"
     :before-first-message="beforeFirstMessage"
     @select="work.select"
     @move-tab="work.move"

@@ -191,7 +191,7 @@ test('a stream moves to the other path when the choice changes, and its view con
   const relay = (handlers: UserStreamHandlers) => {
     relayOpened.push('relay')
     void handlers
-    return { send: () => {}, close: () => {} }
+    return { send: () => {}, watched: () => {}, close: () => {} }
   }
   const open = directStream(() => route, 'browser', relay)
   const closed: string[] = []
@@ -225,7 +225,7 @@ test('a stream the runner refuses opens on the relay, and the channel stays the 
   const relay = (handlers: UserStreamHandlers) => {
     relayOpened.push('relay')
     void handlers
-    return { send: () => {}, close: () => {} }
+    return { send: () => {}, watched: () => {}, close: () => {} }
   }
   const closed: string[] = []
   directStream(() => route, 'browser', relay)({ data: () => {}, closed: (reason) => closed.push(reason) })
@@ -322,7 +322,7 @@ test('a live view takes the live peer, its pictures and acknowledgements on its 
     },
   })
   const heard: number[][] = []
-  const relay = () => ({ send: () => {}, close: () => {} })
+  const relay = () => ({ send: () => {}, watched: () => {}, close: () => {} })
   const stream = directStream(() => route, 'browser', relay)({ data: (bytes) => heard.push([...bytes]), closed: () => {} }, { live: true })
   stream.send(encodeControl({ type: 'hello' }))
   await settle()
@@ -367,7 +367,7 @@ test('a live view whose live peer cannot be made opens on the relay with what it
   const relayed: string[] = []
   const relay = () => {
     relayed.push('opened')
-    return { send: (bytes: Uint8Array) => relayed.push(new TextDecoder().decode(bytes.subarray(5))), close: () => {} }
+    return { send: (bytes: Uint8Array) => relayed.push(new TextDecoder().decode(bytes.subarray(5))), watched: () => {}, close: () => {} }
   }
   const stream = directStream(() => route, 'browser', relay)({ data: () => {}, closed: () => {} }, { live: true })
   stream.send(encodeControl({ type: 'hello' }))
@@ -397,7 +397,7 @@ test('a live view closed while its channels open closes them and opens no other'
   }
   route.live = new DeviceLive({ connect: async () => new OpeningPeer([]), closed: () => {}, after: () => () => {} })
   const closed: string[] = []
-  const relay = () => ({ send: () => {}, close: () => {} })
+  const relay = () => ({ send: () => {}, watched: () => {}, close: () => {} })
   const stream = directStream(() => route, 'browser', relay)({ data: () => {}, closed: (reason) => closed.push(reason) }, { live: true })
   const video = await connection.channel(0)
   expect(connection.inits).toEqual([['video', { ordered: false }]])
@@ -424,7 +424,7 @@ test('a live view whose channel fails reopens on the relay, which stays the choi
   const relayOpened: string[] = []
   const relay = () => {
     relayOpened.push('relay')
-    return { send: () => {}, close: () => {} }
+    return { send: () => {}, watched: () => {}, close: () => {} }
   }
   const open = directStream(() => route, 'browser', relay)
   const closed: string[] = []
@@ -481,7 +481,7 @@ test('a live view closed while its live peer is made closes the peer\'s video ch
     closed: () => {},
     after: () => () => {},
   })
-  const relay = () => ({ send: () => {}, close: () => {} })
+  const relay = () => ({ send: () => {}, watched: () => {}, close: () => {} })
   const open = directStream(() => route, 'browser', relay)
   const first = open({ data: () => {}, closed: () => {} }, { live: true })
   const second = open({ data: () => {}, closed: () => {} }, { live: true })
