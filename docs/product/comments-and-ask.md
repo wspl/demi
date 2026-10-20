@@ -146,7 +146,7 @@ after it, as its next request would send it; the quoted words say what is
 asked about. It runs on the
 conversation's model, system prompt and tools, so its first request reads
 that history from the provider's prompt cache instead of paying for it again
-([Prompt cache](../providers/providers.md#prompt-cache)): it also sends what
+(`crates/provider-common/src/contract.rs`): it also sends what
 the provider keys its cache and its routing by as the conversation does, its
 session, prompt cache key and conversation headers, so a provider that
 routes by them sends the side question to the same cache. Its first user

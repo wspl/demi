@@ -1,7 +1,12 @@
-//! The Codex catalog (`models.md` § The Codex catalog): the account's model
+//! The Codex catalog: the account's model
 //! list on the ChatGPT backend, read with the version of the newest Codex
 //! CLI release ([`CodexReleases`](crate::CodexReleases)), because the
 //! backend picks the models it lists by that version.
+//!
+//! `max_context_window` is not read: Codex sends no field that chooses a
+//! window, so a window above the one the service states may not be served, and
+//! Demi offers no way past it. There is no Off option either: omitting
+//! reasoning gets Codex's default instead of turning reasoning off.
 
 use std::num::NonZeroU32;
 
@@ -164,7 +169,7 @@ impl CodexModel {
             output_limit: None,
             supports_tools,
             // The backend documents no file part, so the list names the
-            // images alone (`models.md` § Accepted attachment types).
+            // images alone (`crates/shared-types/src/model.rs`).
             accepted_extensions: images.map(|images| {
                 if images {
                     demi_shared_types::IMAGE_FILE_EXTENSIONS.to_vec()

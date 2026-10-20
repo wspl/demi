@@ -1,4 +1,4 @@
-//! Logins (`providers.md` § Login and publication): each login runs the
+//! Logins: each login runs the
 //! family's login as a task of the backend's, reports what it waits for and
 //! what the user must do, hands it the codes the user pastes, and publishes
 //! the account when it completes. A login into a new entry authenticates
@@ -43,10 +43,10 @@ use crate::llm::assembly::{AssemblyError, LoginAccounts, ProviderAssembly};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoginTiming {
     /// From a device login's start to its end, whatever the vendor's code
-    /// allows (`providers.md` § Login and publication).
+    /// allows.
     pub device_lifetime: Duration,
     /// From the start to the end of a login that takes a pasted code
-    /// (`claude-code.md` § Accounts and sign-in).
+    /// (`crates/provider-claude-code/src/account.rs`).
     pub code_lifetime: Duration,
     pub retention: Duration,
 }
@@ -308,8 +308,7 @@ impl LoginFlows {
                 needs_code: false,
                 codes_taken: 0,
                 code_error: None,
-                // Until the login knows its kind, and so its lifetime
-                // (`providers.md` § Login and publication).
+                // Until the login knows its kind, and so its lifetime.
                 expires_at: None,
             },
             codes,

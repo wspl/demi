@@ -1,5 +1,6 @@
-//! The agent's `demi providers` (`models.md` § Managing providers from a
-//! conversation): reads need no permission and the first change asks for
+//! The agent's `demi providers`
+//! (`crates/backend-user-shard/src/shard/provider_commands.rs`): reads need no
+//! permission and the first change asks for
 //! Manage Providers; then the agent adds an entry from the vendor list,
 //! searches models.dev and adds a model filled from a match, which starts
 //! the entry's own list from its vendor's models, and saves a

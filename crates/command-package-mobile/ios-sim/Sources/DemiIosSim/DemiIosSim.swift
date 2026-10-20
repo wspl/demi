@@ -1,4 +1,5 @@
-// The iOS helper of `demi mobile` (`mobile.md` § iOS). One-shot commands
+// The iOS helper of `demi mobile`
+// (`crates/command-package-mobile/src/ios/mod.rs`). One-shot commands
 // list, boot and shut down the Mac's simulators and print JSON; `serve`
 // drives the simulators a conversation opened, speaking demi-mobile's
 // framing over standard input and output.

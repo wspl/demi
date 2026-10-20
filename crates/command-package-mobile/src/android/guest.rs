@@ -1,4 +1,5 @@
-//! What Demi does inside an emulator over adb (`mobile.md` § Android): the
+//! What Demi does inside an emulator over adb
+//! (`crates/command-package-mobile/src/android/mod.rs`): the
 //! UI tree with its display rotation, a field's text and the clipboard
 //! through openatx's `u2.jar`, which `demi-mobile` carries and runs with
 //! `app_process` as a shell process, not an installed app; appearance and
@@ -59,7 +60,7 @@ const HELD: &str = "already registered";
 const OURS: &str = "CLASSPATH=/data/local/tmp/demi-u2-";
 
 /// Why a command that needs the helper fails while another client, such as
-/// Appium, holds the UI automation connection (`mobile.md` § Android).
+/// Appium, holds the UI automation connection (`crates/command-package-mobile/src/android/mod.rs`).
 pub const TAKEN: &str = "another UI automation client, such as Appium, holds this emulator's UI automation; \
                          Demi takes it back once that client lets it go";
 

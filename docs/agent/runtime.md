@@ -72,7 +72,7 @@ reaches the next spawn (`crates/agent-server/src/server/tree/profiles.rs`).
 | The command set | The commands every node starts from; the runtime adds its own groups per node (`crates/agent-tools/src/lib.rs`) | The commands of the plugins the user has on, and the `demi host` and `demi attachment` groups ([Plugins](../architecture/plugins.md#commands)) |
 | Instructions | The identity that opens the system prompt ([System prompt](system-prompt.md)) | The product's instructions; a plugin adds only its command groups' index entries ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
 | Subagent settings | Whether subagents are on, their limits (`crates/agent-server/src/server/tree/profiles.rs`), and the named subagent profiles (`crates/agent-server/src/server/tree/profiles.rs`) with whether each is enabled, as data, asked at each spawn and each `demi agent profiles` | The user's current settings, which the user edits in the Subagents section of settings |
-| Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's (`crates/agent-server/src/node/mod.rs`) | The backend's provider assembly ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)) |
+| Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's (`crates/agent-server/src/node/mod.rs`) | The backend's provider assembly (`crates/backend-user-shard/src/conversation/providers.rs`) |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](transcript.md#context)) | The conversation's execution context, then each plugin that is a context source, while the user has it on |
 
@@ -81,7 +81,7 @@ profile's, which replace them), the harness guide, the runtime's rules for
 its tool, the capability index of the node's commands and the model
 identity, in that order ([System prompt](system-prompt.md)). It is rendered once, when the node is
 assembled, and holds no time, id, Host or state
-([Prompt cache](../providers/providers.md#prompt-cache)).
+(`crates/provider-common/src/contract.rs`).
 
 ### Actions
 
@@ -475,7 +475,7 @@ that replays it, and a short number is copied without a slip.
 | An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned (`crates/agent-server/src/server/commands.rs`) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered (`crates/command-package-browser-chrome/src/tabs/registry.rs`) |
-| A simulator `demi mobile` opened | `m2` | The conversation, across its Hosts | The backend, when the device is opened ([Commands](../mobile/mobile.md#commands)) |
+| A simulator `demi mobile` opened | `m2` | The conversation, across its Hosts | The backend, when the device is opened (`crates/command-package-mobile/src/operations.rs`) |
 | An attachment, the user's or the agent's | `a3` | The conversation | The backend, when a send or `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
 | An element reference | `e37` | Its tab, or its device | The conversation browser, as it observes the tab, or `demi mobile inspect` |
 | A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
@@ -667,7 +667,7 @@ where a tool runs; no test calls a real model.
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
 | A tool's medium cannot be stored | Its result holds the medium as gone, not stored, with the store's error; the model receives `[<kind> not stored: <reason>]`, and the turn goes on |
 | A replayed medium's blob is missing | The model receives `[missing <kind>]` in its place, in every request of the live tree, and the turn goes on |
-| One scripted conversation with tools, images, thinking, a steer, a subagent's result and a command report, for each provider, Codex over each of its transports | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of [The rule](../providers/providers.md#the-rule) changes only what that rule names; Codex's WebSocket message is its server-sent events body, byte for byte, after the message's type |
+| One scripted conversation with tools, images, thinking, a steer, a subagent's result and a command report, for each provider, Codex over each of its transports | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of The rule (`crates/provider-common/src/contract.rs`) changes only what that rule names; Codex's WebSocket message is its server-sent events body, byte for byte, after the message's type |
 | A switch to a model that does not accept video | Every request to it carries the history's videos as the same text |
 | A video whose base64 is over half of a model's request body limit | A tool result does not attach it, and replay sends one already in the history as the same text in every request to that model |
 | An image over 2,000 px enters from a tool result and from an upload | It enters fitted, every later request carries the same bytes, and the original stays on the Host |

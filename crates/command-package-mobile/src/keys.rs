@@ -2,8 +2,9 @@
 //! Keyboard/Keypad Page), which a simulator takes: the viewer's keys by
 //! their `KeyboardEvent.code`, and the characters `type` types on a US
 //! layout, with Shift where the character needs it. Text a US keyboard
-//! cannot type goes in as the device's platform allows (`mobile.md`
-//! § Commands), the agent's and the viewer's alike.
+//! cannot type goes in as the device's platform allows
+//! (`crates/command-package-mobile/src/operations.rs`), the agent's and the
+//! viewer's alike.
 
 use std::sync::Arc;
 
@@ -142,8 +143,8 @@ pub fn runs(text: &str) -> Vec<Run> {
 }
 
 /// Enters `text` at the cursor of `device`: typed where a US keyboard has
-/// the keys, the rest as the device's platform allows (`mobile.md`
-/// § Commands).
+/// the keys, the rest as the device's platform allows
+/// (`crates/command-package-mobile/src/operations.rs`).
 pub async fn enter(device: &Arc<dyn Device>, text: &str) -> Result<()> {
     for run in runs(text) {
         match run {

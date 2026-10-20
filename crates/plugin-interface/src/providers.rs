@@ -338,7 +338,7 @@ pub struct MadeImage {
     pub vendor: String,
     /// The account's label, such as its email, for a user who manages the
     /// entry; none for a user of a shared instance's entries, whose
-    /// account is the administrator's (`providers.md` § Scope).
+    /// account is the administrator's (`crates/backend-providers/src/vault/entries.rs`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
     /// Whether the vendor confirms `model` made the image; otherwise it is

@@ -1,5 +1,5 @@
 //! The pieces every OAuth device login and token refresh meets
-//! (`providers.md` § Login and publication, § Reading vendor input): the
+//! (`crates/backend-providers/src/vault/logins.rs`, `crates/provider-common/src/wire/mod.rs`): the
 //! durations servers state as numbers or as digits, a response decoded
 //! without quoting its tokens, and the claims read from a token. The flows
 //! themselves are each vendor's, written by hand on these: the `oauth2`

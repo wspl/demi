@@ -116,8 +116,8 @@ test('a compaction keeps the recovery of the turn before it and offers none of i
 
 // Continue with reads the unfinished turn's record as Resume does: a
 // child's report or a compaction written behind the usage limit keeps it,
-// and another end or a running turn offers none (`providers.md` § Account
-// rotation). Microseconds.
+// and another end or a running turn offers none
+// (`crates/backend-providers/src/llm/rotation.rs`). Microseconds.
 test('a usage limit offers to continue with another account while late input follows it', () => {
   const model = { providerId: 'claude' }
   const failures = { e1: { continueWith: { credentialId: 'a2', label: 'sam@example.com' } } }

@@ -1,6 +1,6 @@
 // The simulator's UI automation mode, which the guest bridge turns on: what
 // it was before the bridge's first use, and putting it back when the device
-// is let go (`mobile.md` § iOS).
+// is let go (`crates/command-package-mobile/src/ios/mod.rs`).
 //
 // idb's preference read answers an empty value both for a key the guest
 // does not have and for a read that failed, and idb cannot delete a key, so

@@ -127,7 +127,7 @@ Each entry that makes audio has **Audio Generation** on its page, below
 Videos, with its audio models newest first where the vendor dates them,
 in the vendor's order otherwise, as ElevenLabs' are, and their kinds; a compatible
 entry chooses its audio shape there, OpenAI Speech or None, and adds its
-audio models with Add Audio Model ([Providers](../providers/providers.md)).
+audio models with Add Audio Model (`packages/web-ui/src/settings/SettingsProvidersPage.vue`).
 
 ## Accounts and failures
 

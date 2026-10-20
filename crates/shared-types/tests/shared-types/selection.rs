@@ -1,5 +1,5 @@
 //! The one conversion of a catalog model into the selection a conversation
-//! infers with (`models.md` § Request parameters): the model's facts, the
+//! infers with (`crates/shared-types/src/model.rs`): the model's facts, the
 //! types it reads natively and the thinking choices it offers.
 
 use demi_shared_types::{

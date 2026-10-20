@@ -1,4 +1,4 @@
-//! The Claude Code catalog (`models.md` § Directories): the `anthropic`
+//! The Claude Code catalog (`crates/backend-providers/src/llm/catalog.rs`): the `anthropic`
 //! vendor of the models.dev document, its Claude models of version 4.6 or
 //! later, flagship family first and newest first within a family.
 

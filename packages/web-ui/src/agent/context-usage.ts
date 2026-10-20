@@ -172,7 +172,7 @@ export function contextCardParts(usage: ContextUsage | null, limits: UsageLimits
  * The usage limits the context card shows under its rows: the label Settings
  * shows for the account the conversation's model runs on (empty when it has
  * none) and that account's windows
- * (`usage-and-quota.md` § What a snapshot says), and whether a visible card
+ * (`packages/web-ui/src/ui/dates.ts`), and whether a visible card
  * asks the vendor for them again, as Settings does.
  */
 export interface UsageLimits {

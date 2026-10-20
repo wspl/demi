@@ -1,5 +1,5 @@
 //! Cancelling a run: it stops at once, drops its connection and ends without
-//! a further event (`providers.md` § A run).
+//! a further event (`crates/provider-common/src/contract.rs`).
 
 use demi_provider_common::VendorPolicy;
 use demi_provider_common::{

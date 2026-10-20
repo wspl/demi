@@ -1,5 +1,6 @@
-//! What every OAuth login and refresh reads (`providers.md` § Reading vendor
-//! input), and the ids Demi derives for the OpenAI-shaped formats.
+//! What every OAuth login and refresh reads
+//! (`crates/provider-common/src/wire/mod.rs`), and the ids Demi derives for the
+//! OpenAI-shaped formats.
 
 use std::time::Duration;
 

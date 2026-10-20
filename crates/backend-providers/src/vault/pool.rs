@@ -1,5 +1,6 @@
-//! The vault's credential pool (`providers.md` § The credential pool
-//! contract): one entry's accounts as records of the control store, each
+//! The vault's credential pool
+//! (`crates/provider-common/src/credentials/pool.rs`): one entry's accounts as
+//! records of the control store, each
 //! secret sealed to its row and versioned by every write, with the vault's
 //! refresh turns. A pool is bound to its entry, so a provider given it cannot
 //! reach another entry's accounts.

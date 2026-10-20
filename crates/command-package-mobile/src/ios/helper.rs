@@ -1,4 +1,4 @@
-//! The iOS helper's protocol (`mobile.md` § iOS): `demi-ios-sim serve`
+//! The iOS helper's protocol (`crates/command-package-mobile/src/ios/mod.rs`): `demi-ios-sim serve`
 //! speaks over its standard input and output in the live view's framing, a
 //! four-byte big-endian length, a kind and the payload. Requests and their
 //! replies are JSON, as are the events the helper sends unasked; a capture's

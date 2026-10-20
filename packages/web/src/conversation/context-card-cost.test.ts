@@ -2,7 +2,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 // The context card (`compaction.md` § What fills the context) and its Cost
-// section (`usage-and-quota.md` § A conversation's cost): the cost opens and
+// section (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the cost opens and
 // closes by its own caption whether or not the context's part is there,
 // while it compacts the header still opens the list, one part stands open at
 // a time and the browser keeps which, and the cache chart draws the main
@@ -193,8 +193,9 @@ test('the cache chart draws the last 50 calls from the fourth, and the rate coun
   expect([giant.labels[0], giant.labels.at(-1)]).toEqual(['#71', '120'])
 })
 
-// The numbers under the chart (`usage-and-quota.md` § A conversation's
-// cost): the first and last drawn calls always, and a round number between
+// The numbers under the chart
+// (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the first and last
+// drawn calls always, and a round number between
 // only where it fits beside them. Production: at call 1208 the window
 // starts at #1159, and #1159 and 1160 both stood at the left edge, one over
 // the other.

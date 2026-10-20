@@ -1,4 +1,5 @@
-//! One capture of the live view for an emulator (`mobile.md` § Android):
+//! One capture of the live view for an emulator
+//! (`crates/command-package-mobile/src/android/mod.rs`):
 //! the emulator's pictures at the size the view asked for, which the
 //! emulator scales and turns upright, encoded with OpenH264 as H.264,
 //! Annex B, in real time. The emulator sends a picture only when its screen

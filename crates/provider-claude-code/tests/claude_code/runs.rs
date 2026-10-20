@@ -1,5 +1,6 @@
-//! How a run starts, keeps and ends its CLI process (`claude-code.md` §
-//! Requests over stream-json, § Process lifetime).
+//! How a run starts, keeps and ends its CLI process
+//! (`crates/provider-claude-code/src/run.rs`,
+//! `crates/provider-claude-code/src/live.rs`).
 
 use std::collections::BTreeMap;
 
@@ -126,8 +127,7 @@ async fn a_turn_whose_stream_reports_no_calls_usage_gives_a_response_without_usa
 
 /// The CLI shows the model's thinking as the vendor's summary whenever
 /// thinking is on, whatever the selection's summary says; with thinking
-/// turned off it is asked for no display (`claude-code.md` § Requests over
-/// stream-json).
+/// turned off it is asked for no display (`crates/provider-claude-code/src/run.rs`).
 // Six runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn the_cli_streams_summarized_thinking_whenever_thinking_is_on() {

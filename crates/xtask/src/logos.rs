@@ -1,4 +1,4 @@
-//! `xtask logos` (`providers.md` § Vendors from models.dev): refreshes the
+//! `xtask logos` (`crates/backend-providers/src/llm/vendors.rs`): refreshes the
 //! marks of the vendors the backend offers from models.dev into the web
 //! app's logos directory.
 //!

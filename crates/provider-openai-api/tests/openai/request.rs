@@ -1,5 +1,6 @@
-//! The requests a run sends over each wire (`models.md` § Request
-//! parameters, `providers.md` § Endpoints, § Vendors from models.dev).
+//! The requests a run sends over each wire (`crates/shared-types/src/model.rs`,
+//! `crates/provider-common/src/endpoint.rs`,
+//! `crates/backend-providers/src/llm/vendors.rs`).
 
 use std::{num::NonZeroU32, sync::Arc};
 

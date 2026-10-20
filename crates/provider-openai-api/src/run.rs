@@ -1,5 +1,5 @@
 //! One run: the request, then the endpoint's event stream mapped onto
-//! provider events by the shared mapper of its wire (`providers.md` § A run).
+//! provider events by the shared mapper of its wire (`crates/provider-common/src/contract.rs`).
 
 use std::sync::Arc;
 

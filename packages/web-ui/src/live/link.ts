@@ -1,5 +1,6 @@
 /**
- * A live view's stream on the page, whatever its source (`mobile.md` § The live view): it opens the plugin's user
+ * A live view's stream on the page, whatever its source
+ * (`packages/plugin-mobile/src/index.ts`): it opens the plugin's user
  * stream, reads its frames, watches its silence and its stalls, joins the
  * pictures' chunks and acknowledges each with when it arrived, hands the frames of the generation the view shows to a
  * decoder in sequence, asks for a key frame after one it could not decode,

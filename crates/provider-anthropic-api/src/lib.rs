@@ -35,7 +35,7 @@ pub struct AnthropicConfig {
 }
 
 impl AnthropicConfig {
-    /// The base URL of an entry that names none (`providers.md` § Endpoints).
+    /// The base URL of an entry that names none (`crates/provider-common/src/endpoint.rs`).
     pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 }
 
@@ -129,8 +129,8 @@ impl ProviderRuntime for AnthropicRuntime {
     }
 
     fn request_limits(&self, model: &Model) -> RequestLimits {
-        // Images and documents inside `tool_result.content` (`providers.md`
-        // § Media in tool results).
+        // Images and documents inside `tool_result.content`
+        // (`crates/provider-common/src/contract.rs`).
         RequestLimits {
             tool_results: ToolResultKinds::IMAGES_AND_DOCUMENTS,
             ..RequestLimits::anthropic_messages(model)

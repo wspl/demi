@@ -1,5 +1,4 @@
-//! A Grok Build account's sign-in (`providers.md` § Subscription secrets, §
-//! Token refresh): its secret document, what its tokens say about the user,
+//! A Grok Build account's sign-in: its secret document, what its tokens say about the user,
 //! and the OIDC refresh of its tokens by the one protocol every family
 //! follows.
 

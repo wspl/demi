@@ -9,7 +9,7 @@ afterEach(() => {
 })
 
 // When a usage window resets, as Settings and the context card both say it
-// (`usage-and-quota.md` § What a snapshot says), against a fixed clock in the
+// (`packages/web-ui/src/ui/dates.ts`), against a fixed clock in the
 // local time zone: Sunday, October 11, 2026, 12:22 PM. Each row of the table,
 // and each side of every boundary between two rows.
 const now = new Date(2026, 9, 11, 12, 22)

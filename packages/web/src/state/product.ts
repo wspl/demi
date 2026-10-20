@@ -240,7 +240,7 @@ function answerOf(answer: Answer): SlotAnswer<ProductState> & { value: (read: Pr
 
 /**
  * The preferences the small model's Automatic is resolved with besides the
- * catalog (`models.md` § Small model): the entries and models the user hid,
+ * catalog (`crates/backend-providers/src/llm/small_model.rs`): the entries and models the user hid,
  * and whether small requests stay on the conversation's provider.
  */
 function smallModelInputs(preferences: Preferences | undefined): string {
@@ -337,7 +337,8 @@ export const useProduct = defineStore('product', () => {
     ? modelSnapshot.value.providers : [])
   /**
    * The selection the small model's Automatic resolves to, which Settings ›
-   * Agent shows beside it (`models.md` § Small model); null when the backend
+   * Agent shows beside it (`crates/backend-providers/src/llm/small_model.rs`);
+   * null when the backend
    * resolves none for the page, or before the catalog is read.
    */
   const automaticSmallModel = computed(() => modelSnapshot.value?.key === catalogKey.value
@@ -537,9 +538,9 @@ export const useProduct = defineStore('product', () => {
 
   /**
    * The channel brought the providers part: the catalog is loaded again,
-   * whatever changed, an API key no view shows included (`models.md`
-   * § Catalog cache). A load on its way may predate the change, so it gives
-   * way; the catalog shown stays until the new one arrives.
+   * whatever changed, an API key no view shows included. A load on its way may
+   * predate the change, so it gives way; the catalog shown stays until the new
+   * one arrives.
    */
   function providersChanged(): void {
     modelRequest?.controller.abort()
@@ -744,8 +745,7 @@ export const useProduct = defineStore('product', () => {
 
   /**
    * Loads the catalog again, asking the backend to refresh it, as the
-   * user's explicit refresh does (`models.md` § Catalog cache); the catalog
-   * records a failure itself.
+   * user's explicit refresh does; the catalog records a failure itself.
    */
   async function reloadModels(): Promise<void> {
     clearModels()

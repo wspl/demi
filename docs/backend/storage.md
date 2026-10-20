@@ -160,7 +160,7 @@ input, which the multi-worker control service also relies on
   the last explicit model settings for new conversations, where
   New Project last pointed, the locale the web app last reported, and the
   context limit the user set on each model
-  ([Context limit](../providers/models.md#context-limit)). A patch merges specified fields in one
+  (`crates/shared-types/src/context_limit.rs`). A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
 - **Subagents:** `user_subagents` stores the subagent settings of each user
   who changed them: user, whether subagents are on
@@ -200,7 +200,7 @@ input, which the multi-worker control service also relies on
   [origin](../product/conversations.md#conversation-titles), archive and pin state,
   ordering, read revision, target selection, target context revision, last
   switch, Cloud reset marker, the conversation's model selection as JSON
-  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+  (`crates/shared-types/src/catalog.rs`).
   The target is
   typed columns: its kind (the Cloud's own directory, a Host's home, or a
   workspace) and the device, path or workspace that kind names, checked per
@@ -282,14 +282,14 @@ input, which the multi-worker control service also relies on
   `model_catalogs` stores one validated cache record per provider entry, the
   catalog with its key and the time of its last check, removed with that
   entry. See
-  [Providers](../providers/providers.md#credential-vault) and
-  [Models](../providers/models.md#catalog-cache).
+  Providers (`crates/backend-providers/src/vault/entries.rs`) and
+  Models (`crates/backend-providers/src/llm/catalog_cache.rs`).
 - **Usage and attachments:** `usage_ledger` stores one row per vendor call:
   user, conversation, agent, turn, purpose, provider, account, model, request
   and vendor ids, token counts, outcome, observed quota and times; rows a
   release before it wrote keep null for the fields they lacked. When a row is written
   and what the ledger promises are defined in
-  [Usage and quota](../providers/usage-and-quota.md#usage-ledger).
+  Usage and quota (`crates/backend-database/src/usage.rs`).
   `attachments` stores owner, media type, byte length, content hash, a text
   file's snippet, and creation time. Neither table contains the attachment
   bytes.
@@ -721,7 +721,7 @@ same digest. Two digests are stored, both in hexadecimal:
   request, by which a retried edit is recognized
   ([Message editing](../agent/message-editing.md)).
 - A model catalog record's key is the digest of its entry's configuration and
-  active account ([Models](../providers/models.md#catalog-cache)).
+  active account (`crates/backend-providers/src/llm/catalog_cache.rs`).
 
 A blob's name is the SHA-256 of its bytes in lowercase hexadecimal.
 
@@ -758,7 +758,7 @@ A sealed value is AES-256-GCM ciphertext stored as one BLOB: a random 12-byte
 nonce, the ciphertext, and the 16-byte tag. The plaintext is a typed JSON
 document: an API-key entry's configuration, or a subscription account's
 secret document, which is one strictly typed document per family
-([Subscription secrets](../providers/providers.md#subscription-secrets)). The
+(`crates/provider-common/src/credentials/refresh.rs`). The
 additional authenticated data names the row the value belongs to: the entry
 for a configuration, the entry and the account for a secret, the plugin, the
 user and the name for a plugin's secret. A sealed value

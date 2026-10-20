@@ -22,7 +22,7 @@ Creation defaults:
 - Open the destination after creation. It starts idle with an empty composer
   and does not call a model until the user sends a message.
 - Inherit the source's model settings, the selection its record holds
-  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
+  (`crates/shared-types/src/catalog.rs`),
   its workflow, and its workspace or device selection.
 - Keep the source's unsent composer draft in the source.
 - Keep the source's [permission](permissions.md#grants) grants and requests

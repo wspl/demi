@@ -204,8 +204,9 @@ export function refusedForSize(blocks: readonly RecordCandidate[]): boolean {
 
 /**
  * The account a usage limit that ended the unfinished turn offers to go on
- * with, beside Resume, on an entry without rotation (`providers.md`
- * § Account rotation): the one its failure's facts name. It reads the
+ * with, beside Resume, on an entry without rotation
+ * (`crates/backend-providers/src/llm/rotation.rs`): the one its failure's facts
+ * name. It reads the
  * turn's record as Resume does, so input written behind the failure, such
  * as a child's report, keeps it. Null while running, and for any other end.
  */
@@ -227,8 +228,9 @@ export function continueWithOffer(
 
 /**
  * Whether the unfinished turn ended because the vendor signed its account
- * out, which the dock answers with Open Providers (`claude-code.md`
- * § Accounts and sign-in): its failure's facts name the account while it is
+ * out, which the dock answers with Open Providers
+ * (`crates/provider-claude-code/src/account.rs`): its failure's facts name the
+ * account while it is
  * still signed out. False while running, and for any other end.
  */
 export function signedOutOffer(

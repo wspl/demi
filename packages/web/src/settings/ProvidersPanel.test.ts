@@ -4,7 +4,7 @@ import { productState } from '../__tests__/product-state'
 
 // A second tab that shows Providers while the first tab's sign-in runs, and
 // then leaves the page, leaves that sign-in as it was: only Cancel ends a
-// sign-in (`providers.md` § Login and publication). The tab is the product's
+// sign-in (`crates/backend-providers/src/vault/logins.rs`). The tab is the product's
 // Providers page on a page of happy-dom; the backend is a played channel and
 // a stubbed fetch. A few milliseconds.
 

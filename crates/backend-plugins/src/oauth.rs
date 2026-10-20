@@ -5,7 +5,7 @@
 //! kept with the user for 10 minutes, exchanges the code the callback
 //! brings, keeps the tokens sealed as the plugin's secret under a name no
 //! plugin can read, renews them by the provider credentials' protocol
-//! (`providers.md` § Token refresh) and revokes them (RFC 7009) at sign
+//! (`crates/provider-common/src/credentials/refresh.rs`) and revokes them (RFC 7009) at sign
 //! out. Every call to the vendor is an outbound request of the plugin
 //! (`plugins.md` § Outbound requests); the endpoints are read from the
 //! server's metadata (RFC 8414). A plugin sees only the access token.
@@ -474,7 +474,7 @@ impl Shared {
         // From here the renewal is the shard's: it holds the turn and stores
         // the vendor's answer whether or not this call still waits, since
         // the vendor may spend the refresh token the moment it answers
-        // (`providers.md` § Token refresh).
+        // (`crates/provider-common/src/credentials/refresh.rs`).
         let (answer, answered) = tokio::sync::oneshot::channel();
         let shared = self.clone();
         self.product.spawn(Box::pin(async move {

@@ -5,7 +5,8 @@ import MenuItem from '../ui/MenuItem.vue'
 /**
  * The windows a Context choice offers, one choice row each: the model
  * menu's Context row for the user's limit, and a subagent profile's own
- * Context (`models.md` § Context limit, `crates/agent-server/src/server/tree/profiles.rs`).
+ * Context (`packages/web-ui/src/agent/context-limit.ts`,
+ * `crates/agent-server/src/server/tree/profiles.rs`).
  */
 defineProps<{
   options: { label: string; selected: boolean }[]

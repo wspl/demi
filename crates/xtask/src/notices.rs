@@ -72,13 +72,14 @@ struct Library {
 }
 
 /// idb's libraries and guest bridge, in demi-mobile's iOS helper
-/// (`mobile.md` § iOS); openatx's UI automation server, demi-mobile's
+/// (`crates/command-package-mobile/build.rs`); openatx's UI automation server, demi-mobile's
 /// Android helper, and Cisco's OpenH264 binary, which demi-mobile downloads
 /// for the Android view and whose binary license asks the product to credit
-/// it (`mobile.md` § Android); the vendors' marks the web app shows,
-/// models.dev's and Simple Icons' (`providers.md` § Vendors from models.dev);
-/// and the Android robot, an Android emulator's logo (`mobile.md` § The live
-/// view), whose license asks for its attribution.
+/// it (`crates/command-package-mobile/build.rs`); the vendors' marks the web app shows,
+/// models.dev's and Simple Icons' (`crates/backend-providers/src/llm/vendors.rs`);
+/// and the Android robot, an Android emulator's logo
+/// (`packages/plugin-mobile/src/index.ts`), whose license asks for its
+/// attribution.
 const LIBRARIES: [Library; 6] = [
     Library {
         name: "idb",

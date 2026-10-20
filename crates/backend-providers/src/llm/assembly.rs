@@ -1,8 +1,17 @@
-//! Provider assembly (`providers.md` § Inference admission and runtime
-//! ownership): the provider of each entry and account, built through the
+//! Provider assembly
+//! (`crates/backend-user-shard/src/conversation/providers.rs`): the provider of
+//! each entry and account, built through the
 //! entry's family from a fresh read of the entry and reused only while the
 //! entry read is unchanged, so a lookup that completes after an edit cannot
 //! keep later requests on a stale configuration.
+//!
+//! A provider stands for one entry and one credential, an API-key entry's key
+//! or one subscription account. The entry's active account is only the default
+//! for inference; a connection test, a usage probe and a refresh name the
+//! account they mean. A provider never changes accounts, so a request's quota
+//! observations land on the account that made it, and a request that outlives a
+//! switch cannot credit the wrong account. Selecting another account builds a
+//! new provider; a running request finishes with its own.
 
 use demi_provider_common::media_catalog::MediaCatalog;
 use std::collections::HashMap;
@@ -31,8 +40,7 @@ use super::families::{
 };
 use super::vendors::{VendorCatalog, sort_by_name};
 
-/// The family of the vendors that make media and no text (`providers.md`
-/// § Media-only vendors).
+/// The family of the vendors that make media and no text (`crates/backend/src/families.rs`).
 pub const MEDIA_FAMILY: &str = "media";
 use crate::vault::entries::{EntryCredential, ProviderEntry, Vault};
 use crate::vault::quotas::AccountQuotas;
@@ -208,7 +216,7 @@ impl ProviderAssembly {
     /// The vendors an entry can be added from, by name: models.dev's, and
     /// the media catalog's vendors of media alone whose shapes the `media`
     /// family builds, each with the endpoint the catalog names
-    /// (`providers.md` § Media-only vendors); one whose shapes are not
+    /// (`crates/backend/src/families.rs`); one whose shapes are not
     /// built yet, such as Stability AI's, is not offered.
     pub async fn offered_vendors(&self) -> Result<Vec<Vendor>, ModelsDevError> {
         let mut vendors = self.vendors.vendors().await?;
@@ -256,7 +264,7 @@ impl ProviderAssembly {
 
     /// Whether `entry` makes text, as every family but `media` does: an
     /// entry of media alone has no text models and is never in the model
-    /// menu (`providers.md` § Media-only vendors).
+    /// menu (`crates/backend/src/families.rs`).
     pub fn makes_text(&self, entry: &ProviderEntry) -> bool {
         self.families.get(&entry.family).is_none_or(|family| family.makes_text())
     }
@@ -320,10 +328,10 @@ impl ProviderAssembly {
 
     /// The entry's accounts in the list's order with their snapshots, for
     /// a choice under its rotation, which passes over an account its vendor
-    /// signed out (`claude-code.md` § Accounts and sign-in); with `fresh`, a snapshot older than five
+    /// signed out (`crates/provider-claude-code/src/account.rs`); with `fresh`,
+    /// a snapshot older than five
     /// minutes, or none, is read again first by a free probe, and one that
-    /// fails leaves the snapshot as it was (`providers.md` § Account
-    /// rotation).
+    /// fails leaves the snapshot as it was (`crates/backend-providers/src/llm/rotation.rs`).
     pub async fn candidates(
         &self,
         entry: &ProviderEntry,
@@ -426,14 +434,14 @@ impl ProviderAssembly {
     }
 
     /// Whether `entry`'s provider runs a process on a Host, which then is the
-    /// Claude Code machine (`claude-code.md` § Where it runs).
+    /// Claude Code machine (`crates/provider-claude-code/src/placement.rs`).
     pub async fn runs_a_process(&self, entry: &ProviderEntry) -> Result<bool, AssemblyError> {
         Ok(self.provider_for(entry).await?.capabilities().process_host)
     }
 
     /// A session's runtime of `entry`'s provider for `account`, whose
     /// process `placement` starts, for a provider that runs one
-    /// (`claude-code.md` § How a runtime gets its process).
+    /// (`crates/provider-claude-code/src/placement.rs`).
     pub async fn process_runtime(
         &self,
         entry: &ProviderEntry,

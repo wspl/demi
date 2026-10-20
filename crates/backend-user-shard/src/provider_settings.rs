@@ -1,10 +1,22 @@
 //! The changes of the provider entries in a user's scope (`web-api-settings.md`
 //! § Model configuration and provider inspection), and the model search
-//! that fills a configured model (`models.md` § Adding a model from
-//! models.dev): one path, with its checks and its words, for the settings
-//! page and for `demi providers` (`models.md` § Managing providers from a
-//! conversation). An entry may be added with nothing but its kind; it is
+//! that fills a configured model
+//! (`crates/backend-providers/src/llm/vendors.rs`): one path, with its checks
+//! and its words, for the settings
+//! page and for `demi providers`
+//! (`crates/backend-user-shard/src/shard/provider_commands.rs`). An entry may
+//! be added with nothing but its kind; it is
 //! incomplete until it has what it needs.
+//!
+//! A vendor entry and a compatible one differ in who decides the models: a
+//! vendor's own API serves the vendor's catalog, so its entry lists them at
+//! once, while a compatible API serves whatever models it chooses under
+//! whatever names, so its entry starts empty and never borrows the protocol's
+//! vendor's catalog. An entry stays the kind it was added as. An entry that
+//! cannot infer yet is incomplete and shows what it lacks plainly, never as a
+//! failure, since nothing failed; nothing is checked against the vendor while
+//! the user types. A model added with a taken id takes the first free `-2`,
+//! `-3` suffix.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::providers::MediaSwitches;
@@ -341,8 +353,8 @@ impl Services {
             // A model added of a kind the entry does not make is no model of
             // it: only a compatible entry with a shape for the kind lists
             // one. One kept from before the shape was set to None stays,
-            // unused and hidden, and comes back with the shape
-            // (`providers.md` § Provider management), so a list that still
+            // unused and hidden, and comes back with the shape,
+            // so a list that still
             // carries it, as an edit of a text model sends, is taken.
             let shapes = MediaShapes {
                 image: config.image_shape.filter(|_| config.is_compatible()),
@@ -419,7 +431,7 @@ impl Services {
 
     /// Puts the entries of `user`'s scope in the order `ids` names them,
     /// each once: the order of Settings › Providers, which generated media
-    /// try entries in (`providers.md` § Provider management).
+    /// try entries in.
     pub async fn order_providers(&self, user: &UserDto, ids: Vec<ProviderId>) -> Result<(), ProviderRefusal> {
         self.may_configure(user)?;
         let owner = self.vault.owner_for(&user.id).await?;
@@ -537,7 +549,7 @@ fn distinct_models(models: Option<&ConfiguredModels>) -> Result<(), ProviderRefu
 }
 
 /// `name`, or the first of `name (2)`, `name (3)`, … that `taken` does not
-/// hold (`models.md` § A provider is in the list from the start).
+/// hold.
 fn free_label(name: String, taken: impl Fn(&str) -> bool) -> String {
     if !taken(&name) {
         return name;

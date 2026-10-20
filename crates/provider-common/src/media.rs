@@ -282,7 +282,7 @@ pub trait MediaMaker: Send + Sync {
     ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>>;
 
     /// Checks the key of an entry of media alone, as Test Connection does
-    /// (`providers.md` § Media-only vendors), and answers its models: by
+    /// (`crates/backend/src/families.rs`), and answers its models: by
     /// reading the vendor's list of them, unless the vendor lists none to
     /// the key, as ByteDance's do not, and checks it another way.
     fn check_key<'a>(
@@ -437,7 +437,7 @@ pub struct MediaCall<'a> {
     pub used_up: fn(ProviderFailure) -> ProviderFailure,
     pub clock: &'a dyn Clock,
     /// The account's quota, which each response's windows update, as a
-    /// turn's do (`usage-and-quota.md` § Vendor quota); none for a key.
+    /// turn's do (`crates/provider-common/src/quota.rs`); none for a key.
     pub quota: Option<&'a ProviderQuota>,
 }
 

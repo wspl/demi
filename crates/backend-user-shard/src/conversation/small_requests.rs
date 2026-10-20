@@ -1,5 +1,6 @@
-//! The small requests of a user's conversations (`models.md` § Small
-//! model): each runs on the user's small model, resolved for the
+//! The small requests of a user's conversations
+//! (`crates/backend-providers/src/llm/small_model.rs`): each runs on the user's
+//! small model, resolved for the
 //! conversation from the catalogs of the user's entries and the user's
 //! preferences when it starts, through the same metered runtime a turn uses,
 //! so it counts in the usage ledger under its purpose and obeys the same

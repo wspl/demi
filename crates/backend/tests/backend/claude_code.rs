@@ -1,5 +1,6 @@
 //! The real Claude Code CLI through the backend (`scenarios.md` § Real
-//! machine acceptance, `claude-code.md`): the Claude Code machine installs Demi's
+//! machine acceptance, `crates/provider-claude-code/src/lib.rs`): the Claude
+//! Code machine installs Demi's
 //! copy of the CLI from a local distribution and verifies it, and a
 //! conversation infers through it as in the product. The CLI declares Demi's
 //! SDK MCP server and offers the model its tools, streams reasoning and
@@ -87,7 +88,7 @@ const SHELL: &str = "mcp__main__shell";
 /// The variables that keep the CLI to the scripted vendor, besides its
 /// address: the Cloud's own `PATH`, and the CLI's non-essential traffic,
 /// telemetry and error reporting off. Its updater is the product's to turn
-/// off (`claude-code.md` § Starting).
+/// off (`crates/provider-claude-code/src/cli.rs`).
 const QUIET: [(&str, &str); 4] = [
     (
         "PATH",
@@ -614,7 +615,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // Each call to the vendor ends with a response carrying its own usage,
     // the context that call read: the batch's call when the batch comes
     // out, the answer's at the result, never the sum the CLI's result adds
-    // up (`claude-code.md` § Reading, `compaction.md` § When compaction
+    // up (`crates/provider-claude-code/src/output.rs`, `compaction.md` § When compaction
     // runs).
     let call_usage = |index: usize| {
         let Block::Response(response) = &blocks[index] else {
@@ -1037,7 +1038,7 @@ async fn a_call_of_a_tool_the_request_does_not_offer_is_answered_by_the_cli_and_
 
     // The model names a tool Demi does not offer: the CLI answers the call
     // with an error, the model corrects itself in the same process, and the
-    // turn ends as any other (`claude-code.md` § Tool-call batches).
+    // turn ends as any other (`crates/provider-claude-code/src/mcp.rs`).
     let unknown = "demi agent send parent";
     world.answers(message(
         vec![tool_use_block(0, "toolu_suite_unknown", unknown, &json!({}))],
@@ -1169,7 +1170,7 @@ async fn the_cli_reads_the_sign_in_handed_to_its_accounts_directory_and_runs_in_
 }
 
 /// What the install left is kept for the Cloud's runner connection
-/// (`claude-code.md` § Which version): with the Cloud's `demi.claude-code`
+/// (`crates/backend-providers/src/llm/claude_releases.rs`): with the Cloud's `demi.claude-code`
 /// service stopped, so that the package answers nothing, a conversation
 /// starts the installed CLI and its turn ends.
 // Several seconds: see the first scenario.
@@ -1290,7 +1291,7 @@ async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<Str
 /// The CLI prints back each user message it takes into a turn, before the
 /// `result` of that turn, when it runs with `--replay-user-messages`: a run
 /// counts on it to know which `result` answers the last message it wrote
-/// (`claude-code.md` § Which `result` ends a run). Two messages are written
+/// (`crates/provider-claude-code/src/run.rs`). Two messages are written
 /// at once, as a run writes two subagents' receipts; whether the CLI answers
 /// them in one turn or in two, no `result` comes before the first is
 /// printed back, and the last comes after both.
@@ -1314,8 +1315,9 @@ async fn the_cli_prints_back_each_user_message_it_takes_before_the_result_that_a
 /// A message that starts with `/`, which the CLI takes for a command it
 /// does not offer, is answered by the CLI itself: it prints an answer and a
 /// `result` with no model call and never prints the message back, which the
-/// provider counts on to end the run (`claude-code.md` § Which `result`
-/// ends a run). A path such as `/Users/…` is a message like any other.
+/// provider counts on to end the run
+/// (`crates/provider-claude-code/src/run.rs`). A path such as `/Users/…` is a
+/// message like any other.
 // Two processes of the supplied CLI and one answer of the scripted vendor:
 // a few seconds.
 #[tokio::test]

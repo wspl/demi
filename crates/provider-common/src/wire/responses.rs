@@ -370,8 +370,10 @@ where
         })
 }
 
-/// Maps a Responses stream onto a run's events (`providers.md` § A run,
-/// § Reading vendor input). The run ends with a response after the
+/// Maps a Responses stream onto a run's events
+/// (`crates/provider-common/src/contract.rs`,
+/// `crates/provider-common/src/wire/mod.rs`). The run ends with a response
+/// after the
 /// completion event, and with a failure after a failed or incomplete
 /// response, an error, or a stream that ends without its completion event.
 /// `events` ends when `cancel` fires, and then the run ends without a
@@ -466,7 +468,7 @@ impl Mapper {
                     Some(ResponsesItem::FunctionCall(call)) => {
                         if let Some(id) = call.id {
                             // The call's start is for display; it is whole
-                            // when its item is done (`providers.md` § A run).
+                            // when its item is done (`crates/provider-common/src/contract.rs`).
                             if let (Some(call_id), Some(name)) = (&call.call_id, call.name) {
                                 let tool_use_id = tool_use_id(call_id, &id);
                                 self.writing.insert(id.clone(), tool_use_id.clone());

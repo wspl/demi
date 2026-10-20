@@ -1,5 +1,5 @@
-//! A CLI process a runtime keeps across the turns of a session
-//! (`claude-code.md` § Process lifetime): its input and output, its SDK MCP
+//! A CLI process a runtime keeps across the turns of a session:
+//! its input and output, its SDK MCP
 //! server, what it has received of the transcript, the tool calls it holds,
 //! and the blocks its session's entries belong to. Its standard error is
 //! drained all the time, keeping the last 64 KiB. A process is closed,
@@ -7,7 +7,7 @@
 //! seconds, then sends SIGKILL, removes the process's own directory and
 //! waits; dropping it closes it the same way, as a task nobody waits for,
 //! since a process killed while it renews the account's sign-in stops the
-//! account for a minute (`claude-code.md` § Process lifetime).
+//! account for a minute.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -195,7 +195,7 @@ pub(crate) struct LiveCli {
     sent: Sent,
     /// The user messages written to the process that it has not printed
     /// back yet: a `result` ends a run only once there are none
-    /// (`claude-code.md` § Which `result` ends a run).
+    /// (`crates/provider-claude-code/src/run.rs`).
     pub(crate) unreplayed: usize,
     /// Whether the CLI printed a message back or started a model call
     /// since its last `result`: a turn that did neither was one it answered
@@ -224,7 +224,7 @@ pub(crate) struct LiveCli {
     /// counts calls: a run's first call with the run, each later one when
     /// its first line is read. A `rate_limit_event` follows the
     /// `message_stop` of the call it reports on, so its windows carry this
-    /// time (`usage-and-quota.md` § Probe and observation).
+    /// time (`crates/provider-common/src/quota.rs`).
     call_requested_at: Timestamp,
     /// Whether the run's first call, which started with the run, is yet to
     /// show its first line.
@@ -235,8 +235,9 @@ impl LiveCli {
     /// Starts a new process for `request` through `placement`, in the
     /// account's directory, which the CLI reads its sign-in from; an
     /// account the vendor signed out starts none. The process resumes the
-    /// session written from the request's blocks (`claude-code.md` § The
-    /// session a process resumes). A sign-in an earlier release kept in the
+    /// session written from the request's blocks
+    /// (`crates/provider-claude-code/src/session.rs`). A sign-in an earlier
+    /// release kept in the
     /// account's record goes to the directory with the start, and the
     /// record's secret is cleared once the process started.
     pub(crate) async fn start(
@@ -545,7 +546,7 @@ impl LiveCli {
 
     /// Whether the process printed nothing that answers a request since the
     /// `result` that ended the last run, as a process in step with its
-    /// requests never does (`claude-code.md` § Which `result` ends a run).
+    /// requests never does (`crates/provider-claude-code/src/run.rs`).
     /// Its control requests are answered, since they are no turn's output,
     /// and the lines the decoder does not read, the CLI's status lines such
     /// as `command_lifecycle`, are read past, since they answer no message;
@@ -947,7 +948,7 @@ async fn close(parts: Parts) {
 /// Closes the process `control` drives, whose end is `exit`, SIGTERM first
 /// and SIGKILL five seconds later, and waits for its end: how anything that
 /// holds a CLI process closes it, a sign-in or the backend's relay of a
-/// process to another user's shard (`claude-code.md` § Process lifetime).
+/// process to another user's shard.
 pub async fn close_process(
     control: Box<dyn ProcessControl>,
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,

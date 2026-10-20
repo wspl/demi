@@ -1,4 +1,4 @@
-//! The quota of a Claude Code account (`usage-and-quota.md` § Claude Code):
+//! The quota of a Claude Code account:
 //! a probe that asks the CLI, in a process of the account's directory that
 //! sends no message, for its usage (`get_usage`), and the
 //! `rate_limit_event` lines the CLI prints when the vendor's rate-limit
@@ -30,7 +30,7 @@ use crate::output::{ControlResponseBody, Line};
 use crate::placement::{AccountMachine, AccountWork, CliWork, Placed, Placement};
 
 /// How long a probe waits for the CLI's answer, such as one held behind a
-/// lock a killed process left (`claude-code.md` § Accounts and sign-in).
+/// lock a killed process left (`crates/provider-claude-code/src/account.rs`).
 const PROBE_LIMIT: Duration = Duration::from_secs(30);
 
 /// The id of the probe's `get_usage` request.
@@ -143,7 +143,7 @@ struct UsageAnswer {
 /// `get_usage` request. It gives up when nobody waits for it any more
 /// (`abandoned`). Its process is held outside what gives up, and closed,
 /// SIGTERM first, however the probe ends: on its answer, its timeout or
-/// its abandonment alike (`claude-code.md` § Process lifetime).
+/// its abandonment alike (`crates/provider-claude-code/src/live.rs`).
 async fn ask_usage(
     placement: &dyn Placement,
     work: CliWork,
@@ -485,8 +485,7 @@ impl Usage {
 
 /// The period of a limit of the probe, by its kind, never by the vendor's
 /// identifier: a `weekly_*` kind has a week and a session kind five hours;
-/// another kind's period Demi cannot tell (`usage-and-quota.md` § Claude
-/// Code).
+/// another kind's period Demi cannot tell.
 fn limit_period(kind: &str) -> Option<u64> {
     if kind.starts_with("weekly") {
         Some(SEVEN_DAYS)

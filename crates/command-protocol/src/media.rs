@@ -10,7 +10,7 @@ pub const MAX_MEDIUM_BYTES: u64 = 16 * 1024 * 1024;
 
 /// The media type `bytes` begin with, from their magic numbers, or `None`
 /// for anything but the image, video and document types a model reads
-/// (`models.md` § Accepted attachment types). Fewer than 12 bytes are never
+/// (`crates/shared-types/src/model.rs`). Fewer than 12 bytes are never
 /// recognized. An ISO media file (`ftyp`) is QuickTime for the brand `qt  `,
 /// M4V for a brand starting `M4V`, and MP4 otherwise; an EBML header is
 /// WebM, the Matroska format a model reads; `%PDF-` begins a PDF.

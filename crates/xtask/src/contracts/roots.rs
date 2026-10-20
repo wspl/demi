@@ -67,7 +67,7 @@ pub fn protocol() -> Vec<Root> {
         receives::<core::PreviewType>(),
         receives::<core::ContextLimitStep>(),
         // The live view's own messages, which every source's protocol
-        // carries (`mobile.md` § The live view).
+        // carries (`packages/plugin-mobile/src/index.ts`).
         sends::<live::LiveHello>(),
         sends::<live::ViewerInput>(),
         sends::<live::LiveKeyframe>(),

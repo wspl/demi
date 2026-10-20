@@ -69,7 +69,7 @@ pub trait ProviderResolver {
 
     /// The window the token thresholds and the usage of a session that
     /// infers with `model` use: the model's context window, or the limit
-    /// the user set on it (`models.md` § Context limit); for a subagent
+    /// the user set on it (`crates/shared-types/src/context_limit.rs`); for a subagent
     /// whose profile chose a Context `own`, that one in place of the user's
     /// (`crates/agent-server/src/server/tree/profiles.rs`). Either applies while the window offers
     /// it, and the full window otherwise.
@@ -343,7 +343,7 @@ impl<H: HostResolver> AgentServer<H> {
     /// Readies ahead the next request of every conversation a page has open
     /// whose model is of the provider entry `provider_id`, or of every one
     /// with none, as when the entry's active account changed
-    /// (`claude-code.md` § Preparing a process ahead).
+    /// (`crates/provider-claude-code/src/prepared.rs`).
     pub fn prepare_open(&self, provider_id: Option<&str>) {
         let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
         for tree in trees {
@@ -391,7 +391,7 @@ impl<H: HostResolver> AgentServer<H> {
                 let refused = session.update_model(switch).err();
                 if refused.is_none() {
                     // The next request is known but for its input
-                    // (`claude-code.md` § Preparing a process ahead).
+                    // (`crates/provider-claude-code/src/prepared.rs`).
                     session.prepare_ahead(Ahead::Chosen);
                 }
                 refused

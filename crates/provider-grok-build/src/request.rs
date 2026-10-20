@@ -1,6 +1,6 @@
 //! What a Grok Build request sends: the Chat Completions body as the chat
 //! proxy takes it, and the headers the Grok CLI identifies itself and its
-//! session with (`models.md` § Request parameters).
+//! session with (`crates/shared-types/src/model.rs`).
 
 use demi_provider_common::{
     InferenceRequest, json_body,

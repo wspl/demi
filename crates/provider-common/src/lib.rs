@@ -11,6 +11,16 @@
 //! and [`audio`]; the models.dev document in [`models_dev`]; a value
 //! read from a vendor's service and kept for a while in [`kept`]; and, behind
 //! the `testing` feature, scripted runtimes and a scripted vendor for tests.
+//!
+//! A provider is shared by every user and request of one entry and account,
+//! and a runtime belongs to one session. The split follows who uses what:
+//! credentials, catalogs and quota serve every user of a shared instance and
+//! the backend's request handlers, so a provider is used from any thread; a
+//! run serves one turn and, for Claude Code, drives a process reached through
+//! the user's Host connection, so a runtime lives on the user's shard and never
+//! leaves it. A provider reads its key, endpoint and options only from the
+//! typed configuration it is built with, never from the environment of the
+//! process it runs in.
 
 pub mod audio;
 mod body;

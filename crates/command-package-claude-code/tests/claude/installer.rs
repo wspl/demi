@@ -1,4 +1,4 @@
-//! The package's rules (`claude-code.md` § The package): the executable it
+//! The package's rules (`crates/command-package-claude-code/src/lib.rs`): the executable it
 //! asks the runner for, from which release record, and why it refuses. The
 //! runner's artifacts stream is answered by a test source, as the runner
 //! would answer it.

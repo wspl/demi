@@ -1,10 +1,28 @@
-//! The SDK MCP channel (`claude-code.md` § The SDK MCP channel, § Tool-call
-//! batches): Demi's MCP server for one CLI process, an rmcp server in local
+//! The SDK MCP channel: Demi's MCP server for one CLI process, an rmcp server in local
 //! mode on the user's shard, reached through an in-memory transport. The run
 //! passes it each MCP message the CLI sends in a control request and writes
 //! its replies back. A `tools/call` waits for the agent's result, which a
 //! later run delivers; rmcp handles each request on its own task, so `ping`
 //! and `tools/list` are answered meanwhile.
+//!
+//! The server is built with rmcp, the official Rust MCP SDK, because the
+//! protocol's types, the `initialize` handshake and version negotiation are the
+//! library's job, and in its local mode because its state lives on the user's
+//! shard, one thread. Calls and results are matched by the original tool-use ID
+//! in `_meta` (`claudecode/toolUseId`).
+//!
+//! The CLI's SDK MCP channel exposes only the first `tools/call` of an
+//! assistant message with several `tool_use` blocks: a later call may stay
+//! blocked until the earlier has its result. Handled as each arrived, the agent
+//! would see one call per run and mistake the delayed calls for separate model
+//! turns. So the provider yields the whole batch, collected until
+//! `message_stop`, before answering any call, and keeps the process; the next
+//! run delivers the results, every call of the batch must have one, and each
+//! later `tools/call` is answered at once from its stored result. A `tool_use`
+//! that names a tool the request does not offer is no part of the batch: the
+//! CLI answers it itself with an error result and the model corrects itself
+//! within the turn, where failing the run would end it for a slip the model
+//! recovers from.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -298,7 +316,7 @@ impl ServerHandler for Server {
 /// A tool's result as MCP content: text, an image as base64 with its media
 /// type, and a video or a document as text naming its media type, since MCP
 /// has no video and the CLI saves a PDF resource to a file rather than give
-/// it to the model (`providers.md` § Media in tool results); a failed tool
+/// it to the model (`crates/provider-common/src/contract.rs`); a failed tool
 /// sets the error flag.
 pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResult {
     let content = output

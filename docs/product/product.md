@@ -8,7 +8,7 @@ changes where subsequent work runs without moving its history or copying files.
 Demi does not support MCP servers: a user cannot add one, and no conversation
 reaches one. Demi speaks MCP only inside its Claude Code provider, to serve
 its own tools to the CLI it drives
-([The SDK MCP channel](../providers/claude-code.md#the-sdk-mcp-channel)).
+(`crates/provider-claude-code/src/mcp.rs`).
 
 ## Where each part is
 
@@ -20,4 +20,4 @@ its own tools to the CLI it drives
 - [Writing a message](composer.md): the composer, input methods, attachments.
 - [Comments and side questions](comments-and-ask.md): commenting on a reply's words, waiting comments in the draft, sending them; side questions.
 - [Sharing](sharing.md), [Localization](localization.md) and [File previews](file-previews.md).
-- [Provider management](../providers/providers.md#provider-management) in Settings, and the [web app's scope](web-application.md#web-app-scope).
+- Provider management (`packages/web-ui/src/settings/SettingsProvidersPage.vue`) in Settings, and the [web app's scope](web-application.md#web-app-scope).

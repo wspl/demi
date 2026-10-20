@@ -1,4 +1,5 @@
-//! The adb server's own protocol (`mobile.md` § Android), which the `adb`
+//! The adb server's own protocol
+//! (`crates/command-package-mobile/src/android/mod.rs`), which the `adb`
 //! program speaks to it on its port: a request is its length in four hex
 //! digits and its text, answered `OKAY` or `FAIL` with a reason. A device's
 //! service, a shell command, a port inside it, or the file sync service,

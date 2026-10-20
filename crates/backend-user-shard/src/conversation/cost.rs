@@ -1,5 +1,6 @@
-//! A conversation's cost as its open pages follow it (`usage-and-quota.md`
-//! § Reading it): the control store announces each ledger row it writes,
+//! A conversation's cost as its open pages follow it
+//! (`crates/backend-database/src/usage.rs`): the control store announces each
+//! ledger row it writes,
 //! the backend hands the row to its user's shard, and the shard sends what
 //! the row adds to the cost as a `cost` frame to the conversation's
 //! attached connections. A conversation nobody shows is sent nothing.

@@ -41,7 +41,7 @@ tracing.workspace = true
 [dev-dependencies]
 demi-agent-session = { path = ".", features = ["testing"] }
 # Each provider's format of a session's requests (`requests.rs`, `generated.rs`,
-# `golden.rs`, `providers.md` § The rule).
+# `golden.rs`, `crates/provider-common/src/contract.rs`).
 demi-provider-anthropic-api = { path = "../provider-anthropic-api", features = ["testing"] }
 demi-provider-claude-code = { path = "../provider-claude-code", features = ["testing"] }
 demi-provider-codex = { path = "../provider-codex", features = ["testing"] }

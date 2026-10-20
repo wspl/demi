@@ -438,10 +438,11 @@ impl ControlService {
     /// Removes the account. When it was the entry's active account, the
     /// entry's first remaining account in the list's order becomes active in
     /// the same transaction, or none when it was the last
-    /// (`providers.md` § Login and publication). An entry left with fewer
+    /// (`crates/backend-providers/src/vault/logins.rs`). An entry left with fewer
     /// than two accounts has nothing to rotate, and its rotation goes back
-    /// to Manual in the same transaction (`providers.md` § Account
-    /// rotation). Answers the account active afterwards.
+    /// to Manual in the same transaction
+    /// (`crates/backend-providers/src/llm/rotation.rs`). Answers the account
+    /// active afterwards.
     pub async fn remove_credential(
         &self,
         provider: ProviderId,

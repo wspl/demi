@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { accountPlan } from './catalog'
 
 // The plan the context card's usage limits line and Settings name
-// (`usage-and-quota.md` § What a snapshot says): the snapshot's, else the
+// (`packages/web-ui/src/ui/dates.ts`): the snapshot's, else the
 // one a sign-in recorded, which only Claude Code's detail is.
 
 const snapshot = (plan: { id: string, label: string } | null) => ({

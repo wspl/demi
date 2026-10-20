@@ -1,5 +1,5 @@
 //! How long a run waited for its process and its first word
-//! (`claude-code.md` § Preparing a process ahead): the run's span carries
+//! (`crates/provider-claude-code/src/prepared.rs`): the run's span carries
 //! whether it took a kept, a prepared or a new process; for a new or
 //! prepared one, the steps of its start; and, counted from the request, when
 //! the process was ready for the request's input and when the first content

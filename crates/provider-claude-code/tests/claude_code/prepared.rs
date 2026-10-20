@@ -1,5 +1,6 @@
-//! Processes prepared ahead of their request (`claude-code.md` § Preparing
-//! a process ahead): the request that was known but for its input takes the
+//! Processes prepared ahead of their request
+//! (`crates/provider-claude-code/src/prepared.rs`): the request that was known
+//! but for its input takes the
 //! prepared process as a kept one; any other request closes it and starts
 //! its own; a prepared process goes after ten minutes unused, its machine
 //! holds two at most, and a preparation that fails or has no answered

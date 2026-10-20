@@ -1,5 +1,5 @@
 //! The simulators' page through the JSON loopback over an in-memory Demi
-//! (`mobile.md` § The live view): each panel control runs the operation of
+//! (`crates/plugin-mobile/src/lib.rs`): each panel control runs the operation of
 //! the `demi mobile` command that does the same, with the arguments that
 //! command sends.
 

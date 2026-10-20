@@ -1,6 +1,7 @@
-//! The account, its sign-in, its quota and the catalog (`claude-code.md` §
-//! Accounts and sign-in, `usage-and-quota.md` § Claude Code, `models.md` §
-//! Directories).
+//! The account, its sign-in, its quota and the catalog
+//! (`crates/provider-claude-code/src/account.rs`,
+//! `crates/provider-claude-code/src/quota.rs`,
+//! `crates/backend-providers/src/llm/catalog.rs`).
 
 use std::sync::Arc;
 
@@ -495,7 +496,7 @@ async fn a_probe_that_times_out_or_is_given_up_closes_its_process_sigterm_first(
 }
 
 /// A limit of the probe has its period and its model, never the vendor's
-/// kind, which the page names it from (`usage-and-quota.md` § Claude Code).
+/// kind, which the page names it from (`crates/provider-claude-code/src/quota.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_probed_limit_has_its_period_and_model() {
     let pool = MemoryCredentialPool::new();

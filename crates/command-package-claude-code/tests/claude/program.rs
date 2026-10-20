@@ -1,6 +1,7 @@
 #![cfg(unix)]
-//! The `demi-claude-code` program at its boundary (`claude-code.md` § The
-//! package): the command service it serves on its standard input and
+//! The `demi-claude-code` program at its boundary
+//! (`crates/command-package-claude-code/src/lib.rs`): the command service it
+//! serves on its standard input and
 //! output, as a runner starts it, answers each invocation with one document
 //! and says a failure in its completion too. Its artifacts stream is
 //! answered as a runner answers it.

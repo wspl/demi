@@ -32,7 +32,7 @@ This document owns when and how compaction runs, the token estimates, request
 sizes and text bounds it relies on, and the session copy that writes the
 summary. The turn that compaction runs in is described in
 [Agent runtime](runtime.md#a-turn); why a request must extend the previous one
-is in [Prompt cache](../providers/providers.md#prompt-cache).
+is in Prompt cache (`crates/provider-common/src/contract.rs`).
 
 ## Compaction
 
@@ -40,7 +40,7 @@ is in [Prompt cache](../providers/providers.md#prompt-cache).
 
 The token threshold leaves room at the end of the window Demi uses for the
 model, its context window or the limit the user set on it
-([Context limit](../providers/models.md#context-limit)), for what comes next:
+(`crates/shared-types/src/context_limit.rs`), for what comes next:
 the model's answer, at most its output limit or 20,000 tokens, whichever is
 smaller, and 13,000 tokens more for the summary request's instruction and a
 margin for the estimate. The threshold is never under half the window. A model
@@ -71,7 +71,7 @@ A call's usage is the size of what the model read for it. A provider whose
 run makes several calls, as Claude Code's does when the model calls tools,
 reports each call's usage when its tool calls come out, not only the last
 one's at the run's end, and never their sum
-([Claude Code](../providers/claude-code.md)): a Claude Code turn of 190 tool
+(`crates/provider-claude-code/src/lib.rs`): a Claude Code turn of 190 tool
 calls on a 300K window is compacted at the call that crossed 267,000, not
 at its end at 463,000. A reported input above the
 model's window cannot be one call's: the response triggers no compaction,
@@ -255,7 +255,7 @@ requests carry the session's id. It replays the whole history exactly as the
 session does, so its request is the session's next request, unchanged, with
 one user message after it, the summary instruction: the vendor reads all but
 the newest part from its cache, whenever the window ends
-([Prompt cache](../providers/providers.md#prompt-cache)). The summary covers
+(`crates/provider-common/src/contract.rs`). The summary covers
 the whole conversation; the work after the cut is kept as written too, so
 the next request carries some of it twice, in the summary and in full, which
 costs less than a request the cache misses. When the history ends
@@ -580,7 +580,7 @@ browser for the next time it opens, as a disclosure in Finder does.
 
 Under this part the card shows the conversation's cost and cache hit rate,
 whether or not the context part is there
-([A conversation's cost](../providers/usage-and-quota.md#a-conversations-cost)).
+(`crates/backend-database/src/usage.rs`).
 Each part that opens has its own `⌄` in its header, the context list's
 while a compaction runs too, and the card opens one part at a time: opening
 one closes the other, and the browser keeps which part was open for the
@@ -618,12 +618,12 @@ its only use.
 
 | Part | The copy has |
 | --- | --- |
-| Id | The session's, which its requests carry, so the vendor keeps them with the session's ([Prompt cache](../providers/providers.md#prompt-cache)) |
+| Id | The session's, which its requests carry, so the vendor keeps them with the session's (`crates/provider-common/src/contract.rs`) |
 | Transcript | A copy of the history the next request would carry, or of the window alone when that does not fit |
 | Held media | The bytes the session holds for that history's media ([Media](transcript.md#media)), so the summary request reads no blob |
 | Model selection, working directory, retry policy | The session's |
 | System prompt, tools, thinking | The session's |
-| Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call ([Providers](../providers/providers.md)) |
+| Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call (`crates/provider-common/src/lib.rs`) |
 | Compaction | Never; the copy does not compact itself |
 | Store | None; nothing of the copy is saved |
 | Admission | None of its own; it runs inside the session's action |

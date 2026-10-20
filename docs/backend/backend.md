@@ -36,7 +36,7 @@ Sending a message validates its frame and provider selection. Inference can
 use a backend HTTP provider. A shell tool reaches the conversation's Host
 through the conversation's host access, and a provider that needs a process
 runs that process on the user's Cloud
-([Claude Code](../providers/claude-code.md#where-it-runs)). The same
+(`crates/provider-claude-code/src/placement.rs`). The same
 conversation keeps its history if its target changes.
 
 Besides the web app, two kinds of client reach the backend: runners, over a
@@ -57,7 +57,7 @@ over the manager's Unix socket.
 | `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | `crates/runner/src/main.rs`, [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `crates/backend-user-shard/src/lifecycle/mod.rs` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock and the conversation release (`backend-user-shard`) | `crates/backend-user-shard/src/lifecycle/mod.rs` |
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
-| `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
+| `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | Providers (`crates/backend-providers/src/lib.rs`), Models (`crates/shared-types/src/catalog.rs`), Usage and quota (`crates/backend-providers/src/usage/mod.rs`) |
 | `storage` | `backend-database`, `backend-blobs` | The control service, conversation databases and the tree store with its records of commands' outputs and attachments (`backend-database`); the object store (`backend-blobs`) | [Storage](storage.md) |
 
 These are modules of one backend executable, not independently deployed
@@ -408,7 +408,7 @@ How the web app consumes both, with its adapters, its synchronization and
 its session handling, is defined in
 [Web application](../product/web-application.md).
 Model discovery has its own account-wide cache and loading state, so it does
-not block readable history ([Models](../providers/models.md#catalog-cache)).
+not block readable history (`crates/backend-providers/src/llm/catalog_cache.rs`).
 
 ## Media by reference
 
@@ -722,9 +722,9 @@ the same flag.
 | `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | [Product](../product/users.md#instance-mode-shared-vs-isolated) |
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
-| `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
+| `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | Claude Code (`crates/backend-providers/src/llm/claude_releases.rs`) |
 | `DEMI_STUN_URLS` | The STUN servers pages and runners ask for their public address so a [direct channel](../execution/direct-channel.md) can cross networks, comma-separated `stun:` URLs. Default `stun:stun.cloudflare.com:3478`; empty keeps direct channels to one network. | [Direct channel](../execution/direct-channel.md#making-the-channel) |
-| `DEMI_LOG` | What the backend writes to its standard error and its [server log](#request-ids-and-the-server-log), in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
+| `DEMI_LOG` | What the backend writes to its standard error and its [server log](#request-ids-and-the-server-log), in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | Claude Code (`crates/provider-claude-code/src/live.rs`) |
 
 For example, a server whose backend sits behind Caddy on the same machine
 needs only the two settings without a default and the listening address:
@@ -913,7 +913,7 @@ thinking efforts, comma-separated, as the endpoint names them; without it the
 model has none and the page offers no effort.
 `DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`, optional, lists the file types the
 model reads natively, comma-separated, as the model's `acceptedExtensions`
-names them ([Accepted attachment types](../providers/models.md#accepted-attachment-types)),
+names them (`crates/shared-types/src/model.rs`),
 such as `png,jpg,jpeg,gif,webp` for a model that reads images; without it
 which types the model reads is unknown, so no file reaches it natively. A
 type outside the set the model-media table defines stops the command before

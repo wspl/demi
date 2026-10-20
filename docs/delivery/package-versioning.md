@@ -51,7 +51,7 @@ and every crate inherits it. The backend also carries the Git branch it was
 built from, which the build reads from the checkout, or from `GITHUB_REF_NAME`
 in the release workflow, and none when the checkout is on no branch; it reads
 the image and video model catalog from that branch
-([Image and video models](../providers/media-models.md#versions)). The runner,
+(`crates/provider-common/src/media_catalog.rs`). The runner,
 the command programs, the backend, and the machine manager carry that version, and the backend and machine-manager
 releases carry it too ([Packaging](builds-and-releases.md#packaging)). The
 other two kinds of release use it differently:

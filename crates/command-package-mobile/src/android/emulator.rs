@@ -1,4 +1,5 @@
-//! A running emulator's gRPC interface (`mobile.md` § Android): where its
+//! A running emulator's gRPC interface
+//! (`crates/command-package-mobile/src/android/mod.rs`): where its
 //! discovery file says it listens, authenticated as the emulator asks. An
 //! emulator started with JWT authentication, the default, takes a token
 //! signed by a key whose public half the client puts into the emulator's

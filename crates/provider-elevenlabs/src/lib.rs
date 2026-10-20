@@ -1,5 +1,5 @@
 //! The ElevenLabs provider (`crates-and-packages.md` § Vendor provider
-//! crates, `providers.md` § Media-only vendors): an ElevenLabs entry of the
+//! crates): an ElevenLabs entry of the
 //! `media` family, which makes no text, authenticated by its key in
 //! `xi-api-key`. Its key makes speech, music and sound effects, each one
 //! request answered with the audio's bytes; its voices are its account's

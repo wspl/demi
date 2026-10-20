@@ -1,4 +1,4 @@
-//! The Host's open devices (`mobile.md` § Commands, § Lifetime): which
+//! The Host's open devices (`crates/command-package-mobile/src/operations.rs`): which
 //! conversation has each simulator open and under which handle, at most
 //! [`MAX_DEVICES`] a conversation, never one device in two conversations;
 //! and when each ends. A device Demi booted shuts down when its
@@ -43,7 +43,7 @@ use crate::{
 /// command uses it.
 pub const IDLE: Duration = Duration::from_secs(60 * 60);
 /// How long the view still says the agent uses a device after its last
-/// command on it ended (`mobile.md` § The live view).
+/// command on it ended (`crates/command-package-mobile/src/live.rs`).
 pub const AGENT_LINGER: Duration = Duration::from_secs(3);
 
 /// One open device.
@@ -71,7 +71,7 @@ pub struct OpenDevice {
     pub recording: Mutex<Option<(std::path::PathBuf, Instant)>>,
     /// The commands that act on the device, the user's panel controls and
     /// the agent's taps, swipes, typing and keys, rotations and appearance,
-    /// take turns in the order they arrive (`mobile.md` § The live view).
+    /// take turns in the order they arrive (`crates/command-package-mobile/src/live.rs`).
     pub inputs: tokio::sync::Mutex<()>,
     /// The commands that read or wait, `inspect`, `wait`, `screenshot` and
     /// `record`, take turns apart from the input, which never waits for
@@ -79,7 +79,7 @@ pub struct OpenDevice {
     pub reads: tokio::sync::Mutex<()>,
     /// The files the panel's Screenshot and Record wrote into the
     /// conversation's scratch directory, removed when the device closes
-    /// (`mobile.md` § The live view).
+    /// (`crates/command-package-mobile/src/live.rs`).
     pub saved: Mutex<Vec<std::path::PathBuf>>,
     used: watch::Sender<Instant>,
     viewers: watch::Sender<usize>,
@@ -383,8 +383,7 @@ impl Devices {
     ///
     /// An open runs to its end on its own, whatever becomes of the request
     /// that asked for it: a simulator it booted is then either open, its
-    /// lifetime the conversation's, or shut down again (`mobile.md`
-    /// § Lifetime).
+    /// lifetime the conversation's, or shut down again.
     pub async fn open(
         self: &Arc<Self>,
         conversation: &str,

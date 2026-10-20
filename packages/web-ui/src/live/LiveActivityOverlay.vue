@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The agent's activity over a live view (`mobile.md` § The live view):
+ * The agent's activity over a live view (`packages/plugin-mobile/src/index.ts`):
  * while the agent's input is being delivered, a note at the top says so,
  * and a ring marks where it last acted. The view places it over its
  * picture and gives the mark in the overlay's own CSS pixels; any source's

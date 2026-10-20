@@ -2,7 +2,7 @@
 
 This guide adds a provider crate: the code that connects Demi to one more
 inference service. The crate implements the
-[provider contract](../providers/providers.md#provider-contract); read that
+provider contract (`crates/provider-common/src/lib.rs`); read that
 first, because this guide shows where each of its rules lands in code instead of
 restating them.
 
@@ -11,10 +11,10 @@ Before you write a crate, check whether the service needs one:
 - A service that speaks a wire Demi already reads (OpenAI Responses or Chat
   Completions, Anthropic Messages, Gemini `generateContent`) is an entry of that
   family with its own base URL
-  ([Endpoints](../providers/providers.md#endpoints)).
+  (`crates/provider-common/src/endpoint.rs`).
 - A vendor that models.dev lists with a supported client package appears in the
   vendor catalog without any code
-  ([Vendors from models.dev](../providers/providers.md#vendors-from-modelsdev)).
+  (`crates/backend-providers/src/llm/vendors.rs`).
 - A field that one vendor requires or refuses is a typed setting of the
   backend's vendor policy, not a crate.
 
@@ -61,9 +61,9 @@ pub struct RuntimeEnv {
 
 | Method | What your provider does |
 |---|---|
-| `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then builds the runtime over a placement that starts the process ([How a runtime gets its process](../providers/claude-code.md#how-a-runtime-gets-its-process)) |
+| `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then builds the runtime over a placement that starts the process (`crates/provider-claude-code/src/placement.rs`) |
 | `auth_status`, `runtime_state` | Says whether the credential is present and usable, and whether the provider can run. Reading either never makes an inference request |
-| `list_models` | Reads the vendor's model directory on each call and keeps no cache: the backend's [catalog cache](../providers/models.md#catalog-cache) is the only one |
+| `list_models` | Reads the vendor's model directory on each call and keeps no cache: the backend's catalog cache (`crates/backend-providers/src/llm/catalog_cache.rs`) is the only one |
 | `read_failure` | Reads your vendor's own fields out of a stored failure record ([Report failures](#report-failures)) |
 | `quota` | Returns your quota when the vendor reports one ([Optional: quota](#optional-quota)) |
 | `accounts` | Returns the account operations of a subscription family ([Credentials](#credentials)) |
@@ -107,11 +107,11 @@ pub struct ToolCall { pub tool_use_id: String, pub tool_name: String, pub input:
 ```
 
 Write `run` as a stream that keeps the rules of
-[A run](../providers/providers.md#a-run):
+A run (`crates/provider-common/src/contract.rs`):
 
 1. Build the request body from the request and the entry's typed
    configuration. Map the thinking setting, the output limit and the service
-   tier as [Request parameters](../providers/models.md#request-parameters)
+   tier as Request parameters (`crates/shared-types/src/model.rs`)
    defines for your vendor; the output limit you send is
    `request.max_output_tokens()`, which lowers the model's limit to the
    request's cap. Serialize a body that carries media on the blocking
@@ -136,10 +136,10 @@ Write `run` as a stream that keeps the rules of
 `fresh` returns a runtime that shares the provider's `Arc` and nothing of this
 runtime's execution state: no connection, process, pending tool call or
 continuation
-([Runtime forks and closing](../providers/providers.md#runtime-forks-and-closing)).
+(`crates/provider-common/src/lib.rs`).
 `close` releases what outlives a run; an HTTP runtime has nothing to release. A
 runtime that keeps a process between runs follows
-[Claude Code](../providers/claude-code.md#process-lifetime): the process moves
+Claude Code (`crates/provider-claude-code/src/live.rs`): the process moves
 into the run and back to the runtime only where the conversation can continue
 in it, so every other exit drops it and the Host kills it.
 
@@ -147,7 +147,7 @@ in it, so every other exit drops it and the Host kills it.
 
 Everything the vendor sends is untrusted input, decoded at the point of entry
 under the rules of
-[Reading vendor input](../providers/providers.md#reading-vendor-input). Reuse
+Reading vendor input (`crates/provider-common/src/wire/mod.rs`). Reuse
 the building blocks of the `provider-common` crate instead of writing your own:
 
 | Need | Use |
@@ -178,7 +178,7 @@ counts are `Option<u64>`.
 - Give decode, protocol and process failures their own `thiserror` types and
   turn them into a failure at the run's boundary with a fixed code. Never derive
   a code by matching message text
-  ([Failures](../providers/providers.md#failures)).
+  (`crates/provider-common/src/failure.rs`).
 - A message you compose never contains a credential.
 
 ## Credentials
@@ -189,11 +189,11 @@ variables.
 
 A subscription provider is built for one account: its factory receives the
 entry's credential pool and the account's ID
-([The credential pool contract](../providers/providers.md#the-credential-pool-contract)).
+(`crates/provider-common/src/credentials/pool.rs`).
 
 1. Define your family's secret document as a strict serde type
    (`deny_unknown_fields`) that holds what your requests and refreshes need
-   ([Subscription secrets](../providers/providers.md#subscription-secrets)). Its
+   (`crates/provider-common/src/credentials/refresh.rs`). Its
    decode errors report the field's path and the kind of error, never the
    decoder's message.
 2. Read the account's document through the pool when a request needs it.
@@ -201,7 +201,7 @@ entry's credential pool and the account's ID
    stored document still needs a refresh, and the vendor call that refreshes
    it. `renew` takes the account's refresh turn, reads again, calls the vendor,
    validates the result and replaces the document at the version it read
-   ([Token refresh](../providers/providers.md#token-refresh)).
+   (`crates/provider-common/src/credentials/refresh.rs`).
 4. Implement your family's account kit: how to label an account from its
    document (a label, a detail and the identity key), and your login flow or
    token import. Listing, selecting, importing and removing accounts are the
@@ -209,7 +209,7 @@ entry's credential pool and the account's ID
 5. Write a device login by hand on `provider_common::oauth`. Report the verification
    address and code once, poll with `tokio::time::sleep` so that dropping the
    login's future cancels it at once, and return the new document
-   ([Login and publication](../providers/providers.md#login-and-publication)).
+   (`crates/backend-providers/src/vault/logins.rs`).
 
 ## Optional: quota
 
@@ -219,7 +219,7 @@ label and the windows, and an observation of a response's headers or a CLI
 line. An observation is pure and never fails a run. `ProviderQuota::new`
 connects your source to the account's snapshot store. What a snapshot holds and
 how probes and observations merge is defined in
-[Vendor quota](../providers/usage-and-quota.md#vendor-quota).
+Vendor quota (`crates/provider-common/src/quota.rs`).
 
 ## Register the family
 
@@ -233,7 +233,7 @@ Then:
 
 - If models.dev lists vendors for your wire, add the mapping from their client
   package to your family
-  ([Vendors from models.dev](../providers/providers.md#vendors-from-modelsdev)).
+  (`crates/backend-providers/src/llm/vendors.rs`).
 - The family is a value of the REST contract, so regenerate the web app's
   contracts ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
   How users add your family's entries (a key, a device login or a token import)

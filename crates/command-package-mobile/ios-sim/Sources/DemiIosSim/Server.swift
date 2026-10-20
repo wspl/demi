@@ -54,8 +54,8 @@ final class Server: @unchecked Sendable {
     }
   }
 
-  /// What acts on the device, in the order it arrives (`mobile.md` § The
-  /// live view).
+  /// What acts on the device, in the order it arrives
+  /// (`crates/command-package-mobile/src/live.rs`).
   static let inputs: Set<String> = [
     "touch", "tap", "swipe", "button", "key", "type", "setValue", "orient", "appearance", "setAppearance",
   ]

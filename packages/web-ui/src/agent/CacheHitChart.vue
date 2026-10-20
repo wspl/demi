@@ -14,7 +14,7 @@ import { t } from './locales/text'
 
 /**
  * The main conversation's recent turn calls, each at its call's cache hit
- * rate, by its number (`usage-and-quota.md` § A conversation's cost): faint
+ * rate, by its number (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): faint
  * lines at 0, 50 and 100%, the numbers under the plot, a cache miss a red
  * dot, a compaction a grey dashed line between the calls it separates.
  * Resting the pointer on the plot, or a tap on a phone, shows the nearest

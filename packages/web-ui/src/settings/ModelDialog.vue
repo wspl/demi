@@ -28,7 +28,7 @@ import { formatTokens } from '../ui/token-count'
  * of a catalog's model to read. Its fields come in one order, the id, the
  * name, the context window, the output limit, the thinking efforts, the Fast
  * tier and the files it reads, and every one is editable, the id too
- * (`models.md` § Adding a model from models.dev). An id another model of the
+ * (`crates/backend-user-shard/src/provider_settings.rs`). An id another model of the
  * list has is refused here, before anything is sent. Save keeps the change,
  * Cancel drops it, Delete Model removes the model. Tool calling is not a
  * setting: a model without it cannot drive the agent, so it is never offered.
@@ -196,7 +196,7 @@ function save(): void {
               draft.name || '—'
             }}</span>
           </SettingsRow>
-          <!-- A model that is not text is only its ID and name (`providers.md` § Image generation switch). -->
+          <!-- A model that is not text is only its ID and name (`packages/web-ui/src/settings/SettingsProvidersPage.vue`). -->
           <template v-if="text">
           <SettingsRow :label="t('modelDialog.contextWindow')" :compact="!editable">
             <TokenInput

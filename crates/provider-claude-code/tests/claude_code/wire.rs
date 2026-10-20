@@ -1,5 +1,6 @@
-//! What the provider reads of the CLI's lines (`claude-code.md` § Reading;
-//! `providers.md` § Reading vendor input): the events of streamed and whole
+//! What the provider reads of the CLI's lines
+//! (`crates/provider-claude-code/src/output.rs`,
+//! `crates/provider-common/src/wire/mod.rs`): the events of streamed and whole
 //! messages, the lines and blocks it skips, and the failures of lines it
 //! cannot read.
 
@@ -164,7 +165,7 @@ async fn a_line_demi_cannot_read_fails_the_run_with_the_line_as_its_record_and_c
 async fn a_call_of_a_tool_the_request_does_not_offer_is_the_clis_to_answer_and_the_run_reads_on() {
     // The model named a tool the request does not offer: the CLI answers
     // the call with an error itself and asks the model again in the same
-    // run (`claude-code.md` § Tool-call batches).
+    // run (`crates/provider-claude-code/src/mcp.rs`).
     let (events, signals) = answer(vec![
         json!({ "type": "stream_event", "event": { "type": "message_start", "message": { "content": [] } } }),
         json!({ "type": "assistant", "message": { "content": [

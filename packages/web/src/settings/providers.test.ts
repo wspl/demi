@@ -1032,7 +1032,7 @@ test('a sign-in cancelled on another page closes the dialog here, with nothing s
 
 // An entry of media alone tests its key with no model named, before its
 // models could be read, and a compatible API's audio model names the kinds
-// the catalog's audio models give it (`providers.md` § Media-only vendors,
+// the catalog's audio models give it (`packages/web/src/state/catalog.ts`,
 // `audio.md` § Vendors). Planted defects: Test Connection of an entry of
 // media alone waiting for a listed model; a compatible audio model's row
 // without its kind. Cost: a stubbed backend, a few milliseconds.

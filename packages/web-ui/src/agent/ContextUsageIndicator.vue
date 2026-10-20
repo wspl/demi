@@ -49,8 +49,8 @@ import { type CostState, hasCost } from './context-cost'
  * holds the estimate against the window, a header that opens and closes the list of rows, a
  * bar of what fills the context, the rows largest first while the list is
  * open, and the room before compaction with Compact; then what the
- * conversation cost, whose caption opens and closes its details
- * (`usage-and-quota.md` § A conversation's cost); then the usage limits
+ * conversation cost, whose caption opens and closes its details;
+ * then the usage limits
  * of the conversation's account, and last the instructions the model holds
  * (`instructions.md` § What the card lists), each of which opens where it
  * is written. One part stands open at most: opening one closes the other.

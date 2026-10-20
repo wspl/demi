@@ -1,6 +1,5 @@
 //! A Grok Build account's quota: the billing and subscription probe and the
-//! rate-limit headers of every chat response (`usage-and-quota.md` § Grok
-//! Build).
+//! rate-limit headers of every chat response (`crates/provider-grok-build/src/quota.rs`).
 
 use std::sync::Arc;
 
@@ -83,7 +82,7 @@ async fn weekly_credits_take_their_share_and_period_end_and_a_cap_adds_its_windo
     )
     .await;
     // Each window is of the kind and the period the billing states, from
-    // the period's start to its end (`usage-and-quota.md` § Grok Build).
+    // the period's start to its end (`crates/provider-grok-build/src/quota.rs`).
     let ids: Vec<(&str, QuotaKind, Option<u64>)> = reading
         .windows
         .iter()

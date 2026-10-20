@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// The device panel's view on the page (`mobile.md` § The live view): the
+// The device panel's view on the page (`packages/plugin-mobile/src/index.ts`): the
 // picture follows the panel's size at once, while the Host hears the size
 // it shows the screen at once a drag of the panel's edge has settled, as it
 // restarts its capture for a larger one; and the scroll wheel reaches the

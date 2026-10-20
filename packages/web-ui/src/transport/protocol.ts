@@ -34,7 +34,7 @@ export interface ModelInfo {
   contextWindow: number | null
   /**
    * The limit the user set on the window Demi uses for this model, while its
-   * window offers it; null uses the full window (`models.md` § Context limit).
+   * window offers it; null uses the full window (`packages/web-ui/src/agent/context-limit.ts`).
    */
   contextLimit: number | null
   acceptedExtensions: string[] | null

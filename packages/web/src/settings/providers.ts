@@ -77,7 +77,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
-  /** Each process provider's CLI, as last read (`claude-code.md` § What the user sees). */
+  /** Each process provider's CLI, as last read (`crates/backend-user-shard/src/conversation/claude_cli.rs`). */
   const clis = ref<Record<string, SettingsProviderCli>>({})
   let lifetime = new AbortController()
   /** The provider operations on their way, by provider: each provider's in order. */
@@ -229,7 +229,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   /**
    * Adding asks only the kind and creates the entry at once: it joins the list
    * once the channel brings it, selected, and its page shows what it still
-   * lacks (`models.md` § A provider is in the list from the start).
+   * lacks (`crates/backend-user-shard/src/provider_settings.rs`).
    */
   function create(body: CreateProvider): void {
     const current = lifetime
@@ -748,7 +748,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * The sign-in the dialog shows (`providers.md` § Login and publication):
+   * The sign-in the dialog shows (`crates/backend-providers/src/vault/logins.rs`):
    * one this page started, whose `id` is null until the start answers, the
    * one a busy start named, or a running one the vault announced, as after
    * a reload. The vault announces each change of it on the channel, which

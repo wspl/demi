@@ -1,7 +1,35 @@
 //! The `demi.mobile` package (`crates-and-packages.md`
 //! § command-package-mobile): the Host's simulators for the conversations
 //! that open them, as a resident command service, with a driver per
-//! platform behind one interface (`mobile.md` § Drivers).
+//! platform behind one interface (`crates/command-package-mobile/src/driver.rs`).
+//!
+//! The agent runs the user's iOS or Android app in a simulator on a paired
+//! device and operates it as a person would, while the user watches and
+//! operates the same simulator live in the work panel:
+//!
+//! ```text
+//! web page                    backend             Host (a paired device)
+//!   device tabs, toolbar  <-- plugin-mobile --> demi-mobile (this crate)
+//!   live view  <------- `mobile` user stream --->   Devices: who has what
+//!                                                   Driver, one per platform
+//!                                                     ios: demi-ios-sim helper
+//!                                                     android: emulator gRPC,
+//!                                                              u2.jar over adb
+//! ```
+//!
+//! Demi does what touches the screen, the input and who controls them, each
+//! the one operation behind both the panel's control and its command, so the
+//! agent can do what the user can and the other way round. Everything else,
+//! building, installing, launching an app, logs, locale, permissions and
+//! creating or deleting simulators, is left to the tools the agent already
+//! knows (`xcodebuild`, `xcrun simctl`, `avdmanager`, `emulator`, `adb`).
+//!
+//! Only simulators are supported: an iPhone takes no input without a signed
+//! XCTest runner on it, and a phone holds a person's real accounts. Only paired
+//! devices run them, since a Cloud has neither Xcode nor the hardware
+//! virtualization the Android Emulator needs. Xcode and the Android SDK are the
+//! user's; Demi's own helpers, the iOS one and the Android one, ship with the
+//! runner.
 
 pub mod android;
 mod booted;
@@ -50,7 +78,7 @@ impl DemiMobile {
     /// The service with this Host's drivers.
     pub fn new() -> Self {
         // The installation's `mobile/`, where the simulators Demi booted
-        // are kept across the program's ends (`mobile.md` § Lifetime).
+        // are kept across the program's ends (`crates/command-package-mobile/src/devices.rs`).
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
         Self::with_drivers(host_drivers(home.as_deref()), home.as_deref())
     }

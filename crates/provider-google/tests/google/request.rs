@@ -1,5 +1,6 @@
-//! The `generateContent` request a run sends (`models.md` § Request
-//! parameters, `providers.md` § Endpoints).
+//! The `generateContent` request a run sends
+//! (`crates/shared-types/src/model.rs`,
+//! `crates/provider-common/src/endpoint.rs`).
 
 use std::{num::NonZeroU32, sync::Arc};
 

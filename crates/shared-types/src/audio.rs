@@ -1,7 +1,7 @@
 //! What an audio file holds, read from its header: the one reader of a
 //! generated audio file's format and length, which `demi audio` checks the
 //! file with and the usage ledger takes its seconds from (`audio.md`
-//! § Commands, `usage-and-quota.md` § Usage ledger). The file is probed and
+//! § Commands, `crates/backend-database/src/usage.rs`). The file is probed and
 //! read packet by packet, never decoded, behind the `audio` feature; the
 //! shape of raw PCM, which a vendor may send instead of a file, is read by
 //! every crate that hands audio on.

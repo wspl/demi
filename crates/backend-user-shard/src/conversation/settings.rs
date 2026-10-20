@@ -1,5 +1,5 @@
-//! A conversation's model settings (`models.md` § A conversation's model
-//! settings; `web-api.md` § Sidebar mutations, read state and page
+//! A conversation's model settings (`crates/shared-types/src/catalog.rs`;
+//! `web-api.md` § Sidebar mutations, read state and page
 //! synchronization). A patch names the parts it changes, and the
 //! conversation's settings order applies one change at a time to the
 //! selection the record holds: the change is checked against the entry's
@@ -94,8 +94,9 @@ impl Shard {
         .await
     }
 
-    /// The selection the model settings `chosen` make (`models.md` § A
-    /// conversation's model settings): the model's facts from the entry's
+    /// The selection the model settings `chosen` make
+    /// (`crates/shared-types/src/catalog.rs`): the model's facts from the
+    /// entry's
     /// catalog now, with the effort it names, else the model's first, and
     /// the tier it names, else the vendor's default. Each part is one the
     /// catalog's model offers; a conversation's model switch and a

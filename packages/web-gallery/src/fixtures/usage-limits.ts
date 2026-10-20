@@ -13,7 +13,7 @@ export const WEEK_SECONDS = 7 * DAY_SECONDS
 /**
  * What names a window as a vendor reports it: its kind, its period in
  * seconds (null when the vendor does not say) and the model it is on, which
- * the page words in its language (`usage-and-quota.md` § Window names).
+ * the page words in its language (`packages/web-ui/src/ui/dates.ts`).
  */
 export function windowNamed(kind: QuotaKind, periodSeconds: number | null, model: string | null = null): QuotaWindowName {
   return { kind, periodSeconds, scope: model === null ? null : { kind: 'model', label: model } }

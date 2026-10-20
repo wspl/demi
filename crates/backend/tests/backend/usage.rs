@@ -1,4 +1,4 @@
-//! The usage ledger (`usage-and-quota.md` § Usage ledger): a row per
+//! The usage ledger (`crates/backend-database/src/usage.rs`): a row per
 //! vendor call of a conversation, with its agent, turn, purpose, account and
 //! ids, a compaction's summary request among them, written as each call
 //! ends, and a write that fails losing the row but no turn; and its totals,
@@ -316,8 +316,9 @@ async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_n
 /// Each call of a conversation reaches its open page as a `cost` frame of
 /// what its row adds, the call itself for a turn call of the main
 /// conversation, and `GET /api/conversations/:id/cost` sums the rows, its
-/// second call a miss once it wrote the prompt again (`usage-and-quota.md`
-/// § Reading it). Each frame and the answer count the rows they include, so
+/// second call a miss once it wrote the prompt again
+/// (`crates/backend-database/src/usage.rs`). Each frame and the answer count
+/// the rows they include, so
 /// the page can tell a frame it holds from one past a gap, and a page that
 /// opens the conversation again receives the count with the handshake,
 /// which tells it of a row whose frame it missed. An entry whose

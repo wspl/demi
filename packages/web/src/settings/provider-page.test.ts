@@ -4,8 +4,8 @@ import { afterEach, expect, test } from 'bun:test'
 // Add Model is a search: choosing a match adds the model at once, its id
 // made free with a suffix when the list has it, and opens it in Edit Model,
 // where an id another model of the list has is refused before anything is
-// sent and a free one is saved (`models.md` § Adding a model from
-// models.dev). The Settings page of
+// sent and a free one is saved (`crates/backend-user-shard/src/provider_settings.rs`).
+// The Settings page of
 // web-ui on a page of happy-dom, its host's save and search stubbed. Cost:
 // the search's 150 ms pause, and tens of milliseconds besides.
 
@@ -227,7 +227,7 @@ test('on a phone an API key is removed from the bottom of its page, asked first,
 })
 
 // Custom adds a model whose id and name are the text typed, its window
-// unknown, and Edit Model saves it so (`models.md` § Model fields). Cost:
+// unknown, and Edit Model saves it so (`crates/shared-types/src/catalog.rs`). Cost:
 // the search's 150 ms pause, and tens of milliseconds besides.
 test('Custom adds the typed model at once without a context window, and Edit Model saves it as it is', async () => {
   const saved: { draft: SettingsModelDraft; original: string | null }[] = []
@@ -262,7 +262,7 @@ test('Custom adds the typed model at once without a context window, and Edit Mod
 
 // Emptying the saved key or endpoint and leaving the field removes it, as
 // the API's null does; leaving the key's field as it was keeps the key
-// (`models.md` § Adding a model from models.dev). Tens of milliseconds.
+// (`crates/backend-user-shard/src/provider_settings.rs`). Tens of milliseconds.
 test('a saved key or endpoint emptied and left is removed, and a key field left as it was keeps the key', async () => {
   const changed: Partial<SettingsProviderEntry>[] = []
   const providers = shallowRef([{ ...proxy, keyConfigured: true }])
@@ -300,8 +300,8 @@ const subscription = (accounts: string[]): SettingsProviderEntry => ({
 // Adding a second account and choosing In Order or Balanced first warn
 // that several personal subscriptions may be against the vendor's terms;
 // Continue goes on and is told to the host, Cancel drops the step, and a
-// user who went on is never asked again (`providers.md` § Account
-// rotation). Tens of milliseconds.
+// user who went on is never asked again
+// (`crates/backend-providers/src/llm/rotation.rs`). Tens of milliseconds.
 test('the warning about several accounts asks before the second account and a rotation, and once told never again', async () => {
   const events: string[] = []
   const warned = shallowRef(false)
@@ -439,7 +439,7 @@ const menuItems = () => [...document.querySelectorAll<HTMLElement>('[role="menui
 // until chosen; with one chosen it has the switch and its own Add Image
 // Model, which adds an image model with only an ID and a name, listed
 // there and not under Models, which keeps a plain Add Model for text
-// (`providers.md` § Provider management). Planted defects: Add Model
+// (`packages/web-ui/src/settings/SettingsProvidersPage.vue`). Planted defects: Add Model
 // asking for a kind; an image model under Models; the image model's
 // editor with the text fields. Tens of milliseconds.
 test('a compatible API chooses its image shape below its models and adds image models in that section', async () => {
@@ -513,8 +513,9 @@ test('a vendor entry’s Images section lists its vendor’s models newest first
   }
 })
 
-// Videos is laid out as Images (`videos.md`, `providers.md` § Provider
-// management): a compatible API chooses among the video shapes it may
+// Videos is laid out as Images (`videos.md`,
+// `packages/web-ui/src/settings/SettingsProvidersPage.vue`): a compatible API
+// chooses among the video shapes it may
 // speak, then has Video Generation and its own Add Video Model, whose
 // models stay out of Models; a vendor entry lists its vendor's video
 // models, read only, newest first. Planted defects: the image shapes
@@ -643,8 +644,9 @@ test('an entry with image models alone offers no Test Connection and says it has
   }
 })
 
-// Audio is the section below Videos (`audio.md` § Accounts, `providers.md`
-// § Media-only vendors): a compatible API chooses None or OpenAI Speech
+// Audio is the section below Videos (`audio.md` § Accounts,
+// `packages/web/src/state/catalog.ts`): a compatible API chooses None or OpenAI
+// Speech
 // there; an entry of media alone, ElevenLabs, has no Models, lists its
 // audio models with their kinds, and offers Test Connection, which names
 // its first media model rather than a text model it does not have.

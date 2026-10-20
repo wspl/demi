@@ -1,13 +1,27 @@
-//! Models, the selection a conversation infers with, and token usage
-//! (`models.md` § Request parameters).
+//! Models, the selection a conversation infers with, and token usage.
+//!
+//! A selection is built from a catalog model by one conversion
+//! ([`ProviderModel::selection`](crate::ProviderModel::selection)), which the
+//! backend applies before it sends the catalog to the web app and when a
+//! conversation switches to the model. The conversation keeps its selection: a
+//! changed catalog does not change a running conversation, which keeps its
+//! model's facts until the user selects a model again. The one exception is an
+//! entry with a configured model list, whose facts the backend applies again at
+//! every inference boundary, while the conversation's thinking and tier
+//! choices stay as the user made them.
+//!
+//! The file types a model reads natively come from the input modalities its
+//! catalog gives it, kind by kind, and not from models.dev's single attachment
+//! flag, since most models it marks read images but no PDF. A provider's
+//! catalog lists only the types its wire carries in a message, so a model's
+//! list never promises what its provider would drop.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{MAX_SAFE_INTEGER, Nullable};
 
-/// A file type a model can read natively (`models.md` § Accepted attachment
-/// types). Extensions omit the dot; `jpg` and `jpeg` are one format.
+/// A file type a model can read natively. Extensions omit the dot; `jpg` and `jpeg` are one format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum FileExtension {
@@ -26,8 +40,7 @@ pub enum FileExtension {
 serde_plain::derive_display_from_serialize!(FileExtension);
 serde_plain::derive_fromstr_from_deserialize!(FileExtension);
 
-/// The image and document types a model can read natively (`models.md`
-/// § Accepted attachment types).
+/// The image and document types a model can read natively.
 pub const ATTACHMENT_FILE_EXTENSIONS: [FileExtension; 6] = [
     FileExtension::Png,
     FileExtension::Jpg,
@@ -38,7 +51,7 @@ pub const ATTACHMENT_FILE_EXTENSIONS: [FileExtension; 6] = [
 ];
 
 /// The image types, which a provider whose wire carries no document lists
-/// alone (`models.md` § Accepted attachment types).
+/// alone.
 pub const IMAGE_FILE_EXTENSIONS: [FileExtension; 5] = [
     FileExtension::Png,
     FileExtension::Jpg,
@@ -47,8 +60,7 @@ pub const IMAGE_FILE_EXTENSIONS: [FileExtension; 5] = [
     FileExtension::Webp,
 ];
 
-/// The types a catalog's input modalities give a model (`models.md`
-/// § Accepted attachment types): `image` the image types, `pdf` the PDF,
+/// The types a catalog's input modalities give a model: `image` the image types, `pdf` the PDF,
 /// `video` the video types; `text`, and any other, none.
 pub fn modality_extensions<'a>(modalities: impl IntoIterator<Item = &'a str>) -> Vec<FileExtension> {
     let mut extensions = Vec::new();
@@ -152,7 +164,7 @@ pub struct ModelSelection {
 }
 
 /// The thinking effort of a conversation's model settings that turns thinking
-/// off (`models.md` § A conversation's model settings).
+/// off (`crates/shared-types/src/catalog.rs`).
 pub const THINKING_OFF: &str = "disabled";
 
 impl ModelSelection {

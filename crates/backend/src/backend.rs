@@ -689,8 +689,7 @@ impl Backend {
     }
 
     /// Resolves once `count` Claude Code processes began to be prepared
-    /// ahead on `user`'s Cloud (`claude-code.md` § Preparing a process
-    /// ahead).
+    /// ahead on `user`'s Cloud (`crates/provider-claude-code/src/prepared.rs`).
     #[cfg(feature = "testing")]
     pub async fn until_prepared(&self, user: &demi_web_api_protocol::ids::UserId, count: u64) {
         self.shards
@@ -762,7 +761,7 @@ impl Backend {
         }
         self.services.assembly.close().await;
         // A refresh that asked its vendor stores the answer before the
-        // database closes (`providers.md` § Token refresh).
+        // database closes (`crates/provider-common/src/credentials/refresh.rs`).
         self.services.vault.gates().close().await;
         failures.extend(
             self.storage

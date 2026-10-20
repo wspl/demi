@@ -1,5 +1,5 @@
 /**
- * A conversation's simulators in its panel (`mobile.md` § The live view):
+ * A conversation's simulators in its panel (`packages/plugin-mobile/src/index.ts`):
  * one live view shared by the conversation's device tabs, which shows the
  * device of the tab shown, and the panel's controls, each the page method
  * of the command that does the same.

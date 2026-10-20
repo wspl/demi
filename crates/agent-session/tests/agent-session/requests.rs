@@ -1,4 +1,4 @@
-//! What each provider sends of one conversation (`providers.md` § The rule):
+//! What each provider sends of one conversation (`crates/provider-common/src/contract.rs`):
 //! the session's requests go, in each provider's own format, to a scripted
 //! vendor that records them, while the model's answers come from a script.
 //! Each request begins with the previous one, byte for byte apart from the

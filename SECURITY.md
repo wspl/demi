@@ -36,7 +36,7 @@ paired. Operators handling sensitive prompts should know where data rests:
   device ([Data and credentials](docs/overview.md#data-and-credentials)). The
   raw stream-json exchange, prompts included, is written only to a `tracing`
   target that is off by default
-  ([Process lifetime](docs/providers/claude-code.md#process-lifetime)).
+  (`crates/provider-claude-code/src/live.rs`).
 - **Failure records.** A failure record keeps only what the vendor sent back,
   never the request Demi sent, so it never contains a credential Demi used.
   Vendor error messages are shown as the vendor sent them, without redaction

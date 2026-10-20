@@ -1,5 +1,5 @@
 //! One run: the request, then Gemini's event stream mapped onto provider
-//! events (`providers.md` § A run).
+//! events (`crates/provider-common/src/contract.rs`).
 
 use std::sync::Arc;
 

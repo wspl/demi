@@ -303,7 +303,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** the `demi.mobile` package's id (`PACKAGE`) and operations
   (`Operation`): the arguments and results of `mobile.*`
-  ([Commands](../mobile/mobile.md#commands)), the device and element
+  (`crates/command-package-mobile/src/operations.rs`), the device and element
   handles, the failure codes, the limits (four devices a conversation, the
   screenshot's long side), the simulators' live view messages, which carry
   the live view's own (`live-view-protocol`), and the message that tells
@@ -318,7 +318,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 #### `live-view-protocol`
 
 - **Owns:** the live view's protocol where it is not about its source
-  ([Mobile simulators](../mobile/mobile.md#the-live-view)): the frame kinds
+  (`crates/command-package-mobile/src/live.rs`): the frame kinds
   and limits, the video header and codec, the viewer's input in the
   picture's coordinates (`ViewerInput`: pointer, touch, wheel, key, text,
   composition), the messages that pace the pictures (hello, acknowledgement,
@@ -338,7 +338,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   install status.
 - **Public boundary:** the types above. The backend builds the release record,
   and `demi-claude-code` decodes it. Behavior:
-  [Claude Code](../providers/claude-code.md).
+  Claude Code (`crates/provider-claude-code/src/lib.rs`).
 - **Must not:** hold install logic.
 
 #### `runner-protocol`
@@ -462,7 +462,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 #### `live-view`
 
 - **Owns:** the Host's side of the live view where it is not about its
-  source ([Mobile simulators](../mobile/mobile.md#the-live-view)): the
+  source (`crates/command-package-mobile/src/live.rs`): the
   frames of a user stream, the writer that sends control before video and
   heartbeats, one capture per watched source shared by its viewers with key
   frames on request and the encoding the slowest viewer takes, each
@@ -592,7 +592,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     refused call or a refused key reads); the catalog of image, video and
     audio models (`provider_common::media_catalog`: the copy a release carries,
     the download from the build's branch and the newer-of rule,
-    [Image, video and audio models](../providers/media-models.md)), which the
+    Image, video and audio models (`crates/provider-common/src/media_catalog.rs`)), which the
     image role reads through the backend's services and which shares
     `models_dev`'s conditional download; the
     catalog, state, account and quota
@@ -603,9 +603,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `all_events`), the check of an API-key entry's built-in catalog
   (`assert_built_in_catalog`), a fixed clock (`FixedClock`) and a wall clock
   that moves with Tokio's paused clock (`TokioClock`). Behavior:
-  [Providers](../providers/providers.md),
-  [Models](../providers/models.md),
-  [Usage and quota](../providers/usage-and-quota.md) and
+  Providers (`crates/backend-providers/src/lib.rs`),
+  Models (`crates/shared-types/src/catalog.rs`),
+  Usage and quota (`crates/backend-providers/src/usage/mod.rs`) and
   [Failures and recovery](../agent/failures-and-recovery.md).
 - **Must not:** depend on concrete providers, the agent runtime, `host-interface` or a
   Host implementation.
@@ -630,7 +630,7 @@ Each crate implements the provider contract for one vendor family.
   authentication stores stay private. `provider_codex::testing` supplies a
   scripted Codex backend WebSocket (`FakeWebSocket`), which records what each
   connection receives. Endpoint rules are in
-  [Providers](../providers/providers.md).
+  Providers (`crates/backend-providers/src/lib.rs`).
 - **Secret boundary:** keys, tokens, custom headers and raw endpoint values stay
   inside the provider and never reach a frame or response the web app sees.
 - **Must not:** depend on the agent's crates, `host-interface`, a plugin or a
@@ -649,7 +649,7 @@ Each crate implements the provider contract for one vendor family.
   (`Placement`): `start` starts a new CLI process from the spawn request the
   provider builds and answers the `host-interface` process. `Provider::runtime` refuses
   with `ProcessHostRequired`. Behavior:
-  [Claude Code](../providers/claude-code.md#how-a-runtime-gets-its-process).
+  Claude Code (`crates/provider-claude-code/src/placement.rs`).
 - **Secret boundary:** OAuth tokens never reach a frame or response the web app
   sees; the only process that receives one is the CLI on the user's Cloud.
 - **Must not:** depend on the agent's crates, a plugin or a Host
@@ -928,7 +928,7 @@ or on another plugin.
   and the `mobile` work panel kind's tabs, one for each device the agent
   opens on the conversation's own Host, and the panel's methods, each of
   which calls the operation of the command that does the same as a package
-  call ([The live view](../mobile/mobile.md#the-live-view)).
+  call (`crates/command-package-mobile/src/live.rs`).
 - **Public boundary:** its factory, whose manifest names its page package,
   `@demicodes/plugin-mobile`, which `xtask contracts` generates the page's
   types into.
@@ -1220,8 +1220,8 @@ demi-backend (executable: configuration, composition)
   credential vault: its records, their encryption and scope, subscription
   accounts, login flows and quotas; usage metering and the request rate limit;
   and the family contract every provider family implements (`ProviderFamily`,
-  `FamilyRegistry`) ([Providers](../providers/providers.md),
-  [Usage and quota](../providers/usage-and-quota.md)).
+  `FamilyRegistry`) (Providers (`crates/backend-providers/src/lib.rs`),
+  Usage and quota (`crates/backend-providers/src/usage/mod.rs`)).
 - **Public boundary:** the assembly, the vault, the meter, the family contract.
 - **Must not:** know conversations, devices or the Cloud; run a process for a
   provider, which the shard places on the user's Cloud.
@@ -1632,10 +1632,10 @@ demi-backend (executable: configuration, composition)
   helper; the device's frame for the view (`frame`): the one the driver
   draws, or the drawn frame's corner shapes and buttons; and the live view
   of a device as a source of `live-view`
-  ([Mobile simulators](../mobile/mobile.md)). Its `testing` feature is a
+  (`crates/command-package-mobile/src/lib.rs`). Its `testing` feature is a
   driver the tests script.
 - **Public boundary:** the executable. Behavior:
-  [Mobile simulators](../mobile/mobile.md).
+  Mobile simulators (`crates/command-package-mobile/src/lib.rs`).
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
@@ -1643,7 +1643,7 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the independently released `demi.claude-code` package, which installs
   and verifies Demi's copy of the Claude Code CLI on the machine that runs it
-  ([The package](../providers/claude-code.md#the-package)).
+  (`crates/command-package-claude-code/src/lib.rs`).
 - **Public boundary:** the executable.
 - **Must not:** read release pointers or choose a version, start the CLI, or be
   linked into the runner or another command program.
@@ -1655,7 +1655,7 @@ demi-backend (executable: configuration, composition)
   ([Stale build products](../delivery/builds-and-releases.md#stale-build-products));
   `xtask logos`, which refreshes the marks of the vendors the backend offers
   from models.dev, reading the offered vendors as the backend does
-  ([Vendors from models.dev](../providers/providers.md#vendors-from-modelsdev));
+  (`crates/backend-providers/src/llm/vendors.rs`);
   `xtask contracts` (the
   TypeScript emitter, with the page types of each plugin whose manifest
   names a page package, read from the manifests of the backend's plugins,
@@ -1745,7 +1745,7 @@ under `packages/`.
   page comes back (`transport/liveness.ts`,
   [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection));
   and the live view's page side where it is not about its source
-  (`live/`, [Mobile simulators](../mobile/mobile.md#the-live-view)): its
+  (`live/`, Mobile simulators (`crates/command-package-mobile/src/live.rs`)): its
   frames, the stream's lifecycle that every source's view runs on
   (`LiveLink`: opening, silence and stalls, reconnect waits, pictures of
   the watched generation, acknowledgements and key frames), the decoder
@@ -1854,7 +1854,7 @@ Each plugin page package is **private** and has the same boundary:
 | Package | Owns |
 | --- | --- |
 | `@demicodes/plugin-browser` | The `browser` work panel kind and the live view of its tabs (`packages/plugin-browser/src/index.ts`): the browser's messages, tabs, clipboard, dialogs and controls over the SDK's live view, with the plugin's page types and the browser's live view messages generated into `src/generated/` |
-| `@demicodes/plugin-mobile` | The `mobile` work panel kind and the live view of the conversation's simulators ([The live view](../mobile/mobile.md#the-live-view)): the device tabs and their toolbar, the device's frame, touches and keys over the SDK's live view, with the plugin's page types and the simulators' live view messages generated into `src/generated/` |
+| `@demicodes/plugin-mobile` | The `mobile` work panel kind and the live view of the conversation's simulators (`crates/command-package-mobile/src/live.rs`): the device tabs and their toolbar, the device's frame, touches and keys over the SDK's live view, with the plugin's page types and the simulators' live view messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |

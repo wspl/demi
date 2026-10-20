@@ -25,7 +25,7 @@ pub const TITLE_MAX_CHARS: usize = 80;
 /// How much of the first message a request reads, in Unicode scalar values.
 pub const INPUT_MAX_CHARS: usize = 4_000;
 
-/// A title request's cap on its output (`models.md` § Output limit). It
+/// A title request's cap on its output (`crates/provider-common/src/contract.rs`). It
 /// leaves room for the lowest thinking effort and one line of text: a
 /// reasoning model counts its thinking against the limit, so a cap sized for
 /// the line alone can end before any text. A model whose own output limit is

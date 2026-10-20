@@ -41,7 +41,7 @@ fn rejected(command: ClientFrameKind, code: AgentCode, reason: &str) -> ServerFr
 /// A page that opens a conversation makes its next request known but for
 /// its input, and so does each action's end from then on: the session asks
 /// its runtime to ready that request ahead, with the history the request
-/// then extends (`claude-code.md` § Preparing a process ahead).
+/// then extends (`crates/provider-claude-code/src/prepared.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_a_conversation_has_its_next_request_readied_ahead_after_each_action() {
     let script = ScriptedRuntime::new([

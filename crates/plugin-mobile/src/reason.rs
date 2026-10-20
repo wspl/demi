@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PanelReason {
-    // The package's own codes (`mobile.md` § Commands).
+    // The package's own codes (`crates/command-package-mobile/src/operations.rs`).
     InvalidInput,
     DeviceNotFound,
     AmbiguousDevice,

@@ -1,4 +1,4 @@
-//! One driver per platform, behind one interface (`mobile.md` § Drivers):
+//! One driver per platform, behind one interface:
 //! the Host's simulators, boot and shutdown, and for an open device its
 //! frames as H.264, its input, its UI tree, its screen's size and
 //! orientation. Every coordinate here is a point of the screen turned
@@ -27,7 +27,7 @@ pub enum DriverError {
     #[error("{0}")]
     Failed(String),
     /// Text a US keyboard cannot type found no focused field to go into,
-    /// which an iPhone needs (`mobile.md` § Commands): the text.
+    /// which an iPhone needs (`crates/command-package-mobile/src/operations.rs`): the text.
     #[error("{0:?} has no keys on a US keyboard, and there is no focused text field to add it to")]
     NoFocusedField(String),
 }
@@ -45,7 +45,7 @@ pub struct Simulator {
     pub state: PowerState,
     /// The mark of its current boot, which a later boot changes, such as
     /// when the boot began in seconds; none while it is shut down
-    /// (`mobile.md` § Lifetime).
+    /// (`crates/command-package-mobile/src/devices.rs`).
     pub boot: Option<u64>,
 }
 
@@ -182,7 +182,7 @@ pub struct FrameArea {
     pub scale: f64,
 }
 
-/// The device's frame (`mobile.md` § The live view), turned as its picture
+/// The device's frame (`crates/command-package-mobile/src/live.rs`), turned as its picture
 /// is turned upright.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Frame {
@@ -214,7 +214,7 @@ pub trait DeviceCapture: Send + 'static {
 }
 
 /// What a driver tells of a boot it starts, which the device table records
-/// (`mobile.md` § Lifetime): the simulator is Demi's from the moment its
+/// (`crates/command-package-mobile/src/devices.rs`): the simulator is Demi's from the moment its
 /// boot begins, so one whose boot fails halfway is still Demi's to shut
 /// down.
 pub trait Booting: Send + Sync {
@@ -254,7 +254,7 @@ pub trait Device: Send + Sync + 'static {
     fn drawn(&self) -> watch::Receiver<u64>;
     /// Cancelled once the device is gone.
     fn ended(&self) -> CancellationToken;
-    /// Whether the screen is on (`mobile.md` § The live view): as an
+    /// Whether the screen is on (`crates/command-package-mobile/src/live.rs`): as an
     /// emulator reports its display, or, for a simulator, which reports
     /// none, off from a Lock pressed while it was on until the next input.
     fn awake(&self) -> watch::Receiver<bool>;
@@ -273,7 +273,8 @@ pub trait Device: Send + Sync + 'static {
     /// Shift included, whatever becomes of the typing.
     fn type_keys<'a>(&'a self, keys: &'a [crate::keys::Typed]) -> BoxFuture<'a, Result<()>>;
     /// Enters `text`, which a US keyboard cannot type, into the focused
-    /// field as the platform allows (`mobile.md` § Commands); returns once
+    /// field as the platform allows
+    /// (`crates/command-package-mobile/src/operations.rs`); returns once
     /// the app took it.
     fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
     /// Sets the text of the field at `at` at once.
@@ -310,7 +311,7 @@ pub trait Device: Send + Sync + 'static {
     }
 }
 
-/// A platform this Host cannot run, which says why (`mobile.md` § Scope).
+/// A platform this Host cannot run, which says why (`crates/command-package-mobile/src/lib.rs`).
 pub struct Absent {
     pub platform: MobilePlatform,
     pub reason: String,

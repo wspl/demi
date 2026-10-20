@@ -101,8 +101,9 @@ const KEPT_WORDS: u64 = 20_000;
 const KEPT_WORDS_PERCENT: u8 = 10;
 
 /// The window in use for `model`, in tokens: the model's context window, or
-/// the limit the user set on it, as the node answers it (`models.md`
-/// § Context limit); none for a model that reports no window. Every token
+/// the limit the user set on it, as the node answers it
+/// (`crates/shared-types/src/context_limit.rs`); none for a model that reports
+/// no window. Every token
 /// threshold, the share from which the user may compact and the usage the
 /// page shows are of it. It is asked at each use, so a changed limit counts
 /// from the next one.
@@ -578,7 +579,7 @@ pub(super) async fn run_pass(
                     core.commit();
                     // The next request writes its prefix anew in any case,
                     // so the agent takes an account again for it
-                    // (`providers.md` § Account rotation).
+                    // (`crates/backend-providers/src/llm/rotation.rs`).
                     core.take_account(None);
                     if let Some(text) = running_text(&running) {
                         core.push_context(NewContext {

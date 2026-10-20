@@ -1,9 +1,19 @@
-//! The provider families entries are assembled with (`providers.md` §
-//! Families, vendors and endpoints): each family says how its entries
+//! The provider families entries are assembled with: each family says how its entries
 //! authenticate and builds the provider of one entry and account from the
 //! entry's decoded configuration. The backend starts with its built-in
 //! families (`demi_backend::families`); a test registers scripted ones
 //! beside them.
+//!
+//! A family identifies the provider implementation and its credential
+//! mechanism, a vendor an API service whose protocol a family can speak, and an
+//! entry a configured provider. An API-key entry is a vendor entry, whose
+//! endpoint and catalog are its vendor's, or a compatible entry, whose endpoint
+//! the user gives and whose catalog is only the models the user configures; a
+//! compatible entry's protocol, and with it its family, can change as its
+//! endpoint can. A subscription entry holds accounts: each owner has at most
+//! one per family, and one account is explicitly the active one. An entry's
+//! configuration is decoded strictly, so a misspelled setting is reported
+//! instead of silently doing nothing.
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -35,7 +45,7 @@ pub trait ProviderFamily: Send + Sync + 'static {
     }
 
     /// The base URL an entry of the family that names none uses
-    /// (`providers.md` § Endpoints); none for a subscription family.
+    /// (`crates/provider-common/src/endpoint.rs`); none for a subscription family.
     fn default_endpoint(&self) -> Option<&'static str> {
         None
     }
@@ -45,8 +55,7 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// Whether the family's entries make text: false for the family of the
     /// vendors that make media alone, whose entries have no text models
-    /// and are never in the model menu (`providers.md` § Media-only
-    /// vendors).
+    /// and are never in the model menu (`crates/backend/src/families.rs`).
     fn makes_text(&self) -> bool {
         true
     }
@@ -73,8 +82,7 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// A session's runtime of the provider `args` build, whose process
     /// `placement` starts, with the shard's `env`; none for a family whose
-    /// provider runs no process (`claude-code.md` § How a runtime gets its
-    /// process).
+    /// provider runs no process (`crates/provider-claude-code/src/placement.rs`).
     fn process_runtime(
         &self,
         _args: FamilyArgs,
@@ -86,7 +94,7 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// The account operations of the provider `args` build, whose sign-in
     /// runs on the args' machine; none for a family whose login runs no
-    /// process (`claude-code.md` § Accounts and sign-in).
+    /// process (`crates/provider-claude-code/src/account.rs`).
     fn login_accounts(
         &self,
         _args: FamilyArgs,
@@ -115,7 +123,7 @@ pub struct FamilyArgs {
     /// is.
     pub models_dev: ModelsDevClient,
     /// The Claude Code machine, which a process provider's sign-in and usage
-    /// probe run on (`claude-code.md` § Where it runs); none before the
+    /// probe run on (`crates/provider-claude-code/src/placement.rs`); none before the
     /// backend's shards started, and in a backend without them.
     pub machine: Option<Arc<dyn AccountMachine>>,
 }
@@ -239,8 +247,9 @@ pub fn family_name(family: &str) -> &str {
 }
 
 /// The models.dev vendor whose API sells the models subscription family
-/// `family` runs, whose prices are its calls' (`usage-and-quota.md` § How
-/// the figures are counted); none for a family of API keys, whose catalog
+/// `family` runs, whose prices are its calls'
+/// (`crates/backend-database/src/usage.rs`); none for a family of API keys,
+/// whose catalog
 /// has its own prices.
 pub fn api_vendor(family: &str) -> Option<&'static str> {
     match family {

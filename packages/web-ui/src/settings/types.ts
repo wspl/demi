@@ -17,8 +17,9 @@ import type { HandoffHost } from '../auth/handoff'
 import type { VerificationHost } from '../auth/verification'
 
 /**
- * The small model the user chose in Settings › Agent (`models.md` § Small
- * model): model settings without a tier, since small requests use the
+ * The small model the user chose in Settings › Agent
+ * (`crates/backend-providers/src/llm/small_model.rs`): model settings without a
+ * tier, since small requests use the
  * default one; none for Automatic.
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
@@ -243,8 +244,9 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
 }
 
 /**
- * Which account each agent of a subscription uses (`providers.md` § Account
- * rotation): the active one, the first in the list that is not used up, or
+ * Which account each agent of a subscription uses
+ * (`crates/backend-providers/src/llm/rotation.rs`): the active one, the first
+ * in the list that is not used up, or
  * the one with the most room.
  */
 export type SettingsRotation = 'manual' | 'in_order' | 'balanced'
@@ -276,7 +278,7 @@ export const ROTATION_HINTS: Record<SettingsRotation, SentenceText> = {
   },
 }
 
-/** The protocols a compatible API can speak, which its page offers (`providers.md` § Provider management). */
+/** The protocols a compatible API can speak, which its page offers (`packages/web-ui/src/settings/SettingsProvidersPage.vue`). */
 export const COMPATIBLE_WIRE_APIS: readonly SettingsWireApi[] = [
   'anthropic-messages',
   'openai-chat',
@@ -296,8 +298,9 @@ export interface SettingsVendor {
 }
 
 /**
- * `setup` is an entry that is not complete yet (`models.md` § A provider is
- * in the list from the start): a plain wait, never a failure. `error` and
+ * `setup` is an entry that is not complete yet
+ * (`crates/backend-user-shard/src/provider_settings.rs`): a plain wait, never a
+ * failure. `error` and
  * `unreachable` are failures, which a refused key, an endpoint that did not
  * answer or a catalog that could not be read cause.
  */
@@ -368,7 +371,7 @@ export interface SettingsProviderEntry {
   /** The entry's vendor; null for a compatible API. */
   vendorId: string | null
   /**
-   * A compatible API (`providers.md` § Provider management): its protocol,
+   * A compatible API (`packages/web-ui/src/settings/SettingsProvidersPage.vue`): its protocol,
    * endpoint and optional key are the user's to set at any time, and its
    * models are the ones the user adds. Any other API-key entry is a vendor's:
    * its endpoint is shown, never edited. Fixed with the entry.
@@ -376,7 +379,7 @@ export interface SettingsProviderEntry {
   compatible: boolean
   /**
    * Whether it makes text: false for a vendor of media alone, such as
-   * ElevenLabs (`providers.md` § Media-only vendors), whose page has no
+   * ElevenLabs (`packages/web/src/state/catalog.ts`), whose page has no
    * Models and whose key Test Connection checks through its media models.
    * Absent means it does.
    */
@@ -480,7 +483,7 @@ export interface SettingsModelEditor {
 
 /**
  * What a sign-in waits for before it has a link or a code to show
- * (`claude-code.md` § Accounts and sign-in): the vendor, Claude Code's machine,
+ * (`crates/provider-claude-code/src/account.rs`): the vendor, Claude Code's machine,
  * the command-line tool's install on it, or its start.
  */
 export type ProviderLoginStage = 'preparing' | 'waiting_for_machine' | 'installing' | 'starting' | 'waiting_for_user'

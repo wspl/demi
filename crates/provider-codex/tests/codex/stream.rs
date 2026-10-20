@@ -1,5 +1,5 @@
 //! The events a Codex run makes over server-sent events, and its failures
-//! (`providers.md` § A run, `failures-and-recovery.md`).
+//! (`crates/provider-common/src/contract.rs`, `failures-and-recovery.md`).
 
 use std::time::Duration;
 

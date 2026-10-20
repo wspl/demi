@@ -1,6 +1,6 @@
 //! The newest release of a vendor's CLI, which a provider names in its
 //! requests as that CLI does, since the vendor's service decides by it what
-//! it serves (`models.md` § The Codex catalog, `providers.md` § Endpoints):
+//! it serves (`crates/provider-codex/src/models.rs`, `crates/provider-common/src/endpoint.rs`):
 //! read from where the CLI's own update check reads it, kept six hours and
 //! read again in the background by [`KeptRead`], so no request waits for it,
 //! with the version built into the provider answering until the first read

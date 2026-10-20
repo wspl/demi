@@ -121,7 +121,7 @@ impl JsonSchema for Trimmed {
 }
 
 /// The base URL of a vendor's API, as an entry configures it: an `http` or
-/// `https` URL (`providers.md` § Endpoints), which its schema's `http-url`
+/// `https` URL (`crates/provider-common/src/endpoint.rs`), which its schema's `http-url`
 /// format tells the web app's schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

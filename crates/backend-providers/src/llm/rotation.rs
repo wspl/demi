@@ -1,9 +1,16 @@
-//! Account rotation (`providers.md` § Account rotation): which of an
+//! Account rotation: which of an
 //! entry's accounts an agent takes under In Order and Balanced, the accounts
 //! used up until their moment, and how many agents run a turn on each
 //! account, so that agents started together spread over the accounts
 //! before their snapshots change. An idle agent keeps its account without
 //! counting on it.
+//!
+//! An agent keeps its account once it took one, because the vendor's prompt
+//! cache belongs to the account: a 300K conversation that moves to another
+//! account writes its 300K again there. It takes another only when its account
+//! fails with `usage_limit`, after a compaction (whose next request writes its
+//! prefix anew in any case), or when its account is removed or the rotation
+//! changes.
 //!
 //! For example, Balanced compares a Max account whose 5-hour window is 80%
 //! used with 3 hours to go (room 0.2 / 0.6 = 0.33) and a Pro account at 10%

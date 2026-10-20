@@ -9,7 +9,7 @@ import type { AccountSwitchBlock } from '../block-types'
 /**
  * Where the agent's account reached its limit and the same request went on
  * with another account: a neutral line, as the Stopped row is, not a
- * failure (`providers.md` § Account rotation). It is the whole of what
+ * failure (`crates/backend-providers/src/llm/rotation.rs`). It is the whole of what
  * happened, so it wraps where the transcript is narrow rather than cut
  * the account it went on with.
  */

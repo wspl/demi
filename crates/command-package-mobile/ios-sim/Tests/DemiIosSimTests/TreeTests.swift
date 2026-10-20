@@ -1,5 +1,5 @@
 // `inspect`'s tree where idb's read lists a bar without children: iOS 26's
-// toolbar, which holds Settings' search field (`mobile.md` § iOS).
+// toolbar, which holds Settings' search field (`crates/command-package-mobile/src/ios/mod.rs`).
 
 import CoreGraphics
 import XCTest

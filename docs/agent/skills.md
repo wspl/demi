@@ -196,7 +196,7 @@ conversation working in the home folder would otherwise take
 `~/.claude/skills`, another agent's own skills, for a project's. Every node of the conversation, a subagent working elsewhere
 included, gets the same project skills. The only other skills are the user
 skills above; no other skill is read or offered, and the Claude Code provider
-keeps the CLI's own skills out ([Starting](../providers/claude-code.md)).
+keeps the CLI's own skills out (`crates/provider-claude-code/src/lib.rs`).
 Every directory under these two that holds a `SKILL.md` is a skill, and the
 search does not descend into a skill's directory. It reads at most 2,000
 directories, to a depth of six below each skills directory, and finds at most

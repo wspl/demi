@@ -14,7 +14,7 @@
 
 // The part of the Android Emulator's `emulator_controller.proto` (emulator
 // 36.6, `<sdk>/emulator/lib/`) that Demi's Android driver uses
-// (`mobile.md` § Android): the service's name, its methods and their
+// (`crates/command-package-mobile/src/android/mod.rs`): the service's name, its methods and their
 // messages keep the original's names and field numbers; the fields and
 // methods Demi does not use are left out, which protobuf's unknown fields
 // allow.

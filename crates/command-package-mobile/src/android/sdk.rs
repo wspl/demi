@@ -1,4 +1,5 @@
-//! The Android SDK of the Host (`mobile.md` § Android): its AVDs, as their
+//! The Android SDK of the Host
+//! (`crates/command-package-mobile/src/android/mod.rs`): its AVDs, as their
 //! files describe them, the emulators that run, as their discovery files
 //! say, and the emulator program that boots an AVD.
 
@@ -340,7 +341,7 @@ impl Sdk for Installed {
                 .stdout(stdout)
                 .stderr(stderr);
             // The emulator outlives this program, which shuts nothing down
-            // as it ends (`mobile.md` § Lifetime).
+            // as it ends (`crates/command-package-mobile/src/devices.rs`).
             #[cfg(unix)]
             command.process_group(0);
             #[cfg(windows)]

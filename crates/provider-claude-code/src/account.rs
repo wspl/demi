@@ -1,10 +1,30 @@
-//! A Claude Code account (`claude-code.md` § Accounts and sign-in,
-//! `providers.md` § Subscription secrets): its record holds only its public
-//! metadata, since the CLI keeps its sign-in in the account's directory on
-//! the Claude Code machine and renews it there. The provider names the
-//! account a process uses, marks it signed out when the vendor refused its
-//! sign-in, and hands over, once, the sign-in an earlier release kept
-//! sealed in its record.
+//! A Claude Code account: its record holds only its public metadata, since
+//! the CLI keeps its sign-in in the account's directory on the Claude Code
+//! machine and renews it there. The provider names the account a process uses,
+//! marks it signed out when the vendor refused its sign-in, and hands over,
+//! once, the sign-in an earlier release kept sealed in its record.
+//!
+//! - One directory per account is the CLI's configuration directory for every
+//!   process of that account, and the one place its sign-in exists. That is a
+//!   requirement: a renewal revokes at once the refresh token it spends and
+//!   the access token it replaces (measured with Claude Code 2.1.301), so a
+//!   second copy of a sign-in anywhere is signed out by the first renewal of
+//!   the other. In one directory the CLI renews once for all its processes,
+//!   under a lock there.
+//! - A process is always closed, SIGTERM first, never killed: one killed while
+//!   it renews leaves the lock behind, and for about a minute every process of
+//!   the account fails, until the CLI takes the lock back (the sign-in
+//!   survives). The backend never renews a Claude sign-in itself.
+//! - A refused renewal ends a run with `authentication_failed` (`is_error`,
+//!   though its `subtype` says success); the account is marked signed out
+//!   until a login replaces it, and account rotation passes over it.
+//! - Signing an account in again and removing it replace or delete its
+//!   directory, so each first stops new processes of the account from starting,
+//!   requests and probes alike, closes every process it has, and only then
+//!   changes the directory.
+//! - The handover moves the tokens an earlier release kept sealed into the
+//!   directory and clears the record's secret, so the backend holds none; a
+//!   directory that already holds a sign-in wins.
 
 use std::sync::Arc;
 

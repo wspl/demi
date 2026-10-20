@@ -58,7 +58,7 @@ export {
   type ReconnectWait,
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
-// The live view (`mobile.md` § The live view): its frames, the decoder that
+// The live view (`packages/plugin-mobile/src/index.ts`): its frames, the decoder that
 // shows its pictures, and the viewer's input in the picture's coordinates,
 // which every source's view shares.
 export * from '@demicodes/web-ui/live/protocol'

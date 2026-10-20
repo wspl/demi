@@ -1,4 +1,4 @@
-//! Grok Build's device login (`providers.md` § Login and publication): OAuth
+//! Grok Build's device login: OAuth
 //! device authorization (RFC 8628) at `auth.x.ai` with the request contract
 //! of the Grok CLI, its fixed scopes, `referrer=grok-build` and its client
 //! headers, then the team or organization the tokens act for, and the

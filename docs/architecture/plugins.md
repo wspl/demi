@@ -144,7 +144,7 @@ runtime's `demi agent` group, which depends on the node
 ### Prompt text and context
 
 A node's system prompt is rendered once, when the node is assembled
-([Prompt cache](../providers/providers.md#prompt-cache)):
+(`crates/provider-common/src/contract.rs`):
 
 ```text
 the identity: the product's instructions, or a profile's
@@ -496,7 +496,7 @@ host runs the flow, one for every such plugin:
    renewing it first when it expires within a minute. A renewal takes the
    secret's revision and replaces it at that revision, so two workers never
    spend one refresh token twice, as for provider credentials
-   ([Token refresh](../providers/providers.md#token-refresh)), and runs to
+   (`crates/provider-common/src/credentials/refresh.rs`), and runs to
    its end when its caller goes away. Only the vendor's refusal of the
    refresh token itself, an HTTP 400 or 401 whose body is a JSON object
    with `error: "invalid_grant"`, forgets the tokens and

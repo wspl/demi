@@ -47,7 +47,7 @@ same crate. The runner wire and the machine-manager socket have fixed
 encodings, and a golden corpus with one message of every kind pins their bytes
 at both ends. Integer fields travel as integers. Vendor APIs are not Demi
 contracts: each provider crate declares only the parts it reads
-([Providers](../providers/providers.md)).
+(`crates/backend-providers/src/lib.rs`).
 
 A shape is declared once. Nothing restates a contract type by hand, in Rust or
 in TypeScript: a second declaration of the same shape is a defect, even while
@@ -144,10 +144,10 @@ These are the points where values enter, and what a failure does:
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing (`crates/runner/src/main.rs`) |
 | A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged (`crates/command-package-browser-chrome/src/live.rs`) |
 | A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
-| A sealed credential document | The vault | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
+| A sealed credential document | The vault | The error names the field path and the kind of failure, never the value (`crates/backend-providers/src/lib.rs`) |
 | Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |
 | A tool call's input from the model | The tool | The model receives the tool's error (`crates/agent-tools/src/lib.rs`) |
-| A vendor API response | The provider crate's two-step decode | An unknown `type` is skipped; a known one with a malformed payload is a protocol failure that is never retried automatically ([Providers](../providers/providers.md)) |
+| A vendor API response | The provider crate's two-step decode | An unknown `type` is skipped; a known one with a malformed payload is a protocol failure that is never retried automatically (`crates/backend-providers/src/lib.rs`) |
 
 ## Generated TypeScript
 
@@ -287,7 +287,7 @@ by case:
 | Logic | Owner | How |
 |---|---|---|
 | The file-type table: which files the product previews, by extension, and which the page shows in place | `shared-types` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
-| The context limits a model's window offers, and whether a stored limit applies | `shared-types` | The model menu offers them and the usage indicator counts against the limit, while sessions compact at it ([Context limit](../providers/models.md#context-limit)), so the steps and their lookups are emitted into `@demicodes/protocol` |
+| The context limits a model's window offers, and whether a stored limit applies | `shared-types` | The model menu offers them and the usage indicator counts against the limit, while sessions compact at it (`crates/shared-types/src/context_limit.rs`), so the steps and their lookups are emitted into `@demicodes/protocol` |
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |
 | Whether a message can be edited | The data model | `User` is the only editable block type; hidden inputs are `Context`, `Wakeup` and `AgentMessage` blocks |

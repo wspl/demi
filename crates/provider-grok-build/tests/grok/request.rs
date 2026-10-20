@@ -1,5 +1,5 @@
 //! What a Grok Build run sends and what it makes of the stream
-//! (`providers.md` § Endpoints, `models.md` § Request parameters).
+//! (`crates/provider-grok-build/src/releases.rs`, `crates/shared-types/src/model.rs`).
 
 use std::sync::Arc;
 

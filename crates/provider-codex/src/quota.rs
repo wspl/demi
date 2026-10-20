@@ -1,4 +1,4 @@
-//! The quota of a Codex account (`usage-and-quota.md` § Codex): a free probe
+//! The quota of a Codex account: a free probe
 //! of the account's usage status, which the Codex CLI reads for its own
 //! status and which answers while the limit is reached, and the
 //! `x-codex-*` headers on every response of the service.

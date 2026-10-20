@@ -1,5 +1,4 @@
-//! The credential pool contract (`providers.md` § The credential pool
-//! contract): the accounts of one entry, which of them is active, and each
+//! The credential pool contract: the accounts of one entry, which of them is active, and each
 //! account's secret document with its version. A provider crate never knows
 //! where the pool keeps them.
 
@@ -27,7 +26,7 @@ pub struct AccountMeta {
     /// same account replaces its record.
     pub identity_key: Option<String>,
     /// The vendor refused the account's sign-in; a login of the account
-    /// clears it (`claude-code.md` § Accounts and sign-in).
+    /// clears it (`crates/provider-claude-code/src/account.rs`).
     pub signed_out: bool,
 }
 
@@ -104,7 +103,7 @@ pub trait CredentialPool: Send + Sync {
 
     /// Inserts the account, or replaces the one with its id, with its secret
     /// document; none for a family whose sign-in is kept elsewhere, such as
-    /// Claude Code's CLI (`providers.md` § Subscription secrets). Writing an
+    /// Claude Code's CLI (`crates/provider-common/src/credentials/refresh.rs`). Writing an
     /// account clears its `signed_out`.
     fn write(
         &self,
@@ -113,7 +112,7 @@ pub trait CredentialPool: Send + Sync {
     ) -> BoxFuture<'_, Result<(), PoolError>>;
 
     /// Marks the account as signed out: the vendor refused its sign-in
-    /// (`claude-code.md` § Accounts and sign-in). An account removed
+    /// (`crates/provider-claude-code/src/account.rs`). An account removed
     /// meanwhile marks nothing.
     fn sign_out<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 
@@ -122,7 +121,7 @@ pub trait CredentialPool: Send + Sync {
 
     /// Removes the account and its document. When it was the active
     /// account, the first remaining one in id order becomes active, or none
-    /// when it was the last (`providers.md` § Login and publication).
+    /// when it was the last (`crates/backend-providers/src/vault/logins.rs`).
     fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 }
 

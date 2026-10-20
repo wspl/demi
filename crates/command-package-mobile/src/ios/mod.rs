@@ -1,4 +1,4 @@
-//! The iOS driver (`mobile.md` § iOS): the Host's iOS simulators through
+//! The iOS driver: the Host's iOS simulators through
 //! `demi-ios-sim`, the helper `demi-mobile` carries. A one-shot helper lists,
 //! boots and shuts down simulators; each conversation that opens an iOS
 //! device gets a helper of its own, which its devices share and which ends
@@ -141,7 +141,7 @@ impl Installed {
 impl Launch for Installed {
     fn unavailable(&self) -> Option<String> {
         // idb's libraries, which the helper links, are built for macOS 15 on
-        // Apple silicon (`mobile.md` § iOS).
+        // Apple silicon.
         if cfg!(target_arch = "x86_64") {
             return Some("iOS simulators need a Mac with Apple silicon in this version of Demi".into());
         }
@@ -582,7 +582,8 @@ impl Device for IosDevice {
     fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             // A simulator takes no text into its pasteboard from outside
-            // (`mobile.md` § Commands): the focused field's value becomes
+            // (`crates/command-package-mobile/src/operations.rs`): the focused
+            // field's value becomes
             // its value with the text at its end, through accessibility.
             let tree = self.tree().await?;
             let Some(field) = focused_field(&tree) else {

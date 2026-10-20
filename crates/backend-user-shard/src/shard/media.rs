@@ -232,8 +232,9 @@ async fn standing(services: &Services, route: &Route, model: &str) -> Result<Sta
 }
 
 /// Each entry's models of `kind`, by entry id, newest first, for the
-/// settings page's Images, Videos and Audio sections (`providers.md` § Provider
-/// management): whether or not its switch for the kind is on, and an alias
+/// settings page's Images, Videos and Audio sections
+/// (`crates/backend-user-shard/src/provider_settings.rs`): whether or not its
+/// switch for the kind is on, and an alias
 /// left out beside the model it names. An entry whose models could not be
 /// listed has none here; the agent's listing says why.
 pub async fn entry_media_models(
@@ -435,8 +436,9 @@ pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<Media
             });
         }
         // A model only entries turned off offer is not listed; beside one
-        // that an entry makes, those that are off say so (`providers.md`
-        // § Provider management, `media.md` § What the agent is told).
+        // that an entry makes, those that are off say so
+        // (`crates/backend-user-shard/src/provider_settings.rs`, `media.md` §
+        // What the agent is told).
         let made = entries
             .iter()
             .any(|entry| !matches!(entry.status, EntryStatus::Off | EntryStatus::TurnedOff));
@@ -1475,8 +1477,8 @@ impl Making<'_> {
                 return Err(used_up(provider.quota().and_then(|quota| quota.used_up_until(now)), &last_trace));
             }
             // The account is named only to whoever manages the entry: on a
-            // shared instance it is the administrator's (`providers.md`
-            // § Scope).
+            // shared instance it is the administrator's
+            // (`crates/backend-providers/src/vault/entries.rs`).
             let label = if self.manages {
                 let record = services.vault.account(entry.id.clone(), account.clone()).await.ok().flatten();
                 Some(record.map_or_else(|| account.to_string(), |record| record.label))
@@ -1554,8 +1556,8 @@ impl Making<'_> {
             media_seconds: None,
             cost: None,
             // A medium's tokens have no catalog price: the vendor's own
-            // cost prices the call (`usage-and-quota.md` § How the figures
-            // are counted), and it asked for no prompt of a session.
+            // cost prices the call (`crates/backend-database/src/usage.rs`),
+            // and it asked for no prompt of a session.
             price: None,
             system_hash: None,
             tools_hash: None,
@@ -1610,7 +1612,7 @@ impl OpenRow {
         row.ended_at = self.shard.services().clock.now();
         if let Err(error) = self.shard.services().control.append_usage(row).await {
             // The row is lost; what the call made still comes back
-            // (`usage-and-quota.md` § Usage ledger).
+            // (`crates/backend-database/src/usage.rs`).
             tracing::warn!(error = &error as &dyn std::error::Error, "a usage ledger row was not written");
         }
     }

@@ -1,5 +1,6 @@
 // swift-tools-version: 6.0
-// demi-ios-sim, the iOS helper demi-mobile carries (`mobile.md` § iOS): it
+// demi-ios-sim, the iOS helper demi-mobile carries
+// (`crates/command-package-mobile/src/ios/mod.rs`): it
 // links Meta's FBSimulatorControl (MIT) from idb's v1.7.6 release, each
 // library pinned by its URL and sha256. `bun xtask native build` builds it,
 // with the guest bridge from the same release's source.

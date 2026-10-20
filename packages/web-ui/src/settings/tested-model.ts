@@ -14,7 +14,7 @@ export function testedModel(provider: SettingsProviderEntry): SettingsProviderMo
  * Whether Test Connection has something to test: a text model to send its
  * message to, or the key of an entry of media alone, which its vendor's
  * list of models checks with no model named, whether that list could be
- * read yet or not (`providers.md` § Media-only vendors).
+ * read yet or not (`packages/web/src/state/catalog.ts`).
  */
 export function canTest(provider: SettingsProviderEntry): boolean {
   return provider.makesText === false || testedModel(provider) !== undefined

@@ -1,5 +1,4 @@
-//! Codex's device login and the accounts it stores (`providers.md` § Login
-//! and publication).
+//! Codex's device login and the accounts it stores (`crates/provider-codex/src/login.rs`).
 
 use std::sync::{Arc, Mutex};
 

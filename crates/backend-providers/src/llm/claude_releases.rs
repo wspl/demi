@@ -1,10 +1,17 @@
-//! The vendor's Claude Code releases (`claude-code.md` § Which version): the
+//! The vendor's Claude Code releases: the
 //! newest version, read from the official distribution's `latest` pointer
 //! and that version's manifest, and believed for six hours. Concurrent
 //! readers share one read, a version's manifest is read once, and a redirect
 //! is refused. The reads run on the edge's runtime, whoever asks; a start
 //! that has a version to run never waits for one, and reads in the
 //! background instead.
+//!
+//! Demi always follows the vendor's newest release: provider entries store no
+//! CLI version and expose no version-selection or update-disable setting, and
+//! Demi keeps no list of versions it was tested with, because such a list would
+//! be out of date with each release and a version it does not name would still
+//! run. The Claude Code scenario suite checks whichever CLI it is given against
+//! what the product relies on.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -21,7 +28,7 @@ use url::Url;
 
 /// The command package that installs the CLI `provider`'s requests start on
 /// the Claude Code machine: Claude Code's, the one provider whose requests are a
-/// process (`claude-code.md` § The package); none for an HTTP provider.
+/// process (`crates/command-package-claude-code/src/lib.rs`); none for an HTTP provider.
 pub fn cli_package(provider: &dyn Provider) -> Option<String> {
     provider
         .capabilities()

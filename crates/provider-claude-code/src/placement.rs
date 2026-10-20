@@ -1,13 +1,40 @@
-//! Where the CLI runs (`claude-code.md` § How a runtime gets its process, §
-//! Accounts and sign-in): the backend chooses the machine, the Claude Code
-//! machine, and readies Demi's CLI there, and the provider builds the spawn
-//! request from what the placement found. Every process of an account runs
-//! in that account's one directory, the CLI's configuration directory, and
-//! writes its session into a directory of its own under it, which goes when
-//! the process does; a sign-in runs in a new directory, which becomes the
-//! account's when it succeeds. Account work that belongs to no
-//! conversation, a sign-in or a usage probe, reaches the machine through an
-//! [`AccountMachine`], from any thread.
+//! Where the CLI runs: the backend chooses the machine and readies Demi's CLI
+//! there, and the provider builds the spawn request from what the placement
+//! found. Every process of an account runs in that account's one directory,
+//! the CLI's configuration directory, and writes its session into a directory
+//! of its own under it, which goes when the process does; a sign-in runs in a
+//! new directory, which becomes the account's when it succeeds. Account work
+//! that belongs to no conversation, a sign-in or a usage probe, reaches the
+//! machine through an [`AccountMachine`], from any thread.
+//!
+//! The CLI runs on the Claude Code machine, always (one gVisor sandbox that
+//! belongs to no user and in which nobody has a shell), whatever the
+//! conversation's execution target is, so each account's sign-in lives in one
+//! directory and the CLI has one install to keep and one platform to be right
+//! on. A placement is that one rule in one place: what needs a provider's
+//! process says what the work is, and does not know why it got that machine.
+//! The process is retained between turns and is not activity: a machine with
+//! no work left goes idle and stops with its processes, and the next request
+//! wakes it and resumes the session.
+//!
+//! A process provider cannot build its runtime from the provider alone, since
+//! only the backend chooses the machine, so `Provider::runtime` refuses
+//! (`ProcessHostRequired`) and the runtime is built over a placement, from the
+//! arguments the provider was built from, so that no code downcasts a provider
+//! to its concrete type:
+//!
+//! ```text
+//! backend (user's shard)                      this crate
+//!   claude-code family --same arguments-->    provider + placement = runtime
+//!   Placement::start <------ a run needs a process
+//!     wake or admit the machine, ensure the CLI, hand over an earlier sign-in
+//!     spawn request built by the provider; Host process interface starts it
+//! ```
+//!
+//! The backend holds the machine's admission only while the process starts. A
+//! failure to wake the machine, to install the CLI or to start it, and a
+//! process whose machine went away, fail the request as one that got no
+//! answer, `overloaded`, which the agent retries.
 
 use std::any::Any;
 use std::rc::Rc;
@@ -42,7 +69,7 @@ pub struct CliSite {
 
 /// What the CLI reads of its machine to describe its environment, which
 /// the session it resumes holds so that it describes none
-/// (`claude-code.md` § The session a process resumes).
+/// (`crates/provider-claude-code/src/session.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliSystem {
     /// The kernel's name, as `uname -s` prints it, such as `Linux`.
@@ -75,7 +102,7 @@ pub enum CliWork {
         /// The sign-in an earlier release kept in the account's record, as
         /// the CLI's own files, to write into the account's directory
         /// before the process starts unless the directory holds a sign-in
-        /// already (`claude-code.md` § Accounts and sign-in).
+        /// already (`crates/provider-claude-code/src/account.rs`).
         handover: Option<Handover>,
     },
     Login,
@@ -101,7 +128,7 @@ pub struct Handover {
 pub struct StartError(pub String);
 
 /// What a start waits for, in its order, which a sign-in shows its user
-/// (`claude-code.md` § Accounts and sign-in). A start reports each stage as
+/// (`crates/provider-claude-code/src/account.rs`). A start reports each stage as
 /// it reaches it, `Install` only when the machine has no CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartStage {
@@ -157,7 +184,7 @@ pub trait Placement {
 
     /// The processes prepared ahead on the placement's machine and not yet
     /// used, which every placement of that machine shares
-    /// (`claude-code.md` § Preparing a process ahead).
+    /// (`crates/provider-claude-code/src/prepared.rs`).
     fn prepared(&self) -> Rc<PreparedProcesses>;
 }
 
@@ -170,7 +197,7 @@ pub struct Placed {
 }
 
 /// How long each step of a start took on the placement's machine, which a
-/// run's span carries (`claude-code.md` § Preparing a process ahead).
+/// run's span carries (`crates/provider-claude-code/src/prepared.rs`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StartSteps {
     /// Waking or admitting the machine.
@@ -208,8 +235,9 @@ pub trait ConfigDir {
     /// the directory of `account`: no process of the account starts
     /// meanwhile, every one it has is closed and awaited, and its
     /// directory, when it has one, is replaced by this one; a start that
-    /// waited starts in the new one (`claude-code.md` § Accounts and
-    /// sign-in). Dropping the future before the directory is replaced
+    /// waited starts in the new one
+    /// (`crates/provider-claude-code/src/account.rs`). Dropping the future
+    /// before the directory is replaced
     /// gives the adoption up, and the sign-in's directory goes. An
     /// account's process has nothing to adopt.
     fn adopt<'a>(self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
@@ -221,8 +249,8 @@ pub trait ConfigDir {
 pub type AccountWork =
     Box<dyn FnOnce(Rc<dyn Placement>, CancellationToken) -> LocalBoxFuture<'static, ()> + Send>;
 
-/// The machine account work runs on, the Claude Code machine
-/// (`claude-code.md` § Where it runs), as the backend gives it to a sign-in
+/// The machine account work runs on, the Claude Code machine,
+/// as the backend gives it to a sign-in
 /// and a usage probe from any thread.
 pub trait AccountMachine: Send + Sync {
     /// Runs `work` for the provider entry `entry`, or the login that is to
@@ -234,6 +262,6 @@ pub trait AccountMachine: Send + Sync {
     /// Deletes the directory of the removed account `account`: no process
     /// of it starts meanwhile, every one it has is closed and awaited
     /// first, and a start that waited fails with the removal
-    /// (`claude-code.md` § Accounts and sign-in).
+    /// (`crates/provider-claude-code/src/account.rs`).
     fn remove_account(&self, account: String) -> BoxFuture<'static, Result<(), StartError>>;
 }

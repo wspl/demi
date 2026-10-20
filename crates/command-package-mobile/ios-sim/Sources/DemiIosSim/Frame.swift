@@ -1,5 +1,6 @@
-// `frame`: the device's frame as DeviceKit draws it (`mobile.md` § The live
-// view), drawn by DemiChrome once for the size the view asks for, turned as
+// `frame`: the device's frame as DeviceKit draws it
+// (`crates/command-package-mobile/src/live.rs`), drawn by DemiChrome once for
+// the size the view asks for, turned as
 // the picture is, with the screen cut out of it. The device type's profile
 // names its chrome, and the screen's rounded corners are its framebuffer
 // mask.

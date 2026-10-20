@@ -1,5 +1,6 @@
-//! What Demi writes to the CLI's standard input (`claude-code.md` §
-//! Requests over stream-json): the `initialize` control request that
+//! What Demi writes to the CLI's standard input
+//! (`crates/provider-claude-code/src/run.rs`): the `initialize` control request
+//! that
 //! declares the SDK MCP server, the user messages a kept process gains, and
 //! the answers to the CLI's control requests. Each is one JSON line. A user
 //! message is the same message in the session a new process resumes.
@@ -31,8 +32,7 @@ pub(crate) enum Input<'a> {
 
 /// A request Demi sends the CLI: `initialize`, which declares the SDK MCP
 /// server of a request's process, or none for the usage probe's, and
-/// `get_usage`, which the probe asks (`claude-code.md` § Accounts and
-/// sign-in).
+/// `get_usage`, which the probe asks (`crates/provider-claude-code/src/account.rs`).
 #[derive(Serialize)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub(crate) enum ControlRequest<'a> {

@@ -1,9 +1,17 @@
-//! The vendor quota of a subscription account (`usage-and-quota.md` § Vendor
-//! quota): a family's quota source, which probes the vendor's usage endpoint
+//! The vendor quota of a subscription account: a family's quota source, which
+//! probes the vendor's usage endpoint
 //! and reads the quota a live response reports; the account's snapshot
 //! store; the one merge both paths update the snapshot by; and the helpers a
 //! source reads a vendor's windows with. The snapshot's shape is `core`'s,
 //! because the web app receives it.
+//!
+//! Every probe is free: it reads a usage endpoint and spends no inference.
+//! That matters most when the limit is reached, since a request is then refused
+//! and a probe that needed one could not say why. An observation costs nothing
+//! extra and never fails a request: a response it cannot read is ignored. A
+//! snapshot is information for the user and for choosing an account under
+//! rotation; inference admission never reads it and the model never sees it. A
+//! window the vendor does not report is absent, never a made-up percentage.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -88,7 +96,7 @@ impl ProviderQuota {
 
     /// Merges the windows a live response reports into the account's
     /// snapshot, keeping its plan and label, and answers them, which the
-    /// call's usage ledger row keeps (`usage-and-quota.md` § Usage ledger).
+    /// call's usage ledger row keeps (`crates/backend-database/src/usage.rs`).
     /// `requested_at` is when the inference request whose response it reads
     /// started: a window whose value comes from a request that started later
     /// keeps it. A response the source cannot read changes nothing and
@@ -266,7 +274,7 @@ enum Update {
     Observation(ObservedWindows),
 }
 
-/// The one merge of `usage-and-quota.md` § Probe and observation: a probe
+/// The one merge both paths update a snapshot by: a probe
 /// sets the plan and the account label; an observation keeps them; either
 /// removes the windows it states do not exist, replaces each window it
 /// names whose value comes from a request that started no later than its

@@ -1,4 +1,5 @@
-//! Screenshot pixels and the screen's points (`mobile.md` § Commands): the
+//! Screenshot pixels and the screen's points
+//! (`crates/command-package-mobile/src/operations.rs`): the
 //! screenshot is the screen's pixels scaled so its long side is at most
 //! 1568, at the size its driver says ([`Screen::screenshot`]), and every
 //! coordinate a command takes or prints is one of its pixels, so the agent

@@ -1,5 +1,6 @@
 //! Provider entries (`web-api-settings.md` § Model configuration and provider
-//! inspection, `providers.md` § Credential vault, `models.md`): API-key
+//! inspection, `crates/backend-providers/src/vault/entries.rs`,
+//! `crates/shared-types/src/catalog.rs`): API-key
 //! entries sealed at rest and answered without their key, the master's
 //! entries serving every user's conversations on a shared instance and
 //! nobody else's on an isolated one, the vendor list from a scripted
@@ -941,8 +942,7 @@ async fn an_entry_whose_provider_cannot_be_built_answers_its_status_with_the_rea
 
 /// Adaptive thinking is Anthropic's own: a vendor from models.dev on
 /// `@ai-sdk/anthropic` receives an effort as its token budget, and an entry
-/// that names no vendor, Anthropic's, the effort itself (`models.md` §
-/// Thinking and service tiers).
+/// that names no vendor, Anthropic's, the effort itself (`crates/provider-common/src/thinking.rs`).
 #[tokio::test]
 async fn an_anthropic_compatible_vendor_receives_an_effort_as_a_token_budget() {
     let vendor = MockVendor::start().await;

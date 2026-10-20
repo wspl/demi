@@ -32,7 +32,7 @@ pub enum AuthReason {
     /// text is the family's message.
     Refresh(String),
     /// The vendor refused the account's sign-in, which waits for the user to
-    /// sign in again (`claude-code.md` § Accounts and sign-in).
+    /// sign in again (`crates/provider-claude-code/src/account.rs`).
     SignedOut,
 }
 

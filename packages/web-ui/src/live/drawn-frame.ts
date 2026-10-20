@@ -1,6 +1,7 @@
 /**
- * A device drawn as a black silhouette around its screen (`mobile.md`
- * § The live view), in the look of the frames Xcode installs: the frame a
+ * A device drawn as a black silhouette around its screen
+ * (`packages/plugin-mobile/src/index.ts`), in the look of the frames Xcode
+ * installs: the frame a
  * view draws itself when the device's own is not installed. Its body runs
  * an even bezel around the screen, its outer corners concentric with the
  * screen's, a metal band with a lit edge along its outside, and each button

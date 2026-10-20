@@ -1,5 +1,6 @@
-//! The built-in provider families (`providers.md` § Families, vendors and
-//! endpoints), built without an entry: the subscription families log in by
+//! The built-in provider families
+//! (`crates/backend-providers/src/llm/families.rs`), built without an entry:
+//! the subscription families log in by
 //! device, and each stands for the account an entry binds it to.
 
 use demi_backend_providers::llm::families::SubscriptionArgs;

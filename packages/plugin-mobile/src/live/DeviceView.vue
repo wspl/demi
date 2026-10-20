@@ -21,7 +21,7 @@ import { insertedText } from './typed'
 import { t } from '../locales/text'
 
 /**
- * A simulator, live (`mobile.md` § The live view): its pictures on a
+ * A simulator, live (`packages/plugin-mobile/src/index.ts`): its pictures on a
  * canvas, in the device's frame, fitted into the tab; a click or a finger
  * on it is a touch, a drag a swipe, the keyboard types; and over it the
  * agent's activity, the note that it is using the device and the ring

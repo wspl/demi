@@ -1,5 +1,6 @@
-//! The binary types a model can receive natively (`models.md` § Accepted
-//! attachment types). The set is closed: bytes are known by their magic
+//! The binary types a model can receive natively
+//! (`crates/shared-types/src/model.rs`). The set is closed: bytes are known by
+//! their magic
 //! numbers or not at all, never by guessing from a name; the command wire
 //! recognizes them (`demi_command_protocol::sniff_media_type`), so that a
 //! runner tells a medium without linking this crate.

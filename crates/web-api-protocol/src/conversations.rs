@@ -300,8 +300,8 @@ pub struct PluginRevision {
     pub revision: u64,
 }
 
-/// A conversation's model settings (`models.md` § A conversation's model
-/// settings): the provider entry and model, the thinking effort and the
+/// A conversation's model settings (`crates/shared-types/src/catalog.rs`): the
+/// provider entry and model, the thinking effort and the
 /// service tier. A new conversation starts with the user's last choice, which
 /// is model settings too.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -697,7 +697,7 @@ mod tests {
     use super::*;
 
     // The entries a provider keeps on a block never leave the backend
-    // (`claude-code.md` § The session a process resumes): a page whose
+    // (`crates/provider-claude-code/src/session.rs`): a page whose
     // blocks hold them has the wire shape of one whose blocks hold none.
     #[test]
     fn a_page_reaches_the_page_without_the_entries_its_provider_kept() {

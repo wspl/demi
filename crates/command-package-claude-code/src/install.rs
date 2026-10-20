@@ -1,5 +1,6 @@
-//! The Claude Code CLI on the machine that runs it (`claude-code.md` § The
-//! package): the release's executable for this machine, which the runner
+//! The Claude Code CLI on the machine that runs it
+//! (`crates/command-package-claude-code/src/lib.rs`): the release's executable
+//! for this machine, which the runner
 //! installs as the package's artifact `Claude Code`, and the versions of it
 //! the runner has. Nothing here downloads or looks for the CLI.
 

@@ -1,4 +1,4 @@
-//! A provider entry's model catalog (`models.md` § Catalog sources): the
+//! A provider entry's model catalog: the
 //! models the entry offers and what each can do. A capability the source does
 //! not state is null, which means unknown. The catalog carries portable facts
 //! only, never the name of the source it came from.
@@ -56,7 +56,7 @@ pub struct ProviderModel {
     #[garde(skip)]
     pub context_window: Option<u32>,
     /// The most tokens one request may generate; null when no
-    /// model-specific limit is known (`models.md` § Output limit).
+    /// model-specific limit is known (`crates/provider-common/src/contract.rs`).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<u32>")]
     #[garde(range(min = 1))]
@@ -67,8 +67,7 @@ pub struct ProviderModel {
     pub supports_tools: Option<bool>,
     /// The types the model reads natively, from the input modalities the
     /// source gives it, or as the source states them: `[]` for none, null
-    /// when the source does not say (`models.md` § Accepted attachment
-    /// types).
+    /// when the source does not say (`crates/shared-types/src/model.rs`).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<FileExtension>>")]
     #[garde(skip)]
@@ -88,7 +87,9 @@ pub struct ProviderModel {
     #[schemars(with = "Nullable<bool>")]
     #[garde(skip)]
     pub can_disable_thinking: Option<bool>,
-    /// The service tiers the model offers; empty for none.
+    /// The service tiers the model offers; empty for none. The product offers
+    /// only these, because a request field that can carry a tier does not mean
+    /// every vendor supports tiers.
     #[garde(dive)]
     pub service_tiers: Vec<ServiceTier>,
     #[serde(deserialize_with = "Option::deserialize")]
@@ -105,7 +106,7 @@ pub struct ProviderModel {
 impl ProviderModel {
     /// The selection a conversation infers with when it picks this model of
     /// entry `provider_id` with `thinking` and `service_tier_id`: the one
-    /// conversion of a catalog model (`models.md` § Request parameters).
+    /// conversion of a catalog model (`crates/shared-types/src/model.rs`).
     /// A context window the catalog does not know is zero.
     pub fn selection(
         &self,
@@ -129,8 +130,7 @@ impl ProviderModel {
     }
 
     /// The thinking setting that the thinking effort `effort` of a
-    /// conversation's model settings makes on this model (`models.md` § A
-    /// conversation's model settings): an effort the model lists becomes its
+    /// conversation's model settings makes on this model: an effort the model lists becomes its
     /// thinking setting at that effort, with the default summary;
     /// [`THINKING_OFF`] turns thinking off when the model can; none is the
     /// first effort the model lists, and no setting only on a model that
@@ -236,8 +236,8 @@ impl ProviderModel {
     }
 }
 
-/// The effort a conversation's model settings hold when a change names none
-/// (`models.md` § A conversation's model settings): the first the model's
+/// The effort a conversation's model settings hold when a change names none:
+/// the first the model's
 /// thinking capabilities list.
 fn first_effort(capabilities: &[ThinkingCapability]) -> Option<&str> {
     capabilities.iter().find_map(|capability| match capability {

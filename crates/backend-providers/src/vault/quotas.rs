@@ -1,5 +1,4 @@
-//! Each subscription account's quota snapshot (`usage-and-quota.md` § One
-//! snapshot per account): held in memory by the process that uses the
+//! Each subscription account's quota snapshot: held in memory by the process that uses the
 //! account and written through to the account's record, so that it outlives
 //! a rebuilt provider and a restart. A write that fails is logged; it costs
 //! at most a later probe. Whether an account can be used is what routes a

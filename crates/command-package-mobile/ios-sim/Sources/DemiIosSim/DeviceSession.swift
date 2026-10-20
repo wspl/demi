@@ -4,7 +4,8 @@
 // The simulator turns its screen but not its framebuffer, which stays
 // portrait with the picture sideways, so every picture is turned upright
 // here and every point the caller gives, in the upright screen's points, is
-// turned back into the portrait points the HID takes (`mobile.md` § iOS).
+// turned back into the portrait points the HID takes
+// (`crates/command-package-mobile/src/ios/mod.rs`).
 
 import CoreImage
 import FBControlCore

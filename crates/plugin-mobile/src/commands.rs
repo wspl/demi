@@ -1,4 +1,4 @@
-//! The `demi mobile` group (`mobile.md` § Commands): one native leaf per
+//! The `demi mobile` group (`crates/command-package-mobile/src/operations.rs`): one native leaf per
 //! operation of the `demi.mobile` package, its arguments and `--json` result
 //! declared from the `command-package-mobile-protocol` types, so the command
 //! line, the runner's check and the operation read one definition.

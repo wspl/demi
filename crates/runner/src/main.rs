@@ -756,7 +756,7 @@ fn operating_system() -> wire::OperatingSystem {
 }
 
 /// The kernel as `uname -s` and `uname -r` print it, read natively, which
-/// the hello names (`claude-code.md` § The session a process resumes).
+/// the hello names (`crates/provider-claude-code/src/session.rs`).
 #[cfg(unix)]
 fn kernel() -> Option<wire::Kernel> {
     let named = rustix::system::uname();

@@ -3,8 +3,9 @@ import type { ShownError } from '../infra/errors'
 import { t } from './locales/text'
 
 /**
- * A conversation's cost as the context card shows it (`usage-and-quota.md`
- * § A conversation's cost): the backend's `GET /conversations/:id/cost`,
+ * A conversation's cost as the context card shows it
+ * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the backend's `GET
+ * /conversations/:id/cost`,
  * which the page reads with the conversation as it opens and to which it
  * adds each `cost` frame while the conversation is open.
  */
@@ -88,7 +89,7 @@ export function addCost(cost: ConversationCostView, addition: CostAddition): Con
 
 /**
  * What a `cost` frame is to the cost the page holds, by the rows each
- * counts (`usage-and-quota.md` § Reading it): `next` when its row follows
+ * counts: `next` when its row follows
  * the held ones and the page adds it, `held` when the cost includes it
  * already, as a frame that crossed the read, and `gap` when rows before it
  * are missing, as frames lost while the connection was down, and the page

@@ -25,7 +25,7 @@ impl Default for LifecycleTuning {
 }
 
 /// How the backend serves conversations (`rendering.md` § Order and delivery,
-/// `usage-and-quota.md` § Rate limit). Tests lower the bounds.
+/// `crates/backend-providers/src/usage/rate_limit.rs`). Tests lower the bounds.
 #[derive(Debug, Clone, Copy)]
 pub struct ConversationTuning {
     /// The most frames a conversation socket's outbox holds; a client that

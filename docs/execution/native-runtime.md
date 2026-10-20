@@ -15,7 +15,7 @@ Each is its own resident program and its own release, so a job that edits a
 file downloads and starts only the small file program, and a browser release
 does not re-release the file commands. The package that installs the Claude
 Code CLI, `demi.claude-code`, uses the same contract
-([The package](../providers/claude-code.md#the-package)). Shell utilities and
+(`crates/command-package-claude-code/src/lib.rs`). Shell utilities and
 `rpc` handlers have their own owners.
 
 ## One command, from declaration to result
@@ -278,7 +278,7 @@ belongs to:
 - an artifact the backend attached to the stream when it opened it, with its
   location. For example, the backend opens `claude-code.ensure` with a
   release record and attaches each of the record's downloads, located at the
-  vendor's official URL ([The package](../providers/claude-code.md#the-package)).
+  vendor's official URL (`crates/command-package-claude-code/src/lib.rs`).
 
 At most 32 requests are answered at a time on a connection; one beyond that, or
 one that repeats an id still in flight, is refused. When the job exits or the

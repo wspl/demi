@@ -4,7 +4,7 @@ import { accountSwitchText } from '../account-switch'
 
 // The line names both accounts, the window in the viewer's language and
 // its reset in the viewer's zone, and leaves out what the block does not
-// know (`providers.md` § Account rotation). Microseconds.
+// know (`crates/backend-providers/src/llm/rotation.rs`). Microseconds.
 test('an account switch reads as the accounts, the window and the reset the block knows', () => {
   const now = new Date(2026, 9, 14, 18, 0)
   const resetsAt = new Date(2026, 9, 14, 21, 0).toISOString()

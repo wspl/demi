@@ -1,4 +1,4 @@
-//! The models.dev document (`models.md` § The models.dev document): one copy
+//! The models.dev document (`crates/provider-common/src/models_dev.rs`): one copy
 //! per backend, revalidated conditionally, shared by concurrent readers,
 //! kept as a stale copy after a failed request, and its models mapped onto
 //! the catalog's shape. The document is served by a scripted vendor.

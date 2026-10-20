@@ -1,6 +1,7 @@
 /**
- * One live view of the conversation's simulators (`mobile.md` § The live
- * view): the page's side of the `mobile` stream, over the live view's link
+ * One live view of the conversation's simulators
+ * (`packages/plugin-mobile/src/index.ts`): the page's side of the `mobile`
+ * stream, over the live view's link
  * that the browser's view uses too. It keeps what the view shows, sends the
  * viewer's touches and keys, follows the agent's activity and the frame of
  * the watched device, and watches a device only while one of its tabs is
@@ -391,7 +392,7 @@ export class MobileSession {
 
   /**
    * The view shows the watched device's screen at `width` × `height` device
-   * pixels: the Host captures it no larger (`mobile.md` § The live view).
+   * pixels: the Host captures it no larger (`packages/plugin-mobile/src/index.ts`).
    */
   showsScreenAt(width: number, height: number): void {
     const size = { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) }
@@ -408,7 +409,7 @@ export class MobileSession {
     }
   }
 
-  /** Wake: the watched device's screen turns on, and never off (`mobile.md` § The live view). */
+  /** Wake: the watched device's screen turns on, and never off (`packages/plugin-mobile/src/index.ts`). */
   wake(): void {
     const device = this.state.watched
     if (device !== null) {

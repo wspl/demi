@@ -1,4 +1,5 @@
-//! Builds and embeds the iOS helper on Apple silicon (`mobile.md` § iOS):
+//! Builds and embeds the iOS helper on Apple silicon
+//! (`crates/command-package-mobile/src/ios/mod.rs`):
 //! `demi-ios-sim`, the Swift package in `ios-sim/` linking idb's v1.7.6
 //! libraries, and idb's guest bridge `SimulatorFrameworkBridge-iOS`, built
 //! from the same release's source with Xcode and XcodeGen, both downloads
@@ -20,7 +21,8 @@
 //! gRPC interface the Android driver uses (`android/`), with protox, so no
 //! `protoc` is needed, and fetches the Android helper, openatx's `u2.jar`
 //! (MIT), pinned by its SHA-256, which the program carries as it is
-//! (`mobile.md` § Android). A build that cannot fetch it carries none and
+//! (`crates/command-package-mobile/src/android/mod.rs`). A build that cannot
+//! fetch it carries none and
 //! says why; `DEMI_MOBILE_ANDROID_HELPER=required` makes that an error.
 
 use std::{

@@ -1,4 +1,5 @@
-//! The Android driver against a stub emulator (`mobile.md` § Android): the
+//! The Android driver against a stub emulator
+//! (`crates/command-package-mobile/src/android/mod.rs`): the
 //! emulator's own gRPC interface, served here on a local port, which takes
 //! only calls signed with the key the driver put into its key directory;
 //! and a scripted helper inside it. What the commands print and what

@@ -236,7 +236,7 @@ a shimmering *Write the categorizer* row under that sentence; when the call
 is whole, the row becomes the call's block, and the command runs.
 
 - The session keeps, live only, the calls of the running request that the
-  provider has opened (Tool call start, [A run](../providers/providers.md#a-run))
+  provider has opened (Tool call start, A run (`crates/provider-common/src/contract.rs`))
   and not yet handed over whole. Each has its tool-use ID, its tool's name
   and its `description` once the model has written that string whole; the
   session reads it from the input written so far with a parser that accepts
@@ -424,7 +424,7 @@ Host, with the handle checks of Running shell tools (`crates/agent-tools/src/lib
 | `transcript_reset` | `start`, the blocks from that index to the end, whole, the transcript's `length`, the version `{ epoch, revision }`, and `failures` ([Where a reset starts](#where-a-reset-starts)) |
 | `transcript_patch` | Patches, the new revision, and `failures` |
 | `phase` | `idle`, `running` or `compacting`, and `subagentId` when it is a live subagent's: a page opening the conversation receives one for the root and each live child, and a child's tail row reads its own, so a child idle beside a running command shows no Requesting row |
-| `context_usage` | `node`, the agent whose context it is, and the estimate of that node's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window; and `account`, the account the node's requests use under [Account rotation](../providers/providers.md#account-rotation), null when the entry has none or the node has not chosen one yet. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
+| `context_usage` | `node`, the agent whose context it is, and the estimate of that node's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window; and `account`, the account the node's requests use under Account rotation (`crates/backend-providers/src/llm/rotation.rs`), null when the entry has none or the node has not chosen one yet. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
 | `queue` | The queued messages, each `{ id, content }` |
 | `pending_steers` | The complete list of pending steers |
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |

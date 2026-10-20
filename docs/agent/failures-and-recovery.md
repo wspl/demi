@@ -12,9 +12,9 @@ decisions read, and diagnostics, which the user and support read:
 
 | Code | Meaning | Retried automatically |
 | --- | --- | --- |
-| `usage_limit` | The account cannot be used until a reset or a change of its plan: a used-up subscription window, credits or a spend cap, or use its administrator turned off | No; with [account rotation](../providers/providers.md#account-rotation) the agent moves to another account |
+| `usage_limit` | The account cannot be used until a reset or a change of its plan: a used-up subscription window, credits or a spend cap, or use its administrator turned off | No; with account rotation (`crates/backend-providers/src/llm/rotation.rs`) the agent moves to another account |
 | `rate_limit` | Throttling: too many requests or tokens for a short while | Yes |
-| `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
+| `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor (`crates/backend-providers/src/usage/rate_limit.rs`) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
 | `permission_denied` | The vendor knows the credential and refuses this request with it: a plan without API access, a model or a region the account may not use | No |
@@ -24,7 +24,7 @@ decisions read, and diagnostics, which the user and support read:
 | None | A failure Demi found in the vendor's answer: a frame it cannot decode, or a stream that breaks the vendor's protocol | No |
 
 Invalid requests are terminal as well. The complete set of codes belongs to the
-provider contract ([Providers](../providers/providers.md)).
+provider contract (`crates/provider-common/src/failure.rs`).
 
 A vendor's own sign of a used-up account comes first, read by that vendor's
 provider, as its own client reads it: Codex's 429 whose `error.type` is
@@ -82,7 +82,7 @@ an invalid usage of a parameter, keeps the vendor's code and is not retried.
 A failure Demi finds itself gets its code by an explicit rule, never by
 matching words in its message. A timeout or a network failure is
 `overloaded`, and so is a stream that ends before the vendor said the reply
-is complete ([Reading vendor input](../providers/providers.md#reading-vendor-input)):
+is complete (`crates/provider-common/src/wire/mod.rs`):
 retried while nothing it streamed is final, as when it broke during the
 reasoning, and otherwise ending the turn with Resume. A reply the vendor
 ended before it was complete, for its output limit, a filter or another
@@ -194,7 +194,7 @@ without parsing vendor message text.
 The agent owns transient retry. A provider makes one attempt per run and
 reports a classified failure; it does not retry the request. Credential
 resolution is the one exception: it may repeat a request once after an HTTP 401,
-with a refreshed credential ([Providers](../providers/providers.md)). Keeping
+with a refreshed credential (`crates/provider-common/src/credentials/refresh.rs`). Keeping
 retries in the agent keeps retry counts, backoff, cancellation, transcript
 safety and retry reports the same for HTTP and streaming failures.
 
@@ -349,7 +349,7 @@ is next opened. A
 usage limit's moment is the one the failure names, such as Codex's
 `resets_at`, else the latest reset among the windows that the quota of
 the account the failing request used shows used up, which the `error` block
-names under [Account rotation](../providers/providers.md#account-rotation); a limit with neither, such as a spend cap, names no
+names under Account rotation (`crates/backend-providers/src/llm/rotation.rs`); a limit with neither, such as a spend cap, names no
 moment and waits for the user.
 
 A message is never left outside a turn. A send writes its `user` block as

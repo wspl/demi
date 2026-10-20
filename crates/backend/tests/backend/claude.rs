@@ -1,5 +1,7 @@
-//! The Claude Code CLI through the backend (`claude-code.md` § Accounts and
-//! sign-in, § Where it runs, § What the user sees, § Acceptance): a sign-in
+//! The Claude Code CLI through the backend
+//! (`crates/provider-claude-code/src/account.rs`,
+//! `crates/provider-claude-code/src/placement.rs`,
+//! `crates/backend-user-shard/src/conversation/claude_cli.rs`): a sign-in
 //! runs the CLI's own login on the user's Cloud, relays its link, hands it
 //! the pasted code, shows the CLI's words for a code it refuses, and keeps
 //! the account it wrote, replacing the tokens of one signed in again, in a
@@ -664,7 +666,7 @@ async fn a_sign_in_on_the_claude_code_machine_takes_the_pasted_code_and_each_acc
 }
 
 /// The release pointer holds up only a start that has no CLI to run
-/// (`claude-code.md` § Which version): on a machine with none, a sign-in
+/// (`crates/backend-providers/src/llm/claude_releases.rs`): on a machine with none, a sign-in
 /// waits for the read and fails with it; on a machine with one, a sign-in
 /// and a conversation start it while the read hangs, and the read, in the
 /// background, keeps its answer for later starts, which the settings read
@@ -820,8 +822,9 @@ async fn a_machine_with_a_cli_starts_it_at_once_while_the_release_pointer_is_rea
 }
 
 /// A sign-in that makes its account the entry's active one is a change of
-/// the active account, like a selection in Settings (`claude-code.md`
-/// § Preparing a process ahead): the open conversation on the entry
+/// the active account, like a selection in Settings
+/// (`crates/provider-claude-code/src/prepared.rs`): the open conversation on
+/// the entry
 /// prepares its next process with the new account's token, and its next
 /// message takes that process. Removing the active account, the last, closed
 /// the process that held the previous token first.
@@ -914,8 +917,9 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
 
 /// A Claude Code run of three calls to the vendor is three usage ledger
 /// rows, one per call, each with its message's id, its own counts and the
-/// account, never the `result` line's sum (`usage-and-quota.md` § Usage
-/// ledger); the quota the vendor reported after the last call's end is that
+/// account, never the `result` line's sum
+/// (`crates/backend-database/src/usage.rs`); the quota the vendor reported
+/// after the last call's end is that
 /// call's alone; the server log's lines of each call name its request, its agent
 /// and its account, and so does the run's timing line.
 // About two seconds: the Claude Code machine boots, and runs a sign-in and
@@ -1367,7 +1371,7 @@ impl Drop for PackageService {
 
 /// The versions a Cloud has are asked once per runner connection, and
 /// asked again at the next start once the package's service ended unsaid
-/// or the connection ended (`claude-code.md` § Which version): while the
+/// or the connection ended (`crates/backend-providers/src/llm/claude_releases.rs`): while the
 /// package cannot answer, another conversation starts the version the
 /// first one's start was told of; a version installed by hand meanwhile,
 /// which removed the one before, is what starts after each.
@@ -1409,8 +1413,9 @@ async fn a_clouds_versions_are_asked_once_per_connection_and_again_after_a_lost_
 }
 
 /// A first ask of the Claude Code machine's versions that every start
-/// waiting for it gave up on is dropped with them (`claude-code.md` § Which
-/// version). An update to the newest release fails, as the distribution's
+/// waiting for it gave up on is dropped with them
+/// (`crates/backend-providers/src/llm/claude_releases.rs`). An update to the
+/// newest release fails, as the distribution's
 /// address is not HTTPS, which drops what is kept while the machine's
 /// package service runs on; a line record that is a FIFO holds the
 /// service's listing of the versions, so the one ask the starts of two
@@ -1508,7 +1513,7 @@ async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_as
 }
 
 /// A start that finds the executable it was given gone drops what is
-/// kept (`claude-code.md` § Which version): after a runner sharing the
+/// kept (`crates/backend-providers/src/llm/claude_releases.rs`): after a runner sharing the
 /// cache installed another version and removed the one a start was told
 /// of, the next start asks again and starts the new one.
 // A second or two: the Cloud boots and starts a few CLI processes and
@@ -1538,7 +1543,7 @@ async fn a_start_that_finds_its_executable_gone_makes_the_next_ask_again() {
     kept.close().await;
 }
 
-/// A failed install drops what is kept (`claude-code.md` § Which version):
+/// A failed install drops what is kept (`crates/backend-providers/src/llm/claude_releases.rs`):
 /// **Install** on a Cloud with none fails, the CLI is then installed by
 /// hand, and the next start asks and starts it.
 // A few seconds: the Cloud boots and starts a CLI process and the one
@@ -1562,7 +1567,7 @@ async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
 }
 
 /// An account an earlier release stored with its tokens hands them to its
-/// directory at its first use (`claude-code.md` § Accounts and sign-in,
+/// directory at its first use (`crates/provider-claude-code/src/account.rs`,
 /// `upgrades.md` § What crosses releases): the first start writes them as
 /// the CLI's own files, private to the machine's user, and the record keeps
 /// none, so the next start finds the sign-in in the directory alone.
@@ -1623,8 +1628,9 @@ async fn an_earlier_releases_sign_in_goes_to_the_accounts_directory_at_its_first
     kept.close().await;
 }
 
-/// A sign-in the vendor refused signs its account out (`claude-code.md`
-/// § Accounts and sign-in): the turn fails with the authentication error,
+/// A sign-in the vendor refused signs its account out
+/// (`crates/provider-claude-code/src/account.rs`): the turn fails with the
+/// authentication error,
 /// whose words ask the user to sign in again, the accounts list says the
 /// account is signed out, and signing in to it again clears that, after
 /// which its requests run on the new sign-in.
@@ -1700,8 +1706,9 @@ async fn server_holds(backend: &TestBackend, master: &Session, words: &str) -> b
         .any(|line| line.message.starts_with(words))
 }
 
-/// One change of an account at a time (`claude-code.md` § Accounts and
-/// sign-in): signing an account in again first stops new processes of the
+/// One change of an account at a time
+/// (`crates/provider-claude-code/src/account.rs`): signing an account in again
+/// first stops new processes of the
 /// account, closes the one it has and waits for it, then replaces its
 /// directory, and a request that came meanwhile starts in the new one; a
 /// login stays cancellable while it waits for the account's processes, and
@@ -1830,7 +1837,7 @@ async fn a_change_of_an_account_closes_its_processes_first_and_a_request_meanwhi
 }
 
 /// The handover of an earlier release's sign-in puts each file in place
-/// whole, the credentials last (`claude-code.md` § Accounts and sign-in): a
+/// whole, the credentials last (`crates/provider-claude-code/src/account.rs`): a
 /// handover that cannot put the account's file in place leaves the
 /// directory without a sign-in and the record holding it, and the next
 /// start hands it over.

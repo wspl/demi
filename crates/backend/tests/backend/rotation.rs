@@ -1,4 +1,4 @@
-//! Account rotation (`providers.md` § Account rotation, `web-api-settings.md`
+//! Account rotation (`crates/backend-providers/src/llm/rotation.rs`, `web-api-settings.md`
 //! § Subscription accounts): an entry's rotation and account order over the
 //! API, each agent's own account kept across requests and a restart and
 //! taken again after a compaction, a used-up account's request sent again
@@ -298,7 +298,7 @@ async fn rotation_passes_over_an_account_its_vendor_signed_out_which_the_list_sh
     let (first, second) = (setup.first.clone(), setup.second.clone());
     setup.rotate("in_order").await;
     // The provider marks an account whose sign-in its vendor refused, as
-    // Claude Code's does (`claude-code.md` § Accounts and sign-in).
+    // Claude Code's does (`crates/provider-claude-code/src/account.rs`).
     let marked = setup
         .harness
         .control_database()

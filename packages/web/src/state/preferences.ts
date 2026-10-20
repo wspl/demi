@@ -113,11 +113,11 @@ export const usePreferences = defineStore('preferences', () => {
   const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
   /**
    * Whether the user went on past the warning about several subscription
-   * accounts, which then never shows again (`providers.md` § Account
-   * rotation); absent means no.
+   * accounts, which then never shows again
+   * (`crates/backend-providers/src/llm/rotation.rs`); absent means no.
    */
   const multiAccountWarned = computed(() => product.snapshot?.preferences.multiAccountWarned ?? false)
-  /** The small model the user chose (`models.md` § Small model); null for Automatic. */
+  /** The small model the user chose (`crates/backend-providers/src/llm/small_model.rs`); null for Automatic. */
   const smallModel = computed(() => product.snapshot?.preferences.smallModel ?? null)
   /** Whether small requests stay on the conversation's provider; absent means no. */
   const smallModelSameProvider = computed(() => product.snapshot?.preferences.smallModelSameProvider ?? false)
@@ -161,7 +161,7 @@ export const usePreferences = defineStore('preferences', () => {
   /**
    * The limit the user stored on the model `modelId` of the entry
    * `providerId`; null for none, which is the model's full window
-   * (`models.md` § Context limit).
+   * (`packages/web-ui/src/agent/context-limit.ts`).
    */
   function contextLimit(providerId: string, modelId: string): number | null {
     return product.snapshot?.preferences.contextLimits?.[providerId]?.[modelId] ?? null

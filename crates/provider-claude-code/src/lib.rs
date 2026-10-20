@@ -10,7 +10,33 @@
 //! reach Demi over the SDK MCP channel, an rmcp server inside the run, with
 //! the model's parallel tool batches kept whole. The catalog is models.dev's
 //! Claude models, and the account's quota comes from the CLI's own usage
-//! answer and from the rate limits its lines report (`claude-code.md`).
+//! answer and from the rate limits its lines report.
+//!
+//! The CLI is Demi's own verified copy, never a `claude` found on `PATH`, and
+//! is started with no tools of its own and no device configuration, so it is a
+//! channel to the vendor and nothing else. It does not touch the workspace,
+//! which is why where it runs is a choice and not a consequence of where the
+//! conversation's files are; the model's tools run where the conversation's
+//! tools run, the CLI handing each call back to the agent.
+//!
+//! ```text
+//! backend (user's shard)       Claude Code machine (nobody has a shell)
+//! +--------------------+       +------------------------------------+
+//! | ClaudeCodeRuntime  | start | runner                             |
+//! |   Placement -------+------>|   CLI process, cwd ~/run           |
+//! |   stream-json <----+------>|   config dir ~/accounts/<id>/      |
+//! |   SDK MCP server   |       |   (the sign-in)  --HTTPS--> vendor |
+//! +---------+----------+       +------------------------------------+
+//!           | a tool call comes back as a batch of calls
+//!           v
+//!   the agent runs it on the conversation's own target
+//! ```
+//!
+//! No sign-in reaches a user's Cloud or a paired device, and the backend holds
+//! none; the CLI sends its inference traffic to the vendor directly, with no
+//! inference proxy. The backend's transcript stays the only record: a new
+//! process resumes a session written from it, so nothing depends on an earlier
+//! process or on files the machine kept.
 
 mod account;
 mod cli;
@@ -96,7 +122,7 @@ impl ClaudeCodeConfig {
 /// and request of the entry. Its runtimes start their CLI through a
 /// placement ([`ClaudeCodeProvider::process_runtime`]); the generic
 /// [`Provider::runtime`] refuses, since only the backend can choose the
-/// machine (`claude-code.md` § How a runtime gets its process).
+/// machine (`crates/provider-claude-code/src/placement.rs`).
 pub struct ClaudeCodeProvider {
     shared: Arc<Shared>,
 }
@@ -157,7 +183,7 @@ impl ClaudeCodeProvider {
     }
 
     /// The entry's account operations with a sign-in that runs the CLI's own
-    /// login on `machine` (`claude-code.md` § Accounts and sign-in).
+    /// login on `machine` (`crates/provider-claude-code/src/account.rs`).
     pub fn login_accounts(&self, machine: Arc<dyn AccountMachine>) -> Box<dyn SubscriptionAccounts> {
         let kit = ClaudeKit {
             machine: Some(machine),
@@ -235,8 +261,8 @@ pub mod testing {
 
     /// The entries of the session a new CLI process resumes for `request`,
     /// one JSON line each, after the `environment` entry, which describes
-    /// the process's machine (`claude-code.md` § The session a process
-    /// resumes), written at `timestamp`.
+    /// the process's machine (`crates/provider-claude-code/src/session.rs`),
+    /// written at `timestamp`.
     pub fn session(request: &InferenceRequest, timestamp: &str) -> Vec<u8> {
         crate::session::SessionFile::new(
             &request.session_id,

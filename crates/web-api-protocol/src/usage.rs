@@ -1,4 +1,4 @@
-//! The usage ledger's totals (`usage-and-quota.md` § Usage ledger): one
+//! The usage ledger's totals (`crates/backend-database/src/usage.rs`): one
 //! group per provider entry and model, in the order each pair was first
 //! used, with the number of requests and the sum of each token count.
 
@@ -51,7 +51,7 @@ pub struct UserUsage {
 }
 
 /// `GET /conversations/:id/cost`: the conversation's cost, computed from its
-/// ledger rows when read (`usage-and-quota.md` § Reading it).
+/// ledger rows when read (`crates/backend-database/src/usage.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationCost {

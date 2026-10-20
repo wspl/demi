@@ -1,4 +1,4 @@
-//! How long a device stays open (`mobile.md` § Lifetime): one Demi booted
+//! How long a device stays open (`crates/command-package-mobile/src/devices.rs`): one Demi booted
 //! shuts down after an hour nobody watched or used it, or when its
 //! conversation closes; one the user booted is only let go.
 

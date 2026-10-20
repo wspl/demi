@@ -40,7 +40,7 @@ export interface DeviceMark {
 
 /**
  * A system's logo, as a device's mark draws it: a device's, or a simulator's system's, Apple for
- * iOS and the Android robot's head for Android (`mobile.md` § The live view).
+ * iOS and the Android robot's head for Android (`packages/plugin-mobile/src/index.ts`).
  */
 export type SystemLogo = DeviceLogo | 'android'
 

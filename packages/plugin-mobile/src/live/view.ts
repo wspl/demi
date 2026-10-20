@@ -1,6 +1,6 @@
 /**
  * Where a device's picture sits in its tab, and how the viewer's points on
- * it become the device's (`mobile.md` § The live view). The picture sits
+ * it become the device's (`packages/plugin-mobile/src/index.ts`). The picture sits
  * in the device's frame: the drawn one, laid into the area with the picture
  * in its screen, or the frame the view draws around the picture. Neither
  * shows the screen larger than its points, as Simulator's Point Accurate

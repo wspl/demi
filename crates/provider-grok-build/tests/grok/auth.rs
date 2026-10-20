@@ -1,6 +1,6 @@
 //! The account's sign-in: its status, and the OIDC refresh of its tokens
 //! before a request, after a refusal with HTTP 401, and one at a time
-//! (`providers.md` § Token refresh).
+//! (`crates/provider-grok-build/src/auth.rs`).
 
 use demi_provider_common::{
     CallEvent, CallOutcome, ErrorCode, Provider, ProviderEvent, VendorCall,

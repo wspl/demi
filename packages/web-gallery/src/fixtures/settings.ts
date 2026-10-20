@@ -944,8 +944,9 @@ export function mockProviders(): MockProvider[] {
 }
 
 /**
- * Entries that are not complete yet (`models.md` § A provider is in the list
- * from the start), one lacking each part and one lacking two: a vendor entry
+ * Entries that are not complete yet
+ * (`crates/backend-user-shard/src/provider_settings.rs`), one lacking each part
+ * and one lacking two: a vendor entry
  * without its key, a compatible API with an endpoint and a key and no model,
  * a compatible API just added, with no endpoint, key or model, and a
  * subscription nobody has signed in to. None of them has failed, so none is
@@ -979,8 +980,8 @@ export function incompleteProviders(): MockProvider[] {
 /**
  * Whether the entry lacks a part it cannot infer without, as the backend's
  * `ProviderEntry::missing` says and the product shows it from the catalog's
- * `setup` availability (`models.md` § A provider is in the list from the
- * start): a vendor's key, a compatible API's endpoint, whose key is
+ * `setup` availability (`crates/backend-user-shard/src/provider_settings.rs`):
+ * a vendor's key, a compatible API's endpoint, whose key is
  * optional, a subscription's account, and models only where the entry's
  * user keeps its list: a compatible API's, or a vendor's list the user made
  * and emptied. A vendor's own list, and an entry of media alone, which has

@@ -1514,8 +1514,9 @@ pub struct RunnerInfo {
     /// Read at shell creation, so it arrives before any Host use.
     pub identity: HostIdentity,
     /// The kernel a process the runner starts runs on, which the Claude
-    /// Code CLI describes its machine by (`claude-code.md` § The session a
-    /// process resumes); none on Windows, which has no `uname`.
+    /// Code CLI describes its machine by
+    /// (`crates/provider-claude-code/src/session.rs`); none on Windows, which
+    /// has no `uname`.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

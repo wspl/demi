@@ -1,5 +1,4 @@
-//! The provider runtimes of a user's conversations (`providers.md`
-//! § Inference admission and runtime ownership). A session's runtime
+//! The provider runtimes of a user's conversations. A session's runtime
 //! resolves the conversation's provider entry at every inference boundary: a
 //! fresh read of the entry in the user's scope, the entry's configured model
 //! facts applied again, and a runtime that serves the request. It keeps its
@@ -264,8 +263,7 @@ struct ConversationRuntime {
     /// family, and so this, never changes.
     prepares_ahead: bool,
     /// The account the agent took under the entry's rotation, which it
-    /// keeps while idle; none under Manual (`providers.md` § Account
-    /// rotation).
+    /// keeps while idle; none under Manual (`crates/backend-providers/src/llm/rotation.rs`).
     account: Option<CredentialId>,
     /// The agent counted as running a turn on `account`, from a request
     /// until the session's action ends; Balanced spreads agents by these
@@ -317,15 +315,14 @@ fn refused(message: impl Into<String>, code: Option<ErrorCode>) -> ProviderFailu
 }
 
 impl ConversationRuntime {
-    /// Resolves the entry for `request` (`providers.md` § Inference admission
-    /// and runtime ownership): the entry must still be in the user's scope,
+    /// Resolves the entry for `request`: the entry must still be in the user's scope,
     /// and a subscription entry must have an account. The account is the
     /// active one, or under the entry's rotation the agent's own: the one
     /// the request names while it is still the entry's and taken under the
     /// entry's rotation, else one taken now. Answers the model's output
     /// limit, which the entry's configured model decides when it has a
     /// configured list; the request's own cap is not the model's, and stays
-    /// (`models.md` § Output limit).
+    /// (`crates/provider-common/src/contract.rs`).
     /// `runs` says whether the request runs now, which counts the agent as
     /// running on its account, or is only readied ahead.
     async fn admit(
@@ -501,7 +498,7 @@ impl ConversationRuntime {
     /// anything of the run reached the agent: the account is marked used
     /// up, and the agent takes another, whose runtime serves the same
     /// request again. Answers the move, or nothing when every account is
-    /// used up (`providers.md` § Account rotation).
+    /// used up (`crates/backend-providers/src/llm/rotation.rs`).
     async fn switch_account(
         &mut self,
         failure: &ProviderFailure,
@@ -577,8 +574,8 @@ impl ConversationRuntime {
         });
         if !kept {
             // A provider that runs a process gets it on the Claude Code
-            // machine, whatever the conversation's target (`claude-code.md`
-            // § Where it runs).
+            // machine, whatever the conversation's target
+            // (`crates/provider-claude-code/src/placement.rs`).
             let runtime = if provider.capabilities().process_host {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
                 let placement = CrossPlacement::placement(scope.shard.clone(), work);
@@ -648,7 +645,7 @@ fn agent_account(account: &CredentialId, rotation: Rotation) -> AgentAccount {
 
 /// The failure of a request no account of `entry` can serve: every one is
 /// used up, and the turn ends as it would with Manual
-/// (`providers.md` § Account rotation).
+/// (`crates/backend-providers/src/llm/rotation.rs`).
 fn all_used_up(entry: &ProviderEntry, candidates: &[Candidate]) -> ProviderFailure {
     let message = match candidates.len() {
         0 | 1 => format!("{} has reached its usage limit", entry.label),
@@ -668,12 +665,11 @@ impl ProviderRuntime for ConversationRuntime {
     /// without an event, as every cancelled run does. Under rotation, a
     /// usage limit before anything of the run reached the agent moves the
     /// agent to another account and sends the same request again at once,
-    /// which is no retry of the agent's (`providers.md` § Account rotation).
+    /// which is no retry of the agent's (`crates/backend-providers/src/llm/rotation.rs`).
     /// Such an attempt leaves nothing: the vendor's record it mirrored, such
     /// as the previous call's result, is held until the model's first output
     /// and dropped when the attempt is given up, so the session the next
-    /// account resumes holds nothing of it twice (`claude-code.md` § The
-    /// session a process resumes).
+    /// account resumes holds nothing of it twice (`crates/provider-claude-code/src/session.rs`).
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         Box::pin(async_stream::stream! {
             let cancel = request.cancel.clone();

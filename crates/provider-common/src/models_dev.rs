@@ -1,4 +1,4 @@
-//! The models.dev client (`models.md` § The models.dev document): the one
+//! The models.dev client: the one
 //! copy of the document a backend keeps, revalidated with the copy's `ETag`
 //! and `Last-Modified`, shared by concurrent readers, and kept after a failed
 //! request as a stale copy; and the mapping of its models onto the catalog's
@@ -253,8 +253,9 @@ impl ModelsDevSnapshot {
 
     /// The models an agent can work with ([`ModelsDevModel::agentic`]),
     /// whose name or id holds each word of `query`, in
-    /// any case and order, newest release first, at most `limit` (`models.md`
-    /// § Adding a model from models.dev). A model several vendors list is
+    /// any case and order, newest release first, at most `limit`
+    /// (`crates/backend-providers/src/llm/vendors.rs`). A model several vendors
+    /// list is
     /// one match: the listing of `vendor` when it lists the model, else
     /// the publisher's ([`Listing::publisher`]). Two listings are the same
     /// model when they name the same model without a vendor's prefix: the
@@ -314,8 +315,9 @@ impl ModelsDevSnapshot {
     }
 
     /// The models of vendor `vendor_id` an agent can work with, as the
-    /// catalog of an entry added from the vendor list (`models.md`
-    /// § Catalog sources): the search's models, so a vendor's speech, image
+    /// catalog of an entry added from the vendor list
+    /// (`crates/shared-types/src/catalog.rs`): the search's models, so a
+    /// vendor's speech, image
     /// and video models stay out; `None` for a vendor the document does not
     /// list.
     pub fn agent_models(&self, vendor_id: &str) -> Option<ProviderModelList> {
@@ -539,12 +541,11 @@ impl ModelsDevModel {
         writes_text && self.tool_call == Some(true) && windowed
     }
 
-    /// The model as a catalog model (`models.md` § The models.dev
-    /// document): `limit.context` and `limit.output` are its token limits,
+    /// The model as a catalog model: `limit.context` and `limit.output` are its token limits,
     /// an output limit above the window stating none, as some speech and
     /// video models' do,
-    /// the types its input modalities give its accepted types (`models.md`
-    /// § Accepted attachment types), `reasoning` its thinking
+    /// the types its input modalities give its accepted types
+    /// (`crates/shared-types/src/model.rs`), `reasoning` its thinking
     /// support, the values of its `effort` reasoning option its efforts,
     /// `tool_call` its tool support and `cost` its prices. What the document
     /// does not state is unknown.

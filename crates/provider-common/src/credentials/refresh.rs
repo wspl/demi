@@ -1,4 +1,4 @@
-//! The token refresh every family follows (`providers.md` § Token refresh):
+//! The token refresh every family follows:
 //! one refresh at a time per account in this process, a fresh read after the
 //! wait, and a versioned replace, so that refreshers of one account, in this
 //! backend or another worker, never invalidate each other's tokens.
@@ -216,8 +216,8 @@ pub async fn read_secret<S: SecretDocument>(
 /// none came; the tokens stay as they were.
 const REFRESH_DEADLINE: Duration = Duration::from_secs(60);
 
-/// An account's secret, refreshed by the one protocol of `providers.md` §
-/// Token refresh when `due` says it needs a refresh: take the account's
+/// An account's secret, refreshed by the one protocol of this module when
+/// `due` says it needs a refresh: take the account's
 /// turn; read the stored document again and use it when `due` no longer
 /// says so, because another refresher stored new tokens meanwhile;
 /// otherwise ask the vendor through `refresh`. A refreshed secret is stored

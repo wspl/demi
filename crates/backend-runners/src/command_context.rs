@@ -30,7 +30,7 @@ pub async fn command_context(
 
 /// The context of `user`'s work for the provider entry `provider` that
 /// belongs to no conversation, such as installing its CLI
-/// (`claude-code.md` § The package): it names the entry.
+/// (`crates/command-package-claude-code/src/lib.rs`): it names the entry.
 pub async fn provider_context(
     control: &ControlService,
     user: &UserId,

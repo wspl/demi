@@ -1,5 +1,5 @@
 //! An emulator's process, which need not be this program's child: an
-//! emulator Demi started outlives the program (`mobile.md` § Lifetime).
+//! emulator Demi started outlives the program (`crates/command-package-mobile/src/devices.rs`).
 //! Its id and start tell it from a later process the system gives the same
 //! id; its end is what the system announces, not a guess from its files.
 

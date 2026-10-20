@@ -1,4 +1,4 @@
-//! The simulators' live view protocol (`mobile.md` § The live view): what
+//! The simulators' live view protocol: what
 //! the page and `demi-mobile` say to each other over the `mobile` user
 //! stream about the conversation's devices, beside the live view's own
 //! frames, pictures and input (`live-view-protocol`). The page and the
@@ -75,7 +75,7 @@ pub enum LiveViewerMessage {
         scale: f64,
     },
     /// The viewer's Wake: `device`'s screen turns on, and stays on if it
-    /// is (`mobile.md` § The live view).
+    /// is.
     Wake {
         #[garde(skip)]
         device: DeviceId,
@@ -141,7 +141,7 @@ pub struct LiveCornerPoint {
     pub y: f64,
 }
 
-/// One rounded corner of the screen (`mobile.md` § The live view), drawn
+/// One rounded corner of the screen, drawn
 /// as if it were the top left one: the view mirrors it into its place.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
@@ -187,7 +187,7 @@ impl LiveCorners {
     }
 }
 
-/// A device's frame (`mobile.md` § The live view), turned as the picture
+/// A device's frame, turned as the picture
 /// is.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]

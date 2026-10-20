@@ -1,4 +1,4 @@
-//! One run (`providers.md` § A run): resolve the account's credentials, post
+//! One run (`crates/provider-common/src/contract.rs`): resolve the account's credentials, post
 //! the Chat Completions request to the chat proxy, and map its stream. A
 //! request refused with HTTP 401 before any event refreshes the token that
 //! was refused, once, and is sent again.

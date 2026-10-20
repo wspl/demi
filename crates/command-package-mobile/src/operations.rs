@@ -1,4 +1,4 @@
-//! The `mobile.*` operations (`mobile.md` § Commands): each the one
+//! The `mobile.*` operations: each the one
 //! operation behind both a command and the panel's control. Inputs act and
 //! return once the device took them; `screenshot` and `inspect` first wait
 //! for a settled picture.
@@ -30,7 +30,10 @@ use crate::{
     text, tree,
 };
 
-/// A settled picture: no new frame from the device for this long.
+/// A settled picture: no new frame from the device for this long. Neither
+/// platform's own idle signal is used, since both report idle while an app
+/// draws its own animation; both drivers send a frame only when the screen
+/// changes, so the live view's frames tell it at no cost.
 pub const QUIET: Duration = Duration::from_millis(300);
 /// The longest a screenshot or an inspect waits for one.
 pub const SETTLE_LIMIT: Duration = Duration::from_millis(1500);
@@ -50,14 +53,14 @@ pub struct Call<'a> {
     pub cwd: &'a str,
     /// Where the user's panel puts a screenshot or a recording it saves on
     /// the user's computer: the conversation's scratch directory, for a call
-    /// the user started; none for the agent's (`mobile.md` § The live view).
+    /// the user started; none for the agent's (`crates/command-package-mobile/src/live.rs`).
     pub scratch: Option<std::path::PathBuf>,
     /// The conversation's scratch directory on this Host, whoever calls:
     /// where a recording is written while it runs, so that it goes with
     /// the conversation whatever becomes of the program.
     pub recordings: std::path::PathBuf,
     /// Whether the agent runs it, which the view shows; the user's panel
-    /// controls are the user's, and show nothing (`mobile.md` § The live view).
+    /// controls are the user's, and show nothing (`crates/command-package-mobile/src/live.rs`).
     pub agent: bool,
     pub cancel: &'a CancellationToken,
 }
@@ -451,7 +454,7 @@ pub async fn run(
 }
 
 /// Which of a device's commands an operation takes turns with
-/// (`mobile.md` § The live view).
+/// (`crates/command-package-mobile/src/live.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lane {
     /// It acts: the user's input waits for no read.
@@ -624,7 +627,7 @@ fn across(listed: &Listed, direction: Direction) -> (Points, Points) {
 }
 
 /// Delivers input at `at`, which the view marks when the agent taps
-/// (`mobile.md` § The live view).
+/// (`crates/command-package-mobile/src/live.rs`).
 async fn acting<T>(
     open: &OpenDevice,
     call: &Call<'_>,

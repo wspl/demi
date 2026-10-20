@@ -254,7 +254,7 @@ pub(crate) const CONTROL: Schema = Schema {
 /// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to
 /// the current one: a usage ledger row keeps what each kind of its tokens
 /// would cost on the vendor's API and the hashes of the system prompt and
-/// the tools its request sent (`usage-and-quota.md` § Usage ledger), null
+/// the tools its request sent (`crates/backend-database/src/usage.rs`), null
 /// for every row written before; and the ledger is read by conversation,
 /// for a conversation's cost (§ A conversation's cost).
 const CONTROL_FROM_0_1_32: &str = "
@@ -272,14 +272,14 @@ CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
 /// none before; each owner's entries
 /// have an order of their own, which the user sets by dragging Settings ›
 /// Providers and generated media try them in, first the order they were
-/// added in (`providers.md` § Provider management); and preferences no
+/// added in (`crates/backend-user-shard/src/provider_settings.rs`); and preferences no
 /// longer choose an entry per vendor's images, which the order and the
 /// switches say instead (`media.md` § Which entry makes a call), so a
 /// saved choice is dropped; an entry whose provider makes videos has a
 /// Video Generation switch, and one whose provider makes audio an Audio
 /// Generation switch, each on for every entry stored before; and a usage
 /// ledger row may be a video's or an audio file's, with the seconds made
-/// and the cost the vendor reported (`usage-and-quota.md` § Usage ledger),
+/// and the cost the vendor reported (`crates/backend-database/src/usage.rs`),
 /// which SQLite's checks let in only on a table made again, its rows as
 /// they were with null for both.
 const CONTROL_FROM_0_1_27: &str = "
@@ -368,7 +368,7 @@ ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cl
 
 /// From 0.1.25's control schema to 0.1.27's: an entry whose
 /// provider makes images has an Image Generation switch, on for every entry
-/// stored before (`providers.md` § Provider management); a device keeps why
+/// stored before (`crates/backend-user-shard/src/provider_settings.rs`); a device keeps why
 /// it will not start its runner by itself, which no device stored before
 /// has said (`crates/runner/src/autostart.rs`).
 const CONTROL_FROM_0_1_25: &str = "
@@ -517,7 +517,7 @@ CREATE INDEX automation_calls_by_delivery ON automation_calls (automation_id, de
 
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
 /// data of, to the current one, in two steps. First the usage ledger keeps
-/// a row per vendor call (`usage-and-quota.md` § Usage ledger), a managed
+/// a row per vendor call (`crates/backend-database/src/usage.rs`), a managed
 /// device says which managed machine it is, and a Claude Code account may
 /// hold no secret, [`CONTROL_FROM_0_1_22_DEV_20261016T043704Z`]. Then where a
 /// conversation runs decides its project (`upgrades.md` § What crosses
@@ -542,7 +542,7 @@ fn control_from_0_1_22_dev_20261016t043704z(transaction: &Transaction<'_>, blobs
 /// The usage ledger's step of [`control_from_0_1_22_dev_20261016t043704z`],
 /// to the ledger that keeps a row per vendor call with
 /// its agent, turn, purpose, account, ids, outcome, observed quota and
-/// times (`usage-and-quota.md` § Usage ledger). A row written before keeps
+/// times (`crates/backend-database/src/usage.rs`). A row written before keeps
 /// null for what it lacked; its `created_at`, written as its response
 /// ended, is its `ended_at`. A call's counts are null when the vendor
 /// reported none. In the same schema a managed device says which managed
@@ -550,7 +550,7 @@ fn control_from_0_1_22_dev_20261016t043704z(transaction: &Transaction<'_>, blobs
 /// (`managed-hosts.md` § The Claude Code machine), and a subscription
 /// account may hold no secret, as a Claude Code account whose CLI keeps its
 /// sign-in does, and says whether the vendor signed it out
-/// (`claude-code.md` § Accounts and sign-in). Every managed device of the
+/// (`crates/provider-claude-code/src/account.rs`). Every managed device of the
 /// earlier schema is a Cloud. A Claude Code account keeps the tokens it
 /// holds until its first use hands them over. No table refers to
 /// `provider_credentials`, so it is made again.
@@ -858,8 +858,9 @@ const CONTROL_FROM_ACCOUNT_ROTATION: &str =
     "UPDATE conversations SET title = '' WHERE title_origin = 'placeholder';";
 
 /// From the control schema whose API-key entries sealed configuration
-/// format 2 to the one with account rotation (`providers.md` § Account
-/// rotation): every entry keeps its manual rotation, and each entry's
+/// format 2 to the one with account rotation
+/// (`crates/backend-providers/src/llm/rotation.rs`): every entry keeps its
+/// manual rotation, and each entry's
 /// accounts keep the order they were listed in, by their ids.
 const CONTROL_FROM_CONFIG_FORMAT_2: &str = "
 ALTER TABLE providers ADD COLUMN rotation TEXT NOT NULL DEFAULT 'manual'
@@ -874,8 +875,9 @@ UPDATE provider_credentials SET position = (
 
 /// From the control schema whose API-key entries sealed their bare
 /// configuration, format 1, to provider configuration format 2, which
-/// tells a compatible entry by its naming no vendor (`models.md` § A
-/// provider is in the list from the start). The vault opens, decodes and
+/// tells a compatible entry by its naming no vendor
+/// (`crates/backend-user-shard/src/provider_settings.rs`). The vault opens,
+/// decodes and
 /// checks each one and seals it again; one it cannot read stops the
 /// migration, so the database stays as it was.
 fn control_sealed_config_format_2(
@@ -1447,7 +1449,7 @@ fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
 /// From 0.1.22's conversation schema to 0.1.27's: a running
 /// command keeps the turn
 /// whose shell call started it, which a command's call's usage ledger row
-/// names (`usage-and-quota.md` § Usage ledger); one recorded before keeps
+/// names (`crates/backend-database/src/usage.rs`); one recorded before keeps
 /// none. A command whose start waits for its Host keeps what it starts
 /// (`sessions-and-targets.md` § Host operations); every one recorded before
 /// was sent. A `user` block (transcript block format 11) and a queued
@@ -1647,7 +1649,8 @@ impl AttachmentNumbers {
 
 /// From 0.1.27's conversation schema to 0.1.28's: the sequences
 /// gain `device`, which numbers the conversation's simulators
-/// (`mobile.md` § Commands); every sequence keeps its next number. A node
+/// (`crates/command-package-mobile/src/operations.rs`); every sequence keeps
+/// its next number. A node
 /// may have no number, a side question's (`comments-and-ask.md` § Side
 /// questions), whose row the new `side_questions` holds; every node of
 /// 0.1.27 is an agent and keeps its number.
@@ -1704,7 +1707,7 @@ ALTER TABLE sequences_next RENAME TO sequences;
 /// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
 /// data of, to the one whose quota snapshots (format 2) give each window a
 /// kind, which with its period and its scope the page names it from in the
-/// user's language (`usage-and-quota.md` § Window names), instead of the
+/// user's language (`crates/shared-types/src/quota.rs`), instead of the
 /// English name format 1 held. Each window's kind is the one its old name
 /// says, read by its vendor's old namer ([`old_window_name`]); a name that
 /// namer did not make, or a vendor with none, fails the migration. Each
@@ -1759,7 +1762,7 @@ fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) 
 /// deployed, of transcript block format 9, to format 10, in which an
 /// `account_switch` block holds what names the window that was used up, its
 /// kind, period and scope, instead of its English name, so the line reads in
-/// the viewer's language (`usage-and-quota.md` § Window names). The old
+/// the viewer's language (`crates/shared-types/src/quota.rs`). The old
 /// name says them, read by every vendor's old namer, since the block does
 /// not name the vendor ([`old_window_name`]); a name none made fails the
 /// migration. Each block is decoded and checked as format 10 before it is
@@ -2163,8 +2166,9 @@ CREATE TABLE share_attachments (
 
 /// From the conversation schema of transcript block format 7 and checkpoint
 /// state format 3 to block format 8, which adds the `account_switch` block,
-/// and state format 4, which keeps an agent's account (`providers.md`
-/// § Account rotation). Every stored block and state is one of the new
+/// and state format 4, which keeps an agent's account
+/// (`crates/backend-providers/src/llm/rotation.rs`). Every stored block and
+/// state is one of the new
 /// formats as it is: none switched accounts, and none has taken an account
 /// of its own yet.
 const CONVERSATION_FROM_BLOCK_FORMAT_7: &str = "";
@@ -2607,7 +2611,7 @@ ALTER TABLE command_outputs_next RENAME TO command_outputs;
 /// From 0.1.21's control schema ([`CONTROL_FROM_0_1_21`]); and a stored
 /// catalog's models no longer say whether they read attachments or video:
 /// their accepted types come from the source's input modalities alone
-/// (`models.md` § Accepted attachment types), so the two flags go and each
+/// (`crates/shared-types/src/model.rs`), so the two flags go and each
 /// model keeps the list it held, null where the source stated none. Each
 /// record changed is decoded and checked as the format it becomes before
 /// it is written back.
@@ -2656,7 +2660,7 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
 /// (`crates/agent-tools/src/result.rs`), so the media column goes, which a
 /// CHECK names, and the table is made anew, as for 0.1.11. Block format 2 also
 /// lets a block keep the entries of a vendor's own record of the session
-/// (`claude-code.md` § The session a process resumes), which no block 0.1.21
+/// (`crates/provider-claude-code/src/session.rs`), which no block 0.1.21
 /// stored has, so leaving the field out writes them as format 2. Commands
 /// outlive their connections: a running one is recorded, none of which 0.1.21
 /// kept, and a lost one says why (command ending format 2), which for 0.1.21's,
@@ -2809,7 +2813,7 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// which agent it was forked from, which the server keeps data of, to
 /// format 6, where redacted reasoning is a step of its run, and a run it
 /// opens is named after it (format 6 also leaves out of a `response` the
-/// usage its provider did not report, `claude-code.md` § Reading: every
+/// usage its provider did not report, `crates/provider-claude-code/src/output.rs`: every
 /// stored response carries one, which format 6 reads as it is; responses
 /// whose usage summed a Claude Code run stay as recorded, and the next
 /// response anchors the estimate in their place, `compaction.md` § Context
@@ -7423,8 +7427,9 @@ mod tests {
     /// A database of 0.1.27's control schema keeps each ledger row whole,
     /// with no seconds and no cost, takes a video's and an audio file's row
     /// with both, and its entries make videos and audio, as a new entry
-    /// does (`usage-and-quota.md` § Usage ledger, `providers.md` § Provider
-    /// management). Planted defects: the purpose's check left as it was,
+    /// does (`crates/backend-database/src/usage.rs`,
+    /// `crates/backend-user-shard/src/provider_settings.rs`). Planted defects:
+    /// the purpose's check left as it was,
     /// the columns copied out of order, or a switch that starts off.
     /// One small database, milliseconds.
     #[test]
@@ -7516,7 +7521,7 @@ mod tests {
     }
 
     /// An entry stored by 0.1.25 makes images after the migration, as a
-    /// new entry does (`providers.md` § Provider management).
+    /// new entry does (`crates/backend-user-shard/src/provider_settings.rs`).
     /// Planted defect this catches: a switch that starts off, so every
     /// entry of an upgraded server stops making images.
     /// One small database, milliseconds.
