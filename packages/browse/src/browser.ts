@@ -10,7 +10,13 @@
 //
 // - A browser that crashed or was closed starts again on the next call.
 // - `demi.stop`, `demi.down` and the idle timeout stop it.
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+//
+// The server attaches without Playwright's defaults. Playwright's session with each
+// page would otherwise emulate focus, which also keeps the page visible whatever is
+// in front of it, and only that session could take it back. The server's own
+// session with each page emulates focus instead, so every page still acts as the
+// focused one, and `hide` takes it back for a page it hides.
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { chromium, type BrowserContext, type CDPSession, type Browser as PlaywrightBrowser, type Page } from 'playwright'
@@ -37,6 +43,8 @@ const ACTION_MS = 10_000
 const NAVIGATION_MS = 30_000
 /** How long a change of emulation waits for each page to draw a frame with it. */
 const DRAW_MS = 2_000
+/** How long a page `hide` or `show` brings behind or in front may take to say it is hidden or visible. */
+const VISIBILITY_MS = 5_000
 
 /**
  * The switches the browser starts with: Playwright's own for its Chromium (its
@@ -111,6 +119,8 @@ export class Browser {
   private current: Page | null = null
   /** The server's session with each page, which holds the page's emulation. */
   private readonly sessions = new WeakMap<Page, Promise<CDPSession>>()
+  /** The blank page `hide` brought in front of each page it hid. */
+  private readonly covers = new WeakMap<Page, Page>()
   readonly logs = new Logs()
   /** Whether a call asked for the window, which the browser keeps until it stops. */
   private wantsWindow = false
@@ -204,13 +214,19 @@ export class Browser {
       endpoint = await this.launch(headed)
     }
     // A browser that hangs never answers the connection, which has no limit of its own.
-    const browser = await chromium.connectOverCDP(endpoint, { timeout: START_MS })
+    // Without Playwright's defaults (the module's comment), which also leave
+    // downloads to the browser: Playwright's `download` event never comes.
+    const browser = await chromium.connectOverCDP(endpoint, { timeout: START_MS, noDefaults: true })
     const context = browser.contexts()[0]
     if (!context) {
       throw new Failure(`The browser at ${endpoint} has no default context`)
     }
     const session = await browser.newBrowserCDPSession()
     const version = await session.send('Browser.getVersion')
+    // The browser's own setting would save a download in the user's Downloads folder.
+    const downloads = slotPaths(this.slot).downloads
+    mkdirSync(downloads, { recursive: true })
+    await session.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads })
     const connection: Connection = { browser, context, headed, userAgent: version.userAgent, session }
     // An action whose element never comes fails within seconds, not after
     // Playwright's half minute; a step that takes longer says so with its
@@ -319,6 +335,8 @@ export class Browser {
     const opening = (async () => {
       const session = await connection.context.newCDPSession(page)
       await applyEmulation(session, readState(this.slot).emulation ?? {}, connection.userAgent)
+      // Playwright's own session emulates no focus (the module's comment).
+      await session.send('Emulation.setFocusEmulationEnabled', { enabled: !this.covers.has(page) })
       return session
     })()
     this.sessions.set(page, opening)
@@ -337,10 +355,55 @@ export class Browser {
     return page
   }
 
+  /** Answers once the server's session with `page`, a page of the slot's browser, holds the slot's emulation and focus. */
+  async prepared(page: Page): Promise<void> {
+    await this.session(page, await this.connection())
+  }
+
   /** The server's DevTools protocol session with the page, which holds its emulation. */
   async cdp(): Promise<CDPSession> {
     const page = await this.page()
     return this.session(page, await this.connection())
+  }
+
+  /**
+   * Hides `page` as a tab another one covers: it stops emulating focus, a blank page
+   * comes to the front, and this answers once the page says it is hidden. The page's
+   * timers and painting go on, since the browser starts with background throttling
+   * off.
+   */
+  async hide(page: Page): Promise<void> {
+    const connection = await this.connection()
+    if (page.context() !== connection.context) {
+      throw new Failure('demi.hide hides a page of the slot\'s browser, not one of demi.webkit()')
+    }
+    if (this.covers.has(page)) {
+      return
+    }
+    // A page that emulates focus stays visible whatever is in front of it.
+    await (await this.session(page, connection)).send('Emulation.setFocusEmulationEnabled', { enabled: false })
+    const cover = await connection.context.newPage()
+    this.covers.set(page, cover)
+    await cover.bringToFront()
+    await becomes(page, 'hidden')
+  }
+
+  /** Brings a page `hide` hid back to the front, answers once it says it is visible, and closes its cover. */
+  async show(page: Page): Promise<void> {
+    const cover = this.covers.get(page)
+    if (!cover) {
+      return
+    }
+    const connection = await this.connection()
+    if (!page.isClosed()) {
+      await page.bringToFront()
+      await becomes(page, 'visible')
+    }
+    this.covers.delete(page)
+    await cover.close()
+    if (!page.isClosed()) {
+      await (await this.session(page, connection)).send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    }
   }
 
   /** The page when the server is attached to a browser, without starting or attaching to one. */
@@ -466,6 +529,22 @@ async function drawn(page: Page): Promise<void> {
     || new Promise<boolean>((resolve) => requestAnimationFrame(() => resolve(true))))
   // A page that navigates or closes meanwhile has no frame to wait for: a new document lays out with the emulation anyway.
   await withinLimit(frame.catch(() => false), DRAW_MS)
+}
+
+/** Resolves once `page` says it is `state`, from its `visibilitychange` event when it is not yet. */
+async function becomes(page: Page, state: DocumentVisibilityState): Promise<void> {
+  const changed = page.evaluate((wanted) => document.visibilityState === wanted || new Promise<boolean>((resolve) => {
+    const listen = () => {
+      if (document.visibilityState === wanted) {
+        document.removeEventListener('visibilitychange', listen)
+        resolve(true)
+      }
+    }
+    document.addEventListener('visibilitychange', listen)
+  }), state)
+  if (await withinLimit(changed, VISIBILITY_MS) === OVERRAN) {
+    throw new Failure(`The page did not become ${state} within ${VISIBILITY_MS / 1000} s`)
+  }
 }
 
 /** Installs one of Playwright's browsers with Playwright's own installer, into its usual cache. */

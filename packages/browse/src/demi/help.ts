@@ -36,6 +36,7 @@ what it returns, then the page's state; a call ends after ten minutes unless
     demi.ime(text, { into, commit })     compose text through an input method, in the order of into's engine; commit 'enter' | 'escape' | 'none'
     demi.webkit()                        a WebKit (Safari) page for this call, signed in; its goto takes app addresses
     demi.emulate({ viewport, scale, theme, device, locale, timeZone, reset })   without reloading
+    demi.hide({ page }) .show({ page })  hide the slot's page or page behind another tab, so it sees visibilityState 'hidden' and visibilitychange, and bring it back; the call's end shows it
     demi.grant(permission, { origin })   such as 'clipboard' or 'local-network-access'
     demi.gallery(path)                   open a gallery page, such as '/session?view=blocks'
     demi.message(text, { files, wait, timeout })   send in the open conversation, with files from this machine, and wait for its turn, not for subagents; fails at once, with the page's words, when it is not delivered or the turn fails, and before writing when the draft holds files

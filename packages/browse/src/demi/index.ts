@@ -9,6 +9,7 @@ import { frames } from './frames'
 import { gallery } from './gallery'
 import { grant } from './grant'
 import { help } from './help'
+import { hide, show, type VisibilityOptions } from './hide'
 import { ime } from './ime'
 import { log } from './log'
 import { message } from './message'
@@ -40,6 +41,8 @@ export function createDemi(tool: Tool) {
     ime: (text: string, options?: Parameters<typeof ime>[2]) => ime(tool, text, options),
     webkit: () => webkitPage(tool),
     emulate: (options: Parameters<typeof emulate>[1]) => emulate(tool, options),
+    hide: (options?: VisibilityOptions) => hide(tool, options),
+    show: (options?: VisibilityOptions) => show(tool, options),
     grant: (names: string | string[], options?: { origin?: string }) => grant(tool, names, options),
     gallery: (path?: string) => gallery(tool, path),
     message: (text: string, options?: Parameters<typeof message>[2]) => message(tool, text, options),

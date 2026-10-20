@@ -61,6 +61,8 @@ export function slotPaths(slot: Slot) {
     daemonLog: join(slot.folder, 'daemon.log'),
     profile: join(slot.folder, 'profile'),
     shots: join(slot.folder, 'shots'),
+    /** Where the browser saves what a page downloads. */
+    downloads: join(slot.folder, 'downloads'),
     logs: join(slot.folder, 'logs'),
     state: join(slot.folder, 'state.json'),
     /** The page's logs a server that ends for changed code leaves for the next one. */

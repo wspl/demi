@@ -8,7 +8,7 @@ import { Console } from 'node:console'
 import { writeFileSync } from 'node:fs'
 import { Writable } from 'node:stream'
 import { inspect } from 'node:util'
-import type { Page } from 'playwright'
+import type { BrowserContext, Page } from 'playwright'
 import { expect } from 'playwright/test'
 import type { Browser } from './browser'
 import { createDemi } from './demi'
@@ -201,8 +201,9 @@ async function scopeOf(tool: Tool, source: string, keep: Keep): Promise<ScriptSc
     // The browser reaches the web app through the slot's network.
     await tool.network()
     const page = await tool.browser.page()
-    scope.page = addressed(page, webBase(tool.slot))
-    scope.context = page.context()
+    const context = prepared(page.context(), tool.browser)
+    scope.page = addressed(page, webBase(tool.slot), context)
+    scope.context = context
     scope.cdp = await tool.browser.cdp()
   }
   return scope
@@ -215,14 +216,40 @@ async function scopeOf(tool: Tool, source: string, keep: Keep): Promise<ScriptSc
  * which only a context Playwright creates can have. It never applies to the
  * browser's own context that a connection over the DevTools protocol
  * attaches to, and a context Playwright creates would lose the slot's
- * profile. So `goto` resolves them here, and every other member is the
- * page's own.
+ * profile. So `goto` resolves them here, `context` answers the script's
+ * `context`, and every other member is the page's own.
  */
-function addressed(page: Page, base: string): Page {
+function addressed(page: Page, base: string, context: BrowserContext): Page {
   return new Proxy(page, {
     get(target, property) {
       if (property === 'goto') {
         return (url: string, options?: Parameters<Page['goto']>[1]) => target.goto(new URL(url, base).href, options)
+      }
+      if (property === 'context') {
+        return () => context
+      }
+      const value: unknown = Reflect.get(target, property, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+}
+
+/**
+ * `context`, whose `newPage` answers once the server's session holds the new
+ * page's emulation and focus, as Playwright's own would have before it
+ * answered (`browser.ts`). The server opens that session on the context's
+ * `page` event, which Playwright does not wait for. Every other member is the
+ * context's own.
+ */
+function prepared(context: BrowserContext, browser: Browser): BrowserContext {
+  return new Proxy(context, {
+    get(target, property) {
+      if (property === 'newPage') {
+        return async () => {
+          const page = await target.newPage()
+          await browser.prepared(page)
+          return page
+        }
       }
       const value: unknown = Reflect.get(target, property, target)
       return typeof value === 'function' ? value.bind(target) : value
