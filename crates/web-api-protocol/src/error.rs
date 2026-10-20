@@ -270,7 +270,8 @@ pub enum ErrorCode {
     /// The path is, or holds, a directory the Host needs: its root, its home
     /// or the conversation's execution directory.
     ProtectedPath,
-    /// The user's browser sent nothing of an upload for a minute.
+    /// The user's browser sent nothing of an upload, or of any request's
+    /// body, for a minute.
     TransferStalled,
     /// A file is over the 8 MiB the product shows as text or keeps as an
     /// edit.
