@@ -454,7 +454,7 @@ test('in a comment\'s box Command-Return sends it alone now and adds nothing to 
   const page = await pictured([['The chart', CHART]], { waiting: [], sendNow: (comment) => sentNow.push(comment) })
   const field = await commentOnPicture(page, 0, 'Now, please.')
   const buttons = [...page.host.querySelectorAll('[data-comment-field] [role="button"], [data-comment-field] button')].map((button) => button.textContent?.trim())
-  expect(buttons).toContain('Send Now')
+  expect(buttons).toContain('Steer')
   expect(buttons).toContain('Comment')
   field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, ctrlKey: true, bubbles: true }))
   await page.settle()

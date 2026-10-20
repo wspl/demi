@@ -5,7 +5,7 @@
 //! - Every call starts in the working directory whatever the one before did.
 //! - An agent message or a command report ends a window, and a human steer does
 //!   not.
-//! - Send Now ends a window without stopping its command.
+//! - Steer ends a window without stopping its command.
 //! - A command left running reports every interval and its end.
 //! - A resident command returns once its start-up output is quiet and reports
 //!   only its end.

@@ -13,7 +13,7 @@ import { t } from '../locales/text'
  * It offers two buttons:
  *
  * - **Comment**, the default, adds the comment to the waiting comments.
- * - **Send Now** sends a message holding the comment alone at once.
+ * - **Steer** sends a message holding the comment alone at once.
  *
  * Keys:
  *

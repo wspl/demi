@@ -5,7 +5,7 @@ import { productWould } from '../product-would'
 
 /**
  * The box a new comment is written in, pinned with a comment typed: Comment,
- * the default, which Return presses, and Send Now, which ⌘Return presses; each
+ * the default, which Return presses, and Steer, which ⌘Return presses; each
  * says what the product would do, and the box comes back so it can be tried
  * again.
  */

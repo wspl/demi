@@ -141,7 +141,7 @@ async fn run_turn(
         if !recover && arrived {
             // The command reports wait until the response's tools have run;
             // the boundary after them writes them. The human steers wait for
-            // the next request, pending, so Send Now and Recall still reach
+            // the next request, pending, so Steer and Recall still reach
             // them while the tools run.
             if s.update(|core| core.write_inputs(Take::AgentMessages)) {
                 persist::flush(s).await?;

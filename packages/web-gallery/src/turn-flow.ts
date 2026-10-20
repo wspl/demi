@@ -220,7 +220,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const deliveries = new Map<string, number>()
   /** When the last message on its way is delivered, as `Date.now()`: the next one goes after it, never ahead. */
   let deliveredBy = 0
-  /** Recall or Send Now pressed on a steer or queued message on its way, by id, carried out once it is held. */
+  /** Recall or Steer pressed on a steer or queued message on its way, by id, carried out once it is held. */
   const wishes = new Map<string, 'recall' | 'sendNow'>()
   let token = 0
   let sequence = 0
@@ -846,7 +846,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    *
    * - With nothing running, it is refused and goes as a message, which starts a
    *   turn, as the product sends it.
-   * - Recall or Send Now pressed meanwhile is carried out then.
+   * - Recall or Steer pressed meanwhile is carried out then.
    */
   function deliverWaiting(
     content: UserContentBlock[],
@@ -894,7 +894,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  /** Keeps Recall or Send Now pressed on a message on its way as the wish; false for any other message. */
+  /** Keeps Recall or Steer pressed on a message on its way as the wish; false for any other message. */
   function keepWish(id: string, wished: 'recall' | 'sendNow'): boolean {
     if (!deliveries.has(id)) {
       return false

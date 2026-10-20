@@ -1217,14 +1217,14 @@ function shownRows(conversation: ReturnType<typeof useConversations>['items'][nu
   }
 }
 
-// Recall or Send Now pressed on a steer still on its way is the user's
+// Recall or Steer pressed on a steer still on its way is the user's
 // latest wish, carried out once the session holds the steer, on what it
 // became: the steer, or the queued message it went as when the session refused it. Recall
 // takes the row away at once all the same, and puts the message back into the
 // empty composer once it is carried out.
 test.each([
   { held: 'steer', press: 'Recall', request: 'removeWaiting' },
-  { held: 'steer', press: 'Send Now', request: 'interruptPendingSteer' },
+  { held: 'steer', press: 'Steer', request: 'interruptPendingSteer' },
   { held: 'queue', press: 'Recall', request: 'removeWaiting' },
 ] as const)('$press pressed on a steer on its way is carried out once the session holds it as a $held', async ({ held, press, request }) => {
   const store = useConversations()
@@ -1520,13 +1520,13 @@ test('two messages sent in a row while the first is unconfirmed both show at onc
   }
 })
 
-// Send Now in a comment's box: a message holding that comment alone goes at
+// Steer in a comment's box: a message holding that comment alone goes at
 // once, as the composer's send would, a steer while the agent works; the other
 // waiting comments and the typed draft stay as they are.
 test.each([
   { phase: 'idle', way: 'submit' },
   { phase: 'running', way: 'steer' },
-] as const)('Send Now on a comment while the agent is $phase sends it alone as a $way and keeps the draft and the other comments', async ({ phase, way }) => {
+] as const)('Steer on a comment while the agent is $phase sends it alone as a $way and keeps the draft and the other comments', async ({ phase, way }) => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)
@@ -1560,10 +1560,10 @@ test.each([
   }
 })
 
-// A comment's Send Now the session refuses leaves no failed message: the
+// A comment's Steer the session refuses leaves no failed message: the
 // comment waits with the others again, after them, and the typed draft is
 // as it was.
-test('Send Now on a comment the session refuses puts the comment back with the waiting ones and leaves no failed message', async () => {
+test('Steer on a comment the session refuses puts the comment back with the waiting ones and leaves no failed message', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)

@@ -140,7 +140,7 @@ async fn input_that_arrives_during_the_last_stream_asks_the_provider_once_more()
 
 /// The fixed bug: a steer that arrived as the stream that asked for a long
 /// call ended was written below the call at once, so the page dropped its
-/// pending entry, with Send Now, while the call ran on for its window.
+/// pending entry, with Steer, while the call ran on for its window.
 #[tokio::test(flavor = "local")]
 async fn a_steer_from_a_stream_that_calls_a_tool_stays_pending_while_the_call_runs() {
     let (call, release) = gated_turn(vec![
@@ -172,7 +172,7 @@ async fn a_steer_from_a_stream_that_calls_a_tool_stays_pending_while_the_call_ru
     assert_eq!(session.pending_steers().len(), 1);
     assert_eq!(*watched.borrow(), None);
 
-    // Send Now on it ends the call's window, and the steer is written right
+    // Steer on it ends the call's window, and the steer is written right
     // before the request that carries it.
     session.steer_now(&steer_id("s1"));
     assert_eq!(running.await, Ok(ActionEnd::Completed));

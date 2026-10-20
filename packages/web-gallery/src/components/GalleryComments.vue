@@ -19,7 +19,7 @@ import GalleryComposer from './GalleryComposer.vue'
  *
  * - Send sends them with what is typed, the bubble showing each quoted text
  *   and its comment, and the reply keeps their marks, dimmer.
- * - Send Now in the box sends a message holding that comment alone, leaving
+ * - Steer in the box sends a message holding that comment alone, leaving
  *   the pill and the typed text as they are, steering while a turn runs.
  * - A picture of the reply takes a comment from its menu (right-click),
  *   outlined yellow with its mark at the picture's top, and its bubble shows a

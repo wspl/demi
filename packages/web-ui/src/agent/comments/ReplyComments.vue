@@ -149,7 +149,7 @@ function openBox(kind: 'comment' | 'ask', blockId: string, anchor: TextAnchor & 
 
 /**
  * Sends what the box holds: a side question, or a comment, which waits with
- * the others, or, by Send Now, goes alone at once. A picture goes as where
+ * the others, or, by Steer, goes alone at once. A picture goes as where
  * its bytes are, which for a Host image the page keeps first.
  */
 async function sendBox(text: string, now = false): Promise<void> {

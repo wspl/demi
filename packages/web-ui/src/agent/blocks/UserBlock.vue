@@ -46,7 +46,7 @@ const props = defineProps<{
    * - `steer`: the running turn reads it at its next step.
    * - `queued`: it runs after the turn.
    *
-   * Send Now delivers either at once. Recall takes it back, into the composer
+   * Steer delivers either at once. Recall takes it back, into the composer
    * when that is empty.
    */
   pending?: 'steer' | 'queued'
@@ -200,7 +200,7 @@ const own = computed(() => typeof props.brief !== 'string')
 /**
  * The message's menu: what its controls offer, Copy and, where it can be
  * edited, Edit, then Send to Conversation, which takes it with its files. A
- * message not yet read has its Send Now and Recall.
+ * message not yet read has its Steer and Recall.
  */
 const menu: ContextMenuDeclaration = {
   entries: () => {

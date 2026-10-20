@@ -8,7 +8,7 @@
     "sent": "送信済み",
     "writeFirst": "先にコメントを入力してください。",
     "title": "コメント",
-    "sendNow": "今すぐ送信",
+    "sendNow": "割り込み",
     "pictureFailed": "画像にコメントできませんでした"
   },
   "ask": {
@@ -94,7 +94,7 @@
       "showMore": "さらに表示",
       "showLess": "表示を減らす",
       "sendsNext": "エージェントの次のステップで送信されます",
-      "sendNow": "今すぐ送信",
+      "sendNow": "割り込み",
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
       "notDelivered": "このメッセージは配信されませんでした。",

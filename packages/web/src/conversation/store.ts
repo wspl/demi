@@ -233,13 +233,13 @@ export const useConversations = defineStore('conversations', () => {
    */
   let deliveries = new SerialQueue()
   /**
-   * Recall or Send Now pressed on a steer or a queued message still on
+   * Recall or Steer pressed on a steer or a queued message still on
    * its way, by its message id: the user's latest wish, carried out once the
    * session holds the message.
    */
   const wishes = new Map<string, 'recall' | 'sendNow'>()
   /**
-   * The messages on their way that a comment's Send Now made, each holding
+   * The messages on their way that a comment's Steer made, each holding
    * that comment alone: one not delivered leaves no failed message, its
    * comment going back to the waiting ones.
    */
@@ -2563,7 +2563,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Send Now on a new comment: a message holding this comment alone goes at
+   * Steer on a new comment: a message holding this comment alone goes at
    * once, as the composer's Return would send one, steering or waiting in the
    * queue while the agent works; the comments waiting in the draft and its text
    * and files stay as they are.
@@ -2920,7 +2920,7 @@ export const useConversations = defineStore('conversations', () => {
           refill(conversation, pending.text, pending.fileIds)
           setComments(conversation, pending.comments)
         } else if (commentSends.has(pending.id)) {
-          // A comment's Send Now not delivered: its comment waits with the
+          // A comment's Steer not delivered: its comment waits with the
           // others again, the draft and they as they were, and says why.
           withdrawSend(conversation, pending)
           setComments(conversation, [...conversation.comments, ...pending.comments])
@@ -3195,7 +3195,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Keeps Recall or Send Now pressed on a message on its way as the
+   * Keeps Recall or Steer pressed on a message on its way as the
    * user's wish, when `id` is one; false for any other.
    */
   function keepWish(conversation: Conversation, id: string, wish: 'recall' | 'sendNow'): boolean {
@@ -3669,7 +3669,7 @@ export const useConversations = defineStore('conversations', () => {
     /** Compacts the root's context, or the live subagent `node`'s, as its context card asks. */
     compact: (conversation: Conversation, node?: string) =>
       action(conversation, (runtime) => runtime.compact(node)),
-    // Send Now on a steer or a queued message still on its way waits for the
+    // Steer on a steer or a queued message still on its way waits for the
     // session to hold it; on any other, it goes at once. Recall takes the
     // row away at once in either case.
     recall,

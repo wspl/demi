@@ -136,7 +136,7 @@ const bubble = computed(() => {
 })
 
 /**
- * Recall and Send Now on the message being sent: the same requests as on
+ * Recall and Steer on the message being sent: the same requests as on
  * the steer or the queued message it will be, by the id it keeps, which the
  * host carries out once the session holds it.
  */

@@ -25,7 +25,7 @@ export interface ReplyCommenting {
   /** Saves a new comment, which waits from then on. */
   add: (comment: MessageComment) => void
   /**
-   * Send Now: sends a message holding `comment` alone at once, as the
+   * Steer: sends a message holding `comment` alone at once, as the
    * composer's send would, steering or waiting while the agent works. It leaves
    * the waiting comments and the typed draft as they are. Absent where nothing
    * sends, as a gallery's still specimen.
