@@ -216,7 +216,7 @@ plugin the user has off 409 `plugin_disabled`; the route needs a conversation
 the user owns, as every conversation route does. A read is admitted as a
 user stream is, so it never wakes a stopped Cloud: the plugin answers what it
 can without it, as the browser's tab list of a stopped Cloud is empty
-([The tab methods](../browser/live-view.md#the-tab-methods)). A refusal of the
+(`crates/plugin-browser/src/page.rs`). A refusal of the
 conversation's host access, or a plugin that fails, answers as a plugin call
 does ([Plugin calls](#plugin-calls)).
 

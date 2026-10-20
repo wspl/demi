@@ -1,13 +1,19 @@
 //! Browser captures use CDP clipping without changing the page's viewport.
-//! Every capture is in CSS pixels, whatever ratio the page renders at
-//! (`browser.md` § Screenshot and probe).
+//! Every capture is in CSS pixels, whatever ratio the page renders at, so the
+//! image the model receives has the same size whoever watches the tab.
 //!
 //! Chrome captures at the page's own device pixels and the capture is scaled
 //! down here. Chrome's own scaling (`clip.scale`) is not used: while the live
-//! view's tab capture runs, Chrome 153 renders the scaled shot at full size
-//! and then crops it to the scaled size (`page_handler.cc`, the bitmap that
-//! does not match the requested size), so a watched tab at ratio 2 answered
-//! only its top-left quarter.
+//! view's tab capture runs, Chrome 153 renders the scaled shot at full size and
+//! then crops it to the scaled size (`page_handler.cc`, the bitmap that does
+//! not match the requested size), so a watched tab at ratio 2 answered only its
+//! top-left quarter.
+//!
+//! Chrome sends the PNG in one base64 CDP message, a third larger than the PNG,
+//! so a capture over the CDP message limit fails with `result_too_large` and
+//! says to take a part with `--clip`; the browser and tab go on. What the model
+//! views is separately limited to 16 MiB.
+
 use std::io::Cursor;
 use std::time::Duration;
 

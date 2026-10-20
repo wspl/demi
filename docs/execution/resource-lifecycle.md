@@ -21,10 +21,10 @@ A conversation is active while any of these holds:
 - A Host operation admitted through the conversation's host access is in
   progress. An operation the user does on what runs there, such as closing or
   navigating one of the
-  [conversation browser's tabs](../browser/live-view.md#the-tab-methods),
+  conversation browser's tabs (`crates/plugin-browser/src/page.rs`),
   is admitted and ends at once, so it restarts the window.
 - A [user stream](native-runtime.md#user-streams) of the conversation is open,
-  such as the [live browser view](../browser/live-view.md): someone is watching
+  such as the live browser view (`crates/command-package-browser-chrome/src/live.rs`): someone is watching
   the conversation's Host, and may operate it. The stream is active from its
   admission until it ends.
 
@@ -43,7 +43,7 @@ call, so a listing says nothing about whether anyone uses the Host. An open view
 says that someone does, so the Host they watch is not reclaimed under them. The
 page closes its view while it is hidden, behind another tab of the user's
 browser or in a minimized window, and opens a new one when it is shown again
-([Ending a view](../browser/live-view.md#ending-a-view)). So a page left open
+(`crates/command-package-browser-chrome/src/live.rs`). So a page left open
 on a view keeps its conversation, and its Cloud, active only while it is
 visible, when someone may be watching.
 

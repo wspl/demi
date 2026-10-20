@@ -1,6 +1,5 @@
 /**
- * The live view's frames on the page's side (`live-view.md` § Framing and
- * versions, `mobile.md` § The live view): the stream carries bytes, so each
+ * The live view's frames on the page's side (`mobile.md` § The live view): the stream carries bytes, so each
  * message is a length, a kind and a payload. Control messages are JSON in
  * the source's protocol, which decodes them; pictures are the live view's
  * own, in chunks of at most 16 KiB that the page joins and acknowledges.
@@ -67,8 +66,7 @@ export function encodeControl(message: unknown): StreamBytes {
 }
 
 /**
- * A picture in chunks as the Host frames it (`live-view.md` § Framing and
- * versions), for a view without a Host, such as the gallery's.
+ * A picture in chunks as the Host frames it, for a view without a Host, such as the gallery's.
  */
 export function encodeVideo(frame: LiveVideoFrame): StreamBytes {
   const chunks = Math.max(1, Math.ceil(frame.data.length / LIVE_CHUNK_DATA_BYTES))
@@ -130,7 +128,7 @@ export function decodeAcks(payload: Uint8Array): LiveChunkAck[] {
 
 /**
  * A picture's chunks joined into its frame, and the frames handed on in
- * sequence (`live-view.md` § Delivery): a direct path delivers chunks out of
+ * sequence: a direct path delivers chunks out of
  * order, and a frame whose chunks are all in waits only for the frames
  * before it, which the decoder needs first. A key frame needs none before
  * it, and those still waiting behind it are dropped.
@@ -236,7 +234,7 @@ export class LiveFrameAssembler {
 /**
  * Bytes split at the live view's frames as they arrive, each frame whole
  * with its length, as the direct path needs them to send a frame on the
- * channel its kind goes on (`live-view.md` § Two paths, one protocol). One
+ * channel its kind goes on. One
  * splitter splits one stream: a frame an ended stream left unfinished is no
  * part of the next.
  */
@@ -281,8 +279,8 @@ export class LiveFrameReader {
   private readonly splitter = new LiveFrameSplitter()
 
   /**
-   * The frames `chunk` completes. A frame the protocol refuses throws
-   * (`live-view.md` § Framing and versions): it is the Host's defect, and
+   * The frames `chunk` completes. A frame the protocol refuses throws:
+   * it is the Host's defect, and
    * the view it came on ends.
    */
   read(chunk: Uint8Array): LiveRawFrame[] {

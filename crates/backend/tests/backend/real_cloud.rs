@@ -104,11 +104,11 @@ impl Environment {
         )
     }
 
-    /// A harness whose backends use the real manager, load the image's
-    /// command releases, serve the Clouds' runners on the runner socket the
-    /// manager mounts, and give them the URL the manager allows. A Cloud stops a moment after the test lets go of its
-    /// conversation's file gate, whose lease is the conversation's work
-    /// (`scenarios.md` § System under test).
+    /// A harness whose backends use the real manager, load the image's command
+    /// releases, serve the Clouds' runners on the runner socket the manager
+    /// mounts, and give them the URL the manager allows. A Cloud stops a moment
+    /// after the test lets go of its conversation's file gate, whose lease is
+    /// the conversation's work (`scenarios.md` § System under test).
     fn harness(&self) -> Harness {
         let mut harness = Harness::new();
         harness.machines = Some(self.socket.clone());
@@ -258,8 +258,7 @@ async fn list(
 
 /// Opens a tab at `url` on the conversation's browser through the panel: a
 /// panel tab on the URL, which the browser plugin's `bind`, as Retry calls
-/// it, opens a browser tab for; answers that tab's id (`live-view.md` § A
-/// browser tab in the panel).
+/// it, opens a browser tab for; answers that tab's id.
 async fn open_tab(
     backend: &TestBackend,
     session: &Session,
@@ -915,7 +914,7 @@ async fn install_tools(test: &str, driven: &mut Driven<'_>) {
 }
 
 /// Installs Chrome on the Cloud of `driven`'s conversation as an agent
-/// would (`browser.md` § Installation): `demi browser install`, which brings
+/// would: `demi browser install`, which brings
 /// the Chrome runtime with it. Prints how long it took.
 async fn install_chrome(test: &str, driven: &mut Driven<'_>) {
     let started = Instant::now();

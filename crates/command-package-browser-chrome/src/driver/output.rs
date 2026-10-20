@@ -1,4 +1,12 @@
-//! Browser output is bounded before any success bytes escape.
+//! Browser output is bounded before any success bytes escape, and one typed
+//! result is rendered as text and as `--json`; neither is parsed from the
+//! other.
+//!
+//! A truncated JSON result stays complete, valid JSON saying `truncated: true`;
+//! one that cannot shrink fails with `result_too_large`, never printing a
+//! prefix. A script never learns an artifact's path by parsing stdout, since a
+//! page must not be able to cause file reads by forging output text: `--json`
+//! screenshots and probes name their files in the result.
 
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -113,7 +121,7 @@ async fn publish(
 
 /// Prints `operation`'s result, shortening its content or its list until it
 /// fits [`INLINE_BYTES`]; a result that cannot shrink fails. `--json` prints
-/// the result, anything else its text (`browser.md` § Default text).
+/// the result, anything else its text.
 pub fn render(operation: &BrowserOperation, mut value: Value, json: bool) -> Result<Vec<u8>> {
     loop {
         let bytes = serde_json::to_vec(&value)
@@ -183,7 +191,7 @@ pub struct RenderedError {
 }
 
 /// Renders a browser failure with the same progress and details as its JSON
-/// form (`browser.md` § Errors). The error is the last line, because models
+/// form. The error is the last line, because models
 /// read the end of a command's output, often through `| tail -1`; a failure
 /// whose last line was `Tab: t2` looked like a success.
 pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetails) -> RenderedError {

@@ -1,3 +1,18 @@
+//! The operation every browser command runs as, and the failures it ends in.
+//!
+//! An operation has one deadline across startup, registry lookup, page work and
+//! result collection; no step restarts it. Every wait, driver call, stdin, file
+//! write and output respond to cancellation, and listeners, temporary tabs and
+//! files are cleaned up the same way on success, failure, timeout and
+//! cancellation; a late event cannot complete a cancelled invocation.
+//! Cancellation releases held keys and buttons but undoes no submitted form or
+//! page script, and closes no unrelated tab.
+//!
+//! A failure does not prove an action never happened, so nothing is replayed:
+//! connection loss after input delivery is `outcome_unknown`. A follow-up
+//! observation that fails after a completed action does not turn the action
+//! into a failure.
+
 use std::{future::Future, time::Duration};
 
 use chromiumoxide::error::CdpError;
@@ -62,12 +77,11 @@ pub enum BrowserError {
     #[error("result exceeds the browser output limit")]
     ResultTooLarge,
     /// A CDP response over the connection's limit, which failed only the
-    /// request it answers (`browser.md` § Native driver).
+    /// request it answers.
     #[error("Chrome's answer is too large: {0}")]
     MessageTooLarge(String),
     /// A capture whose CDP response is over the connection's limit, so
-    /// that even `--output` cannot keep it (`browser.md` § Images and large
-    /// outputs).
+    /// that even `--output` cannot keep it.
     #[error(
         "the screenshot is too large for Chrome to send: {0}; capture a part of the page with --clip x,y,width,height"
     )]
@@ -76,11 +90,11 @@ pub enum BrowserError {
     ProtectedValue,
     #[error("browser could not start: {0}")]
     Unavailable(String),
-    /// The live view's capture could not start (`live-view.md` § Capture).
+    /// The live view's capture could not start.
     #[error("{0}")]
     Capture(String),
     /// Even recreating the capture extension failed; captures wait until
-    /// the viewer asks again (`live-view.md` § Capture).
+    /// the viewer asks again.
     #[error("{0}")]
     CaptureStopped(String),
     /// Chrome for Testing or the Chrome runtime could not be installed, or

@@ -6,7 +6,7 @@ import { panelRect, type Placement } from './view'
 
 /**
  * The watched page's native form controls, as the viewer's own controls over
- * the picture (`live-view.md` § Input): a select, a date, a time, a
+ * the picture: a select, a date, a time, a
  * colour, a suggestion field or a file input opens the viewer's own picker,
  * and the choice goes back to the control the viewer saw.
  */
@@ -31,7 +31,7 @@ function style(control: LiveControl): Record<string, string> {
     width: `${rect.width}px`,
     height: `${rect.height}px`,
     fontSize: `${14 * props.placement.scale}px`,
-    // The page's cursor shows over its control, never the local control's own (`live-view.md` § Input).
+    // The page's cursor shows over its control, never the local control's own.
     cursor: 'inherit',
   }
 }

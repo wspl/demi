@@ -1,8 +1,13 @@
-//! The `browser` plugin (`plugins.md` § Built-in plugins): the `demi
-//! browser` group, every leaf bound to an operation of the `demi.browser`
-//! command package, which runs it on the Host; the `browser` user stream of
-//! the live view; the tab list and tab methods of the work panel's
-//! `browser` kind; and the kind's tabs on the backend.
+//! The `browser` plugin: the `demi browser` group, every leaf bound to an
+//! operation of the `demi.browser` command package, which runs it on the Host;
+//! the `browser` user stream of the live view; the tab list and tab methods of
+//! the work panel's `browser` kind; and the kind's tabs on the backend.
+//!
+//! It holds no browser logic: commands are declared from the operation types of
+//! `command-package-browser-protocol`, the tab methods and the panel's tabs
+//! call the browser's own operations as package calls, and the user stream only
+//! names `browser.live`. A backend whose native catalog serves no browser has
+//! no `browser` plugin methods, so the calls answer `unknown_plugin_method`.
 
 mod browser;
 pub mod page;
@@ -61,7 +66,7 @@ impl PluginFactory for Browser {
     }
 }
 
-/// The live view's user stream (`live-view.md` § The stream), with the
+/// The live view's user stream, with the
 /// frame constants its two ends share.
 fn live_stream() -> Stream {
     let operation = NativeOperation {

@@ -69,7 +69,7 @@ async fn start(runtime: Option<Runtime>) -> Started {
 /// policy and GIO modules, and it runs without its sandbox and audio
 /// output. Without the runtime, as on macOS and Windows, it has none of
 /// that and keeps its sandbox. The runner's own environment never gets the
-/// variables (`browser.md` § Browser distribution, § Native driver).
+/// variables.
 // Cost: about 0.1 s; a shell script stands in for Chrome.
 #[tokio::test]
 async fn chrome_alone_starts_with_the_runtime_and_without_its_sandbox() {

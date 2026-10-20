@@ -1,11 +1,10 @@
-//! A conversation's tab numbers (`browser.md` § One tab registry). The
+//! A conversation's tab numbers. The
 //! service draws them from the conversation's `tab` sequence in the backend
 //! eight at a time (`native-runtime.md` § Conversation numbers), so most
 //! tabs take theirs without waiting; a number it never uses is a gap.
 //! Since a tab's id outlasts each browser of the conversation, so do the
 //! record of the tabs closed on purpose and the count that numbers the tab
-//! lists, which only grows within the conversation (`live-view.md` § A
-//! browser tab in the panel).
+//! lists, which only grows within the conversation.
 
 use std::{
     collections::VecDeque,
@@ -105,7 +104,7 @@ impl TabNumbers {
     }
 
     /// Follows the changes to what the conversation's browsers show, which
-    /// the service tells the plugin of (`browser.md` § One tab registry).
+    /// the service tells the plugin of.
     pub fn watch_changes(&self) -> watch::Receiver<u64> {
         self.0.changes.subscribe()
     }

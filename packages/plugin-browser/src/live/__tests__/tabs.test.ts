@@ -307,11 +307,10 @@ test('the agent’s navigation shows the tab loading while the tab list says it 
   end()
 })
 
-// `live-view.md` § The tab methods: the panel says every failure in its own
-// words. The user saw "The browser couldn't do that." where the browser did
-// not start on the device; a failure that carries no reason of the plugin's
-// says whether the server answered, and with what, or that its answer could
-// not be read.
+// The panel says every failure in its own words. The user saw "The browser
+// couldn't do that." where the browser did not start on the device; a failure
+// that carries no reason of the plugin's says whether the server answered, and
+// with what, or that its answer could not be read.
 test('a failed call says its reason’s sentence, or how the server answered, or that it did not or could not be read', async () => {
   const failures: unknown[] = [
     new PluginCallError('browser_unavailable', 'native artifact: the artifact has 60 bytes', { type: 'status', status: '409 Conflict' }),
@@ -464,8 +463,7 @@ test('a refused Back ends the loading at once and rejects with why, and a replac
 
 // After Demi restarts, the runner stops the browser and the tabs are lost
 // with it: a Reload sent then is refused with tab_not_found, and the tab
-// opens again on its address instead (`live-view.md` § A browser tab in the
-// panel).
+// opens again on its address instead.
 test('a request on a tab the browser lost says nothing: the browser tells the plugin', async () => {
   const answers: Array<{ reject: (error: unknown) => void }> = []
   const reported: Array<[string, unknown]> = []

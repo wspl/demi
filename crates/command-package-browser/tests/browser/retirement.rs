@@ -88,8 +88,7 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
 /// characters, and a user can set any. The profile, which can grow large,
 /// goes there, while Chrome's temporary directory, where it makes its
 /// process-singleton socket, stays in the short, fixed runtime base, so the
-/// socket's path keeps within its limit and Chrome starts (`browser.md`
-/// § Native driver). Under this directory of at least 90 characters the
+/// socket's path keeps within its limit and Chrome starts. Under this directory of at least 90 characters the
 /// socket's path would take at least 155 bytes, past Linux's 107. Retirement
 /// leaves nothing in that directory, and Chrome writes nothing of its own in
 /// the service's home but the user's certificate database: its crash
@@ -129,7 +128,7 @@ async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_tempo
     .unwrap();
     assert_eq!(walk(&temporary), Vec::<PathBuf>::new());
     // Only what Chrome keeps for the user, and the directories above it, are
-    // in the home (`browser.md` § Native driver): on Linux the certificate
+    // in the home: on Linux the certificate
     // database, on macOS the crash reports.
     let kept = if cfg!(target_os = "macos") {
         ["Library/Application Support/Google/Chrome for Testing"]
@@ -152,8 +151,7 @@ async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_tempo
 
 /// Without `TMPDIR`, as on the Cloud, a profile and a download saved without
 /// `--output` go to `/var/tmp`, on disk, rather than to a `/tmp` that may be
-/// held in memory (`browser.md` § Native driver, § Upload, download, and
-/// clipboard). The download is in its environment's directory and goes when
+/// held in memory. The download is in its environment's directory and goes when
 /// the environment retires. An empty `TMPDIR` stands in for none, since the
 /// service program inherits this test's environment. About 5 s, as above.
 #[tokio::test]
@@ -206,7 +204,7 @@ async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
 
 /// A service that is killed leaves its profile and a download saved without
 /// `--output` behind; the next service of the same user removes them as it
-/// starts (`browser.md` § Native driver). The next service sweeps beside
+/// starts. The next service sweeps beside
 /// serving and gives the sweep up when serving ends, and the sweep asks the
 /// runner where Chrome is installed, so the test waits, while the service
 /// serves, for the directories to go. About 6 s: two service programs, one

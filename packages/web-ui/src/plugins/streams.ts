@@ -24,8 +24,7 @@ export interface UserStreamHandlers {
 export interface UserStreamOptions {
   /**
    * The stream is a live view's, which the direct path carries on its live
-   * peer, its pictures on a channel of their own (`live-view.md` § Two
-   * paths, one protocol); only `web-ui`'s live view says so.
+   * peer, its pictures on a channel of their own; only `web-ui`'s live view says so.
    */
   live?: boolean
 }

@@ -1,5 +1,5 @@
-// Captures the tabs the live view watches and encodes them as H.264
-// (`live-view.md` § Capture). The live view module on this Host
+// Captures the tabs the live view watches and encodes them as H.264.
+// The live view module on this Host
 // drives it over a loopback socket that accepts only this environment's token,
 // and names the live protocol's codec.
 import { socket as address, codec } from './config.js';

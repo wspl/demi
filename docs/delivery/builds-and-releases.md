@@ -352,7 +352,7 @@ Each executable has its own kind of release:
   everywhere else ([Rust executables](package-versioning.md#rust-executables)).
   A release carries only the program: software the program installs, such
   as `demi-browser`'s Chrome for Testing, is the program's own
-  ([Browser distribution](../browser/browser.md#browser-distribution)).
+  (`crates/command-package-browser-chrome/src/driver/installation.rs`).
   [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
   defines the descriptor.
 - **Runner.** A runner release is a directory named by the hash of its
@@ -619,7 +619,7 @@ last use, so an entry survives the time between releases.
 
 Each Demi release pins one Chrome for Testing version, which `demi-browser`
 installs when the agent runs `demi browser install`
-([Browser distribution](../browser/browser.md#browser-distribution)).
+(`crates/command-package-browser-chrome/src/driver/installation.rs`).
 `bun xtask browser-release` pins the version it is given, with the Chrome
 runtime release that Linux Hosts install beside it
 ([Chrome runtime](#chrome-runtime)):
@@ -644,7 +644,7 @@ runtime.
 
 The Chrome runtime is the set of shared libraries and fonts that runs Chrome
 for Testing on any Linux with glibc 2.28 or newer
-([Browser distribution](../browser/browser.md#browser-distribution)). Its own
+(`crates/command-package-browser-chrome/src/driver/installation.rs`). Its own
 repository, [wspl/demi-chrome-runtime](https://github.com/wspl/demi-chrome-runtime),
 builds it, so that the licenses and sources its libraries' terms require
 travel with it and nowhere else. A release, numbered `1`, `2`, …, holds:
@@ -768,7 +768,7 @@ installs a download, with hard links where the system allows them
 no test downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
 does. On Linux the Chrome tests start Chrome with the pinned Chrome runtime,
-as a Host does ([Native driver](../browser/browser.md#native-driver)). An ordinary test run
+as a Host does (`crates/command-package-browser-chrome/src/driver/launch.rs`). An ordinary test run
 also skips the Cloud suite, which needs a machine manager, a Cloud image, and
 root. The machine manager builds only for Linux, and on Linux the one
 selection builds and runs its tests

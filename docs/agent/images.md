@@ -33,7 +33,7 @@ demi image models [<model>]
   reference as the prompt says. A prompt of `-` is read from stdin.
 - **One image per call.** The image's bytes go to stdout, as
   `demi browser screenshot` writes its PNG
-  ([Images and large outputs](../browser/browser.md#images-and-large-outputs)):
+  (`crates/command-package-browser-chrome/src/page/screenshot.rs`):
   `> fox.png` saves it, and `| demi file view` shows it to the model. Several
   images are several calls. The bytes are PNG unless `--format` asks for
   JPEG or WebP, whatever the vendor sent: the plugin decodes the vendor's

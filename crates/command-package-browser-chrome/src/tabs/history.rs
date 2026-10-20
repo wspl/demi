@@ -1,5 +1,5 @@
-//! Whether a tab's history has a page to go back or forward to
-//! (`live-view.md` § The tab methods): Chrome's navigation history of the
+//! Whether a tab's history has a page to go back or forward to:
+//! Chrome's navigation history of the
 //! tab, read again after each navigation of its main frame. Each change of
 //! them counts as a change of what the browser shows, so the live view sends
 //! its viewers the tab list again.

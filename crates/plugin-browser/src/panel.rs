@@ -1,11 +1,29 @@
-//! The `browser` kind's tabs on the backend (`live-view.md` § A browser tab
-//! in the panel): a panel tab added for each tab the agent opens and each
-//! tab a page opens, beside its opener; a browser tab opened again for a
-//! panel tab whose browser lost it, or that failed to open, once its content
-//! asks; the browser's tab closed with its panel tab, and gone ones marked.
-//! One conversation's work runs one piece at a time, so a change is never
-//! based on what was read before an earlier change of the same
-//! conversation.
+//! The `browser` kind's tabs on the backend: a panel tab added for each tab the
+//! agent opens and each tab a page opens, beside its opener; a browser tab
+//! opened again for a panel tab whose browser lost it, or that failed to open,
+//! once its content asks; the browser's tab closed with its panel tab, and gone
+//! ones marked. One conversation's work runs one piece at a time, so a change
+//! is never based on what was read before an earlier change of the same
+//! conversation: the plugin never adds a panel tab for a browser tab it is
+//! opening for a panel tab, and never marks a tab closed on a list read before
+//! the tab opened.
+//!
+//! - A tab id is used once per conversation, so a tab the user closed never
+//!   comes back, and a tab is added once however often the list is read. Adding
+//!   does not select; only a raised `shows` does.
+//! - A page's tab goes right after its opener, behind the tabs that opener
+//!   opened before, as Chrome places them; the agent's go at the end.
+//!   `openedBy` keeps this in the panel tab's data so a reload keeps the order.
+//! - A tab closed on purpose (the browser's list of closed tabs says so) is
+//!   removed; a tab lost with the browser stays, marked `closed`, and opens
+//!   again on its address when shown, as Chrome reloads a discarded tab. On
+//!   `package_lost` every panel tab is marked lost without reading the Host,
+//!   whose browser is gone.
+//! - A Host that cannot be reached for a moment changes no tab: the browser may
+//!   still run there.
+//! - `shows` is the agent's decision that the user sees a tab: `show` only
+//!   raises the count in the browser's list, and the panel applies a count once
+//!   per page, so the user's own selection after it stands.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -30,14 +48,22 @@ pub const KIND: &str = "browser";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TabData {
+    /// The address the tab shows, written by the page and the plugin, or the
+    /// one the user last asked for while the tab has no browser tab yet.
     url: String,
-    /// The page's title as the plugin or the page last wrote it.
+    /// The page's title as the plugin or the page last wrote it, so the strip
+    /// names the tab while no view shows it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    /// The id of the conversation browser's tab it shows, once it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tab: Option<String>,
+    /// The browser lost that tab with the browser itself; the tab opens again
+    /// on its address when shown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     closed: Option<bool>,
+    /// `{ code, message }`: why the plugin could not open a browser tab for
+    /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     failure: Option<Value>,
     /// How many times the agent showed its browser tab, as the plugin last
@@ -94,7 +120,7 @@ impl Work {
     /// Answers the browser tab the panel tab shows now; none when the panel
     /// no longer has it or it could not open one, which its data says: any
     /// step that fails is the tab's `failure`, which its content shows with
-    /// Retry (`live-view.md` § A browser tab in the panel).
+    /// Retry.
     pub async fn bind(
         &self,
         conversation: &ConversationId,
@@ -137,8 +163,7 @@ impl Work {
     }
 
     /// Marks every bound tab lost with the browser, whose package's state
-    /// on the Host ended unsaid (`live-view.md` § A browser tab in the
-    /// panel): each opens again when shown. Nothing is read from the Host,
+    /// on the Host ended unsaid: each opens again when shown. Nothing is read from the Host,
     /// whose browser is gone.
     pub async fn lost(
         &self,
@@ -160,12 +185,11 @@ impl Work {
     /// Reads the browser's tabs and updates the panel from them: a tab for
     /// each tab the agent or a page opened, a page's beside its opener's
     /// (`after_opened`) and the agent's after the others, each bound tab's
-    /// count of the times the agent showed its browser tab when the count rose
-    /// (`live-view.md` § Showing a tab), each bound tab's address and title
+    /// count of the times the agent showed its browser tab when the count rose,
+    /// each bound tab's address and title
     /// as the list says them, every bound tab whose browser tab
     /// was closed on purpose removed, and every one whose browser tab was
-    /// lost with the browser marked closed, to open again when shown
-    /// (`live-view.md` § A browser tab in the panel).
+    /// lost with the browser marked closed, to open again when shown.
     pub async fn sync(
         &self,
         conversation: &ConversationId,
@@ -282,7 +306,7 @@ fn opener_of(order: &[Placed], tab: &BrowserTab) -> Option<usize> {
 
 /// Where a tab the panel tab at `at` opened goes: right after it, behind the
 /// tabs it opened before that still stand right after it, as Chrome places
-/// the tabs a link opens (`live-view.md` § A browser tab in the panel).
+/// the tabs a link opens.
 fn after_opened(order: &[Placed], at: usize) -> usize {
     let opener = order[at].id.as_str();
     let run = order[at + 1..]
@@ -328,7 +352,7 @@ async fn open_for(
 /// Why a browser tab could not be opened, as the tab's content shows it:
 /// the reason the page has words for, the browser's or the Host's, or else
 /// the HTTP status a page call would answer the same failure with, and the
-/// message (`live-view.md` § The tab methods).
+/// message.
 fn failure(error: &PluginError) -> Value {
     let message = error.to_string();
     let (reason, status) = match error {

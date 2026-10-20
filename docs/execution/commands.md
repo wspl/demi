@@ -10,7 +10,7 @@ grafts `demi agent` and `demi shell` per node
 
 The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
-[Browser automation](../browser/browser.md#command-contract). It uses this
+Browser automation (`crates/command-package-browser-protocol/src/browser/mod.rs`). It uses this
 command contract rather than a separate shell or model tool loop. The
 `demi agent` group is specified in [Subagents](../agent/subagents.md), and the
 `demi shell` group in [The whole output](../agent/shell-tool.md#the-whole-output) and [The `demi shell` commands](../agent/shell-tool.md#the-demi-shell-commands).

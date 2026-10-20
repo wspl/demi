@@ -1,6 +1,5 @@
 //! How an operation fails, in the words the agent reads and with the code a
-//! script branches on (`browser.md` § Errors, which the mobile commands
-//! follow).
+//! script branches on.
 
 use demi_command_package_mobile_protocol::mobile::{
     DeviceId, ElementRef, MAX_DEVICES, MobileErrorCode,

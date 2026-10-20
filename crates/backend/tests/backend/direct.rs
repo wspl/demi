@@ -480,7 +480,7 @@ async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
     std::fs::write(&file, &content).unwrap();
 
     // Chrome starts as the browser suite starts it, on Linux with the
-    // Chrome runtime (`browser.md` § Browser distribution).
+    // Chrome runtime.
     let options = LaunchOptions::pinned(
         demi_command_package_browser_chrome::driver::testing::installation(),
         CommandLocale {

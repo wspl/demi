@@ -1,7 +1,7 @@
-//! The `browser` kind's tabs on the backend (`live-view.md` § A browser tab
-//! in the panel): a tab reopened, or retried, opens a browser tab on the
-//! address the user asked for last, a tab its user closes closes it, and the
-//! agent's tabs are added once and never again once their user closed them.
+//! The `browser` kind's tabs on the backend: a tab reopened, or retried, opens
+//! a browser tab on the address the user asked for last, a tab its user closes
+//! closes it, and the agent's tabs are added once and never again once their
+//! user closed them.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -365,8 +365,7 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
 
 /// A tab closed on purpose leaves the panel, as a browser's closed tab does;
 /// a tab lost with the browser stays with its address and title, and opens
-/// again on its address when its content asks, once shown
-/// (`live-view.md` § A browser tab in the panel).
+/// again on its address when its content asks, once shown.
 #[tokio::test(flavor = "local")]
 async fn a_tab_closed_on_purpose_leaves_the_panel_and_one_lost_with_the_browser_opens_again() {
     let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!({ "tabs": [], "closed": [] })));
@@ -457,7 +456,7 @@ async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
 /// same opener opened before it, as Chrome places the tabs a link opens; the
 /// panel keeps which tab opened which, so the order holds across reads and
 /// reloads. The agent's tabs, and one whose opener the panel does not show,
-/// go after the others (`live-view.md` § A browser tab in the panel).
+/// go after the others.
 #[tokio::test(flavor = "local")]
 async fn a_tab_a_page_opened_stands_beside_its_opener() {
     let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!([])));

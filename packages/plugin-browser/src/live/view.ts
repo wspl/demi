@@ -1,8 +1,13 @@
 /**
  * Where a watched tab's picture sits in the panel, and what the viewer's
- * pointer means in the tab (`live-view.md` § Modes), by the generation of
+ * pointer means in the tab, by the generation of
  * the picture shown. A Web picture stands unscaled at the panel's top-left
  * corner; Mobile and Custom keep their size, scaled to fit and centred.
+ *
+ * Chrome encodes an odd side at the nearest even size, so a Web picture is
+ * scaled by less than a pixel then. The picture is placed, and input mapped
+ * back, by the generation of the picture shown, never by a viewport the tab
+ * list reports for a picture that has not arrived.
  */
 import type { TitleText } from '@demicodes/plugin-sdk'
 import type { BrowserViewport, CursorRegion } from '../generated/plugin'
@@ -11,7 +16,7 @@ import { t } from '../locales/text'
 
 /**
  * A blank page, as Chrome paints an empty one in the color scheme the
- * browser runs in, which is the user's (`browser.md` § Native driver):
+ * browser runs in, which is the user's:
  * white, or #121212 in the dark scheme, so the first picture does not flash.
  */
 export const BLANK_PAGE = 'bg-white [[data-theme=dark]_&]:bg-[#121212]'
@@ -100,7 +105,7 @@ export function tabPoint(
 const CURSOR_KEYWORD = /^[a-z][a-z-]*$/
 
 /**
- * The cursor the page shows at `point` of the tab (`live-view.md` § Input):
+ * The cursor the page shows at `point` of the tab:
  * the last region over the point decides; where none does, or one leaves
  * the cursor to the browser, the observer's resolution at the pointer
  * holds.

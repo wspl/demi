@@ -1,6 +1,5 @@
 /**
- * One live view of the conversation's browser (`live-view.md` § The
- * stream): the page's side of the protocol. It keeps what the view shows,
+ * One live view of the conversation's browser: the page's side of the protocol. It keeps what the view shows,
  * hands pictures to a decoder, acknowledges what the viewer saw, and sends
  * the viewer's input while the stream is alive. A view whose stream goes
  * silent for as long as a page socket may is broken, and a view that ends
@@ -17,8 +16,7 @@ import type { PanelSize } from './view'
 
 /**
  * A stream generation as the module names it: its pictures' size in pixels,
- * the viewport they show and their scale of its device pixels
- * (`live-view.md` § Modes).
+ * the viewport they show and their scale of its device pixels.
  */
 export interface LiveStream {
   tab: string
@@ -37,7 +35,7 @@ export { REFUSED_FRAME, SILENT_STREAM, type LiveConnection } from '@demicodes/pl
 /**
  * The reasons of the notices that leave the watched tab without a picture,
  * which the view shows in place of the picture; every other notice the
- * picture still shows through (`live-view.md` § Opening a view). Each is a
+ * picture still shows through. Each is a
  * reason of the plugin's set, which the page has words for.
  */
 export type PicturelessReason = typeof LIVE_CAPTURE_UNAVAILABLE | typeof LIVE_CAPTURE_FAILED | typeof LIVE_CAPTURE_STOPPED
@@ -64,8 +62,7 @@ export interface LiveState {
   cursor: { cursor: string; editable: boolean }
   /**
    * Why the watched tab shows no picture: the code of a notice that leaves
-   * none, until a picture of the tab or another watched tab ends it
-   * (`live-view.md` § Opening a view).
+   * none, until a picture of the tab or another watched tab ends it.
    */
   pictureless: PicturelessReason | null
   /** Why the view ended, once it did. */
@@ -141,7 +138,7 @@ export class LiveSession {
       open: options.open,
       frames: () => new LiveFrameReader(),
       // The panel comes before the tab, so the module sizes the tab before it
-      // captures it (`live-view.md` § Delivery); a view that opens again takes
+      // captures it; a view that opens again takes
       // up where the page left off.
       opened: () => {
         this.send({ type: 'hello', platform: options.platform })
@@ -185,7 +182,7 @@ export class LiveSession {
   /**
    * A view waiting to reconnect connects at once, its waits started over:
    * what it waited for, such as a browser that did not run yet, may be there
-   * now (`live-view.md` § A browser tab in the panel).
+   * now.
    */
   reconnect(): void {
     this.link.reconnect()
@@ -353,7 +350,7 @@ export class LiveSession {
   /**
    * Asks the Host to capture again after it stopped trying: it recreates its
    * capture extension, and the view says it tries again until a picture or
-   * another notice (`live-view.md` § Capture).
+   * another notice.
    */
   recapture(): void {
     if (this.state.pictureless !== LIVE_CAPTURE_STOPPED) {

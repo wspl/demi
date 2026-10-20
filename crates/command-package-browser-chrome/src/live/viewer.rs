@@ -1,6 +1,13 @@
-//! One viewer of the conversation's browser (`live-view.md` § The
-//! stream): one invocation of `browser.live`, from the page's `hello` until
-//! either side ends it.
+//! One viewer of the conversation's browser: one invocation of `browser.live`,
+//! from the page's `hello` until either side ends it.
+//!
+//! The viewer's input and the agent's are not exclusive: both reach the page in
+//! the order they arrive and the operation lock orders only agent commands, so
+//! interleaving is expected (a `fill` may type into the field the user clicked
+//! meanwhile). Held keys and buttons are tracked per source, and a source's end
+//! releases only what it holds. For a `user` caller `open`, `goto`, `back`,
+//! `forward` and `reload` answer without waiting for the page to load: a user
+//! waits in the panel, not in a script.
 
 use std::{future::Future, sync::Arc, time::Duration};
 
@@ -49,7 +56,7 @@ enum Failure {
 
 /// The conversation's browser as its viewers reach it, which the program
 /// implements: the live view does not know how conversations are owned or
-/// released (`live-view.md` § Responsibilities).
+/// released.
 pub trait ViewedBrowser: Send + Sync + 'static {
     /// The running browser and its live view hub; none while no browser
     /// runs. `Closed` once the conversation is released.
@@ -66,7 +73,7 @@ pub trait ViewedBrowser: Send + Sync + 'static {
 
     /// The number of the conversation's latest tab list, which a list sent
     /// while no browser runs carries: the numbers only grow within the
-    /// conversation (`live-view.md` § A browser tab in the panel).
+    /// conversation.
     fn list_number(&self) -> u64;
 }
 
@@ -212,7 +219,7 @@ impl<B: ViewedBrowser> Viewer<B> {
 
     /// The conversation's browser; without one, the page hears that none runs,
     /// and the view waits for one: the page starts it by opening a tab with a
-    /// request (`live-view.md` § The tab methods).
+    /// request.
     async fn environment(&mut self) -> Result<Option<(BrowserEnvironment, Arc<Hub>)>, Failure> {
         loop {
             let changed = self.browser.changed();
@@ -397,7 +404,7 @@ struct Watched {
     observed: Option<Observing>,
     /// The tab's observer while it starts: Chrome holds the commands that
     /// start it until a navigation under way commits, and the view never
-    /// waits for them (`live-view.md` § Delivery).
+    /// waits for them.
     starting: Option<oneshot::Receiver<BrowserResult<Arc<Observed>>>>,
 }
 

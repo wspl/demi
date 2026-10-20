@@ -9,8 +9,7 @@ import { dialogTitle, keyAnswer } from './dialogs'
 import { t } from '../locales/text'
 
 /**
- * A dialog the watched page opened (`live-view.md` § A browser tab in the
- * panel). It shows over the picture without blocking the page: the agent
+ * A dialog the watched page opened. It shows over the picture without blocking the page: the agent
  * may answer it first, and then it goes away on its own. As in a browser, it
  * is titled with the page's host, takes the keyboard, a prompt in its
  * field, and answers Enter with its default button, OK or Leave, and Escape

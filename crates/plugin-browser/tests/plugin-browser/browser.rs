@@ -1,5 +1,5 @@
 //! `demi browser`: every operation of the package has its command, but the
-//! user's Stop (`live-view.md` § The tab methods).
+//! user's Stop.
 
 use demi_command_package_browser_protocol::browser::{OPERATIONS, PREFIX};
 use demi_plugin_browser::Browser;
@@ -118,7 +118,7 @@ fn no_json_result_names_the_tab_list_number() {
 /// A reference is the locator models use most and outputs print as
 /// `[ref=e3]`, so it is also the positional after the tab; `key` takes its
 /// key positionally, after an optional reference; `check` checks unless
-/// `--value=false` (`browser.md` § Shared target grammar). Before, `click t1
+/// `--value=false`. Before, `click t1
 /// e27` and `key t1 Escape` failed as unexpected positionals, and a flag
 /// took the next token as its value, so `open --show <url>` lost its URL.
 #[test]
@@ -172,7 +172,7 @@ fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally()
 
 /// `eval` takes a short expression as its last positional, as models write
 /// it, or statements from stdin; the token after the tab is the ref when it
-/// reads as one (`browser.md` § Evaluation, console, and viewport). Before,
+/// reads as one. Before,
 /// `eval t1 'getComputedStyle(…)'` failed as a ref that does not match
 /// "^e[1-9][0-9]{0,14}$", and a model read the regular expression to learn
 /// what it had done wrong.

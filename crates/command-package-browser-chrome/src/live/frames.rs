@@ -1,7 +1,6 @@
-//! The browser's frames among the live view's (`live-view.md` § Framing and
-//! versions): control messages in the browser's protocol, acknowledgements
-//! of the video chunks, and the bytes of files the viewer chose. The live
-//! view's reader splits the stream.
+//! The browser's frames among the live view's: control messages in the
+//! browser's protocol, acknowledgements of the video chunks, and the bytes of
+//! files the viewer chose. The live view's reader splits the stream.
 
 use bytes::Bytes;
 

@@ -1,10 +1,21 @@
-//! The live view's protocol where it is not about its source
-//! (`live-view.md` § The stream, `mobile.md` § The live view): the frames a
-//! user stream carries, the pictures' header and codec, the viewer's input in
-//! the picture's coordinates, and the messages that pace the pictures. A
-//! source's own protocol, such as the browser's, carries these beside its own
-//! messages. It holds types and their checks only; the Host's side of them is
+//! The live view's protocol where it is not about its source: the frames a user
+//! stream carries, the pictures' header and codec, the viewer's input in the
+//! picture's coordinates, and the messages that pace the pictures. A source's
+//! own protocol, such as the browser's, carries these beside its own messages.
+//! It holds types and their checks only; the Host's side of them is
 //! `live-view`, the page's `@demicodes/web-ui`'s live module.
+//!
+//! - The codec is fixed, H.264 High level 5.1, and the stream does not name it:
+//!   the page asks the user's browser for a decoder before it opens a view.
+//!   Page and Host ship in the same release, so the protocol carries no
+//!   version.
+//! - Video chunks are at most 16 KiB so every 16 KiB the sender puts on the
+//!   wire is acknowledged on its own.
+//! - A frame the protocol refuses (bad length or kind, a header cut short, a
+//!   control message that is not JSON or does not match its schema) is a defect
+//!   of its sender and ends the view. Each view reads its own stream from the
+//!   first byte, so a frame an ended stream left unfinished never reaches the
+//!   next.
 
 use bytes::{Buf, Bytes, BytesMut};
 use demi_shared_types::{DecodeError, MAX_SAFE_INTEGER};
@@ -25,7 +36,7 @@ pub const VIDEO_FRAME: u8 = 2;
 pub const ACK_FRAME: u8 = 3;
 /// The most bytes a video chunk takes on the wire, its length and kind
 /// included, so that every 16 KiB the sender puts on the path is
-/// acknowledged on its own (`live-view.md` § Framing and versions).
+/// acknowledged on its own.
 pub const CHUNK_BYTES: usize = 16 * 1024;
 /// The video frames' codec as WebCodecs names it: H.264 High profile (`64`),
 /// no constraint flags (`00`), level 5.1 (`33`). Every source encodes with
@@ -52,7 +63,7 @@ pub struct Frame {
     pub payload: Bytes,
 }
 
-/// A frame the protocol refuses (`live-view.md` § Framing and versions).
+/// A frame the protocol refuses.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FrameError {
     #[error("a live frame is empty or too large")]
@@ -336,7 +347,7 @@ pub const MAX_CONTACTS: usize = 10;
 /// The viewer's input, in the picture's coordinates: the CSS pixels of a
 /// browser tab, the points of a simulator's screen. A source turns it into
 /// its own input; the Host delivers each viewer's input in the order it
-/// arrives (`live-view.md` § Input).
+/// arrives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum ViewerInput {
@@ -428,7 +439,7 @@ pub struct LiveHello {
 }
 
 /// The page's decoder could not decode a frame of `generation`; the next
-/// frame must be a key frame (`live-view.md` § Delivery).
+/// frame must be a key frame.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveKeyframe {

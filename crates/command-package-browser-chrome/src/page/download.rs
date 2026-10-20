@@ -1,4 +1,8 @@
 //! Observe downloads before input and publish only completed Host files.
+//!
+//! Without `--output` a download goes to the profile's download directory, not
+//! `/tmp`, which may be held in memory; it lives as long as the environment. A
+//! suggested filename is data, never permission for path traversal.
 
 use std::{path::PathBuf, sync::Arc};
 

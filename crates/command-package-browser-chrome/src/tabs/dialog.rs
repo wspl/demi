@@ -1,12 +1,12 @@
 //! A tab's open JavaScript dialog and the key and button releases it holds
-//! back (`browser.md` § JavaScript dialogs, `live-view.md` § Input).
+//! back.
 //!
-//! One task per tab owns both. The page takes no input while a dialog is
-//! open, so a command or a viewer that would release a key or a button
-//! then hands the release to the owner, which delivers it once the dialog
-//! is answered. Answering is a request to the owner too, so the releases
-//! go out in the order they were held back, and the first answer wins,
-//! whether the agent's or a viewer's.
+//! One task per tab owns both. The page takes no input while a dialog is open,
+//! so a command or a viewer that would release a key or a button then hands the
+//! release to the owner, which delivers it once the dialog is answered.
+//! Answering is a request to the owner too, so the releases go out in the order
+//! they were held back, and the first answer wins, whether the agent's or a
+//! viewer's. Closing a tab does not wait for a `beforeunload` answer.
 
 use std::{collections::VecDeque, sync::Arc};
 

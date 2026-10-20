@@ -43,7 +43,7 @@ struct Asked {
     key_frame: bool,
     encoding: Option<(u32, u32)>,
     /// The newest frame the viewers had, and how many more their windows
-    /// have room for (`live-view.md` § Delivery).
+    /// have room for.
     allowed: Option<(u32, u32)>,
     stopped: bool,
 }

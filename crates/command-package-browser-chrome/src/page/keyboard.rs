@@ -151,8 +151,7 @@ fn editing_commands(host_mac: bool, code: &str, modifiers: i64) -> Option<Vec<St
     Some(vec![command.into()])
 }
 
-/// A key from the live view, as the user's browser reported it
-/// (`live-view.md` § Input).
+/// A key from the live view, as the user's browser reported it.
 pub struct ViewerKey<'a> {
     pub down: bool,
     pub key: &'a str,

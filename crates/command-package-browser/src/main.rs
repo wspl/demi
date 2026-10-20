@@ -23,7 +23,7 @@ async fn main() {
     let chrome = browser.chrome().clone();
     let service = demi_command_sdk::serve_stdio(browser);
     // Profiles a service that ended without retiring its browsers left are
-    // removed beside serving (`browser.md` § Native driver); a sweep still
+    // removed beside serving; a sweep still
     // under way when serving ends is given up.
     let sweep = demi_command_package_browser_chrome::tabs::environment::sweep_orphans(&chrome);
     tokio::pin!(service, sweep);

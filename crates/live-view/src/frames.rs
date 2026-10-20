@@ -1,7 +1,6 @@
-//! The live view's frames over a user stream (`live-view.md`
-//! § Framing and versions): a four-byte big-endian length, a kind, then the
-//! payload. The stream itself has no message boundaries; a picture travels
-//! in chunks of at most 16 KiB.
+//! The live view's frames over a user stream: a four-byte big-endian length, a
+//! kind, then the payload. The stream itself has no message boundaries; a
+//! picture travels in chunks of at most 16 KiB.
 
 use bytes::{BufMut, Bytes, BytesMut};
 use serde::Serialize;

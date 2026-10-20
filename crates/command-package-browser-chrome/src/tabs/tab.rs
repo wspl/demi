@@ -1,8 +1,17 @@
-//! A browser tab and what it keeps beside its page (`browser.md` § Owners
-//! inside the service): its operation lock with the session its holder uses,
-//! the way to its debugging owner, its console buffer, its open dialog and
-//! its viewport. What acts on the tab's page is written in the modules above
-//! `tabs`, as functions over a [`BrowserTab`].
+//! A browser tab and what it keeps beside its page: its operation lock with the
+//! session its holder uses, the way to its debugging owner, its console buffer,
+//! its open dialog and its viewport. What acts on the tab's page is written in
+//! the modules above `tabs`, as functions over a [`BrowserTab`].
+//!
+//! Only one agent command executes against a tab at a time, and a conflicting
+//! call fails with `tab_busy` at once, never queuing a click for an unknown
+//! later page. The lock orders agent commands among themselves only; a user in
+//! the live view acts at any time. A script is not a transaction.
+//!
+//! Every tab Demi drives renders as the front tab of its window does, one
+//! behind another included: Chrome delivers mouse input only with a frame, so a
+//! tab that drew none would hold a click or scroll until the user brought it to
+//! the front. The cost is that a tab behind another keeps rendering.
 
 use std::{sync::Arc, time::Duration};
 
@@ -56,8 +65,7 @@ pub struct TabState {
     pub history: watch::Sender<crate::tabs::history::HistoryEnds>,
     /// The page's icon as a PNG `data:` URL, while it has one.
     pub favicon: watch::Sender<Option<String>>,
-    /// How many times the agent showed the tab to the user
-    /// (`live-view.md` § Showing a tab).
+    /// How many times the agent showed the tab to the user.
     pub shows: watch::Sender<u64>,
     /// Counts the changes to what the browser shows, the environment's.
     pub changes: watch::Sender<u64>,
@@ -191,8 +199,8 @@ impl BrowserTab {
     }
 
     /// Shows the tab to the user once more: its count rises, and the
-    /// user's work panel selects it when it learns of the count
-    /// (`live-view.md` § Showing a tab). Nothing else changes in the browser.
+    /// user's work panel selects it when it learns of the count.
+    /// Nothing else changes in the browser.
     pub fn show(&self) {
         self.state.shows.send_modify(|shows| *shows += 1);
         self.state.changes.send_modify(|revision| *revision += 1);
@@ -215,7 +223,7 @@ impl BrowserTab {
 
     /// Closes the tab without running its `beforeunload` hooks; the
     /// registry no longer lists it once this returns. Closing the last tab
-    /// retires the environment instead (`browser.md` § Lifetime), which the
+    /// retires the environment instead, which the
     /// environment's owner does when it has emptied.
     pub async fn close(&self, cancellation: &CancellationToken, timeout: Duration) -> Result<()> {
         self.close_request(cancellation, timeout).await.map(|_| ())

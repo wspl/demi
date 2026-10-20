@@ -1,24 +1,42 @@
-//! The Host's side of the live view where it is not about its source
-//! (`live-view.md` § The stream, `mobile.md` § The live view): a source of
-//! pictures and input, such as a browser tab or a simulator, implements
-//! [`stream::Source`] and [`input::Deliver`], and its viewer serves its
-//! user stream with these pieces:
+//! The Host's side of the live view where it is not about its source: a source
+//! of pictures and input, such as a browser tab or a simulator, implements
+//! [`stream::Source`] and [`input::Deliver`], and its viewer serves its user
+//! stream with these pieces:
 //!
 //! ```text
-//!  page ──frames──▶ frames::Reader ──▶ the source's viewer ──▶ input::Input ──▶ Deliver
-//!  page ◀──────── writer::Writer ◀── delivery::Delivery ◀── stream::StreamHandle ◀── Source
+//! in:   page --> frames::Reader --> the source's viewer --> input::Input
+//!                                                              --> Deliver
+//! out:  page <-- writer::Writer <-- delivery::Delivery <-- StreamHandle
+//!                                                              <-- Source
 //! ```
 //!
-//! - [`frames`]: the stream's frames, the pictures' chunks;
-//! - [`writer`]: control before video, heartbeats;
-//! - [`stream`]: one capture per watched source, shared by its viewers, with
-//!   key frames on request and the encoding the slowest viewer takes;
-//! - [`delivery`]: one viewer's chunks paced over each frame's interval,
-//!   the window of what is unacknowledged, and the target bit rate from the
-//!   page's acknowledgements, with the delay-based estimate of Google
-//!   Congestion Control ported from str0m;
-//! - [`input`]: one viewer's input in order, merged while the source is busy,
-//!   and what it holds released when it leaves.
+//! Two paths, one protocol: the page and the sender never ask which they are
+//! on.
+//!
+//! ```text
+//! direct (UDP)  page == WebRTC data channels ==> runner
+//!                 control: one ordered channel; video: one unordered channel
+//! relay (TCP)   page --WSS--> backend --WS--> runner
+//!                 everything in the one byte stream, in order
+//! ```
+//!
+//! - Direct video chunks are reliable but unordered, so one lost packet delays
+//!   only its own frame; the peer carries them without SCTP's congestion
+//!   window, so the rate control in `delivery` is the only limit. A chunk may
+//!   reach the page before the `stream` message announcing its generation, so
+//!   the page keeps it (up to 8 MiB, frames waiting up to two seconds) rather
+//!   than drop it.
+//! - The relay delays everything behind a lost packet until TCP resends; the
+//!   price of a path that needs no port but the backend's.
+//! - Why data channels, not a WebRTC video track: a track's player waits 20 to
+//!   30 ms more and its rate control reacts slowly to a bandwidth drop; a data
+//!   channel with SCTP's own window halves its rate on each loss; encoded
+//!   transforms dropped whole frames. At 20 Mbps, 50 ms and 0.5 % loss the
+//!   unordered channel stalled 0.4 s in 20 s against 11.3 s for a track.
+//! - The sender never builds a queue of pictures: it keeps a window of bytes
+//!   unacknowledged and a new picture replaces the one waiting before the
+//!   encoder. On the relay each hop forwards only what the next accepts, so a
+//!   slow page holds the window full rather than filling backend memory.
 
 mod bwe;
 pub mod delivery;

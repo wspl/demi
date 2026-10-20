@@ -1,7 +1,6 @@
 //! The page's side of the pictures for tests (`testing`): a viewer that
 //! joins a frame's chunks, which arrive in order on the relay path and in
-//! process, and acknowledges each chunk as the page does
-//! (`live-view.md` § Framing and versions).
+//! process, and acknowledges each chunk as the page does.
 
 use std::time::Instant;
 

@@ -474,7 +474,7 @@ that replays it, and a short number is copied without a slip.
 | A command's medium | `2` | Its command | The runner, as the medium reaches it ([Media the model views](shell-tool.md#media-the-model-views)) |
 | An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
-| A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
+| A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered (`crates/command-package-browser-chrome/src/tabs/registry.rs`) |
 | A simulator `demi mobile` opened | `m2` | The conversation, across its Hosts | The backend, when the device is opened ([Commands](../mobile/mobile.md#commands)) |
 | An attachment, the user's or the agent's | `a3` | The conversation | The backend, when a send or `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
 | An element reference | `e37` | Its tab, or its device | The conversation browser, as it observes the tab, or `demi mobile inspect` |

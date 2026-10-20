@@ -510,7 +510,7 @@ transfer from holding a Cloud awake or a conversation's file gate:
   by them. A Cloud stop or reset ends them with the device's other work.
 
 The second is a [user stream](native-runtime.md#user-streams), such as the
-[live browser view](../browser/live-view.md), open for as long as the page
+live browser view (`crates/command-package-browser-chrome/src/live.rs`), open for as long as the page
 shows it. The shard hands the edge the stream's pipe ends and a lease, as it
 does for a transfer, and the edge relays the stream's bytes between the page
 and the Host. Its admission checks ownership and the binding and refuses an

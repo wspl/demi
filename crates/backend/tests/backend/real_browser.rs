@@ -98,7 +98,7 @@ fn chrome_processes(root: &Path) -> Vec<sysinfo::Pid> {
         .collect()
 }
 
-/// One frame of the live view, as `live-view.md` § Framing and versions
+/// One frame of the live view, as `live-view-protocol`
 /// gives it.
 enum Frame {
     Control(Value),
@@ -196,8 +196,8 @@ impl View {
 /// An agent on a paired device opens a page served on the loopback
 /// interface with `demi browser` and reads it, the user watches the tab
 /// through the backend's `browser` user stream, and archiving the
-/// conversation releases it on the device, which leaves no Chrome process
-/// (`browser.md` § Release, `live-view.md` § The stream). About 13 s here: the
+/// conversation releases it on the device, which leaves no Chrome process.
+/// About 13 s here: the
 /// device installs the package, Chrome starts, and the view's first picture
 /// is encoded.
 #[tokio::test]

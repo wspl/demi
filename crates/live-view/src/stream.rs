@@ -1,17 +1,19 @@
-//! One watched source's pictures (`live-view.md` § Capture, `mobile.md`
-//! § The live view): viewers of the same source share one capture and one
-//! encoding. The capture follows the source's size, and its pace and
+//! One watched source's pictures: viewers of the same source share one capture
+//! and one encoding. The capture follows the source's size, and its pace and
 //! encoding follow the viewer with the least room.
 //!
 //! Nothing reaches a stream through a queue. Its owner publishes who watches
 //! the source and when the source is ready to be captured; each viewer
-//! publishes its latest pacing, which supersedes the one before, and wakes
-//! the stream to read it.
+//! publishes its latest pacing, which supersedes the one before, and wakes the
+//! stream to read it.
 //!
-//! A capture starts only once the owner says the source is ready, so it
-//! never captures at a size it is about to replace, and a new size starts a
-//! new capture. Each size, layout or scale is a new generation for the
-//! viewers, which its first frame announces.
+//! A capture starts only once the owner says the source is ready, so it never
+//! captures at a size it is about to replace, and a new size starts a new
+//! capture. Each size, layout or scale is a new generation for the viewers,
+//! which its first frame announces. A source is captured only while someone
+//! watches it, and key frames are sent only when needed (a new viewer, a
+//! changed source or size, or the page failing to decode), at most two a
+//! second, never on a timer.
 
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
 
@@ -30,7 +32,7 @@ use crate::rate::{FRAME_RATES, INITIAL_BITRATE, SCALES};
 const VIEWER_QUEUE: usize = 8;
 const RETRY_LIMIT: Duration = Duration::from_secs(5);
 /// The least time between two key frames the viewers asked for: at most two
-/// in a second (`live-view.md` § Delivery).
+/// in a second.
 const KEY_FRAME_SPACING: Duration = Duration::from_millis(500);
 
 /// One encoded picture of a source: H.264 Annex B in

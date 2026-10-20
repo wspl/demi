@@ -142,7 +142,7 @@ These are the points where values enter, and what a failure does:
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
 | A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
-| A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
+| A capture extension event | `command-package-browser-protocol` | The extension connection fails, and the failure is logged (`crates/command-package-browser-chrome/src/live.rs`) |
 | A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
 | A sealed credential document | The vault | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
 | Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |

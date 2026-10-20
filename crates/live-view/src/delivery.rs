@@ -1,12 +1,12 @@
-//! One viewer's pictures on their way to its page (`live-view.md`
-//! § Delivery): each frame in chunks spread over the frame's interval, the
-//! window that holds what is unacknowledged, when the next frame must be a
-//! key frame, and the encoding its path takes, which it tells the stream of
-//! the source it watches.
+//! One viewer's pictures on their way to its page: each frame in chunks spread
+//! over the frame's interval, the window that holds what is unacknowledged,
+//! when the next frame must be a key frame, and the encoding its path takes,
+//! which it tells the stream of the source it watches.
 //!
 //! The capture encodes a picture only when the window has room for it: the
 //! delivery tells the stream how far the page's frames reach and whether one
-//! more may come, and the stream takes the least of its viewers'.
+//! more may come, and the stream takes the least of its viewers'. An encoded
+//! frame is never dropped, since later frames are coded against it.
 
 use std::collections::VecDeque;
 

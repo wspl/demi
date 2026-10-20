@@ -968,7 +968,7 @@ for it. The steps above give the full development backend for those.
 The command releases make the operations of `demi.file`, `demi.browser` and
 `demi.claude-code` available on the Cloud and on a paired device of this
 machine's target; the conversation browser works once the agent has run
-`demi browser install` ([Browser distribution](../browser/browser.md#browser-distribution)).
+`demi browser install` (`crates/command-package-browser-chrome/src/driver/installation.rs`).
 The manager gives its Cloud's runners the artifact cache
 `.cache/dev-artifacts/` in the repository, which outlives every run, so a
 Cloud installs each program and Chrome once rather than at every wake or run

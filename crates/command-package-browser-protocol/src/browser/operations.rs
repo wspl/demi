@@ -1,4 +1,4 @@
-//! Each `browser.*` operation's input and result (`browser.md` § Results).
+//! Each `browser.*` operation's input and result.
 //! Inputs are the flat argument objects the command's flags and positionals
 //! make; results are what `--json` prints.
 
@@ -201,7 +201,7 @@ pub struct OpenResult {
 input! {
     tab
     /// `show`: asks the user's work panel to show a tab once the command's
-    /// job ends (`live-view.md` § Showing a tab).
+    /// job ends.
     pub struct ShowInput {}
 }
 
@@ -228,8 +228,8 @@ input! {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TabsResult {
-    /// The list's number in the Host's sequence, for a `user` caller only
-    /// (`live-view.md` § The tab methods). The model has no use for it, so
+    /// The list's number in the Host's sequence, for a `user` caller only.
+    /// The model has no use for it, so
     /// the agent's command never prints it and its `--json` schema does not
     /// name it (`runtime.md`, "Only what the model uses").
     #[serde(
@@ -243,8 +243,7 @@ pub struct TabsResult {
     pub truncated: bool,
     /// The latest tabs closed on purpose, by a command or by their own page,
     /// for a `user` caller only: the work panel removes their tabs, and keeps
-    /// the tabs lost with the browser (`live-view.md` § A browser tab in the
-    /// panel). The model has no use for it.
+    /// the tabs lost with the browser. The model has no use for it.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -327,14 +326,14 @@ input! {
     /// `stop`: stops loading a tab's page, as a browser's Stop does. Only the
     /// user's page asks for it: the agent waits for its commands rather than
     /// stopping a load, so it answers the page's [`TabMoved`] and is no
-    /// command of `demi browser` (`live-view.md` § The tab methods).
+    /// command of `demi browser`.
     pub struct StopInput {}
 }
 
 /// What a navigation answers: the URL it observed, with the title when the
 /// same document reported it in time. A user's navigation, which answers
 /// before the page loads, names instead the number of the last tab list
-/// before it started (`live-view.md` § The tab methods); the agent's never
+/// before it started; the agent's never
 /// does, so its `--json` schema does not name that number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -359,8 +358,7 @@ pub struct NavigationResult {
 
 /// What the conversation browser's `navigate` and `history` tab methods
 /// answer the page: the number of the last tab list before the request
-/// started, so the page knows which lists describe the tab after it
-/// (`live-view.md` § A browser tab in the panel).
+/// started, so the page knows which lists describe the tab after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TabMoved {

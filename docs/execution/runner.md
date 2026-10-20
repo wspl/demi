@@ -955,7 +955,7 @@ the stream, the invocation's exit code and the bounded tail of its standard
 error: a one-shot call has no page to tell, so its caller learns a failure
 and its words from this message, not from a stream that merely ended. The service stream is generic mechanism: the
 runner does not parse what flows through it. The backend uses it for the
-[live browser view](../browser/live-view.md).
+live browser view (`crates/command-package-browser-chrome/src/live.rs`).
 
 ### Direct channels
 
@@ -1094,7 +1094,7 @@ processes, a job's commands and the programs its utilities start, such as
 
 One refusal remains. A conversation browser command that conflicts with
 another command on the same tab answers `tab_busy`; that is about the tab, not
-load ([Conversation browser](../browser/browser.md#one-tab-registry)).
+load (`crates/command-package-browser-chrome/src/tabs/registry.rs`).
 
 ## Shell jobs
 

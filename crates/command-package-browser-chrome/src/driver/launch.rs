@@ -1,7 +1,22 @@
-//! How Chrome starts (`browser.md` § Native driver): an ordinary Chrome with no
-//! automation markers, in the user's time zone and languages, with the live
-//! view's capture extension loaded, and on Linux with the Chrome runtime and
-//! without its sandbox.
+//! How Chrome starts: an ordinary Chrome with no automation markers, in the
+//! user's time zone, languages and color scheme, with the live view's capture
+//! extension loaded, and on Linux with the Chrome runtime and without its
+//! sandbox.
+//!
+//! - Pages see no automation markers (`navigator.webdriver`, the headless
+//!   token, hidden scrollbars), because the agent and the user test how real
+//!   sites behave for real visitors.
+//! - Linux runs without the sandbox: it needs unprivileged user namespaces,
+//!   which Ubuntu 23.10 and later restrict, and Chrome refuses it as root. A
+//!   compromised renderer then has the rights of the runner's user, which the
+//!   agent already has through its shell; a Cloud runs inside gVisor besides.
+//! - The browser's toolbar and address-bar WebUI are disabled: they are not
+//!   agent pages and must not consume renderers.
+//! - Time zone, languages and color scheme are the user's, taken from the
+//!   starting invocation's command context, not the Host's, which differs
+//!   between devices. They apply to the whole browser as it starts, so every
+//!   page, worker and request has them from its first byte, and a running
+//!   browser keeps them.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +31,7 @@ use demi_command_protocol::{ColorScheme, CommandLocale};
 use crate::driver::operation::Result;
 
 /// The capture extension's ID, fixed by the public key in its manifest so that
-/// tab capture can allowlist it (`live-view.md` § Capture).
+/// tab capture can allowlist it.
 pub const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko";
 
 /// Where the capture extension of the browser with `profile` lies.
@@ -35,8 +50,8 @@ const CAPTURE_EXTENSION: &[(&str, &str)] = &[
 /// sees an outer size smaller than its inner size.
 pub const WINDOW_CHROME_HEIGHT: u32 = 87;
 
-/// An installed Chrome runtime, which Chrome starts with on Linux
-/// (`browser.md` § Browser distribution): the directory of its libraries,
+/// An installed Chrome runtime, which Chrome starts with on Linux:
+/// the directory of its libraries,
 /// which holds the empty `gio/modules` too, and its fontconfig file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Runtime {
@@ -205,8 +220,7 @@ fn desktop_user_agent(version: &str) -> String {
 /// encodes with the live protocol's codec. With `runtime`, which a Linux
 /// Host starts Chrome with, Chrome finds the runtime through its own
 /// environment and runs without its sandbox: the sandbox needs user
-/// namespaces, which Ubuntu restricts, and Chrome refuses it as root
-/// (`browser.md` § Native driver).
+/// namespaces, which Ubuntu restricts, and Chrome refuses it as root.
 pub async fn configure(
     builder: BrowserConfigBuilder,
     profile: &Path,

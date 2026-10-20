@@ -1,4 +1,5 @@
 //! Rendered text selection shares browser references and visibility checks.
+
 use serde::Deserialize;
 use serde_json::json;
 

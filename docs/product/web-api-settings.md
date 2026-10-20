@@ -251,7 +251,7 @@ kept as `{ timeZone: "Asia/Shanghai", languages: ["zh-CN", "en", "he"] }`,
 as `Intl.getCanonicalLocales` in the user's browser would write the tags.
 Commands receive it in their
 [command context](../execution/native-runtime.md#command-context), and the
-[conversation browser](../browser/browser.md#native-driver) starts with it.
+conversation browser (`crates/command-package-browser-chrome/src/driver/launch.rs`) starts with it.
 `contextLimits` holds the user's
 [context limits](../providers/models.md#context-limit), by provider entry id
 and then model id, each in tokens, such as

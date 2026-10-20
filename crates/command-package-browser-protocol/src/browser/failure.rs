@@ -1,5 +1,7 @@
-//! How a browser operation fails (`browser.md` § Errors): a code scripts
-//! branch on, a message that explains the situation, and typed details.
+//! How a browser operation fails: a code scripts branch on, a message that
+//! explains the situation, and typed details. Each cause keeps its own code and
+//! is never folded into a generic one; scripts read the code and details, never
+//! the message.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

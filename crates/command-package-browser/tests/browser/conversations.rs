@@ -144,7 +144,7 @@ async fn only_the_users_tab_list_names_its_number() {
     );
 }
 
-/// Stop is the user's alone (`live-view.md` § The tab methods): an agent's
+/// Stop is the user's alone: an agent's
 /// call is refused before it reaches any browser, while the user's reaches
 /// the browser, which has no such tab here.
 #[tokio::test]

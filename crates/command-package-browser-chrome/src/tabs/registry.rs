@@ -1,19 +1,28 @@
-//! A browser environment's tab registry (`browser.md` § One tab registry).
+//! A browser environment's tab registry.
 //!
 //! One owner task follows Chrome's target events through bounded buffers and
 //! keeps the public ID, opener and creation metadata of every top-level page
-//! for the browser's generation, closed tabs included. It publishes a
-//! snapshot after every change: a command finds its tab there, without a call
-//! to Chrome and without waiting for a command on another tab. Opening and
-//! closing a tab are requests to the owner, which also decides when the last
-//! tab has closed.
+//! for the browser's generation, closed tabs included. It publishes a snapshot
+//! after every change: a command finds its tab there, without a call to Chrome
+//! and without waiting for a command on another tab. Opening and closing a tab
+//! are requests to the owner, which also decides when the last tab has closed.
 //!
-//! The owner keeps its bookkeeping in a [`Book`], which knows nothing of
-//! Chrome, and does the calls to Chrome itself or in tasks of the
-//! environment. A page's public ID is `t` and a number of the conversation's
-//! `tab` sequence, which the owner gives a popup when it first sees it and one
-//! of its own creations when it sets it up. A number that cannot be drawn
-//! fails only that step: the creation fails, or the popup is closed.
+//! - A tab's ID is `t` and a number of the conversation's `tab` sequence, given
+//!   once across browser generations, releases and restarts, so an old ID never
+//!   names a new tab. Creation metadata is diagnostic, never authorization.
+//! - When a buffer of target events overflows, the owner reconciles from
+//!   Chrome's target list before the next command: a lost event costs one
+//!   reconciliation, never a failed `tabs` call. Closed tabs stay known so a
+//!   popup can still name its opener.
+//! - The environment retires only when no tab remains and no tab creation or
+//!   `content fetch` batch is in flight, and admits no new tab once retirement
+//!   begins. Closing a tab first stops its navigation, so closing the last one
+//!   never waits for the page.
+//! - A number that cannot be drawn (the backend has 15 seconds) fails only the
+//!   step that needs it; the environment and its other tabs stay.
+//! - Every change of what `browser.tabs` lists also tells `plugin-browser` with
+//!   `{"tabs":"changed"}`; the service keeps the conversations that changed
+//!   since it last wrote, so a burst costs one message.
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -106,7 +115,7 @@ pub enum Closed {
     /// The tab is gone from the browser and from the registry.
     Tab,
     /// It was the last tab: the environment retires instead, without waiting
-    /// for the page to go (`browser.md` § Lifetime).
+    /// for the page to go.
     Environment,
 }
 
@@ -180,7 +189,7 @@ impl Tabs {
     /// The latest snapshot, once the owner has registered every tab it
     /// knows of, with the titles the pages have now: Chrome reports a page's
     /// title with its target only when the page commits, before the document
-    /// names one (`browser.md` § One tab registry).
+    /// names one.
     pub async fn listing(&self) -> Result<Arc<Snapshot>> {
         self.ask(|reply| Request::Retitle { reply }).await?;
         self.registered().await
@@ -722,8 +731,7 @@ impl Context {
             .await?;
             // Every tab renders and runs animation frames as the front tab
             // of its window does, also one behind another: Chrome delivers
-            // mouse input only with a frame (`browser.md` § Actionability
-            // and coordinates). This session holds the emulation for the
+            // mouse input only with a frame. This session holds the emulation for the
             // tab's whole life.
             page.execute(SetFocusEmulationEnabledParams::new(true))
                 .await?;
@@ -877,8 +885,7 @@ impl Owner {
 
     /// The public ID of `target`, naming it with the next tab number when it
     /// has none; why not, when no number could be drawn. A failed draw fails
-    /// only the step that needs the number, and the next step draws again
-    /// (`browser.md` § One tab registry).
+    /// only the step that needs the number, and the next step draws again.
     async fn number(&mut self, target: &TargetId) -> Result<TabId> {
         if let Some(id) = self.book.public_id(target) {
             return Ok(id);
@@ -1251,7 +1258,7 @@ impl Owner {
     }
 
     /// A target event buffer overflowed: the events it lost cost one
-    /// reconciliation (`browser.md` § One tab registry).
+    /// reconciliation.
     async fn lost(&mut self, lost: EventStreamError) {
         tracing::info!("the browser tab registry reconciles: {lost}");
         self.reconcile().await;

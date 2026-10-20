@@ -1,4 +1,20 @@
 //! One tab admission covers observation, targeting, input and associated waits.
+//!
+//! - Every pressed key, button and modifier is released on every exit path,
+//!   cancellation included.
+//! - `fill` does not check that the final value equals its input: page scripts
+//!   may transform or refuse it, and the agent observes the result when it
+//!   matters.
+//! - There is no generic `--page-changed` wait: an animation or a clock update
+//!   cannot show that pagination finished.
+//! - A click that starts a load waits for it, but not observing one is not a
+//!   failure.
+//! - A command blocked by a JavaScript dialog reports it and releases the
+//!   operation lock, so a dialog command can run; it never waits holding the
+//!   lock the dismissal needs.
+//! - An ordinary click may report a download, but only `download` yields a
+//!   file, and nothing clicks again to recover an event an earlier command
+//!   missed.
 
 use chromiumoxide::{
     cdp::browser_protocol::{
@@ -160,7 +176,7 @@ pub async fn command_admitted(
         .await
         .map_err(|error| operation.failure(error, tab.id().as_str(), None))?;
     // The pages the page opened before an action, so that its result
-    // names only those the action opened (`browser.md` § One tab registry).
+    // names only those the action opened.
     let opened_before = if opens_tabs(command) {
         operation.run(tab.opened()).await.ok()
     } else {
@@ -1032,8 +1048,7 @@ pub(crate) async fn coordinates(tab: &BrowserTab, input: &str) -> Result<Point> 
     Ok(point)
 }
 
-/// What the page's own command families offer (`browser.md` § Capabilities
-/// and WebMCP).
+/// What the page's own command families offer.
 pub async fn capabilities(page: &chromiumoxide::Page) -> Result<Vec<Capability>> {
     let available = |id: &str| Capability {
         id: id.into(),

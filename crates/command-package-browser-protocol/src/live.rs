@@ -1,4 +1,4 @@
-//! The browser's live view protocol (`live-view.md` § The stream): what the
+//! The browser's live view protocol: what the
 //! page and the live view module say to each other over a user stream about
 //! the browser, beside the live view's own frames, pictures and input
 //! (`live-view-protocol`). The page and the module ship in the same release;
@@ -117,7 +117,7 @@ closed_set! {
 }
 
 closed_set! {
-    /// A native form control an observer reports (`live-view.md` § Input).
+    /// A native form control an observer reports.
     pub enum ControlKind {
         Select = "select",
         Date = "date",
@@ -335,8 +335,7 @@ pub struct LiveControl {
 /// The most cursor regions a view hears of for a tab, from all its frames.
 pub const MAX_CURSOR_REGIONS: usize = 4000;
 
-/// Where on the visible page a cursor applies, in tab CSS pixels
-/// (`live-view.md` § Input).
+/// Where on the visible page a cursor applies, in tab CSS pixels.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CursorRegion {
@@ -384,10 +383,9 @@ pub struct LiveTab {
     pub favicon: Option<String>,
 }
 
-/// What lies under the viewer's right click in the watched tab, which the
-/// page builds the browser's menu from (`live-view.md` § A browser tab in the
-/// panel). The page's own `contextmenu` handler that cancels the event shows
-/// its own menu instead, and none of this is sent.
+/// What lies under the viewer's right click in the watched tab, which the page
+/// builds the browser's menu from. The page's own `contextmenu` handler that
+/// cancels the event shows its own menu instead, and none of this is sent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LiveMenu {
@@ -408,7 +406,7 @@ pub struct LiveMenu {
 }
 
 /// A download the user started in the watched tab, as a browser's download
-/// bubble shows it (`live-view.md` § A browser tab in the panel).
+/// bubble shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LiveDownload {
@@ -456,7 +454,7 @@ pub enum LiveModuleMessage {
         running: bool,
         /// The list's number in the Host's sequence: a list numbered higher
         /// than a request's answer names describes the browser after the
-        /// request started (`live-view.md` § The tab methods).
+        /// request started.
         #[garde(range(max = MAX_SAFE_INTEGER))]
         list: u64,
         #[garde(dive)]
@@ -469,7 +467,7 @@ pub enum LiveModuleMessage {
     /// Video frames of this generation follow, starting with a key frame:
     /// `width` × `height` pixels of `viewport`, at `scale` of its device
     /// pixels. The page places a picture, and maps input on it, by its own
-    /// generation's viewport (`live-view.md` § Modes). At scale 1 a picture
+    /// generation's viewport. At scale 1 a picture
     /// is the page's own pixels, less the last row or column of an odd side,
     /// which H.264 cannot encode; below 1 congestion lowered its resolution.
     Stream {

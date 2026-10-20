@@ -1,7 +1,7 @@
-//! The `demi browser` group (`browser.md`): one native leaf per operation of
-//! the `demi.browser` package, its arguments and `--json` result
-//! declared from the `command-package-browser-protocol` types, so the command line, the
-//! runner's check and the operation read one definition.
+//! The `demi browser` group: one native leaf per operation of the
+//! `demi.browser` package, its arguments and `--json` result declared from the
+//! `command-package-browser-protocol` types, so the command line, the runner's
+//! check and the operation read one definition.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
@@ -20,7 +20,7 @@ const SUCCESS: &str = "readable page results; one validated JSON value with --js
 const FAILURE: &str =
     "a browser error on stderr with nonzero exit status; an action is never replayed automatically";
 
-/// When the agent shows a tab (`browser.md` § Tabs and navigation).
+/// When the agent shows a tab.
 const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Do not show the tabs you open to check your own work. Showing does not bring the tab to the front of the Host’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
 
 /// Declares each operation's leaf from its name, its input and result types
@@ -165,8 +165,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
 }
 
 /// Whether `I` takes an element target, whose reference is also the
-/// positional after the tab, as outputs print it (`browser.md` § Shared
-/// target grammar).
+/// positional after the tab, as outputs print it.
 fn targeted<I: schemars::JsonSchema>() -> bool {
     schemars::schema_for!(I)
         .get("properties")
@@ -186,8 +185,7 @@ fn positionals<I: schemars::JsonSchema>(name: &str) -> Vec<&'static str> {
     }
     match name {
         "key" => fields.push("key"),
-        // A short expression may follow the reference instead of stdin
-        // (`browser.md` § Evaluation, console, and viewport).
+        // A short expression may follow the reference instead of stdin.
         "eval" => fields.push("expression"),
         _ => {}
     }

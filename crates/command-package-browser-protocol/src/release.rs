@@ -1,5 +1,5 @@
 //! The pinned Chrome for Testing release, and the Chrome runtime release
-//! Linux Hosts start it with (`browser.md` § Browser distribution). Nothing
+//! Linux Hosts start it with. Nothing
 //! resolves a moving channel: a release names each platform's archive, and
 //! the runtime's archives, by URL, size and digest, which `demi browser
 //! install` downloads (`builds-and-releases.md` § Chrome for Testing,

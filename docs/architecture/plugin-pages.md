@@ -184,7 +184,7 @@ its tabs.
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `key(data)` | What makes a tab of a kind that is not pinned the one it is, such as an attachment's number; an intent whose new data has the key of a tab the strip already holds selects that tab instead of adding another, as clicking a card a second time shows its file's tab again. A kind without it, such as the browser's, opens a new tab each time, as a browser does |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
-| `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |
+| `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it (`crates/plugin-browser/src/panel.rs`) |
 
 Because a kind is data on the page, the panel knows every kind of every page
 the user has on before it opens, and an intent can open a kind while the panel

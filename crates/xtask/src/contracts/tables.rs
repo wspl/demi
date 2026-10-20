@@ -1,9 +1,9 @@
-//! The constant tables the page shares with the Rust side, with their
-//! lookups (`contracts.md` § Logic the web app and backend share): the
-//! file-type table the page chooses a viewer by, the file types a model
-//! reads, the context limits a model's window offers, and the live view's
-//! frame constants. The values come from the Rust constants; the lookups do what
-//! core's lookups do, and the page's tests check them with core's cases.
+//! The constant tables the page shares with the Rust side, with their lookups
+//! (`contracts.md` § Logic the web app and backend share): the file-type table
+//! the page chooses a viewer by, the file types a model reads, the context
+//! limits a model's window offers, and the live view's frame constants. The
+//! values come from the Rust constants; the lookups do what core's lookups do,
+//! and the page's tests check them with core's cases.
 
 use std::fmt::Write as _;
 
@@ -142,7 +142,7 @@ pub fn module(header: &str) -> String {
         for (name, description, value) in [
             (
                 "LIVE_CONTROL_FRAME",
-                "A live view frame's kind: UTF-8 JSON of one message (`live-view.md` § Framing and versions).",
+                "A live view frame's kind: UTF-8 JSON of one message.",
                 u64::from(live::CONTROL_FRAME),
             ),
             (

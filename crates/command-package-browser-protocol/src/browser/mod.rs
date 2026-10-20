@@ -1,5 +1,12 @@
-//! The `browser.*` operations (`browser.md`): their limits, the values they
-//! share, their failures, and each operation's input and result.
+//! The `browser.*` operations: their limits, the values they share, their
+//! failures, and each operation's input and result.
+//!
+//! Every tab operation names its tab; only `open`, `tabs`, `content fetch` and
+//! help work without one, and no action depends on a global selected tab. Each
+//! input has one source (`eval` takes a positional expression or stdin, not
+//! both), and help is resolved before any stdin is read. A result field never
+//! changes meaning or type, and `find`'s `count` is the total match count even
+//! when the limit cuts the list.
 
 pub use failure::{
     ActionProgress, BrowserErrorCode, BrowserFailure, ErrorDetails, FailureDocument,
@@ -53,7 +60,7 @@ pub const CDP_BYTES: usize = 8 * 1024 * 1024;
 /// scalar values.
 pub const LOCATOR_LENGTH: usize = 4096;
 /// The most characters of a tab's icon as a `data:` URL: a 32-pixel PNG
-/// takes a few thousand (`live-view.md` § A browser tab in the panel).
+/// takes a few thousand.
 pub const FAVICON_LENGTH: usize = 16 * 1024;
 
 /// An opaque handle: `prefix`, an underscore and the URL-safe base64 of 16
@@ -68,7 +75,7 @@ pub fn handle(prefix: &str, random: [u8; 16]) -> String {
 
 numbered!(
     /// A tab's public identity, which `open` and `tabs` return: `t` and the
-    /// tab's number in the conversation (`browser.md` § One tab registry).
+    /// tab's number in the conversation.
     TabId,
     "t",
     "a tab ID, such as t1"
@@ -228,7 +235,7 @@ closed_set! {
 }
 
 closed_set! {
-    /// Who decides a tab's viewport (`live-view.md` § Modes): the user's
+    /// Who decides a tab's viewport: the user's
     /// panel, a phone, or the agent.
     #[derive(Default)]
     pub enum ViewportMode {
@@ -345,8 +352,7 @@ locator_struct! {
     target
     /// An element target: a node reference, or a role, text, label,
     /// placeholder, test ID or CSS selector, narrowed by frames, a container
-    /// and an index. Admission checks which fields may combine
-    /// (`browser.md` § Element targets).
+    /// and an index. Admission checks which fields may combine.
     #[derive(Default)]
     pub struct BrowserTarget {} {}
 }
@@ -393,7 +399,7 @@ impl From<BrowserQueryMatch> for BrowserTarget {
     }
 }
 
-/// A declarative query tree (`browser.md` § Queries): one base, `match`,
+/// A declarative query tree: one base, `match`,
 /// `and` or `or`, narrowed by a container, a frame, what the element has or
 /// lacks, its text, its visibility and an index.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -690,7 +696,7 @@ pub struct BrowserTab {
     #[garde(skip)]
     pub can_go_forward: bool,
     /// How many times the agent showed the tab to the user; 0 for one never
-    /// shown (`live-view.md` § Showing a tab).
+    /// shown.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub shows: u64,
     /// The page's icon, 32 pixels square, as a PNG `data:` URL; absent for a
@@ -701,7 +707,7 @@ pub struct BrowserTab {
     pub favicon: Option<String>,
 }
 
-/// A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio
+/// A tab's viewport: its CSS size, the pixel ratio
 /// it renders at, and who decides them.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -729,9 +735,8 @@ mod failure;
 mod operations;
 
 /// What the browser package tells `plugin-browser` about a conversation
-/// (`browser.md` § One tab registry, `native-runtime.md` § Messages to the
-/// plugin): `{"tabs":"changed"}`, once for a burst of changes of what
-/// `browser.tabs` lists.
+/// (`native-runtime.md` § Messages to the plugin): `{"tabs":"changed"}`, once
+/// for a burst of changes of what `browser.tabs` lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserMessage {

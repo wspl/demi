@@ -230,8 +230,7 @@ pub struct Page {
     /// The reasons the page may be told a failure with, one closed set of
     /// snake_case words: its methods' and states' refusals, and what else
     /// reaches the page, so the page's types name each one and the page
-    /// says every one in words of its own (`live-view.md` § The tab
-    /// methods).
+    /// says every one in words of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasons: Option<Schema>,
 }

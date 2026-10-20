@@ -298,8 +298,7 @@ async function settle(): Promise<void> {
 }
 
 /**
- * A live view's stream on the direct path (`live-view.md` § Two paths, one
- * protocol): its unordered `video` channel opens first, its `stream` names
+ * A live view's stream on the direct path: its unordered `video` channel opens first, its `stream` names
  * it; the page's acknowledgements go on `video` and the rest on `stream`;
  * the view reads the chunks from `video` and whole frames from `stream`,
  * even where a frame came in two messages. Planted defects this catches:

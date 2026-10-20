@@ -288,8 +288,7 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
 }
 
 /**
- * A live view's stream on the device's live peer (`live-view.md` § Two
- * paths, one protocol): its `video` channel opens first, then its `stream`
+ * A live view's stream on the device's live peer: its `video` channel opens first, then its `stream`
  * channel naming it. The pictures' chunks come on `video`, each message one
  * chunk, and the page's acknowledgements go there; everything else goes on
  * `stream`, whose messages the page joins into whole frames before the view

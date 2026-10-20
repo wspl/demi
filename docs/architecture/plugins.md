@@ -332,7 +332,7 @@ package writes `{"tabs":"changed"}` for the conversation, and
 `plugin-browser` receives it as a `package_message` request: it marks its
 conversation state, the tab list, changed, so every page that shows the
 conversation reads it again, and adds the new tab to the work panel
-([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)).
+(`crates/plugin-browser/src/panel.rs`).
 The agent's `rg`, a build or a `demi file edit` changes no tab, and the
 plugin hears nothing.
 
@@ -360,7 +360,7 @@ and lets the plugin that names a kind take part in its tabs:
   creates a tab of a plugin's kind only through an intent the kind opens,
   such as the file browser's `attachment` tab an attachment's card opens, and
   the plugin then has nothing to do; otherwise the plugin creates them
-  ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)).
+  (`crates/plugin-browser/src/panel.rs`).
 - **The plugin changes its own tabs.** Through the port, the plugin lists,
   creates, updates and removes the tabs of its kinds in the request's
   conversation, as the page does, with ids that are used once
@@ -687,7 +687,7 @@ not use.
 | Id | Name | Crate | Contributes | Page package | Design |
 | --- | --- | --- | --- | --- | --- |
 | `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
-| `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `calls`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `calls`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | Conversation browser (`crates/command-package-browser-protocol/src/browser/mod.rs`), Live view (`crates/command-package-browser-chrome/src/live.rs`) |
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
 | `image` | Image Generation | `plugin-image` | The `demi image` group, rpc leaves; Host file reads; the Providers service | None | [Image generation](../agent/images.md) |

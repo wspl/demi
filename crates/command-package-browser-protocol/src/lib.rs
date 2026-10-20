@@ -1,9 +1,15 @@
-//! The `demi.browser` package's contract (`crates-and-packages.md`
-//! § command-package-browser-protocol): the arguments and results of its `browser.*`
-//! operations, the live view's protocol, the capture extension's messages,
-//! and the pinned Chrome release records. It holds types and their checks
-//! only; the operations, transport and IO live in `demi-browser` and the
+//! The `demi.browser` package's contract: the arguments and results of its
+//! `browser.*` operations, the live view's protocol, the capture extension's
+//! messages, and the pinned Chrome release records. It holds types and their
+//! checks only; the operations, transport and IO live in `demi-browser` and the
 //! browser libraries.
+//!
+//! The types are defined once: the `demi browser` declarations take their
+//! schemas from them, the handlers decode into them, and the web app uses the
+//! TypeScript generated from them. Whatever enters from outside (command input,
+//! Host files, CDP replies and events, page tool results, the page's and the
+//! extension's messages) is decoded and bounded here, and corrupt data is
+//! refused, never repaired.
 
 /// The package's id, which its release descriptor names and the coding
 /// agent's commands and the backend's `browser` user stream bind to.

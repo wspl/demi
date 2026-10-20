@@ -14,7 +14,7 @@ import { inputMessage, localKey, shortcutKeys } from './input'
 import { BLANK_PAGE, cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
- * A tab of the conversation's browser, live (`live-view.md`): its
+ * A tab of the conversation's browser, live: its
  * pictures on a canvas, the viewer's input on its way to the page, and the
  * page's own native controls, dialogs and the browser's menu over it. The view stays mounted
  * while its content is hidden and while no session is open, so its last
@@ -47,7 +47,7 @@ const bridge = ref<HTMLInputElement | null>(null)
 /**
  * The generation of the picture the canvas shows: it places the picture and
  * maps input on it, never a viewport the tab list reports for a picture that
- * has not arrived (`live-view.md` § Modes). Before the first, the tab's.
+ * has not arrived. Before the first, the tab's.
  */
 const picture = shallowRef<LiveStream | null>(null)
 const generation = computed<LiveStream>(() => picture.value ?? {
@@ -90,7 +90,7 @@ const cursor = computed(() => {
 /**
  * Whether the canvas painted a picture: until then the view shows the blank
  * page the tab showed before it, so the page's first picture replaces it
- * with nothing between them (`live-view.md` § A browser tab in the panel).
+ * with nothing between them.
  */
 const painted = ref(false)
 let pictures: CanvasPictures<LiveStream> | null = null
@@ -241,8 +241,7 @@ function answered(accept: boolean, text: string | undefined): void {
 }
 
 /**
- * The browser's menu the viewer's right click opened (`live-view.md` § A
- * browser tab in the panel), built here from what lies under the click: a
+ * The browser's menu the viewer's right click opened, built here from what lies under the click: a
  * link's, a field's, a selection's, or the page's own Back, Forward and
  * Reload.
  */

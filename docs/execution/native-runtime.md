@@ -135,7 +135,7 @@ program's own concern, not the release's. For example, `demi-browser` needs
 Chrome for Testing: its package's record pins the version and, per platform,
 the official archive's URL, size and SHA-256, and the program asks the runner
 to install it from that URL when the agent runs `demi browser install`
-([Browser distribution](../browser/browser.md#browser-distribution)). The
+(`crates/command-package-browser-chrome/src/driver/installation.rs`). The
 release carries only the program.
 
 A package declares its operations once, as the operation enum its service
@@ -437,7 +437,7 @@ The runner also reports what its cache holds, so a page can tell what a Host
 has without asking it. For example, after `demi browser install` on a
 laptop, the laptop's device lists `demi.browser: Chrome for Testing
 153.0.8010.36`, and the conversation browser's panel offers new tabs on that
-laptop ([Live browser view](../browser/live-view.md#a-browser-tab-in-the-panel)).
+laptop (`crates/plugin-browser/src/panel.rs`).
 
 The runner sends `installed { artifacts }`, each with its package, name and
 version, once when it connects and again whenever an install or a retirement
@@ -641,7 +641,7 @@ backend, the runner, and every native service link:
 | `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it ([Pipes and output](runner.md#pipes-and-output)). |
 | `caller` | Who started the work: `agent`, with the agent's `number` as the model knows it ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), or `user`, for a [user stream](#user-streams). |
 | `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the web app last reported for the conversation's user ([User preferences](../product/web-api-settings.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
-| `colorScheme` | `light` or `dark`, the scheme the web app last reported for the user, `light` until it reports one; the conversation browser starts with it ([Native driver](../browser/browser.md#native-driver)). |
+| `colorScheme` | `light` or `dark`, the scheme the web app last reported for the user, `light` until it reports one; the conversation browser starts with it (`crates/command-package-browser-chrome/src/driver/launch.rs`). |
 
 The backend is the context's only source, and nothing reads it from
 environment variables: a script can change those, and every program the job
@@ -838,7 +838,7 @@ Service                         Runner                           Backend
 
 An operation can also serve the conversation's user directly, for as long as
 the user's page stays open. For example, the
-[live browser view](../browser/live-view.md) streams pictures of the
+live browser view (`crates/command-package-browser-chrome/src/live.rs`) streams pictures of the
 conversation's browser tabs to the work panel and the user's input back to
 them. It is the same conversation state the agent's `demi browser` commands
 use, reached through the same port.
@@ -871,7 +871,7 @@ as `{ error: { code, message, details } }`. The failure also retains the bounded
 standard output, so a package whose contract puts its error document there can
 validate and report it without losing its cause
 ([Service streams](runner.md#service-streams)). The
-[conversation browser's tab methods](../browser/live-view.md#the-tab-methods), a
+conversation browser's tab methods (`crates/plugin-browser/src/page.rs`), a
 plugin's package calls, call `browser.tabs`, `browser.open` and `browser.close`
 this way, so a tab the user
 opens is the tab the agent's `open` would have made, created by `user`.

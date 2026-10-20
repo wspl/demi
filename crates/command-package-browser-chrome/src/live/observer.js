@@ -1,9 +1,9 @@
-// The live view's page observer (`live-view.md` § Input). It runs in
-// an isolated world of each watched tab's documents, where the page can
-// neither see nor call it, and reports through the world's own binding: the
-// cursors of the visible page and the one under the viewer's pointer, the
-// page's native form controls, and text the page copies. The module calls `globalThis.demiLive` to apply a
-// viewer's choice to a control.
+// The live view's page observer. It runs in an isolated world of each watched
+// tab's documents, where the page can neither see nor call it, and reports
+// through the world's own binding: the cursors of the visible page and the one
+// under the viewer's pointer, the page's native form controls, and text the
+// page copies. The module calls `globalThis.demiLive` to apply a viewer's
+// choice to a control.
 (() => {
   if (globalThis.demiLive) return;
   const report = message => {
@@ -22,7 +22,7 @@
   };
   const top = window === window.top;
 
-  // The cursors of the visible page (`live-view.md` § Input). Each frame
+  // The cursors of the visible page. Each frame
   // reports where each cursor applies, so the view resolves the cursor under
   // its pointer without asking: a region is an element whose cursor differs
   // from its parent's, in document order,

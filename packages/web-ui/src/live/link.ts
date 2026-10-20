@@ -1,9 +1,7 @@
 /**
- * A live view's stream on the page, whatever its source (`live-view.md`
- * § The stream, `mobile.md` § The live view): it opens the plugin's user
+ * A live view's stream on the page, whatever its source (`mobile.md` § The live view): it opens the plugin's user
  * stream, reads its frames, watches its silence and its stalls, joins the
- * pictures' chunks and acknowledges each with when it arrived (`live-view.md`
- * § Backpressure), hands the frames of the generation the view shows to a
+ * pictures' chunks and acknowledges each with when it arrived, hands the frames of the generation the view shows to a
  * decoder in sequence, asks for a key frame after one it could not decode,
  * and opens a view that ended
  * again after the page's reconnect waits (`web-application.md` § Liveness
@@ -18,7 +16,7 @@ import { LIVE_STALL_MS } from './protocol'
 
 /** The most acknowledgements one message carries. */
 const ACKS_PER_MESSAGE = 8
-/** The most bytes the page holds of frames not yet whole and of generations not yet announced (`live-view.md` § Two paths, one protocol). */
+/** The most bytes the page holds of frames not yet whole and of generations not yet announced. */
 export const LIVE_HELD_BYTES = 8 * 1024 * 1024
 /** The longest a whole frame waits for an earlier one. */
 export const LIVE_WAIT_MS = 2000

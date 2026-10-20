@@ -1,4 +1,9 @@
 //! Use the managed browser's isolated Clipboard API with bounded raw input.
+//!
+//! The clipboard belongs to the environment, never the user's system clipboard.
+//! Whether a platform's headless Chrome isolates it is verified per platform;
+//! where it does not, the `clipboard` capability is unavailable with that
+//! reason.
 
 use base64::Engine;
 use chromiumoxide::cdp::{

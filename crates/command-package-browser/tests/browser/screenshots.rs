@@ -1,4 +1,4 @@
-//! The bounds of a capture (`browser.md` § Images and large outputs).
+//! The bounds of a capture.
 
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
