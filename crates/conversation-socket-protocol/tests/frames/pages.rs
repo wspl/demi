@@ -140,6 +140,41 @@ fn a_pages_light_form_keeps_the_lists_of_the_latest_call_of_each_run_and_request
     }
 }
 
+/// A message from the agent `sender`, in the run `run` when it is a step.
+fn message(id: &str, sender: &str, run: Option<&str>) -> Value {
+    let mut block = json!({
+        "type": "agent_message", "id": id, "turnId": id, "createdAt": "2026-10-01T00:00:00.000Z",
+        "model": model(),
+        "message": {
+            "id": id, "sender": {"id": sender, "number": 1, "description": "Tidy the notes", "round": 1},
+            "recipientId": "notes", "timestamp": "2026-10-01T00:00:00.000Z",
+            "content": "Keep the old heading.", "event": {"type": "message"}
+        }
+    });
+    if let Some(run) = run {
+        block["run"] = json!(run);
+    }
+    block
+}
+
+#[test]
+fn a_pages_light_form_keeps_the_words_of_a_message_that_shows_as_a_bubble() {
+    // The parent's message ended the child's run and shows its words; the
+    // child's own child's message is a step, whose row shows none.
+    let blocks: Vec<Block> = [user("u1"), call("c1", "c1"), message("m1", "root", None), message("m2", "links", Some("m2"))]
+        .into_iter()
+        .map(|block| demi_shared_types::decode_value(block).unwrap())
+        .collect();
+    let words: Vec<String> = light(&blocks)
+        .into_iter()
+        .filter_map(|block| match block {
+            Block::AgentMessage(message) => Some(message.message.content),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(words, ["Keep the old heading.", ""]);
+}
+
 fn thinking(id: &str, text: &str, signature: Option<&str>) -> Value {
     json!({
         "type": "thinking", "id": id, "createdAt": "2026-10-01T00:00:00.000Z",

@@ -122,6 +122,11 @@ impl SessionRuntime for Idle {
         Some(0)
     }
 
+    /// The node is the root: every agent is below it.
+    fn is_below(&self, _node: &NodeId) -> bool {
+        true
+    }
+
     fn invoke_step(&self, _calls: Vec<ToolInvocation>) -> StepOutcomes<'_> {
         unreachable!("the measured session runs no turn")
     }

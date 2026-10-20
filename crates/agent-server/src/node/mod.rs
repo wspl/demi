@@ -824,6 +824,16 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         self.record.borrow().side.is_none().then_some(self.agent)
     }
 
+    /// Answered from the tree's children, live and closed, so a child that
+    /// closed after it sent its message is still below. A tree that is gone
+    /// has no node below any other.
+    fn is_below(&self, node: &NodeId) -> bool {
+        self.server
+            .upgrade()
+            .and_then(|server| server.tree(&self.root))
+            .is_some_and(|tree| tree.is_below(node, &self.node))
+    }
+
     /// A side question's requests name the root's session to their
     /// provider, so they read the conversation's prompt cache.
     fn affinity(&self) -> Option<String> {

@@ -1,5 +1,5 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import type { AgentRun, SubagentPhase, SubagentRecord } from './subagents'
+import { agentName, type AgentRun, type SubagentPhase, type SubagentRecord } from './subagents'
 import { t } from './locales/text'
 
 /**
@@ -49,7 +49,7 @@ export function findAgent(agents: readonly SubagentRecord[], number: number): Me
   if (number === 0)
     return { number: 0, description: t('subagents.mainAgent'), run: null }
   const agent = agents.find((candidate) => candidate.number === number)
-  return agent ? { number, description: agent.name, run: agent } : null
+  return agent ? { number, description: agentName(agent.name, number), run: agent } : null
 }
 
 /**

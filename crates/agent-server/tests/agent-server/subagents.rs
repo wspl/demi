@@ -867,6 +867,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     );
 
     // A child with a message waiting does not close before it reads it.
+    let beta_session = fixture.server.node(&root(), &beta).unwrap().session().clone();
     beta_gate.open();
     let frames = client.next_until(is_closed(&beta)).await;
     assert!(
@@ -887,6 +888,17 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         .map(|message| message.sender.clone().unwrap().id)
         .collect();
     assert_eq!(senders, [delta, beta]);
+    // Whether a message is a step of its receiver's run: gamma's status is
+    // its parent alpha's, as a report from below is; its word to beta, its
+    // parent's sibling, ends beta's run, as an instruction does.
+    let in_run = |blocks: Vec<Block>, content: &str| {
+        blocks.into_iter().find_map(|block| match block {
+            Block::AgentMessage(received) if received.message.content == content => Some(received.run.is_some()),
+            _ => None,
+        })
+    };
+    assert_eq!(in_run(alpha_node.session().transcript().blocks, "gamma status"), Some(true));
+    assert_eq!(in_run(beta_session.transcript().blocks, "hello from gamma"), Some(false));
 }
 
 #[tokio::test(flavor = "local")]

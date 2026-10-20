@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use demi_shared_types::{Block, BlockId, MAX_SAFE_INTEGER, ToolResultContentBlock, ToolView};
+use demi_shared_types::{AgentMessageEvent, Block, BlockId, MAX_SAFE_INTEGER, ToolResultContentBlock, ToolView};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -191,7 +191,15 @@ fn light_block(block: &Block) -> Block {
             thinking.signature = None;
         }
         Block::RedactedThinking(redacted) => redacted.data.clear(),
-        Block::AgentMessage(message) => message.message.content.clear(),
+        // An agent's message outside a run came from above or beside its
+        // receiver and shows as a bubble with its words
+        // (`crates/agent-store/src/changes.rs`); any other shows as a row,
+        // which shows none of them.
+        Block::AgentMessage(message) => {
+            if message.run.is_some() || !matches!(message.message.event, AgentMessageEvent::Message {}) {
+                message.message.content.clear();
+            }
+        }
         Block::Wakeup(wakeup) => {
             for report in &mut wakeup.reports {
                 report.output.clear();

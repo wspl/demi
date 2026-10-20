@@ -133,3 +133,13 @@ test('a live child on a page with no session is read', async () => {
 
   expect(reads).toEqual(['child'])
 })
+
+// A child spawned without a description: its tab named nothing, while its
+// receipts and links call it Agent 1.
+test('the tab of a child spawned without a description says Agent 1', async () => {
+  const agents = reactive([{ ...child('running'), name: '' }])
+  mountPanel(agents, async () => {})
+  await waitFor(() => document.querySelector('[role="tab"]') !== null, () => `no tab: ${text()}`)
+
+  expect(document.querySelector('[role="tab"]')!.textContent?.trim()).toBe('Agent 1')
+})

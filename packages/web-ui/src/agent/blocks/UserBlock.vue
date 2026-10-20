@@ -78,6 +78,12 @@ const props = defineProps<{
    * above the bubble, as a receipt names the agent that sent one.
    */
   origin?: MessageOrigin | null
+  /**
+   * The agent other than the main agent that sent the message, another agent's
+   * message in this agent's view (`receivedAsBubble`): named in small text
+   * above the bubble, the name leading to the sender as a receipt's does.
+   */
+  sender?: { name: string; go?: () => void } | null
 }>()
 
 /**
@@ -294,6 +300,9 @@ useResizeObserver(bodyRef, measure)
       <Zap :size="ICON_PX.in24" class="shrink-0" aria-hidden="true" />
       <NoticeLabel :notice="t('transcript.user.fromAutomation')" :title="origin.name" :go="origin.go" />
       <span class="shrink-0">· {{ origin.when }}</span>
+    </div>
+    <div v-else-if="sender" class="flex max-w-[80%] select-none items-center pb-1 text-detail text-fg-subtle">
+      <NoticeLabel notice="" :title="sender.name" :go="sender.go" />
     </div>
     <div class="relative rounded-xl bg-surface-card px-4 py-2.5" :style="bubbleWidth">
       <div

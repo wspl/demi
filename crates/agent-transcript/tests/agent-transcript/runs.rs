@@ -66,8 +66,15 @@ fn report(log: &mut TranscriptLog, id: &str, ended: bool) {
     );
 }
 
-/// A message to the root: another agent's, or the user's decision.
+/// A message to the root: another agent's, or the user's decision. The
+/// sender is the root's child, so below it.
 fn message(log: &mut TranscriptLog, id: &str, event: AgentMessageEvent) {
+    message_from(log, id, event, true);
+}
+
+/// A message to the node, from a sender below it, `sender_below`, or above or
+/// beside it.
+fn message_from(log: &mut TranscriptLog, id: &str, event: AgentMessageEvent, sender_below: bool) {
     let sender = matches!(event, AgentMessageEvent::Message {} | AgentMessageEvent::Completion { .. })
         .then(|| Sender {
             id: NodeId::try_from("child").unwrap(),
@@ -87,6 +94,7 @@ fn message(log: &mut TranscriptLog, id: &str, event: AgentMessageEvent) {
             event,
             origin: None,
         },
+        sender_below,
     );
 }
 
@@ -162,6 +170,33 @@ fn text_the_users_words_and_decisions_end_a_run() {
     assert_eq!(
         runs(&log),
         [None, Some(1), None, Some(3), Some(3), None, Some(6), None, Some(8), None]
+    );
+}
+
+#[test]
+fn a_message_from_above_or_beside_ends_a_run_and_one_from_below_joins_it() {
+    // A child runs two commands, and its parent tells it to keep the old
+    // heading: the parent's message ends the run, as the user's words do. It
+    // runs another command, and its own child sends an update and then
+    // finishes between two calls: both are steps of the run.
+    let mut log = log();
+    log.push_user(turn(), &test_model(), text("Tidy the notes"), Vec::new(), None, None);
+    call(&mut log, "a");
+    call(&mut log, "b");
+    message_from(&mut log, "from-parent", AgentMessageEvent::Message {}, false);
+    call(&mut log, "c");
+    message_from(&mut log, "from-child", AgentMessageEvent::Message {}, true);
+    call(&mut log, "d");
+    message(
+        &mut log,
+        "child-end",
+        AgentMessageEvent::Completion {
+            outcome: CompletionOutcome::Completed,
+        },
+    );
+    assert_eq!(
+        runs(&log),
+        [None, Some(1), Some(1), None, Some(4), Some(4), Some(4), Some(4)]
     );
 }
 

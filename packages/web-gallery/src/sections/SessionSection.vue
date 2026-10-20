@@ -218,6 +218,7 @@ import { galleryBlobs } from '../fixtures/blobs'
 import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryAgentDirectory from '../components/GalleryAgentDirectory.vue'
 import GalleryAgentLoading from '../components/GalleryAgentLoading.vue'
+import GalleryAgentBubbles from '../components/GalleryAgentBubbles.vue'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals, leftRunningCommand, runningRunCommand, steppedRunCommands } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
@@ -2288,7 +2289,7 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. The name has no tip. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Message from main agent, main agent the name, and it brings the call that sent it into view in the main transcript. A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. The name has no tip. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. A message from the main agent that a child’s transcript holds among its steps, as one stored before such messages ended a run, reads Message from main agent, main agent the name, and it brings the call that sent it into view in the main transcript; one that ended a run shows as a bubble (Messages from Other Agents). A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
             <div class="specimen-stack [--agent-pad-x:0px]">
@@ -3323,6 +3324,22 @@ onBeforeUnmount(() => {
             v-bind="agentContext.panel"
           />
         </DockWindowArea>
+      </GallerySection>
+      <GallerySection
+        title="Messages from Other Agents"
+        note="In an agent's view, a message from another agent above or beside it, its parent or a sibling, shows as a bubble with its words, as its brief does, and ends the run of steps before it, as the user's words do. A bubble from the main agent names no one; one from any other agent names it in small text above, and the name opens the Agents window on that agent's tab at the call that sent the message. A message or a report from an agent below, its child or a descendant, keeps its row among the steps, so the main agent's view shows only rows, as before. Copy on a bubble copies its Markdown; it has no Edit. Close (×) closes the window and Open Again opens it."
+      >
+        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <GallerySpecimen variant="a subagent's view · from the main agent and from a sibling" wide>
+            <GalleryAgentBubbles view="child" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="the same view · its own child's report keeps its row" wide>
+            <GalleryAgentBubbles view="child-report" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="the main agent's view · a message from its child keeps its row" wide>
+            <GalleryAgentBubbles view="main" />
+          </GallerySpecimen>
+        </div>
       </GallerySection>
       <GallerySection
         title="Agents Chip"

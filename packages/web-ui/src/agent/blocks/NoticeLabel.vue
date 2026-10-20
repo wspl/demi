@@ -63,7 +63,9 @@ defineProps<{
 /*
  * Only the title shrinks, so the words keep their whole width while the title
  * gives way. The words are capped to leave the title a few characters, and give
- * way too once the row is narrower than that.
+ * way too once the row is narrower than that. The title is never narrower than
+ * those characters: a row is as wide as its content, so a shorter title, such
+ * as *Agent 1*, would otherwise leave the words less than their own width.
  */
 .notice-label {
   --notice-gap: calc(var(--spacing) * 2);
@@ -93,7 +95,7 @@ defineProps<{
 
 .notice-title {
   display: flex;
-  min-width: 0;
+  min-width: var(--notice-title-keeps);
 }
 
 .notice-title-text {
