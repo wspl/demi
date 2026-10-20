@@ -23,6 +23,7 @@
 
 mod live;
 mod profiles;
+mod reading;
 mod sides;
 mod supervisor;
 mod told;
@@ -51,7 +52,7 @@ use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 pub(crate) use self::profiles::{Deleted, ListedProfile, ProfileAnswer};
 pub use self::sides::{AskError, side_instruction};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry, list_text};
-use self::{live::LiveOutput, sides::Side, supervisor::{Child, Summary}};
+use self::{live::LiveOutput, reading::OutputReading, sides::Side, supervisor::{Child, Summary}};
 use super::{AgentServer, ResolveError, connection::Outbox};
 use crate::{
     Node,
@@ -128,6 +129,8 @@ pub struct Tree<H: HostResolver> {
     _working: AbortOnDropHandle<()>,
     /// Sends the commands' new output to the attached connections.
     _live: AbortOnDropHandle<()>,
+    /// Sends the root's request output to the attached connections.
+    _reading: AbortOnDropHandle<()>,
 }
 
 /// The shells of a child that closed while its commands still ran
@@ -426,8 +429,10 @@ impl<H: HostResolver> Tree<H> {
         }
         let paths = watch::Sender::new(0);
         let activity = watch::Sender::new(0);
+        let reading = OutputReading::new(sink.clone());
         let frames = session.subscribe({
             let sink = sink.clone();
+            let reading = reading.clone();
             let status_changed = deps.status_changed.clone();
             let root = root.clone();
             let paths = paths.clone();
@@ -435,6 +440,9 @@ impl<H: HostResolver> Tree<H> {
             move |event| {
                 cut_path(&paths, event);
                 note_activity(&activity, event);
+                if let SessionEvent::OutputChanged { output } = event {
+                    reading.changed(output);
+                }
                 if let Some(frame) = frame_of(&root, event) {
                     sink.emit(frame);
                 }
@@ -463,6 +471,7 @@ impl<H: HostResolver> Tree<H> {
                 deps.status_changed.clone(),
             ));
             let sending = tokio::task::spawn_local(live::send_changes(live.clone()));
+            let reading = tokio::task::spawn_local(reading::send_changes(reading));
             let following = tokio::task::spawn_local(follow_paths(tree.clone(), paths.subscribe()));
             Self {
                 server: Rc::downgrade(server),
@@ -491,6 +500,7 @@ impl<H: HostResolver> Tree<H> {
                 _eviction: AbortOnDropHandle::new(eviction),
                 _working: AbortOnDropHandle::new(working),
                 _live: AbortOnDropHandle::new(sending),
+                _reading: AbortOnDropHandle::new(reading),
                 paths,
                 activity,
                 _paths: AbortOnDropHandle::new(following),
@@ -829,6 +839,9 @@ impl<H: HostResolver> Tree<H> {
                 subagent_id: None,
                 waited_ms: session.waited_ms(),
             },
+            ServerFrame::RequestOutput {
+                output: session.request_output(),
+            },
             ServerFrame::Subagents {
                 subagents: self.subagent_summaries(placement),
             },
@@ -1049,7 +1062,8 @@ fn frame_of(root: &NodeId, event: &SessionEvent) -> Option<ServerFrame> {
             diagnostics: report.diagnostics.clone(),
             request_id: None,
         },
-        SessionEvent::ActionFailed { .. } => return None,
+        // The tree's reading sends it (`reading`).
+        SessionEvent::ActionFailed { .. } | SessionEvent::OutputChanged { .. } => return None,
     })
 }
 

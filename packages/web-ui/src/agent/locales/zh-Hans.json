@@ -241,7 +241,9 @@
     "continue": "继续",
     "continueWith": "改用 {label} 继续",
     "openProviders": "打开供应商",
-    "exposePort": "公开端口"
+    "exposePort": "公开端口",
+    "outputTokens": "{tokens} token",
+    "tokenRate": "{rate} token/秒"
   },
   "notices": {
     "hostOffline": "{name} 已离线。",

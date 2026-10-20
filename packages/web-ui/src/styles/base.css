@@ -1090,7 +1090,11 @@ html[data-theme="light"] .file-pill {
    Inset is padding, not grid tracks, so column-gap cannot push the + off-center.
    Attach-to-field space is on the editor side — never steal from the left inset.
    Editor stays on one node; capsule vs expanded only changes grid placement. */
-.composer-frame {
+/* The session dock holds the same measures, so what stands over the composer
+   lines up with what is in it, as the chips row's reading with the send
+   button. */
+.composer-frame,
+.session-dock {
   --composer-shell-height: 44px;
   --composer-chip: var(--spacing-hit);
   --composer-inset: calc((var(--composer-shell-height) - var(--composer-chip)) / 2);
@@ -1114,7 +1118,8 @@ html[data-theme="light"] .file-pill {
 /* On a phone the message is typed at 16px at least (below), so its line is
    at least that size's. */
 @variant phone {
-  .composer-frame {
+  .composer-frame,
+  .session-dock {
     --composer-shell-height: 52px;
     --composer-line: calc(max(16px, var(--agent-text)) * var(--agent-leading));
   }

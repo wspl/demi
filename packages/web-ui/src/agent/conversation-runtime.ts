@@ -71,6 +71,7 @@ export type RuntimeState = Pick<
   | 'pendingSteers'
   | 'pendingCalls'
   | 'waitingSince'
+  | 'requestOutput'
   | 'lastError'
   | 'load'
   | 'pendingAction'
@@ -742,6 +743,9 @@ export class ConversationRuntime {
         if (event.subagentId === undefined) {
           state.pendingCalls = event.pendingCalls
         }
+        break
+      case 'request_output':
+        state.requestOutput = event.output
         break
       case 'waiting':
         // So does a subagent's wait.

@@ -241,7 +241,9 @@
     "continue": "계속",
     "continueWith": "다음으로 계속: {label}",
     "openProviders": "제공업체 열기",
-    "exposePort": "포트 공개"
+    "exposePort": "포트 공개",
+    "outputTokens": "{tokens} 토큰",
+    "tokenRate": "{rate} 토큰/초"
   },
   "notices": {
     "hostOffline": "{name} 호스트가 오프라인입니다.",

@@ -241,7 +241,9 @@
     "continue": "続ける",
     "continueWith": "{label} で続ける",
     "openProviders": "プロバイダーを開く",
-    "exposePort": "ポートを公開"
+    "exposePort": "ポートを公開",
+    "outputTokens": "{tokens} トークン",
+    "tokenRate": "{rate} トークン/秒"
   },
   "notices": {
     "hostOffline": "{name} はオフラインです。",

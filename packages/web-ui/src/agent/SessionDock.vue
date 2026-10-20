@@ -3,14 +3,27 @@ import { t } from './locales/text'
 import { computed, inject, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ChevronDown } from '@lucide/vue'
+import type { RequestOutputReading } from '@demicodes/conversation-client'
 import IconButton from '../ui/IconButton.vue'
+import RequestOutputMeter from './RequestOutputMeter.vue'
 import { sessionCoverKey } from './session-cover'
 import { dockCardsKey } from './dock-cards'
 
 withDefaults(defineProps<{
   showScrollToBottom?: boolean
+  /**
+   * Reads the server's reading of the request the root agent runs, which the
+   * row shows at its right end. A getter, not a value: the response's own
+   * count comes in one batch with the turn's end, and a prop would carry
+   * only the last of them.
+   */
+  output?: () => RequestOutputReading | null
+  /** The conversation the reading belongs to. */
+  scope?: string
 }>(), {
   showScrollToBottom: false,
+  output: () => null,
+  scope: '',
 })
 
 const emit = defineEmits<{
@@ -39,20 +52,26 @@ onBeforeUnmount(() => {
 const cardsRef = ref<HTMLElement>()
 provide(dockCardsKey, cardsRef)
 
-// The scroll control belongs to the row of chips, at its other end. With chips
-// it stands level with them; without, it floats where that row would be, above
-// what waits over the composer.
+// The scroll control belongs to the row of chips, right after the chips, or at
+// the row's left end with none. While the row shows, it stands level with it;
+// without, it floats where that row would be, above what waits over the
+// composer.
+const rowRef = ref<HTMLElement>()
 const chipsRef = ref<HTMLElement>()
 const composerRef = ref<HTMLElement>()
-const { height: chipsHeight } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'border-box' })
+const { height: rowHeight } = useElementSize(rowRef, { width: 0, height: 0 }, { box: 'border-box' })
+const { width: chipsWidth } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'border-box' })
 const { height: composerHeight } = useElementSize(composerRef, { width: 0, height: 0 }, { box: 'border-box' })
 /** The chips row's step over the composer (its `pb-2`). */
 const STEP_PX = 8
+/** The gap between the row's parts (its `gap-1.5`). */
+const GAP_PX = 6
 const scrollBottom = computed(() =>
-  chipsHeight.value > 0
+  rowHeight.value > 0
     ? `${composerHeight.value + STEP_PX}px`
     : `calc(100% + ${coverHeight.value + STEP_PX}px)`,
 )
+const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + GAP_PX}px` : '0px'))
 </script>
 
 <template>
@@ -68,15 +87,15 @@ const scrollBottom = computed(() =>
       window as one on the transcript does. Only the Agents and Running chips
       keep it.
   -->
-  <div class="relative">
+  <div class="session-dock relative">
     <!--
-      The scroll control is the chips row's control at its right end, so it
+      The scroll control is the chips row's control after its chips, so it
       takes no room in the dock. It shows only away from the scroll bottom,
       where it covers nothing the user reads last.
     -->
     <span
-      class="pointer-events-none absolute right-0 z-20 inline-flex size-hit"
-      :style="{ bottom: scrollBottom }"
+      class="pointer-events-none absolute z-20 inline-flex size-hit"
+      :style="{ bottom: scrollBottom, left: scrollLeft }"
     >
       <Transition
         appear
@@ -111,11 +130,22 @@ const scrollBottom = computed(() =>
     -->
     <div ref="cardsRef" class="flex flex-col" />
     <!--
-      Chips read from the left. A chip renders nothing while it has nothing to
-      say, so the row shows only while it holds an element.
+      Chips read from the left, then the scroll control's room while it shows,
+      then the reading at the right end, its end over the send button's. A chip
+      or the reading renders nothing while it has nothing to say, so the row
+      shows only while one of its parts holds an element.
+
+      The chips keep their room: on a narrow row the reading gives way, its
+      speed first.
     -->
-    <div ref="chipsRef" class="hidden items-center gap-1.5 pb-2 has-[>*]:flex">
-      <slot name="chips" />
+    <div ref="rowRef" class="hidden items-center gap-1.5 pb-2 has-[>*>*]:flex">
+      <div ref="chipsRef" class="flex shrink-0 items-center gap-1.5">
+        <slot name="chips" />
+      </div>
+      <span v-if="showScrollToBottom" class="w-hit shrink-0" />
+      <div class="flex min-w-0 flex-1 justify-end pe-[var(--composer-inset)]">
+        <RequestOutputMeter :output="output" :scope="scope" />
+      </div>
     </div>
     <div ref="composerRef" class="relative z-10">
       <slot />

@@ -1,4 +1,4 @@
-import { expect, jest, test } from 'bun:test'
+import { expect, jest, spyOn, test } from 'bun:test'
 import type { ClientFrame } from '@demicodes/protocol'
 import { ActionOutlivedError, EditRejectedError, RefusedError, SavedGoneError, SessionError } from '../client'
 import { createdAt, harness, pendingSteer, settle, text, user } from './harness'
@@ -472,4 +472,28 @@ test('close disposes the tree, then detaches; a server-side end disconnects with
   other.end(new Error('The agent socket closed (4001 lagged)'))
   expect(await opening).toBeInstanceOf(Error)
   expect(other.events.at(-1)).toMatchObject({ type: 'disconnected', error: { message: 'The agent socket closed (4001 lagged)' } })
+})
+
+// The page counts a request's time on its own clock: the frame's arrival
+// less how long the request had streamed, and its end at the arrival of the
+// frame that says it ended, so a difference between the server's clock and
+// the page's never shows in the speed.
+test('a request\'s output is timed from the page\'s clock as its frames arrive', () => {
+  const h = harness()
+  const now = spyOn(Date, 'now').mockReturnValue(50_000)
+  try {
+    h.receive({ type: 'request_output', output: { requestId: 'r-1', tokens: 0, streamedMs: null, ended: false } })
+    h.receive({ type: 'request_output', output: { requestId: 'r-1', tokens: 120, streamedMs: 3_000, ended: false } })
+    now.mockReturnValue(52_000)
+    h.receive({ type: 'request_output', output: { requestId: 'r-1', tokens: 96, streamedMs: 4_500, ended: true } })
+    h.receive({ type: 'request_output', output: null })
+  } finally {
+    now.mockRestore()
+  }
+  expect(h.events.filter((event) => event.type === 'request_output')).toEqual([
+    { type: 'request_output', output: { requestId: 'r-1', tokens: 0, firstTokenAt: null, endedAt: null } },
+    { type: 'request_output', output: { requestId: 'r-1', tokens: 120, firstTokenAt: 47_000, endedAt: null } },
+    { type: 'request_output', output: { requestId: 'r-1', tokens: 96, firstTokenAt: 47_500, endedAt: 52_000 } },
+    { type: 'request_output', output: null },
+  ])
 })

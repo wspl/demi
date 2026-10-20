@@ -138,6 +138,7 @@ import { agentCompaction, firstRunningSubagentId } from '@demicodes/web-ui/agent
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryOpeningSteps from '../components/GalleryOpeningSteps.vue'
+import GalleryRequestOutput from '../components/GalleryRequestOutput.vue'
 import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
 import GalleryCommandWakeup from '../components/GalleryCommandWakeup.vue'
 import GalleryBusyRequest from '../components/GalleryBusyRequest.vue'
@@ -2010,7 +2011,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDock"
-        note="What waits over the composer stacks one 8px step apart: the cards, then the chips, then the composer. The chips sit directly on the composer and nothing comes between them: a permission card, the offline Host’s card or a notice stands above the chips. A part that is not there takes no room, so without chips a card sits one step above the composer, as the chips do without a card. The permission card stands over the dock’s top rather than in it: the transcript keeps clear of it, and a panel the dock opened keeps its place under it (Panel Under a Permission Card). The scroll-to-bottom control floats over the transcript at the dock’s top right and takes no room either."
+        note="What waits over the composer stacks one 8px step apart: the cards, then the chips, then the composer. The chips sit directly on the composer and nothing comes between them: a permission card, the offline Host’s card or a notice stands above the chips. A part that is not there takes no room, so without chips a card sits one step above the composer, as the chips do without a card. The permission card stands over the dock’s top rather than in it: the transcript keeps clear of it, and a panel the dock opened keeps its place under it (Panel Under a Permission Card). The scroll-to-bottom control follows the chips, or stands at the row’s left end with none, and takes no room either: without a row it floats over the transcript where the row would be."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -2071,6 +2072,13 @@ onBeforeUnmount(() => {
             </div>
           </GallerySpecimen>
         </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Output Tokens"
+        note="While a turn runs, the chips row’s right end shows the output tokens of the request the agent runs and its speed, as the server counts them: an estimate while it streams, rolling to each new count, then the response’s own count. A new request starts from zero at once. The speed shows from the request’s first second. When the turn ends, the last reading stays 3 seconds, then fades. On a narrow row the speed goes first, then the whole reading; the chips keep their room. The buttons stand in for the server’s frames."
+      >
+        <GalleryRequestOutput />
       </GallerySection>
 
       <GallerySection

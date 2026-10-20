@@ -19,7 +19,8 @@
 //!                    <----------- opened
 //!                    <----------- transcript_reset { start, version }
 //!                    <----------- phase, queue, pending_steers,
-//!                                 pending_calls, waiting
+//!                                 pending_calls, waiting,
+//!                                 request_output
 //!                    <----------- each live subagent, depth first
 //!                    <----------- shell_output, each live command
 //!                    <----------- transcript_patch { revision + 1 }
@@ -57,7 +58,7 @@ pub use cost::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
 pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,
-    ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,
+    RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,
 };
 pub use transcript::{
     BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, Versions,

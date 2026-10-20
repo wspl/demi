@@ -73,6 +73,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pendingCalls: PendingCall[]
   /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none. */
   waitingSince: number | null
+  /** The output of the request the root agent runs; null when its turn has none. */
+  requestOutput: ConversationState['requestOutput']
   model: ModelSettings
   /**
    * The Workflow menu choice of a conversation without a record, which its

@@ -406,6 +406,7 @@ export const useConversations = defineStore('conversations', () => {
       pendingSteers: [],
       pendingCalls: [],
       waitingSince: null,
+      requestOutput: null,
       model: record.model ? { ...record.model } : initialModelSettings(),
       workflow: record.workflow,
       lastError: null,
@@ -1373,6 +1374,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.pendingSteers = []
     conversation.pendingCalls = []
     conversation.waitingSince = null
+    conversation.requestOutput = null
     conversation.contextUsage = null
     conversation.terminals = []
   }
