@@ -1,7 +1,12 @@
-//! A user's subagent profiles: the rules a profile's name and texts follow,
-//! which a body passes before it is written, and how a patch merges into a
-//! stored profile. The model a body names is checked against its entry's
-//! catalog by the user's shard.
+//! A user's subagent profiles.
+//!
+//! The module holds:
+//!
+//! - The rules a profile's name and texts follow, which a body passes before it
+//!   is written.
+//! - How a patch merges into a stored profile.
+//!
+//! The user's shard checks the model a body names against its entry's catalog.
 
 use std::fmt;
 
@@ -35,8 +40,11 @@ pub enum ProfileTextError {
     Instructions,
 }
 
-/// Why a profile's Context is refused (`crates/agent-server/src/server/tree/profiles.rs`): it needs
-/// a model of the profile's own, and one the model's window offers.
+/// Why a profile's Context is refused
+/// (`crates/agent-server/src/server/tree/profiles.rs`).
+///
+/// The Context needs a model of the profile's own, and one the model's window
+/// offers.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ContextRefusal {
     #[error(
@@ -116,11 +124,12 @@ pub fn check_patch(patch: &ProfilePatch) -> Result<(), ProfileTextError> {
         .map_or(Ok(()), check_instructions)
 }
 
-/// `profile` with `patch` applied: each field the patch names replaces the
-/// stored one, `model` and `instructions` whole, and the others stay. A
-/// patch that changes the model and names no Context keeps the stored one
-/// while `window`, the new model's, offers it, and the parent's model,
-/// whose window is none, keeps none.
+/// `profile` with `patch` applied.
+///
+/// Each field the patch names replaces the stored one, `model` and
+/// `instructions` whole, and the others stay. A patch that changes the model
+/// and names no Context keeps the stored one while `window`, the new model's,
+/// offers it. The parent's model, whose window is none, keeps none.
 pub fn merge(profile: SubagentProfile, patch: ProfilePatch, window: Option<u32>) -> SubagentProfile {
     let context_limit = match (patch.context_limit, &patch.model) {
         (Some(chosen), _) => chosen,

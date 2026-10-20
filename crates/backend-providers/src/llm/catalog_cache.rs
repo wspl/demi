@@ -1,11 +1,15 @@
-//! The model catalog cache: one validated
-//! record per entry, held in memory and in the control store's
-//! `model_catalogs` table, fresh for 15 minutes, refreshed once at a time by
-//! a task of the cache's own that a reader who stops waiting does not
-//! cancel. A failed refresh keeps the last good record and holds off
-//! automatic refreshes for a minute. A source answer marked stale, such as
-//! the models.dev copy returned after a failed request, counts as a failed
-//! refresh, which is why a provider keeps no catalog cache of its own: the
+//! The model catalog cache: one validated record per entry, held in memory and
+//! in the control store's `model_catalogs` table.
+//!
+//! - A record is fresh for 15 minutes.
+//! - A refresh runs one at a time, in a task of the cache's own that a reader
+//!   who stops waiting does not cancel.
+//! - A failed refresh keeps the last good record and holds off automatic
+//!   refreshes for a minute.
+//! - A source answer marked stale, such as the models.dev copy returned after a
+//!   failed request, counts as a failed refresh.
+//!
+//! The last rule is why a provider keeps no catalog cache of its own: the
 //! backend would treat its cached answer as a failure, and one cache per
 //! catalog is enough.
 
@@ -107,13 +111,17 @@ impl ModelCatalogCache {
         }
     }
 
-    /// The catalog of entry `provider` under `key`: a fresh record at once; an
-    /// expired one, or one read
-    /// under another `revision` of the source, at once, marked stale, while
-    /// one refresh starts or runs; without a record, or when `force` asks,
-    /// what the refresh returns. `fetch` reads the source when a refresh
-    /// starts. A failed refresh returns the kept record marked stale with
-    /// the failure as a warning, or, without one, the failure.
+    /// The catalog of entry `provider` under `key`:
+    ///
+    /// - A fresh record comes at once.
+    /// - An expired record, or one read under another `revision` of the source,
+    ///   comes at once, marked stale, while one refresh starts or runs.
+    /// - Without a record, or when `force` asks, the read returns what the
+    ///   refresh returns.
+    ///
+    /// `fetch` reads the source when a refresh starts. A failed refresh returns
+    /// the kept record marked stale with the failure as a warning, or, without
+    /// a kept record, the failure.
     pub async fn read(
         &self,
         provider: &ProviderId,

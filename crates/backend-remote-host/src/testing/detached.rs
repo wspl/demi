@@ -10,33 +10,45 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Mutex, PoisonError};
 
-/// The watchdog: it reads the installation directories to watch, a line
-/// each, until a line `stop`, which the guard writes as it drops, or the end
-/// of its input, which comes when the test process ends however it ends.
-/// Then it finds each installation's runners as they are at that moment and
-/// stops them, and says `stopped`. A runner is the process that listens on
-/// the local endpoint the installation's `active.json` names, or, when it
-/// has not written that yet or no longer has it, the process that holds the
-/// installation's `runner.lock`, which the runner takes before it writes
-/// `active.json` and keeps until it ends; `lsof` names both, with no help of
-/// the runner's. A process whose command line names the installation is one
-/// too, such as a runner that has not taken the lock yet when a killed test
-/// leaves it to the watchdog: found by neither of the others, it took the
-/// lock after the watchdog's last round and ran on for good. Each is sent `TERM`, which ends its jobs as a stop does,
-/// and `KILL` once ten seconds have passed, and only while its command line
-/// still names its installation, so neither a process that took its id
-/// after it ended nor a test's own `lsof` match is stopped. A runner that
-/// replaced itself with an update as it was stopped is found and stopped in
-/// the next round, until a round finds none. The watchdog ignores the
-/// signals that end the test, and runs in a process group of its own,
-/// outside the test's process tree once its first shell exits, so that what
-/// stops the test does not stop it first. The guard asks and waits by line,
-/// not by closing pipes: a process another test starts at the moment a pipe
-/// is made may inherit its end, and would hold it open. The input reaches
-/// the background block through descriptor 3: dash, Linux's `sh`, gives an
-/// asynchronous list `/dev/null` as its input even when the list redirects
-/// `<&0` itself, so the watchdog read nothing, ended at once, and every
-/// later `watch` met a broken pipe.
+/// The watchdog: it reads the installation directories to watch, a line each,
+/// until a line `stop`, which the guard writes as it drops, or the end of its
+/// input, which comes when the test process ends however it ends.
+///
+/// Then it finds each installation's runners as they are at that moment, stops
+/// them, and says `stopped`. A process is a runner of an installation when it
+/// is one of these:
+///
+/// - The process that listens on the local endpoint the installation's
+///   `active.json` names.
+/// - When the runner has not written that yet or no longer has it, the process
+///   that holds the installation's `runner.lock`, which the runner takes before
+///   it writes `active.json` and keeps until it ends. `lsof` names both, with
+///   no help of the runner's.
+/// - A process whose command line names the installation, such as a runner that
+///   has not taken the lock yet when a killed test leaves it to the watchdog.
+///   The other two miss it: it took the lock after the watchdog's last round
+///   and ran on for good.
+///
+/// Each is sent `TERM`, which ends its jobs as a stop does, and `KILL` once ten
+/// seconds have passed. It is signalled only while its command line still names
+/// its installation, so neither a process that took its id after it ended nor a
+/// test's own `lsof` match is stopped.
+///
+/// A runner that replaced itself with an update as it was stopped is found and
+/// stopped in the next round, until a round finds none.
+///
+/// The watchdog ignores the signals that end the test, and runs in a process
+/// group of its own, outside the test's process tree once its first shell
+/// exits, so that what stops the test does not stop it first.
+///
+/// The guard asks and waits by line, not by closing pipes: a process another
+/// test starts at the moment a pipe is made may inherit its end, and would hold
+/// it open.
+///
+/// The input reaches the background block through descriptor 3: dash, Linux's
+/// `sh`, gives an asynchronous list `/dev/null` as its input even when the list
+/// redirects `<&0` itself, so the watchdog read nothing, ended at once, and
+/// every later `watch` met a broken pipe.
 const WATCHDOG: &str = r#"exec 3<&0
 {
 trap '' HUP INT TERM

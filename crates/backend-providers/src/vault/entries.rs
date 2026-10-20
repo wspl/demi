@@ -1,25 +1,31 @@
-//! Provider entries: each
-//! entry's record with its configuration sealed, whose entries a user infers
-//! with, and the account records of a subscription entry. The vault opens a
-//! configuration when it reads an entry and validates it strictly; a value
-//! that does not open or decode is corrupt and is never repaired.
+//! Provider entries: each entry's record with its configuration sealed, whose
+//! entries a user infers with, and the account records of a subscription entry.
+//!
+//! The vault opens a configuration when it reads an entry and validates it
+//! strictly. A value that does not open or decode is corrupt and is never
+//! repaired.
 //!
 //! Every credential of the product is a record of the control store, sealed
-//! under a key derived from the instance secret and bound to its row; nothing
-//! the product authenticates with is a file. The backend never reads a vendor's
-//! own login from the machine it runs on (`~/.codex`, `~/.grok`, the Claude
-//! Code keychain item, a vendor token in its environment): those belong to
-//! whoever operates the machine, and a multi-user product must not lend them to
-//! a user whose entry has no account.
+//! under a key derived from the instance secret and bound to its row. Nothing
+//! the product authenticates with is a file.
+//!
+//! The backend never reads a vendor's own login from the machine it runs on:
+//! `~/.codex`, `~/.grok`, the Claude Code keychain item, or a vendor token in
+//! its environment. Those belong to whoever operates the machine, and a
+//! multi-user product must not lend them to a user whose entry has no account.
 //!
 //! A credential has no owner of its own: it belongs to a provider entry, and
-//! every entry belongs to a user; instance mode only decides whose entries a
+//! every entry belongs to a user. Instance mode only decides whose entries a
 //! user infers with. There is no ownerless entry and no second kind of
-//! credential. On a shared instance the master's accounts are used by many
-//! users on many workers at once, so refreshes rely on the versioned replace of
-//! the credential pool, the vendor's windows describe the account and not a
-//! user (per-user consumption is the usage ledger's), and a Claude Code sign-in
-//! stays on the Claude Code machine.
+//! credential.
+//!
+//! On a shared instance the master's accounts are used by many users on many
+//! workers at once, so:
+//!
+//! - Refreshes rely on the versioned replace of the credential pool.
+//! - The vendor's windows describe the account and not a user. Per-user
+//!   consumption is the usage ledger's.
+//! - A Claude Code sign-in stays on the Claude Code machine.
 
 use std::sync::Arc;
 
@@ -72,10 +78,11 @@ struct Shared {
 /// misses some: they come from the user's own clicks in Settings.
 const ACCOUNT_CHANGES_KEPT: usize = 64;
 
-/// An account a subscription entry is created with outside a sign-in: the
-/// development backend's Codex sign-in, which the master account is created
-/// with (`crates/xtask/src/dev/mod.rs`), and a suite's account whose vendor
-/// sign-in cannot run.
+/// An account a subscription entry is created with outside a sign-in:
+///
+/// - The development backend's Codex sign-in, which the master account is
+///   created with (`crates/xtask/src/dev/mod.rs`).
+/// - A suite's account whose vendor sign-in cannot run.
 #[derive(Debug, Clone)]
 pub struct SeededAccount {
     /// The entry's family, such as `codex`.
@@ -198,11 +205,12 @@ pub struct ApiKeyConfig {
 
 impl ApiKeyConfig {
     /// Whether the entry is a **compatible entry**
-    /// (`crates/provider-common/src/endpoint.rs`): it names no vendor. A vendor
-    /// entry uses its vendor's
-    /// endpoint and lists its vendor's catalog; a compatible entry has the
-    /// endpoint the user gives, none until then, and lists only the models
-    /// the user configures.
+    /// (`crates/provider-common/src/endpoint.rs`): it names no vendor.
+    ///
+    /// - A vendor entry uses its vendor's endpoint and lists its vendor's
+    ///   catalog.
+    /// - A compatible entry has the endpoint the user gives, none until then,
+    ///   and lists only the models the user configures.
     pub fn is_compatible(&self) -> bool {
         self.vendor_id.is_none()
     }
@@ -238,12 +246,16 @@ impl ProviderEntry {
     }
 
     /// What the entry lacks to infer, in the order the page lists it
-    /// (`crates/backend-user-shard/src/provider_settings.rs`): a vendor
-    /// entry's key, a compatible entry's endpoint (its key is optional), a
-    /// model when its catalog is its configured list and the list is empty
-    /// (a compatible entry's always is), and a subscription's account. A
-    /// vendor entry's address is never missing: it uses its vendor's. Empty
-    /// for a complete entry.
+    /// (`crates/backend-user-shard/src/provider_settings.rs`):
+    ///
+    /// - A vendor entry's key.
+    /// - A compatible entry's endpoint. Its key is optional.
+    /// - A model, when its catalog is its configured list and the list is
+    ///   empty. A compatible entry's catalog always is its configured list.
+    /// - A subscription's account.
+    ///
+    /// A vendor entry's address is never missing: it uses its vendor's. The
+    /// result is empty for a complete entry.
     pub fn missing(&self) -> Vec<SetupPart> {
         match &self.credential {
             EntryCredential::ApiKey(config) => [
@@ -298,11 +310,13 @@ impl ProviderEntry {
         }
     }
 
-    /// The entry as the web app sees it: never its key. `default_endpoint` is
-    /// its family's default base URL, which a vendor entry that stores no
-    /// endpoint goes to; a compatible entry without one goes nowhere yet.
-    /// `shapes` are the ones it makes media in.
-    /// `catalog` is when the media catalog in use was published.
+    /// The entry as the web app sees it: never its key.
+    ///
+    /// - `default_endpoint` is its family's default base URL, which a vendor
+    ///   entry that stores no endpoint goes to. A compatible entry without one
+    ///   goes nowhere yet.
+    /// - `shapes` are the ones it makes media in.
+    /// - `catalog` is when the media catalog in use was published.
     pub fn dto(&self, default_endpoint: Option<EndpointUrl>, shapes: MediaShapes, catalog: Timestamp) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),
@@ -554,10 +568,12 @@ impl Vault {
     }
 
     /// Publishes a completed login's entry with the accounts of its staged
-    /// pool, in one transaction (`crates/backend-providers/src/vault/logins.rs`):
-    /// the entry, its accounts, and the staged active account, or its first.
-    /// `None` when the owner already holds the family's subscription entry,
-    /// and then nothing is stored.
+    /// pool, in one transaction
+    /// (`crates/backend-providers/src/vault/logins.rs`).
+    ///
+    /// The transaction stores the entry, its accounts, and the staged active
+    /// account, or its first. The result is `None` when the owner already holds
+    /// the family's subscription entry, and then nothing is stored.
     pub async fn create_subscription(
         &self,
         owner: UserId,
@@ -761,12 +777,14 @@ impl Vault {
 }
 
 /// The vault's side of the control database's migration to provider
-/// configuration format 2 (`crates/backend-database/src/lib.rs`): it opens
-/// each configuration of format 1 under the vault's key, decodes and checks
-/// it as any configuration is, and seals it again in format 2. One that
-/// names neither a vendor nor an endpoint was its family's own vendor's
-/// entry and now names that vendor; one with an endpoint and no vendor stays
-/// a compatible entry.
+/// configuration format 2 (`crates/backend-database/src/lib.rs`).
+///
+/// It opens each configuration of format 1 under the vault's key, decodes and
+/// checks it as any configuration is, and seals it again in format 2.
+///
+/// - A configuration that names neither a vendor nor an endpoint was its
+///   family's own vendor's entry and now names that vendor.
+/// - A configuration with an endpoint and no vendor stays a compatible entry.
 pub struct ConfigReseal(VaultKey);
 
 impl ConfigReseal {
@@ -845,16 +863,23 @@ mod tests {
     use super::*;
     use crate::vault::seal::VaultKey;
 
-    /// A control database of the schema before provider configuration
-    /// format 2, its entries sealed as 0.1.21 sealed them, upgrades as the
-    /// backend opens it: the family's own vendor's entry names its vendor,
-    /// and an endpoint without a vendor stays a compatible entry. One whose
-    /// configuration does not open under the vault's key stops the open
-    /// and still records the earlier schema.
-    /// Planted defect this catches: format 1 decoded as format 2, or a
-    /// family's own entry left naming no vendor, which reads as a
-    /// compatible entry without an endpoint. Two small databases, a few
-    /// milliseconds.
+    /// A control database of the schema before provider configuration format 2,
+    /// its entries sealed as 0.1.21 sealed them, upgrades as the backend opens
+    /// it:
+    ///
+    /// - The family's own vendor's entry names its vendor.
+    /// - An endpoint without a vendor stays a compatible entry.
+    ///
+    /// One whose configuration does not open under the vault's key stops the
+    /// open and still records the earlier schema.
+    ///
+    /// Planted defects this catches:
+    ///
+    /// - Format 1 decoded as format 2.
+    /// - A family's own entry left naming no vendor, which reads as a
+    ///   compatible entry without an endpoint.
+    ///
+    /// Cost: two small databases, a few milliseconds.
     #[tokio::test]
     async fn a_released_database_names_its_vendors_as_it_upgrades() {
         let key = [3; 32];

@@ -1,31 +1,41 @@
-//! The product's `demi attachment` group: `upload` copies files of the Host
-//! into the conversation as
-//! attachments `a1`, `a2`, …, which the agent's messages then deliver as
-//! `<attachment id="a3" />` blocks. The runner of the invocation's Host, the conversation's
-//! primary Host or an attached one a `demi host shell` job runs on, first
-//! hashes each file beside the invocation, through the conversation's host
-//! access, and refuses one over 25 MiB before reading a byte; a blob the
-//! conversation owner's namespace holds already is not read again, only its
-//! first 64 KiB from the object store for its media type. Otherwise the runner streams the file's bytes to the backend
-//! through a pipe (`crates/runner-host/src/files.rs`), and the backend stores the
-//! blob in that namespace. The backend reads the media type from the bytes
-//! as it does for the user's uploads, and stores the record under the next
-//! number of the conversation's `attachment` sequence. The command returns
-//! no medium: the attachment is for the user. `download` writes attachments
-//! of the conversation, the user's or the agent's, into the invocation's
-//! directory: the runner downloads each from this backend as every file
-//! Demi downloads, resumed after a break (`crates/shared-artifacts/src/download.rs`),
-//! and takes the first free name, the same bytes under the name being that
-//! file.
+//! The product's `demi attachment` group: `upload` and `download` move files
+//! between the Host and the conversation's attachments.
+//!
+//! `upload` copies files of the Host into the conversation as attachments `a1`,
+//! `a2`, …, which the agent's messages then deliver as `<attachment id="a3" />`
+//! blocks.
+//!
+//! 1. The runner of the invocation's Host, the conversation's primary Host or
+//!    an attached one a `demi host shell` job runs on, hashes each file beside
+//!    the invocation, through the conversation's host access. It refuses one
+//!    over 25 MiB before reading a byte.
+//! 2. A blob the conversation owner's namespace holds already is not read
+//!    again. Only its first 64 KiB come from the object store, for its media
+//!    type.
+//! 3. Otherwise the runner streams the file's bytes to the backend through a
+//!    pipe (`crates/runner-host/src/files.rs`), and the backend stores the blob
+//!    in that namespace.
+//! 4. The backend reads the media type from the bytes as it does for the user's
+//!    uploads, and stores the record under the next number of the
+//!    conversation's `attachment` sequence.
+//!
+//! The command returns no medium: the attachment is for the user.
+//!
+//! `download` writes attachments of the conversation, the user's or the
+//! agent's, into the invocation's directory. The runner downloads each from
+//! this backend as every file Demi downloads, resumed after a break
+//! (`crates/shared-artifacts/src/download.rs`), and takes the first free name,
+//! the same bytes under the name being that file.
 //!
 //! An attachment is a copy of the file's bytes as they were when the command
 //! ran, and nothing changes or removes it afterwards, so a message shows it
 //! whatever becomes of the file, the Host or the conversation. Its number and
-//! its record are stored in one transaction, and a Fork's destination keeps
-//! its source's attachments, since its history names them. A send writes
-//! nothing to a Host: the model reads an image, a video or a PDF from the
-//! message itself, and fetches a file with `download` only for a command that
-//! works on it, which never replaces a file.
+//! its record are stored in one transaction, and a Fork's destination keeps its
+//! source's attachments, since its history names them.
+//!
+//! A send writes nothing to a Host: the model reads an image, a video or a PDF
+//! from the message itself, and fetches a file with `download` only for a
+//! command that works on it, which never replaces a file.
 
 use std::rc::{Rc, Weak};
 
@@ -279,10 +289,11 @@ async fn upload(
 }
 
 /// Copies the file at `path`, beside `cwd`, from the conversation's Host on
-/// `device`, and stores it as the conversation's next attachment, the upload
-/// of the agent of `node`: its blob first, then its record. The Host hashes the file first, and sends its
-/// bytes only when the namespace does not hold them already. Answers why
-/// when it cannot.
+/// `device`, and stores it as the conversation's next attachment, the upload of
+/// the agent of `node`: its blob first, then its record.
+///
+/// The Host hashes the file first, and sends its bytes only when the namespace
+/// does not hold them already. Answers why when it cannot.
 async fn store(
     shard: &dyn HostShard,
     conversation: &ConversationId,
@@ -373,15 +384,16 @@ pub(crate) struct Unnumbered {
     pub(crate) node: Option<NodeId>,
 }
 
-/// Stores `attachment` as the conversation's next one in `db`, its number
-/// and its record in one transaction, so a summary that names the number
-/// names a record the page can read (`conversation_attachments::last`), and
-/// then calls `announce`, which sends the summary to the user's pages. The
-/// write and the announcement run in a task of `tasks`, which the shard's
-/// close waits for: a call stopped once the write is on its way, whose
-/// future is dropped, cuts neither, since the database's thread commits a
-/// write it was handed whoever still waits for it. So a stored attachment
-/// is always announced.
+/// Stores `attachment` as the conversation's next one in `db`, its number and
+/// its record in one transaction, so a summary that names the number names a
+/// record the page can read (`conversation_attachments::last`). Then calls
+/// `announce`, which sends the summary to the user's pages.
+///
+/// The write and the announcement run in a task of `tasks`, which the shard's
+/// close waits for. A call stopped once the write is on its way, whose future
+/// is dropped, cuts neither, since the database's thread commits a write it was
+/// handed whoever still waits for it. So a stored attachment is always
+/// announced.
 pub(crate) fn commit(
     tasks: &TaskTracker,
     db: ConversationDb,
@@ -516,15 +528,17 @@ mod tests {
             .collect()
     }
 
-    /// A call stopped once its attachment's write is on the database's
-    /// thread drops its future; the write commits all the same, and the
-    /// pages still hear of it, or a reply that named the number before the
-    /// upload would show it missing until something else sent the summary.
-    /// The commit is held until the call has stopped. Instant.
+    /// A call stopped once its attachment's write is on the database's thread
+    /// drops its future. The write commits all the same, and the pages still
+    /// hear of it, or a reply that named the number before the upload would
+    /// show it missing until something else sent the summary. The commit is
+    /// held until the call has stopped.
     ///
-    /// Planted defect it catches: the write and the announcement awaited
-    /// in the call's own future, which the stop drops after the write is
-    /// handed over and before the announcement.
+    /// Planted defect it catches: the write and the announcement awaited in the
+    /// call's own future, which the stop drops after the write is handed over
+    /// and before the announcement.
+    ///
+    /// Cost: instant.
     #[tokio::test(flavor = "local")]
     async fn an_attachment_whose_call_stops_once_its_write_is_sent_is_stored_and_announced() {
         let directory = tempfile::tempdir().unwrap();
@@ -551,15 +565,19 @@ mod tests {
         tasks.wait().await;
     }
 
-    /// Uploads at once, as several `demi attachment upload` calls or the
-    /// files of one, take distinct numbers in the order they commit, and
-    /// each is announced once its record, and every one below it, can be
-    /// read: a page that sees `lastAttachment` 5 finds a1 to a5, and treats a
-    /// number up to it without a record as missing for good. Instant.
+    /// Uploads at once, as several `demi attachment upload` calls or the files
+    /// of one, take distinct numbers in the order they commit. Each is
+    /// announced once its record, and every one below it, can be read: a page
+    /// that sees `lastAttachment` 5 finds a1 to a5, and treats a number up to
+    /// it without a record as missing for good.
     ///
-    /// Planted defects it catches: a number taken apart from the record's
-    /// transaction, such as the highest one plus 1, which two writes can
-    /// both take; an announcement before the commit.
+    /// Planted defects it catches:
+    ///
+    /// - A number taken apart from the record's transaction, such as the
+    ///   highest one plus 1, which two writes can both take.
+    /// - An announcement before the commit.
+    ///
+    /// Cost: instant.
     #[tokio::test(flavor = "local")]
     async fn attachments_stored_at_once_take_distinct_numbers_each_announced_once_readable() {
         const UPLOADS: u64 = 8;

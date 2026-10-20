@@ -1,19 +1,25 @@
-//! The schedules of a running Cloud: its idle watch, which stops it once no
-//! conversation using it has been active for the idle window (the Claude
-//! Code machine: once no work has held it), and its maintenance loop, which
-//! saves it every checkpoint interval and stops it at its lifetime cap.
+//! The schedules of a running Cloud.
+//!
+//! A running Cloud has two:
+//!
+//! - Its idle watch stops it once no conversation using it has been active for
+//!   the idle window. For the Claude Code machine, it stops it once no work has
+//!   held it.
+//! - Its maintenance loop saves it every checkpoint interval and stops it at
+//!   its lifetime cap.
+//!
 //! Both belong to the running phase and end with it. Maintenance holds the
 //! Cloud's gate for maintenance, not demand, so it never restarts the idle
-//! clock; an idle stop that finds maintenance holding the gate waits for it
-//! to let go.
+//! clock. An idle stop that finds maintenance holding the gate waits for it to
+//! let go.
 //!
-//! A stop sends no conversation releases: what a release would end, such as
-//! a conversation's Chrome, ends with the machine, and no command's output
-//! is left on its disk to save with it. The conversations' own idle watches
-//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`) find the Cloud stopped and release
-//! the conversations on their other Hosts. A Cloud that stops for another
-//! reason, at its lifetime cap, for a reset, at the backend's shutdown or
-//! because it died, is the same.
+//! A stop sends no conversation releases: what a release would end, such as a
+//! conversation's Chrome, ends with the machine, and no command's output is
+//! left on its disk to save with it. The conversations' own idle watches
+//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`) find the Cloud
+//! stopped and release the conversations on their other Hosts. The same holds
+//! for a Cloud that stops for another reason: at its lifetime cap, for a reset,
+//! at the backend's shutdown or because it died.
 
 use std::rc::{Rc, Weak};
 
@@ -128,11 +134,12 @@ impl dyn CloudShard {
         }
     }
 
-    /// Stops a machine that ran for its lifetime cap. A turn in flight
-    /// postpones it, and so does a file transfer or a stream the user has
-    /// open. Otherwise new operations are held back, the jobs nothing
-    /// attends end as lost for that reason, and once their leases are
-    /// released the machine is saved and stopped as an idle stop would stop
+    /// Stops a machine that ran for its lifetime cap.
+    ///
+    /// A turn in flight postpones the stop, and so does a file transfer or a
+    /// stream the user has open. Otherwise new operations are held back, the
+    /// jobs nothing attends end as lost for that reason, and once their leases
+    /// are released the machine is saved and stopped as an idle stop would stop
     /// it.
     async fn stop_at_lifetime_cap(&self, machine: &Rc<Machine>) {
         let uses = match self.uses_of(machine).await {

@@ -6,9 +6,9 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the catalog cache's, the vault's and the meter's
-# internals, so they are unit tests and the crate has no integration tests
-# (`ARCHITECTURE.md`); no doc examples.
+# Its tests reach the catalog cache's, the vault's and the meter's internals, so
+# they are unit tests and the crate has no integration tests
+# (`ARCHITECTURE.md`). It has no doc examples.
 doctest = false
 bench = false
 

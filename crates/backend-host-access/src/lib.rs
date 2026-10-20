@@ -1,24 +1,33 @@
 //! The conversation's host access: the one way to a conversation's primary or
-//! attached Host, with target resolution and the transitions that end a
-//! target (switch, archive, detach); file transfers, uploads, remote files,
-//! user streams and the file watch; the shell environments of the agent's
-//! nodes over it; and the product's `demi host` and `demi attachment` groups.
+//! attached Host.
 //!
-//! Host access's operations are methods of `dyn HostShard`, what host access
-//! needs of its user's shard (`crates/backend-user-shard/src/lib.rs`), which the
-//! shard implements.
+//! The crate holds:
+//!
+//! - Target resolution, and the transitions that end a target (switch, archive,
+//!   detach).
+//! - File transfers, uploads, remote files, user streams and the file watch.
+//! - The shell environments of the agent's nodes over the access.
+//! - The product's `demi host` and `demi attachment` groups.
+//!
+//! The operations are methods of `dyn HostShard`, what host access needs of its
+//! user's shard (`crates/backend-user-shard/src/lib.rs`), which the shard
+//! implements.
 //!
 //! Everything that reaches a conversation's Host on the conversation's behalf
-//! goes through it, whether the agent resolves its Host for a tool call or
-//! the backend writes an attachment, lists the working tree or reads a file
-//! for the web app. For every kind of target it resolves the target, refuses
-//! an archived conversation, wakes a stopped Cloud and holds it for the
-//! operation, and takes the conversation's file gate so the operation
-//! excludes an archive or a target switch. A plugin never writes to a Host:
-//! the Host directories its user needs are installed by a job's own
-//! admission, and its reads of a conversation's files never wake the Host.
-//! Any other change to wake or gate behavior is decided here, not introduced
-//! as a bypass.
+//! goes through host access, whether the agent resolves its Host for a tool
+//! call or the backend writes an attachment, lists the working tree or reads a
+//! file for the web app. For every kind of target, host access:
+//!
+//! - Resolves the target.
+//! - Refuses an archived conversation.
+//! - Wakes a stopped Cloud and holds it for the operation.
+//! - Takes the conversation's file gate, so the operation excludes an archive
+//!   or a target switch.
+//!
+//! A plugin never writes to a Host: the Host directories its user needs are
+//! installed by a job's own admission, and its reads of a conversation's files
+//! never wake the Host. Any other change to wake or gate behavior is decided
+//! here, not introduced as a bypass.
 //!
 //! These are every way to a Host; the last three touch no conversation's files:
 //!
@@ -32,25 +41,29 @@
 //! machine access         the machine's admission     woken; reset waited
 //! ```
 //!
-//! Stream admission serves user streams, one-shot user calls that must not
-//! wake the Host and a plugin's reads of a conversation's files; lifecycle
-//! access is the conversation release, which a stopped Cloud hears after its
-//! next wake. Device access is the owner's work on a device whose runner is
-//! connected (a direct channel, the device log, browsing directories to
-//! choose a target, a port forward's listener): it takes no file gate and
-//! checks no conversation's binding, so a transition does not wait for it, and
-//! it never wakes a Cloud, since a log is read when its Host runs again and
-//! showing a version is no reason to wake one. Machine access is for work that
-//! needs the machine itself, such as creating a Cloud project's directory or a
-//! provider's process on the Claude Code machine.
+//! The ways differ as follows:
+//!
+//! - Stream admission serves user streams, one-shot user calls that must not
+//!   wake the Host and a plugin's reads of a conversation's files.
+//! - Lifecycle access is the conversation release, which a stopped Cloud hears
+//!   after its next wake.
+//! - Device access is the owner's work on a device whose runner is connected: a
+//!   direct channel, the device log, browsing directories to choose a target, a
+//!   port forward's listener. It takes no file gate and checks no
+//!   conversation's binding, so a transition does not wait for it. It never
+//!   wakes a Cloud, since a log is read when its Host runs again and showing a
+//!   version is no reason to wake one.
+//! - Machine access is for work that needs the machine itself, such as creating
+//!   a Cloud project's directory or a provider's process on the Claude Code
+//!   machine.
 //!
 //! The state this protects lives in the user's shard because one shard holds
 //! all of a user's conversations, devices and Cloud: the file gates, the
 //! admission of transfers and streams, and the transitions that end them. The
-//! edge moves the bytes of transfers and user streams; admitting them is the
-//! shard's. A runner connection makes a conversation's Host handle only
-//! against a lease of that conversation's file gate, which only host access
-//! takes, so no other code can make one.
+//! edge moves the bytes of transfers and user streams. Admitting them is the
+//! shard's. A runner connection makes a conversation's Host handle only against
+//! a lease of that conversation's file gate, which only host access takes, so
+//! no other code can make one.
 //!
 //! Other work holds the conversation through the gate itself (`file_gate`),
 //! whose leases make no Host. Host access never sees `Shard`, and no second way

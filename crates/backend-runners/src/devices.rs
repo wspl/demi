@@ -1,12 +1,18 @@
-//! A user's devices as their runners connect: each device has one slot holding its connection, `Online` with
-//! the connection's link or `Offline` with the account its runner last
-//! reported, and every Host handle of the device watches that slot. A device
-//! holds one live connection; a new hello with its token is refused while
-//! the held connection answers its ping, and adopted once a silent one
-//! finished tearing down. A Host handle is made here only for one
-//! of the ways to a Host (`crates/backend-host-access/src/lib.rs`):
-//! a conversation's against a lease of its file gate, device access while
-//! the runner is connected, and machine access under the Cloud's admission.
+//! A user's devices as their runners connect.
+//!
+//! Each device has one slot holding its connection, `Online` with the
+//! connection's link or `Offline` with the account its runner last reported,
+//! and every Host handle of the device watches that slot. A device holds one
+//! live connection: a new hello with its token is refused while the held
+//! connection answers its ping, and adopted once a silent one finished tearing
+//! down.
+//!
+//! A Host handle is made here only for one of the ways to a Host
+//! (`crates/backend-host-access/src/lib.rs`):
+//!
+//! - A conversation's, against a lease of its file gate.
+//! - Device access, while the runner is connected.
+//! - Machine access, under the Cloud's admission.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -150,17 +156,19 @@ struct DeviceSlot {
     target: RefCell<Option<String>>,
 }
 
-/// A runner's update as the backend shows it: until `until`, which each byte
-/// of its download served moves on, unless the device's next hello comes
-/// first.
+/// A runner's update as the backend shows it: until `until`, which each byte of
+/// its download served moves on, unless the device's next hello comes first.
 ///
 /// The backend counts the bytes it serves of a runner executable to the device
-/// whose token the request carries, and the device's state carries the progress,
-/// announced at most once a second. A prefetch shows the device online with its
-/// percent; from the 409 that named the executable until its next hello the device
-/// is updating, for as long as its download moves, so a slow link that keeps
-/// receiving shows updating, never offline. It shows offline once no byte was
-/// served to it for the window and no hello came.
+/// whose token the request carries, and the device's state carries the
+/// progress, announced at most once a second.
+///
+/// - A prefetch shows the device online with its percent.
+/// - From the 409 that named the executable until its next hello, the device is
+///   updating, for as long as its download moves, so a slow link that keeps
+///   receiving shows updating, never offline.
+/// - The device shows offline once no byte was served to it for the window and
+///   no hello came.
 pub struct Updating {
     until: Cell<Instant>,
     /// Ends the window for the device's pages; dropped, it stops.
@@ -728,13 +736,14 @@ impl DeviceRecorder {
         Self { control, marks }
     }
 
-    /// Records what `device`'s runner said in its hello: its operating
-    /// system, its release, its instance, its home and why it will not
-    /// start by itself after a restart, and that it was connected just
-    /// now, and advances the execution contexts the report changes
-    /// (`crates/backend-database/src/selection.rs`). Answers the
-    /// directories the runner resolves before a paired device's first home
-    /// is recorded, when an earlier release left any
+    /// Records what `device`'s runner said in its hello: its operating system,
+    /// its release, its instance, its home and why it will not start by itself
+    /// after a restart, and that it was connected just now. It advances the
+    /// execution contexts the report changes
+    /// (`crates/backend-database/src/selection.rs`).
+    ///
+    /// Answers the directories the runner resolves before a paired device's
+    /// first home is recorded, when an earlier release left any
     /// (`crates/server/src/main.rs`).
     pub async fn hello(
         &self,

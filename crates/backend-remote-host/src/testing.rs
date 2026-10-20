@@ -1,11 +1,14 @@
-//! Test support: an in-process fake runner ([`TestLink`]) over the real
-//! connection driver, a real runner process for a backend at any address
-//! ([`RunnerProcess`]) and one connected to a backend end of its own for one
-//! device ([`RunnerFixture`]), the native fixture package their tests run,
-//! a connection policy that runs every call in one command set, a
-//! pseudo-terminal to run a program at as a person does ([`Terminal`]), and
-//! the guard that stops the runners a test starts in sessions of their own
-//! ([`DetachedRunners`]).
+//! Test support:
+//!
+//! - An in-process fake runner ([`TestLink`]) over the real connection driver.
+//! - A real runner process for a backend at any address ([`RunnerProcess`]),
+//!   and one connected to a backend end of its own for one device
+//!   ([`RunnerFixture`]).
+//! - The native fixture package their tests run.
+//! - A connection policy that runs every call in one command set.
+//! - A pseudo-terminal to run a program at as a person does ([`Terminal`]).
+//! - The guard that stops the runners a test starts in sessions of their own
+//!   ([`DetachedRunners`]).
 
 #[cfg(unix)]
 mod detached;

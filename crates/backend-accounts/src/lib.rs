@@ -1,9 +1,16 @@
-//! Accounts, password hashing, web sessions, the login lockout and
-//! email-change delivery,
-//! each user's preferences and each user's subagent settings and personal
-//! instructions, and each user's push subscriptions with the sending of push
-//! notifications. The key email codes are hashed under, and the VAPID key, are
-//! given to it; it derives no keys.
+//! Accounts and what a user keeps with one.
+//!
+//! The crate holds:
+//!
+//! - Accounts and password hashing.
+//! - Web sessions and the login lockout.
+//! - Email-change delivery.
+//! - Each user's preferences.
+//! - Each user's subagent settings and personal instructions.
+//! - Each user's push subscriptions, with the sending of push notifications.
+//!
+//! The backend gives the crate the key that email codes are hashed under and
+//! the VAPID key. The crate derives no keys.
 //!
 //! The crate knows no conversations, devices or providers.
 

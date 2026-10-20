@@ -1,21 +1,25 @@
-//! Account rotation: which of an
-//! entry's accounts an agent takes under In Order and Balanced, the accounts
-//! used up until their moment, and how many agents run a turn on each
-//! account, so that agents started together spread over the accounts
-//! before their snapshots change. An idle agent keeps its account without
-//! counting on it.
+//! Account rotation: which of an entry's accounts an agent takes under In Order
+//! and Balanced.
+//!
+//! The module tracks:
+//!
+//! - The accounts used up until their moment.
+//! - How many agents run a turn on each account, so that agents started
+//!   together spread over the accounts before their snapshots change. An idle
+//!   agent keeps its account without counting on it.
 //!
 //! An agent keeps its account once it took one, because the vendor's prompt
 //! cache belongs to the account: a 300K conversation that moves to another
-//! account writes its 300K again there. It takes another only when its account
-//! fails with `usage_limit`, after a compaction (whose next request writes its
-//! prefix anew in any case), or when its account is removed or the rotation
-//! changes.
+//! account writes its 300K again there. It takes another only in these cases:
 //!
-//! For example, Balanced compares a Max account whose 5-hour window is 80%
-//! used with 3 hours to go (room 0.2 / 0.6 = 0.33) and a Pro account at 10%
-//! of the same window with 4 hours to go (room 0.9 / 0.8 = 1.1): the agent
-//! takes the Pro account.
+//! - Its account fails with `usage_limit`.
+//! - A compaction ran, whose next request writes its prefix anew in any case.
+//! - Its account is removed, or the rotation changes.
+//!
+//! For example, Balanced compares a Max account whose 5-hour window is 80% used
+//! with 3 hours to go (room 0.2 / 0.6 = 0.33) and a Pro account at 10% of the
+//! same window with 4 hours to go (room 0.9 / 0.8 = 1.1): the agent takes the
+//! Pro account.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -249,12 +253,15 @@ fn rooms(
         .collect()
 }
 
-/// The room of an account whose snapshot is `snapshot`, for `model`, now:
-/// its smallest window's, each window's being the share left divided by the
-/// share of its period left. A window not yet started, past its reset, or
-/// without a reset time or a period has a room of 1; a window whose share is
-/// unknown says nothing. A window used up before its reset uses the account
-/// up until the latest such reset.
+/// The room of an account whose snapshot is `snapshot`, for `model`, now: its
+/// smallest window's, each window's being the share left divided by the share
+/// of its period left.
+///
+/// - A window not yet started, past its reset, or without a reset time or a
+///   period has a room of 1.
+/// - A window whose share is unknown says nothing.
+/// - A window used up before its reset uses the account up until the latest
+///   such reset.
 fn account_room(snapshot: Option<&QuotaSnapshot>, model: &Model, now: Timestamp) -> Room {
     let windows = snapshot
         .into_iter()
@@ -315,10 +322,13 @@ fn applies(window: &QuotaWindow, model: &Model) -> bool {
     model.name.to_lowercase().contains(&name) || model.id.to_lowercase().contains(&name)
 }
 
-/// The index of the account with the most room: a window over 90% used
-/// leaves its account out while another account has room; among those
-/// within a tenth of the best room, the one `running` says fewest agents
-/// run a turn on, then the first in the list.
+/// The index of the account with the most room.
+///
+/// - A window over 90% used leaves its account out while another account has
+///   room.
+/// - Among the accounts within a tenth of the best room, the one `running` says
+///   fewest agents run a turn on wins.
+/// - Then the first in the list wins.
 fn most_room(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<usize> {
     let left: Vec<(usize, f64, f64)> = rooms
         .iter()

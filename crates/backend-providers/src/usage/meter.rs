@@ -1,13 +1,16 @@
 //! The metered runtime
 //! (`crates/backend-user-shard/src/conversation/providers.rs`): the backend
-//! wraps each session's runtime so that the user's
-//! rate limit applies before every run and every call the run makes to the
-//! vendor is a usage ledger row as it ends, the run's last before the run's
-//! response reaches the agent (`crates/backend-database/src/usage.rs`). A
-//! ledger write that fails is logged and the request goes on: inference
-//! never fails because accounting did. Each run logs under a span that names
-//! its request, its agent and its account, so a row finds its course in the
-//! server log.
+//! wraps each session's runtime so that accounting happens around every run.
+//!
+//! - The user's rate limit applies before every run.
+//! - Every call the run makes to the vendor is a usage ledger row as it ends,
+//!   the run's last before the run's response reaches the agent
+//!   (`crates/backend-database/src/usage.rs`).
+//!
+//! A ledger write that fails is logged and the request goes on: inference never
+//! fails because accounting did. Each run logs under a span that names its
+//! request, its agent and its account, so a row finds its course in the server
+//! log.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -452,17 +455,25 @@ mod tests {
     }
 
     /// Each row is priced as it is written, at the catalog's prices of its
-    /// model at that moment: a call before the catalog had a price, as when
-    /// its lookup failed, stays unpriced and the next is priced once it has
-    /// one; the part of a write kept for an hour is at twice the input rate,
-    /// and a call that used a kind its model has no price for has no price,
-    /// while the model's other calls do; and each row keeps the hashes of
-    /// the prompt it sent, so a request whose system prompt changed is the
-    /// miss's cause (`crates/backend-database/src/usage.rs`). Planted
-    /// defects: the prices looked up once as the runtime is built, the
-    /// hour-long write at the write rate, an unpriced kind priced at zero, or
-    /// one hash for every prompt.
-    /// Five scripted calls on an in-memory ledger: milliseconds.
+    /// model at that moment:
+    ///
+    /// - A call before the catalog had a price, as when its lookup failed,
+    ///   stays unpriced, and the next is priced once it has one.
+    /// - The part of a write kept for an hour is at twice the input rate.
+    /// - A call that used a kind its model has no price for has no price, while
+    ///   the model's other calls do.
+    /// - Each row keeps the hashes of the prompt it sent, so a request whose
+    ///   system prompt changed is the miss's cause
+    ///   (`crates/backend-database/src/usage.rs`).
+    ///
+    /// Planted defects:
+    ///
+    /// - The prices looked up once as the runtime is built.
+    /// - The hour-long write at the write rate.
+    /// - An unpriced kind priced at zero.
+    /// - One hash for every prompt.
+    ///
+    /// Cost: five scripted calls on an in-memory ledger, milliseconds.
     #[tokio::test]
     async fn rows_are_priced_at_the_catalog_as_written_and_keep_their_prompts_hashes() {
         let data = tempfile::tempdir().unwrap();

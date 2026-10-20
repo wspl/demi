@@ -1,23 +1,34 @@
-//! The web app's login sessions: the
-//! cookie holds a random 256-bit token, storage holds the token's SHA-256,
-//! and a session expires 30 days after its last renewal. Each is named for
-//! the browser and system it signed in from, and a request writes its last
-//! activity at most once an hour. A session verified by password or passkey
-//! in the last five minutes makes handoff codes and adds passkeys; a sign-in
-//! counts as a verification, a handoff code's too, which a phone keeping its
-//! session is verified by. Handoff codes are 256 random bits, kept as their
-//! SHA-256 for ten minutes and spent once; they open the account on a phone:
-//! in the phone's own session of the account when it has one, else in a new
-//! session.
+//! The web app's login sessions, and the handoff codes that open an account on
+//! a phone.
 //!
-//! A handoff code travels after `#` in its URL, which a browser never sends
-//! to a server, so no access log or proxy holds it. Its `to` is a path of
-//! the product, checked when the code is made and again when it is spent, so
-//! a code never sends a phone to another site. The laptop learns of the
-//! spending from the account's sessions, the synchronization channel's
-//! `sessions` part, whose new session names the code that made it; it never
-//! asks. Signing a session out deletes it and closes its channel and its
-//! conversation sockets with `session_ended`, and so does an expiry.
+//! A session works like this:
+//!
+//! - The cookie holds a random 256-bit token, and storage holds the token's
+//!   SHA-256.
+//! - A session expires 30 days after its last renewal.
+//! - A session is named for the browser and system it signed in from.
+//! - A request writes the session's last activity at most once an hour.
+//! - A session verified by password or passkey in the last five minutes makes
+//!   handoff codes and adds passkeys.
+//! - A sign-in counts as a verification. So does a handoff code, by which a
+//!   phone that keeps its session is verified.
+//!
+//! A handoff code works like this:
+//!
+//! - It is 256 random bits, kept as their SHA-256 for ten minutes and spent
+//!   once.
+//! - It opens the account on a phone: in the phone's own session of the account
+//!   when it has one, else in a new session.
+//! - It travels after `#` in its URL, which a browser never sends to a server,
+//!   so no access log or proxy holds it.
+//! - Its `to` is a path of the product, checked when the code is made and again
+//!   when it is spent, so a code never sends a phone to another site.
+//! - The laptop learns of the spending from the account's sessions, the
+//!   synchronization channel's `sessions` part, whose new session names the
+//!   code that made it. The laptop never asks.
+//!
+//! Signing a session out deletes it and closes its channel and its conversation
+//! sockets with `session_ended`. An expiry does the same.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -210,11 +221,14 @@ impl WebSessions {
         })
     }
 
-    /// A new handoff code of `user`, which opens `to` at the backend's
-    /// public URL `public`, in place of the user's previous one; with
-    /// `issued_by`, a sign-in code the administrator makes for the account,
-    /// in place of its previous sign-in code. The caller checked the
-    /// session's verification.
+    /// A new handoff code of `user`, which opens `to` at the backend's public
+    /// URL `public`. It replaces the user's previous one.
+    ///
+    /// With `issued_by`, the code is a sign-in code that the administrator
+    /// makes for the account, and it replaces the account's previous sign-in
+    /// code.
+    ///
+    /// The caller checked the session's verification.
     pub async fn make_handoff(
         &self,
         user: &UserId,
@@ -245,10 +259,11 @@ impl WebSessions {
     }
 
     /// Spends the handoff `code` from the browser `user_agent` names, whose
-    /// cookie holds the session token `current`, if any: a live session of
-    /// the code's account is kept and carries the code; any other is ended
-    /// and the account signed in anew. A code of a disabled account is
-    /// spent and signs nobody in.
+    /// cookie holds the session token `current`, if any.
+    ///
+    /// - A live session of the code's account is kept and carries the code.
+    /// - Any other session is ended, and the account is signed in anew.
+    /// - A code of a disabled account is spent and signs nobody in.
     pub async fn spend_handoff(
         &self,
         code: &str,

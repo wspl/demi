@@ -1,21 +1,27 @@
-# The base: what Demi needs in every Cloud and what nearly every task needs,
-# on top of Ubuntu's container image, which is minimized: its dpkg
-# configuration leaves out man pages and translations, for the packages
-# installed later too. Every Cloud shares the base, and every megabyte in it is
-# downloaded and stored on each server, so it holds nothing else. `sudo` lets
-# the agent install the rest, `ca-certificates` serve HTTPS, and `git` is what
-# nearly every task uses. The shell, its commands and the tools Demi's own
-# commands use are Demi's executables, not the image's. Compilers, language
-# runtimes such as Node.js and Python, and tools such as `gh` are installed on
-# demand, by the agent or the user: with `apt` into the system layer, which a
-# system reset empties, or with a version manager into the home, which every
-# reset keeps (the base preinstalls no nvm, rustup, Go, JDK or Docker). It
-# holds no browser: `demi browser
-# install` brings Chrome with its libraries and fonts into the home. The locale
-# is `C.UTF-8`, the one the container image carries, and the manifest records
-# the resolved package versions rather than a second list in documentation;
-# with Demi's programs the base is about 260 MB unpacked and 80 MB compressed.
-# Ubuntu packages only; nothing here keeps state in the user's home.
+# The base: what Demi needs in every Cloud and what nearly every task needs, on
+# top of Ubuntu's container image, which is minimized: its dpkg configuration
+# leaves out man pages and translations, for the packages installed later too.
+#
+# Every Cloud shares the base, and every megabyte in it is downloaded and stored
+# on each server, so it holds nothing else.
+#
+# - `sudo` lets the agent install the rest.
+# - `ca-certificates` serve HTTPS.
+# - `git` is what nearly every task uses.
+#
+# The shell, its commands and the tools Demi's own commands use are Demi's
+# executables, not the image's. Compilers, language runtimes such as Node.js and
+# Python, and tools such as `gh` are installed on demand, by the agent or the
+# user: with `apt` into the system layer, which a system reset empties, or with
+# a version manager into the home, which every reset keeps (the base preinstalls
+# no nvm, rustup, Go, JDK or Docker). It holds no browser: `demi browser
+# install` brings Chrome with its libraries and fonts into the home.
+#
+# The locale is `C.UTF-8`, the one the container image carries, and the manifest
+# records the resolved package versions rather than a second list in
+# documentation. With Demi's programs the base is about 260 MB unpacked and 80
+# MB compressed. Ubuntu packages only; nothing here keeps state in the user's
+# home.
 sudo
 ca-certificates
 git

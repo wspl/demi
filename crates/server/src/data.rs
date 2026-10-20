@@ -1,10 +1,12 @@
-//! The backend's databases across a move (`upgrades.md` § Switch,
-//! § Rollback): the copy an upgrade takes of each database its release will
-//! migrate, into `<data>/snapshots/<version>/`, and a rollback's return of
-//! that copy, which first moves the databases it replaces to
-//! `snapshots/abandoned-<version>/`. Both services are stopped, so the files
-//! are consistent. Copies use the file system's copy, which clones where it
-//! can.
+//! The backend's databases across a move (`upgrades.md` § Switch, § Rollback):
+//!
+//! - An upgrade copies each database its release will migrate into
+//!   `<data>/snapshots/<version>/`.
+//! - A rollback returns that copy. It first moves the databases it replaces to
+//!   `snapshots/abandoned-<version>/`.
+//!
+//! Both services are stopped, so the files are consistent. Copies use the file
+//! system's copy, which clones where it can.
 
 use std::{
     io,

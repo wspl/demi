@@ -1,26 +1,37 @@
 //! A Cloud reset: a clean system on the base the reset selected, with the home
-//! kept. The owner can reset through the backend even when the runner, the
-//! shell or the system files are broken, so a reset never runs repair commands
-//! inside the broken sandbox, and interrupted side effects are not replayed. Its intent is durable: the
-//! operation id the page chose, the base, the phase it reached and its
-//! failure are written before each step, so a retry of the same id resumes
-//! the same operation and a backend that stopped in the middle of one
-//! finishes its disk step when it starts again.
+//! kept.
 //!
-//! The reset holds the conversations that cannot work without the Cloud
-//! (`crates/backend-cloud/src/uses.rs`): their
-//! turns stop, what their users send waits, and the transfers and streams
-//! of those whose files are on the Cloud end. It then flushes the Cloud and
-//! lets its runner go, which ends every command still running on it, an
-//! attached conversation's among them, waits for the operations that held
-//! the Cloud to let go, and saves, rebuilds and boots it. A failed save of the
-//! home blocks publication and keeps the working home; before the manager
-//! publishes, recovery keeps the prior pair, and after it uses the new pair and
-//! may retry the boot. Admission stays held until an authoritative state is
-//! established, and a terminal failure is surfaced to the operations that wait.
+//! The owner can reset through the backend even when the runner, the shell or
+//! the system files are broken. So a reset never runs repair commands inside
+//! the broken sandbox, and interrupted side effects are not replayed.
+//!
+//! The reset's intent is durable. The operation id the page chose, the base,
+//! the phase it reached and its failure are written before each step, so a
+//! retry of the same id resumes the same operation, and a backend that stopped
+//! in the middle of one finishes its disk step when it starts again.
+//!
+//! The reset runs these steps:
+//!
+//! 1. It holds the conversations that cannot work without the Cloud
+//!    (`crates/backend-cloud/src/uses.rs`): their turns stop, what their users
+//!    send waits, and the transfers and streams of those whose files are on the
+//!    Cloud end.
+//! 2. It flushes the Cloud and lets its runner go, which ends every command
+//!    still running on it, an attached conversation's among them.
+//! 3. It waits for the operations that held the Cloud to let go.
+//! 4. It saves, rebuilds and boots the Cloud.
+//!
+//! Failure and recovery:
+//!
+//! - A failed save of the home blocks publication and keeps the working home.
+//! - Before the manager publishes, recovery keeps the prior pair. After the
+//!   manager publishes, recovery uses the new pair and may retry the boot.
+//! - Admission stays held until an authoritative state is established, and a
+//!   terminal failure is surfaced to the operations that wait.
+//!
 //! Success is reported only when the runner is ready. The device, its projects
-//! and its history are unchanged, and each agent node sees the reset in its next
-//! persisted context.
+//! and its history are unchanged, and each agent node sees the reset in its
+//! next persisted context.
 
 use std::rc::Rc;
 
@@ -44,10 +55,12 @@ const RECOVERED: &str = "Reset disks recovered. Retry to start Cloud.";
 
 impl dyn CloudShard {
     /// Admits the reset `id` of the user's Cloud, or answers the one of that
-    /// id: the same operation while it runs or once it is ready, and a
-    /// failed one resumed on the base it selected. A new operation selects
-    /// the base the manager has now. Another reset while one runs is
-    /// refused, and a stopped Cloud that finds no capacity permit is too.
+    /// id: the same operation while it runs or once it is ready, and a failed
+    /// one resumed on the base it selected.
+    ///
+    /// A new operation selects the base the manager has now. Another reset
+    /// while one runs is refused. So is a reset of a stopped Cloud that finds
+    /// no capacity permit.
     pub async fn reset_cloud(&self, id: OperationId) -> Result<ManagedOperation, CloudError> {
         if self.cloud().is_closed() {
             return Err(CloudError::Closed);
@@ -251,12 +264,15 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capac
     }
 }
 
-/// Recovers before the backend serves (`crates/backend/src/backend.rs`): the
-/// manager keeps the machines it runs and recovers its incomplete
-/// operations, and each reset this backend left unfinished finishes its disk
-/// step, which is idempotent by its id, is announced, and is recorded as
-/// failed so that a retry boots the Cloud. Nothing boots here. Answers the
-/// devices whose machines run, which their shards take over.
+/// Recovers before the backend serves (`crates/backend/src/backend.rs`).
+///
+/// The manager keeps the machines it runs and recovers its incomplete
+/// operations. Each reset this backend left unfinished finishes its disk step,
+/// which is idempotent by its id, is announced, and is recorded as failed so
+/// that a retry boots the Cloud.
+///
+/// Nothing boots here. The function answers the devices whose machines run,
+/// which their shards take over.
 pub async fn recover_clouds(
     control: &ControlService,
     cloud: &CloudServices,

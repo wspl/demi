@@ -1,15 +1,17 @@
-//! The vendor's Claude Code releases: the
-//! newest version, read from the official distribution's `latest` pointer
-//! and that version's manifest, and believed for six hours. Concurrent
-//! readers share one read, a version's manifest is read once, and a redirect
-//! is refused. The reads run on the edge's runtime, whoever asks; a start
-//! that has a version to run never waits for one, and reads in the
-//! background instead.
+//! The vendor's Claude Code releases: the newest version, read from the
+//! official distribution's `latest` pointer and that version's manifest, and
+//! believed for six hours.
 //!
-//! Demi always follows the vendor's newest release: provider entries store no
-//! CLI version and expose no version-selection or update-disable setting, and
-//! Demi keeps no list of versions it was tested with, because such a list would
-//! be out of date with each release and a version it does not name would still
+//! - Concurrent readers share one read, and a version's manifest is read once.
+//! - A redirect is refused.
+//! - The reads run on the edge's runtime, whoever asks.
+//! - A start that has a version to run never waits for one, and reads in the
+//!   background instead.
+//!
+//! Demi always follows the vendor's newest release. Provider entries store no
+//! CLI version and expose no version-selection or update-disable setting. Demi
+//! keeps no list of versions it was tested with, because such a list would be
+//! out of date with each release and a version it does not name would still
 //! run. The Claude Code scenario suite checks whichever CLI it is given against
 //! what the product relies on.
 

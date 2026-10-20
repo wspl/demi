@@ -1,24 +1,31 @@
 //! Passkeys: signing in with one, without an email first, and adding one to an
-//! account, each in two requests around the browser's own step. `webauthn-rs`
-//! makes every challenge and does every check; this module keeps the challenges in
-//! the control store between the two requests, finds the account a passkey names,
-//! and names a new passkey.
+//! account.
 //!
-//! - Synced passkeys are the common case: registration asks for no attestation and
-//!   no authenticator attachment, so the browser saves the passkey in its password
-//!   manager, which syncs it; such a passkey reports itself backed up and usually
-//!   keeps no signature counter, and both are accepted. Registration asks for a
-//!   discoverable credential, which password managers always make, and sign-in
-//!   names none, so neither the autofill nor the button needs an email first. User
-//!   verification is required, so a passkey proves both the device and the person.
+//! Each takes two requests around the browser's own step. `webauthn-rs` makes
+//! every challenge and does every check. This module keeps the challenges in
+//! the control store between the two requests, finds the account a passkey
+//! names, and names a new passkey.
+//!
+//! The design rests on these choices:
+//!
+//! - Synced passkeys are the common case. Registration asks for no attestation
+//!   and no authenticator attachment, so the browser saves the passkey in its
+//!   password manager, which syncs it. Such a passkey reports itself backed up
+//!   and usually keeps no signature counter. Both are accepted.
+//! - Registration asks for a discoverable credential, which password managers
+//!   always make, and sign-in names none, so neither the autofill nor the
+//!   button needs an email first.
+//! - User verification is required, so a passkey proves both the device and the
+//!   person.
 //! - A passkey names its account by the user's id, never the email, so an email
 //!   change keeps it.
-//! - Challenges live in the control database, since a sign-in's two requests may
-//!   reach different workers. A failed passkey sign-in is not counted toward the
-//!   address lockout, since a signature cannot be guessed.
-//! - No passkey is offered at an IP address, which browsers make none for: a
-//!   development backend answers at `127.0.0.1`, so a check of passkeys starts it
-//!   with a `localhost` public URL.
+//! - Challenges live in the control database, since a sign-in's two requests
+//!   may reach different workers.
+//! - A failed passkey sign-in is not counted toward the address lockout, since
+//!   a signature cannot be guessed.
+//! - No passkey is offered at an IP address, which browsers make none for. A
+//!   development backend answers at `127.0.0.1`, so a check of passkeys starts
+//!   it with a `localhost` public URL.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -60,10 +67,12 @@ pub fn relying_party_id(public: &Url) -> Option<&str> {
     }
 }
 
-/// The relying party for one request: the public URL's host name, the
-/// origins it accepts the browser's answers from, the public URL's and the
-/// page's own, as the edge's origin check admits it (a development server
-/// passes the page's requests on from another port).
+/// The relying party for one request.
+///
+/// It uses the public URL's host name. It accepts the browser's answers from
+/// two origins, the public URL's and the page's own, as the edge's origin check
+/// admits them. A development server passes the page's requests on from another
+/// port.
 pub struct RelyingParty(Webauthn);
 
 impl RelyingParty {
@@ -136,10 +145,11 @@ pub async fn start_sign_in(
     }))
 }
 
-/// Checks the browser's answer to the challenge `id` and answers the
-/// account it signs in, recording the passkey's use. A verification of the
-/// session of `account` takes only a passkey of that account; a sign-in
-/// passes none.
+/// Checks the browser's answer to the challenge `id` and answers the account it
+/// signs in, recording the passkey's use.
+///
+/// A verification of the session of `account` takes only a passkey of that
+/// account. A sign-in passes none.
 pub async fn finish_sign_in(
     control: &ControlService,
     party: &RelyingParty,
@@ -210,10 +220,10 @@ pub async fn start_registration(
         display_name,
         Some(excluded),
     )?;
-    // `webauthn-rs` leaves a passkey's discoverability to the authenticator
-    // and offers no way to ask for it; a sign-in that names no account
-    // needs a discoverable one, so the options ask for it. Its check of the
-    // answer does not depend on it.
+    // `webauthn-rs` leaves a passkey's discoverability to the authenticator and
+    // offers no way to ask for it. A sign-in that names no account needs a
+    // discoverable one, so the options ask for it. The check of the answer does
+    // not depend on it.
     if let Some(selection) = creation.public_key.authenticator_selection.as_mut() {
         selection.resident_key = Some(ResidentKeyRequirement::Required);
         selection.require_resident_key = true;
@@ -304,10 +314,13 @@ struct AttestationObject<'a> {
 }
 
 /// The AAGUID of the authenticator that made `credential`, which names its
-/// password manager; none for the zero AAGUID, which Apple's passkeys
-/// carry. `webauthn-rs` keeps no AAGUID of a passkey registered without
-/// attestation, so it is read from the attestation object `webauthn-rs`
-/// has checked, with the CBOR decoder and the authenticator data parser
+/// password manager.
+///
+/// None for the zero AAGUID, which Apple's passkeys carry.
+///
+/// `webauthn-rs` keeps no AAGUID of a passkey registered without attestation.
+/// This function reads it from the attestation object `webauthn-rs` has
+/// checked, with the CBOR decoder and the authenticator data parser
 /// `webauthn-rs` reads it with.
 fn aaguid(credential: &RegisterPublicKeyCredential) -> Option<Uuid> {
     let object: AttestationObject<'_> =

@@ -1,10 +1,16 @@
-//! Each agent node's Host and shell environments (`crates/backend-host-access/src/access.rs`, `crates/host-interface/src/rpc.rs`). A node's Host is
-//! the conversation's current primary Host, which the host access admits and
-//! lets go at once. A node's environment on it is backend-remote-host's: each of its
-//! jobs runs inside the conversation's host access and is refused once the
-//! conversation's Host is another, each job's command context names the
-//! conversation and the node, and while the environment lives the node's
-//! commands answer its jobs' rpc calls.
+//! Each agent node's Host and shell environments
+//! (`crates/backend-host-access/src/access.rs`,
+//! `crates/host-interface/src/rpc.rs`).
+//!
+//! A node's Host is the conversation's current primary Host, which the host
+//! access admits and lets go at once. A node's environment on it is
+//! backend-remote-host's:
+//!
+//! - Each of its jobs runs inside the conversation's host access and is refused
+//!   once the conversation's Host is another.
+//! - Each job's command context names the conversation and the node.
+//! - While the environment lives, the node's commands answer its jobs' rpc
+//!   calls.
 
 use std::collections::{BTreeSet, HashMap};
 use std::rc::{Rc, Weak};
@@ -55,13 +61,14 @@ impl dyn HostShard + '_ {
         Ok(Rc::new(host))
     }
 
-    /// Runs `job`, a shell job of the conversation's agent started on
-    /// `host`, inside the conversation's host access: it holds
-    /// what the Host needs until the job ended, and it is refused once
-    /// `host` is not the Host the conversation reaches on that device, as
-    /// after a target switch. While the conversation's primary Host is a
-    /// paired device without a live runner, the job waits for it as `wait`
-    /// says (`crates/backend-host-access/src/access.rs`).
+    /// Runs `job`, a shell job of the conversation's agent started on `host`,
+    /// inside the conversation's host access.
+    ///
+    /// The job holds what the Host needs until it ended, and it is refused once
+    /// `host` is not the Host the conversation reaches on that device, as after
+    /// a target switch. While the conversation's primary Host is a paired
+    /// device without a live runner, the job waits for it as `wait` says
+    /// (`crates/backend-host-access/src/access.rs`).
     pub async fn run_job(
         &self,
         id: &ConversationId,
@@ -249,11 +256,12 @@ impl ShowWait for Shown<'_> {
 }
 
 /// Keeps what each job's commands leave when they end, before they read as
-/// ended, as blobs of the conversation owner's: the copies of their edits
-/// (`crates/agent-store/src/media.rs`), read from the job's Host inside its
-/// host access, and their whole outputs, each with its record in the
-/// conversation's database
-/// (`crates/backend-database/src/command_outputs.rs`).
+/// ended, as blobs of the conversation owner's:
+///
+/// - The copies of their edits (`crates/agent-store/src/media.rs`), read from
+///   the job's Host inside its host access.
+/// - Their whole outputs, each with its record in the conversation's database
+///   (`crates/backend-database/src/command_outputs.rs`).
 struct Keeper {
     conversation: ConversationId,
     /// The node whose commands these are.
@@ -268,12 +276,13 @@ struct Keeper {
 }
 
 impl Keeper {
-    /// Records `command`, which runs as the job `job`, and while `unsent`
-    /// waits to start: the job first, by its device, so a runner's hello
-    /// finds its conversation, then the command in the conversation's
-    /// database (`crates/backend-database/src/command_outputs.rs`). A
-    /// command recorded as waiting is recorded again as sent once its job
-    /// starts.
+    /// Records `command`, which runs as the job `job`, and while `unsent` waits
+    /// to start.
+    ///
+    /// It records the job first, by its device, so a runner's hello finds its
+    /// conversation, then the command in the conversation's database
+    /// (`crates/backend-database/src/command_outputs.rs`). A command recorded
+    /// as waiting is recorded again as sent once its job starts.
     async fn record(&self, command: &CommandId, job: &str, start: &KeptStart, unsent: Option<&UnsentStart>) {
         let indexed = self
             .control

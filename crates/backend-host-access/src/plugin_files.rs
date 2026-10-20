@@ -1,19 +1,26 @@
-//! What the user's plugins reach on a Host: reads of a conversation's primary
-//! Host, or of a command job's Host, in the form that never wakes it, and the
-//! plugins' directories, which each job of the user's installs before it
-//! starts, once per runner connection.
+//! What the user's plugins reach on a Host.
+//!
+//! The module serves two things:
+//!
+//! - Reads of a conversation's primary Host, or of a command job's Host, in the
+//!   form that never wakes it.
+//! - The plugins' directories, which each job of the user's installs before it
+//!   starts, once per runner connection.
 //!
 //! A plugin never writes a Host: it names the directories its user needs and
-//! host access installs them. A directory that exists is complete: the runner
-//! writes it beside the final one, read-only, and renames it into place, so a
-//! crash leaves at most a temporary directory, which the next installation
-//! removes. The same installation removes the plugin's directories the user's
-//! set no longer names; a command still reading one fails as with any file
-//! removed underneath it, and the model was already told the new paths. A new
-//! connection checks again, so a Cloud's new boot is covered and a directory
-//! the user deleted by hand comes back. A job never waits for a directory it
-//! does not need, and a conversation that runs no job installs nothing, so one
-//! that only talks never wakes its Cloud for a plugin's files.
+//! host access installs them.
+//!
+//! - A directory that exists is complete. The runner writes it beside the final
+//!   one, read-only, and renames it into place, so a crash leaves at most a
+//!   temporary directory, which the next installation removes.
+//! - The same installation removes the plugin's directories the user's set no
+//!   longer names. A command still reading one fails as with any file removed
+//!   underneath it, and the model was already told the new paths.
+//! - A new connection checks again, so a Cloud's new boot is covered and a
+//!   directory the user deleted by hand comes back.
+//! - A job never waits for a directory it does not need, and a conversation
+//!   that runs no job installs nothing, so one that only talks never wakes its
+//!   Cloud for a plugin's files.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
@@ -79,12 +86,13 @@ impl From<HostAccessError> for ReadFilesError {
 }
 
 impl dyn HostShard + '_ {
-    /// Reads `reads` on the conversation's primary Host, admitted as a look:
-    /// a stopped Cloud or an offline device is not running and is not
-    /// woken, the read is no activity, and a transition ends it instead of
-    /// waiting for it. A path the Host cannot read answers as unreadable;
-    /// the rest answer in the order of `reads`, with the Host's number
-    /// before it read them (`crates/runner-host/src/subscriptions.rs`).
+    /// Reads `reads` on the conversation's primary Host, admitted as a look. A
+    /// stopped Cloud or an offline device is not running and is not woken, the
+    /// read is no activity, and a transition ends it instead of waiting for it.
+    ///
+    /// A path the Host cannot read answers as unreadable. The rest answer in
+    /// the order of `reads`, with the Host's number before it read them
+    /// (`crates/runner-host/src/subscriptions.rs`).
     pub async fn read_files(
         &self,
         id: &ConversationId,
@@ -160,11 +168,14 @@ impl dyn HostShard + '_ {
         Ok((access.device, subscriber))
     }
 
-    /// Brings `host`, admitted on `device` for a job, to the user's
-    /// directory sets: once per runner connection and set, it lists every
-    /// plugin's directory on the Host with one request, removes what the
-    /// sets no longer name with one more, and writes each directory that is
-    /// missing with one request each. A failure fails the job.
+    /// Brings `host`, admitted on `device` for a job, to the user's directory
+    /// sets, once per runner connection and set.
+    ///
+    /// 1. It lists every plugin's directory on the Host with one request.
+    /// 2. It removes what the sets no longer name with one more request.
+    /// 3. It writes each directory that is missing with one request each.
+    ///
+    /// A failure fails the job.
     pub(crate) async fn install_directories(
         &self,
         device: &DeviceId,
@@ -299,9 +310,10 @@ async fn install(
 }
 
 /// What each of `reads` finds on `host`, with one request to the Host
-/// (`crates/runner-host/src/lib.rs`): a failure on the Host about a path
-/// answers for the path; any other, such as the connection's end, fails
-/// the read.
+/// (`crates/runner-host/src/lib.rs`).
+///
+/// A failure on the Host about a path answers for the path. Any other failure,
+/// such as the connection's end, fails the read.
 pub async fn look_files(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<HostFile>, ReadAt), HostError> {
     let paths: Vec<LookAt> = reads
         .iter()

@@ -1,8 +1,8 @@
-//! `demi host forward`: lists,
-//! adds and removes the user's port forwards. `list` needs no permission;
-//! `add` and `remove` need Manage Port Forwards (`host.forward`), since a
-//! forward outlives the conversation and lets any program on its listening
-//! Host reach the address it connects to.
+//! `demi host forward`: lists, adds and removes the user's port forwards.
+//!
+//! `list` needs no permission. `add` and `remove` need Manage Port Forwards
+//! (`host.forward`), since a forward outlives the conversation and lets any
+//! program on its listening Host reach the address it connects to.
 
 use std::rc::{Rc, Weak};
 

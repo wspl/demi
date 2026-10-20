@@ -1,36 +1,49 @@
-//! How the user's conversations use the Cloud: as the `target` their files and
-//! commands are on, or `attached` as an extra Host. Every role keeps the Cloud
-//! awake while the conversation works; an idle stop and a reset hold the
-//! conversations whose files are on the Cloud and leave an attached one alone:
-//! it runs on its own target. A conversation's `provider` role names the
-//! Claude Code machine, never the user's Cloud, and the work on that machine
-//! holds it instead. The `provider` role is derived, never stored: a node of
-//! the conversation's tree, the root or any subagent, infers with a provider
-//! that needs a process on a Host, and the provider's placement says which
-//! device that is; the same placement starts the process, so the role and the
-//! process cannot name different machines. The lifecycle knows roles; it does
-//! not know providers.
+//! How the user's conversations use the Cloud.
+//!
+//! A conversation uses it in one of three roles:
+//!
+//! - `target`: its files and commands are on the Cloud.
+//! - `attached`: the Cloud is an extra Host.
+//! - `provider`: the conversation names the Claude Code machine, never the
+//!   user's Cloud, and the work on that machine holds it instead.
+//!
+//! Every role keeps the Cloud awake while the conversation works. An idle stop
+//! and a reset hold the conversations whose files are on the Cloud and leave an
+//! attached one alone: it runs on its own target.
+//!
+//! The `provider` role is derived, never stored. A node of the conversation's
+//! tree, the root or any subagent, infers with a provider that needs a process
+//! on a Host, and the provider's placement says which device that is. The same
+//! placement starts the process, so the role and the process cannot name
+//! different machines. The lifecycle knows roles. It does not know providers.
 //!
 //! A reset reaches a conversation through the `target` and `provider` roles
 //! only, since those conversations cannot work without the device. A
 //! conversation that merely has the Cloud attached keeps running on its own
-//! target: its turn is not interrupted, its streams stay open and it can be
-//! opened, read and written throughout. A command it had running on the Cloud
-//! ends with the device, as on any Host that went away, and its next Cloud
-//! command waits for the reset like any other wake and then runs, never
-//! refused because a reset is running.
+//! target:
+//!
+//! - Its turn is not interrupted.
+//! - Its streams stay open.
+//! - It can be opened, read and written throughout.
+//!
+//! A command it had running on the Cloud ends with the device, as on any Host
+//! that went away. Its next Cloud command waits for the reset like any other
+//! wake and then runs, never refused because a reset is running.
 //!
 //! A held conversation is waiting, not failed. While a transition holds it (a
 //! reset, a target change, an archive), everything the user sends to it waits
 //! for the transition and then proceeds (opening it, a message, a steer, a
-//! rename, a pin, a model change, a Host operation): nothing is answered with
-//! a refusal because the transition is running, so nothing is left for the
-//! user to retry. A wait ends early only when its requester goes away. User
-//! streams, the one-shot user calls admitted like them and file transfers are
-//! the exception: a transition ends them instead of waiting, and the page
-//! reopens its streams by itself afterwards. A request for another
-//! transition (a target change, a detach, an archive) does not wait either: it
-//! answers busy.
+//! rename, a pin, a model change, a Host operation). Nothing is answered with a
+//! refusal because the transition is running, so nothing is left for the user
+//! to retry. A wait ends early only when its requester goes away.
+//!
+//! Two things do not wait:
+//!
+//! - User streams, the one-shot user calls admitted like them and file
+//!   transfers: a transition ends them instead of waiting, and the page reopens
+//!   its streams by itself afterwards.
+//! - A request for another transition (a target change, a detach, an archive):
+//!   it answers busy.
 
 use std::time::Duration;
 
@@ -87,11 +100,15 @@ impl dyn CloudShard {
         Some(held)
     }
 
-    /// Holds the conversations a reset reaches: each one's turn is
-    /// interrupted and its tree held, the file transfers and user streams
-    /// of one whose files are on the Cloud end, and its file gate is
-    /// reserved once the operations holding it ended. Each wait has `hold`;
-    /// a conversation that does not let go within it fails the reset.
+    /// Holds the conversations a reset reaches.
+    ///
+    /// - Each one's turn is interrupted and its tree held.
+    /// - The file transfers and user streams of one whose files are on the
+    ///   Cloud end.
+    /// - Its file gate is reserved once the operations holding it ended.
+    ///
+    /// Each wait has `hold`. A conversation that does not let go within it
+    /// fails the reset.
     pub(crate) async fn hold_uses_for_reset(
         &self,
         uses: &[(ConversationId, Role)],

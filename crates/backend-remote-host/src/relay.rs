@@ -1,11 +1,16 @@
 //! The rpc relay (`crates/host-interface/src/rpc.rs`): a job's `rpc_call`
-//! becomes a handler call in the backend. The relay checks that the call
-//! comes from a live job on this connection, mints the call's standard
-//! output pipe (and its standard input's, when the process has one), and
-//! serves the handler's port: output through the pipe, errors as
-//! `rpc_output`, and live input on demand. The call exits after its
-//! standard output drained, with the handler's code, 130 when the runner
-//! cancelled it, or 1 with the first cause that stopped it.
+//! becomes a handler call in the backend.
+//!
+//! The relay:
+//!
+//! - Checks that the call comes from a live job on this connection.
+//! - Mints the call's standard output pipe, and its standard input's when the
+//!   process has one.
+//! - Serves the handler's port: output through the pipe, errors as
+//!   `rpc_output`, and live input on demand.
+//!
+//! The call exits after its standard output drained, with the handler's code,
+//! 130 when the runner cancelled it, or 1 with the first cause that stopped it.
 
 use std::{
     cell::RefCell,

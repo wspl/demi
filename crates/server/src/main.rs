@@ -1,19 +1,26 @@
-//! `demi-server`: the server's program for its own installation. `upgrade`
-//! fetches a release beside the current one and hands the move to that release's
-//! own `demi-server`; `rollback` hands it to the release the last upgrade
-//! replaced; `status` says where the server is; `runtime` fetches the gVisor
-//! version this release pins; `setup` installs a first release. A move
-//! interrupted at any step is finished by the next command. It downloads through
-//! the artifact library, changes nothing outside the layout (`layout`), never
-//! edits the configuration, touches no data directory but `snapshots/` and a
-//! restore, and asks systemd to start and stop only Demi's two services.
+//! `demi-server`: the server's program for its own installation. Its commands:
+//!
+//! - `upgrade` fetches a release beside the current one and hands the move to
+//!   that release's own `demi-server`.
+//! - `rollback` hands the move to the release the last upgrade replaced.
+//! - `status` says where the server is.
+//! - `runtime` fetches the gVisor version this release pins.
+//! - `setup` installs a first release.
+//!
+//! A move interrupted at any step is finished by the next command. The program
+//! downloads through the artifact library, changes nothing outside the layout
+//! (`layout`), never edits the configuration, touches no data directory but
+//! `snapshots/` and a restore, and asks systemd to start and stop only Demi's
+//! two services.
 //!
 //! A server runs one release at a time, and every part of Demi on it follows
 //! that release. Nothing negotiates versions: the backend, the machine manager,
 //! the web app, the runners and the command programs of a deployment are always
 //! built from one workspace version, so none of the wires between them accepts
-//! another. Only these meet a part of another release, each a contract that a
-//! release never breaks:
+//! another.
+//!
+//! Only these meet a part of another release, each a contract that a release
+//! never breaks:
 //!
 //! - The release's assets: the installed `demi-server` downloads the next release
 //!   by the asset names and the `SHA256SUMS` file of the release workflow, so

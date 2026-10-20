@@ -1,11 +1,14 @@
-//! Files on the user's devices that a message refers to: every referenced
-//! device must be the user's and connected before any is granted; a device that
-//! is not the conversation's primary Host is attached, which the conversation's
-//! nodes hear of at their next context block; and each reference keeps its
-//! device's identity and the shell-quoted `demi host shell --host` command that
-//! reads the file when the agent runs it. A reference is no snapshot of the
-//! file's bytes: a device revoked or disconnected before the read makes the
-//! command fail.
+//! Files on the user's devices that a message refers to.
+//!
+//! - Every referenced device must be the user's and connected before any is
+//!   granted.
+//! - A device that is not the conversation's primary Host is attached, which
+//!   the conversation's nodes hear of at their next context block.
+//! - Each reference keeps its device's identity and the shell-quoted `demi host
+//!   shell --host` command that reads the file when the agent runs it.
+//!
+//! A reference is no snapshot of the file's bytes: a device revoked or
+//! disconnected before the read makes the command fail.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};

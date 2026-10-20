@@ -1,15 +1,19 @@
-//! Pipe records (`crates/runner-protocol/src/wire/pipe_frames.rs`): every byte stream between
-//! processes. A pipe has a source and a sink; an end on a device is that
-//! runner's HTTP exchange with the backend (a `PUT` body or a stream pipe's
-//! WebSocket from the source, `GET` by the sink), an end in this process is
-//! a reader or a writer. The records
-//! live in the user's shard and hold only the byte in flight; the ends are
-//! `Send`, so the edge that serves a device's request copies the bytes.
+//! Pipe records (`crates/runner-protocol/src/wire/pipe_frames.rs`): every byte
+//! stream between processes.
 //!
-//! An end may be named after the pipe is minted: an rpc call's pipes are
-//! minted before its handler decides whether it reads and writes them or
-//! hands them to a job elsewhere. A pipe whose ends have not both arrived
-//! within the arrival window fails.
+//! A pipe has a source and a sink. An end on a device is that runner's HTTP
+//! exchange with the backend: a `PUT` body or a stream pipe's WebSocket from
+//! the source, `GET` by the sink. An end in this process is a reader or a
+//! writer.
+//!
+//! The records live in the user's shard and hold only the byte in flight. The
+//! ends are `Send`, so the edge that serves a device's request copies the
+//! bytes.
+//!
+//! An end may be named after the pipe is minted: an rpc call's pipes are minted
+//! before its handler decides whether it reads and writes them or hands them to
+//! a job elsewhere. A pipe whose ends have not both arrived within the arrival
+//! window fails.
 
 use std::{
     cell::{Cell, RefCell},
@@ -855,13 +859,16 @@ impl DeviceSink {
         let _ = self.reader.core.sink_connection.set(connection);
     }
 
-    /// The response body, which goes out at once, before the source is
-    /// there, in the pipe's frames (`crates/runner-protocol/src/wire/pipe_frames.rs`): its
-    /// bytes in data frames, an idle frame after [`wire::PIPE_IDLE`] without
-    /// a frame, so an edge that ends a silent response keeps it, and its end
-    /// in an end frame, with the cause when it failed. Reading the source to
-    /// its end drains the pipe; a response cut short fails it. A pipe the
-    /// device drained by reporting that it stopped reading
+    /// The response body, which goes out at once, before the source is there,
+    /// in the pipe's frames (`crates/runner-protocol/src/wire/pipe_frames.rs`):
+    ///
+    /// - Its bytes go in data frames.
+    /// - An idle frame follows [`wire::PIPE_IDLE`] without a frame, so an edge
+    ///   that ends a silent response keeps it.
+    /// - Its end goes in an end frame, with the cause when it failed.
+    ///
+    /// Reading the source to its end drains the pipe, and a response cut short
+    /// fails it. A pipe the device drained by reporting that it stopped reading
     /// ([`Pipes::drain_from_device`]) ends the response with a whole end.
     pub fn into_frames(mut self) -> BoxStream<'static, Bytes> {
         self.reader.abandoned = Abandoned::Fail("sink HTTP response disconnected before EOF");

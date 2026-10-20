@@ -1,11 +1,15 @@
 //! The browser and system a request's User-Agent names, which name a
 //! signed-in browser and a passkey no password manager names.
 
-/// The browser and system a User-Agent names, such as `Safari on iPhone`:
-/// their families, in the order that tells them apart (Edge's names Chrome
-/// and Safari too, Chrome's Safari), never their versions; an iPhone and an
-/// iPad by the device, as the product names them. One alone when it names
-/// only one; none when it names neither, and the caller names it.
+/// The browser and system a User-Agent names, such as `Safari on iPhone`.
+///
+/// - The result names their families, never their versions, in the order that
+///   tells them apart: Edge's User-Agent names Chrome and Safari too, and
+///   Chrome's names Safari.
+/// - The result names an iPhone and an iPad by the device, as the product names
+///   them.
+/// - The result is one family alone when the User-Agent names only one, and
+///   none when it names neither. The caller names it then.
 pub fn browser_and_system(user_agent: &str) -> Option<String> {
     const BROWSERS: [(&[&str], &str); 6] = [
         (&["Edg/", "EdgA/", "EdgiOS/"], "Edge"),

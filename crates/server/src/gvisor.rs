@@ -1,13 +1,15 @@
 //! The gVisor runtime on a server: each release's `demi-server` fetches the
 //! runsc version its machine manager pins into `gvisor/<version>/`, checked
 //! against the pinned SHA-512, with only the programs the manager runs.
-//! Another release's version is that release's own `demi-server`'s to fetch
-//! and name, so a setup or a move asks each release's program, and a move
-//! keeps the versions of its two releases. The archive is upstream's release
-//! of the pinned version for the server's architecture. Only what the manager
-//! runs is unpacked: the distribution's other programs, the containerd shim,
-//! the metric server and the memory checkpoint gofer, stay out, and leaving
-//! them halves the size.
+//!
+//! Another release's version is that release's own `demi-server`'s to fetch and
+//! name, so a setup or a move asks each release's program, and a move keeps the
+//! versions of its two releases.
+//!
+//! The archive is upstream's release of the pinned version for the server's
+//! architecture. Only what the manager runs is unpacked: the distribution's
+//! other programs, the containerd shim, the metric server and the memory
+//! checkpoint gofer, stay out, and leaving them halves the size.
 
 use std::{
     collections::HashSet,

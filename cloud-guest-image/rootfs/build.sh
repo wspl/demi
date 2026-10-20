@@ -1,53 +1,66 @@
 #!/usr/bin/env bash
 # Builds a Cloud image release as root on a Linux builder, for the builder's
-# architecture. This script is the first stage:
-# Ubuntu 26.04 from Ubuntu's container root filesystem that ubuntu.json pins,
-# its packages brought up to date, the packages of packages.txt and tini, the
-# guest user `demi` (uid 1000) with passwordless sudo, and the file overlay.
+# architecture.
+#
+# This script is the first stage. It makes, inside the tree:
+#
+# - Ubuntu 26.04 from Ubuntu's container root filesystem that ubuntu.json pins,
+#   with its packages brought up to date.
+# - The packages of packages.txt and tini.
+# - The guest user `demi` (uid 1000) with passwordless sudo.
+# - The file overlay.
+#
+# The steps of this stage drive a package manager inside the tree, which is why
+# a shell script runs them.
+#
 # The second stage is `xtask cloud-image package`, built for this builder: it
-# embeds the runner and the command packages of a server release, taken from
-# the release's files, and publishes the verified root archive and manifest.
-# The steps of this stage drive a package manager inside the tree, which is
-# why a shell script runs them.
+# embeds the runner and the command packages of a server release, taken from the
+# release's files, and publishes the verified root archive and manifest. It runs
+# a Linux build of `xtask` for the builder's architecture, cross-compiled by the
+# developer's machine or, in the release workflow, built by the runner for
+# itself. On a Linux builder the one Cargo selection's `target/debug/xtask`
+# works too, since the release's files are local and it downloads nothing.
 #
-# The container image is checked against a digest pinned in the repository:
-# a digest fetched beside the archive would prove only that the download
-# arrived intact, not that it is the file that was reviewed. The build brings
-# the packages up to date from the archive's mirrors, so an image carries the
-# security updates published by its build, whatever the serial's age; a pin
+# The container image is checked against a digest pinned in the repository: a
+# digest fetched beside the archive would prove only that the download arrived
+# intact, not that it is the file that was reviewed. The build brings the
+# packages up to date from the archive's mirrors, so an image carries the
+# security updates published by its build, whatever the serial's age. A pin
 # moves to a newer serial when Canonical removes the old one, and for a newer
-# Ubuntu release. The tree gets no device credentials, host checkout paths,
-# package-registry credentials, machine ids copied from the builder or
-# temporary package caches. It keeps the setuid files the sandbox profile
-# needs, sudo among them, and extraction must preserve them: they run only
-# inside gVisor. It holds mount points for `/home`, `/run`, `/tmp`, `/dev`,
-# `/proc` and `/dev/shm` and mounts none of them, and service startup is off
-# during package installation, since the sandbox needs no systemd boot or
-# distribution service manager; the entry process and the home initialization
-# belong to the machine manager. The second stage runs a Linux build of `xtask`
-# for the builder's architecture, cross-compiled by the developer's machine
-# or, in the release workflow, built by the runner for itself; on a Linux
-# builder the one Cargo selection's `target/debug/xtask` works too, since the
-# release's files are local and it downloads nothing. The script's downloads,
-# the container image and the packages, go through the builder's HTTPS proxy.
+# Ubuntu release.
 #
-# The image holds the filesystem assembly only, done at build time, with
-# native binaries from the machine's cross tools. No guest kernel, bootloader
-# or hypervisor configuration is here, and neither is runtime OCI policy,
-# mounts, networking, device credentials, lifecycle or backend configuration,
-# which belong to the machine manager and the backend.
+# The tree:
+#
+# - Gets no device credentials, host checkout paths, package-registry
+#   credentials, machine ids copied from the builder or temporary package
+#   caches.
+# - Keeps the setuid files the sandbox profile needs, sudo among them, and
+#   extraction must preserve them: they run only inside gVisor.
+# - Holds mount points for `/home`, `/run`, `/tmp`, `/dev`, `/proc` and
+#   `/dev/shm` and mounts none of them.
+# - Has service startup off during package installation, since the sandbox needs
+#   no systemd boot or distribution service manager. The entry process and the
+#   home initialization belong to the machine manager.
+#
+# The script's downloads, the container image and the packages, go through the
+# builder's HTTPS proxy.
+#
+# The image holds the filesystem assembly only, done at build time, with native
+# binaries from the machine's cross tools. No guest kernel, bootloader or
+# hypervisor configuration is here, and neither is runtime OCI policy, mounts,
+# networking, device credentials, lifecycle or backend configuration, which
+# belong to the machine manager and the backend.
 #
 # Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
 #          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
 #
 # apt inside the tree runs with a cleared environment. A builder that reaches
-# the mirror only through an HTTPS proxy sets https_proxy, which apt there
-# then uses too. A builder whose proxy re-signs TLS passes --ca with the bundle
-# that holds the proxy's authority, which apt there then trusts instead of the
-# tree's own, and so does curl here; the file is gone from the tree when the
-# build ends. curl, which downloads the container image, and xtask run with
-# the caller's environment.
-# The builder needs curl, jq, GNU tar and util-linux.
+# the mirror only through an HTTPS proxy sets https_proxy, which apt there then
+# uses too. A builder whose proxy re-signs TLS passes --ca with the bundle that
+# holds the proxy's authority, which apt there then trusts instead of the tree's
+# own, and so does curl here; the file is gone from the tree when the build
+# ends. curl, which downloads the container image, and xtask run with the
+# caller's environment. The builder needs curl, jq, GNU tar and util-linux.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 xtask=""
@@ -184,13 +197,14 @@ rm -rf "$work/var/lib/apt/lists/"*
 in_chroot userdel --remove ubuntu
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
-# The runner's Host log, its job output and the temporary directory its
-# TMPDIR names live on the system layer, so the log outlives a stop and a
-# wake, and a build's temporary files do not fill /tmp's memory
-# (`crates/runner/src/host_log.rs`, `crates/machine-manager/src/storage/mod.rs`).
-# The runner makes its job root and
-# temporary directory in /var/lib/demi itself, as a Cloud on an earlier base
+# The runner's Host log, its job output and the temporary directory its TMPDIR
+# names live on the system layer, so the log outlives a stop and a wake, and a
+# build's temporary files do not fill /tmp's memory
+# (`crates/runner/src/host_log.rs`,
+# `crates/machine-manager/src/storage/mod.rs`). The runner makes its job root
+# and temporary directory in /var/lib/demi itself, as a Cloud on an earlier base
 # needs.
+#
 # Made inside the tree, where `demi` is a name: uutils' install on the build
 # host refuses a numeric owner.
 in_chroot install -d -m 0700 -o demi -g demi /var/log/demi /var/lib/demi

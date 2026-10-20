@@ -1,16 +1,20 @@
-//! `xtask sweep`: removes the build products no current build uses from
-//! the checkout's Cargo build directory.
+//! `xtask sweep`: removes the build products no current build uses from the
+//! checkout's Cargo build directory.
 //!
 //! Cargo never removes a unit it no longer builds. Every change of
-//! `Cargo.lock`, of a feature or of a flag gives the affected units new
-//! hashes, and the old ones stay: `debug/build/<package>/<hash>/` holds one
-//! unit each (its `fingerprint/` and its `out/`), and
-//! `debug/incremental/<crate>-<id>/` holds one compiled unit's incremental
-//! cache. The sweep asks Cargo for the products of the builds this repository
-//! runs, keeps the unit directories they are in and the incremental caches
-//! those units wrote, and removes every other unit directory and incremental
-//! cache of the `debug` profile. Every other Cargo target directory, such as
-//! the cross builds' under `.cache`, is only reported with its size.
+//! `Cargo.lock`, of a feature or of a flag gives the affected units new hashes,
+//! and the old ones stay:
+//!
+//! - `debug/build/<package>/<hash>/` holds one unit each (its `fingerprint/`
+//!   and its `out/`).
+//! - `debug/incremental/<crate>-<id>/` holds one compiled unit's incremental
+//!   cache.
+//!
+//! The sweep asks Cargo for the products of the builds this repository runs,
+//! keeps the unit directories they are in and the incremental caches those
+//! units wrote, and removes every other unit directory and incremental cache of
+//! the `debug` profile. Every other Cargo target directory, such as the cross
+//! builds' under `.cache`, is only reported with its size.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{File, Metadata};

@@ -1,9 +1,17 @@
-//! A device's jobs, which outlive each connection of its runner (`crates/runner/src/connection/kept.rs`). A connection that ends leaves its jobs waiting for the
-//! next; the next one's hello lists the jobs its runner keeps, and each job
-//! the backend knows goes on there, ends with the status the runner kept, or
-//! is lost with the reason the backend can tell from what it knows of the
-//! device. A job a restarted backend knows only from its records is parked
-//! here until the agent that ran it takes it up again.
+//! A device's jobs, which outlive each connection of its runner
+//! (`crates/runner/src/connection/kept.rs`).
+//!
+//! A connection that ends leaves its jobs waiting for the next. The next one's
+//! hello lists the jobs its runner keeps, and each job the backend knows takes
+//! one of these paths:
+//!
+//! - It goes on there.
+//! - It ends with the status the runner kept.
+//! - It is lost with the reason the backend can tell from what it knows of the
+//!   device.
+//!
+//! A job a restarted backend knows only from its records is parked here until
+//! the agent that ran it takes it up again.
 
 use std::{
     cell::RefCell,
@@ -447,13 +455,18 @@ impl DeviceJobs {
         }
     }
 
-    /// Matches the jobs `hello` lists with those the device knows, for the
-    /// new connection `link`: a job that runs goes on, one that ended waits for its
-    /// exit, which follows the hello's answer, one the runner does not list
-    /// although it is the runner its start went to is sent again, once,
-    /// since that runner lists every job it received, and any other one the
-    /// runner does not list is lost. A job the backend's records name and
-    /// the table does not is parked for the agent that takes it up again.
+    /// Matches the jobs `hello` lists with those the device knows, for the new
+    /// connection `link`:
+    ///
+    /// - A job that runs goes on.
+    /// - A job that ended waits for its exit, which follows the hello's answer.
+    /// - A job the runner does not list, although it is the runner its start
+    ///   went to, is sent again, once, since that runner lists every job it
+    ///   received.
+    /// - Any other job the runner does not list is lost.
+    ///
+    /// A job the backend's records name and the table does not is parked for
+    /// the agent that takes it up again.
     pub(crate) fn adopt(&self, link: &Link, hello: Hello) -> Adoption {
         let mut table = self.0.borrow_mut();
         let previous = table

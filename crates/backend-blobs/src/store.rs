@@ -1,18 +1,29 @@
-//! The deployment's one object store: the data directory, or the S3 bucket
-//! the `DEMI_S3_*` settings name, reached through `object_store` either
-//! way. It holds the users' blobs and the published command packages under
-//! the same keys whichever it is. S3's credentials come from the standard
-//! AWS environment variables, a web identity token, or container or
-//! instance metadata; no profile file is read.
+//! The deployment's one object store: the data directory, or the S3 bucket the
+//! `DEMI_S3_*` settings name, reached through `object_store` either way.
 //!
-//! The two stores are equal: the same keys, the same rules for creating and
-//! reading an object, and the same publication of the command packages. They
-//! differ in where a runner downloads a command artifact from: a file of the
-//! data directory is reachable only through the backend, which serves it
-//! (`GET /native-artifacts/<sha256>`), where an S3 object is reached through
-//! a URL the backend signs. A service other than AWS must support conditional
-//! writes (`If-None-Match: *`), SHA-256 upload checksums, object metadata and
-//! presigned GET requests.
+//! It holds the users' blobs and the published command packages under the same
+//! keys whichever it is. S3's credentials come from the standard AWS
+//! environment variables, a web identity token, or container or instance
+//! metadata. No profile file is read.
+//!
+//! The two stores are equal in:
+//!
+//! - The keys.
+//! - The rules for creating and reading an object.
+//! - The publication of the command packages.
+//!
+//! They differ in where a runner downloads a command artifact from:
+//!
+//! - A file of the data directory is reachable only through the backend, which
+//!   serves it (`GET /native-artifacts/<sha256>`).
+//! - An S3 object is reached through a URL the backend signs.
+//!
+//! A service other than AWS must support:
+//!
+//! - Conditional writes (`If-None-Match: *`).
+//! - SHA-256 upload checksums.
+//! - Object metadata.
+//! - Presigned GET requests.
 
 use std::path::Path;
 use std::sync::Arc;

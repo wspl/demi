@@ -1,6 +1,8 @@
 //! Where a server keeps its releases, its configuration, its units and the
-//! state of an upgrade. Every path lies beneath a root, `/` on a server, so a
-//! test runs a whole upgrade in a directory of its own.
+//! state of an upgrade.
+//!
+//! Every path lies beneath a root, `/` on a server, so a test runs a whole
+//! upgrade in a directory of its own.
 //!
 //! ```text
 //! /opt/demi/
@@ -15,24 +17,31 @@
 //! ```
 //!
 //! Everything of Demi's lies under `/opt/demi`, so an operator finds it in one
-//! place, and under `/opt` for one more reason: SELinux, which the dnf
+//! place.
+//!
+//! It lies under `/opt` for one more reason: SELinux, which the dnf
 //! distributions enforce, lets systemd start a program under `/opt`, whose
 //! files it labels as installed software, and refuses one in a data directory
-//! or a home directory (tried on Fedora 44, a service whose program lay in
-//! `/var/lib/<user>` or `/home/<user>` failed to start until relabeled). The
-//! services write their data under `/opt` as well, since on Fedora 44 in
-//! enforcing mode a service running as a system user wrote into its directory
-//! there, and a root service wrote its own and ran a program from another,
-//! where one directory under `/opt` needs no such rule. A server keeps the current
-//! release and at most one other, the one a rollback returns to, and the gVisor
-//! versions of those two. `current` is replaced atomically by renaming a new
-//! link over it, and both services take their release root from the real path
-//! of their own executable, so they always run one release and the
-//! configuration file never sets `DEMI_RELEASE`. Each release carries its
-//! units, which a move copies into place, so a release that changes how a
-//! service runs brings that change itself. The configuration and the data
-//! directories belong to the installation: no upgrade rewrites them, and a
-//! release that needs a new setting fails its check and names it.
+//! or a home directory. Tried on Fedora 44: a service whose program lay in
+//! `/var/lib/<user>` or `/home/<user>` failed to start until relabeled. The
+//! services write their data under `/opt` as well. On Fedora 44 in enforcing
+//! mode, a service running as a system user wrote into its directory there, and
+//! a root service wrote its own and ran a program from another, where one
+//! directory under `/opt` needs no such rule.
+//!
+//! The releases and the services follow these rules:
+//!
+//! - A server keeps the current release and at most one other, the one a
+//!   rollback returns to, and the gVisor versions of those two.
+//! - `current` is replaced atomically by renaming a new link over it.
+//! - Both services take their release root from the real path of their own
+//!   executable, so they always run one release and the configuration file
+//!   never sets `DEMI_RELEASE`.
+//! - Each release carries its units, which a move copies into place, so a
+//!   release that changes how a service runs brings that change itself.
+//! - The configuration and the data directories belong to the installation: no
+//!   upgrade rewrites them, and a release that needs a new setting fails its
+//!   check and names it.
 
 use std::{
     io,

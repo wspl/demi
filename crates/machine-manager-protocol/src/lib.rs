@@ -1,13 +1,20 @@
-//! The contract between the backend and the Cloud machine manager: the manager
-//! socket's messages and their line codec, the record of a device's stored
-//! images, the Cloud image manifest, and the pinned gVisor runtime. Both ends
-//! link this crate, so each is defined once.
+//! The contract between the backend and the Cloud machine manager. The crate
+//! holds:
+//!
+//! - The manager socket's messages and their line codec.
+//! - The record of a device's stored images.
+//! - The Cloud image manifest.
+//! - The pinned gVisor runtime.
+//!
+//! Both ends link this crate, so each is defined once.
 //!
 //! The backend and the manager of a deployment run one release, so the wire
 //! accepts one version. The manager's first message on every connection is
-//! `hello`, naming the wire version; a backend of another version closes the
+//! `hello`, naming the wire version. A backend of another version closes the
 //! connection unused and fails the call that opened it, its start's `reconcile`
 //! among them, with an error that names both versions.
+//!
+//! The wire follows these rules:
 //!
 //! - A line holds one message, at most 1 MiB. A line that is longer, is not
 //!   valid UTF-8 JSON, names an unknown operation or carries malformed parameters

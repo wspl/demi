@@ -1,16 +1,16 @@
 //! File transfers: a file's bytes between the user's browser and the
-//! conversation's Host, for as long as the user's browser takes. The shard
-//! admits a transfer like any operation and hands the edge the pipe end and a
-//! lease; an archive, a target change or a detach ends the conversation's
-//! open transfers instead of waiting for them. This module also decides what
-//! a download answers from the file's metadata: its version, a conditional
-//! request, and the part a `Range` asks for.
+//! conversation's Host, for as long as the user's browser takes.
+//!
+//! The shard admits a transfer like any operation and hands the edge the pipe
+//! end and a lease. An archive, a target change or a detach ends the
+//! conversation's open transfers instead of waiting for them. This module also
+//! decides what a download answers from the file's metadata: its version, a
+//! conditional request, and the part a `Range` asks for.
 //!
 //! The edge holds the lease while bytes move and drops it when done, which
-//! releases the admission in the shard; when the shard ends the transfer
-//! first, it releases the admission at once without waiting for the edge,
-//! which sees the lease end and stops. A download of `report.txt` from the
-//! Cloud:
+//! releases the admission in the shard. When the shard ends the transfer first,
+//! it releases the admission at once without waiting for the edge, which sees
+//! the lease end and stops. A download of `report.txt` from the Cloud:
 //!
 //! ```text
 //! Web app          Edge                     User's shard         Runner
@@ -24,18 +24,21 @@
 //! ```
 //!
 //! A transfer is host access like any operation, until its last byte is
-//! delivered or the user's browser ends it, so two rules keep a forgotten one
-//! from holding a Cloud awake or a conversation's file gate. The edge, which
-//! alone sees the browser's pace, releases the access and stops the runner's
-//! read or write when the browser accepted or sent no byte for 60 seconds,
-//! counting only time spent waiting for the browser, never for the runner or a
-//! Cloud's wake. A download's response is left without an end, so the user's
-//! browser sees it cut short, never complete, and a paused player asks again
-//! for the range it still needs; an upload's file is left as it was. And a
-//! transition ends the open transfers instead of waiting for them or being
-//! refused by them. Backend shutdown ends every one before it saves and stops
-//! the user's Cloud, so a download left open never keeps a Cloud from being
-//! saved.
+//! delivered or the user's browser ends it. Two rules keep a forgotten one from
+//! holding a Cloud awake or a conversation's file gate:
+//!
+//! - The edge, which alone sees the browser's pace, releases the access and
+//!   stops the runner's read or write when the browser accepted or sent no byte
+//!   for 60 seconds. It counts only time spent waiting for the browser, never
+//!   for the runner or a Cloud's wake. A download's response is left without an
+//!   end, so the user's browser sees it cut short, never complete, and a paused
+//!   player asks again for the range it still needs. An upload's file is left
+//!   as it was.
+//! - A transition ends the open transfers instead of waiting for them or being
+//!   refused by them.
+//!
+//! Backend shutdown ends every transfer before it saves and stops the user's
+//! Cloud, so a download left open never keeps a Cloud from being saved.
 
 use tracing::Instrument as _;
 use std::cell::{Cell, RefCell};
@@ -239,12 +242,13 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// Hands the edge a lease on an admitted transfer. The shard's owner
-    /// task keeps the admission and the transfer's registration until
-    /// `work` ends, the edge drops the lease, or a transition ends the
-    /// transfer; in the last two cases `stop` runs first. The admission goes
-    /// before the registration, so a transition that waits for the transfer
-    /// finds the file gate free.
+    /// Hands the edge a lease on an admitted transfer.
+    ///
+    /// The shard's owner task keeps the admission and the transfer's
+    /// registration until `work` ends, the edge drops the lease, or a
+    /// transition ends the transfer. In the last two cases `stop` runs first.
+    /// The admission goes before the registration, so a transition that waits
+    /// for the transfer finds the file gate free.
     fn lease_transfer(
         &self,
         admitted: Admitted,

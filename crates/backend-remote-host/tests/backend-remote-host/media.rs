@@ -89,12 +89,14 @@ fn line(number: u32) -> String {
 
 /// About 1.5 s here: two jobs, each a login shell.
 ///
-/// Planted defects this catches: a medium written into a stdout that is not
-/// the job's output (the file and the pipe would receive its bytes, and the
-/// substitution would hold them); its line written into the command's stdout
-/// rather than the job's output (the pipe would count it, and the line would
-/// be missing); an alias that does not hand its media to the job; and media
-/// numbered other than in the order they reached the runner.
+/// Planted defects this catches:
+///
+/// - A medium written into a stdout that is not the job's output (the file and
+///   the pipe would receive its bytes, and the substitution would hold them).
+/// - Its line written into the command's stdout rather than the job's output
+///   (the pipe would count it, and the line would be missing).
+/// - An alias that does not hand its media to the job.
+/// - Media numbered other than in the order they reached the runner.
 #[tokio::test(flavor = "local")]
 async fn a_medium_goes_to_the_job_whatever_the_commands_stdout_is() {
     let (fixture, shell) = media_runner().await;
@@ -134,10 +136,12 @@ async fn a_medium_goes_to_the_job_whatever_the_commands_stdout_is() {
 
 /// About 1 s here: three jobs, one of them viewing 80 MiB of media.
 ///
-/// Planted defects this catches: a medium the runner keeps past its count
-/// or its bytes, a medium beyond the bounds that stops its command, and a
-/// check that lets a leaf without `media`, or bytes that are no image, video
-/// or PDF, return one.
+/// Planted defects this catches:
+///
+/// - A medium the runner keeps past its count or its bytes.
+/// - A medium beyond the bounds that stops its command.
+/// - A check that lets a leaf without `media`, or bytes that are no image,
+///   video or PDF, return one.
 #[tokio::test(flavor = "local")]
 async fn media_keep_their_bounds_and_their_checks() {
     let (fixture, shell) = media_runner().await;

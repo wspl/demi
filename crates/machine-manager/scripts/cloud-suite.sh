@@ -1,32 +1,38 @@
 #!/usr/bin/env bash
 # Runs the Cloud suite on a Linux machine, as root, against a manager of its
 # own, never an installed one, with its resource limits off, in a stand-in
-# execution host. The stand-in is the init of a throwaway PID and mount
-# namespace with its own /run and an empty, read-only cgroup root, so nothing
-# in it can create a cgroup and the machine's cgroup hierarchies stay
-# untouched; it shares the machine's network namespace, so the Clouds reach
-# the backend.
+# execution host.
 #
-# After the run, also after a failure or an interruption, the script stops the
-# manager, which saves every Cloud, ends the stand-in, deletes the manager's
-# nftables table, restores IP forwarding, and removes the state directory. It
-# then compares what a run can leave behind with its state before the run, and
-# fails when anything remains.
+# The stand-in is the init of a throwaway PID and mount namespace with its own
+# /run and an empty, read-only cgroup root, so nothing in it can create a cgroup
+# and the machine's cgroup hierarchies stay untouched. It shares the machine's
+# network namespace, so the Clouds reach the backend.
 #
-# By default the manager and demi-server come from the workspace's build and
-# the suite runs with cargo test; build the Cargo selection first, so they
-# are in target/debug:
+# After the run, also after a failure or an interruption, the script:
+#
+# - Stops the manager, which saves every Cloud.
+# - Ends the stand-in.
+# - Deletes the manager's nftables table.
+# - Restores IP forwarding.
+# - Removes the state directory.
+#
+# It then compares what a run can leave behind with its state before the run,
+# and fails when anything remains.
+#
+# By default the manager and demi-server come from the workspace's build and the
+# suite runs with cargo test. Build the Cargo selection first, so they are in
+# target/debug:
+#
 #   cargo build --workspace --all-targets --features demi-runner/test-fixtures
 #
-# --programs names a directory of programs built for this machine elsewhere,
-# as a Mac builds them for its Lima VM (mac-development.md § Machine manager
-# in Lima): demi-machine-manager, demi-server, and the backend's scenario
-# test executable under the name backend-scenarios, which the script runs
-# in place of cargo test, with the same arguments.
+# --programs names a directory of programs built for this machine elsewhere, as
+# a Mac builds them for its Lima VM (mac-development.md § Machine manager in
+# Lima). The directory holds demi-machine-manager, demi-server, and the
+# backend's scenario test executable under the name backend-scenarios, which the
+# script runs in place of cargo test, with the same arguments.
 #
-# --release names the server release root whose image/ the manager imports
-# and whose commands/, the command packages the image embeds, the backend
-# publishes.
+# --release names the server release root whose image/ the manager imports and
+# whose commands/, the command packages the image embeds, the backend publishes.
 #
 # Usage: sudo bash crates/machine-manager/scripts/cloud-suite.sh --release DIR
 #          --work DIR [--programs DIR] [--runsc PATH] [--dns ADDRESSES]

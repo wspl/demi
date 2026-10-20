@@ -1,8 +1,15 @@
-//! An S3-compatible service in memory, for the tests of what reaches the
-//! object store: puts, conditional creation, reads with their metadata,
-//! listings, and deletes of one bucket's objects, one at a time or in a
-//! batch. It checks no signature. A test may hold its puts, to act while a
-//! write is under way.
+//! An S3-compatible service in memory, for the tests of what reaches the object
+//! store.
+//!
+//! It serves these requests on one bucket's objects:
+//!
+//! - Puts, and conditional creation.
+//! - Reads, with their metadata.
+//! - Listings.
+//! - Deletes, one at a time or in a batch.
+//!
+//! It checks no signature. A test may hold its puts, to act while a write is
+//! under way.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};

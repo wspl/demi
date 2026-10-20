@@ -1,10 +1,11 @@
 //! A conversation's file gate (`crates/backend-host-access/src/access.rs`):
 //! every operation on the conversation's Hosts holds a lease of it, and a
-//! transition that needs the conversation's files quiet reserves it. A lease
-//! names the gate's conversation, and a Host handle owned by a conversation
-//! is given out only against one (`Devices::conversation_host`), so no Host
-//! of a conversation exists outside an operation that holds its file gate.
-//! The gates live in the conversations' slots of host access, which takes
+//! transition that needs the conversation's files quiet reserves it.
+//!
+//! A lease names the gate's conversation, and a Host handle owned by a
+//! conversation is given out only against one (`Devices::conversation_host`),
+//! so no Host of a conversation exists outside an operation that holds its file
+//! gate. The gates live in the conversations' slots of host access, which takes
 //! their leases.
 
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};

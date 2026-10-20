@@ -1,12 +1,17 @@
 //! The transitions that end a conversation's target: a target switch, an
-//! archive and a detach. Each runs while the conversation is held for it
-//! (`hold_for_transition`): the idle tree reserved by the shard, the file
-//! transfers, user streams and the one-shot calls admitted like them ended,
-//! and the file gate reserved. It sends the conversation release to the
-//! devices it leaves, then commits, whether the devices took the release or
-//! not (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The
-//! shard's `transition` is the one entry every change of a conversation goes
-//! through.
+//! archive and a detach.
+//!
+//! Each runs while the conversation is held for it (`hold_for_transition`):
+//!
+//! - The shard reserves the idle tree.
+//! - The file transfers, user streams and the one-shot calls admitted like them
+//!   end.
+//! - The file gate is reserved.
+//!
+//! The transition sends the conversation release to the devices it leaves, then
+//! commits, whether the devices took the release or not
+//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The shard's
+//! `transition` is the one entry every change of a conversation goes through.
 //!
 //! A switch, in order:
 //!
@@ -22,22 +27,26 @@
 //! ```
 //!
 //! Concurrent changes cannot both replace the same expected selection: the
-//! loser is refused as busy or conflicting, so work is never dispatched
-//! against an ambiguous target. Turn admission uses the tree's lifecycle
-//! boundary, not the root's displayed phase, which would miss a running
-//! child. A tree whose every running node waits only for its offline primary
-//! device counts as idle: the switch fails those operations, which were
-//! never sent. Commands already running on an offline device do not block a
-//! switch away from it; their jobs hold the file gate on that Host, which the
-//! switch leaves, and their runner keeps them until it is back.
+//! loser is refused as busy or conflicting, so work is never dispatched against
+//! an ambiguous target.
+//!
+//! Turn admission uses the tree's lifecycle boundary, not the root's displayed
+//! phase, which would miss a running child.
+//!
+//! A tree whose every running node waits only for its offline primary device
+//! counts as idle: the switch fails those operations, which were never sent.
+//! Commands already running on an offline device do not block a switch away
+//! from it. Their jobs hold the file gate on that Host, which the switch
+//! leaves, and their runner keeps them until it is back.
 //!
 //! The device a switch leaves stays attached, its commands starting in the
 //! conversation's directory there, and the incoming device leaves the
-//! attachment set; a switch of directory on the same device adds no
-//! duplicate. Files do not move, and a path keeps referring to its original
-//! device. If the database commit fails after the release, the old selection
-//! stays and the conversation browser starts fresh at its next open: the
-//! state of its tabs cannot be rolled back.
+//! attachment set. A switch of directory on the same device adds no duplicate.
+//! Files do not move, and a path keeps referring to its original device.
+//!
+//! If the database commit fails after the release, the old selection stays and
+//! the conversation browser starts fresh at its next open: the state of its
+//! tabs cannot be rolled back.
 
 use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
@@ -256,14 +265,17 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// The held switch's steps 4 to 6 (§ Switch the primary target): the
-    /// device it leaves hears the conversation release and stays attached
-    /// where it was left, the device it reaches is primary alone, and the
-    /// commit selects `to`'s directory against the selection the switch
-    /// started from (§ Resolve a target). A switch that makes the pending
-    /// move `pending` clears it in its commit. Answers where the switch
-    /// went from and to and the execution-context revision it made; none
-    /// when `to` selects what the conversation has.
+    /// The held switch's steps 4 to 6 (§ Switch the primary target):
+    ///
+    /// - The device it leaves hears the conversation release and stays attached
+    ///   where it was left.
+    /// - The device it reaches is primary alone.
+    /// - The commit selects `to`'s directory against the selection the switch
+    ///   started from (§ Resolve a target).
+    ///
+    /// A switch that makes the pending move `pending` clears it in its commit.
+    /// Answers where the switch went from and to and the execution-context
+    /// revision it made, and none when `to` selects what the conversation has.
     pub async fn switch_target(
         &self,
         expected: &ConversationRecord,

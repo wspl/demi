@@ -1,22 +1,33 @@
-//! The Cloud image manifest: what a base archive holds and the build inputs
-//! it was made from. The packaging command validates a manifest with it before
-//! publishing, and the manager validates a release with it before importing.
-//! The SHA-256 of the exact manifest bytes is the base version, so one hash
-//! names one immutable build.
+//! The Cloud image manifest: what a base archive holds and the build inputs it
+//! was made from.
 //!
-//! The archive is a prepared root filesystem, not an OCI runtime
-//! configuration: the manager generates each boot's bundle, and image content
-//! cannot select runtime flags, privileged mounts, cgroups, network exceptions
-//! or credentials. What the manager relies on in a base (the `demi` user,
-//! init, the runner's directories and `/opt/demi` as the place of Demi's
-//! programs) is the base's format, which `formatVersion` names; a release that
-//! changes any of it changes the format. The manager boots every base whose
-//! format it supports, and a release that ends the support for one resets each
-//! Cloud on it to the configured base at its next wake, keeping its home. The
-//! embedded artifacts' identities must match the backend's selected releases,
-//! or the runner downloads each mismatch on the first command after every wake
-//! and reset; since the image and the backend come from one server release,
-//! they match.
+//! The packaging command validates a manifest with it before publishing, and
+//! the manager validates a release with it before importing. The SHA-256 of the
+//! exact manifest bytes is the base version, so one hash names one immutable
+//! build.
+//!
+//! The archive is a prepared root filesystem, not an OCI runtime configuration:
+//! the manager generates each boot's bundle, and image content cannot select
+//! runtime flags, privileged mounts, cgroups, network exceptions or
+//! credentials.
+//!
+//! What the manager relies on in a base is the base's format, which
+//! `formatVersion` names:
+//!
+//! - The `demi` user.
+//! - Init.
+//! - The runner's directories.
+//! - `/opt/demi` as the place of Demi's programs.
+//!
+//! A release that changes any of it changes the format. The manager boots every
+//! base whose format it supports, and a release that ends the support for one
+//! resets each Cloud on it to the configured base at its next wake, keeping its
+//! home.
+//!
+//! The embedded artifacts' identities must match the backend's selected
+//! releases, or the runner downloads each mismatch on the first command after
+//! every wake and reset. Since the image and the backend come from one server
+//! release, they match.
 
 use std::collections::BTreeMap;
 
@@ -181,9 +192,9 @@ impl CloudImageManifest {
     }
 
     /// Checks the manifest's values and that its runner speaks this build's
-    /// protocols, then that its runner release names the
-    /// embedded runner and that each command package's artifact for the
-    /// image's target is embedded under its content-addressed path.
+    /// protocols. Then checks that its runner release names the embedded runner
+    /// and that each command package's artifact for the image's target is
+    /// embedded under its content-addressed path.
     pub fn validate(&self) -> Result<(), ManifestError> {
         garde::Validate::validate(self)
             .map_err(|report| ManifestError::Invalid(report.to_string().trim_end().to_owned()))?;

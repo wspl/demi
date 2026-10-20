@@ -1,19 +1,26 @@
 //! What the backend keeps of a Host's project files
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`): for each Host
-//! and directory a loaded conversation uses, one search through the
-//! conversation's host access in the form that never wakes a Host, kept current
-//! by the runner's file watch (`crates/runner-host/src/subscriptions.rs`). A
-//! request takes what is held: only the first search of a directory holds it,
-//! for at most [`FIRST_SEARCH_HOLD`].
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
 //!
-//! For example, a conversation in `~/app` asks for its instruction files
-//! before its first request: the search starts, and the request waits until
-//! it answers or 5 seconds pass. The search subscribes to each file it read
-//! or would read; when the user edits `~/app/AGENTS.md`, the runner says so
-//! and the search runs again in the background, so the next request takes
-//! the new text without asking the Host. A Host that comes online again is
-//! searched again, and when no loaded conversation uses `~/app` on that Host
-//! any longer, its subscriptions end.
+//! For each Host and directory a loaded conversation uses, the backend keeps
+//! one search through the conversation's host access, in the form that never
+//! wakes a Host. The runner's file watch keeps the search current
+//! (`crates/runner-host/src/subscriptions.rs`).
+//!
+//! A request takes what is held. Only the first search of a directory holds the
+//! request, for at most [`FIRST_SEARCH_HOLD`].
+//!
+//! For example, a conversation in `~/app` asks for its instruction files before
+//! its first request:
+//!
+//! 1. The search starts, and the request waits until it answers or 5 seconds
+//!    pass.
+//! 2. The search subscribes to each file it read or would read.
+//! 3. When the user edits `~/app/AGENTS.md`, the runner says so and the search
+//!    runs again in the background, so the next request takes the new text
+//!    without asking the Host.
+//! 4. A Host that comes online again is searched again.
+//! 5. When no loaded conversation uses `~/app` on that Host any longer, its
+//!    subscriptions end.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap};
@@ -171,12 +178,16 @@ where
     }
 
     /// What is held for `key` on `device`, the conversation's primary Host.
-    /// A loaded conversation starts keeping it if nobody does yet, and keeps
-    /// it until [`Kept::release`]; one that is not loaded takes what is held,
-    /// or searches once without keeping anything. Only a first search holds
-    /// the call, for at most [`FIRST_SEARCH_HOLD`] from its start; none while
-    /// nothing was found, as on a Host that is not running, and the refusal
-    /// when the last search was refused or failed and nothing is held.
+    ///
+    /// - A loaded conversation starts keeping it if nobody does yet, and keeps
+    ///   it until [`Kept::release`].
+    /// - A conversation that is not loaded takes what is held, or searches once
+    ///   without keeping anything.
+    ///
+    /// Only a first search holds the call, for at most [`FIRST_SEARCH_HOLD`]
+    /// from its start. The answer is none while nothing was found, as on a Host
+    /// that is not running, and the refusal when the last search was refused or
+    /// failed and nothing is held.
     pub async fn get(
         &self,
         conversation: &ConversationId,
@@ -221,11 +232,12 @@ where
         }
     }
 
-    /// Has what `state` holds read at `after` or later: a search on its way
-    /// is waited for, and when what it holds is still from before, one more
-    /// starts, which callers that come meanwhile wait for too. Past
-    /// [`FIRST_SEARCH_HOLD`], or once that search found nothing newer, as on
-    /// a Host that is not running, the caller takes what is held.
+    /// Has what `state` holds read at `after` or later.
+    ///
+    /// A search on its way is waited for, and when what it holds is still from
+    /// before, one more starts, which callers that come meanwhile wait for too.
+    /// Past [`FIRST_SEARCH_HOLD`], or once that search found nothing newer, as
+    /// on a Host that is not running, the caller takes what is held.
     async fn search_after(&self, state: &State<T>, after: &ReadAt) {
         let read_after = || {
             let held = state.held.borrow();

@@ -1,16 +1,22 @@
 //! The `shell` tool's timing on a real runner (`crates/agent-tools/src/lib.rs`,
-//! `crates/agent-session/src/reports.rs`): the calls of one response start
-//! together, every one starts in the working directory whatever the one before
-//! did, an agent message or a command report ends a window and a human steer
-//! does not, Send Now ends one without stopping its command, a command left
-//! running reports every interval and its end, a resident one returns once its
-//! start-up output is quiet and reports only its end, and a subagent stays live
-//! while a command it started runs. The `demi shell` commands run in the
-//! backend, which these scenarios lack: the backend's own scenarios cover them.
+//! `crates/agent-session/src/reports.rs`):
 //!
-//! A command that cannot end until another runs, one that waits for the
-//! file the other makes, shows what runs together without measuring time:
-//! run alone, it outlasts its window.
+//! - The calls of one response start together.
+//! - Every call starts in the working directory whatever the one before did.
+//! - An agent message or a command report ends a window, and a human steer does
+//!   not.
+//! - Send Now ends a window without stopping its command.
+//! - A command left running reports every interval and its end.
+//! - A resident command returns once its start-up output is quiet and reports
+//!   only its end.
+//! - A subagent stays live while a command it started runs.
+//!
+//! The `demi shell` commands run in the backend, which these scenarios lack:
+//! the backend's own scenarios cover them.
+//!
+//! A command that cannot end until another runs, one that waits for the file
+//! the other makes, shows what runs together without measuring time: run alone,
+//! it outlasts its window.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -690,12 +696,14 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
 }
 
 // Under a second: one shell job that views an image as it ends, and a look
-// through the status command that shows the end before the report would
-// join the turn (`crates/agent-tools/src/result.rs`).
+// through the status command that shows the end before the report would join
+// the turn (`crates/agent-tools/src/result.rs`).
 //
-// Planted defects this catches: an end report dropped because a look showed
-// the end first, which loses the media no look attaches; and one that
-// carries the output the look showed again.
+// Planted defects this catches:
+//
+// - An end report dropped because a look showed the end first, which loses the
+//   media no look attaches.
+// - An end report that carries the output the look showed again.
 #[tokio::test(flavor = "local")]
 async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
     within(async {

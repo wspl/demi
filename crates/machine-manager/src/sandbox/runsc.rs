@@ -17,16 +17,23 @@ use crate::{
     tools::{Output, Tool, ToolError, Tools},
 };
 
-/// The runtime profile: systrap, gVisor's own network stack in the slot's
-/// namespace, no temporary root overlay (system writes land in the device's
-/// image), shared file access so the images can be saved while the sandbox
-/// is paused, setuid programs for sudo, and only the sidecar programs
-/// beside runsc: without the strict policy runsc downloads a missing one or
-/// falls back to a deprecated embedded copy, where a Cloud runs only the
-/// programs `demi-server` fetched and checked. The sandbox may connect to the
-/// host's Unix sockets its mounts show, of which there is one: the backend's
-/// runner socket. Shared file access, with no forced private page cache, is a
-/// deliberate persistence choice whose performance must be measured.
+/// The runtime profile:
+///
+/// - systrap.
+/// - gVisor's own network stack in the slot's namespace.
+/// - No temporary root overlay (system writes land in the device's image).
+/// - Shared file access, so the images can be saved while the sandbox is
+///   paused.
+/// - Setuid programs for sudo.
+/// - Only the sidecar programs beside runsc. Without the strict policy runsc
+///   downloads a missing one or falls back to a deprecated embedded copy, where
+///   a Cloud runs only the programs `demi-server` fetched and checked.
+///
+/// The sandbox may connect to the host's Unix sockets its mounts show, of which
+/// there is one: the backend's runner socket.
+///
+/// Shared file access, with no forced private page cache, is a deliberate
+/// persistence choice whose performance must be measured.
 pub const PROFILE_FLAGS: [&str; 9] = [
     "--platform=systrap",
     "--network=sandbox",

@@ -18,11 +18,15 @@ struct Failures {
     forget_at: Instant,
 }
 
-/// Counts failed logins per email address, whether or not an account has
-/// it. Five failures lock the address for a minute, during which even the
-/// right password is refused; a success clears the count. An entry is
-/// forgotten a minute after its last failure, so a spray of addresses holds
-/// memory for a minute each. The count lives in this process's memory.
+/// Counts failed logins per email address, whether or not an account has it.
+///
+/// - Five failures lock the address for a minute. During that minute even the
+///   right password is refused.
+/// - A success clears the count.
+/// - An entry is forgotten a minute after its last failure, so a spray of
+///   addresses holds memory for a minute each.
+///
+/// The count lives in this process's memory.
 pub struct LoginLimiter {
     /// Edge threads share the map; every section is a few map operations and
     /// never awaits.

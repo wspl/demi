@@ -1,8 +1,17 @@
 //! An object store that counts what reaches it, for the scenarios that prove
-//! what the backend reads and writes: each put with its bytes, each read,
-//! each HEAD, the most reads in flight at once, each listing and each
-//! deletion; and that holds its reads while a scenario says so, to stop a
-//! call while it waits for one.
+//! what the backend reads and writes.
+//!
+//! It counts:
+//!
+//! - Each put, with its bytes.
+//! - Each read.
+//! - Each HEAD.
+//! - The most reads in flight at once.
+//! - Each listing.
+//! - Each deletion.
+//!
+//! It also holds its reads while a scenario says so, to stop a call while it
+//! waits for one.
 
 use std::fmt;
 use std::sync::Arc;

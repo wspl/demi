@@ -1,5 +1,8 @@
-//! Where a conversation's work runs (`crates/backend-database/src/selection.rs`): its selection resolved to a device and the directory its work
-//! starts in there, which the control store's one rule owns.
+//! Where a conversation's work runs
+//! (`crates/backend-database/src/selection.rs`): its selection resolved to a
+//! device and the directory its work starts in there.
+//!
+//! The control store's one rule owns the resolution.
 
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_database::{Selection, StorageError};

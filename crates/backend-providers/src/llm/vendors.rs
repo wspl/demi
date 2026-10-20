@@ -1,14 +1,21 @@
-//! The vendors from models.dev:
-//! the vendors whose client package maps to a protocol one of the families
-//! speaks, each vendor's live model list, and the request requirements the
-//! backend applies to a vendor's models.
+//! The vendors from models.dev.
+//!
+//! The module holds:
+//!
+//! - The vendors whose client package maps to a protocol one of the families
+//!   speaks.
+//! - Each vendor's live model list.
+//! - The request requirements the backend applies to a vendor's models.
 //!
 //! A vendor's request requirements are typed settings of the vendor policy,
 //! applied to every model of the vendor and passed to the provider with the
-//! entry's configuration: DeepSeek's Chat Completions needs earlier thinking
-//! replayed as `reasoning_content`, some Responses gateways need replayed
-//! assistant items marked as completed, and every vendor on the Messages API
-//! but Anthropic takes an effort as a token budget.
+//! entry's configuration. Examples:
+//!
+//! - DeepSeek's Chat Completions needs earlier thinking replayed as
+//!   `reasoning_content`.
+//! - Some Responses gateways need replayed assistant items marked as completed.
+//! - Every vendor on the Messages API but Anthropic takes an effort as a token
+//!   budget.
 
 use demi_provider_anthropic_api::AnthropicConfig;
 use demi_provider_common::VendorPolicy;

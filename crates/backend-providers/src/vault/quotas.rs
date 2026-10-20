@@ -1,10 +1,12 @@
-//! Each subscription account's quota snapshot: held in memory by the process that uses the
-//! account and written through to the account's record, so that it outlives
-//! a rebuilt provider and a restart. A write that fails is logged; it costs
-//! at most a later probe. Whether an account can be used is what routes a
-//! request, so the pages are told when it changes: a snapshot written, an
-//! account marked used up, and the moment either lets the account be used
-//! again.
+//! Each subscription account's quota snapshot: held in memory by the process
+//! that uses the account and written through to the account's record, so that
+//! it outlives a rebuilt provider and a restart.
+//!
+//! A write that fails is logged. It costs at most a later probe.
+//!
+//! Whether an account can be used is what routes a request, so the pages are
+//! told when it changes: when a snapshot is written, when an account is marked
+//! used up, and at the moment either lets the account be used again.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};

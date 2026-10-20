@@ -1,9 +1,10 @@
-//! The plugins' secrets: values beside the plugin's
-//! JSON values, with the same versioned compare-and-set, sealed at rest by
-//! the product's one owner of sealing with the plugin, the user and the
-//! secret's name as the additional data. The plugin reads only the names
-//! [`SecretName`](demi_plugin_interface::SecretName) allows; the host keeps
-//! a sign-in's tokens under a name outside that rule.
+//! The plugins' secrets: values beside the plugin's JSON values, with the same
+//! versioned compare-and-set.
+//!
+//! The product's one owner of sealing seals them at rest, with the plugin, the
+//! user and the secret's name as the additional data. The plugin reads only the
+//! names [`SecretName`](demi_plugin_interface::SecretName) allows. The host
+//! keeps a sign-in's tokens under a name outside that rule.
 //!
 //! Only the plugin that wrote a secret reads it, and no page call, page state
 //! or log carries one: a page learns only what the plugin's state says about

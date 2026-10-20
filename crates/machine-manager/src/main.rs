@@ -1,30 +1,39 @@
 //! The `demi-machine-manager` executable: the one place the manager is
 //! assembled.
 //!
-//! Before it serves a request the manager validates its configuration and checks
-//! that it runs as root in a private mount namespace, that its programs resolve
-//! and that `runsc` reports exactly the pinned version; takes its two locks (a
-//! second manager on the same state or runtime directory is refused, and the
-//! error names the path); recovers a namespace an earlier manager saved
-//! (`namespace`); with the resource limits on, requires the cgroup v2 CPU,
-//! memory and PID controllers and enables them for the sandboxes, and with them
-//! off touches no cgroup; stops and saves every device left behind
-//! (`recovery`), then migrates its records when they are in an earlier release's
-//! format (`storage::state`); installs the network policy, imports the
-//! configured base unless an upgrade imported it already (`--import`) and
-//! collects the bases nothing needs; pins its own mount namespace; probes with a
-//! small image that storage can be mounted, frozen and copied; and opens its
-//! socket. Readiness goes to systemd last, whose unit has no start timeout, since
-//! a first import or a large recovery can take minutes.
+//! Before it serves a request, the manager does these in order:
+//!
+//! 1. It validates its configuration.
+//! 2. It checks that it runs as root in a private mount namespace, that its
+//!    programs resolve and that `runsc` reports exactly the pinned version.
+//! 3. It takes its two locks. A second manager on the same state or runtime
+//!    directory is refused, and the error names the path.
+//! 4. It recovers a namespace an earlier manager saved (`namespace`).
+//! 5. With the resource limits on, it requires the cgroup v2 CPU, memory and
+//!    PID controllers and enables them for the sandboxes. With them off, it
+//!    touches no cgroup.
+//! 6. It stops and saves every device left behind (`recovery`), then migrates
+//!    its records when they are in an earlier release's format
+//!    (`storage::state`).
+//! 7. It installs the network policy, imports the configured base unless an
+//!    upgrade imported it already (`--import`) and collects the bases nothing
+//!    needs.
+//! 8. It pins its own mount namespace.
+//! 9. It probes with a small image that storage can be mounted, frozen and
+//!    copied.
+//! 10. It opens its socket.
+//!
+//! Readiness goes to systemd last, whose unit has no start timeout, since a
+//! first import or a large recovery can take minutes.
 //!
 //! On SIGTERM the manager stops accepting connections, stops and saves every
 //! device, and then fails the requests still waiting, so none can start a
 //! sandbox after the drain. It releases the namespace handle only if the drain
-//! succeeded; otherwise the service's stop-post command runs the recovery
-//! (`--recover`), limited to fencing and saving, since a stopped service neither
-//! resolves names nor installs firewall rules. Stopping has no timeout either:
-//! the drain and the recovery check and publish filesystems, and killing a check
-//! midway does more harm than waiting.
+//! succeeded. Otherwise the service's stop-post command runs the recovery
+//! (`--recover`), limited to fencing and saving, since a stopped service
+//! neither resolves names nor installs firewall rules. Stopping has no timeout
+//! either: the drain and the recovery check and publish filesystems, and
+//! killing a check midway does more harm than waiting.
 
 #[cfg(not(target_os = "linux"))]
 fn main() -> std::process::ExitCode {

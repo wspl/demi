@@ -1,10 +1,14 @@
-//! The manager's configuration (`setup.md` § Configuration): its command line,
-//! its own `DEMI_MANAGED_*` variables and the backend's settings it shares
-//! (`DEMI_RELEASE`, `DEMI_BACKEND_PUBLIC_URL`, `DEMI_MACHINE_MANAGER_SOCKET`,
-//! `DEMI_BACKEND_RUNNER_SOCKET`),
-//! all read from the deployment's one configuration file and validated at
-//! startup. An invalid or unknown setting stops the manager with an error
-//! that names the variable.
+//! The manager's configuration (`setup.md` § Configuration):
+//!
+//! - Its command line.
+//! - Its own `DEMI_MANAGED_*` variables.
+//! - The backend's settings it shares (`DEMI_RELEASE`,
+//!   `DEMI_BACKEND_PUBLIC_URL`, `DEMI_MACHINE_MANAGER_SOCKET`,
+//!   `DEMI_BACKEND_RUNNER_SOCKET`).
+//!
+//! All are read from the deployment's one configuration file and validated at
+//! startup. An invalid or unknown setting stops the manager with an error that
+//! names the variable.
 
 use std::{
     ffi::OsString,
@@ -184,29 +188,43 @@ pub struct Config {
     pub dns: Vec<Ipv4Addr>,
 }
 
-/// One sandbox's cgroup v2 limits. They are a capability the operator turns on
-/// or off with one setting, `DEMI_MANAGED_LIMITS`: the choice belongs to the
-/// execution host, not to the kind of deployment, so a production host without
-/// the cgroup v2 controllers runs with them off and a development VM that has
-/// them runs with them on. Only the setting decides, and the manager never
-/// falls back from one mode to the other. With them on, each sandbox runs in a
-/// cgroup of its own limited to the CPU budget (a scheduling budget, not a
-/// virtual CPU allocation), the memory limit with no swap, which the sandbox
-/// sees as its total memory, and a host `pids.max`, covering the Sentry and the
-/// Gofer too, and the temporary mounts count toward memory. With them off the
-/// manager creates, changes and reads no cgroup and every `runsc` command adds
-/// `--ignore-cgroups`, without which `runsc` would create one for each sandbox;
-/// the sandbox shares the host's CPUs and memory without a bound and sees the
-/// host's memory as its total, and a CPU budget or memory limit configured
-/// with them off is an error, since nothing would apply it. The log says which
-/// mode runs (a warning at startup with them off, and the readiness line in
-/// both); nothing else reports it, and the backend does not learn it. In both
-/// modes the sandbox process has `RLIMIT_NPROC` and `RLIMIT_NOFILE` limits
-/// that gVisor enforces inside the sandbox, which are not the host's `pids.max`:
-/// gVisor maps no sandbox process to a host PID. `RLIMIT_NPROC` limits
-/// ordinary-user jobs, not sandbox root, so CPU and memory remain the boundary
-/// for sudo workloads, and with the limits off there is none: capacity is
-/// reserved for the host and the manager rather than treating 16 devices as
+/// One sandbox's cgroup v2 limits.
+///
+/// They are a capability the operator turns on or off with one setting,
+/// `DEMI_MANAGED_LIMITS`: the choice belongs to the execution host, not to the
+/// kind of deployment, so a production host without the cgroup v2 controllers
+/// runs with them off and a development VM that has them runs with them on.
+/// Only the setting decides, and the manager never falls back from one mode to
+/// the other.
+///
+/// With them on:
+///
+/// - Each sandbox runs in a cgroup of its own, limited to the CPU budget (a
+///   scheduling budget, not a virtual CPU allocation), the memory limit with no
+///   swap, which the sandbox sees as its total memory, and a host `pids.max`,
+///   covering the Sentry and the Gofer too.
+/// - The temporary mounts count toward memory.
+///
+/// With them off:
+///
+/// - The manager creates, changes and reads no cgroup, and every `runsc`
+///   command adds `--ignore-cgroups`, without which `runsc` would create one
+///   for each sandbox.
+/// - The sandbox shares the host's CPUs and memory without a bound and sees the
+///   host's memory as its total.
+/// - A CPU budget or memory limit configured with them off is an error, since
+///   nothing would apply it.
+///
+/// The log says which mode runs (a warning at startup with them off, and the
+/// readiness line in both). Nothing else reports it, and the backend does not
+/// learn it.
+///
+/// In both modes the sandbox process has `RLIMIT_NPROC` and `RLIMIT_NOFILE`
+/// limits that gVisor enforces inside the sandbox, which are not the host's
+/// `pids.max`: gVisor maps no sandbox process to a host PID. `RLIMIT_NPROC`
+/// limits ordinary-user jobs, not sandbox root, so CPU and memory remain the
+/// boundary for sudo workloads, and with the limits off there is none: capacity
+/// is reserved for the host and the manager rather than treating 16 devices as
 /// safe on every VPS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {

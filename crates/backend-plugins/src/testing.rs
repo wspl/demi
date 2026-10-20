@@ -1,10 +1,13 @@
 //! What the tests of the plugins' outbound requests and OAuth sign-ins run
-//! against: a certificate authority of the test's own, and an OAuth 2.1
-//! authorization server over HTTPS that serves its metadata (RFC 8414),
-//! registers clients (RFC 7591), redirects an authorization with its code,
-//! issues tokens for a code whose PKCE verifier matches (RFC 7636) and for
-//! a refresh token spent once, and revokes tokens (RFC 7009). No real
-//! vendor is reached.
+//! against. No real vendor is reached.
+//!
+//! The module provides:
+//!
+//! - A certificate authority of the test's own.
+//! - An OAuth 2.1 authorization server over HTTPS. It serves its metadata (RFC
+//!   8414), registers clients (RFC 7591), redirects an authorization with its
+//!   code, issues tokens for a code whose PKCE verifier matches (RFC 7636) and
+//!   for a refresh token spent once, and revokes tokens (RFC 7009).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

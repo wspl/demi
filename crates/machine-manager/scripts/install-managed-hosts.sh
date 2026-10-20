@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Installs the Cloud machine manager of a server release as a systemd service on
-# a developer's Linux host (`setup.md` § Storage and service setup): it points
-# /opt/demi/current at the release, as a server's layout does
-# (`crates/server/src/main.rs`), and installs the release's own unit, which runs
-# the manager /opt/demi/current names with the deployment's configuration file.
-# The release, the configuration file, the state directory on its own Linux
-# filesystem and the pinned gVisor version, which `demi-server runtime` fetches,
-# must exist already; the installer reads the state directory from the file and
-# writes no setting.
+# a developer's Linux host (`setup.md` § Storage and service setup):
 #
-# With --root DIR the link and the unit are written beneath DIR for review,
-# the configuration file is read from beneath DIR, and nothing else on the
-# system changes.
+# - It points /opt/demi/current at the release, as a server's layout does
+#   (`crates/server/src/main.rs`).
+# - It installs the release's own unit, which runs the manager /opt/demi/current
+#   names with the deployment's configuration file.
+#
+# These must exist already: the release, the configuration file, the state
+# directory on its own Linux filesystem and the pinned gVisor version, which
+# `demi-server runtime` fetches. The installer reads the state directory from
+# the file and writes no setting.
+#
+# With --root DIR the link and the unit are written beneath DIR for review, the
+# configuration file is read from beneath DIR, and nothing else on the system
+# changes.
 set -euo pipefail
 user=""
 release=""

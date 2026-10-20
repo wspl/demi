@@ -1,11 +1,17 @@
-//! A move of the server to a release (`upgrades.md` § Prepare, § Switch,
-//! § Rollback), which the release moved to carries out with its own
-//! knowledge: its programs check the configuration and import its image,
-//! it knows which databases it migrates and its manager's state format.
-//! Then, with each step in the journal first, both services stop, the
-//! databases are copied or put back, `current` and the units change, and both
-//! start; an upgrade whose services do not start returns to the release it
-//! left.
+//! A move of the server to a release (`upgrades.md` § Prepare, § Switch, §
+//! Rollback), which the release moved to carries out with its own knowledge: it
+//! knows which databases it migrates and its manager's state format.
+//!
+//! The move has these steps. From step 2 on, each step is recorded in the
+//! journal first.
+//!
+//! 1. The release's programs check the configuration and import its image.
+//! 2. Both services stop.
+//! 3. The databases are copied or put back.
+//! 4. `current` and the units change.
+//! 5. Both services start.
+//!
+//! An upgrade whose services do not start returns to the release it left.
 
 use std::{fmt, io, process::Command};
 

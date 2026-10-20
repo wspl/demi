@@ -1,17 +1,21 @@
 //! Provider assembly
 //! (`crates/backend-user-shard/src/conversation/providers.rs`): the provider of
-//! each entry and account, built through the
-//! entry's family from a fresh read of the entry and reused only while the
-//! entry read is unchanged, so a lookup that completes after an edit cannot
-//! keep later requests on a stale configuration.
+//! each entry and account.
+//!
+//! An entry's family builds each provider from a fresh read of the entry. The
+//! provider is reused only while the entry read is unchanged, so a lookup that
+//! completes after an edit cannot keep later requests on a stale configuration.
 //!
 //! A provider stands for one entry and one credential, an API-key entry's key
-//! or one subscription account. The entry's active account is only the default
-//! for inference; a connection test, a usage probe and a refresh name the
-//! account they mean. A provider never changes accounts, so a request's quota
-//! observations land on the account that made it, and a request that outlives a
-//! switch cannot credit the wrong account. Selecting another account builds a
-//! new provider; a running request finishes with its own.
+//! or one subscription account.
+//!
+//! - The entry's active account is only the default for inference. A connection
+//!   test, a usage probe and a refresh name the account they mean.
+//! - A provider never changes accounts, so a request's quota observations land
+//!   on the account that made it, and a request that outlives a switch cannot
+//!   credit the wrong account.
+//! - Selecting another account builds a new provider. A running request
+//!   finishes with its own.
 
 use demi_provider_common::media_catalog::MediaCatalog;
 use std::collections::HashMap;
@@ -145,16 +149,18 @@ impl ProviderAssembly {
     }
 
     /// Sets the Claude Code machine, once, as the backend's shards start
-    /// (`crates/backend-cloud/src/lib.rs`); a second setting is refused
-    /// and the first kept.
+    /// (`crates/backend-cloud/src/lib.rs`).
+    ///
+    /// A second setting is refused and the first kept.
     pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
         if self.machine.set(machine).is_err() {
             tracing::error!("the Claude Code machine was set twice; the first is kept");
         }
     }
 
-    /// Sets the way to the users' devices, once, as the backend's shards
-    /// start; a second setting is refused and the first kept.
+    /// Sets the way to the users' devices, once, as the backend's shards start.
+    ///
+    /// A second setting is refused and the first kept.
     pub fn set_devices(&self, route: Arc<dyn DeviceRoute>) {
         if self.devices.set(route).is_err() {
             tracing::error!("the way to the devices was set twice; the first is kept");
@@ -212,11 +218,15 @@ impl ProviderAssembly {
         &self.vendors
     }
 
-    /// The vendors an entry can be added from, by name: models.dev's, and
-    /// the media catalog's vendors of media alone whose shapes the `media`
-    /// family builds, each with the endpoint the catalog names
-    /// (`crates/backend/src/families.rs`); one whose shapes are not
-    /// built yet, such as Stability AI's, is not offered.
+    /// The vendors an entry can be added from, by name:
+    ///
+    /// - models.dev's vendors.
+    /// - The media catalog's vendors of media alone whose shapes the `media`
+    ///   family builds, each with the endpoint the catalog names
+    ///   (`crates/backend/src/families.rs`).
+    ///
+    /// A media vendor whose shapes are not built yet, such as Stability AI's,
+    /// is not offered.
     pub async fn offered_vendors(&self) -> Result<Vec<Vendor>, ModelsDevError> {
         let mut vendors = self.vendors.vendors().await?;
         for vendor in self.media_vendors() {
@@ -325,12 +335,13 @@ impl ProviderAssembly {
         self.provider_of(entry, Some(account)).await.map(Some)
     }
 
-    /// The entry's accounts in the list's order with their snapshots, for
-    /// a choice under its rotation, which passes over an account its vendor
-    /// signed out (`crates/provider-claude-code/src/account.rs`); with `fresh`,
-    /// a snapshot older than five
-    /// minutes, or none, is read again first by a free probe, and one that
-    /// fails leaves the snapshot as it was (`crates/backend-providers/src/llm/rotation.rs`).
+    /// The entry's accounts in the list's order with their snapshots, for a
+    /// choice under its rotation, which passes over an account its vendor
+    /// signed out (`crates/provider-claude-code/src/account.rs`).
+    ///
+    /// With `fresh`, a snapshot older than five minutes, or none, is read again
+    /// first by a free probe, and one that fails leaves the snapshot as it was
+    /// (`crates/backend-providers/src/llm/rotation.rs`).
     pub async fn candidates(
         &self,
         entry: &ProviderEntry,
@@ -506,11 +517,15 @@ impl ProviderAssembly {
         }
     }
 
-    /// What makes `entry`'s media of `kind` with `provider`, its provider
-    /// for the account a call takes: for a compatible entry, its shape's
-    /// role, the one implementation every endpoint of that shape shares,
-    /// offering the models of the kind its user added; a vendor entry's
-    /// provider's own. None for an entry that makes none of the kind.
+    /// What makes `entry`'s media of `kind` with `provider`, its provider for
+    /// the account a call takes.
+    ///
+    /// - For a compatible entry, it is its shape's role: the one implementation
+    ///   every endpoint of that shape shares, offering the models of the kind
+    ///   its user added.
+    /// - For a vendor entry, it is its provider's own.
+    ///
+    /// The result is none for an entry that makes none of the kind.
     pub fn maker(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, kind: MediaKind) -> Option<MakerOf> {
         let EntryCredential::ApiKey(config) = &entry.credential else {
             return MakerOf::of(provider, kind);

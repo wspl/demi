@@ -1,23 +1,30 @@
-//! Logins: each login runs the
-//! family's login as a task of the backend's, reports what it waits for and
-//! what the user must do, hands it the codes the user pastes, and publishes
-//! the account when it completes. A login into a new entry authenticates
-//! against a pool held in memory and publishes the entry with its account
-//! in one transaction; a login into an existing entry holds the entry until
-//! it ends. The vault alone ends a login the user does not finish: it stops
-//! the family's login once the login's lifetime from its start has passed,
-//! and that moment is the expiry the user is shown. Cancelling a login
-//! stops it at once. A stopped login ends once it has released what it
-//! held, such as the CLI process and directory of a Claude sign-in, and the
-//! cancel, the expiry and shutdown wait for that. Its result is kept for ten
-//! minutes after it ends.
+//! Logins: each login does four things:
 //!
-//! A login is followed, never asked about: each change of its state, its
-//! start, its stage, its link or code, a code handed over or refused, its
-//! end and its drop, is announced on its starter's pages as the `logins`
-//! part. The server log holds its start, each stage with the time the one
-//! before took, and its end, under the request that started it, never a
-//! link's or a code's contents.
+//! - Runs the family's login as a task of the backend's.
+//! - Reports what it waits for and what the user must do.
+//! - Hands the family's login the codes the user pastes.
+//! - Publishes the account when it completes.
+//!
+//! A login into a new entry authenticates against a pool held in memory and
+//! publishes the entry with its account in one transaction. A login into an
+//! existing entry holds the entry until it ends.
+//!
+//! The vault alone ends a login the user does not finish. It stops the family's
+//! login once the login's lifetime from its start has passed, and that moment
+//! is the expiry the user is shown.
+//!
+//! Cancelling a login stops it at once. A stopped login ends once it has
+//! released what it held, such as the CLI process and directory of a Claude
+//! sign-in, and the cancel, the expiry and shutdown wait for that. A login's
+//! result is kept for ten minutes after it ends.
+//!
+//! A login is followed, never asked about. Each change of its state is
+//! announced on its starter's pages as the `logins` part: its start, its stage,
+//! its link or code, a code handed over or refused, its end and its drop.
+//!
+//! The server log holds its start, each stage with the time the one before
+//! took, and its end, under the request that started it, never a link's or a
+//! code's contents.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -404,11 +411,12 @@ impl LoginFlows {
         Ok(id)
     }
 
-    /// Hands `code`, which the owner pasted, to the owner's login, which
-    /// waits for one once it has shown its link, and answers its number
-    /// among the codes the login took, counting from one, which a refusal of
-    /// it names; the refusal of an earlier code no longer stands. The code
-    /// is never kept.
+    /// Hands `code`, which the owner pasted, to the owner's login, which waits
+    /// for one once it has shown its link.
+    ///
+    /// Answers its number among the codes the login took, counting from one,
+    /// which a refusal of it names. The refusal of an earlier code no longer
+    /// stands. The code is never kept.
     pub fn submit_code(
         &self,
         id: &LoginId,
@@ -555,11 +563,12 @@ impl LoginFlows {
     }
 
     /// Runs the family's login until it completes, fails, expires or is
-    /// cancelled, and publishes its account; answers the entry and the
-    /// account, or why it ended without one. A login that expires or is
-    /// cancelled is stopped, and its end awaited, so that it has released
-    /// what it held; the entry it held, the provider and the flow are
-    /// released when this returns.
+    /// cancelled, and publishes its account. Answers the entry and the account,
+    /// or why it ended without one.
+    ///
+    /// A login that expires or is cancelled is stopped, and its end awaited, so
+    /// that it has released what it held. The entry it held, the provider and
+    /// the flow are released when this returns.
     async fn attempt(
         self: &Arc<Self>,
         id: &LoginId,
@@ -643,10 +652,11 @@ impl LoginFlows {
         self.announce(&owner);
     }
 
-    /// Stores what the vendor asked the user to do, while the login waits;
-    /// the login still ends when it started to. A refusal of a code before
-    /// the last one the login took is no longer news: the user pasted
-    /// another since.
+    /// Stores what the vendor asked the user to do, while the login waits.
+    ///
+    /// The login still ends when it started to. A refusal of a code before the
+    /// last one the login took is no longer news: the user pasted another
+    /// since.
     fn pending(&self, id: &LoginId, pending: LoginPending) {
         let mut flows = self.lock();
         let Some(flow) = flows.get_mut(id) else {
@@ -697,9 +707,12 @@ impl LoginFlows {
         self.announce(&owner);
     }
 
-    /// Publishes the login's account: a new entry with its staged accounts,
-    /// which a concurrent login of the same family may have won, or the
-    /// existing entry, whose provider and catalog then start afresh.
+    /// Publishes the login's account, as a new entry with its staged accounts
+    /// or into the existing entry.
+    ///
+    /// A concurrent login of the same family may have won the new entry. The
+    /// existing entry's provider and catalog then start afresh.
+    ///
     /// Answers the entry and the account, or why it failed.
     async fn publish(
         &self,

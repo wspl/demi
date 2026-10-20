@@ -1,8 +1,9 @@
-//! A real runner for one device: a [`RunnerProcess`] connected to a backend
-//! end of its own that serves the runner socket and the pipe routes the way
-//! the backend's edge does, a stream pipe's WebSocket included. What reaches the connection, the adoption and
-//! the pipe claims, is handed to a local task that owns the device, as the
-//! edge hands it to the user's shard.
+//! A real runner for one device: a [`RunnerProcess`] connected to a backend end
+//! of its own that serves the runner socket and the pipe routes the way the
+//! backend's edge does, a stream pipe's WebSocket included.
+//!
+//! What reaches the connection, the adoption and the pipe claims, is handed to
+//! a local task that owns the device, as the edge hands it to the user's shard.
 
 use std::{collections::BTreeMap, path::Path, rc::Rc, sync::Arc, time::Duration};
 
