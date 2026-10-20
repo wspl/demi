@@ -1,5 +1,5 @@
 //! The users' subagent settings (`storage.md` § Control records;
-//! `subagents.md` § Profiles, § Limits): each user's Subagents switch and
+//! `crates/agent-server/src/server/tree/profiles.rs`): each user's Subagents switch and
 //! limits, a user with no row having subagents on at the default limits,
 //! and each user's subagent profiles. A write takes values its caller
 //! checked; a profile's name is unique among its user's, which the write
@@ -20,9 +20,10 @@ use super::control::ControlService;
 
 const TABLE: &str = "subagent_profiles";
 
-/// Maximum subagents of a user who never set it (`subagents.md` § Limits);
-/// the control schema's migration gives it to a limit stored as Unlimited
-/// before the number was kept.
+/// Maximum subagents of a user who never set it
+/// (`crates/agent-server/src/server/tree/profiles.rs`); the control schema's
+/// migration gives it to a limit stored as Unlimited before the number was
+/// kept.
 pub(crate) const DEFAULT_MAX_LIVE: NonZeroU32 = NonZeroU32::new(10).expect("10 is not zero");
 /// Maximum depth of a user who never set it; the migration gives it as
 /// Maximum subagents' default.

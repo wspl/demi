@@ -1,13 +1,12 @@
-//! The `shell` tool's timing on a real runner (`shell-tool.md` § Dispatch and
-//! failures, § The window, § Command reports): the calls of one response
-//! start together, every one starts in the working directory whatever the
-//! one before did, an agent message or a command report ends a window and a
-//! human steer does not, Send Now ends one without stopping its command, a
-//! command left running reports every interval and its end, a resident one
-//! returns once its start-up output is quiet and reports only its end, and
-//! a subagent stays live while a command it started runs. The `demi shell`
-//! commands run in the backend, which these scenarios lack: the backend's
-//! own scenarios cover them.
+//! The `shell` tool's timing on a real runner (`crates/agent-tools/src/lib.rs`,
+//! `crates/agent-session/src/reports.rs`): the calls of one response start
+//! together, every one starts in the working directory whatever the one before
+//! did, an agent message or a command report ends a window and a human steer
+//! does not, Send Now ends one without stopping its command, a command left
+//! running reports every interval and its end, a resident one returns once its
+//! start-up output is quiet and reports only its end, and a subagent stays live
+//! while a command it started runs. The `demi shell` commands run in the
+//! backend, which these scenarios lack: the backend's own scenarios cover them.
 //!
 //! A command that cannot end until another runs, one that waits for the
 //! file the other makes, shows what runs together without measuring time:
@@ -634,7 +633,7 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
 // Under a second: one shell job and a look through the status command. The
 // end report is made while the model writes its next step, and the model's
 // `demi shell status --wait` shows the end before the report would join the
-// turn (`shell-tool.md` § Command reports).
+// turn (`crates/agent-session/src/reports.rs`).
 #[tokio::test(flavor = "local")]
 async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
     within(async {
@@ -692,7 +691,7 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
 
 // Under a second: one shell job that views an image as it ends, and a look
 // through the status command that shows the end before the report would
-// join the turn (`shell-tool.md` § What a result attaches).
+// join the turn (`crates/agent-tools/src/result.rs`).
 //
 // Planted defects this catches: an end report dropped because a look showed
 // the end first, which loses the media no look attaches; and one that
@@ -758,8 +757,7 @@ async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
 // About three seconds: three shell jobs, two of whose calls return after two
 // seconds of quiet, and a look through the status command. A look at two
 // commands waits for both; the first one's end report arrives meanwhile and
-// ends no window, since the look shows that end itself (`shell-tool.md`
-// § Command reports).
+// ends no window, since the look shows that end itself (`crates/agent-session/src/reports.rs`).
 #[tokio::test(flavor = "local")]
 async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
     within(async {
@@ -1091,7 +1089,7 @@ async fn a_stop_ends_the_command_a_call_watches_with_its_output_and_leaves_one_a
         )
         .await;
         // The stopped call's result shows how far its command got
-        // (`shell-tool.md` § Interrupted calls).
+        // (`crates/agent-session/src/core.rs`).
         let results: Results = Rc::default();
         for request in &script.requests() {
             record(&results, request);

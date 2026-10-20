@@ -577,7 +577,7 @@ The limits a model offers depend on its window:
   model settings: it applies to every session of the user that infers with
   that model, subagents included, and a subagent profile that names the model
   follows it unless the profile sets a Context of its own
-  ([Profiles](../agent/subagents.md#profiles)). The Context row shows only its options, the full window and
+  (`crates/agent-server/src/server/tree/profiles.rs`). The Context row shows only its options, the full window and
   the limits, and no text about this scope.
 - A stored limit applies only while the model's window offers it. When the
   catalog later reports a window that does not offer it, such as 400,000
@@ -666,7 +666,7 @@ natively. Unknown and unsupported stay distinct, so a surface can say which one
 applies when it explains why a file was not sent. For example,
 `demi file view shot.png` shows the image to the model only when the model
 accepts `png` and its provider carries an image in a tool result
-([Media the model views](../agent/shell-tool.md#what-demi-file-view-shows)). Native media beside a
+(`crates/command-package-file/src/files.rs`). Native media beside a
 message's attachment follows [Attachments](../product/composer.md#attachments).
 After a model switch, the history can hold media the new model does not
 accept; each request replays those as text

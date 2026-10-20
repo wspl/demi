@@ -4,7 +4,7 @@ import { renderMarkdown } from '../../markdown/render'
 import type { MessageFileTarget, MessageFiles } from '../../markdown/types'
 import { blockDirectories, childMessageFiles } from '../working-directory'
 
-// Where a child wrote what it wrote (`subagents.md` § Working directory).
+// Where a child wrote what it wrote (`crates/agent-server/src/node/mod.rs`).
 // Pure, under a millisecond.
 
 const createdAt = '1970-01-01T00:00:00.000Z'

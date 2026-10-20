@@ -5,12 +5,12 @@ import { useMessageRows, type MessageRowsSource } from '../message-rows'
 import { useOpenRuns } from '../open-runs'
 import { createdAt, model, userBlock } from './agent-harness'
 
-// A block brought into view inside a folded run, as a notice's title, a
-// search result or a receipt's sender asks (`shell-tool.md` § Command
-// reports): the run opens and the block's own row is the one shown and
-// marked, never the run's row. The rows are the list's own, built from
-// blocks as the backend stores them; the scroll and the mark are checked in
-// the product. Pure: a few milliseconds.
+// A block brought into view inside a folded run, as a notice's title, a search
+// result or a receipt's sender asks (`crates/agent-session/src/reports.rs`):
+// the run opens and the block's own row is the one shown and marked, never the
+// run's row. The rows are the list's own, built from blocks as the backend
+// stores them; the scroll and the mark are checked in the product. Pure: a few
+// milliseconds.
 
 const call = (id: string, run: string): Block => ({
   type: 'tool_call',

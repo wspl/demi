@@ -1,7 +1,32 @@
-//! A shell tool's result (`shell-tool.md` § Results and previews): the text the
-//! model reads, the media its job viewed and the line about a binary stdout
-//! (`shell-tool.md` § What a result attaches), and the bounded
-//! view the user sees, all from one command status.
+//! A shell tool's result: the text the model reads, the media its job viewed
+//! and the line about a binary stdout, and the bounded view the user sees, all
+//! from one command status.
+//!
+//! The model keeps its own place in each command's output and a result shows
+//! the output since its last look; what the pages are sent never moves it. A
+//! result is cut once, where it is made, by one rule for every model, so replay
+//! sends it unchanged. `idleMs` counts from the last time the output grew, also
+//! beyond the first 8 KiB the backend holds (the runner reports such growth
+//! within seconds), so a build that logged a second ago is not taken for a hung
+//! one. A script that has ended while a background task keeps its command
+//! running says so, since a model that started `nohup server &` took such a
+//! command for a hang.
+//!
+//! Media reach the model only in the result that reports the job's end, the
+//! `shell` result or the end report, so each medium is attached once and a
+//! job's media arrive together in order; a `demi shell status` that shows the
+//! end attaches nothing, and the end report then still comes carrying the media
+//! alone. The limits on what a result attaches exist so that a request stays
+//! small and every provider takes it: one step's result is a small part of a
+//! request, the media's base64 takes at most half of the model's body limit to
+//! leave room for the history, and a medium that does not fit is skipped while
+//! a later, smaller one may still be attached. A line about a medium says it
+//! was shown to the model, never attached, which the model would read as
+//! delivered to the user. The runner keeps media apart from the output, so no
+//! cut of the output touches them. When the job ends the backend stores each
+//! medium the result attaches as a blob before the result reports the end, and
+//! stores none it does not attach: the model views the file again when it needs
+//! it.
 
 use std::sync::Arc;
 
@@ -34,7 +59,7 @@ const NEWEST_LINES: u64 = 50;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Look<'a> {
     /// The line it starts with, such as the one that says the interval
-    /// asked for was outside the bounds (`shell-tool.md` § Tool input).
+    /// asked for was outside the bounds (`crates/agent-tools/src/lib.rs`).
     pub note: Option<&'a str>,
     /// Why the call returned while its command runs, which its result says.
     pub moved: Option<Moved>,
@@ -42,9 +67,9 @@ pub struct Look<'a> {
     /// milliseconds, or only its end when none; not known when the outer
     /// option is none, as for a look at another agent's command.
     pub interval_ms: Option<Option<u32>>,
-    /// The command's Host is unreachable, so its silence is not the
-    /// command's: a look from another Host says so (`shell-tool.md` § The
-    /// `demi shell` commands).
+    /// The command's Host is unreachable, so its silence is not the command's:
+    /// a look from another Host says so
+    /// (`crates/agent-server/src/server/shell_output.rs`).
     pub unreachable: Option<Unreachable>,
 }
 
@@ -55,15 +80,14 @@ pub enum Moved {
     /// The user's send now ended the window (`runtime.md` § Send now).
     SentNow,
     /// The window's time passed, and the command reports every
-    /// `interval_ms` (`shell-tool.md` § Command reports).
+    /// `interval_ms` (`crates/agent-session/src/reports.rs`).
     TimePassed { interval_ms: u32 },
 }
 
 /// The `shell` call's outcome for `status`: its text, the media it attaches
 /// and the lines about them, and its view. `model` is the call's, and its
 /// vendor takes requests within `limits`. A command that exited with a
-/// status other than 0, or was stopped or lost, is an error to the provider
-/// (`shell-tool.md` § Results and previews).
+/// status other than 0, or was stopped or lost, is an error to the provider.
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
@@ -110,7 +134,7 @@ pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
 /// What a look at `command` shows the model from its whole output `whole`,
 /// from the node's own place `seen` in it: the look of a node that does not
 /// hold the command, such as at another agent's command, or at one whose
-/// shells ended (`shell-tool.md` § The `demi shell` commands). The command is
+/// shells ended (`crates/agent-server/src/server/shell_output.rs`). The command is
 /// in `state`, has run `running_ms` and printed nothing for `idle_ms`.
 pub fn whole_look_text(
     command: &CommandId,
@@ -247,7 +271,7 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
 }
 
 /// The line that says where the command is, as the model reads it
-/// (`shell-tool.md` § The `demi shell` commands): running, as far as Demi knows
+/// (`crates/agent-server/src/server/shell_output.rs`): running, as far as Demi knows
 /// while its Host is `unreachable`; exited; stopped; or lost, with why.
 fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String {
     match (state, unreachable) {
@@ -262,10 +286,10 @@ fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String
     }
 }
 
-/// What a command's report carries of `status`'s output (`shell-tool.md`
-/// § Command reports): the output since the node's last look as a result
-/// shows it, within `budget` characters, the lines that name what it leaves
-/// out among them; empty when there is none.
+/// What a command's report carries of `status`'s output
+/// (`crates/agent-session/src/reports.rs`): the output since the node's last
+/// look as a result shows it, within `budget` characters, the lines that name
+/// what it leaves out among them; empty when there is none.
 pub fn report_output(status: &CommandStatus, budget: usize) -> String {
     let text = unseen_output(status);
     let newest = newest_of(status);
@@ -278,7 +302,7 @@ pub fn report_output(status: &CommandStatus, budget: usize) -> String {
 }
 
 /// What the result of a call that something other than its tool ended
-/// shows of the command it watched (`shell-tool.md` § Interrupted calls): its
+/// shows of the command it watched (`crates/agent-session/src/core.rs`): its
 /// output since the node's last look as a report carries it, within
 /// `budget` characters, and the user's view of the call.
 pub fn interrupted_look(status: &CommandStatus, budget: usize) -> (String, ShellToolView) {
@@ -335,7 +359,7 @@ fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budg
 
 /// The next step for a command that runs: it reports to the node as its
 /// interval says, and the `demi shell` commands look at it, answer it and
-/// stop it (`shell-tool.md` § Results and previews).
+/// stop it.
 fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String {
     let reports = match interval_ms {
         Some(Some(interval)) => format!(
@@ -351,8 +375,7 @@ fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String
 }
 
 /// The line that names the background tasks that keep a command running
-/// once its script has ended, and says its stop stops them (`shell-tool.md`
-/// § Results and previews); none while the script runs.
+/// once its script has ended, and says its stop stops them; none while the script runs.
 fn outliving_line(tasks: &[String]) -> Option<String> {
     let quoted: Vec<String> = tasks.iter().map(|task| format!("\"{task}\"")).collect();
     let (last, rest) = quoted.split_last()?;
@@ -558,8 +581,7 @@ fn chars_marker(command: &CommandId, line: u64, from: usize, to: usize) -> Strin
     )
 }
 
-/// The most media one result attaches (`shell-tool.md` § What a result
-/// attaches).
+/// The most media one result attaches.
 const RESULT_MEDIA: usize = 20;
 
 /// What a result has attached so far, against its bounds: at most
@@ -605,8 +627,7 @@ impl Budget {
 /// What the end report of a command whose job viewed `media` attaches, as
 /// the `shell` result would have: the media, by number, while `model`
 /// reads them and they fit the bounds of requests within `limits`, then the
-/// text of the lines about them; nothing when it viewed none (`shell-tool.md`
-/// § What a result attaches).
+/// text of the lines about them; nothing when it viewed none.
 pub async fn report_media(
     media: &[CommandMedium],
     model: &Model,
@@ -619,8 +640,7 @@ pub async fn report_media(
     parts
 }
 
-/// What a result that reports a command's end attaches (`shell-tool.md`
-/// § What a result attaches): the media its job viewed, by number, each
+/// What a result that reports a command's end attaches: the media its job viewed, by number, each
 /// while the model reads it in a tool result and it fits the result's
 /// bounds; and the lines that tell of each one not attached or attached in
 /// another form than it came, and of a binary stdout, which is never shown.
@@ -661,8 +681,7 @@ async fn viewed_medium(
     let entry = model_media_type_for(media_type);
     let kind = entry.map_or("medium", |entry| entry.kind.name());
     // A line says the medium was shown to the model, never attached, which
-    // the model reads as given to the user (`shell-tool.md` § Media the
-    // model views).
+    // the model reads as given to the user (`crates/command-package-file/src/files.rs`).
     let not_attached = |reason: &str| Some(format!("[{kind} {number}: not shown: {reason}]"));
     let bytes = match &medium.bytes {
         Ok(bytes) => bytes,

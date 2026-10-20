@@ -153,7 +153,7 @@ const props = withDefaults(defineProps<{
   readSubagentLatest?: (id: string) => Promise<void>
   /**
    * Whether the page has, or is opening, a session that sends a live
-   * child's transcript once its panel shows it (`subagents.md` § Protocol).
+   * child's transcript once its panel shows it (`crates/agent-server/src/server/tree.rs`).
    */
   subagentsStreamed?: boolean
   /**
@@ -269,8 +269,8 @@ const emit = defineEmits<{
   /** The block `reveal` names is in view. */
   revealed: []
   /**
-   * Bring this block into view and mark it, as a receipt's name asks
-   * (`subagents.md` § Product rendering): the host reads the window around
+   * Bring this block into view and mark it, as a receipt's name asks:
+   * the host reads the window around
    * it and sets `reveal`.
    */
   reveal: [at: TranscriptReveal]
@@ -285,7 +285,7 @@ const emit = defineEmits<{
   /**
    * The children whose transcripts the page shows, the whole set, at first
    * and whenever it changes: the child the Agents window shows, none while
-   * it is closed (`subagents.md` § Protocol).
+   * it is closed (`crates/agent-server/src/server/tree.rs`).
    */
   showSubagents: [ids: string[]]
   /** Compact in a child's context card, in the Agents window: that child's context. */
@@ -559,7 +559,7 @@ provideOriginRevealer(({ node, blockId }) => {
 })
 // A message's link to an agent opens the Agents window on its tab, and
 // leaves it as it is when it shows that tab already; agent 0's brings this
-// transcript into view (`subagents.md` § Linking an agent).
+// transcript into view.
 provideMessageAgents(() => ({
   find: (number) => findAgent(shownAgents.value, number),
   open: (number) => {

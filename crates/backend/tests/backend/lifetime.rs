@@ -213,7 +213,7 @@ fn reports_waiting(harness: &Harness, conversation: &str) -> Vec<serde_json::Val
 /// Waits until the loss of a resident command, `report`, waits in the
 /// saved checkpoint of `conversation`'s root for the next turn, having
 /// opened none, then sends a message: its turn's first request carries the
-/// loss (`shell-tool.md` § Lost commands).
+/// loss (`crates/agent-session/src/reports.rs`).
 pub(crate) async fn told_at_the_next_turn(
     work: &mut Driven<'_>,
     harness: &Harness,
@@ -418,7 +418,7 @@ async fn a_backend_restart_takes_running_commands_up_again_and_they_report_their
 
 /// An upgrade that leaves a conversation idle with its server running loses
 /// the server: the loss wakes nobody, and the next message's turn reads it
-/// first (`shell-tool.md` § Lost commands, `upgrades.md`).
+/// first (`crates/agent-session/src/reports.rs`, `upgrades.md`).
 // Several seconds: a real device pairs, the backend restarts, and the
 // device's runner starts anew as another release's would.
 #[tokio::test]
@@ -617,7 +617,7 @@ async fn a_medium_a_job_returns_while_its_connection_is_away_reaches_its_end_res
     work.socket.until_idle().await;
 
     // Its end report carries the medium, which the next connection
-    // announced again (`shell-tool.md` § What a result attaches).
+    // announced again (`crates/agent-tools/src/result.rs`).
     let report = format!("Command {command} (t1) ended with exit code 0.");
     let message = vendor
         .requests()
@@ -774,7 +774,7 @@ async fn a_loss_the_next_steps_look_shows_is_not_reported_and_another_reports_it
         .await;
 
     // The look shows the loss and the output since the model's last look,
-    // and that loss is not reported again (`shell-tool.md` § Command reports).
+    // and that loss is not reported again (`crates/agent-session/src/reports.rs`).
     let reason = demi_backend_remote_host::RUNNER_RESTARTED;
     let looked = &work.observe(before).received[0];
     assert_eq!(

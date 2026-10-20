@@ -35,7 +35,7 @@ This document owns sessions and turns, their input, the identifiers the
 model sees, and the tree store contract. Related rules have their own homes:
 
 - The session tree, `demi agent` and agent messages:
-  [Subagents](subagents.md).
+  `crates/agent-server/src/server/tree/supervisor.rs`.
 - Compaction, token estimates and truncation:
   [Compaction](compaction.md).
 - Provider failures, retries and recovering an unfinished turn:
@@ -44,7 +44,7 @@ model sees, and the tree store contract. Related rules have their own homes:
   [Conversation Fork](conversation-fork.md).
 - The thread a session runs on: [the user's shard](../architecture/concurrency.md#the-user-shard).
 - The crates that implement it: [Crates](../architecture/crates-and-packages.md#crates).
-- The `shell` tool, its results and command reports: [The shell tool](shell-tool.md).
+- The `shell` tool, its results and command reports: `crates/agent-tools/src/lib.rs`.
 - The transcript, its blocks, replay and versions: [Transcript](transcript.md).
 - What the page draws and the frame protocol: [Rendering](rendering.md).
 
@@ -52,7 +52,7 @@ model sees, and the tree store contract. Related rules have their own homes:
 
 A session belongs to one agent node: the root of a conversation or one of its
 subagents. Every node has the same kind of session, built by the same assembly
-([Runtime](subagents.md#runtime)). A session holds its transcript and command
+(`crates/agent-server/src/node/mod.rs`). A session holds its transcript and command
 state, its model selection with its own provider runtime, the actions waiting
 to run, the pending steers, the command reports not yet written, and one status.
 Sessions run on the user's shard thread, where no other work runs while a
@@ -65,14 +65,14 @@ takes it when it opens, records its revision, and keeps it until it closes,
 so a change reaches a conversation when its tree opens again
 ([A user's plugins](../architecture/plugins.md#a-users-plugins)). The
 profiles and the Subagent switch are asked at each spawn instead, so a change
-reaches the next spawn ([Profiles](subagents.md#profiles)).
+reaches the next spawn (`crates/agent-server/src/server/tree/profiles.rs`).
 
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
-| The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](shell-tool.md#tools)) | The commands of the plugins the user has on, and the `demi host` and `demi attachment` groups ([Plugins](../architecture/plugins.md#commands)) |
+| The command set | The commands every node starts from; the runtime adds its own groups per node (`crates/agent-tools/src/lib.rs`) | The commands of the plugins the user has on, and the `demi host` and `demi attachment` groups ([Plugins](../architecture/plugins.md#commands)) |
 | Instructions | The identity that opens the system prompt ([System prompt](system-prompt.md)) | The product's instructions; a plugin adds only its command groups' index entries ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
-| Subagent settings | Whether subagents are on, their [limits](subagents.md#limits), and the named [subagent profiles](subagents.md#profiles) with whether each is enabled, as data, asked at each spawn and each `demi agent profiles` | The user's current settings, which the user edits in the Subagents section of settings |
-| Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's ([Runtime](subagents.md#runtime)) | The backend's provider assembly ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)) |
+| Subagent settings | Whether subagents are on, their limits (`crates/agent-server/src/server/tree/profiles.rs`), and the named subagent profiles (`crates/agent-server/src/server/tree/profiles.rs`) with whether each is enabled, as data, asked at each spawn and each `demi agent profiles` | The user's current settings, which the user edits in the Subagents section of settings |
+| Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's (`crates/agent-server/src/node/mod.rs`) | The backend's provider assembly ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)) |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](transcript.md#context)) | The conversation's execution context, then each plugin that is a context source, while the user has it on |
 
@@ -187,7 +187,7 @@ A stopped action records the stop itself. It writes all the input waiting
 for its next boundary: the human steers still pending, the agent messages and
 the command reports. It completes each running tool call as an error
 that says why and what became of its command
-([Interrupted calls](shell-tool.md#interrupted-calls)), keeping in the call's `view` the
+(`crates/agent-session/src/core.rs`), keeping in the call's `view` the
 command it started, so the command's later report and notice find their call,
  and appends an `abort` block, the
 stopped marker. An action that has written nothing into the transcript, with the
@@ -207,11 +207,11 @@ A Stop stops only what the node is doing at that moment, and holds nothing
 afterwards, whether or not it wrote a marker:
 
 - The node's subagents run on. Stopping them is a request of its own
-  ([Abort](subagents.md#abort)).
+  (`crates/agent-server/src/server/tree/supervisor.rs`).
 - An agent message that arrives after the Stop wakes the node as it wakes an
-  idle one ([Delivery and scheduling](subagents.md#delivery-and-scheduling)).
+  idle one (`crates/agent-session/src/input.rs`).
 - A command report that arrives after the Stop wakes the node as it wakes an
-  idle one ([Command reports](shell-tool.md#command-reports)).
+  idle one (`crates/agent-session/src/reports.rs`).
 
 For example, the user stops a turn while a subagent is still reading files.
 The turn ends with the stopped marker, the subagent finishes, and its
@@ -227,7 +227,7 @@ Dispose does the following:
 2. Stops the running action as a shutdown. The human steers still pending
    are written, running tool calls complete as interrupted by the shutdown,
    their commands still running
-   ([Interrupted calls](shell-tool.md#interrupted-calls)), and an `error` block with the code
+   (`crates/agent-session/src/core.rs`), and an `error` block with the code
    `interrupted` and the message "The agent session was shut down while this
    turn was running." says why the turn is unfinished. A message whose turn
    has not written its `user` block yet is not interrupted: it goes back to
@@ -252,7 +252,7 @@ turn holds its waiting input until the node's next action.
 Until then its transcript ends with the interruption record, so a later
 restart holds them again. It hands back its queued messages and
 whether a turn was interrupted; the node's lifecycle policy decides what
-happens next ([Persistence](subagents.md#persistence)). A root leaves its interrupted turn to
+happens next (`crates/agent-server/src/server/tree/supervisor.rs`). A root leaves its interrupted turn to
 its client, which the product offers as Resume
 ([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 When the transcript does not yet end with an interruption record, because the
@@ -309,14 +309,14 @@ A session takes three kinds of input:
 - A steer adds input to the running turn at its next continuation boundary.
 - An agent message comes from another agent of the tree. It enters the
   transcript at the same boundaries as a steer and, while nothing runs, opens
-  one continuation; its rules are in [Communication](subagents.md#communication).
+  one continuation; its rules are in Communication (`crates/agent-session/src/input.rs`).
 
 A continuation boundary is a point in a turn where waiting input is written
 into the transcript:
 
 - before each provider request;
 - after the provider's stream ends, unless the turn is about to compact;
-- after each step of a round's tool calls ([Dispatch and failures](shell-tool.md#dispatch-and-failures)),
+- after each step of a round's tool calls (`crates/agent-tools/src/lib.rs`),
   unless the turn is about to compact.
 
 A human steer is written only at the first of these, just before the request
@@ -439,7 +439,7 @@ stays a steer, and a queued message starts a turn of its own.
   - a streaming provider request, or the wait before its retry, is cancelled,
     and what it streamed stays in the transcript, as with [Stop](#stop);
   - each running shell call returns at once with the result its window's end
-    gives ([The window](shell-tool.md#the-window)), preceded in its hint by the line
+    gives (`crates/agent-tools/src/lib.rs`), preceded in its hint by the line
     `[The user sent a message, so command 17 moved to the background. It
     keeps running.]`; its command keeps running;
   - a requested call that has not started completes as the error `Tool call
@@ -471,8 +471,8 @@ that replays it, and a short number is copied without a slip.
 | Identifier | Looks like | Unique within | Given out by |
 |---|---|---|---|
 | A command (`commandId`) | `17` | The conversation | The backend, when the command starts |
-| A command's medium | `2` | Its command | The runner, as the medium reaches it ([Media the model views](shell-tool.md#media-the-model-views)) |
-| An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
+| A command's medium | `2` | Its command | The runner, as the medium reaches it (`crates/command-package-file/src/files.rs`) |
+| An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned (`crates/agent-server/src/server/commands.rs`) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered (`crates/command-package-browser-chrome/src/tabs/registry.rs`) |
 | A simulator `demi mobile` opened | `m2` | The conversation, across its Hosts | The backend, when the device is opened ([Commands](../mobile/mobile.md#commands)) |
@@ -516,7 +516,7 @@ A node's checkpoint has two parts:
 
 Human pending steers are not part of it. Creating,
 closing, reopening and deleting nodes, and delivering subagent completions, are
-atomic commits of the same store ([Persistence](subagents.md#persistence)).
+atomic commits of the same store (`crates/agent-store/src/lib.rs`).
 
 ### What a session holds
 
@@ -636,7 +636,7 @@ where a tool runs; no test calls a real model.
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | The `shell` tool renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
 | A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
-| Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match [Tools](shell-tool.md#tools) |
+| Tool calls | Input refusals, the repeat guard, the cut of a result, handle release and binary stdout verdicts match Tools (`crates/agent-tools/src/lib.rs`) |
 | A loop of three `demi browser screenshot … \| demi file view` | The output holds each screenshot's description and its line `[image n: …]` in order; the result attaches the three images after the output, in that order |
 | `demi browser screenshot t1 > shot.png` | `shot.png` holds the PNG; the output is the screenshot's description and the result attaches nothing |
 | `demi browser screenshot t1 \| convert - -resize 50% png:- \| demi file view` | The result attaches one image, the half-size one |

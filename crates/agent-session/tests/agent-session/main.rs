@@ -1018,7 +1018,7 @@ async fn a_failing_tool_and_an_unknown_tool_complete_their_calls_as_errors_and_t
 }
 
 /// The call's result says the user stopped the turn and the command the
-/// call watched was stopped (`shell-tool.md` § Interrupted calls).
+/// call watched was stopped (`crates/agent-session/src/core.rs`).
 #[tokio::test(flavor = "local")]
 async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answers() {
     let provider = ScriptedRuntime::new([
@@ -1125,7 +1125,7 @@ async fn a_stop_during_a_step_keeps_the_result_of_a_call_that_returned() {
 }
 
 /// A hold of the conversation stops the running call as a Stop does, and
-/// its result names the hold (`shell-tool.md` § Interrupted calls).
+/// its result names the hold (`crates/agent-session/src/core.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_hold_stops_the_running_call_and_its_result_names_the_hold() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![
@@ -1151,7 +1151,7 @@ async fn a_hold_stops_the_running_call_and_its_result_names_the_hold() {
 
 /// An action that fails before its calls ran completes them with the
 /// failure, so the next request replays no call without a result
-/// (`shell-tool.md` § Interrupted calls).
+/// (`crates/agent-session/src/core.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_save_that_fails_before_dispatch_completes_the_calls_with_the_failure() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![

@@ -14,7 +14,7 @@ export type TerminalPhase = ShellViewStatus
 
 /**
  * A command as the page shows it: from the live frames of the
- * conversation's tree (`shell-tool.md` § Live output), or, for one the page has
+ * conversation's tree (`crates/agent-server/src/server/tree/live.rs`), or, for one the page has
  * seen no frame of, from the transcript's stored view.
  */
 export interface TerminalRecord {
@@ -184,7 +184,7 @@ export function followLiveOutput(
     : next
 }
 
-/** A command's live view, as a `shell_output` frame carries it (`shell-tool.md` § Live output). */
+/** A command's live view, as a `shell_output` frame carries it (`crates/agent-server/src/server/tree/live.rs`). */
 export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>['status']
 
 /**

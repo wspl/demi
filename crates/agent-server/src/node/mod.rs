@@ -1,9 +1,28 @@
-//! A node of a conversation's tree and its assembly (`subagents.md`
-//! § Runtime): every node, the root and each subagent, is one kind of node
-//! built by one assembly, which is the one place that creates a node's
-//! session. What differs between nodes is configuration: the instructions,
-//! the model, the commands, the spawn restriction, and the role that sets
-//! the lifecycle policy.
+//! A node of a conversation's tree and its assembly: every node, the root and
+//! each subagent, is one kind of node built by one assembly, the one place that
+//! creates a node's session. Parent and child are a relationship the tree
+//! manages, never a second runtime, so the supervisor asks the assembly for a
+//! node and never builds one itself. What differs between nodes is
+//! configuration (instructions, model and provider runtime, the spawn
+//! restriction, the role that sets the lifecycle policy); the role is never a
+//! depth, and every child has its parent's commands.
+//!
+//! A child starts with an empty transcript: isolation is the point, so Demi
+//! never rewrites or summarizes the parent's conversation into it. Its context
+//! is the system prompt (a profile's instructions added to the product's, never
+//! replacing them; the inherit profile copies its parent's whole), a preamble
+//! naming its identity, and the brief as its first user message, which Demi
+//! neither inspects nor pads. The context sources tell it what they tell the
+//! parent. Its provider runtime is its own, closed with its session; a model
+//! switch changes the root's selection only.
+//!
+//! A node's working directory is on the primary Host. The root's is the
+//! conversation's; a child's starts as its parent's (or `--cwd`) and changes
+//! only by its own `demi agent cwd`. When the conversation moves or its primary
+//! Host changes, every child's directory becomes the conversation's new one,
+//! since an absolute path of the old Host names nothing on the new one. A
+//! child's instructions are read from its own directory; its skills are the
+//! conversation's.
 
 use std::{
     cell::RefCell,
@@ -94,7 +113,7 @@ impl<H: HostResolver> Node<H> {
     /// The node's working directory while the conversation works at `now`:
     /// a child's own while the conversation is where it was when that was
     /// set, the conversation's otherwise, and always the conversation's for
-    /// the root (`subagents.md` § Working directory).
+    /// the root.
     pub(crate) fn directory_at(&self, now: &Placement) -> String {
         self.runtime.directory_at(now)
     }
@@ -102,7 +121,7 @@ impl<H: HostResolver> Node<H> {
     /// `dir` read against the node's working directory while the
     /// conversation works at `now`, when that names a directory on the
     /// primary Host, which the host access reaches; why it does not
-    /// otherwise (`subagents.md` § Working directory).
+    /// otherwise.
     pub(crate) async fn existing_directory(&self, dir: &str, now: &Placement) -> Result<String, String> {
         let base = self.directory_at(now);
         let host = self
@@ -166,13 +185,13 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// `stopper` stops `command`, which one of the node's environments
-    /// holds; its end's report says who (`shell-tool.md` § Command reports).
+    /// holds; its end's report says who (`crates/agent-session/src/reports.rs`).
     pub(crate) fn stopped_by(&self, command: &CommandId, stopper: Stopper) {
         self.runtime.environments.stopped_by(command, stopper);
     }
 
     /// The node's place in the whole output of `command`, which it looks at
-    /// without holding it (`shell-tool.md` § The `demi shell` commands): as
+    /// without holding it (`crates/agent-server/src/server/shell_output.rs`): as
     /// the node keeps it, or, for a running command it has not looked at
     /// since the backend started, as the command's record keeps it.
     pub(crate) async fn place(&self, command: &CommandId) -> Seen {
@@ -215,7 +234,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// The node looks at `commands` until the returned look is dropped: their
-    /// end reports end no window meanwhile (`shell-tool.md` § Command reports).
+    /// end reports end no window meanwhile (`crates/agent-session/src/reports.rs`).
     pub(crate) fn look_at(&self, commands: Vec<CommandId>) -> Looking<'_> {
         self.runtime.environments.look_at(commands)
     }
@@ -235,9 +254,10 @@ impl<H: HostResolver> Node<H> {
         self.runtime.environments.owning(command)
     }
 
-    /// The pages' view of each live command of the node (`shell-tool.md`
-    /// § Live output): each one its shells run, and each one the transcript
-    /// last saw running that they still hold, oldest first.
+    /// The pages' view of each live command of the node
+    /// (`crates/agent-server/src/server/tree/live.rs`): each one its shells
+    /// run, and each one the transcript last saw running that they still hold,
+    /// oldest first.
     pub(crate) fn live_views(&self) -> Vec<PageView> {
         let stored = self.session.with_window(|transcript| stored_running_commands(transcript.blocks()));
         let mut views: Vec<PageView> = self
@@ -255,7 +275,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Takes up the node's command whose job is `job`, as its job's `rpc`
-    /// call asks (`shell-tool.md` § Command reports): none when the node ran
+    /// call asks (`crates/agent-session/src/reports.rs`): none when the node ran
     /// no command the conversation records running with that job, else
     /// why it could not be taken up.
     pub(crate) async fn take_up_job(&self, job: &str) -> Option<Result<(), String>> {
@@ -281,9 +301,9 @@ impl<H: HostResolver> Node<H> {
     /// Takes up the commands that the closed node `closed` ran and the
     /// conversation records running, except those `held` says shells hold
     /// already, in shells made for it with this node's means and telling the
-    /// pages through `feed`; asks each to stop again and hands the shells
-    /// over (`subagents.md` § Abort). A command whose Host cannot be reached
-    /// now stays recorded running for the next restore.
+    /// pages through `feed`; asks each to stop again and hands the shells over
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`). A command whose
+    /// Host cannot be reached now stays recorded running for the next restore.
     pub(crate) async fn take_up_closed(
         &self,
         closed: &NodeRecord,
@@ -325,7 +345,7 @@ impl<H: HostResolver> Node<H> {
     /// Asks the node's commands on every Host to stop and hands over its
     /// shells, which follow the commands until their runners report their
     /// ends; the node's disposal lets none of them go
-    /// (`subagents.md` § Abort).
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`).
     pub(crate) async fn stop_shells(&self) -> Vec<Rc<dyn ShellEnvironment>> {
         self.runtime.environments.stop_all().await
     }
@@ -349,7 +369,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Runs what a restored or new node has yet to run, under its role's
-    /// policy (`subagents.md` § Persistence): a child resumes the turn the
+    /// policy (`crates/agent-server/src/server/tree/supervisor.rs`): a child resumes the turn the
     /// process interrupted, while the root, whose restore recorded the
     /// interruption, leaves the turn to its client; the queued messages run again in
     /// order; waiting input wakes the root, or is written into its last turn
@@ -456,8 +476,7 @@ impl<H: HostResolver> Directory for NodeRuntime<H> {
     }
 }
 
-/// What a child's `working_directory` block tells it (`subagents.md`
-/// § Working directory).
+/// What a child's `working_directory` block tells it.
 fn working_directory_text(cwd: &str) -> String {
     format!(
         "Your working directory is {cwd}: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."
@@ -632,8 +651,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     }
 
     /// The root's is where the conversation works, a child's its own while
-    /// the conversation works where it was set (`subagents.md` § Working
-    /// directory).
+    /// the conversation works where it was set.
     fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {
         Box::pin(async move {
             match self.placement().await {
@@ -868,12 +886,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             if let Some(environment) = self.environments.owning(command)
                 && environment.ended(command).now_or_never().is_none()
             {
-                // A resident command reports only its end, and one whose
-                // Host's connection is away nothing until it is back: the
-                // silence is the connection's (`shell-tool.md` § Command
-                // reports). So does one whose start waits for its Host,
-                // which never ran (`sessions-and-targets.md` § Host
-                // operations).
+                // A resident command reports only its end, and one whose Host's
+                // connection is away nothing until it is back: the silence is
+                // the connection's (`crates/agent-session/src/reports.rs`). So
+                // does one whose start waits for its Host, which never ran
+                // (`sessions-and-targets.md` § Host operations).
                 let interval = interval_ms?;
                 if environment.unreachable(command).is_some() {
                     return None;
@@ -897,7 +914,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             }
             let end = self.end_of(command).await;
             // Its record names it by the title of the call that started it,
-            // whatever became of that call (`shell-tool.md` § Command reports).
+            // whatever became of that call (`crates/agent-session/src/reports.rs`).
             let (title, status) = match self.environments.owning(command) {
                 Some(environment) => (environment.title(command).unwrap_or_default(), None),
                 None => match self.stored(command).await {
@@ -968,9 +985,10 @@ pub(crate) enum Origin {
         /// the process loses before its first save still has it.
         first_message: Option<QueuedMessage>,
     },
-    /// A forked child (`subagents.md` § Fork): its first checkpoint is the
-    /// seed of its source's history, with its first message queued, created
-    /// in one commit and then restored as a stored node is.
+    /// A forked child (`crates/agent-server/src/server/tree/supervisor.rs`):
+    /// its first checkpoint is the seed of its source's history, with its first
+    /// message queued, created in one commit and then restored as a stored node
+    /// is.
     Forked {
         record: NodeRecord,
         seed: ForkSeed,
@@ -1155,7 +1173,7 @@ pub(crate) async fn assemble<H: HostResolver>(
             // A report that waited in the checkpoint for a command whose
             // shells were let go carries what the command's stored output
             // holds since the node's place, as a report of a command no
-            // shells hold does (`shell-tool.md` § Command reports).
+            // shells hold does (`crates/agent-session/src/reports.rs`).
             let state = &mut checkpoint.state;
             for report in state.reports.iter_mut().chain(&mut state.next_turn_reports) {
                 let ended = !matches!(report.event, ReportEvent::Running { .. });

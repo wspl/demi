@@ -1,10 +1,38 @@
-//! The user's subagent settings as a tree reads them (`subagents.md`
-//! § Profiles, § Limits, § Managing profiles, § Workflows of a project):
-//! the checks a spawn makes against the settings and the conversation's
-//! Workflow menu choice as they are at that moment, and `demi agent
-//! profiles`. Nothing here is kept between two reads, so a change in
-//! settings, in the choice or in the workflow's file reaches the next spawn
-//! of every tree.
+//! The user's subagent settings as a tree reads them: the checks a spawn makes
+//! against the settings and the conversation's Workflow menu choice as they are
+//! at that moment, and `demi agent profiles`. Nothing is kept between two
+//! reads, so a change in settings, in the choice or in a workflow's file
+//! reaches the next spawn of every tree, an open one included; a child keeps
+//! what it was spawned with, so a profile changed or deleted afterwards changes
+//! no child.
+//!
+//! A profile never replaces the product's prompt (the child is always Demi) and
+//! never changes the commands. A spawn without `--profile` takes the inherit
+//! profile, which exists whether or not the user has profiles. The reasons
+//! behind the checks, whose order is that of `Tree::spawn_setup`:
+//! - Nothing falls back. A profile whose model settings are missing (entry
+//!   gone, model dropped, effort or tier no longer offered) is unavailable and
+//!   a spawn fails naming what is missing, never on the parent's model or
+//!   another effort or tier, so a spawn never runs on something the user did
+//!   not choose. A disabled profile is the user's choice, so one that is also
+//!   unavailable is reported disabled.
+//! - The switch blocks spawns only. Running children go on, and `send`,
+//!   `abort`, `resume`, `list` and `show` keep working, because they act on
+//!   agents that exist; a resume continues a child the parent already has.
+//! - The limits are the user's across all their conversations, because they
+//!   bound what the user runs at once (tokens, the Hosts' load), not what one
+//!   conversation does. A tree with a live subagent is never evicted, so every
+//!   live one is counted; a limit lowered below what is live ends nothing.
+//! - A workflow chosen for the conversation replaces the user's profiles and
+//!   the switch.
+//! - `profiles list` reads the settings at call time and succeeds while
+//!   subagents are off. They are in neither the system prompt nor a context
+//!   block: the prompt is rendered once per tree and could not follow an edit,
+//!   and a block would put every edit into every conversation's transcript,
+//!   spawning or not.
+//! - `create`, `edit` and `delete` change a setting every conversation reads,
+//!   so each needs the user's permission in each conversation; they go through
+//!   the settings page's path, with its checks and words.
 
 use std::{num::NonZeroU32, rc::Rc};
 
@@ -47,7 +75,7 @@ pub(super) struct Setup {
     pub(super) limits: Limits,
 }
 
-/// The user's two limits on subagents (`subagents.md` § Limits): the live
+/// The user's two limits on subagents: the live
 /// subagents of all the user's conversations together and each tree's
 /// depth, each none for Unlimited.
 #[derive(Debug, Clone, Copy)]
@@ -128,7 +156,7 @@ impl<H: HostResolver> Tree<H> {
         let limits = Limits::of(&settings);
         // The parent's model comes with the parent's Context, for the
         // inherit profile and for a profile without a model of its own
-        // alike (`subagents.md` § Profiles).
+        // alike.
         let parents = || (owner.session().model(), owner.record().context_limit);
         let inherit = || {
             let (model, context_limit) = parents();
@@ -378,7 +406,7 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn profile(&self, name: &str) -> Result<ProfileAnswer, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         // The profiles `list` lists: the chosen workflow's in place of the
-        // user's (`subagents.md` § Workflows of a project).
+        // user's (`crates/backend-user-shard/src/conversation/workflows.rs`).
         if let ConversationProfiles::Workflow(workflow) = self.conversation_profiles(&server).await? {
             let child = workflow
                 .profiles
@@ -396,10 +424,10 @@ impl<H: HostResolver> Tree<H> {
         Ok(answer(&server, profile).await)
     }
 
-    /// `demi agent profiles create`: the profile as stored, and, while
-    /// this conversation runs a workflow, why a spawn here cannot use it:
-    /// a workflow's profiles replace the user's (`subagents.md`
-    /// § Workflows of a project).
+    /// `demi agent profiles create`: the profile as stored, and, while this
+    /// conversation runs a workflow, why a spawn here cannot use it: a
+    /// workflow's profiles replace the user's
+    /// (`crates/backend-user-shard/src/conversation/workflows.rs`).
     pub(crate) async fn create_profile(
         &self,
         draft: NewProfileDraft,

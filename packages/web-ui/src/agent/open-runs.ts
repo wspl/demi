@@ -18,10 +18,10 @@ export interface OpenRuns {
   isOpen: (key: string) => boolean
   setOpen: (key: string, open: boolean) => void
   /**
-   * Where the block `id` shows, opening the run that folds it, as a tree
-   * opens the folders above a search result (`shell-tool.md` § Command
-   * reports); the run stays open after, as the reader's own opening leaves
-   * it. Null when the list does not hold the block.
+   * Where the block `id` shows, opening the run that folds it, as a tree opens
+   * the folders above a search result (`crates/agent-session/src/reports.rs`);
+   * the run stays open after, as the reader's own opening leaves it. Null when
+   * the list does not hold the block.
    */
   reveal: (id: string) => RevealTarget | null
 }

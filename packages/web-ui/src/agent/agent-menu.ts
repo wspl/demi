@@ -11,7 +11,7 @@ export interface MenuAgent {
 }
 
 /**
- * An agent's menu (`subagents.md` § Linking an agent), declared once: a
+ * An agent's menu, declared once: a
  * link to the agent offers Open, which acts as clicking the link does, then
  * Stop Agent, which only an agent that runs takes, and Copy Agent ID, the
  * number the `demi agent` commands take; its tab in the Agents window

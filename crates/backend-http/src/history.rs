@@ -169,7 +169,7 @@ pub(super) fn block_answer(
 
 /// `GET /conversations/:id/subagents`: every subagent the conversation has
 /// had, in the order they started, as its shard lists them
-/// (`subagents.md` § Protocol).
+/// (`crates/agent-server/src/server/tree.rs`).
 pub(super) async fn subagents(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

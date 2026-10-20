@@ -41,7 +41,7 @@ pub struct RunningCommand {
     /// (`rendering.md` § Frame protocol).
     pub script: String,
     /// How often its call asked it to report, or only its end when none
-    /// (`shell-tool.md` § Command reports).
+    /// (`crates/agent-session/src/reports.rs`).
     pub interval_ms: Option<u32>,
     pub started: Timestamp,
     /// How far each node that looked at it has seen its output, which a

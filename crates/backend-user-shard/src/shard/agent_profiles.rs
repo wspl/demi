@@ -1,5 +1,5 @@
 //! What the profile changes of `demi agent profiles` need of the user's
-//! shard (`subagents.md` § Managing profiles): a command's change resolved
+//! shard (`crates/agent-server/src/server/tree/profiles.rs`): a command's change resolved
 //! into the body the settings page sends, written by the same path with the
 //! same checks and the same words; and the user's entries with their
 //! catalogs, which `demi providers` lists too.
@@ -234,7 +234,7 @@ fn named_entry(
 }
 
 /// The first of the user's entries, in their order, whose models the menu
-/// offers `model` of (`subagents.md` § Workflows of a project).
+/// offers `model` of (`crates/backend-user-shard/src/conversation/workflows.rs`).
 pub(crate) fn first_offering(scope: &Scope, model: &str) -> Option<ProviderId> {
     scope.entries.iter().find_map(|entry| {
         let catalog = scope.catalog_of(entry)?;

@@ -49,7 +49,7 @@ pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
 /// git reads them.
 const BINARY_NUL_BYTES: usize = 8 * 1024;
 
-/// Whether `bytes` are binary (`shell-tool.md` § What `demi file view` shows):
+/// Whether `bytes` are binary (`crates/command-package-file/src/files.rs`):
 /// their first 8 KiB hold a NUL byte, as git and GNU diff decide, or they
 /// begin as a media type [`sniff_media_type`] recognizes. Any other bytes are
 /// text, and a byte that is not UTF-8 shows as U+FFFD. It is the one rule for

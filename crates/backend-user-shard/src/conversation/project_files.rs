@@ -1,6 +1,6 @@
 //! What the shard keeps of its conversations' project files
 //! (`instructions.md` § When it is sent, `skills.md` § Project skills,
-//! `subagents.md` § Workflows of a project): the instruction files of each
+//! `crates/backend-user-shard/src/conversation/workflows.rs`): the instruction files of each
 //! node's working directory, the workflows of each conversation's
 //! directory, and each plugin's project search of it, per Host and
 //! directory, kept current by the runner's file watch through host access

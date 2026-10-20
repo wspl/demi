@@ -263,7 +263,7 @@ impl SteerError {
     }
 }
 
-/// Why an agent message was refused (`subagents.md` § Communication).
+/// Why an agent message was refused (`crates/agent-session/src/input.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AgentMessageError {
     #[error("Agent message recipient does not match this session")]
@@ -419,12 +419,13 @@ pub struct Status {
     /// An agent message or a command report waits for a boundary.
     pub input: bool,
     /// A command the session's calls left running still runs, and will
-    /// report to it (`shell-tool.md` § Command reports).
+    /// report to it (`crates/agent-session/src/reports.rs`).
     pub commands: bool,
 }
 
-/// What a session is doing, as a supervisor observes it (`subagents.md`
-/// § `demi agent show`); not the phase that `phase` frames carry.
+/// What a session is doing, as a supervisor observes it
+/// (`crates/agent-server/src/server/tree/supervisor.rs`); not the phase that
+/// `phase` frames carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Execution {
@@ -473,7 +474,7 @@ pub(crate) struct SessionShared {
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
     /// What ends a shell call's window early: one more agent message or
-    /// command report, or the user's send now (`shell-tool.md` § The window).
+    /// command report, or the user's send now (`crates/agent-tools/src/lib.rs`).
     arrivals: watch::Sender<runtime::Arrivals>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
@@ -590,8 +591,8 @@ impl AgentSession {
     /// starts, a root's interrupted turn ends with its interruption record,
     /// which holds what arrives as any failed root's turn does, and a child is
     /// held until its supervisor looks at it or its next action starts
-    /// (`failures-and-recovery.md` § The unfinished turn, `subagents.md`
-    /// § Persistence).
+    /// (`failures-and-recovery.md` § The unfinished turn,
+    /// `crates/agent-server/src/server/tree/supervisor.rs`).
     ///
     /// The session holds the checkpoint's window, and of a checkpoint that
     /// holds its whole path, such as a Fork's seed, the blocks from its last
@@ -1061,7 +1062,7 @@ impl AgentSession {
     }
 
     /// Admits a message from another agent of the tree; it returns once the
-    /// admission is saved (`subagents.md` § Delivery and scheduling).
+    /// admission is saved (`crates/agent-session/src/input.rs`).
     pub async fn accept_agent_message(
         &self,
         message: AgentMessage,
@@ -1292,7 +1293,7 @@ impl AgentSession {
 
     /// Changes how often `command`, which one of the session's calls left
     /// running, reports from now on: every `interval_ms`, or only its end
-    /// when none (`shell-tool.md` § Command reports). False when the session
+    /// when none (`crates/agent-session/src/reports.rs`). False when the session
     /// does not watch it.
     pub fn set_interval(&self, command: &CommandId, interval_ms: Option<u32>) -> bool {
         if !self
@@ -1337,7 +1338,7 @@ impl AgentSession {
     /// Stops the running action and returns once it recorded the stop;
     /// what waits to run stays, and runs once admission lets it.
     /// `hold` names the hold, as the stopped calls' results say it
-    /// (`shell-tool.md` § Interrupted calls), such as "the Cloud is being
+    /// (`crates/agent-session/src/core.rs`), such as "the Cloud is being
     /// reset".
     pub async fn stop_running(&self, hold: &str) {
         let hold: Rc<str> = hold.into();

@@ -336,8 +336,9 @@ pub enum ToolResultContentBlock {
         #[garde(dive)]
         source: ToolMediaSource,
     },
-    /// A PDF document the model viewed (`shell-tool.md` § Media the model
-    /// views), named as its line names it.
+    /// A PDF document the model viewed
+    /// (`crates/command-package-file/src/files.rs`), named as its line names
+    /// it.
     Document {
         #[garde(dive)]
         source: DocumentSource,

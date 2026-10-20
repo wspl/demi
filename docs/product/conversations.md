@@ -201,7 +201,7 @@ such as *Default*. Default follows Settings › Subagents, No Subagents turns
 subagents off for this conversation, and each workflow the project keeps in
 `.demi/workflows/`, a group of subagent profiles with instructions on how to
 use them, is an option of its own, by its name
-([Workflows of a project](../agent/subagents.md#workflows-of-a-project)).
+(`crates/backend-user-shard/src/conversation/workflows.rs`).
 The choice is the conversation's, kept with it as its model is, and applies
 from the next spawn; subagents already running go on as they were started.
 

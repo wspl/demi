@@ -168,8 +168,9 @@ pub struct ConversationSummary {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
-    /// The conversation's Workflow menu choice (`subagents.md` § Workflows
-    /// of a project), kept as its model is.
+    /// The conversation's Workflow menu choice
+    /// (`crates/backend-user-shard/src/conversation/workflows.rs`), kept as its
+    /// model is.
     pub workflow: WorkflowChoice,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,

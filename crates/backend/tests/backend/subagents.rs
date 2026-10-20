@@ -1,4 +1,4 @@
-//! Subagents through a conversation (`subagents.md`, `sessions-and-targets.md`
+//! Subagents through a conversation (`sessions-and-targets.md`
 //! § Host operations, § Switch the primary target, `conversation-fork.md`):
 //! the root and its child each learn the Host they work on before their
 //! first request, once; a child works on the
@@ -200,8 +200,7 @@ pub(crate) fn shell(id: &str, script: &str) -> Answer {
 
 /// The model's shell call `id` running `script` that reports only its end:
 /// the call returns once the command has been quiet for 2 seconds, so a
-/// command that waits moves to the background (`shell-tool.md` § Command
-/// reports).
+/// command that waits moves to the background (`crates/agent-session/src/reports.rs`).
 pub(crate) fn background(id: &str, script: &str) -> Answer {
     vec![
         event::tool_call(
@@ -1033,8 +1032,8 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
     backend.close().await;
 }
 
-/// The Context a profile keeps through its model's changes (`subagents.md`
-/// § Profiles).
+/// The Context a profile keeps through its model's changes
+/// (`crates/agent-server/src/server/tree/profiles.rs`).
 // A backend and a few requests, no conversation: well under a second.
 #[tokio::test]
 async fn a_profiles_context_stays_while_its_model_offers_it_and_goes_with_the_parents_model() {

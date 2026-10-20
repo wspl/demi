@@ -2,7 +2,7 @@ import type { Block } from '@demicodes/protocol'
 import type { MessageFiles } from '../markdown/types'
 
 /**
- * Where an agent wrote what it wrote (`subagents.md` § Working directory):
+ * Where an agent wrote what it wrote (`crates/agent-server/src/node/mod.rs`):
  * the page reads every relative path of a node against that node's
  * directory at the time, so a child's file links, images, file changes and
  * folder open what the child meant. This is the one place that decides it.

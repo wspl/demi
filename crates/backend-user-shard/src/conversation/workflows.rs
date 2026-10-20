@@ -1,13 +1,29 @@
-//! A project's workflows on the conversation's Host (`subagents.md`
-//! § Workflows of a project): `.demi/workflows/*.yaml` of the nearest
-//! directory that has it, from the conversation's working directory up to
-//! the root of its git repository, read through the conversation's host
-//! access, or through device access for a new conversation before its
-//! first message, and parsed with the one parser. The shard keeps each
-//! conversation directory's workflows current with the runner's file watch
+//! A project's workflows on the conversation's Host: `.demi/workflows/*.yaml`
+//! of the nearest directory that has it, from the conversation's working
+//! directory up to the root of its git repository, read through the
+//! conversation's host access, or through device access for a new conversation
+//! before its first message, and parsed with the one parser
+//! (`crates/agent-tools/src/workflow.rs`). The shard keeps each conversation
+//! directory's workflows current with the runner's file watch
 //! (`project_files`), and the spawns, `demi agent workflows`, `demi agent
 //! profiles list`, the Workflow menu and the instructions block take what it
 //! holds.
+//!
+//! Why it is built this way:
+//! - Nothing applies by itself. A repository is often someone else's, so a
+//!   workflow applies only when the user picks it in a conversation's Workflow
+//!   menu, never because a repository holds it.
+//! - A workflow is a regular file of the project. A `.demi` directory, a
+//!   `.demi/workflows` directory or a workflow file that is a link is listed as
+//!   unavailable and never followed, since the Host looks at what each entry is
+//!   before it opens it; so what a workflow says is always what the repository
+//!   holds and what the watch sees.
+//! - A spawn takes the workflow as its file is then, without asking the Host,
+//!   so a slow or stopped Host never holds a spawn; only a directory's first
+//!   read holds them, briefly.
+//! - A chosen workflow that no longer reads is shown as unavailable with why,
+//!   and spawns fail with that reason until the user picks another, rather than
+//!   quietly spawning with other settings.
 
 use demi_agent_tools::{
     ChosenWorkflow, ConversationProfiles, EFFORT_OFF, ListedWorkflow, WORKFLOW_FILE_MAX_BYTES,
@@ -164,8 +180,7 @@ pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
 /// followed: the Host answers a `.demi`, a `.demi/workflows` or a workflow
 /// file that is a link, or that has become one by the time it is read, as
 /// a link, and a `.demi` it cannot read makes that directory's workflows
-/// unavailable rather than looked past (`subagents.md` § Workflows of a
-/// project).
+/// unavailable rather than looked past.
 pub(crate) async fn search_workflows<E, Fut>(
     paths: HostPaths,
     cwd: &str,
@@ -362,7 +377,7 @@ impl Shard {
 
     /// The Workflow menu's list for a new conversation that works in
     /// `directory` of the paired device `device`, before its first message
-    /// gives it a record (`subagents.md` § Workflows of a project): read
+    /// gives it a record: read
     /// through device access, which wakes nothing; none while the device's
     /// runner is not connected. With `after`, the answer is read at that
     /// number or later (`web-api-conversations.md` § Workflows of a

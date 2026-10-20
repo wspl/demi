@@ -35,7 +35,7 @@ web app fetches them when a file is opened.
 What the conversation shows as changed is what the agent changed in its
 working directory, the directory its commands start in: the root's is the
 conversation's, a subagent's its own
-([Working directory](../agent/subagents.md#working-directory)). For example,
+(`crates/agent-server/src/node/mod.rs`). For example,
 the agent works in `~/shop`, writes `/tmp/fix.py`, runs it, edits
 `~/shop/src/cart.ts` and `~/.zshrc`: the pills and the Change view show
 `src/cart.ts` alone. Commits mode reads the same directory
@@ -90,7 +90,7 @@ to `old/x.ts` followed by `mv old moved` shows as `moved/x.ts`.
 
 | Limit | Value | Beyond it |
 | --- | --- | --- |
-| File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary content, by the one rule ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)), is treated the same; other bytes are text. |
+| File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary content, by the one rule (`crates/command-package-file/src/files.rs`), is treated the same; other bytes are text. |
 | Snapshot bytes written per job | 64 MiB | Further edits have no contents. This includes replacement snapshots when successive writes are combined. |
 | Recorded paths per job | 500 | Later paths go unrecorded; `filesTruncated` is true. |
 | Renames and removals per job | 500 | Later ones go unlisted; `filesTruncated` is true. |
@@ -478,7 +478,7 @@ Only creations and modifications are reported because the conversation shows
 what the model wrote, not the state of the directory.
 
 Binary contents, by the one rule a job's stdout is judged by
-([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)),
+(`crates/command-package-file/src/files.rs`),
 are never retained, whatever their size: copies of images and
 media would fill the blob store for little use, since the change view's
 history is about text. A segment kept without contents because a side is

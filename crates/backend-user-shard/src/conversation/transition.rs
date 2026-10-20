@@ -269,8 +269,7 @@ impl Shard {
     /// What follows a switch the conversation `id` made, under its hold: its
     /// idle watch starts again, since a deadline of the old binding never
     /// releases the new one, and the pages hear that every child works in
-    /// the conversation's new directory (`subagents.md` § Working
-    /// directory).
+    /// the conversation's new directory (`crates/agent-server/src/node/mod.rs`).
     pub(crate) async fn switched(&self, id: &ConversationId) {
         // What it kept of its project's files where it worked is released at
         // once, before anything awaits; its next request keeps where it

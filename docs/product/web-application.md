@@ -676,7 +676,7 @@ history was read, says that it connects, and never shows the second step's
 parts from before. The agents list the history read returns is the live
 tree's own when the conversation runs, the same list the session's
 `subagents` frame then sends, so the second step never takes back an agent
-the first showed ([Protocol](../agent/subagents.md#protocol)), unless the
+the first showed (`crates/agent-server/src/server/tree.rs`), unless the
 tree really changed between the two, as when an edit removed a subagent,
 which the second step then shows. Every first session of a conversation is
 an opening: a new conversation's first send, one restored from the
@@ -698,7 +698,7 @@ usable in each.
 For example, the user sends a message in one tab: a second tab shows the
 message, the reply as it streams and each tool call, and its Stop stops the
 turn. Every tab shows the same messages, output of running commands as it comes
-([Live output](../agent/shell-tool.md#live-output)), phase,
+(`crates/agent-server/src/server/tree/live.rs`), phase,
 queue, pending steers and subagents; every tab can send, steer, queue, stop, edit,
 retry, switch the model and write to a running command; and what one tab does
 shows in all of them. Opening the conversation in another tab takes nothing
@@ -1460,9 +1460,9 @@ backend APIs; their dedicated pages in the web app are deferred. Settings
 list the backend's plugins, each with a switch that turns it on or off for
 the user, and an open conversation whose commands a switch changed offers a
 reload ([A user's plugins](../architecture/plugins.md#a-users-plugins)).
-Settings have a Subagents section ([Profiles](../agent/subagents.md#profiles)):
+Settings have a Subagents section (`crates/agent-server/src/server/tree/profiles.rs`):
 a switch that turns subagents on or off for the user, on for a new user; the
-two [limits](../agent/subagents.md#limits), Maximum subagents and Maximum
+two limits (`crates/agent-server/src/server/tree/profiles.rs`), Maximum subagents and Maximum
 depth, each a number with Unlimited as a choice, which asks first in a
 dialog warning that it can make conversations unstable, the dialog's
 default button keeping the limit, and which keeps the number, so choosing
@@ -1475,7 +1475,7 @@ control with the same items, providers, models, Reasoning and the rest, plus
 change the user's limit for every conversation; the profile's own Context
 is a row of the editor beside the menu, *Default (500K)* naming the window
 the user's limit gives
-([Profiles](../agent/subagents.md#profiles)). A profile whose provider entry, model, effort
+(`crates/agent-server/src/server/tree/profiles.rs`). A profile whose provider entry, model, effort
 or tier is gone is marked as unavailable, with the part that is missing,
 until the user fixes it.
 Settings have an Instructions section, after Providers: one text

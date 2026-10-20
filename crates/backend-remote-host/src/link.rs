@@ -98,7 +98,7 @@ pub trait LinkPolicy {
 
     /// A job the backend recorded running, which no agent has taken up yet,
     /// makes an `rpc` call: the agent that ran it takes it up, as a report
-    /// of it does (`shell-tool.md` § Command reports), so the call is served.
+    /// of it does (`crates/agent-session/src/reports.rs`), so the call is served.
     /// Answers once the take-up was asked for, or why it cannot be.
     fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>>;
 

@@ -1425,12 +1425,12 @@ export const useConversations = defineStore('conversations', () => {
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
     clearSession(conversation)
-    // The first copy of the children, which joins when it arrives and which
-    // the open's `subagents` frame replaces whole (`subagents.md`
-    // § Protocol); while the tree is live the read is the tree's own list,
-    // so the frame takes back none of them. A read that arrives once the
-    // session has opened is older than its frame, and gives way to it, its
-    // failure too: the frame listed the children.
+    // The first copy of the children, which joins when it arrives and which the
+    // open's `subagents` frame replaces whole
+    // (`crates/agent-server/src/server/tree.rs`); while the tree is live the
+    // read is the tree's own list, so the frame takes back none of them. A read
+    // that arrives once the session has opened is older than its frame, and
+    // gives way to it, its failure too: the frame listed the children.
     const sessionOpened = () => cache.get(conversation.id)?.runtime?.hasOpened ?? false
     void reads.subagents.then(
       (listed) => {
@@ -2117,7 +2117,7 @@ export const useConversations = defineStore('conversations', () => {
       madeHere.add(conversation.id)
     }
     // It applies before the first message goes, so the first turn's spawns
-    // and instructions follow it (`subagents.md` § Workflows of a project).
+    // and instructions follow it (`crates/backend-user-shard/src/conversation/workflows.rs`).
     if (!sameWorkflow(chosen, result.conversation.workflow)) {
       await applyWorkflow(conversation.id, chosen)
     }
@@ -3476,7 +3476,7 @@ export const useConversations = defineStore('conversations', () => {
     /**
      * Whether the page has, or is opening, a session of the conversation,
      * which sends a live child's transcript once the page shows it
-     * (`subagents.md` § Protocol): none when the opening started none, as
+     * (`crates/agent-server/src/server/tree.rs`): none when the opening started none, as
      * for a conversation whose model is gone, or failed.
      */
     streamsSubagents: (conversation: Conversation) =>

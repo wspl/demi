@@ -1252,7 +1252,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /**
    * Stop Agent: the child stops at once, and each command it still runs
    * shows Stopping… until its runner, simulated here, says that it ended
-   * (`subagents.md` § Abort).
+   * (`crates/agent-server/src/server/tree/supervisor.rs`).
    */
   function abortSubagent(id: string): void {
     const agent = state.subagents.find((entry) => entry.id === id)

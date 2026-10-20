@@ -1,7 +1,8 @@
-//! The user's subagent settings at the tree's boundary (`subagents.md`
-//! § Profiles, § Limits, Acceptance 3, 7, 14 to 17): what a spawn checks and
-//! in which order, that each spawn and each `demi agent profiles list` reads the settings
-//! as they are then, and the provider runtime a profile's child runs on.
+//! The user's subagent settings at the tree's boundary
+//! (`crates/agent-server/src/server/tree/profiles.rs`, Acceptance 3, 7, 14 to
+//! 17): what a spawn checks and in which order, that each spawn and each
+//! `demi agent profiles list` reads the settings as they are then, and the
+//! provider runtime a profile's child runs on.
 
 use std::{cell::Cell, num::NonZeroU32, rc::Rc};
 

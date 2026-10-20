@@ -46,7 +46,7 @@ project file is not written ([When it is sent](#when-it-is-sent)).
 ## Which files are read
 
 The files are searched in the node's working directory, a child's own
-([Working directory](subagents.md#working-directory)), and each directory
+(`crates/agent-server/src/node/mod.rs`), and each directory
 above it up to the root of its git repository, the nearest directory that
 holds `.git`, as [project skills](skills.md#project-skills) are. Outside a git
 repository, only the working directory is searched.

@@ -117,15 +117,15 @@ function tightenLinks(tokens: Token[]): void {
 const tightLinks = new WeakSet<Token>()
 
 /**
- * A link to agent `number` of the conversation (`subagents.md` § Linking an
- * agent), around its text: the agent's mark, which the page puts in its
- * place with the agent's live state, then the text, and a click opens it in
- * the Agents window. A number the conversation does not have shows the text
- * alone; the page's tip says so. Outside a conversation, the text alone.
- * It starts with an icon, so it is spaced as a file's link is
- * (`icon-link`), and it is a control of the Agents window, as the window's
- * chip is: a press on it is not one outside the window (`KEEPS_WINDOWS`),
- * so a click when the window shows its tab closes the window.
+ * A link to agent `number` of the conversation, around its text: the agent's
+ * mark, which the page puts in its place with the agent's live state, then the
+ * text, and a click opens it in the Agents window. A number the conversation
+ * does not have shows the text alone; the page's tip says so. Outside a
+ * conversation, the text alone. It starts with an icon, so it is spaced as a
+ * file's link is (`icon-link`), and it is a control of the Agents window, as
+ * the window's chip is: a press on it is not one outside the window
+ * (`KEEPS_WINDOWS`), so a click when the window shows its tab closes the
+ * window.
  */
 function agentLink(number: number, body: string, tight: boolean): string {
   const agents = activeOptions?.agents

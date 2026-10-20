@@ -303,7 +303,7 @@ A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
 snapshot has ([Edit tracking](../execution/edit-tracking.md#scope)), and the
 page then reads its first 8 MiB from the raw route with a byte range
 ([File previews](file-previews.md#getting-the-bytes)); one that
-is binary, by the one rule ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)), answers 415 `not_text`,
+is binary, by the one rule (`crates/command-package-file/src/files.rs`), answers 415 `not_text`,
 and any other file is text, a byte that is no UTF-8 shown as U+FFFD.
 
 `POST /api/conversations/:id/fs/exists` takes `{ paths }`, 1 to 200 absolute
@@ -381,7 +381,7 @@ content is the diff's old side, in both modes. `ENOENT` answers 404 `not_found`,
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory, or of the directory `?directory=` names
 on its primary Host, absolute, as a child's Change view asks for its own
-([Working directory](../agent/subagents.md#working-directory)); `changes/file`
+(`crates/agent-server/src/node/mod.rs`); `changes/file`
 and `changes/raw` take the same `directory` and read that tree; a relative
 one answers 400 `invalid_query`. It answers as `{ root, repository, gitDir, head,
 files, truncated, watched }`, the runner's reply

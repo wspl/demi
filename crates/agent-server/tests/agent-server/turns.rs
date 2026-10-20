@@ -447,7 +447,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
 /// A page that had a figure for the root's context, and opens again once
 /// the conversation was restored, is told the figure is unknown while an
 /// image no response measured has not been read back
-/// (`subagents.md` § Protocol): it shows no figure rather than the old one.
+/// (`crates/agent-server/src/server/tree.rs`): it shows no figure rather than the old one.
 #[tokio::test(flavor = "local")]
 async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() {
     let failing = Turn::Stream(Box::new(|_| {
@@ -1097,7 +1097,7 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_
 /// A report that waited in the checkpoint for a command whose shells were
 /// let go, as a backend shutdown lets them go, carries the command's stored
 /// output when it is written: its node no longer holds the command
-/// (`shell-tool.md` § Command reports). A few milliseconds.
+/// (`crates/agent-session/src/reports.rs`). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output() {
     use demi_agent_store::{
@@ -1170,7 +1170,7 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
 /// A job's `rpc` call asks its node to take its command up; when the
 /// command cannot be taken up, as when its Host cannot be reached, the call
 /// hears why instead of waiting for a take-up that never comes
-/// (`shell-tool.md` § Command reports). A job no live node ran is unknown. A
+/// (`crates/agent-session/src/reports.rs`). A job no live node ran is unknown. A
 /// few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_whose_command_cannot_be_taken_up_answers_why() {

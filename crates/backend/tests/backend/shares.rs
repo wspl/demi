@@ -247,7 +247,7 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     // Each child's first answer is held until its parent has answered and is
     // idle. A child that ended sooner, while its spawn command still ran,
     // would reach the parent before its next request, which takes the report
-    // in (`subagents.md` § Delivery and scheduling); no request would then
+    // in (`crates/agent-session/src/input.rs`); no request would then
     // ask for the words scripted after the report.
     let helper =
         scripts.child_held(vec![shell("c1", &format!("demi attachment upload {root}/viewed.png")), say("hi from the child")]);

@@ -76,7 +76,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   model: ModelSettings
   /**
    * The Workflow menu choice of a conversation without a record, which its
-   * first send gives it (`subagents.md` § Workflows of a project); one with
+   * first send gives it (`crates/backend-user-shard/src/conversation/workflows.rs`); one with
    * a record holds its choice there.
    */
   workflow: WorkflowChoice
@@ -126,7 +126,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /**
    * The children whose transcripts the page shows, the child its Agents
    * window shows, which the socket streams to it and no other
-   * (`subagents.md` § Protocol).
+   * (`crates/agent-server/src/server/tree.rs`).
    */
   shownSubagents: string[]
   /**

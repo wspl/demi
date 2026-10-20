@@ -4,11 +4,11 @@ import { firstRunningTerminalId, type TerminalRecord } from './terminals'
 
 /**
  * The dock opens one window at a time: the Agents panel, on one child or on
- * none, or the Running panel on one terminal (`subagents.md` § Product
- * rendering). `shown` names what the session shows: the conversation's id,
- * or null while it loads and shows nothing of it. A window closes when that
- * changes, as when another conversation is shown or a Retry loads this one
- * again (`web-application.md` § Opening a conversation shows in two steps).
+ * none, or the Running panel on one terminal. `shown` names what the session
+ * shows: the conversation's id, or null while it loads and shows nothing of it.
+ * A window closes when that changes, as when another conversation is shown or a
+ * Retry loads this one again (`web-application.md` § Opening a conversation
+ * shows in two steps).
  */
 export function useSessionPanels(
   agents: () => readonly SubagentRecord[],

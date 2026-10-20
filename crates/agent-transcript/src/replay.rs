@@ -389,7 +389,7 @@ impl<'a> RequestView<'a> {
     /// Reports that arrived together as the model receives them: their text,
     /// one paragraph each, and after a report whose job viewed media, those
     /// media, each as a tool result's medium is replayed, with the lines
-    /// about them (`shell-tool.md` § What a result attaches).
+    /// about them (`crates/agent-tools/src/result.rs`).
     fn reports(&self, reports: &[CommandReport]) -> Vec<UserPart> {
         let mut parts = Vec::new();
         let mut text: Vec<String> = Vec::new();
@@ -539,9 +539,9 @@ pub fn tool_input(input: &str) -> Value {
     serde_json::from_str(input).unwrap_or_else(|_| Value::String(input.to_owned()))
 }
 
-/// An agent message as the model reads it (`subagents.md` § Message
-/// identity): its sender by number and round, or the user for a permission
-/// decision and a move, without the ids that serve delivery.
+/// An agent message as the model reads it: its sender by number and round,
+/// or the user for a permission decision and a move, without the ids that
+/// serve delivery.
 #[derive(Serialize)]
 struct Envelope<'a> {
     sender: EnvelopeSender<'a>,
@@ -566,7 +566,10 @@ enum EnvelopeSender<'a> {
 }
 
 /// The model-facing text of an agent message: an instruction on how to take
-/// it, then the message as JSON.
+/// it, then the message as JSON. A provider may need a user-role item to
+/// carry it; that wire role does not make the message human-authored in the
+/// transcript or the web app, and it is never replayed as the recipient's own
+/// assistant answer.
 pub fn agent_message_envelope(message: &AgentMessage) -> String {
     let (event, outcome) = match &message.event {
         AgentMessageEvent::Message {} => ("message", None),

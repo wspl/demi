@@ -1,5 +1,5 @@
-//! What a subagent's round runs on, in the names the model menu shows now
-//! (`subagents.md` § What an agent runs on): the provider entry's name from
+//! What a subagent's round runs on, in the names the model menu shows now:
+//! the provider entry's name from
 //! the user's entries, and the model's name and Fast tier from the catalog
 //! the menu reads. The `subagent` frames and the conversation's subagents
 //! route both read it here.

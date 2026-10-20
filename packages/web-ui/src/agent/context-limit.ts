@@ -49,10 +49,11 @@ export interface ProfileContextOption {
 }
 
 /**
- * A subagent profile's Context options on `model` (`subagents.md`
- * § Profiles): Default, the user's limit on the model, with the window it
- * gives now; then the Context row's options, the full window stored as its
- * own size. None for a model without a Context row.
+ * A subagent profile's Context options on `model`
+ * (`crates/agent-server/src/server/tree/profiles.rs`): Default, the user's
+ * limit on the model, with the window it gives now; then the Context row's
+ * options, the full window stored as its own size. None for a model without a
+ * Context row.
  */
 export function profileContextOptions(model: ModelInfo): ProfileContextOption[] {
   const options = contextLimitOptions(model)

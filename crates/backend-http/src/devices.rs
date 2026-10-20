@@ -161,10 +161,11 @@ pub(super) async fn browse(
     Ok(super::files::read_answer(&read_at, Json(directory)))
 }
 
-/// `GET /devices/:id/workflows?directory=`: the Workflow menu's list for a
-/// new conversation that works in `directory` of a paired device, before
-/// its first message gives it a record (`subagents.md` § Workflows of a
-/// project), with the Host's number before the read.
+/// `GET /devices/:id/workflows?directory=`: the Workflow menu's list for a new
+/// conversation that works in `directory` of a paired device, before its first
+/// message gives it a record
+/// (`crates/backend-user-shard/src/conversation/workflows.rs`), with the Host's
+/// number before the read.
 pub(super) async fn workflows(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

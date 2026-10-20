@@ -1,4 +1,4 @@
-//! Subagents at the tree's boundary (`subagents.md` § Acceptance): the
+//! Subagents at the tree's boundary: the
 //! `demi agent` calls a node's jobs make, the frames the root's connection
 //! receives, what each model is asked, and the tree store's records.
 
@@ -178,7 +178,7 @@ fn transcript_of(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
 }
 
 // A page receives a child's transcript only while it shows the child
-// (`subagents.md` § Protocol): a running child's brief streams to nobody
+// (`crates/agent-server/src/server/tree.rs`): a running child's brief streams to nobody
 // until the page names it, which answers with the child's transcript, and
 // its changes follow from then on. Before, every page received every live
 // child's transcript, which made a conversation with large children slow
@@ -290,7 +290,7 @@ fn summaries(frames: &[ServerFrame]) -> Vec<(u64, JobPhase, bool)> {
 /// A page whose connection dropped while a child worked opens again: its
 /// snapshot lists every child as it is now, the one that ended while it was
 /// away and the one that started and ended meanwhile, finished
-/// (`subagents.md` § Protocol). Before, the handshake named
+/// (`crates/agent-server/src/server/tree.rs`). Before, the handshake named
 /// only live children, and the page kept showing the first running where it
 /// was when the connection dropped.
 #[tokio::test(flavor = "local")]
@@ -343,10 +343,11 @@ async fn a_reopened_page_is_told_of_the_children_that_ended_while_it_was_away() 
 }
 
 /// A child that closes while a page opens, after the open read where the
-/// conversation works and before it attached, ends closed on that page:
-/// its `closed` frame went before the page was attached, and the snapshot,
-/// taken in the step of the attach, lists it closed (`subagents.md`
-/// § Protocol). Before, the page never heard of the close.
+/// conversation works and before it attached, ends closed on that page: its
+/// `closed` frame went before the page was attached, and the snapshot, taken in
+/// the step of the attach, lists it closed
+/// (`crates/agent-server/src/server/tree.rs`). Before, the page never heard of
+/// the close.
 #[tokio::test(flavor = "local")]
 async fn a_child_that_closes_while_a_page_opens_ends_closed_on_that_page() {
     let gate = Gate::new();
@@ -1029,7 +1030,7 @@ pub(crate) async fn wait_for_execution(server: &Rc<demi_agent_server::AgentServe
 // macOS privacy prompt held once kept an aborted child live for an hour:
 // the command stays in the pages' Running window as stopping, any agent can
 // still look at it, and its end reaches the pages when its runner reports
-// it (`subagents.md` § Abort). Under a second on the paused clock.
+// it (`crates/agent-server/src/server/tree/supervisor.rs`). Under a second on the paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let model = Model::default();
@@ -1152,7 +1153,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
 // tests end, the child is woken with their end report and answers anew,
 // rather than being closed with its old "waiting" answer as its result:
 // an end counts as seen only once a look showed it to the model
-// (`shell-tool.md` § Command reports). Once a stopped wait survived its call,
+// (`crates/agent-session/src/reports.rs`). Once a stopped wait survived its call,
 // showed the end to no one and marked it seen before the end report, which
 // reads the stored end, was made, and the supervisor closed the idle child;
 // the work silently stopped. The store holds that read here until the look
@@ -1231,12 +1232,12 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
 }
 
 // A child that ended its turn to wait for its tests looks at them with
-// `demi shell status 1 --wait 10m`, which shows their end: the end report
-// that follows tells it nothing more, so it wakes no turn and costs no
-// request, and the child closes with its answer (`shell-tool.md` § Command
-// reports). The store holds the report's read of the stored end until the
-// look is over, so the report is made after the look in every run. Under a
-// second on the paused clock.
+// `demi shell status 1 --wait 10m`, which shows their end: the end report that
+// follows tells it nothing more, so it wakes no turn and costs no request, and
+// the child closes with its answer (`crates/agent-session/src/reports.rs`). The
+// store holds the report's read of the stored end until the look is over, so
+// the report is made after the look in every run. Under a second on the paused
+// clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
     let model = Model::default();
@@ -1292,13 +1293,13 @@ async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
 }
 
 // The backend restarted while an aborted child's command, and its aborted
-// child's, still stopped: restore skips the closed children but takes up
-// their commands, which show as stopping again under their child, titled by
-// their records, are asked to stop again, and end as their runners report
-// (`subagents.md` § Abort). A page holds no transcript of a closed child, so
-// the frames' title and script are all its Running tab has to name such a
-// command by (`rendering.md` § Rendering boundary); production showed bare
-// numbers there. About 0.02 s.
+// child's, still stopped: restore skips the closed children but takes up their
+// commands, which show as stopping again under their child, titled by their
+// records, are asked to stop again, and end as their runners report
+// (`crates/agent-server/src/server/tree/supervisor.rs`). A page holds no
+// transcript of a closed child, so the frames' title and script are all its
+// Running tab has to name such a command by (`rendering.md` § Rendering
+// boundary); production showed bare numbers there. About 0.02 s.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     let store = MemoryTreeStore::new();
@@ -1941,7 +1942,7 @@ async fn a_child_whose_turn_fails_closes_as_an_error_naming_its_failure_and_a_si
 }
 
 /// A receipt names the block of its sender's transcript it came from, which
-/// its row's name brings into view (`subagents.md` § Product rendering): an
+/// its row's name brings into view: an
 /// update, the call whose command sent it; a completion, the child's last
 /// answer.
 #[tokio::test(flavor = "local")]
@@ -2192,7 +2193,7 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
 }
 
 /// A profile without a model of its own runs its children on their
-/// parent's model with their parent's Context (`subagents.md` § Profiles),
+/// parent's model with their parent's Context (`crates/agent-server/src/server/tree/profiles.rs`),
 /// as no profile does.
 #[tokio::test(flavor = "local")]
 async fn a_profile_without_a_model_of_its_own_gives_its_children_their_parents_context() {

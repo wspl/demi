@@ -3,19 +3,17 @@ import { KEEPS_WINDOWS } from '../../ui/window-stack'
 import { t } from '../locales/text'
 
 /**
- * What a notice row says (`shell-tool.md` § Command reports, `subagents.md`
- * § Product rendering): what happened, then what it happened to by its
- * title, the notice's object, underlined with dots, after a colon; or,
- * for a title that ends the sentence, such as *main agent* in *Message from
- * main agent*, after the words alone. A click on the
- * title brings into view where it came from, as a control of its own; a
- * title nothing can show is plain text. Where it came from may lie in a
- * child's transcript, which the Agents window opens on or switches to, so
- * the title is that window's control, as its chip is: a press on it is not
- * one outside the session's windows (`KEEPS_WINDOWS`, `turns.md` § the
- * dock's chips). On a narrow row the title gives way
- * first, down to a few characters, and then the words, each ending in an
- * ellipsis.
+ * What a notice row says (`crates/agent-session/src/reports.rs`): what
+ * happened, then what it happened to by its title, the notice's object (an
+ * imperative title read as the subject reads wrongly), underlined with dots, after a colon; or, for a title that ends the sentence,
+ * such as *main agent* in *Message from main agent*, after the words alone. A
+ * click on the title brings into view where it came from, as a control of its
+ * own; a title nothing can show is plain text. Where it came from may lie in a
+ * child's transcript, which the Agents window opens on or switches to, so the
+ * title is that window's control, as its chip is: a press on it is not one
+ * outside the session's windows (`KEEPS_WINDOWS`, `turns.md` § the dock's
+ * chips). On a narrow row the title gives way first, down to a few characters,
+ * and then the words, each ending in an ellipsis.
  */
 defineProps<{
   notice: string

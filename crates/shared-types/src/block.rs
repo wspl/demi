@@ -396,7 +396,7 @@ pub struct ContextBlock {
     pub instructions: Vec<InstructionEntry>,
     /// The working directory a [`WORKING_DIRECTORY_SOURCE`] block names,
     /// the node's from this block on, which the page reads the node's
-    /// relative paths against (`subagents.md` § Working directory); absent
+    /// relative paths against (`crates/agent-server/src/node/mod.rs`); absent
     /// on another source's block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(inner(length(min = 1)))]
@@ -427,10 +427,11 @@ pub const SIDE_QUESTIONS_SOURCE: &str = "side_questions";
 /// plugin may be named so.
 pub const EXECUTION_SOURCE: &str = "execution";
 
-/// The context source of a subagent's working directory (`subagents.md`
-/// § Working directory): its block names the directory the child's `shell`
-/// calls start in, before its first request, after each change and after
-/// each compaction. No plugin may be named so: a plugin's id has no `_`.
+/// The context source of a subagent's working directory
+/// (`crates/agent-server/src/node/mod.rs`): its block names the directory the
+/// child's `shell` calls start in, before its first request, after each change
+/// and after each compaction. No plugin may be named so: a plugin's id has no
+/// `_`.
 pub const WORKING_DIRECTORY_SOURCE: &str = "working_directory";
 
 /// The context source of the skills plugin, whose block is the skills
@@ -456,7 +457,7 @@ pub enum InstructionEntry {
         path: String,
     },
     /// The instructions of the workflow the conversation chose
-    /// (`subagents.md` § Workflows of a project): its name, and its file's
+    /// (`crates/backend-user-shard/src/conversation/workflows.rs`): its name, and its file's
     /// path on the Host.
     Workflow {
         #[garde(skip)]
@@ -492,7 +493,7 @@ impl InstructionEntry {
     }
 }
 
-/// Command reports that arrived together (`shell-tool.md` § Command reports).
+/// Command reports that arrived together (`crates/agent-session/src/reports.rs`).
 /// The model receives their text, one paragraph each, as a user message or
 /// as a steer, as the placement says; the text is rendered from the reports
 /// where it is replayed, never stored beside them. The user sees each report
@@ -536,7 +537,7 @@ pub struct WakeupBlock {
 }
 
 /// What a command a `shell` call left running tells its node
-/// (`shell-tool.md` § Command reports): its progress, or its end.
+/// (`crates/agent-session/src/reports.rs`): its progress, or its end.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandReport {
@@ -554,7 +555,7 @@ pub struct CommandReport {
     #[garde(skip)]
     pub output: String,
     /// The media the job viewed, which an end carries as the `shell` result
-    /// would have (`shell-tool.md` § What a result attaches): each medium by
+    /// would have (`crates/agent-tools/src/result.rs`): each medium by
     /// reference, or the part that took its place, then the text of the
     /// lines about them; none for a report of progress.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -593,7 +594,7 @@ pub enum ReportEvent {
         #[garde(dive)]
         by: Option<StoppedBy>,
     },
-    /// It was lost, for `reason` (`shell-tool.md` § Lost commands).
+    /// It was lost, for `reason` (`crates/agent-session/src/reports.rs`).
     Lost {
         #[garde(skip)]
         reason: String,
@@ -635,7 +636,7 @@ pub enum CommandEnd {
     /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
     /// or the end of its node's shells.
     Stopped,
-    /// Its Host lost it, for this reason (`shell-tool.md` § Lost commands).
+    /// Its Host lost it, for this reason (`crates/agent-session/src/reports.rs`).
     Lost {
         #[garde(length(chars, min = 1, max = 1024))]
         reason: String,
@@ -941,7 +942,7 @@ impl ToolCallBlock {
     /// What the call ran, read from the input text it keeps, when it is a
     /// `shell` call that started a command or was suppressed as a repeat;
     /// none for any other call. The shell tool checked the input when the
-    /// call was made (`shell-tool.md` § Tool input); this reads the two fields
+    /// call was made (`crates/agent-tools/src/lib.rs`); this reads the two fields
     /// a stored call is shown and searched by
     /// (`compaction.md` § Reading the earlier history).
     pub fn shell_command(&self) -> Option<ShellCommand> {

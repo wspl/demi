@@ -296,7 +296,7 @@ impl From<&str> for Ended {
 }
 
 /// Whose job `job` is: a job no agent took up yet, as a restarted backend
-/// parks one, is taken up first (`shell-tool.md` § Command reports).
+/// parks one, is taken up first (`crates/agent-session/src/reports.rs`).
 async fn origin_of(link: &Link, job: &str) -> Result<Rc<JobOrigin>, String> {
     let unknown = || "rpc requires a live job dispatched to this device".to_owned();
     let mut claimed = link.device_jobs().claimed(job).ok_or_else(unknown)?;

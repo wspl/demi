@@ -325,10 +325,10 @@ test('each subagent transcript follows the same revision rule', () => {
   expect(h.sent).toEqual([{ type: 'sync_transcript' }])
 })
 
-// A child the page stops showing streams no more (`subagents.md`
-// § Protocol); a frame of it already on its way is dropped, so it neither
-// writes the transcript the page let go of nor asks for every transcript
-// again, and showing the child again takes its next reset.
+// A child the page stops showing streams no more
+// (`crates/agent-server/src/server/tree.rs`); a frame of it already on its way
+// is dropped, so it neither writes the transcript the page let go of nor asks
+// for every transcript again, and showing the child again takes its next reset.
 test('a child the page stops showing drops its frames on their way until its reset', () => {
   const h = harness()
   h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [], version: { epoch: 'e', revision: 0 } })

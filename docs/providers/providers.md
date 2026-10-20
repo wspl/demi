@@ -329,7 +329,7 @@ with the next request ([Input](../agent/runtime.md#input)).
 ### Media in tool results
 
 A tool result carries images, videos and PDF documents the model viewed
-([Media the model views](../agent/shell-tool.md#media-the-model-views)), but a
+(`crates/command-package-file/src/files.rs`), but a
 model reads a medium there only when its provider's wire carries that kind in
 a tool result. Which types a model reads in a tool result is therefore its
 accepted types ([Accepted attachment types](models.md#accepted-attachment-types))
@@ -379,7 +379,7 @@ affecting the other. Compaction runs on a session copy whose runtime is a fork
 ([Session copy](../agent/compaction.md#session-copy)), and a subagent whose
 model belongs to its parent's provider entry runs on a fork of its parent's
 runtime; one whose profile names another entry gets a runtime the backend
-builds for that entry ([Runtime](../agent/subagents.md#runtime)).
+builds for that entry (`crates/agent-server/src/node/mod.rs`).
 
 Closing a runtime releases what outlives a run, such as a kept CLI process.
 Releasing a process on another machine takes time, so closing is an explicit,
@@ -487,7 +487,7 @@ models offer it.
   product's fixed instructions, the node's profile and its commands, rendered once when the node is assembled. They hold no time, id,
   Host or state, and nothing that differs by user: what does reaches the model
   as a `context` block ([Context](../agent/transcript.md#context)). The tool is the one `shell` tool
-  ([Tools](../agent/shell-tool.md#tools)).
+  (`crates/agent-tools/src/lib.rs`).
 - **The items** come from replay, which reads only what the blocks hold for
   the model, keeps each block in its place and never changes what a block
   replays once a request has carried it; new input joins at the end

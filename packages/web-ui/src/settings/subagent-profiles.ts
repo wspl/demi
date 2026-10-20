@@ -5,7 +5,7 @@ import type { SentenceText } from '../ui/ui-text'
 
 /**
  * What of a profile's model settings the catalog the page holds no longer
- * offers (`subagents.md` § An unavailable profile): its provider entry, its
+ * offers (`crates/agent-server/src/server/tree/profiles.rs`): its provider entry, its
  * model, its effort or its tier; null while the profile is available, or
  * inherits its parent's model. The page derives it and never stores it.
  */
@@ -48,7 +48,7 @@ export function profileModelLabel(
   return provider ? `${name} · ${provider.label}` : name
 }
 
-/** The longest name a profile may have (`subagents.md` § Profiles). */
+/** The longest name a profile may have (`crates/agent-server/src/server/tree/profiles.rs`). */
 const PROFILE_NAME_MAX = 40
 
 /**

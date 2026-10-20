@@ -907,7 +907,7 @@ fn control_sealed_config_format_2(
 
 /// From the control schema in which an attached host goes by its device's
 /// name to the one in which a subagent profile has a Context of its own
-/// (`subagents.md` § Profiles): every stored profile follows the user's
+/// (`crates/agent-server/src/server/tree/profiles.rs`): every stored profile follows the user's
 /// limit, as it did.
 const CONTROL_FROM_DEVICE_NAMES: &str =
     "ALTER TABLE subagent_profiles ADD COLUMN context_limit INTEGER CHECK (context_limit >= 1);";
@@ -1069,8 +1069,9 @@ CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
 ";
 
 /// From the control schema with administered accounts to the one with a
-/// conversation's Workflow menu choice (`subagents.md` § Workflows of a
-/// project): every conversation uses Global Workflow, as a new one does.
+/// conversation's Workflow menu choice
+/// (`crates/backend-user-shard/src/conversation/workflows.rs`): every
+/// conversation uses Global Workflow, as a new one does.
 const CONTROL_FROM_ADMINISTERED_ACCOUNTS: &str = "
 ALTER TABLE conversations ADD COLUMN workflow_kind TEXT NOT NULL DEFAULT 'default' CHECK (workflow_kind IN ('default', 'none', 'workflow'));
 ALTER TABLE conversations ADD COLUMN workflow_id TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL));
@@ -1784,13 +1785,13 @@ fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -
 /// the interval its calls asked for as they bounded it then.
 const INTERVAL_BOUNDS_MS: (i64, i64) = (15_000, 600_000);
 
-/// From the conversation schema that `0.1.22-dev.20261016T043704Z`
-/// deployed to the one in which each running command's record keeps the
-/// interval its call asked it to report at, read from the call's input in the transcript as that build
-/// bounded it, or none for a call that asked for none (`shell-tool.md`
-/// § Command reports): a command whose call a restart interrupted reports
-/// as its call asked. A record whose call the transcript lacks, or whose
-/// call's input names no interval, fails the migration.
+/// From the conversation schema that `0.1.22-dev.20261016T043704Z` deployed to
+/// the one in which each running command's record keeps the interval its call
+/// asked it to report at, read from the call's input in the transcript as that
+/// build bounded it, or none for a call that asked for none
+/// (`crates/agent-session/src/reports.rs`): a command whose call a restart
+/// interrupted reports as its call asked. A record whose call the transcript
+/// lacks, or whose call's input names no interval, fails the migration.
 fn commands_with_their_intervals(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE running_commands ADD COLUMN interval_ms INTEGER CHECK (interval_ms >= 1);")?;
     let rows = transaction
@@ -2227,7 +2228,7 @@ fn with_outside_paths(block: &mut serde_json::Value) -> Result<bool, serde_json:
 
 /// From the conversation schema in which a child's row keeps its working
 /// directory to the one in which it keeps the Context its profile chose
-/// (`subagents.md` § Profiles): every stored node follows the user's limit,
+/// (`crates/agent-server/src/server/tree/profiles.rs`): every stored node follows the user's limit,
 /// as it did.
 const CONVERSATION_FROM_CHILD_DIRECTORIES: &str =
     "ALTER TABLE nodes ADD COLUMN context_limit INTEGER CHECK (context_limit >= 1);";
@@ -2235,7 +2236,7 @@ const CONVERSATION_FROM_CHILD_DIRECTORIES: &str =
 /// From the conversation schema of transcript block format 6, whose
 /// checkpoint state (format 2) kept the node's working directory, to the
 /// one in which a child's row keeps it with where the conversation worked
-/// when it was set (`subagents.md` § Working directory), checkpoint state
+/// when it was set (`crates/agent-server/src/node/mod.rs`), checkpoint state
 /// format 3: each child's directory moves from its state into its row, and
 /// the root's goes, since the root works in the conversation's directory.
 /// Where the conversation worked then is not in this database, and no
@@ -2281,14 +2282,14 @@ fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob)
 
 /// From the conversation schema in which a node's instructions are the
 /// ones its profile adds, before a node said which agent it was forked
-/// from (`subagents.md` § Fork): no node of it was forked.
+/// from (`crates/agent-server/src/server/tree/supervisor.rs`): no node of it was forked.
 const CONVERSATION_FROM_ADDED_INSTRUCTIONS: &str =
     "ALTER TABLE nodes ADD COLUMN forked_from INTEGER CHECK (forked_from >= 1);";
 
-/// From the conversation schema of transcript block format 5 before a
-/// node's instructions were the ones its profile adds (`subagents.md`
-/// § Persistence): only the column's comment changed, and what a node
-/// stored there before reads as what its profile added.
+/// From the conversation schema of transcript block format 5 before a node's
+/// instructions were the ones its profile adds
+/// (`crates/agent-store/src/lib.rs`): only the column's comment changed, and
+/// what a node stored there before reads as what its profile added.
 const CONVERSATION_FROM_BLOCK_FORMAT_5: &str = "";
 
 /// From the conversation schema of transcript block format 4 to format 5,
@@ -2334,7 +2335,7 @@ fn with_no_kept_messages(block: &mut serde_json::Value) -> bool {
 /// 0.1.22-dev.20261011T123543Z, which a server keeps data of
 /// (`upgrades.md` § A development build on a server): a command's records
 /// keep the title of the call that started it, which its reports name
-/// (`shell-tool.md` § Command reports), and the blocks move from transcript
+/// (`crates/agent-session/src/reports.rs`), and the blocks move from transcript
 /// block format 3 to format 4 ([`relist_blocks`]). No record that build
 /// wrote kept a title, and none is guessed: theirs stay empty, and their
 /// reports name the command by its number.
@@ -2353,9 +2354,9 @@ ALTER TABLE running_commands ADD COLUMN title TEXT NOT NULL DEFAULT '';
 
 /// From the control schema of the development build
 /// 0.1.22-dev.20261011T123543Z, which a server keeps data of: each user's
-/// subagent settings hold the two limits (`subagents.md` § Limits), which a
-/// user who turned the Subagents switch has at their defaults, as a user
-/// with no row has.
+/// subagent settings hold the two limits
+/// (`crates/agent-server/src/server/tree/profiles.rs`), which a user who turned
+/// the Subagents switch has at their defaults, as a user with no row has.
 const CONTROL_FROM_0_1_22_DEV_20261011T123543Z: &str = "
 ALTER TABLE user_subagents ADD COLUMN max_live INTEGER DEFAULT 10 CHECK (max_live >= 1);
 ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1);
@@ -2371,7 +2372,7 @@ ALTER TABLE conversations DROP COLUMN titled_messages;
 ";
 
 /// From the control schema without Detect Title: each subagent limit keeps
-/// its number while it is lifted (`subagents.md` § Limits), so a limit
+/// its number while it is lifted (`crates/agent-server/src/server/tree/profiles.rs`), so a limit
 /// stored as Unlimited, a null, takes its default number and stays
 /// Unlimited. The table is rebuilt, since SQLite cannot make a column NOT
 /// NULL in place.
@@ -2650,16 +2651,16 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
 
 /// From 0.1.21's conversation schema: commands no longer run in shells, the
 /// model has one tool, `shell`, and command reports replace yield wakeups
-/// (`shell-tool.md` § Command reports). A command's output keeps no media: the
-/// model views a file again when it needs it (`shell-tool.md` § Where media are
-/// kept), so the media column goes, which a CHECK names, and the table is
-/// made anew, as for 0.1.11. Block format 2 also lets a block keep
-/// the entries of a vendor's own record of the session (`claude-code.md`
-/// § The session a process resumes), which no block 0.1.21 stored has, so
-/// leaving the field out writes them as format 2. Commands outlive their
-/// connections: a running one is recorded, none of which 0.1.21 kept, and a
-/// lost one says why (command ending format 2), which for 0.1.21's, lost
-/// with their connections, is that. A page of history is read by the
+/// (`crates/agent-session/src/reports.rs`). A command's output keeps no media:
+/// the model views a file again when it needs it
+/// (`crates/agent-tools/src/result.rs`), so the media column goes, which a
+/// CHECK names, and the table is made anew, as for 0.1.11. Block format 2 also
+/// lets a block keep the entries of a vendor's own record of the session
+/// (`claude-code.md` § The session a process resumes), which no block 0.1.21
+/// stored has, so leaving the field out writes them as format 2. Commands
+/// outlive their connections: a running one is recorded, none of which 0.1.21
+/// kept, and a lost one says why (command ending format 2), which for 0.1.21's,
+/// lost with their connections, is that. A page of history is read by the
 /// blocks' types and found by a block's id or a command's, which the new
 /// indexes serve.
 fn from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {

@@ -402,7 +402,7 @@ close to the provider's own count.
 - A text's token estimate is its length in UTF-8 bytes divided by 4, rounded
   up. For example, `hello` (5 bytes) and `你好` (6 bytes) are both 2 tokens.
 - The replay bound below, the shell preview and the shell view window count
-  Unicode scalar values, and a cut never splits one ([Tools](shell-tool.md#tools),
+  Unicode scalar values, and a cut never splits one (`crates/agent-tools/src/lib.rs`,
   [Views](transcript.md#views)).
 - Limits that the web app also checks count Unicode scalar values as well
   ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
@@ -603,7 +603,7 @@ The replay bound keeps one long text from filling a request:
 - The transcript keeps the full text; only what the model receives is cut.
 - A shell tool's result is made to fit the bound where it is made, with a line
   that names the command printing the whole output
-  ([Results and previews](shell-tool.md#results-and-previews)), so replay sends it
+  (`crates/agent-tools/src/result.rs`), so replay sends it
   unchanged.
 
 For example, a user message that pastes a log of 50,000 characters reaches the
@@ -633,7 +633,7 @@ The copy runs inside the session's action, and nothing it does changes the
 session's transcript.
 
 A session copy is neither a subagent nor a Fork. A subagent starts with an
-empty transcript and lives in the session tree ([Subagents](subagents.md)). A
+empty transcript and lives in the session tree (`crates/agent-server/src/server/tree/supervisor.rs`). A
 Fork is a new conversation, saved in its own database, from a completed
 assistant message ([Conversation Fork](conversation-fork.md)).
 

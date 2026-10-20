@@ -21,7 +21,7 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
 
 /**
  * The thin bar along the Agents window's bottom edge that says what the
- * shown child is doing and runs on (`subagents.md` § What an agent runs on),
+ * shown child is doing and runs on,
  * in the secondary text color under its own top divider, made of segments as
  * an editor's status bar is: the state and time, the folder it works in,
  * *Forked from agent N*, the profile, the model with its effort, and the
@@ -97,7 +97,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         <span class="text-fg-faint" aria-hidden="true">·</span>
         <span class="tabular-nums">{{ time }}</span>
       </StatusBarSegment>
-      <!-- Where it works: the directory's own name, its whole path in the tip (`subagents.md` § What an agent runs on). -->
+      <!-- Where it works: the directory's own name, its whole path in the tip. -->
       <Tooltip tag="span" class="flex min-w-0" wide>
         <StatusBarSegment :acting="openFolder !== null" class="min-w-0" @click="openFolder?.()">
           <Folder :size="icons.chip" class="shrink-0" aria-hidden="true" />

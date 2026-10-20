@@ -155,7 +155,7 @@ question: the user asks this aside from the conversation; answer briefly, in a
 few sentences; read and check what is needed but change nothing, no file
 written and no command that changes the Host. This narrows it by instruction,
 as a profile narrows a child
-([Child context](../agent/subagents.md#child-context)); the Host does not
+(`crates/agent-server/src/node/mod.rs`); the Host does not
 enforce it. Then comes the question. A follow-up is the side conversation's
 next turn, after its own history, and keeps its model when the conversation's
 changes. It runs on the conversation's Host, through the conversation's host
@@ -200,8 +200,7 @@ outside the card. ↗ opens the side conversation, its steps included, in
 the window a subagent's opens in; it starts with the user's first question,
 drawn as the bubble of a message with its quote, since the history before
 it is the conversation's own and the side question's instruction is the
-product's, not the user's,
-([Product rendering](../agent/subagents.md#product-rendering)). × folds the
+product's, not the user's,. × folds the
 card into a purple question mark in the reply's right margin at the asked
 line, where a comment's mark stands; a click on the mark or on the purple
 words opens the card again, scrolled into view. Hovering the purple words

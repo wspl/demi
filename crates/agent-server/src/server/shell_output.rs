@@ -1,14 +1,25 @@
-//! The `demi shell` command group (`shell-tool.md` § The `demi shell`
-//! commands, § The whole output): `demi shell status` looks at commands of
-//! the conversation as a result shows them, waits for their end and changes
-//! how often they report; `demi shell input` writes to a command's input;
-//! `demi shell output` prints a command of the conversation's whole output,
-//! as numbered lines a page at a time, the lines a range names, the newest
-//! lines, or the bytes as they are. It reads a running command's output
-//! from its Host through the command's job, and an ended command's from the
-//! conversation's store. `demi shell stop` stops a
-//! running command of the conversation through the shell environment that
-//! runs it, as a page's stop does.
+//! The `demi shell` command group: `status` looks at commands of the
+//! conversation as a result shows them, waits for their end and changes how
+//! often they report; `input` writes to a command's input; `output` prints a
+//! command's whole output; `stop` stops a running command through the shell
+//! environment that runs it, as a page's stop does.
+//!
+//! Looking, answering and stopping are things a shell does, so they are
+//! commands and not tools: each is an `rpc` command handled in the backend from
+//! any of the conversation's shells, so one script combines them with anything
+//! else. They work on any command of the conversation, whichever agent ran it;
+//! only the place a look moves is the calling node's own. `stop` succeeds on a
+//! command that had already ended, so stopping is safe to repeat.
+//!
+//! `output` is sized for the model: a page never exceeds `PAGE_CHARS`, so its
+//! own result is never cut, and a long line shows in part so it cannot fill a
+//! page. `--raw` is the bytes with the pages' line numbering, so `grep -n` on
+//! it gives the numbers `--lines` takes; the command has no search of its own.
+//! It reads a running command from its Host through host access and an ended
+//! one from the store, where the backend put it before any result reported the
+//! end. A Host keeps at most 16 MiB of a command's output (all of it, or its
+//! first and last 8 MiB), so a command that prints without end costs 16 MiB on
+//! its Host and in the backend alike.
 
 use std::{rc::Weak, sync::Arc, time::Duration};
 
@@ -195,7 +206,7 @@ async fn status<H: HostResolver>(
         };
         // A stopped call stops waiting, and lets go of its look with it:
         // nobody reads what it would show, and a handler left waiting would
-        // show the end to no one (`shell-tool.md` § Command reports). A call
+        // show the end to no one (`crates/agent-session/src/reports.rs`). A call
         // stopped as the commands end is stopped all the same.
         tokio::select! {
             biased;
@@ -243,7 +254,7 @@ async fn status<H: HostResolver>(
     }
     // Only what reached the caller was seen: a look its call could not
     // print moves nothing, so an end it showed no one is reported as any
-    // end is (`shell-tool.md` § Command reports).
+    // end is (`crates/agent-session/src/reports.rs`).
     if let Some(looking) = &looking {
         for (command, moved) in moves {
             match moved {
@@ -375,8 +386,7 @@ async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Du
 /// from its place in the command's record; any other node, and a node
 /// whose command no shells hold any more, from its own place in the
 /// command's whole output: each look shows the output since the node's own
-/// last look and moves only its place (`shell-tool.md` § The `demi shell`
-/// commands), once the caller printed it.
+/// last look and moves only its place, once the caller printed it.
 async fn status_one<H: HostResolver>(
     tree: &Tree<H>,
     caller: &NodeId,
@@ -468,7 +478,7 @@ async fn status_one<H: HostResolver>(
             (text, Some(seen), facts)
         }
         // An end a look showed tells the node nothing more, however the
-        // command ended (`shell-tool.md` § Command reports).
+        // command ended (`crates/agent-session/src/reports.rs`).
         None => match tree.store().command_output(&command).await {
             Ok(Some(StoredCommand {
                 end,

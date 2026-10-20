@@ -6,7 +6,7 @@ import { hostAction, reachAction, useCredentialAction, wordedActions } from '../
 import { around, t } from './locales/text'
 
 /**
- * A receipt's row (`subagents.md` § Product rendering): what happened, in
+ * A receipt's row: what happened, in
  * the user's words, and the agent it names by its description, which is
  * an imperative title and so the notice's object, never its subject. The
  * main agent, which has no description of its own, is named as such and

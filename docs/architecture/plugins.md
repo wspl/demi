@@ -139,7 +139,7 @@ The set is the commands of the plugins the user has on, the same for every
 conversation tree that opened with that set ([A user's
 plugins](#a-users-plugins)). A node's set differs from it only by the agent
 runtime's `demi agent` group, which depends on the node
-([Subagents](../agent/subagents.md#model-facing-surface)).
+(`crates/agent-server/src/server/commands.rs`).
 
 ### Prompt text and context
 

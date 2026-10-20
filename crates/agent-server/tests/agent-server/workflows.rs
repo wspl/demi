@@ -1,9 +1,9 @@
-//! A conversation's workflow at the tree's boundary (`subagents.md`
-//! § Workflows of a project): its profiles replace the user's at each
-//! spawn and in `demi agent profiles list`, whatever the user's switch is;
-//! No Subagents and an unavailable workflow refuse every spawn with their
-//! own message; `demi agent workflows` lists the project's workflows and
-//! checks a file with the one parser.
+//! A conversation's workflow at the tree's boundary
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`): its profiles
+//! replace the user's at each spawn and in `demi agent profiles list`, whatever
+//! the user's switch is; No Subagents and an unavailable workflow refuse every
+//! spawn with their own message; `demi agent workflows` lists the project's
+//! workflows and checks a file with the one parser.
 // Cost: in-memory store and scripted model; a few milliseconds each.
 
 use demi_agent_store::testing::model_of;

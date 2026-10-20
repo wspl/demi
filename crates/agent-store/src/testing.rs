@@ -1059,7 +1059,7 @@ impl BlobStore for MemoryBlobs {
     }
 }
 
-/// The tree store contract's cases (`subagents.md` § Persistence,
+/// The tree store contract's cases (`crates/agent-store/src/lib.rs`,
 /// `runtime.md` § Tree store), for any realization of [`AgentTreeStore`]:
 /// create queues the first message with the node, a save delivers the
 /// completions it carries, reopen and delete, a completion of an earlier

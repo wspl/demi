@@ -164,10 +164,10 @@ input, which the multi-worker control service also relies on
   transaction so independent edits do not overwrite each other.
 - **Subagents:** `user_subagents` stores the subagent settings of each user
   who changed them: user, whether subagents are on
-  ([Subagent switch](../agent/subagents.md#profiles)), and the two
-  [limits](../agent/subagents.md#limits), each the number last set and
+  (`crates/agent-server/src/server/tree/profiles.rs`), and the two
+  limits (`crates/agent-server/src/server/tree/profiles.rs`), each the number last set and
   whether it is lifted (Unlimited). A user with no row has them on, with limits 10 and 1. `subagent_profiles` stores each user's
-  [subagent profiles](../agent/subagents.md#profiles), one per row: id, user,
+  subagent profiles (`crates/agent-server/src/server/tree/profiles.rs`), one per row: id, user,
   name, unique among the user's, description, the model settings as JSON or
   null for the parent's, the replacing instructions or null for the
   parent's, whether its children may spawn, and whether it is enabled, which
@@ -346,11 +346,11 @@ the conversation ID; child nodes are subagents. The backend supplies this
 database to the agent through the tree store contract
 ([Tree store](../agent/runtime.md#tree-store)), independently of any execution
 Host. The node lifecycle and its commits are defined in
-[Subagents](../agent/subagents.md#persistence).
+Subagents (`crates/agent-store/src/lib.rs`).
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
+| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added (`crates/agent-store/src/lib.rs`), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs, simulators `demi mobile` opens and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api-conversations.md#conversation-history)) |
 | `block_attachments` | Each attachment a block's text delivers as an attachment block ([Attachment blocks](../product/file-previews.md#attachment-blocks)), by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
@@ -371,7 +371,7 @@ runs of row numbers its current path is made of, the second stored copy of
 derived data after the search index, kept for page reads.
 
 Each atomic commit of the tree store, such as creating, saving or closing a
-node ([Persistence](../agent/subagents.md#persistence)), is one transaction on
+node (`crates/agent-store/src/lib.rs`), is one transaction on
 the conversation's writer connection. Deleting a node cascades to its
 descendants and their dependent rows.
 
@@ -440,11 +440,11 @@ unreferenced blob stays ([Retention](#retention)).
 
 When a command ends, the backend stores its whole output, as its Host kept it
 within 16 MiB, as a blob in the conversation owner's namespace
-([The whole output](../agent/shell-tool.md#the-whole-output)), and records it in
+(`crates/agent-server/src/server/shell_output.rs`), and records it in
 the conversation's `command_outputs` table, one row per command, keyed by the
 command's id. The row holds when the command ended and how: its exit code,
 or that it was stopped or lost with its reason, which its report names
-([Command reports](../agent/shell-tool.md#command-reports)); and one of two
+(`crates/agent-session/src/reports.rs`); and one of two
 states:
 
 | State | Holds | `demi shell output` prints |
@@ -467,7 +467,7 @@ job's id on that device, the tool call that started it, the call's title
 and script, when it started,
 the interval it reports at (null for a resident one), what it will start
 while it waits, not yet sent (`unsent`), and the place in its output each node has looked to, which a look or a
-report moves ([Command reports](../agent/shell-tool.md#command-reports)).
+report moves (`crates/agent-session/src/reports.rs`).
 The control database's `running_jobs` table indexes them by device: each
 running job's id with its device and conversation, and whether it was sent
 (`sent`, 0 while the command waits for its device), written before the job

@@ -479,8 +479,9 @@ test('a Retry ends when its read does, though the file is still not there or the
 })
 
 test('an answer follows the subjects it names, and a change of one reads it again', async () => {
-  // As the Workflow menu's list does (`subagents.md` § Workflows of a
-  // project): the backend's answer names the folders it read.
+  // As the Workflow menu's list does
+  // (`crates/backend-user-shard/src/conversation/workflows.rs`): the backend's
+  // answer names the folders it read.
   const h = host()
   const subjects = (value: string | undefined) =>
     value === undefined ? [] : [{ kind: 'folder_details' as const, path: value }]

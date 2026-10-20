@@ -110,7 +110,7 @@ export function applyConversationEvent(
     conversation.terminals = conversation.terminals.filter((terminal) => !isTerminalRunning(terminal.phase))
   } else if (event.type === 'subagents') {
     // Every child as the open's snapshot lists it, which the page takes
-    // whole (`subagents.md` § Protocol). A running child's frames follow
+    // whole (`crates/agent-server/src/server/tree.rs`). A running child's frames follow
     // with its state, and its latest page when the page shows it; any other
     // keeps the transcript the page holds while its revision has not moved,
     // and is read again when shown otherwise.
@@ -131,11 +131,12 @@ export function applyConversationEvent(
       }
     })
   } else if (event.type === 'shell_output') {
-    // A command's live view, the same for every page (`shell-tool.md` § Live
-    // output): what it adds to the output shown, under its call while the
-    // call runs and in the dock after. The frame names the command by its
-    // call's title and script, which its record keeps, so its tab needs no
-    // call the page holds (`rendering.md` § Rendering boundary).
+    // A command's live view, the same for every page
+    // (`crates/agent-server/src/server/tree/live.rs`): what it adds to the
+    // output shown, under its call while the call runs and in the dock after.
+    // The frame names the command by its call's title and script, which its
+    // record keeps, so its tab needs no call the page holds (`rendering.md` §
+    // Rendering boundary).
     const { subagentId, status } = event
     const current = conversation.terminals.find(
       (terminal) => terminal.id === status.commandId,

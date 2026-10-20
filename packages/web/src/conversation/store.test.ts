@@ -660,9 +660,8 @@ test('sidebar stays active until the last running child closes after its parent 
   expect(conversation.status).toBe('active')
 })
 
-// A resumed child's line counts its new round (`subagents.md` § What an
-// agent runs on): the `started` job of round 2 replaces the closed round's
-// start and end.
+// A resumed child's line counts its new round: the `started` job of round 2
+// replaces the closed round's start and end.
 test('a resumed child\'s record takes its new round\'s start, end and model', () => {
   const conversation = useConversations().items[0]!
   const job = {
@@ -711,10 +710,10 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
   }
 }
 
-// `shell-tool.md` § Live output and § Rendering boundary: every page keeps one
-// record of a command from its live frames, titled by its call's title and
-// opening with its script as the frames carry them, and adds only the
-// characters beyond those it has shown.
+// `crates/agent-server/src/server/tree/live.rs` and `rendering.md` § Rendering
+// boundary: every page keeps one record of a command from its live frames,
+// titled by its call's title and opening with its script as the frames carry
+// them, and adds only the characters beyond those it has shown.
 test('a command\'s live frames build what the page shows of it, until its end', () => {
   const conversation = useConversations().items[0]!
   conversation.history = wholeHistory([execCall('call-1', 'npm test', 'executing', 'Run the unit tests')])
@@ -4712,9 +4711,9 @@ test('a page that closes while typing leaves its text to the next page, which ta
   }
 })
 
-// A child's context card shows the child's own context (`subagents.md`
-// § What an agent runs on): its usage lands on its record and leaves the
-// root's, which the runtime keeps for the composer, alone.
+// A child's context card shows the child's own context: its usage lands on its
+// record and leaves the root's, which the runtime keeps for the composer,
+// alone.
 test('a child\'s usage frame sets its own record\'s usage', () => {
   const conversation = useConversations().items[0]!
   conversation.contextUsage = null

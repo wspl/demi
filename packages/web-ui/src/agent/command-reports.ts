@@ -4,7 +4,7 @@ import type { CommandEndMark } from './command-end'
 import { t } from './locales/text'
 
 /**
- * The call a report row names (`shell-tool.md` § Command reports): its title, or
+ * The call a report row names (`crates/agent-session/src/reports.rs`): its title, or
  * the command by its number when the title is not known.
  */
 export function reportTitle(report: CommandReport): string {
@@ -36,6 +36,8 @@ export function reportNotice(report: CommandReport): string | null {
           return t('transcript.report.stopped')
       }
     case 'lost':
+      // Worded as *Lost track of command*, never *Command lost*, which reads as
+      // a command that had just come back.
       return t('transcript.report.lost')
   }
 }

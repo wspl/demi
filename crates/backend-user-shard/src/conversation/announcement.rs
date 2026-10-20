@@ -156,7 +156,7 @@ impl Shard {
 
     /// The working directory of `node` on the primary Host: a child's own,
     /// and for the root the conversation's, its target's directory
-    /// (`subagents.md` § Working directory).
+    /// (`crates/agent-server/src/node/mod.rs`).
     pub(crate) async fn node_directory(&self, node: NodeContext<'_>) -> Result<String, HostAccessError> {
         match node.cwd {
             Some(cwd) => Ok(cwd.to_owned()),
@@ -180,7 +180,7 @@ impl Shard {
     /// started, each working where the conversation works now: its live
     /// tree's own list whenever a tree is live as the answer is made, the
     /// one the open's `subagents` frame sends, and otherwise the store's
-    /// (`subagents.md` § Protocol). The store's reading awaits, and a tree
+    /// (`crates/agent-server/src/server/tree.rs`). The store's reading awaits, and a tree
     /// opened meanwhile answers instead, so the answer never disagrees with
     /// a handshake made before it.
     pub async fn subagents(&self, id: &ConversationId) -> Result<Vec<SubagentJob>, SubagentsError> {

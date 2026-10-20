@@ -1,9 +1,20 @@
-//! The `demi agent` command group (`subagents.md` § Model-facing surface):
-//! its declarations, and the handlers that run each call against the live
-//! tree of the invoking job's conversation. Lifecycle (`spawn`, `fork`,
-//! `abort`, `resume`) acts on the caller's own children; communication and
-//! reads reach any live agent of the tree; `cwd` reads or moves the
-//! caller's own working directory.
+//! The `demi agent` command group: its declarations, and the handlers that run
+//! each call against the live tree of the invoking job's conversation.
+//! Lifecycle verbs act on the caller's own children; communication and reads
+//! reach any live agent of the tree; `cwd` reads or moves the caller's own
+//! working directory.
+//!
+//! The model keeps the one `shell` tool: the group is grafted into every node's
+//! command set, the root's included (the product never declares an `agent`
+//! group, the plugin host refuses the name), and no command is stripped by
+//! depth. `spawn`, `fork` and `resume` answer once the child exists and its
+//! message is queued, because the supervisor owns the child independently of
+//! the invoking job; the outcome arrives as a message, so there is no `wait`
+//! verb. Briefs and messages come from stdin only, so a long text never meets
+//! quoting or argument limits. There is no `--model` option: a child's model
+//! comes from its profile or its parent. `--profile`'s help names no profile:
+//! help is part of the system prompt, rendered once per tree, and the profiles
+//! change with the user's settings.
 
 use std::{
     cell::RefCell,
@@ -27,7 +38,7 @@ use super::{
     tree::{ShownAgent, StartInput, Tree, TreeEntry, list_text},
 };
 
-/// The one description of a spawn's brief (`subagents.md` § Command help).
+/// The one description of a spawn's brief.
 const SPAWN_PROMPT: &str = "The child's first user message and only task brief. The child starts with an empty transcript and cannot see this conversation: do not refer to prior turns, and do not paste this conversation or the product user's message unchanged. Include the goal for this child, applicable decisions and constraints, whether to edit or only report, how to verify, and every concrete identifier it needs (paths, ids, error text, commands already tried and their key results). State the exact shape of the last assistant text it should return.";
 
 const SPAWN_SUMMARY: &str = "Start a child agent session and return its id immediately after creation. The child runs independently of this command. Completion arrives as a message to the parent, waking it when idle. When you have no independent work left, end your turn and let the completion message wake you. Do not poll agent list/show to wait for children. Use agent send to communicate and agent abort to stop it. Children can spawn children of their own.";
@@ -47,7 +58,7 @@ const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the
 
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
-/// settings (`subagents.md` § Command help).
+/// settings.
 const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles. Without it the child inherits your model, prompt, Host and commands; `demi agent profiles list` lists the profiles, with when to use each, that may fit the task better.";
 
 const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
@@ -428,7 +439,7 @@ async fn spawn<H: HostResolver>(
 }
 
 /// Prints the caller's directory, or moves the caller to `dir`
-/// (`subagents.md` § Working directory).
+/// (`crates/agent-server/src/node/mod.rs`).
 async fn cwd<H: HostResolver>(call: Invoked<H, CwdArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let changed = match &call.args.dir {
         Some(dir) => call.tree.change_cwd(&call.caller, dir).await,

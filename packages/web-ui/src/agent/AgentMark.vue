@@ -6,7 +6,7 @@ import { subagentStatus, type SubagentPhase } from './subagents'
 /**
  * An agent's mark: the robot, with the dot of its state on its corner,
  * which changes as it runs and ends. Its tab in the Agents window wears it,
- * and so does a message's link to it (`subagents.md` § Linking an agent);
+ * and so does a message's link to it;
  * the conversation's own agent, without a phase, wears the robot alone.
  */
 defineProps<{

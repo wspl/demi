@@ -526,7 +526,7 @@ impl<H: HostResolver> Connection<H> {
                 }
             }
             // What the command prints and its end reach every attached
-            // connection as its `shell_output` (`shell-tool.md` § Live output);
+            // connection as its `shell_output` (`crates/agent-server/src/server/tree/live.rs`);
             // only the write's acknowledgement is a reply.
             ClientFrame::ShellWrite { command_id, stdin } => {
                 match tree.shell_write(&command_id, stdin).await {

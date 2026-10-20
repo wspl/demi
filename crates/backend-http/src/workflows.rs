@@ -1,9 +1,9 @@
-//! `GET /conversations/:id/workflows` (`subagents.md` § Workflows of a
-//! project): the Workflow menu's list, as the backend keeps it with the
-//! runner's file watch, with the Host's number before the read that found
-//! it, as every answer the file watch keeps current carries; while no
-//! search is held, no workflows and no number (`web-api-conversations.md`
-//! § Workflows of a directory).
+//! `GET /conversations/:id/workflows`
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`): the Workflow
+//! menu's list, as the backend keeps it with the runner's file watch, with the
+//! Host's number before the read that found it, as every answer the file watch
+//! keeps current carries; while no search is held, no workflows and no number
+//! (`web-api-conversations.md` § Workflows of a directory).
 
 use axum::Json;
 use axum::extract::{Path, State};

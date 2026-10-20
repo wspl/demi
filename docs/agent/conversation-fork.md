@@ -198,7 +198,7 @@ has no S in its agent tree and receives no later result from S. If S's result
 was already in the root transcript before A1, that result is kept normally.
 
 The destination's tree supervises its own children in the ordinary way
-([Subagents](subagents.md)). Fork does not register source children, redirect
+(`crates/agent-server/src/server/tree/supervisor.rs`). Fork does not register source children, redirect
 commands to the source, or restore source children when the destination
 reopens. Newly spawned children belong to the destination.
 

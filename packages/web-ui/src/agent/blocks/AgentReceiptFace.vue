@@ -6,10 +6,9 @@ import ReceiptTag from './ReceiptTag.vue'
 import { receiptOrigin, receiptRow, useOriginRevealer } from '../agent-receipts'
 
 /**
- * What a receipt says on its notice row (`subagents.md` § Product
- * rendering), wherever the row stands, the folded face of a run included:
- * the words, the agent's name, which leads where the receipt came from,
- * and its tag.
+ * What a receipt says on its notice row, wherever the row stands, the folded
+ * face of a run included: the words, the agent's name, which leads where the
+ * receipt came from, and its tag.
  */
 const props = defineProps<{ message: AgentMessage }>()
 

@@ -105,7 +105,7 @@ pub(crate) struct Work {
     starting: RwLock<()>,
     /// The command lines of the background tasks that keep the job running
     /// once its script has ended; empty while the script runs
-    /// (`shell-tool.md` § Results and previews).
+    /// (`crates/agent-tools/src/result.rs`).
     outliving: watch::Sender<Vec<String>>,
     /// The job's utilities that run now, by name, with how many of each:
     /// what a killed job names when it ends without them.
