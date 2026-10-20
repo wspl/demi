@@ -1,6 +1,6 @@
 /**
  * What a browser's address bar opens for the text its user typed, as
- * Chrome's omnibox reads it (`live-view.md` § A browser tab in the panel):
+ * Chrome's omnibox reads it:
  * a URL with its scheme as it is; a local name, an IP address or a
  * `host:port` without one over `http://`; other text with a dot and no
  * space over `https://`; anything else, a word or words, a Google search.

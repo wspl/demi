@@ -1,7 +1,24 @@
-//! A viewer's input to the tab it watches (`live-view.md` § Input): the live
-//! view's input task (`demi_live_view::input`) orders it beside the agent's
-//! commands, and this turns it into CDP events. Keys and buttons held down
-//! are this viewer's own: its end releases only them.
+//! A viewer's input to the tab it watches: the live view's input task
+//! (`demi_live_view::input`) orders it beside the agent's commands, and this
+//! turns it into CDP events. Keys and buttons held down are this viewer's own:
+//! its end releases only them.
+//!
+//! The page takes the newest input, never a backlog. Chrome answers an event
+//! only once the renderer handled it and a trackpad sends a wheel turn per
+//! frame, so input arriving while the tab is busy is merged: consecutive wheel
+//! turns with the same modifiers become one with summed deltas, consecutive
+//! moves with the same buttons the latest one; any other input ends the merge
+//! and goes in order.
+//!
+//! - Mobile mode sends touch events directly: Chrome's mouse-to-touch
+//!   conversion makes CDP mouse calls never return.
+//! - Wheel deltas are CSS pixels as they are: with the screen at the viewer's
+//!   ratio, Chrome scrolls by that many CSS pixels at every ratio (measured on
+//!   macOS and Linux at 1, 1.5, 2 and 3).
+//! - Paste goes through the Host browser's isolated clipboard and the Host's
+//!   paste shortcut, so the page gets a real `paste` event. Copied text reaches
+//!   the viewer only within 5 seconds of its input, and never from password
+//!   fields.
 
 use std::collections::HashMap;
 

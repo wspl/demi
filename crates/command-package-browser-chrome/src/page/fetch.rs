@@ -1,4 +1,9 @@
 //! Collect page content from a registered batch of temporary environment tabs.
+//!
+//! The batch holds the registry open until its results are collected, so
+//! closing one tab cannot tear down the environment mid-fetch. Pages run
+//! scripts and share the login state: this is not a side-effect-free HTTP
+//! fetch.
 
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;

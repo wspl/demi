@@ -1,5 +1,25 @@
-//! A tab's viewport (`live-view.md` § Viewport and pixel ratio): who
-//! decides it, its size in CSS pixels, and the pixel ratio the page renders at.
+//! A tab's viewport: who decides it, its size in CSS pixels, and the pixel
+//! ratio the page renders at. Modes: Web follows the live view's panel and the
+//! viewer's pixel ratio, Mobile emulates a phone, Custom is what the agent set.
+//!
+//! - Entering or leaving Mobile reloads the page: a phone's user agent and
+//!   touch reach only what loads after them.
+//! - A tab whose navigation has not committed keeps its size until it commits:
+//!   Chrome holds commands for the page but would resize its window at once,
+//!   and the capture would letterbox the old page.
+//! - Chrome paints a window at its screen's ratio, so the virtual screen's
+//!   ratio is set at run time (`Emulation.updateScreen`) and each tab's metrics
+//!   are pinned to it; a launch flag would fix it for the process's life, and
+//!   emulating a ratio or capturing larger only upscales a 1x picture on Linux.
+//! - A new viewport is published to capture only after a surface repaint
+//!   ([`paint`]): acknowledged metrics are not yet applied by the compositor.
+//! - A resize ends the tab's capture first, and the next starts when the
+//!   viewport is published: Chrome scales a capture up until it fills, so one
+//!   that overlapped the change would paint at a higher ratio and a frame names
+//!   no scale factor to drop it by.
+//! - The screen's ratio only rises: when it falls, Chrome keeps painting
+//!   cross-site frames at the old scale. macOS accepts only whole ratios.
+//! - Screenshots stay in CSS pixels whatever the ratio.
 
 use chromiumoxide::{
     Page,
@@ -209,7 +229,7 @@ impl BrowserTab {
 
     /// The number of the last tab list the Host read before now: a list read
     /// later is numbered at least this, and higher once anything the browser
-    /// shows changed since (`live-view.md` § The tab methods).
+    /// shows changed since.
     pub fn list_number(&self) -> u64 {
         *self.state.changes.borrow()
     }

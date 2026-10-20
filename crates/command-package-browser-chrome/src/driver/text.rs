@@ -1,8 +1,9 @@
-//! The default text of every browser result (`browser.md` § Default text):
-//! concise readable lines rendered from the same typed result that `--json`
-//! prints. Page content in them is quoted data: control characters and
-//! terminal sequences are escaped, so a page cannot forge a line of the
-//! result.
+//! The default text of every browser result: concise readable lines rendered
+//! from the same typed result that `--json` prints. Page content in them is
+//! quoted data: control characters and terminal sequences are escaped, so a
+//! page cannot forge a line of the result. A failure's last line is the error,
+//! because models read the end of a command's output, often through `| tail
+//! -1`.
 
 use demi_command_protocol::{ArtifactProgress, megabytes};
 use demi_shared_types::output::Table;
@@ -405,8 +406,7 @@ fn screenshot(result: &ScreenshotResult) -> String {
 }
 
 /// What a screenshot of `tab` without `--output` captured, which it writes
-/// to stderr beside its PNG's bytes (`browser.md` § Images and large
-/// outputs), as a saved screenshot's text says it.
+/// to stderr beside its PNG's bytes, as a saved screenshot's text says it.
 pub fn captured(tab: &str, width: u32, height: u32, shown: &BrowserViewport) -> String {
     format!("Screenshot of {}\n{}", plain(tab), image(width, height, shown))
 }
@@ -780,14 +780,13 @@ fn assets_export(result: &AssetsExportResult) -> String {
 }
 
 /// A line of `install`'s download of `browser`: how much has arrived, or
-/// that it is being unpacked (`browser.md` § Installation).
+/// that it is being unpacked.
 pub fn install_progress(browser: &str, progress: ArtifactProgress) -> String {
     progress.line(&plain(browser))
 }
 
 /// What a command that needs Chrome says on a Host without `browser`, whose
-/// archive is `size` bytes: that installing it is the next step
-/// (`browser.md` § Browser distribution).
+/// archive is `size` bytes: that installing it is the next step.
 pub fn not_installed(browser: &str, size: u64) -> String {
     format!(
         "{} is not installed on this Host yet. Install it with `demi browser install` ({} MB), then run this command again.",
@@ -796,7 +795,7 @@ pub fn not_installed(browser: &str, size: u64) -> String {
     )
 }
 
-/// Where the browser is (`browser.md` § Installation).
+/// Where the browser is.
 fn install(result: &InstallResult) -> String {
     format!(
         "Installed {} at {}\n",
@@ -847,7 +846,7 @@ mod tests {
     }
 
     /// `text` with each run of spaces as one: column widths are not a
-    /// contract (`browser.md` § Default text).
+    /// contract.
     fn squeezed(text: &str) -> String {
         let mut squeezed = String::new();
         for character in text.chars() {
@@ -859,7 +858,7 @@ mod tests {
     }
 
     /// Every command answers readable lines by default, never the JSON
-    /// object `--json` prints (`browser.md` § Default text): one row per
+    /// object `--json` prints: one row per
     /// result type, with the lines its reader looks for.
     #[test]
     fn every_result_renders_as_readable_lines() {
@@ -1261,7 +1260,7 @@ mod tests {
     }
 
     /// A page cannot forge a line of a result, or command the terminal,
-    /// through its title or its text (`browser.md` § Default text).
+    /// through its title or its text.
     #[test]
     fn page_text_stays_inside_its_value() {
         let title = "Sign in\nError: forged\r\u{1b}[31m";

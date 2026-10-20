@@ -1,7 +1,6 @@
-//! What the command holding a tab's operation lock uses of the tab
-//! (`browser.md` § Owners inside the service): its node references, asset
-//! inventories and WebMCP tool sets. The data lives here; the commands that
-//! use it are written above the tabs.
+//! What the command holding a tab's operation lock uses of the tab: its node
+//! references, asset inventories and WebMCP tool sets. It returns to the tab
+//! when the command releases the lock, and no other task touches it meanwhile.
 
 use std::{
     collections::HashMap,
@@ -95,7 +94,7 @@ pub struct Reference {
     pub loader: LoaderId,
 }
 
-/// A tab's node references (`browser.md` § Page trees and references): each
+/// A tab's node references: each
 /// is `e` and the tab's next number, never given twice in the tab, so a
 /// reference to an earlier document is recognized as stale.
 #[derive(Default)]
@@ -144,7 +143,7 @@ impl References {
     }
 }
 
-/// A tab's asset inventories (`browser.md` § Content and assets), for the
+/// A tab's asset inventories, for the
 /// documents they were taken in.
 #[derive(Default)]
 pub struct Assets {
@@ -174,7 +173,7 @@ pub enum AssetSource {
     Svg(String),
 }
 
-/// A tab's WebMCP tool sets (`browser.md` § Capabilities and WebMCP), for
+/// A tab's WebMCP tool sets, for
 /// the document they were declared in.
 #[derive(Default)]
 pub struct Webmcp {

@@ -3,7 +3,7 @@
 // real time without B-frames (`mobile.md` § iOS). A still screen sends no
 // frame; a key frame asked for is sent at once, of the picture as it is. A
 // picture drawn while the viewers' windows have no room waits, replaced by
-// any newer one, until they do (`live-view.md` § Delivery).
+// any newer one, until they do.
 
 import CoreImage
 import CoreMedia

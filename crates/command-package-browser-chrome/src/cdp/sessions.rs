@@ -1,9 +1,18 @@
-//! A tab's debugging owner (`browser.md` § CDP commands and events): one
-//! task per tab owns its debugging connections, one per calling agent, and
-//! the events they record. Commands ask it for their connection and for
-//! pages of the events; each connection's pump owns its socket and the
-//! targets it attached, and answers the commands that use it. Everything it
-//! sends and receives is validated against the pinned protocol.
+//! A tab's debugging owner: one task per tab owns its debugging connections,
+//! one per calling agent, and the events they record. Commands ask it for their
+//! connection and for pages of the events; each connection's pump owns its
+//! socket and the targets it attached, and answers the commands that use it.
+//! Everything it sends and receives is validated against the pinned protocol.
+//!
+//! Chrome discards every subscription, breakpoint and interception installed
+//! through a connection when it closes, so the browser tracks connections, not
+//! methods. A connection lasts until its caller runs `cdp detach`, the tab
+//! closes, or the browser retires; agent turns and shell jobs are no scope the
+//! browser knows. Cancelling a `cdp send` or `cdp events` in flight closes that
+//! caller's connection; cancelling only the bounded wait does not. A caller
+//! that leaves a pause behind blocks the page for all, so a timeout names the
+//! callers whose connections hold the tab, but nothing detaches on behalf of
+//! another. Transport loss is not a cleanup failure that fences a later start.
 
 use std::collections::HashMap;
 
@@ -522,8 +531,7 @@ async fn pump(
     after_cleanup(work, cleanup)
 }
 
-/// The failure of a call on a debugging connection that ended, and why
-/// (`browser.md` § CDP commands and events).
+/// The failure of a call on a debugging connection that ended, and why.
 fn ended(reason: &str) -> BrowserError {
     BrowserError::Connection(format!("tab debugging connection ended: {reason}"))
 }

@@ -794,7 +794,7 @@ permitted, inheritable, and ambient sets; setuid sudo may acquire privileges
 only within that bounding set. The profile excludes host administration, module
 loading, raw devices, and network administration. Test sudo and Chrome with this
 exact set; Chrome runs without its own sandbox on Linux
-([Native driver](../browser/browser.md#native-driver)). No privileged mode, host
+(`crates/command-package-browser-chrome/src/driver/launch.rs`). No privileged mode, host
 networking, unconfined runtime seccomp, host PID namespace, or runtime socket is
 exposed. Keep runsc's standard Directfs security profile; changes require a
 design and acceptance update, not a per-user escape hatch.

@@ -1,6 +1,5 @@
 /**
- * The browser's frames on the page's side (`live-view.md` § Framing and
- * versions): the live view's frames, read by the SDK's reader, with control
+ * The browser's frames on the page's side: the live view's frames, read by the SDK's reader, with control
  * messages in the browser's protocol, and the bytes of files the viewer
  * chose.
  */
@@ -39,8 +38,8 @@ export class LiveFrameReader {
   private readonly raw = new RawFrameReader()
 
   /**
-   * The frames `chunk` completes. A frame the protocol refuses throws
-   * (`live-view.md` § Framing and versions): it is the module's defect, and
+   * The frames `chunk` completes. A frame the protocol refuses throws:
+   * it is the module's defect, and
    * the view it came on ends.
    */
   read(chunk: Uint8Array): LiveFrame[] {

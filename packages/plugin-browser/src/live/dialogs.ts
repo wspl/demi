@@ -1,6 +1,5 @@
 /**
- * A page's JavaScript dialog as a browser shows it (`live-view.md` § A
- * browser tab in the panel): titled with the page's host, answered with
+ * A page's JavaScript dialog as a browser shows it: titled with the page's host, answered with
  * Enter and Escape.
  */
 import type { LiveDialog } from '../generated/plugin'

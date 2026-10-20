@@ -1,6 +1,36 @@
-//! The `demi.browser` package (`crates-and-packages.md` § command-package-browser): the
-//! conversations' browsers, as a resident command service composed of the
-//! browser libraries.
+//! The `demi.browser` package: the browsers of the conversations, as a resident
+//! command service that carries out the `demi browser` catalog.
+//!
+//! The browser is a plugin (`plugin-browser`) whose commands bind this package
+//! through the conversation-scoped state port. Nothing in the agent, the
+//! backend, the runner or their wire protocols holds browser logic: they carry
+//! the invocation, its command context, the conversation release and the user
+//! stream, and name no browser operation. `plugin-browser`'s tab methods and
+//! `browser` user stream only name this package's operations.
+//!
+//! ```text
+//! Agent shell call
+//!    -> Brush on the Host -> declared-command dispatcher (runner)
+//!         -> this service: one conversation browser per conversation
+//!              -> Chrome for Testing over CDP
+//!    <- stdout, stderr, exit status -> shell result and media handling
+//! ```
+//!
+//! - The conversation and the invoking agent come from the command context,
+//!   which a script cannot change; a command has no `--conversation`,
+//!   `--session`, `--profile` or `--cdp-url`.
+//! - A conversation has one environment per Host where its shell runs, and a
+//!   command never reaches the one on another Host (its handle is
+//!   `tab_not_found` there). The service does not know which role its Host
+//!   plays; the conversation release reaches every device the conversation
+//!   used.
+//! - Isolation between conversations is a product rule, not a security boundary
+//!   against a shell on the Host.
+//! - Refused: discovering a Chrome on `PATH`, attaching to a user's browser, a
+//!   batch language or REPL of its own (Bash composes the commands), and a
+//!   second shell or model-tool loop.
+//! - Where Codex's browser API and Playwright differ, Codex's verified normal
+//!   behavior decides; an obvious defect of the reference is not adopted.
 
 // Whether the service is `Send` and `Sync` is decided through a conversation's
 // browser and the channels that answer with it, deeper than the default 128
@@ -32,7 +62,7 @@ impl Default for DemiBrowser {
 
 impl DemiBrowser {
     /// The service, whose browsers start the pinned Chrome, which the
-    /// runner installs (`browser.md` § Browser distribution).
+    /// runner installs.
     pub fn new() -> Self {
         Self::with_chrome(Chrome::default())
     }
@@ -68,13 +98,12 @@ impl Handler for DemiBrowser {
     }
 
     /// The browsers number their tabs from the conversations' `tab`
-    /// sequences (`browser.md` § One tab registry).
+    /// sequences.
     fn numbers(&self, numbers: Numbers) {
         self.browsers.attach_numbers(numbers);
     }
 
-    /// The browsers tell the plugin when a conversation's tabs change
-    /// (`browser.md` § One tab registry).
+    /// The browsers tell the plugin when a conversation's tabs change.
     fn messages(&self, messages: Messages) {
         self.browsers.attach_messages(messages);
     }

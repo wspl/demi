@@ -1,5 +1,5 @@
 //! Why the `browser` kind's page is told a request, a tab or its view
-//! failed (`live-view.md` § The tab methods): one closed set, which the
+//! failed: one closed set, which the
 //! page's types name, so the page says every reason in words of its own.
 
 use demi_command_package_browser_protocol::browser::BrowserErrorCode;
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PanelReason {
-    // The browser's own codes (`browser.md` § Errors).
+    // The browser's own codes.
     InvalidInput,
     TabNotFound,
     TabBusy,
@@ -45,7 +45,7 @@ pub enum PanelReason {
     BrowserLost,
     Cancelled,
     OutcomeUnknown,
-    // The view's capture notices (`live-view.md` § Capture).
+    // The view's capture notices.
     CaptureUnavailable,
     CaptureFailed,
     CaptureStopped,

@@ -1,4 +1,4 @@
-//! The `cdp` commands (`browser.md` § CDP commands and events): methods and
+//! The `cdp` commands: methods and
 //! events of the pinned protocol on the calling agent's own debugging
 //! connection to a tab, outside the denied domains and methods.
 

@@ -1,16 +1,24 @@
-//! The conversation browser's tab list and tab methods (`live-view.md` § The
-//! tab methods): each runs the operation the agent's `demi browser` command
-//! runs, as a package call for the conversation's user, and holds no
-//! browser logic. The tab list is the plugin's conversation state, which
-//! the browser package's messages mark changed, since the agent's commands
-//! and the pages open and close tabs; listing never wakes a stopped Cloud
-//! and is no activity.
-//! Closing, moving and stopping a tab operate the browser without waking it; opening
-//! a tab is work the user starts. Each method that did its work marks the
-//! tab list changed. Opening and closing browser tabs for panel tabs is the
-//! panel's work ([`crate::panel`]), through the same operations.
-//! For a `user` caller the operations answer once their work started,
-//! without waiting for the page to load.
+//! The conversation browser's tab list and tab methods: each runs the operation
+//! the agent's `demi browser` command runs, as a package call for the
+//! conversation's user, and holds no browser logic. The tab list is the
+//! plugin's conversation state, which the browser package's messages mark
+//! changed; listing never wakes a stopped Cloud and is no activity. Closing,
+//! moving and stopping a tab operate the browser without waking it; opening a
+//! tab is work the user starts. Opening and closing browser tabs for panel tabs
+//! is the panel's work ([`crate::panel`]), through the same operations.
+//!
+//! - A user waits in the panel, not in a script, so for a `user` caller `open`,
+//!   `goto`, `back`, `forward` and `reload` answer once their work started, and
+//!   name the number of the last tab list before the request: the page ends its
+//!   loading only on a list numbered after it.
+//! - `stop` runs `browser.stop`, which only a `user` caller reaches: the agent
+//!   waits for its commands rather than stopping a load, so `demi browser` has
+//!   no `stop`.
+//! - A method that does not wake a stopped Cloud is admitted as a user stream
+//!   is and ends as one does (`conversation_busy` when streams end).
+//! - The reasons the methods, stream and host access can give are one closed
+//!   set ([`PanelReason`]) that the page must cover whole, so a reason without
+//!   a sentence is a build error, never a fallback.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;

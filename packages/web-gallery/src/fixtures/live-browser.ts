@@ -1,5 +1,5 @@
 /**
- * A live browser view without a Host (`live-view.md`): the gallery
+ * A live browser view without a Host: the gallery
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
@@ -377,8 +377,9 @@ class GalleryBrowserView {
             this.send({ type: 'dialog', tab: tab.id, dialog: { type: 'confirm', message: 'Ship order 4711?', defaultText: '' } })
           }
         }
-        // The observer resolves only what the page leaves to the browser, as text under the pointer; the
-        // regions decide the rest in the view, without a round trip.
+        // The observer resolves only what the page leaves to the browser, as
+        // text under the pointer; the regions decide the rest in the view,
+        // without a round trip.
         if (tab && overText(value.x, value.y) !== this.overText) {
           this.overText = overText(value.x, value.y)
           this.send({ type: 'cursor', tab: tab.id, cursor: this.overText ? 'text' : 'default', editable: false })
@@ -508,8 +509,9 @@ class GalleryBrowserView {
     const viewport = tab.viewport
     const ratio = viewport.devicePixelRatio
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
-    // The Host's Chrome runs in the user's scheme, here the gallery's: it paints an empty page #121212 in
-    // the dark one, and a page of its own, which declares no scheme, on white.
+    // The Host's Chrome runs in the user's scheme, here the gallery's: it
+    // paints an empty page #121212 in the dark one, and a page of its own,
+    // which declares no scheme, on white.
     const dark = document.documentElement.getAttribute('data-theme') === 'dark'
     context.fillStyle = tab.url === 'about:blank' && dark ? '#121212' : '#ffffff'
     context.fillRect(0, 0, viewport.width, viewport.height)
@@ -578,7 +580,7 @@ class GalleryBrowserView {
 }
 
 /**
- * The gallery's conversation browser, as the Host runs it (`live-view.md`):
+ * The gallery's conversation browser, as the Host runs it:
  * its tabs and the operations the plugin runs on them, and the live view's
  * stream over the same tabs, without a Host. Operations take a moment, as a
  * Host does, and a page it loads takes a while longer, so the page's loading

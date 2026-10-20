@@ -83,8 +83,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
             demi_command_sdk::testing::answer_artifacts(&client, crate::families::answer_chrome)
                 .await
                 .unwrap();
-        // What the service tells the plugin of the conversation's tabs
-        // (`browser.md` § One tab registry).
+        // What the service tells the plugin of the conversation's tabs.
         let (told, mut tells) = tokio::sync::mpsc::unbounded_channel();
         let _messages = AbortOnDropHandle::new(
             demi_command_sdk::testing::answer_messages(&client, move |message| {
@@ -460,8 +459,8 @@ async fn serve(
     (client, vec![server, driver])
 }
 
-/// `demi browser install` reports its downloads in its own output
-/// (`browser.md` § Installation): on Linux, Chrome's, then the Chrome
+/// `demi browser install` reports its downloads in its own output:
+/// on Linux, Chrome's, then the Chrome
 /// runtime's two archives as one download, with a line for each report of
 /// the runner's that passes a tenth of their total and one as the last is
 /// unpacked, then where the browser is. In JSON, the output is the one
@@ -570,7 +569,7 @@ async fn install_reports_its_downloads_in_its_output() {
 /// A command that would start Chrome on a Host that lacks it says that
 /// installing it is the next step, with the size of Chrome and the Chrome
 /// runtime on Linux; a Linux Host that has Chrome but not the runtime lacks
-/// it all the same (`browser.md` § Browser distribution).
+/// it all the same.
 // Cost: about 0.1 s; the service runs in this process and no Chrome starts.
 #[tokio::test]
 async fn a_host_without_chrome_or_its_runtime_names_the_next_step() {
@@ -639,8 +638,7 @@ async fn a_host_without_chrome_or_its_runtime_names_the_next_step() {
 }
 
 /// A Linux Host whose glibc is older than the Chrome runtime's installs
-/// nothing and says what it has and what it needs (`browser.md` § Browser
-/// distribution).
+/// nothing and says what it has and what it needs.
 // Cost: about 0.1 s; the service runs in this process and no Chrome starts.
 #[tokio::test]
 async fn a_host_with_too_old_a_glibc_installs_nothing() {

@@ -1,4 +1,4 @@
-//! The capture extension's messages (`live-view.md` § Capture): the module's
+//! The capture extension's messages: the module's
 //! commands and the extension's events travel as JSON text over the
 //! extension's WebSocket, and each encoded frame as a binary message that
 //! starts with [`FrameHeader`].

@@ -1,7 +1,6 @@
 /**
  * A conversation's work panel as the backend keeps it, and the browser
- * plugin's part in its tabs, in memory (`web-api-conversations.md` § Work panel state,
- * `live-view.md` § A browser tab in the panel): the gallery's panels change
+ * plugin's part in its tabs, in memory (`web-api-conversations.md` § Work panel state): the gallery's panels change
  * the way the product's do, a beat late, over the gallery's own browser.
  */
 import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData, type TabFailure } from '@demicodes/plugin-browser/live/tabs'
@@ -146,7 +145,7 @@ export interface GalleryBrowserPlugin {
   /** Closes the browser tab of a panel tab its user removed. */
   removed(tab: PanelTab): Promise<void>
   /**
-   * The browser told the plugin its tabs changed (`browser.md` § One tab registry): adds the agent's and the
+   * The browser told the plugin its tabs changed: adds the agent's and the
    * pages' tabs, removes the ones closed on purpose and marks the ones the browser lost.
    */
   tabsChanged(): Promise<void>
@@ -179,8 +178,8 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
       try {
         opened = await browser.open(asked)
       } catch (error) {
-        // The browser's or the Host's own reason, as the backend's plugin keeps it, or the status a call would
-        // answer a failure without one with.
+        // The browser's or the Host's own reason, as the backend's plugin keeps
+        // it, or the status a call would answer a failure without one with.
         const message = error instanceof Error ? error.message : String(error)
         const reason = error instanceof BrowserTabsError ? error.reason : null
         const failure: TabFailure = reason ? { code: reason, message } : { status: SERVER_FAILED, message }
@@ -238,8 +237,8 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
         } else if (!present) {
           panel.apply({ type: 'update', id, data: { closed: true } })
         } else {
-          // The tab follows its page's address and title, and the agent's showings, which each page selects
-          // once (`live-view.md` § Showing a tab).
+          // The tab follows its page's address and title, and the agent's
+          // showings, which each page selects once.
           const follows: Partial<BrowserTabData> = {}
           if (present.url !== data?.url) {
             follows.url = present.url

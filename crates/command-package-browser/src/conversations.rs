@@ -1,9 +1,41 @@
-//! The conversations' browsers (`browser.md` § Owners inside the service).
-//! One owner task finds each invocation's conversation browser and forgets
-//! it after the conversation's release. Each conversation browser is an
-//! owner task of its own, with the one lifecycle of `browser.md` § Lifetime,
-//! so one conversation's slow start or retirement never holds up another's
-//! commands, and the runner's `status` never waits for either.
+//! The conversations' browsers. One owner task finds each invocation's
+//! conversation browser and forgets it after the conversation's release; each
+//! conversation browser is an owner task of its own, so one conversation's slow
+//! start or retirement never holds up another's commands, and the runner's
+//! `status` is answered from the published state without waiting for either.
+//!
+//! ```text
+//! Service
+//!   conversations ............. finds each invocation's conversation browser
+//!    `-- conversation browser . one per conversation: absent | starting |
+//!          |                    ready | closing; admits commands, runs release
+//!          `-- Chrome environment: process tree, profile, CDP event pump
+//!                |-- tab registry ..... tabs, handles, openers; snapshot
+//!                |-- capture channel .. the capture extension's connection
+//!                |-- live hub ......... viewers, captures, screen, viewports
+//!                `-- each tab ......... operation lock and its session; debug
+//!                                       connections; console; open dialog
+//! ```
+//!
+//! Each piece of state has one owner task; others send requests or read its
+//! snapshot. Every task started for an environment belongs to it, and
+//! retirement joins all of them before it removes the profile: no browser work
+//! outlives its environment.
+//!
+//! - The browser ends on exactly two signals it sees itself: the last tab
+//!   closing and the conversation release. It has no idle timer and no notion
+//!   of agent activity; the backend decides when to release, and an open tab, a
+//!   loading page or a running download never postpones it.
+//! - Retirement invalidates tabs, references and debugging handles together. A
+//!   release cancels the commands that run (`cancelled`) before it retires; a
+//!   command still running when another closes the last tab fails with
+//!   `browser_lost`. Nothing is restored: the next `open` starts fresh.
+//! - A failed cleanup keeps another environment from starting over the
+//!   unresolved owner; after a completed one the next `open` may start a fresh
+//!   browser.
+//! - A service shutdown retires all its browsers at once, so it takes as long
+//!   as the slowest. A service that ends first leaves them to the sweep in
+//!   `tabs::environment`.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -49,8 +81,7 @@ const PROGRESS_LINES: usize = 16;
 
 enum CommandOutput {
     Json(serde_json::Value),
-    /// A screenshot without `--output` (`browser.md` § Images and large
-    /// outputs): its PNG's bytes for stdout, and what it captured for
+    /// A screenshot without `--output`: its PNG's bytes for stdout, and what it captured for
     /// stderr.
     Image { captured: String, png: Vec<u8> },
 }
@@ -67,13 +98,13 @@ struct Started {
 #[derive(Clone)]
 enum EnvironmentFailure {
     /// The Host lacks Chrome or a library it loads, which the message says
-    /// how to install (`browser.md` § Browser distribution).
+    /// how to install.
     Installation(String),
     Unavailable(String),
     Lost(String),
 }
 
-/// A conversation browser's one state (`browser.md` § Lifetime).
+/// A conversation browser's one state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lifecycle {
     Absent,
@@ -241,7 +272,7 @@ impl ConversationBrowser {
     }
 
     /// Whether the conversation holds a browser: starting, running or
-    /// retiring (`browser.md` § Conversation-scoped state).
+    /// retiring.
     fn holds(&self) -> bool {
         *self.lifecycle.borrow() != Lifecycle::Absent
     }
@@ -476,8 +507,7 @@ impl Owner {
 
     /// Starts the conversation's Chrome in the starting caller's locale and
     /// color scheme,
-    /// from the installation the Host holds (`browser.md` § Browser
-    /// distribution).
+    /// from the installation the Host holds.
     fn start(&mut self, starting: Starting) -> watch::Receiver<Readiness> {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
@@ -604,9 +634,8 @@ async fn print_progress(context: &InvocationContext, line: String) -> Result<()>
         .map_err(|_| BrowserError::Cancelled)
 }
 
-/// What the tab's page offers, of every command family (`browser.md` §
-/// Capabilities and WebMCP): the page's own families and the CDP ones, which
-/// only the program has together.
+/// What the tab's page offers, of every command family: the page's own families
+/// and the CDP ones, which only the program has together.
 async fn capabilities(
     tab: &demi_command_package_browser_chrome::tabs::tab::BrowserTab,
     cancel: &CancellationToken,
@@ -698,7 +727,7 @@ enum Find {
 
 /// Tells `plugin-browser` that what `browser.tabs` lists of `conversation`
 /// changed, once for each burst of changes: changes made while a message is
-/// on its way are told by the next one (`browser.md` § One tab registry).
+/// on its way are told by the next one.
 /// Ends once the conversation browser's owner ended at `owned`, after it
 /// told the change its end made.
 async fn announce(
@@ -1020,7 +1049,7 @@ impl Conversations {
     /// Installs the pinned Chrome, and on Linux the Chrome runtime, for
     /// `context`'s invocation, which prints a line in its own output as each
     /// tenth of a download arrives and as it is unpacked, unless it answers
-    /// in JSON (`browser.md` § Installation).
+    /// in JSON.
     async fn install(&self, context: &mut InvocationContext) -> Result<InstallResult> {
         let (progress, mut reports) = mpsc::channel(PROGRESS_LINES);
         let installing = self.chrome.install(&context.request.invocation_id, progress);
@@ -1053,7 +1082,7 @@ impl Conversations {
             return Ok(CommandOutput::Json(output::value(installed)?));
         }
         // Only the user's page reads the tab list's number and its tabs closed
-        // on purpose, and only it stops a load (`live-view.md` § The tab methods).
+        // on purpose, and only it stops a load.
         let user = context.request.context.caller.agent_number().is_none();
         if matches!(command, BrowserOperation::Stop(_)) && !user {
             // The agent waits for its commands rather than stopping a load.
@@ -1085,7 +1114,7 @@ impl Conversations {
         if let BrowserOperation::Open(input) = command
             && user
         {
-            // The user's new tab (`live-view.md` § The tab methods): the
+            // The user's new tab: the
             // work panel shows its loading, so opening does not wait for the page.
             let url = (input.url != "about:blank").then_some(input.url.as_str());
             let tab = environment.open_user(url, cancellation, deadline).await?;
@@ -1192,7 +1221,7 @@ impl Conversations {
         let tab = &environment.tab(id, cancellation, command.timeout()).await?;
         if matches!(command, BrowserOperation::Show(_)) {
             // Only the request is recorded: the user's panel shows the tab
-            // once the job ends (`live-view.md` § Showing a tab).
+            // once the job ends.
             tab.show();
             return Ok(CommandOutput::Json(output::value(ShowResult {
                 tab: tab.id().clone(),
@@ -1360,7 +1389,7 @@ impl Conversations {
         }
         if matches!(command, BrowserOperation::Close(_)) {
             // Closing the last tab stops Chrome and removes its profile
-            // before the close is acknowledged (`browser.md` § Lifetime).
+            // before the close is acknowledged.
             let closed = tab.close_request(cancellation, command.timeout()).await?;
             if matches!(closed, Closed::Environment) || environment.emptied().is_cancelled() {
                 browser.retire(&environment).await?;
@@ -1507,7 +1536,7 @@ impl Conversations {
     }
 
     /// Releases every conversation. Their browsers retire at the same time,
-    /// so shutting down takes as long as the slowest (`browser.md` § Release).
+    /// so shutting down takes as long as the slowest.
     pub async fn close(&self) -> std::result::Result<(), ServiceError> {
         let browsers = self
             .ask(|reply| Find::Close { reply })

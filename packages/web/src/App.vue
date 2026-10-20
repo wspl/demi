@@ -203,7 +203,7 @@ const work = useWorkPanel()
 // Before its panel is read: what the panel held when the conversation came on screen decides what opens it on a phone.
 watch(activeId, (conversationId) => work.shown(conversationId), { immediate: true })
 // The open conversation's tabs are read with its panel closed too, since the frame then mounts no
-// panel: a tab a kind asks to show opens it (`live-view.md` § Showing a tab).
+// panel: a tab a kind asks to show opens it.
 watch(
   [activeId, () => activeId.value !== null && work.recorded(activeId.value)],
   ([conversationId]) => {

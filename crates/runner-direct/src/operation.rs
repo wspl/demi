@@ -176,8 +176,7 @@ pub(crate) fn refusal(error: ChannelError) -> Output {
     Output::Text(serde_json::to_string(&refusal).expect("a refusal serializes"))
 }
 
-/// A live view's `video` channel as its `stream` takes it (`live-view.md`
-/// § Two paths, one protocol): where the pictures' chunks go, and the
+/// A live view's `video` channel as its `stream` takes it: where the pictures' chunks go, and the
 /// page's acknowledgements of them.
 pub(crate) struct VideoEnds {
     pub(crate) chunks: mpsc::Sender<Output>,

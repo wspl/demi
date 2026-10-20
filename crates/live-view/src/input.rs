@@ -1,4 +1,4 @@
-//! A viewer's input (`live-view.md` § Input), delivered to the source it
+//! A viewer's input, delivered to the source it
 //! watches in the order it arrives, beside the agent's own input. Keys,
 //! buttons and fingers held down are this viewer's own: its end, a change of
 //! what it watches, or a release it asks for lets go of only them. The
@@ -166,8 +166,8 @@ async fn run<D: Deliver>(
         .await;
 }
 
-/// `message` with the input queued behind it that only continues it
-/// (`live-view.md` § Input). Also returns the first queued item that does
+/// `message` with the input queued behind it that only continues it.
+/// Also returns the first queued item that does
 /// not merge, which is handled next.
 fn newest<D: Deliver>(
     mut message: D::Message,

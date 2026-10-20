@@ -1,5 +1,7 @@
-//! A tab's console history is bounded independently of any reader's cursor.
-//! Its collector owns it; a read is a request to the collector.
+//! A tab's console history is bounded independently of any reader's cursor. Its
+//! collector owns it; a read is a request to the collector. Reading never
+//! clears the shared logs, so another agent loses no observation.
+
 use chromiumoxide::{Page, cdp::js_protocol::runtime::EventConsoleApiCalled};
 use futures_util::StreamExt;
 use serde_json::Value;

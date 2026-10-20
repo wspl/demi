@@ -1,4 +1,4 @@
-//! A watched tab as a source of pictures (`live-view.md` § Capture): the live
+//! A watched tab as a source of pictures: the live
 //! view's stream (`demi_live_view::stream`) shares one capture of it among
 //! its viewers. The capture follows the tab's viewport. A resize of the tab
 //! ends its capture before the page changes, and the next starts once the

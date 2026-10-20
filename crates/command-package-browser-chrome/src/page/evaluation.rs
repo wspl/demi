@@ -1,3 +1,10 @@
+//! Read-only evaluation. Chrome's own side-effect checking enforces it; telling
+//! the agent is no enforcement, so a script or getter that needs a side effect
+//! fails, and there is never a fallback to an unrestricted `Runtime.evaluate`.
+//! All bound elements must share one frame document, since Chrome cannot bind
+//! remote objects from separate execution contexts into one read-only
+//! expression.
+
 use std::time::Duration;
 
 use chromiumoxide::{
@@ -28,8 +35,8 @@ const UNSUPPORTED: &str = "demi-unsupported-result: ";
 const CONSOLE_GROUP: &str = "console";
 
 /// Runs `script` read-only, Chrome enforcing the whole run's read-only scope:
-/// the value of its last statement, or none when that is `undefined`
-/// (`browser.md` § Evaluation). The script runs as one block, whose
+/// the value of its last statement, or none when that is `undefined`.
+/// The script runs as one block, whose
 /// completion value is its last expression statement's value.
 pub(crate) async fn read_only(page: &Page, script: &str) -> Result<Option<Value>> {
     checked_size(script)?;

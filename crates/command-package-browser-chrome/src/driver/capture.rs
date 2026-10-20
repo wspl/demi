@@ -1,11 +1,34 @@
-//! The loopback socket the capture extension connects to
-//! (`live-view.md` § Capture): the module starts and steers tab
-//! captures over it, and receives their encoded frames. It binds before Chrome
-//! starts, since the extension learns its address from its own files, and
-//! accepts only this environment's token. One owner task, the capture
-//! channel, keeps the extension's connection and routes the captures on it,
-//! and recreates the extension when it cannot work: Chrome may never start
+//! The loopback socket the capture extension connects to: the module starts and
+//! steers tab captures over it, and receives their encoded frames. It binds
+//! before Chrome starts, since the extension learns its address from its own
+//! files, and accepts only this environment's token. One owner task, the
+//! capture channel, keeps the extension's connection and routes the captures on
+//! it, and recreates the extension when it cannot work: Chrome may never start
 //! it, or end its document, and the extension never dials again by itself.
+//!
+//! - The extension works in an offscreen document, which Chrome lists as a
+//!   background page, so it never enters the tab registry. Frames travel over
+//!   the socket, not CDP: base64 and JSON would inflate them, they would share
+//!   the connection that carries the agent's commands, and CDP messages are
+//!   limited.
+//! - The encoder runs without a content hint: the screen-content mode a `text`
+//!   hint selects ignores the bit rate and keeps every picture blurred.
+//! - The extension runs outside this process, so a message that does not decode
+//!   fails that connection and is logged; it is never dropped silently.
+//! - Stopping a capture invalidates its queued restart, and the Host alone owns
+//!   retries and backoff: the extension reports a failed or silent capture and
+//!   releases it, and never starts a replacement that could outlive the Host's
+//!   owner.
+//! - Chrome can keep a request that rejects every later capture after aborting
+//!   stream creation; recreating the extension releases it, interrupting
+//!   pictures but no page, document or form state.
+//! - The pinned Chrome labels Linux software capture's BT.601 samples as
+//!   BT.709; the extension corrects exactly that case, re-verified at each
+//!   upgrade.
+//! - A CPU that reports SME without SVE cannot capture (Chrome's GPU process
+//!   dies on every capture and takes the tabs with it; seen on OrbStack from
+//!   2.2.3 on M4): `unavailable` checks first, and the view keeps tabs and
+//!   input and says why.
 
 use std::{collections::HashMap, future::Future, pin::Pin, time::Duration};
 
@@ -46,9 +69,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// pages and their state stay.
 pub type Recreate = Box<dyn Fn() -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
-/// Why this Host cannot capture, or none (`live-view.md` §
-/// Capture). On Linux arm64, Chrome's SME code faults on a CPU that reports
-/// SME without SVE, until the GPU process gives up and Chrome exits.
+/// Why this Host cannot capture, or none. On Linux arm64, Chrome's SME code
+/// faults on a CPU that reports SME without SVE, until the GPU process gives up
+/// and Chrome exits.
 pub(crate) fn unavailable() -> Option<&'static str> {
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
     {
@@ -84,7 +107,7 @@ fn sme_without_sve(hwcap: u64, hwcap2: u64) -> bool {
 pub use demi_live_view::stream::{CaptureEvent, EncodedFrame as Frame};
 
 /// How many captures of one page Chrome holds, and how many resizes of it
-/// are under way; the two exclude each other (`live-view.md` § Pixel ratio).
+/// are under way; the two exclude each other.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Gated {
     captures: u32,
@@ -278,9 +301,8 @@ enum Inbound {
     Ended,
 }
 
-/// The way to one environment's capture channel (`live-view.md` §
-/// Capture): its owner keeps the extension's connection and the captures
-/// running on it.
+/// The way to one environment's capture channel: its owner keeps the
+/// extension's connection and the captures running on it.
 #[derive(Clone)]
 pub struct CaptureChannel {
     requests: mpsc::Sender<ChannelRequest>,
@@ -717,8 +739,7 @@ async fn write(
 }
 
 /// Decodes what the extension sends and hands it to the owner. A message
-/// that does not decode ends the connection and its captures, and is logged
-/// (`live-view.md` § Capture).
+/// that does not decode ends the connection and its captures, and is logged.
 async fn read(
     mut stream: Source,
     inbound: mpsc::Sender<(u64, Inbound)>,

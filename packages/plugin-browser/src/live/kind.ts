@@ -27,7 +27,7 @@ function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): 
 }
 
 /**
- * The `browser` tab kind (`live-view.md` § A browser tab in the panel). Its
+ * The `browser` tab kind. Its
  * content reaches the conversation's browser through the page's panel
  * session; the panel sees only this declaration.
  */
@@ -35,7 +35,7 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   kind: 'browser',
   schema: browserTabDataSchema,
   title: (data, tab) => browserTabTitle(data, tab.session),
-  // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
+  // The agent's showings, which the plugin carries from the tab list.
   shows: (data) => data.shows ?? 0,
   mark: BrowserTabMark,
   // The page's own icon, as a web browser's tab shows it; the mark only for a page without one.

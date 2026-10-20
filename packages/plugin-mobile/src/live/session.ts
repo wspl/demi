@@ -292,8 +292,7 @@ export class MobileSession {
 
   /**
    * This web browser shows the pictures: the stream opens once a device
-   * tab is shown, as the browser's view does (`live-view.md` § One view per
-   * page), and at once when one already is.
+   * tab is shown, as the browser's view does, and at once when one already is.
    */
   enable(): void {
     this.enabled = true

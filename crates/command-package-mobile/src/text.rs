@@ -1,5 +1,4 @@
-//! The commands' default text (`browser.md` § Default text, which the
-//! mobile commands follow): short and readable, the screen's text quoted
+//! The commands' default text: short and readable, the screen's text quoted
 //! with its control characters escaped, so a label cannot forge a line of
 //! the result.
 

@@ -1,4 +1,8 @@
 //! Shared DOM conditions for browser actions, reads, and element waits.
+//!
+//! A navigation that replaces a referenced document fails a wait with
+//! `stale_ref` instead of treating the old page's disappearance as a condition
+//! on the new one. URL patterns are not implicit regular expressions.
 
 use std::time::Duration;
 
@@ -436,9 +440,9 @@ pub(crate) struct Ready {
     pub named: ResolvedElement,
 }
 
-/// The pauses between a wait's checks of its condition (`browser.md`
-/// § Waiting): after the first check, 20, 50, 100 and 100 ms, then 500 ms
-/// each, so that a long wait costs the page almost nothing.
+/// The pauses between a wait's checks of its condition: after the first check,
+/// 20, 50, 100 and 100 ms, then 500 ms each, so that a long wait costs the page
+/// almost nothing.
 #[derive(Default)]
 pub(crate) struct CheckPauses {
     taken: usize,
@@ -556,7 +560,7 @@ mod tests {
     use super::*;
 
     /// A wait checks its condition at once, then after 20, 50, 100 and 100
-    /// ms, then every 500 ms (`browser.md` § Waiting): a quiet minute's wait
+    /// ms, then every 500 ms: a quiet minute's wait
     /// checks the page 124 times. Before, it checked every 50 ms, 1,200
     /// times, which kept the browser busy for as long as it waited.
     #[tokio::test(start_paused = true)]

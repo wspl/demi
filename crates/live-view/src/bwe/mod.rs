@@ -1,12 +1,11 @@
 //! The delay-based half of Google Congestion Control (GoogCC), ported from
-//! str0m 0.24.1's `src/bwe/` with its algorithm unchanged (`live-view.md`
-//! § Delivery): the arrival groups, the trendline estimator, the AIMD rate
-//! control and the acknowledged bit rate estimator, which str0m ported from
-//! libwebrtc's `delay_based_bwe.cc`. It takes, for each chunk the page
-//! acknowledged, when the Host sent it, when the page received it and when
-//! the acknowledgement arrived, what str0m takes from a video track's TWCC
-//! feedback; there are no padding probes, so the estimate rises by the rate
-//! control's own increase.
+//! str0m 0.24.1's `src/bwe/` with its algorithm unchanged: the arrival groups,
+//! the trendline estimator, the AIMD rate control and the acknowledged bit rate
+//! estimator, which str0m ported from libwebrtc's `delay_based_bwe.cc`. It
+//! takes, for each chunk the page acknowledged, when the Host sent it, when the
+//! page received it and when the acknowledgement arrived, what str0m takes from
+//! a video track's TWCC feedback; there are no padding probes, so the estimate
+//! rises by the rate control's own increase.
 //!
 //! Copyright 2022 Martin Algesten
 //!

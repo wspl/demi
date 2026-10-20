@@ -1,12 +1,16 @@
-//! One browser's live view (`live-view.md`): who watches which tab,
-//! the streams viewers of the same tab share, and the viewports and the
-//! screen the viewers decide.
+//! One browser's live view: who watches which tab, the streams viewers of the
+//! same tab share, and the viewports and the screen the viewers decide.
 //!
-//! One owner task per environment keeps all of it and lays out the screen
-//! and the watched tabs' viewports itself, so layouts never overlap and a
-//! burst of changes costs one layout. Viewers reach it through their
-//! membership; a membership's end is noticed without a message, so dropping
-//! one always leaves.
+//! One owner task per environment keeps all of it and lays out the screen and
+//! the watched tabs' viewports itself, so layouts never overlap and a burst of
+//! changes costs one layout. Viewers reach it through their membership; a
+//! membership's end is noticed without a message, so dropping one always
+//! leaves.
+//!
+//! A capture starts only at the viewport the watching viewer's panel gives the
+//! tab, never at a size about to be replaced, since Chrome cannot resize a
+//! running tab capture (larger fails, smaller delivers no frames). The viewer
+//! that operated most recently decides a Web tab's size and ratio.
 
 use std::{
     collections::HashMap,
@@ -259,7 +263,7 @@ impl Membership {
 
     /// Asks to put `tab` in Web or Mobile mode, sized for whoever decides
     /// it, and answers once it is: once a navigation of the tab under way
-    /// commits (`live-view.md` § Modes). The answer needs no membership, so
+    /// commits. The answer needs no membership, so
     /// a viewer that leaves meanwhile leaves at once and the mode still
     /// applies.
     pub async fn mode(
@@ -355,7 +359,7 @@ impl Owner {
             }
             // A watched tab is captured only at the size its layout gave it:
             // never one its navigation holds at a size or mode it is about
-            // to replace (`live-view.md` § Delivery).
+            // to replace.
             for (tab, stream) in &self.streams {
                 let waits = self
                     .held
@@ -510,12 +514,10 @@ impl Owner {
 
     /// The screen follows the driver's size, at the highest ratio a viewer
     /// used; a watched Web or Mobile tab takes its decider's panel and ratio.
-    /// What cannot be applied is logged and told to the viewers it was for
-    /// (`live-view.md` § Opening a view).
+    /// What cannot be applied is logged and told to the viewers it was for.
     async fn layout(&mut self) {
         // The screen's ratio only rises: Chrome keeps painting a cross-site
-        // frame at the old scale when it falls, until the page loads again
-        // (`live-view.md` § Pixel ratio).
+        // frame at the old scale when it falls, until the page loads again.
         let used = self.screen.map(|screen| screen.ratio);
         let desired = self
             .driver

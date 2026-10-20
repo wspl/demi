@@ -429,7 +429,7 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   closed or a plugin turned off. When no entry is left, the panel shows its
   first tab, the Change view. A page selects a tab without its user's
   click only when the tab's kind says that something asked that the user see
-  it, as the browser does for a tab the agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
+  it, as the browser does for a tab the agent shows (`crates/plugin-browser/src/panel.rs`); it is
   an ordinary selection and enters the history.
 - **Contents stay.** A tab's content, once shown, stays on the page until
   the tab closes, the panel closes or the panel shows another conversation.
@@ -438,7 +438,7 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   was, with no entrance animation, since nothing in it changed. A hidden
   content is told it is not shown and stops what costs while nobody sees it,
   as the browser's live view does
-  ([Live browser view](../browser/live-view.md#ending-a-view)).
+  (`crates/command-package-browser-chrome/src/live.rs`).
 - **Opening what is already shown keeps it.** A control in the transcript
   that opens something in the panel, such as a changed file's pill or a link
   to a file, opens the panel on it, and when the panel already shows exactly
@@ -470,7 +470,7 @@ For example, the user closes a browser tab. The page removes it, selects the
 tab beside it and sends the change; the tab is gone at once, whatever the
 Host is doing. The browser plugin, told by the backend that its user closed
 the tab, closes the tab in the conversation browser
-([Live browser view](../browser/live-view.md#a-browser-tab-in-the-panel)).
+(`crates/plugin-browser/src/panel.rs`).
 
 A tab whose `data` does not fit its kind's schema, or whose kind the page does
 not know, stays in the strip and its content says that it cannot be shown;
@@ -482,7 +482,7 @@ The kinds:
 | --- | --- | --- | --- |
 | `change` | `changes` | Pinned: the conversation's changes, in Commits and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
 | `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
-| `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The plugin, for a tab the agent or a page opened |
+| `browser` | `browser` | One tab of the conversation browser (`crates/command-package-browser/src/lib.rs`), live; Live browser view (`crates/command-package-browser-chrome/src/live.rs`) owns its content | The plugin, for a tab the agent or a page opened |
 
 ## The phone layout
 
@@ -765,7 +765,7 @@ work allows, and never one per item:
 
 A page holds WebSockets of four kinds to the backend: the synchronization
 channel, a socket for each open conversation, the stream of each
-[live browser view](../browser/live-view.md), and the
+live browser view (`crates/command-package-browser-chrome/src/live.rs`), and the
 [file watch](web-api-hosts.md#file-watch) of the conversation whose files it shows,
 and the signaling socket of each device it has a
 [direct channel](../execution/direct-channel.md) to, whose long-lived
@@ -781,7 +781,7 @@ channel's signaling socket after 30 seconds
 ([Order and delivery](../agent/rendering.md#order-and-delivery),
 [Page synchronization](web-api-sync.md#page-synchronization)), and a live view's
 module on its stream after a quarter of a second
-([Delivery](../browser/live-view.md#delivery)). So a socket that brings
+(`crates/live-view/src/rate.rs`). So a socket that brings
 nothing for 75 seconds, two and a half of the longest heartbeat, is broken:
 the page closes it and connects again. A live view shows a stall after a
 second already, and a stall that ends within the 75 seconds, as when a Cloud

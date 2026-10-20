@@ -204,7 +204,7 @@ Host handle while the Cloud was changing state
 [user stream](../execution/native-runtime.md#user-streams) `name` on the
 conversation's primary Host. A plugin declares each stream
 ([Calling its command package](../architecture/plugins.md#calling-its-command-package)):
-`plugin-browser`'s `browser` is the [live browser view](../browser/live-view.md). The upgrade requires the session
+`plugin-browser`'s `browser` is the live browser view (`crates/command-package-browser-chrome/src/live.rs`). The upgrade requires the session
 cookie and a conversation the user owns, and is refused from a page that is
 not the product's ([Authentication](web-api.md#authentication)), which matters all the
 more here since the stream operates the conversation browser, which is signed in

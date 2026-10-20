@@ -1183,7 +1183,7 @@ async fn catalog_queries_patterns_pagination_and_read_only_elements() {
     }).await;
 }
 
-/// `browser.md` § Evaluation: a script of statements runs as one block and
+/// Eval: a script of statements runs as one block and
 /// returns its last value, with or without a target, in a frame too;
 /// `undefined` reads as `JSON.stringify` reads it; a value JSON cannot hold
 /// names its place; and nothing waits. Before, a `const` was a syntax

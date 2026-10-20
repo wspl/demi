@@ -134,7 +134,7 @@ test('a call goes to its plugin route, for the user or for a conversation, and a
   ])
 })
 
-// The status is what a page says for a reason it has no words for (`live-view.md` § The tab methods).
+// The status is what a page says for a reason it has no words for.
 test("a refusal rejects with the plugin's own reason and the answer's status", async () => {
   const refused = page('skills').plugin.call('remove_source', { source: 'src_2' }, z.null())
   await expect(refused).rejects.toBeInstanceOf(PluginCallError)

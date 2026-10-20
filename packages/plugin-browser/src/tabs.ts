@@ -23,7 +23,7 @@ const BIND_TIMEOUT_MS = 310_000
 
 /**
  * A refused call in the words the page shows for it, never the Host's own
- * error text (`live-view.md` § The tab methods): its reason's, or for an
+ * error text: its reason's, or for an
  * answer whose reason is not one of the plugin's, its HTTP status; a call no
  * answer came for, or whose answer could not be read, says which.
  */
@@ -44,7 +44,7 @@ function tabsError(error: PluginCallError): BrowserTabsError {
 
 /**
  * The conversation browser's tab list, its tab methods and its `browser`
- * user stream over the plugin (`live-view.md` § The tab methods), for a
+ * user stream over the plugin, for a
  * panel session, whose effect scope the tab list is followed in. A call
  * still waiting for the backend when the session ends, as the panel closes,
  * is dropped and never sent (`plugin-pages.md` § The page context).

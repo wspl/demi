@@ -77,7 +77,7 @@ demi mobile record <m> start | stop
 ```
 
 The verbs are the browser's where the meaning is the same
-([Command reference](../browser/browser.md#command-reference)), so an agent
+(`crates/plugin-browser/src/browser.rs`), so an agent
 that uses `demi browser` already knows them.
 
 - **`list`** prints a table of every simulator of the Host it runs on, iOS
@@ -104,14 +104,14 @@ that uses `demi browser` already knows them.
   reaches attached Hosts.
 - **`close <m>`** detaches it, and shuts it down when Demi booted it.
 - **`screenshot <m>`** writes a PNG to stdout, as `demi browser screenshot`
-  does ([Images and large outputs](../browser/browser.md#images-and-large-outputs)),
+  does (`crates/command-package-browser-chrome/src/page/screenshot.rs`),
   scaled so its long side is at most 1568 pixels, the most a model reads at
   full detail; every coordinate a command takes or prints is in this
   image's pixels, so the agent taps what it sees.
 - **`inspect <m>`** prints the screen's UI tree, every window, system
   alerts and the keyboard included, each element with a reference, `e7`, its
   role, text or label, value, identifier, frame and state: the
-  [browser's tree](../browser/browser.md#page-trees-and-references) for a
+  browser's tree (`crates/command-package-browser-chrome/src/page.rs`) for a
   screen. The software keyboard is one element, *Keyboard*, with its frame,
   unless `--keyboard` lists its keys: a full keyboard is 184 elements and
   90 KB, which the agent rarely needs, since `type` types.
@@ -288,7 +288,7 @@ into the conversation's scratch directory, `mobile/m1-<time>.png`, which no
 change view shows ([Scratch directory](../execution/runner.md#scratch-directory)),
 and removed when the device closes.
 
-The view is the browser's [live view](../browser/live-view.md) with a
+The view is the browser's live view (`crates/command-package-browser-chrome/src/live.rs`) with a
 different source. Both directions are shared:
 
 - **Pictures:** the user stream, relay and direct channel, framing, H.264

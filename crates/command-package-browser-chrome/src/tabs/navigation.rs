@@ -1,4 +1,9 @@
-//! Per-command main-document observation; subscriptions are dropped with the command.
+//! Per-command main-document observation; subscriptions are dropped with the
+//! command.
+//!
+//! The observation is installed before the navigation is issued and reports
+//! that navigation only. An HTTP error status is a received document, not a
+//! failure.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -447,9 +452,8 @@ where
     });
 }
 
-/// The user's `goto`, `reload`, `back` or `forward` (`live-view.md` § The
-/// tab methods): the work panel shows the page loading, so the navigation
-/// starts and the answer does not wait for it.
+/// The user's `goto`, `reload`, `back` or `forward`: the work panel shows the
+/// page loading, so the navigation starts and the answer does not wait for it.
 pub async fn steer(
     tab: &BrowserTab,
     command: &BrowserOperation,
@@ -499,7 +503,7 @@ fn requested(tab: &BrowserTab, url: &str) {
     tab.state.requested.send_replace(Some(url.to_owned()));
 }
 
-/// The user's Stop (`live-view.md` § The tab methods): stops loading the
+/// The user's Stop: stops loading the
 /// tab's page, and answers the number of the last tab list before it.
 pub async fn stop(tab: &BrowserTab, operation: &Operation<'_>) -> Result<TabMoved> {
     let list = tab.list_number();

@@ -1,4 +1,4 @@
-//! A tab's icon (`live-view.md` § A browser tab in the panel): what its page
+//! A tab's icon: what its page
 //! names, or its site's `/favicon.ico`, drawn 32 pixels square on the Host
 //! each time the main frame stops loading, as a web browser's tab shows the
 //! site's icon. Each change counts as a change of what the browser shows, so

@@ -1,4 +1,4 @@
-//! The tab list and the tab methods (`live-view.md` § The tab methods):
+//! The tab list and the tab methods:
 //! each runs the browser's own operation as a package call that never wakes
 //! the Host, answers as the page expects, and each method marks the tab
 //! list changed.

@@ -40,7 +40,7 @@ for a conversation whose primary Host is a paired device:
 
 | Operation | Relay form | Direct form |
 | --- | --- | --- |
-| A user stream, such as the [live browser view](../browser/live-view.md) | `WS …/streams/<name>` and a service stream | One data channel carrying the same bytes, and for a live view a second, `video` ([Two paths, one protocol](../browser/live-view.md#two-paths-one-protocol)) |
+| A user stream, such as the live browser view (`crates/command-package-browser-chrome/src/live.rs`) | `WS …/streams/<name>` and a service stream | One data channel carrying the same bytes, and for a live view a second, `video` (`crates/live-view/src/lib.rs`) |
 | A file's bytes, read or a range of them | `GET …/fs/raw` | A `read` channel |
 | A file written by the page, such as an upload | `PUT …/fs/raw` | A `write` channel |
 | A file's text | `GET …/fs/file` | A `text` channel |
@@ -101,7 +101,7 @@ ignores loopback candidates and connects to a local network address.
 A page keeps two peers with a device: one for files and calls, whose SCTP
 association has its standard congestion window, and one for live views,
 whose association runs without it. A live view's sender limits what it puts
-on the wire by its own rate control ([Delivery](../browser/live-view.md#delivery)),
+on the wire by its own rate control (`crates/live-view/src/rate.rs`),
 which a loss only delays; SCTP's window halves the rate at every loss,
 which at 2 % loss holds a picture near 1 Mbps on a link of 8. The live
 views' association also resends a lost chunk after 50 ms at the least, 250
@@ -255,7 +255,7 @@ policy makes the attempts unwelcome.
 - **A stream or a watch moves.** When the choice changes, an open live view
   or file watch reopens on the other path, as it does after a lost
   connection: the view keeps its last picture and resumes over it
-  ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)),
+  (`crates/plugin-browser/src/panel.rs`),
   and the files service subscribes again to what it keeps on the new path,
   each entry current again once its subscriptions are `live` and the numbers
   say so ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).

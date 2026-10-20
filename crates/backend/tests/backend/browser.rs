@@ -1,14 +1,12 @@
-//! The conversation browser's tab list and tab methods (`live-view.md` § The
-//! tab methods), read through the conversation state route and called
-//! through the plugin call route (`web-api-sync.md` § Conversation state of
-//! plugins, § Plugin calls) against the `demi.browser` package the workspace
-//! built,
-//! on a paired device's real runner, on a Cloud that never started, and on
-//! a running Cloud, which listing its tabs does not keep awake
-//! (`resource-lifecycle.md` § Activity). No browser runs: the operations
-//! answer as a browser that does not run does, so no Chrome is needed.
-//! Opening a tab starts one, which the browser's own tests and the live
-//! view's acceptance cover.
+//! The conversation browser's tab list and tab methods, read through the
+//! conversation state route and called through the plugin call route
+//! (`web-api-sync.md` § Conversation state of plugins, § Plugin calls) against
+//! the `demi.browser` package the workspace built, on a paired device's real
+//! runner, on a Cloud that never started, and on a running Cloud, which listing
+//! its tabs does not keep awake (`resource-lifecycle.md` § Activity). No
+//! browser runs: the operations answer as a browser that does not run does, so
+//! no Chrome is needed. Opening a tab starts one, which the browser's own tests
+//! and the live view's acceptance cover.
 
 use std::time::Duration;
 
@@ -179,15 +177,14 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
     backend.close().await;
 }
 
-/// A browser whose service does not start on the Host is unavailable, in
-/// the browser's own reason, wherever the panel meets it (`live-view.md`
-/// § The tab methods): the tab list, a tab method, and a panel tab the
-/// plugin could not open a browser tab for, whose content says the browser
-/// couldn't start on the device. Before, the list answered `plugin_failed`
-/// and the tab kept a reason the page had no words for, so it said "The
-/// browser couldn't do that." On a production server the first listing after an upgrade
-/// waited for the new release's browser service, which did not start in
-/// time. A paired device's real runner, about a second.
+/// A browser whose service does not start on the Host is unavailable, in the
+/// browser's own reason, wherever the panel meets it: the tab list, a tab
+/// method, and a panel tab the plugin could not open a browser tab for, whose
+/// content says the browser couldn't start on the device. Before, the list
+/// answered `plugin_failed` and the tab kept a reason the page had no words
+/// for, so it said "The browser couldn't do that." On a production server the
+/// first listing after an upgrade waited for the new release's browser service,
+/// which did not start in time. A paired device's real runner, about a second.
 #[tokio::test]
 async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_methods_and_a_reopened_tab() {
     let harness = Harness::new().with_browser_package_that_does_not_start();

@@ -1,4 +1,4 @@
-//! The tab registry through the service (`browser.md` § One tab registry).
+//! The tab registry through the service.
 
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -6,8 +6,7 @@ use tokio_util::sync::CancellationToken;
 use crate::families::{with_browser_fixture, with_numbered_browser_fixture};
 
 /// A command holding one tab does not hold up commands on another tab, and a
-/// second command on the held tab reports it busy (`browser.md` § Required
-/// checks 5).
+/// second command on the held tab reports it busy.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn commands_on_another_tab_run_while_one_tab_is_held() {
@@ -52,7 +51,7 @@ async fn commands_on_another_tab_run_while_one_tab_is_held() {
 }
 
 /// A click that opens a tab names it once the registry holds it, and a click
-/// that opens none names nothing (`browser.md` § One tab registry).
+/// that opens none names nothing.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn an_action_names_the_tabs_it_opened() {
@@ -96,7 +95,7 @@ async fn an_action_names_the_tabs_it_opened() {
 
 /// A tab number the backend does not give fails only the step that needed
 /// it: the `open` answers why, a popup is closed, and the environment keeps
-/// its tabs; the next step draws again (`browser.md` § One tab registry).
+/// its tabs; the next step draws again.
 /// Here the backend gives the first draw's eight numbers, then fails twice,
 /// then gives numbers from 101. About 12 s on a small Linux VM, as long as
 /// `an_action_names_the_tabs_it_opened` there: most of it starts Chrome.
@@ -189,8 +188,7 @@ async fn a_failed_number_draw_fails_only_the_step_that_needs_a_number() {
 
 /// Every input action works at once in a tab behind another, such as the
 /// older of two open tabs: Demi has every tab it drives render, because
-/// Chrome delivers mouse input only with a frame (`browser.md` §
-/// Actionability and coordinates). Without that a move answered after
+/// Chrome delivers mouse input only with a frame. Without that a move answered after
 /// about 5 s and a click, a drag or a scroll not at all; each action here
 /// has a five-second deadline, which a hang uses up.
 #[tokio::test]
@@ -272,7 +270,7 @@ async fn every_input_action_works_in_the_older_of_two_open_tabs() {
 
 /// The tab list shows the title each page has now, as `info` does, although
 /// Chrome's target events carry only the address that stood in for it when
-/// the page committed (`browser.md` § Tabs and navigation).
+/// the page committed.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_tab_list_shows_the_title_a_page_has_now() {
@@ -295,8 +293,7 @@ async fn the_tab_list_shows_the_title_a_page_has_now() {
 }
 
 /// `show` and `open --show` count the times the agent showed a tab, which
-/// the tab list carries to the user's work panel (`live-view.md` § Showing
-/// a tab); a tab never shown counts 0.
+/// the tab list carries to the user's work panel; a tab never shown counts 0.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn showing_a_tab_raises_its_count_in_the_tab_list() {
@@ -331,7 +328,7 @@ async fn showing_a_tab_raises_its_count_in_the_tab_list() {
 
 /// A command answers readable text unless the agent asks for JSON, as its
 /// shell's `--json` does, and an action's or a wait's text names the element
-/// its target resolved to (`browser.md` § Default text).
+/// its target resolved to.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn commands_answer_readable_text_unless_json_is_asked() {

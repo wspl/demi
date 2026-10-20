@@ -909,11 +909,11 @@ or on another plugin.
 
 - **Owns:** the `demi browser` group, declared from
   `command-package-browser-protocol` types, every leaf bound to a
-  `demi.browser` operation ([Command contract](../browser/browser.md#command-contract));
+  `demi.browser` operation (`crates/command-package-browser-protocol/src/browser/mod.rs`);
   the `browser` user stream, bound to `browser.live`, with its messages and
   frame constants; and the tab list, its conversation state, and the tab
   methods, which call the browser's operations as package calls
-  ([The tab methods](../browser/live-view.md#the-tab-methods)).
+  (`crates/plugin-browser/src/page.rs`).
 - **Public boundary:** its factory, whose manifest names its page package,
   `@demicodes/plugin-browser`, which `xtask contracts` generates the page's
   types into.
@@ -1074,7 +1074,7 @@ demi-runner (executable: connection, registration, Host log, composition)
   thread of its own off the runner's control thread; a live view's stream
   split at its frames, the pictures' chunks on the `video` channel and the
   page's acknowledgements back into the stream
-  ([Live views](../browser/live-view.md)).
+  (`crates/command-package-browser-chrome/src/live.rs`).
 - **Public boundary:** the peers' handle the runner drives with the backend's
   `direct_*` messages, a forwarded connection's channel as a byte stream
   both ways, and the trait through which it carries out an operation: the
@@ -1422,7 +1422,7 @@ demi-backend (executable: configuration, composition)
     (`Operation`) and the agent it acts for, element handles, frames,
     navigation history, the conversation numbers stream, and the text and
     output a command answers with
-    ([Native driver](../browser/browser.md#native-driver));
+    (`crates/command-package-browser-chrome/src/driver/launch.rs`);
   - `tabs`: a conversation browser's environment and its tabs: the Chrome
     process tree, profile and CDP event pump of each environment, the tab
     registry and its snapshot, each tab's state and gate, the data each
@@ -1441,7 +1441,7 @@ demi-backend (executable: configuration, composition)
     `jsonschema` validates both the pinned protocol and the schemas pages
     declare;
   - `live`: the live view of the browser's tabs
-    ([Live view](../browser/live-view.md)): a tab as a source of pictures and
+    (`crates/command-package-browser-chrome/src/live.rs`): a tab as a source of pictures and
     input of `live-view`, the viewer connections of user streams, the page
     observer of each watched tab, and the relay of the user's input to the
     tab as CDP events; and the trait through which a viewer reaches its
@@ -1613,9 +1613,9 @@ demi-backend (executable: configuration, composition)
   composition of
   [`command-package-browser-chrome`](#command-package-browser-chrome).
 - **Public boundary:** the executable. Behavior:
-  [Conversation browser](../browser/browser.md), whose
-  [catalog](../browser/browser.md#catalog) lists the browser commands, and
-  [Live view](../browser/live-view.md). Its tests turn on
+  Conversation browser (`crates/command-package-browser/src/lib.rs`), whose
+  catalog (`crates/plugin-browser/src/browser.rs`) lists the browser commands, and
+  Live view (`crates/command-package-browser-chrome/src/live.rs`). Its tests turn on
   `command-package-browser-chrome`'s `testing` feature for the Chrome tests,
   as the backend's browser suite does to install the pinned Chrome.
 - **Must not:** host a runner connection, define the agent's command tree,
@@ -1853,7 +1853,7 @@ Each plugin page package is **private** and has the same boundary:
 
 | Package | Owns |
 | --- | --- |
-| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view of its tabs ([Live view](../browser/live-view.md#responsibilities)): the browser's messages, tabs, clipboard, dialogs and controls over the SDK's live view, with the plugin's page types and the browser's live view messages generated into `src/generated/` |
+| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view of its tabs (`packages/plugin-browser/src/index.ts`): the browser's messages, tabs, clipboard, dialogs and controls over the SDK's live view, with the plugin's page types and the browser's live view messages generated into `src/generated/` |
 | `@demicodes/plugin-mobile` | The `mobile` work panel kind and the live view of the conversation's simulators ([The live view](../mobile/mobile.md#the-live-view)): the device tabs and their toolbar, the device's frame, touches and keys over the SDK's live view, with the plugin's page types and the simulators' live view messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |

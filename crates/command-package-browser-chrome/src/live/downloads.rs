@@ -1,8 +1,7 @@
-//! The downloads a user starts in a watched tab (`live-view.md` § A browser
-//! tab in the panel): the browser saves them in its download directory, as it
-//! saves the agent's, and each is named there after the file the page
-//! suggested once it is complete, so the Host's files show it by its name.
-//! The page shows them as a browser's download bubble does.
+//! The downloads a user starts in a watched tab: the browser saves them in its
+//! download directory, as it saves the agent's, and each is named there after
+//! the file the page suggested once it is complete, so the Host's files show it
+//! by its name. The page shows them as a browser's download bubble does.
 
 use std::path::{Path, PathBuf};
 

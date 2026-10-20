@@ -1,5 +1,4 @@
-// The `browser` plugin's page (`plugin-pages.md`, `live-view.md` § A
-// browser tab in the panel): its `browser` work panel kind with the live
+// The `browser` plugin's page (`plugin-pages.md`): its `browser` work panel kind with the live
 // view, its panel session, and the types of its state, parameters, results
 // and stream, generated from the plugin's manifest.
 import { definePage } from '@demicodes/plugin-sdk'

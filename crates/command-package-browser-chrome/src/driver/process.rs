@@ -1,3 +1,15 @@
+//! Chrome's process tree: what retirement ends, so that no Chrome, helper,
+//! profile or temporary directory outlives its environment.
+//!
+//! Chrome starts in a process group of its own with a private marker naming its
+//! environment. Helpers such as Crashpad can detach into another session, so
+//! retirement finds them by the marker as well as the group; the marker is read
+//! only from processes inside the Chrome installation, never from every process
+//! on the Host. A failed launch, an owner's cancellation and a failed graceful
+//! close use the same termination path. On Linux the kernel also ends Chrome
+//! when the service ends, which follows the thread that started it, so Chrome
+//! starts from a thread that lives as long as the service.
+
 use std::{io, path::Path};
 
 #[cfg(unix)]
@@ -94,7 +106,7 @@ impl ChromeProcess {
             command.env(PROFILE_ENV, runtime);
             // Chrome's temporary files, the directory of its process-singleton
             // socket among them, go with the environment's runtime directory
-            // however Chrome ends (`browser.md` § Native driver).
+            // however Chrome ends.
             command.env(TEMPORARY_ENV, runtime);
             // Its crash reports go with the profile on Linux.
             #[cfg(target_os = "linux")]
@@ -107,8 +119,7 @@ impl ChromeProcess {
         #[cfg(target_os = "linux")]
         {
             // The kernel ends Chrome's leader when the thread that started it
-            // ends: a runtime worker, which lives as long as the service
-            // (`browser.md` § Native driver).
+            // ends: a runtime worker, which lives as long as the service.
             let service = std::process::id();
             // SAFETY: the hook runs in the child between fork and exec and
             // calls only async-signal-safe functions.

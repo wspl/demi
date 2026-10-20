@@ -1,4 +1,4 @@
-//! The live view against real Chrome (`live-view.md` § Acceptance):
+//! The live view against real Chrome:
 //! a viewer drives `browser.live` as the page does, beside the agent's
 //! commands on the same tabs.
 
@@ -437,7 +437,7 @@ fn user() -> CommandCaller {
 }
 
 /// The exit code and answer of `operation` run as the page's request runs
-/// it: for a `user` caller (`live-view.md` § The tab methods).
+/// it: for a `user` caller.
 async fn user_result(fixture: &BrowserFixture, operation: &str, args: Value) -> (u8, Value) {
     fixture
         .result_for(
@@ -467,8 +467,7 @@ fn hello(view: &View, platform: &str) {
 }
 
 /// Watches `tab`, whose capture starts at the panel's size: the first
-/// stream is the panel's, never one the module is about to replace
-/// (`live-view.md` § Delivery).
+/// stream is the panel's, never one the module is about to replace.
 async fn watch(view: &mut View, tab: &str) -> u64 {
     view.send(json!({"type": "watch", "tab": tab}));
     let stream = view.message("stream").await;
@@ -678,7 +677,7 @@ async fn modes_follow_the_viewer_and_the_agent() {
     .await;
 }
 
-/// The view resolves the page's cursor locally (`live-view.md` § Input):
+/// The view resolves the page's cursor locally:
 /// the observer of every frame, a cross-site frame in its own process
 /// included, reports where each cursor applies, placed in tab CSS pixels; a
 /// shadow root's elements count; a cursor list counts by its last keyword;
@@ -1284,8 +1283,8 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
 /// Chrome holds the page's commands meanwhile but resizes its window at once,
 /// so the capture letterboxed the page in black, and the hub, waiting for the
 /// page, left every viewer's request, a reloaded page's view included,
-/// unanswered until Chrome gave up on the held command 30 s later
-/// (`live-view.md` § Delivery). About 2 s.
+/// unanswered until Chrome gave up on the held command 30 s later.
+/// About 2 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view_answers() {
@@ -1347,7 +1346,7 @@ async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view
 /// was reloaded meanwhile, and the view answers its viewers meanwhile: the
 /// hub put the tab in the mode at once, waiting for the page Chrome holds,
 /// and answered no viewer, the reloaded page's view included, until the
-/// navigation ended (`live-view.md` § Modes). The reloaded page's view
+/// navigation ended. The reloaded page's view
 /// shows the tab first as a phone, never in the mode it is about to leave.
 /// About 7 s.
 #[tokio::test]
@@ -1392,7 +1391,7 @@ async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_vie
         .expect("the view answers a watch while the page hangs");
         // Once the navigation ends, the tab is a phone and its page loads
         // again as one; the view shows it first as one, never in the mode it
-        // leaves (`live-view.md` § Delivery).
+        // leaves.
         request(&fixture, "browser.stop", json!({"tab": tab})).await;
         let stream = reloaded.message("stream").await;
         assert_eq!(
@@ -1419,8 +1418,7 @@ async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_vie
 
 /// A tab the user opens while a viewer has a panel starts at the size the
 /// panel gives it, before anyone watches it: it was made at 1280 × 720 and
-/// sized again once watched, with a paint each time (`live-view.md`
-/// § Delivery). About 1.3 s.
+/// sized again once watched, with a paint each time. About 1.3 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_tab_the_user_opens_starts_at_the_viewers_panel_size() {
@@ -1450,7 +1448,7 @@ async fn a_tab_the_user_opens_starts_at_the_viewers_panel_size() {
 /// blank page at the panel's size at once, and the view answers it
 /// meanwhile: the view waited for the tab's observer, whose commands
 /// Chrome holds until the navigation commits, so no picture came until the
-/// address answered or the navigation gave up (`live-view.md` § Delivery).
+/// address answered or the navigation gave up.
 /// About 1.3 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
@@ -1488,7 +1486,7 @@ async fn a_tab_whose_address_does_not_answer_shows_its_pictures_meanwhile() {
 /// A tab whose navigation is under way while it has another size than the
 /// viewer's panel is captured only once it has the panel's size: it was
 /// captured at 1280 × 720 at once, and that picture showed until the
-/// navigation committed (`live-view.md` § Delivery). About 1.7 s.
+/// navigation committed. About 1.7 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_navigating_tab_is_first_pictured_at_the_panels_size() {
@@ -1852,7 +1850,7 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
 }
 
 /// A frame from another site shows whole at every ratio the viewer moves
-/// between, falling ratios included (`live-view.md` § Pixel ratio).
+/// between, falling ratios included.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_cross_site_frame_follows_the_viewers_new_ratio() {
@@ -1930,7 +1928,7 @@ async fn a_cross_site_frame_follows_the_viewers_new_ratio() {
 }
 
 /// The capture extension runs beside the pages as soon as the browser does,
-/// and the tab registry never lists it (`live-view.md` § Capture).
+/// and the tab registry never lists it.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
@@ -1967,7 +1965,7 @@ async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
 /// The capture extension stops running, here because Chrome ends its
 /// document, as Chrome may also never start its worker: the extension never
 /// dials again by itself, so the Host recreates it, the next capture pictures
-/// the tab, and the pages keep their state (`live-view.md` § Capture). Two
+/// the tab, and the pages keep their state. Two
 /// rounds, since each recreated extension must recover too; about 2 s here.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
@@ -2049,7 +2047,7 @@ async fn a_capture_extension_that_stops_running_is_recreated_and_the_pages_stay(
 /// the user's, whatever the Host's appearance: pages match its
 /// `prefers-color-scheme`, and an empty page's picture has the color Chrome
 /// paints that scheme's, #121212 or white, which the view's blank page has
-/// too (`browser.md` § Native driver). A browser per scheme, since one keeps
+/// too. A browser per scheme, since one keeps
 /// the scheme it started with; about 3 s here.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
@@ -2096,7 +2094,7 @@ async fn the_browser_renders_in_the_users_color_scheme() {
 /// When even recreating the capture extension fails, here because its files
 /// are gone, captures stop at once instead of waiting for it; once the
 /// viewer asks again and the files are back, the next capture pictures the
-/// tab (`live-view.md` § Capture). About 2 s here.
+/// tab. About 2 s here.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn captures_stop_when_the_capture_extension_cannot_be_recreated_until_asked_again() {

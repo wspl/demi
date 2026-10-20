@@ -3,7 +3,7 @@
 A Cloud base supplies the files that gVisor runs: Ubuntu, development tools,
 init, the native runner and the command programs. It holds no browser: the
 agent installs one with `demi browser install` when it needs it
-([Browser distribution](../browser/browser.md#browser-distribution)). It contains no guest kernel or virtual
+(`crates/command-package-browser-chrome/src/driver/installation.rs`). It contains no guest kernel or virtual
 hardware configuration. The manager combines those files with each device's
 persistent storage, as defined in [Managed hosts](managed-hosts.md#images).
 
@@ -115,7 +115,7 @@ system reset empties, or with a version manager into the home, which every
 reset keeps. Nothing is there for the browser either: `demi browser install`
 brings Chrome with the libraries and fonts it needs into the home, which a
 system reset keeps, as on any Linux Host
-([Browser distribution](../browser/browser.md#browser-distribution)).
+(`crates/command-package-browser-chrome/src/driver/installation.rs`).
 The locale is `C.UTF-8`, the one the container image carries. The manifest
 records the resolved package versions rather than a second version list in
 documentation; with Demi's programs, the base is about 260 MB unpacked and

@@ -1,3 +1,42 @@
+//! One conversation browser's environment: the Chrome process tree, its event
+//! task, its two directories and the tab registry, from launch to retirement.
+//!
+//! ```text
+//! /tmp/demi-browser-a1B2c3/                 the runtime directory
+//!   demi-profile.lock                       the environment's lock
+//!   profile -> /var/tmp/demi-profile-a1B2c3
+//!   org.chromium.Chromium.d4E5f6/SingletonSocket
+//! /var/tmp/demi-profile-a1B2c3/             the profile: Chrome's user data
+//!   downloads/  uploads/
+//! ```
+//!
+//! - The runtime directory is Chrome's temporary directory. Its singleton
+//!   socket's path has a limit (108 bytes on Linux), so it lives in the short
+//!   `/tmp`, not in the service's `TMPDIR`, which can be any length.
+//! - The profile can grow large, so it lives on disk (`TMPDIR` when absolute,
+//!   else `/var/tmp`), never a memory-backed `/tmp`: the Cloud's is 256 MiB of
+//!   its memory.
+//! - Directories are made runtime first (with its lock), then the link, then
+//!   the profile, and removed in reverse, so a running profile always has its
+//!   runtime directory. Each is readable only by its user.
+//! - Two stores stay in the user's home on purpose: Linux's NSS certificate
+//!   database (moving it would also move the user's fonts) and macOS's Crashpad
+//!   reports. Linux crash reports follow the profile through
+//!   `CHROME_CONFIG_HOME`.
+//!
+//! No Chrome outlives its service. When a service ends without retiring (crash,
+//! kill, missed shutdown deadline), three rules cover it: the lock file the
+//! operating system releases whenever the service ends; on Linux the
+//! parent-death signal (`driver::process`); and a sweep at the next start,
+//! limited to its own user's directories. The sweep first takes the lock of
+//! each runtime directory: one it can take belongs to no running service, so
+//! its marked processes, profile and directory are removed; a held one belongs
+//! to another service (an upgrade's previous release) and is never touched.
+//! Then it removes profiles whose runtime directory is gone. A lock file takes
+//! its name only once it is held, so a sweep in another service finds either no
+//! lock or a held one.
+
+
 use std::{
     future::Future,
     io,
@@ -35,7 +74,7 @@ use crate::tabs::{
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The environment's one browser connection, which commands share without
-/// taking turns (`browser.md` § Owners inside the service). The environment
+/// taking turns. The environment
 /// owns the `Browser`; a handle reaches it for one call at a time, and only
 /// until the environment ends, so no handle keeps Chrome running.
 #[derive(Clone)]
@@ -100,8 +139,7 @@ const STAGED_LOCK: &str = "demi-profile.lock.new";
 const PROFILE_LINK: &str = "profile";
 
 /// The user a service sweeps browser directories for: its own. Other
-/// users' directories in the shared bases are neither opened nor reported
-/// (`browser.md` § Native driver).
+/// users' directories in the shared bases are neither opened nor reported.
 #[derive(Clone, Copy, Debug)]
 struct Owner {
     #[cfg(unix)]
@@ -138,7 +176,7 @@ impl Owner {
 }
 
 /// Where browser environments keep their directories, computed in this one
-/// place (`browser.md` § Native driver).
+/// place.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoryBases {
     /// The environments' runtime directories, each Chrome's temporary
@@ -313,7 +351,7 @@ pub struct LaunchOptions {
     /// The release's version, for the user agent pages see.
     version: String,
     /// The user's time zone and languages; they do not change while the
-    /// environment lives (`browser.md` § Native driver).
+    /// environment lives.
     pub locale: CommandLocale,
     /// The user's color scheme, which every page renders in; it does not
     /// change while the environment lives.
@@ -348,7 +386,7 @@ pub struct BrowserEnvironment {
     pub(crate) download_directory: PathBuf,
     /// Files the user chose in the live view, until the browser retires.
     pub(crate) upload_directory: PathBuf,
-    /// The capture extension's connection (`live-view.md` § Capture).
+    /// The capture extension's connection.
     pub(crate) captures: CaptureChannel,
     /// Counts the changes to what the browser shows: its tabs, their titles
     /// and URLs, and their viewports; counted on from the conversation's
@@ -356,7 +394,7 @@ pub struct BrowserEnvironment {
     pub(crate) changes: watch::Sender<u64>,
     /// The viewport a tab the user opens takes: the one the live view would
     /// give a tab its viewers watch, once one of them has a panel; none
-    /// before (`live-view.md` § Delivery).
+    /// before.
     pub(crate) opening: watch::Sender<Option<BrowserViewport>>,
 }
 
@@ -554,7 +592,7 @@ where
 }
 
 /// Removes what browsers left behind when their service ended without
-/// retiring them (`browser.md` § Native driver), in two passes over this
+/// retiring them, in two passes over this
 /// user's directories; another user's are left alone, without a word.
 /// First the runtime directories: one whose lock this service can take
 /// belongs to no running service, so its marked Chrome processes end the
@@ -703,8 +741,7 @@ impl BrowserEnvironment {
     }
 
     /// A new path for a download saved without `--output`: in the download
-    /// directory, on disk with the profile, which retirement removes
-    /// (`browser.md` § Upload, download, and clipboard).
+    /// directory, on disk with the profile, which retirement removes.
     pub fn saved_download(&self) -> Result<PathBuf> {
         Ok(self
             .download_directory
@@ -717,7 +754,7 @@ impl BrowserEnvironment {
         &self.upload_directory
     }
 
-    /// The capture extension's connection (`live-view.md` § Capture).
+    /// The capture extension's connection.
     pub fn captures(&self) -> &CaptureChannel {
         &self.captures
     }
@@ -874,8 +911,7 @@ impl BrowserEnvironment {
 
     /// The tabs as [`Self::listed`] lists them, with the list's number in
     /// the Host's sequence: the count of changes read before the listing, so
-    /// a list never claims to be newer than it is (`live-view.md` § The tab
-    /// methods).
+    /// a list never claims to be newer than it is.
     pub async fn numbered(
         &self,
         cancellation: &CancellationToken,

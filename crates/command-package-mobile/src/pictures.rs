@@ -1,5 +1,5 @@
-//! The pictures a device's encoder makes, as the live view needs them
-//! (`live-view.md` § Delivery): each one shown as soon as it arrives.
+//! The pictures a device's encoder makes, as the live view needs them:
+//! each one shown as soon as it arrives.
 //!
 //! A simulator's screen that does not change sends no frames after its key
 //! frame. An H.264 decoder that does not know a stream has no reordering

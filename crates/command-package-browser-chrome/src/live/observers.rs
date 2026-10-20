@@ -1,8 +1,13 @@
-//! The page observers of watched tabs (`live-view.md` § Input): an
-//! isolated world in each of the tab's documents reports the cursors, the
-//! native form controls, copied text and the right clicks the page leaves to
-//! the browser, and applies the viewer's choices. The tab's downloads are
-//! followed beside it.
+//! The page observers of watched tabs: an isolated world in each of the tab's
+//! documents reports the cursors, the native form controls, copied text and the
+//! right clicks the page leaves to the browser, and applies the viewer's
+//! choices. The tab's downloads are followed beside it. Observers run in an
+//! isolated world, so pages can neither see nor call them.
+//!
+//! A choice applies only to the revision of a control the viewer saw, or one
+//! its own earlier choice produced, so fast typing into a suggestion field is
+//! not rejected. The cursor is resolved locally by the view from the observer's
+//! per-frame report, so moving across buttons needs no round trip.
 
 use std::{
     collections::{BTreeMap, HashMap},

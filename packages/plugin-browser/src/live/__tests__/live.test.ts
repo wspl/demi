@@ -573,7 +573,7 @@ test('the browser’s menu copies in the page with the platform’s own copy key
 
 /**
  * On the direct path a generation's first chunks may come on `video` before
- * its announcement on `stream` (`live-view.md` § Two paths, one protocol):
+ * its announcement on `stream`:
  * the page keeps them and shows them once it is announced. Planted defect
  * this catches: dropping them, after which the generation's deltas wait for
  * a key frame that never comes.

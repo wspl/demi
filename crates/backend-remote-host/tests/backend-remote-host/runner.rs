@@ -2057,8 +2057,7 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
 
 /// A call whose runner goes away while it runs fails because the device is
 /// offline, not because a pipe broke: the runner's leaving fails every pipe
-/// it held, and the caller says what happened (`live-view.md` § A browser tab
-/// in the panel shows it to the user).
+/// it held, and the caller says what happened.
 #[tokio::test(flavor = "local")]
 async fn a_call_whose_runner_goes_away_fails_as_the_device_offline() {
     let native = NativeFixture::load();

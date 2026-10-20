@@ -1,9 +1,23 @@
-//! What a viewer's path takes (`live-view.md` § Delivery): the target bit
-//! rate from the delay-based estimate of Google Congestion Control, fed with
-//! each chunk's send time and the page's receive time; the window of bytes
-//! that may be unacknowledged, the target times the least round trip of the
-//! last ten seconds plus 60 ms; and the frame rate and resolution the target
-//! affords a picture of the panel's size.
+//! What a viewer's path takes: the target bit rate from the delay-based
+//! estimate of Google Congestion Control, fed with each chunk's send time and
+//! the page's receive time; the window of bytes that may be unacknowledged, the
+//! target times the least round trip of the last ten seconds plus 60 ms; and
+//! the frame rate and resolution the target affords a picture of the panel's
+//! size.
+//!
+//! - Neither path says when a chunk was sent again, and such a chunk comes back
+//!   seconds late, so the least of ten seconds drops the sample once a clean
+//!   one arrives; for the first ten seconds the round trip counts at most 300
+//!   ms.
+//! - There are no padding probes: the pictures keep the path busy. A rising
+//!   delay lowers the rate; a loss whose retransmission only delays a chunk
+//!   does not.
+//! - Below what a picture needs the sender lowers the frame rate first, then
+//!   the resolution. Viewers of a source share its encoding, so the slowest
+//!   decides; a blocked page or stall is a pause, not congestion. The only
+//!   ceiling is the codec level's 240 Mbps, past which the encoder refuses to
+//!   start.
+//! - Watching costs Host CPU, which this adaptation does not measure.
 
 use std::{
     collections::{HashMap, VecDeque},

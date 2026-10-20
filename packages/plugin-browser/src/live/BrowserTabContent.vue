@@ -19,18 +19,21 @@ import { BLANK_URL, failureSentence, startingLabel, type BrowserTabData, type Br
 import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
- * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
- * It shows at once what the tab's data says, and what the Host sends
- * replaces it when it arrives: before the browser has the tab, the panel's
- * own background, which says at once what Demi is doing; then a blank page
- * until the browser tab's first picture; an
- * address the user submits shows at once, with the page loading over the
- * picture the tab still shows. The plugin opens, binds and closes the
- * browser tab on the backend; only a failure interrupts, where it happened,
- * with a way on. A tab whose browser tab the browser lost opens again on its
- * address as soon as it is shown, loading as any page does. A content stays mounted while
- * another tab is selected (`shown` false), so shown again it shows its
- * picture, address and title at once.
+ * A `browser` tab's content. It shows at once what the tab's data says, and
+ * what the Host sends replaces it when it arrives: before the browser has the
+ * tab, the panel's own background, which says at once what Demi is doing; then
+ * a blank page until the browser tab's first picture; an address the user
+ * submits shows at once, with the page loading over the picture the tab still
+ * shows. The plugin opens, binds and closes the browser tab on the backend;
+ * only a failure interrupts, where it happened, with a way on. A tab whose
+ * browser tab the browser lost opens again on its address as soon as it is
+ * shown, loading as any page does, never saying that the page was closed. A
+ * content stays mounted while another tab is selected (`shown` false), so shown
+ * again it shows its picture, address and title at once.
+ *
+ * Why: words appear in the same frame as the click that opens the tab, since
+ * an empty area would read as Demi doing nothing; the blank page has Chrome's
+ * empty-page color in the tab's scheme, so the first picture does not flash.
  */
 const props = defineProps<{
   conversation: string
@@ -65,8 +68,9 @@ const busy = computed(() => props.session.busy(props.tabId, props.data))
 const backReason = computed(() => (live.value?.canGoBack ? null : t('address.noBack')))
 const forwardReason = computed(() => (live.value?.canGoForward ? null : t('address.noForward')))
 
-// A shown tab is watched on the page's view, once its area measured the panel; before the browser has its
-// tab, the view watches nothing and tells the Host the panel's size for the tab it opens.
+// A shown tab is watched on the page's view, once its area measured the panel;
+// before the browser has its tab, the view watches nothing and tells the Host
+// the panel's size for the tab it opens.
 watch(
   [() => props.shown, bound],
   ([shown, tab], previous) => {
@@ -135,9 +139,10 @@ onBeforeUnmount(() => {
   props.session.hide(props.tabId)
 })
 
-// The tab saves where the page went, with the page's title for the strip. A blank page the browser first
-// reports while the tab asks for an address is a browser tab that has not started on it yet. A title names the address the tab asks for only: a page the user is leaving keeps
-// its title to itself.
+// The tab saves where the page went, with the page's title for the strip. A
+// blank page the browser first reports while the tab asks for an address is a
+// browser tab that has not started on it yet. A title names the address the tab
+// asks for only: a page the user is leaving keeps its title to itself.
 watch(
   [() => live.value?.url, () => live.value?.title],
   ([url, title], [before]) => {
@@ -196,8 +201,8 @@ function history(action: 'back' | 'forward' | 'reload'): void {
 }
 
 /**
- * The browser's own shortcuts, with the focus anywhere in the tab's content
- * (`live-view.md` § A browser tab in the panel): they act here, never in the
+ * The browser's own shortcuts, with the focus anywhere in the tab's content:
+ * they act here, never in the
  * page, and never reach the page around the panel, whose ⌘R would reload
  * Demi itself.
  */
@@ -285,9 +290,10 @@ function reopen(): Promise<void> {
   return props.session.bind(props.tabId).catch((error: unknown) => errors.report(t('failures.openPage'), error))
 }
 
-// A tab whose browser tab the browser lost opens again once shown, as a web browser reloads a tab it
-// discarded, and one the page made, as a link's Open in Work Panel does, opens its browser tab
-// (`bind` answers for a panel tab that has none); one whose opening failed waits for its Retry.
+// A tab whose browser tab the browser lost opens again once shown, as a web
+// browser reloads a tab it discarded, and one the page made, as a link's Open
+// in Work Panel does, opens its browser tab (`bind` answers for a panel tab
+// that has none); one whose opening failed waits for its Retry.
 watch(
   () => props.shown && (props.data.closed === true || props.data.tab === undefined) && !props.data.failure,
   (lost) => {

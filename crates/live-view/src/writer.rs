@@ -1,8 +1,12 @@
-//! What a viewer's page receives (`live-view.md` § Delivery): control
-//! messages before video chunks, and a heartbeat whenever nothing else was
-//! sent for a while. The viewer's delivery hands chunks on at their paced
-//! times, within its window, so video waits here only behind control
-//! messages and the path's own backpressure.
+//! What a viewer's page receives: control messages before video chunks, and a
+//! heartbeat whenever nothing else was sent for 250 ms. The viewer's delivery
+//! hands chunks on at their paced times, within its window, so video waits here
+//! only behind control messages and the path's own backpressure.
+//!
+//! After one second without a byte the page shows the stream as stalled and
+//! discards input rather than queueing it: a Cloud pausing for a checkpoint
+//! must not deliver typed input all at once afterward. Silence for 75 seconds
+//! is a broken stream; a shorter stall keeps the view.
 
 use std::{marker::PhantomData, time::Duration};
 

@@ -568,7 +568,7 @@ it runs, and neither waits for other work. Running root or child work refuses
 archive with 409 `turn_in_flight`, and so does another transition, an
 asynchronous frame admission or a Host operation in progress, such as reading
 a file or opening a tab in the conversation browser. File transfers, user
-streams and the [conversation browser's tab methods](../browser/live-view.md#the-tab-methods)
+streams and the conversation browser's tab methods (`crates/plugin-browser/src/page.rs`)
 that do not wake a stopped Cloud do not refuse it: archive ends them instead
 ([Host operations](../execution/sessions-and-targets.md#host-operations)). A
 target change refuses and ends the same way

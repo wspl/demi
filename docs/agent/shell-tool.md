@@ -456,7 +456,7 @@ job showed the model.
 - **Every other command writes bytes.** A program that makes an image writes
   its bytes as any program does, so `> shot.png` saves them and
   `| demi file view` shows them; `demi browser screenshot` does the same
-  ([Images and large outputs](../browser/browser.md#images-and-large-outputs)).
+  (`crates/command-package-browser-chrome/src/page/screenshot.rs`).
   Bytes are binary when their first 8 KiB hold a NUL byte or they read as
   a media type Demi recognises, as git and GNU diff decide; any other bytes
   are text, and a byte that is no UTF-8 shows as U+FFFD, as a terminal
