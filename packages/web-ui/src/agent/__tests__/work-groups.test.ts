@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Block } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
-import { followedBlockId, groupWork, runLabel, runningOn, workSummary, type WorkGroupBlock } from '../work-groups'
+import { followedBlockId, groupWork, runLabel, workGrouping, workSummary, type WorkGroupBlock } from '../work-groups'
 import { isThinkingBlockStreaming } from '../block-streaming'
 import { rowKey } from '../row-key'
 import { createdAt, model } from './agent-harness'
@@ -136,7 +136,10 @@ describe('the end of a running turn', () => {
     expect(rows(groupWork([text('r'), ...run('a', call('a'), thinking('t', 'Done.'))], false))).toEqual(['r', ['a', 't']])
   })
 
-  test('a call whose command goes on in the background has ended, and wears the time of that command', () => {
+  // Review: a shell call returns at its reporting interval while its command
+  // goes on. Before, the call folded into the run as soon as it returned, so
+  // a command still running read as one of the run's ended steps.
+  test('a call whose command runs on after it returned stands alone until the command ends', () => {
     /**
      * A call that returned while its command ran on, as its stored view says.
      */
@@ -144,11 +147,14 @@ describe('the end of a running turn', () => {
       ...call(id, 'shell', { script: 'sleep 600', description: `Run ${id}` }),
       view: { kind: 'shell', status: 'running', commandId: '7', runningMs: 15_000, idleMs: 0, viewTruncated: false, chunks: [] },
     } as Block)
-    const live = groupWork([text('r'), ...run('a', call('a'), runsOn('s'))], true)
-    expect(rows(live)).toEqual(['r', ['a', 's']])
-    expect(runningOn((live[1] as WorkGroupBlock).steps).map((step) => step.id)).toEqual(['s'])
-    expect(runningOn(steps(call('a'), runsOn('s'), call('b'), runsOn('w'), call('g', 'browse', { description: 'Open' }))).map((step) => step.id))
-      .toEqual(['s', 'w'])
+    const group = workGrouping()
+    const blocks = [text('r'), ...run('a', call('a'), call('b'), runsOn('s'))]
+    // The command's live frames say whether it still runs, in a running turn
+    // and in one that ended, and in an earlier run as in the last.
+    expect(rows(group(blocks, true, (toolUseId) => toolUseId === 's-use'))).toEqual(['r', ['a', 'b'], 's'])
+    expect(rows(groupWork([...blocks, text('d')], false, (toolUseId) => toolUseId === 's-use'))).toEqual(['r', ['a', 'b'], 's', 'd'])
+    // Its end, with the transcript unchanged, joins it to the run.
+    expect(rows(group(blocks, true, () => false))).toEqual(['r', ['a', 'b', 's']])
   })
 
   test('a run that holds only thinking shows once a step that says something joins it', () => {

@@ -10,6 +10,8 @@ import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
 import { getVisibleBlocks } from './visible-blocks'
 import { workGrouping } from './work-groups'
+import type { LiveCallLookup } from './live-calls'
+import { shellRowRunning } from './terminals'
 
 /**
  * What a transcript list shows its rows from, as `AgentMessageList` takes it.
@@ -90,7 +92,9 @@ interface Recovery {
  *
  * A run's row holds the steps that ended. A step that still runs is a row of
  * its own under it, in the tail row's place, and once it ended the turn waits
- * for the model in a Requesting row under the run.
+ * for the model in a Requesting row under the run. A call whose command runs
+ * on after it returned still runs, as the command's live frames in
+ * `liveCalls` say, until the command ends.
  *
  * The messages that wait, the steers and the queue, stay below the turn: the
  * tail row stands above them, and its kind is read from the transcript alone.
@@ -102,7 +106,10 @@ interface Recovery {
  * backend stores it, and the Requesting row gives way: the one change that
  * shrinks the list, which the user asked for.
  */
-export function useMessageRows(source: () => MessageRowsSource): MessageRows {
+export function useMessageRows(
+  source: () => MessageRowsSource,
+  liveCalls: LiveCallLookup = () => undefined,
+): MessageRows {
   // The transcript as plain data: a block that changes is replaced, as is the
   // list that holds it (`applyTranscriptPatches`), so a new list is the one
   // change to follow. Reading each block through a reactive proxy would track
@@ -186,13 +193,29 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   })
   const hiddenId = computed(() => atCut.value ? recovery.value?.record ?? null : null)
   const transcriptRows = computed(() => visibleBlocks.value.filter((block) => block.id !== hiddenId.value))
+  // The calls that returned while their command runs on. A command's output
+  // changes its record many times a second, so the set stays the same object
+  // until a command starts or stops running, and only then regroups.
+  const runningOn = computed<ReadonlySet<string>>((previous) => {
+    const calls = new Set(visibleBlocks.value.flatMap((block) =>
+      block.type === 'tool_call' && block.status !== 'executing' && shellRowRunning(block.status, liveCalls(block.toolUseId))
+        ? [block.toolUseId]
+        : []))
+    return previous !== undefined && previous.size === calls.size && [...calls].every((call) => previous.has(call))
+      ? previous
+      : calls
+  })
   // Each run keeps its rows while it stays as it was, so a turn that
   // streams regroups only its own last run.
   const groupWork = workGrouping()
-  const turnRows = computed(() => groupWork(
-    [...visibleBlocks.value, ...pendingCallRows.value],
-    source().phase === 'running' && !atCut.value,
-  ))
+  const turnRows = computed(() => {
+    const commandRuns = runningOn.value
+    return groupWork(
+      [...visibleBlocks.value, ...pendingCallRows.value],
+      source().phase === 'running' && !atCut.value,
+      (toolUseId) => commandRuns.has(toolUseId),
+    )
+  })
 
   const { slot, startingTurn } = useActivitySlot({
     input: () => {

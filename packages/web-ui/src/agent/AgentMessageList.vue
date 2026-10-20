@@ -10,6 +10,7 @@ import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streamin
 import { rowKey } from './row-key'
 import type { PendingAction } from './activity-slot'
 import { useMessageRows } from './message-rows'
+import { useLiveCalls } from './live-calls'
 import { useChromeEntrance } from './useChromeEntrance'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
@@ -225,7 +226,7 @@ const {
   rows: renderBlocks,
   keyOf,
   footerIds,
-} = useMessageRows(() => props)
+} = useMessageRows(() => props, useLiveCalls())
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
  * The answer whose footer offers Regenerate. It is the last answer after the
