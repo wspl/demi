@@ -4,9 +4,17 @@
 
 同種のエージェントアプリと Demi の違いを、2026 年 10 月時点で各製品のドキュメントとソースコードをもとにまとめました。製品間で違いがある項目だけを載せています。
 
-✓ 対応 · ◐ 一部対応 · ✗ 非対応 · **Web**：ブラウザで使い、専用アプリはない · **PWA**：ブラウザからアプリとしてインストールできる
+表では次の記号とラベルを使います:
 
-| | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) | [T3 Code](https://github.com/pingdotgg/t3code) |
+- ✓ 対応
+- ◐ 一部対応
+- ✗ 非対応
+- **Web**：ブラウザで使い、専用アプリはない
+- **PWA**：ブラウザからアプリとしてインストールできる
+
+次の表で、製品を項目ごとに比較します:
+
+| | Demi | [Pi][pi] | [DeepSeek Harness][deepseek-harness] | [OpenHands][openhands] | [opencode][opencode] | [Orca][orca] | [herdr][herdr] | [T3 Code][t3-code] |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **モデルとサブスクリプション** | | | | | | | | |
 | Claude サブスクリプション | ✓ | ✓ | ◐¹ | ✓ | ✗ | ✓ | ✓ | ✓ |
@@ -41,19 +49,36 @@
 | 管理コンソール | ✓ | ✗ | ✗ | ◐² | ◐² | ✗ | ✗ | ✗ |
 | ユーザーごとの分離 | ✓ | ✗ | ✗ | ◐² | ✗ | ✗ | ✗ | ✗ |
 
+表中の番号の注記は次のとおりです:
+
 1. 起動する Claude Code と Codex のサブエージェント経由のみ。製品自身のサブスクリプションのサインインはコードにあるが、アプリに入口がない。
 2. 有料のクラウド版またはエンタープライズ版のみ。
 3. 試験的な機能で、手動で有効にする。
 4. iOS と Android のシミュレーターのみで、デスクトップは操作できない。
 
+[pi]: https://github.com/earendil-works/pi
+[deepseek-harness]: https://github.com/deepseek-ai/deepseek-harness
+[openhands]: https://github.com/OpenHands/OpenHands
+[opencode]: https://github.com/anomalyco/opencode
+[orca]: https://github.com/stablyai/orca
+[herdr]: https://github.com/herdrdev/herdr
+[t3-code]: https://github.com/pingdotgg/t3code
+
 ## 各項目の意味
+
+各項目の意味は次のとおりです:
 
 - **サブスクリプション**：API キーではなくサブスクリプションでサインインすること。製品が動かす Claude Code や Codex などのエージェント経由で使えるものも対応とします。
 - **複数アカウント**、**アカウントのローテーション**：製品自身が行うものに限り、製品が動かすエージェントの機能は含めません。ローテーションは、あるアカウントが上限に達したとき別のアカウントで作業を続けることです。
-- **中央サーバー**：1 台のサーバーがエージェントとすべての会話を持ち、手元のコンピューターはそのコマンドを実行するだけです。◐：サーバーはあるが、そのサーバー自身のマシンでしか実行しない。✗：マシンごとにエージェントが動く、またはサーバーがない。
-- **全デバイスがオフでも実行**：コンピューターもスマートフォンもオフのまま、タスクが続きます。◐：常時稼働のマシンを自分で用意してインストールした場合のみ。
-- **会話の同期**：どのマシンで実行した会話も 1 つの一覧にまとまり、どのデバイスでも同じ内容が見えます。◐：同じサーバーにつないだデバイスの間でのみ同期。
-- **複数マシンでのタスク**：1 つの会話が複数のマシンで作業します。**マシンの切り替え**：会話を別のマシンに移して続けます。
+- **中央サーバー**：1 台のサーバーがエージェントとすべての会話を持ち、手元のコンピューターはそのコマンドを実行するだけです。
+  - ◐：サーバーはあるが、そのサーバー自身のマシンでしか実行しない。
+  - ✗：マシンごとにエージェントが動く、またはサーバーがない。
+- **全デバイスがオフでも実行**：コンピューターもスマートフォンもオフのまま、タスクが続きます。
+  - ◐：常時稼働のマシンを自分で用意してインストールした場合のみ。
+- **会話の同期**：どのマシンで実行した会話も 1 つの一覧にまとまり、どのデバイスでも同じ内容が見えます。
+  - ◐：同じサーバーにつないだデバイスの間でのみ同期。
+- **複数マシンでのタスク**：1 つの会話が複数のマシンで作業します。
+- **マシンの切り替え**：会話を別のマシンに移して続けます。
 - **独自のエージェント**：Claude Code や Codex などのエージェントを動かすのではなく、製品自身のエージェントがモデルを動かします。
 - **ツールはシェルのみ**：モデルに渡すツールはシェルひとつで、すべての機能はその中のコマンドです。
 - **コンピューター操作**：エージェントがスクリーンショット、マウス、キーボードでデスクトップを操作します。ブラウザに限りません。
@@ -61,7 +86,7 @@
 <details>
 <summary>出典</summary>
 
-- Pi: [README](https://github.com/earendil-works/pi), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [OAuth sign-ins](https://github.com/earendil-works/pi/tree/main/packages/ai/src/auth/oauth), [Credential store](https://github.com/earendil-works/pi/blob/main/packages/ai/src/auth/credential-store.ts), [SSH extension](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/ssh.ts), [Subagent extension](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/subagent/README.md), [Containerization](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/containerization.md), [Termux](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/termux.md), [Slash commands](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/slash-`crates/command-declarations/src/lib.rs`)
+- Pi: [README](https://github.com/earendil-works/pi), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [OAuth sign-ins](https://github.com/earendil-works/pi/tree/main/packages/ai/src/auth/oauth), [Credential store](https://github.com/earendil-works/pi/blob/main/packages/ai/src/auth/credential-store.ts), [SSH extension](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/ssh.ts), [Subagent extension](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/subagent/README.md), [Containerization](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/containerization.md), [Termux](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/termux.md), [Slash commands](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/slash-commands.md)
 - DeepSeek Harness: [README](https://github.com/deepseek-ai/deepseek-harness), [Providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md), [Claude Code subagent](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/subagent/subagent-claude-code/README.md), [Codex subagent](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/subagent/subagent-codex/README.md), [Sign-in flows](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm-pi-ai/src/login.ts), [Public deployments](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/public-deployments.md), [SSH](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/ssh.md), [Persistence](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/persistence.md), [Tool catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.md), [Agent presets](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/preset/agent-preset/README.md), [Browser use](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/browser-use.md), [Computer use](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/computer-use/README.md), [Desktop app](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/desktop/README.md)
 - OpenHands: [README](https://github.com/OpenHands/OpenHands), [ACP agents](https://docs.openhands.dev/openhands/usage/agent-canvas/acp-agents), [Subscription sign-in](https://github.com/OpenHands/software-agent-sdk/blob/main/openhands-sdk/openhands/sdk/llm/auth/openai.py), [Credentials](https://github.com/OpenHands/software-agent-sdk/blob/main/openhands-sdk/openhands/sdk/llm/auth/credentials.py), [Backends](https://docs.openhands.dev/openhands/usage/agent-canvas/backends), [Remote backend](https://docs.openhands.dev/openhands/usage/agent-canvas/backend-setup/remote), [Phone and tablet access](https://docs.openhands.dev/openhands/usage/agent-canvas/mobile-access), [Cloud UI](https://docs.openhands.dev/openhands/usage/cloud/cloud-ui), [Enterprise vs. open source](https://docs.openhands.dev/enterprise/enterprise-vs-oss), [Tools](https://github.com/OpenHands/software-agent-sdk/tree/main/openhands-tools/openhands/tools)
 - opencode: [Providers](https://opencode.ai/docs/providers/), [Provider plugins](https://github.com/anomalyco/opencode/tree/dev/packages/core/src/plugin/provider), [Web](https://opencode.ai/docs/web/), [Server](https://opencode.ai/docs/server/), [TUI](https://opencode.ai/docs/tui/), [Agents](https://opencode.ai/docs/agents/), [MCP servers](https://opencode.ai/docs/mcp-servers/), [Browser plugin](https://github.com/anomalyco/opencode/blob/dev/packages/plugin-browser/README.md), [Enterprise](https://opencode.ai/docs/enterprise/)

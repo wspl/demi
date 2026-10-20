@@ -35,21 +35,21 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
 
 ## 快速开始
 
-你需要：
+你需要以下条件：
 
-- 一台有 root 权限的 Linux 服务器，系统为以下之一（[详细说明](docs/delivery/installation.md#distributions)）：
+- 一台有 root 权限的 Linux 服务器，系统为以下之一（[支持的发行版](docs/delivery/installation.md#distributions)）：
   - Ubuntu 22.04 及以上、Debian 12 及以上
   - Fedora、RHEL 10、Rocky Linux、AlmaLinux
   - Arch Linux
-- 一个域名，并在服务器前提供 HTTPS（[配置方法](docs/delivery/installation.md#https)）。
+- 一个域名，并在服务器前提供 HTTPS（[HTTPS 配置方法](docs/delivery/installation.md#https)）。
 
-然后在服务器上运行：
+然后在服务器上运行以下命令：
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-安装程序会问几个问题，然后完成安装。接下来：
+安装程序会问几个问题，然后完成安装。安装完成后：
 
 1. 立即打开你的域名，创建管理员账号。
 2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
@@ -59,6 +59,8 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 全部选项（包括免交互安装）请参阅[安装指南](docs/delivery/installation.md)，升级方法请参阅[升级说明](docs/delivery/upgrades.md)。
 
 ## 核心特性
+
+Demi 的特性分为四组。
 
 ### 聊天、办事、写代码
 
@@ -99,7 +101,9 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 
 ## 基于 Shell 的 Agent
 
-Demi 既是 Agent 的界面，也是 Agent 本身。它不套壳 Claude Code 或 Codex，而是由自己的运行时驱动所有模型；用 Claude 或 ChatGPT 订阅登录时，只调用订阅中的模型。
+Demi 既是 Agent 的界面，也是 Agent 本身。
+
+它不套壳 Claude Code 或 Codex，而是由自己的运行时驱动所有模型；用 Claude 或 ChatGPT 订阅登录时，只调用订阅中的模型。
 
 大多数 Agent 会给模型一长串工具，Demi 只给一个：Shell。浏览器、其他机器、子 Agent 等所有能力，都是这个 Shell 里的 `demi` 命令：
 
@@ -108,6 +112,8 @@ demi browser open http://localhost:5173 && demi browser screenshot t1 | demi fil
 demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
+
+这种设计有以下好处：
 
 - **可组合**：命令之间可以用管道和 `&&` 串联，通常需要多次工具调用的事，一步就能完成。
 - **提示词精简**：每组命令在提示词中只占一行，模型需要时再读 `--help`。能力再多，也不会让每次请求变得臃肿。
@@ -119,6 +125,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 > **规划中**：Demi 的 Agent 运行时将作为独立的 TypeScript 库提供，你可以不依赖 Demi 应用，直接基于它构建自己的 Agent。
 
 ## 架构
+
+下图展示各部分如何连接：
 
 ```text
   Browsers (computer, phone, tablet)
@@ -138,6 +146,8 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   └────────────────┘  └──────────────────────────────┘
 ```
 
+这种架构有以下特点：
+
 - **服务器运行 Agent，Runner 负责执行**：对话、Agent 和设置都在服务器上。每台机器上的轻量 Runner 只负责文件、命令和浏览器操作。Runner 主动连接服务器，在 NAT 和防火墙后也能正常工作。
 - **同一个 Runner**：云端沙箱和你的电脑运行同一个 Runner，所有功能在每台机器上都可用。
 - **节省带宽**：大段输出和文件保留在产生它们的机器上，只在你打开时才加载。
@@ -151,15 +161,24 @@ Demi 与 Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code �
 
 ## 文档
 
-- [设计文档](docs/README.md)：Demi 各部分的工作原理。
-- [参与贡献](CONTRIBUTING.md)：开发环境、检查项，以及如何添加模型提供方。
-- [安全](SECURITY.md)：漏洞报告方式与数据存储说明。
+- [设计文档](docs/README.md)：Demi 各部分的工作原理
+- [参与贡献](CONTRIBUTING.md)：开发环境、检查项，以及如何添加模型提供方
+- [安全](SECURITY.md)：漏洞报告方式与数据存储说明
 
 以上文档均为英文。
 
 ## 许可证
 
-Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，包括 Agent 运行时、模型提供方、装在你机器上的 Runner、命令、插件及其 SDK、UI 组件库及其图库、各类协议和文档，可以用于任何用途。
+Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，以下部分可以用于任何用途：
+
+- Agent 运行时
+- 模型提供方
+- 装在你机器上的 Runner
+- 命令
+- 插件及其 SDK
+- UI 组件库及其图库
+- 各类协议
+- 文档
 
 服务器和网页应用（`crates/backend*`、`crates/server`、`crates/machine-manager` 和 `packages/web`）采用 [Demi License](LICENSE-DEMI) 发布，即在 Apache License 2.0 基础上附加了以下条件：
 
