@@ -27,18 +27,40 @@
       "conversation_deleted": "因其对话已删除而暂停。"
     }
   },
-  "trigger": {
-    "title": "触发条件",
-    "kind": "启动",
-    "time": "在指定时间",
+  "when": {
+    "label": "运行时间",
+    "once": "一次",
+    "presets": {
+      "day": "每天",
+      "week": "每周",
+      "twoWeeks": "每两周",
+      "month": "每月",
+      "threeMonths": "每三个月",
+      "year": "每年"
+    },
+    "everyMenu": "每隔几分钟或几小时…",
+    "cronMenu": "Cron…",
+    "cron": "Cron",
     "change": "输出变化时",
     "url": "URL 被调用时",
-    "repeat": "重复",
-    "once": "一次",
-    "repeating": "每隔",
-    "cron": "Cron",
+    "customMenu": "自定义…"
+  },
+  "custom": {
+    "title": "自定义",
+    "countLead": "每",
+    "count": "数量",
+    "unit": "单位",
+    "units": {
+      "days": "天 | 天",
+      "weeks": "周 | 周",
+      "months": "个月 | 个月",
+      "years": "年 | 年"
+    },
+    "starts": "开始于",
+    "startInvalid": "请按 2026-01-01 的格式输入日期。"
+  },
+  "trigger": {
     "moment": "日期和时间",
-    "momentHint": "格式如 2026-10-18 08:00。",
     "momentInvalid": "请按 2026-10-18 08:00 的格式输入日期和时间。",
     "interval": "每隔",
     "intervalInvalid": "请输入 1 或更大的整数。",
@@ -48,13 +70,10 @@
       "days": "天"
     },
     "expression": "Cron 表达式",
-    "expressionHint": "分、时、日、月、星期：{words}。",
     "expressionInvalid": "请输入五个字段，例如 0 9 * * 1-5。",
     "timeZone": "时区",
     "command": "命令",
-    "commandHint": "在目标目录中运行。输出或退出状态变化时启动一次运行；第一次检查只记录结果。",
     "checkEvery": "检查间隔",
-    "cloudCost": "每次检查都在云端运行并唤醒它，检查越频繁，云端越会一直运行。",
     "address": "地址",
     "secret": "密钥",
     "secretHidden": "密钥，已隐藏",
@@ -63,43 +82,67 @@
     "regenerateBody": "之后使用当前密钥的调用都会被拒绝。",
     "regenerateAction": "重新生成",
     "stripe": "Stripe 签名密钥",
-    "stripeHint": "Stripe 使用自己的密钥：粘贴到这里，即可接受 Stripe 签名的事件。",
-    "daily": "每天",
-    "dailyTime": "时间",
-    "days": "日期",
     "clockInvalid": "请按 09:00 的格式输入时间。",
     "limit": "每天最多运行",
-    "limitHint": "达到后，之后的变化和调用到午夜前都不会启动运行。",
     "noLimit": "不限",
     "limitInvalid": "请输入不小于 1 的整数，或留空。",
-    "addressHint": "其他系统向它发送 POST 请求即可启动一次运行。",
-    "secretHint": "以 Authorization: Bearer <secret> 发送，或粘贴到 GitHub Webhook 的 Secret 栏。",
     "show": "显示密钥",
     "hide": "隐藏密钥",
     "stripePaste": "粘贴密钥"
   },
+  "tasks": {
+    "title": "任务",
+    "add": "添加任务",
+    "noMessage": "没有消息",
+    "actions": "任务操作",
+    "runNow": "立即运行",
+    "delete": "删除",
+    "lastOne": "自动化至少保留一个任务。",
+    "editTitle": "任务",
+    "days": "星期",
+    "day": "日期",
+    "date": "日",
+    "month": "月份",
+    "time": "时间",
+    "message": "消息",
+    "messageMissing": "任务有消息后才会运行。",
+    "done": "完成",
+    "dateInvalid": "请输入 1 到 31 之间的日。",
+    "weekday": "星期",
+    "dayKinds": {
+      "date": "指定日期",
+      "lastDay": "最后一天",
+      "first": "第一个",
+      "second": "第二个",
+      "third": "第三个",
+      "fourth": "第四个",
+      "last": "最后一个",
+      "firstWorking": "第一个工作日",
+      "lastWorking": "最后一个工作日"
+    },
+    "placeholder": "检查昨天失败的付款，如果有就通知我。"
+  },
+  "holidays": {
+    "label": "节假日",
+    "none": "无",
+    "region": "地区",
+    "allRegions": "全国"
+  },
   "target": {
-    "title": "目标",
     "host": "设备",
     "project": "项目",
     "noProject": "无",
     "conversation": "对话",
-    "new": "每次运行新建对话",
-    "existing": "现有对话",
-    "newHint": "每次运行都会开始一个空对话，它只知道提示词里写的内容。",
-    "existingHint": "每次运行都会发一条消息唤醒它，它会带着已有的全部内容继续。",
     "pick": "选择对话",
-    "noConversations": "{host} 上没有对话",
-    "offline": "离线"
+    "offline": "离线",
+    "newEach": "每次运行新建",
+    "choose": "选择…"
   },
-  "prompt": {
-    "title": "提示词",
-    "hint": "每次运行发送的内容，像你给智能体写消息那样写。",
-    "placeholder": "检查昨天失败的付款，如果有就通知我。"
+  "busy": {
+    "label": "忙碌时"
   },
   "model": {
     "label": "模型",
-    "hint": "新对话以此模型开始；现有对话保留自己的模型。",
     "choose": "选择模型",
     "missing": "运行需要模型才能新建对话。"
   },
@@ -144,7 +187,30 @@
     "newConversation": "新对话",
     "existing": "“{title}”",
     "days": "{days} {time}",
-    "existingGone": "已删除的对话"
+    "existingGone": "已删除的对话",
+    "repeat": {
+      "days": "每天 | 每 {count} 天",
+      "weeks": "每周 | 每 {count} 周",
+      "months": "每月 | 每 {count} 个月",
+      "years": "每年 | 每 {count} 年"
+    },
+    "tasks": "{count} 个任务",
+    "date": "{date} 日",
+    "lastDay": "最后一天",
+    "week": {
+      "first": "第一个{weekday}",
+      "second": "第二个{weekday}",
+      "third": "第三个{weekday}",
+      "fourth": "第四个{weekday}",
+      "last": "最后一个{weekday}"
+    },
+    "workingDay": {
+      "first": "第一个工作日",
+      "last": "最后一个工作日"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month}{date}日",
+    "dayOfMonth": "{month}{day}"
   },
   "bar": {
     "label": "自动化运行",
@@ -163,6 +229,7 @@
     "delete": "无法删除自动化",
     "secret": "无法显示密钥",
     "regenerate": "无法重新生成密钥",
-    "move": "无法移动对话"
+    "move": "无法移动对话",
+    "holidays": "无法载入节假日"
   }
 }

@@ -22,9 +22,33 @@ const loaded = ref(0)
   <div v-if="view === 'app'" class="flex flex-col gap-10">
     <GallerySection
       title="Automations"
-      note="Automations sits under Archived, its count the runs that notified and whose conversation is still unread; it opens the page in the main area. Each row is the name, the trigger and the target in words, and the last run, with a dot for an unread notification and a warning for a failure; a paused one is dimmed. New Automation creates New Automation at once, paused, daily at 09:00 every day in a new conversation on the Cloud, and opens it. An automation is edited in place: rename it, turn it on, Run Now (a run starts, and answers a moment later), each trigger and its parts (Once, Daily on chosen days, Every, Cron), a change watch's or a URL's daily limit, the time zone, the target, the prompt, the model, and Delete, which asks first. While notifications are off in every browser, the page says so, and Turn On Notifications opens Settings › Notifications, where turning them on removes the note. A skipped run says why: the device was offline, or the day's limit was reached with the calls since. A run opens its conversation, a run that woke an existing conversation that conversation."
+      note="Automations sits under Archived, its count the runs that notified and whose conversation is still unread; it opens the page in the main area. Each row is the name, the trigger and the target in words, and the last run, with a dot for an unread notification and a warning for a failure; a paused one is dimmed. New Automation creates New Automation at once, paused, every day with one task at 09:00 and no message, in a new conversation on the Cloud, and opens it. An automation is edited in place: rename it, turn it on, Run Now (a run starts, and answers a moment later), When and its tasks or a single trigger’s fields and message, a change watch's or a URL's daily limit, the time zone, the conversation, the model, and Delete, which asks first. While notifications are off in every browser, the page says so, and Turn On Notifications opens Settings › Notifications, where turning them on removes the note. A skipped run says why: the device was offline, or the day's limit was reached with the calls since. A run opens its conversation, a run that woke an existing conversation that conversation."
     >
       <GalleryAutomationsApp />
+    </GallerySection>
+    <GallerySection
+      title="Weekly Tasks"
+      note="When is one menu: Once, the repeats from Every Day to Every Year, Every N Minutes or Hours…, Cron…, When Output Changes, When a URL Is Called, and Custom…, a sheet with the count, the unit and the first cycle’s date. A repeat holds several tasks, each a moment in its cycle and a message. A task’s row opens its sheet, with its weekdays, its time and its message; its ··· menu runs it now or deletes it, except the last one. Add Task adds one on Monday at 09:00 with no message, which shows as missing, and opens it. Run Now in the header offers the tasks; a run among several tasks starts with its task’s message. A single trigger shows its own fields and its message in place of the tasks."
+    >
+      <GalleryAutomationsApp :start="{ kind: 'automation', id: 'a-ops' }" />
+    </GallerySection>
+    <GallerySection
+      title="A Monthly Task on a Working Day"
+      note="Every Month with one task on the last working day at 17:00. Its sheet’s Day menu offers a date, the last day, the first to fourth or last of a weekday, and the first or last working day; a working day also shows Holidays: None, or a country, and a region where its holidays differ (Germany and the United States have regions)."
+    >
+      <GalleryAutomationsApp :start="{ kind: 'automation', id: 'a-payroll' }" />
+    </GallerySection>
+    <GallerySection
+      title="Every 3 Months"
+      note="A cycle of several units counts from its first cycle: every 3 months from January 1 runs in January, April, July and October. Custom… opens a sheet with the count, the unit and, for several units, the first cycle’s date; Done applies it and Cancel drops it."
+    >
+      <GalleryAutomationsApp :start="{ kind: 'automation', id: 'a-subscriptions' }" />
+    </GallerySection>
+    <GallerySection
+      title="If Busy"
+      note="Conversation is one menu: New Each Run, the recent conversations, and Choose…, which finds any conversation by its title. Device and Project follow for New Each Run. An existing conversation is followed by If Busy: Queue waits for its running turn to end; Steer reaches the running turn, as the composer’s Steer does."
+    >
+      <GalleryAutomationsApp :start="{ kind: 'automation', id: 'a-orders' }" />
     </GallerySection>
     <GallerySection
       title="An Automation"

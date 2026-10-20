@@ -1,7 +1,7 @@
 //! What a run sends.
 //!
-//! The message is the prompt, behind a line naming the automation and why it
-//! fired.
+//! The message is the prompt, a repeat's task's or a single trigger's, behind
+//! a line naming the automation and why it fired.
 //!
 //! - A change adds the two outputs.
 //! - A URL's calls add each call's time, method, headers and the path of its
@@ -55,8 +55,17 @@ fn clock(automation: &StoredAutomation, at: Timestamp) -> String {
     at.to_jiff().to_zoned(zone).strftime("%H:%M").to_string()
 }
 
-/// The message of a run of `automation` that `cause` fired at `at`.
-pub(crate) fn text(automation: &StoredAutomation, cause: RunCause, at: Timestamp, extra: &Extra) -> String {
+/// What a run of `automation` sends: the repeat's task `task`'s message,
+/// or the single trigger's prompt.
+pub(crate) fn prompt_of<'a>(automation: &'a StoredAutomation, task: Option<&str>) -> &'a str {
+    let task = super::runs::tasks_of(&automation.trigger)
+        .and_then(|tasks| tasks.iter().find(|each| Some(each.id.as_str()) == task));
+    task.map_or(automation.prompt.as_str(), |task| task.prompt.as_str())
+}
+
+/// The message of a run of `automation` that `cause` fired at `at`, with
+/// `prompt`, as `prompt_of` finds it.
+pub(crate) fn text(automation: &StoredAutomation, prompt: &str, cause: RunCause, at: Timestamp, extra: &Extra) -> String {
     let time = clock(automation, at);
     let why = match (cause, extra) {
         (RunCause::Time, _) => format!("at {time}"),
@@ -67,7 +76,7 @@ pub(crate) fn text(automation: &StoredAutomation, cause: RunCause, at: Timestamp
         }
         (RunCause::Url, _) => format!("its URL was called at {time}"),
     };
-    let mut text = format!("Automation \u{201c}{}\u{201d}, {why}\n\n{}", automation.name, automation.prompt.trim());
+    let mut text = format!("Automation \u{201c}{}\u{201d}, {why}\n\n{}", automation.name, prompt.trim());
     match extra {
         Extra::None => {}
         Extra::Change { before, now } => {

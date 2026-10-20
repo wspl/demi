@@ -10,8 +10,9 @@
 //! - its conversation is gone.
 //!
 //! Otherwise its message goes to a new conversation, filed under the
-//! automation, or wakes the existing one, queued behind a turn that runs. The
-//! run ends with the turn its message started.
+//! automation, or wakes the existing one: queued behind a turn that runs, or,
+//! when the automation steers, sent into it as the composer's Steer sends a
+//! queued message. The run ends with the turn its message started.
 
 use std::rc::Rc;
 
@@ -24,7 +25,7 @@ use demi_backend_page_sync::Part;
 use demi_shared_types::{
     AutomationMark, AutomationRunId, Block, QueuedMessage, SessionPhase, Timestamp, TurnId, UserContentBlock,
 };
-use demi_web_api_protocol::automations::{AutomationTarget, PauseReason, RunNote, RunState, Trigger};
+use demi_web_api_protocol::automations::{AutomationTarget, IfBusy, PauseReason, RunNote, RunState, Schedule, Task, Trigger};
 use demi_web_api_protocol::conversations::{ConversationTarget, CreateConversation, ModelChoice};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -38,6 +39,8 @@ pub(crate) struct Fired {
     pub cause: RunCause,
     /// When the trigger fired: a time of the schedule, or now.
     pub at: Timestamp,
+    /// The repeat's task it runs; none for a single trigger.
+    pub task: Option<String>,
     pub payload: Payload,
 }
 
@@ -50,12 +53,23 @@ pub(crate) enum Payload {
 }
 
 impl Fired {
-    pub(crate) fn time(at: Timestamp) -> Self {
+    pub(crate) fn time(at: Timestamp, task: Option<String>) -> Self {
         Self {
             cause: RunCause::Time,
             at,
+            task,
             payload: Payload::None,
         }
+    }
+}
+
+/// A repeat's tasks; none for a single trigger.
+pub(crate) fn tasks_of(trigger: &Trigger) -> Option<&[Task]> {
+    match trigger {
+        Trigger::Time {
+            schedule: Schedule::Repeat { tasks, .. },
+        } => Some(tasks),
+        _ => None,
     }
 }
 
@@ -79,6 +93,7 @@ pub(crate) fn skipped(automation: &StoredAutomation, cause: RunCause, at: Timest
         automation: automation.id.clone(),
         cause,
         at,
+        task: None,
         state: RunState::Skipped,
         note: Some(note),
         line: None,
@@ -113,7 +128,7 @@ impl Shard {
     pub(crate) async fn place_of(&self, automation: &StoredAutomation) -> Result<Place, Unrunnable> {
         let control = &self.services().control;
         let (place, device) = match &automation.target {
-            AutomationTarget::Existing { conversation_id } => {
+            AutomationTarget::Existing { conversation_id, .. } => {
                 let record = match control.conversation(conversation_id.clone()).await {
                     Ok(Some(record)) if record.owner == *self.user() => record,
                     _ => return Err(Unrunnable::Gone(PauseReason::ConversationDeleted)),
@@ -224,6 +239,7 @@ impl Shard {
             automation: automation.id.clone(),
             cause: fired.cause,
             at: fired.at,
+            task: fired.task.clone(),
             state: RunState::Running,
             note: None,
             line: None,
@@ -328,17 +344,19 @@ impl Shard {
         self.mark(Part::Conversation(conversation.clone()));
         self.mark(Part::ConversationOrder);
         self.mark(Part::Automations);
+        let prompt = message::prompt_of(automation, fired.task.as_deref());
         let text = match fired.payload {
-            Payload::None => message::text(automation, fired.cause, fired.at, &message::Extra::None),
+            Payload::None => message::text(automation, prompt, fired.cause, fired.at, &message::Extra::None),
             Payload::Change { before, now } => message::text(
                 automation,
+                prompt,
                 fired.cause,
                 fired.at,
                 &message::Extra::Change { before, now },
             ),
             Payload::Calls(calls) => {
                 let written = self.write_bodies(&conversation, &run.id, &calls).await?;
-                message::text(automation, fired.cause, fired.at, &message::Extra::Calls { calls, written })
+                message::text(automation, prompt, fired.cause, fired.at, &message::Extra::Calls { calls, written })
             }
         };
         self.restore_tree(&conversation).await?;
@@ -346,11 +364,11 @@ impl Shard {
             .agent()
             .tree(&root_of(&conversation))
             .ok_or("the conversation's tree closed before the message")?;
-        tree.root()
-            .session()
+        let session = tree.root().session();
+        session
             .send_message(QueuedMessage {
                 comments: Vec::new(),
-                id: turn,
+                id: turn.clone(),
                 content: vec![UserContentBlock::Text { text }],
                 automation: Some(AutomationMark {
                     automation_id: automation.id.clone(),
@@ -360,6 +378,12 @@ impl Shard {
                 }),
             })
             .map_err(|error| error.to_string())?;
+        // A message that waits behind a running turn reaches it, as the
+        // composer's Steer does; one that started a turn at once waits for
+        // nothing, and the call changes nothing.
+        if matches!(automation.target, AutomationTarget::Existing { if_busy: IfBusy::Steer, .. }) {
+            session.send_queued_message(&turn);
+        }
         Ok(())
     }
 
@@ -452,7 +476,7 @@ impl Shard {
 /// gone target is only ever an existing one.
 fn target_conversation(automation: &StoredAutomation) -> ConversationId {
     match &automation.target {
-        AutomationTarget::Existing { conversation_id } => conversation_id.clone(),
+        AutomationTarget::Existing { conversation_id, .. } => conversation_id.clone(),
         AutomationTarget::New { .. } => unreachable!("only an existing conversation is gone"),
     }
 }

@@ -88,7 +88,10 @@ struct Library {
 /// - The Android robot, an Android emulator's logo
 ///   (`crates/plugin-mobile/page/src/index.ts`), whose license asks for its
 ///   attribution.
-const LIBRARIES: [Library; 6] = [
+/// - The public holidays exported from the `holidays` Python package, which
+///   an automation's working days skip
+///   (`crates/backend-user-shard/src/automations/holidays.rs`).
+const LIBRARIES: [Library; 7] = [
     Library {
         name: "idb",
         version: "1.7.6",
@@ -124,6 +127,12 @@ const LIBRARIES: [Library; 6] = [
         version: "",
         license: "CC-BY-3.0",
         notice: "packages/web-ui/src/devices/LICENSE-android-robot",
+    },
+    Library {
+        name: "holidays",
+        version: "0.107",
+        license: "MIT",
+        notice: "crates/backend-user-shard/src/automations/LICENSE-holidays",
     },
 ];
 

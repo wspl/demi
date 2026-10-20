@@ -27,18 +27,40 @@
       "conversation_deleted": "Paused because its conversation was deleted."
     }
   },
-  "trigger": {
-    "title": "Trigger",
-    "kind": "Start",
-    "time": "At a Time",
+  "when": {
+    "label": "When",
+    "once": "Once",
+    "presets": {
+      "day": "Every Day",
+      "week": "Every Week",
+      "twoWeeks": "Every 2 Weeks",
+      "month": "Every Month",
+      "threeMonths": "Every 3 Months",
+      "year": "Every Year"
+    },
+    "everyMenu": "Every N Minutes or Hours…",
+    "cronMenu": "Cron…",
+    "cron": "Cron",
     "change": "When Output Changes",
     "url": "When a URL Is Called",
-    "repeat": "Repeat",
-    "once": "Once",
-    "repeating": "Every",
-    "cron": "Cron",
+    "customMenu": "Custom…"
+  },
+  "custom": {
+    "title": "Custom",
+    "countLead": "Every",
+    "count": "Count",
+    "unit": "Unit",
+    "units": {
+      "days": "Day | Days",
+      "weeks": "Week | Weeks",
+      "months": "Month | Months",
+      "years": "Year | Years"
+    },
+    "starts": "Starts",
+    "startInvalid": "Enter a date as 2026-01-01."
+  },
+  "trigger": {
     "moment": "Date and time",
-    "momentHint": "As 2026-10-18 08:00.",
     "momentInvalid": "Enter a date and time as 2026-10-18 08:00.",
     "interval": "Every",
     "intervalInvalid": "Enter a whole number, 1 or more.",
@@ -48,13 +70,10 @@
       "days": "Days"
     },
     "expression": "Cron expression",
-    "expressionHint": "Minute, hour, day of month, month and weekday: {words}.",
     "expressionInvalid": "Enter five fields, such as 0 9 * * 1-5.",
     "timeZone": "Time zone",
     "command": "Command",
-    "commandHint": "Runs in the target’s directory. A run starts when its output or exit status changes; the first check only records it.",
     "checkEvery": "Check every",
-    "cloudCost": "Each check runs on the Cloud and wakes it, so checking often keeps the Cloud running.",
     "address": "Address",
     "secret": "Secret",
     "secretHidden": "Secret, hidden",
@@ -63,43 +82,67 @@
     "regenerateBody": "Calls with the current secret will be refused from then on.",
     "regenerateAction": "Regenerate",
     "stripe": "Stripe signing secret",
-    "stripeHint": "Stripe makes its own secret: paste it here to accept the events Stripe signs.",
-    "daily": "Daily",
-    "dailyTime": "Time",
-    "days": "Days",
     "clockInvalid": "Enter a time as 09:00.",
     "limit": "Runs a day",
-    "limitHint": "Once reached, later changes and calls start nothing until midnight.",
     "noLimit": "No limit",
     "limitInvalid": "Enter a whole number, 1 or more, or leave it empty.",
-    "addressHint": "Another system calls it with a POST to start a run.",
-    "secretHint": "Send it as Authorization: Bearer <secret>, or paste it in a GitHub webhook’s Secret field.",
     "show": "Show Secret",
     "hide": "Hide Secret",
     "stripePaste": "Paste a secret"
   },
+  "tasks": {
+    "title": "Tasks",
+    "add": "Add Task",
+    "noMessage": "No message",
+    "actions": "Task Actions",
+    "runNow": "Run Now",
+    "delete": "Delete",
+    "lastOne": "An automation keeps at least one task.",
+    "editTitle": "Task",
+    "days": "Days",
+    "day": "Day",
+    "date": "Date",
+    "month": "Month",
+    "time": "Time",
+    "message": "Message",
+    "messageMissing": "The task doesn’t run until it has a message.",
+    "done": "Done",
+    "dateInvalid": "Enter a day from 1 to 31.",
+    "weekday": "Weekday",
+    "dayKinds": {
+      "date": "On Day",
+      "lastDay": "Last Day",
+      "first": "First",
+      "second": "Second",
+      "third": "Third",
+      "fourth": "Fourth",
+      "last": "Last",
+      "firstWorking": "First Working Day",
+      "lastWorking": "Last Working Day"
+    },
+    "placeholder": "Check yesterday’s failed payments, and notify me if there are any."
+  },
+  "holidays": {
+    "label": "Holidays",
+    "none": "None",
+    "region": "Region",
+    "allRegions": "Nationwide"
+  },
   "target": {
-    "title": "Target",
     "host": "Device",
     "project": "Project",
     "noProject": "None",
     "conversation": "Conversation",
-    "new": "New Conversation per Run",
-    "existing": "Existing Conversation",
-    "newHint": "Each run starts an empty conversation, which knows only what the prompt says.",
-    "existingHint": "Each run wakes it with a message, and it goes on with everything it holds.",
     "pick": "Choose a Conversation",
-    "noConversations": "No conversations on {host}",
-    "offline": "Offline"
+    "offline": "Offline",
+    "newEach": "New Each Run",
+    "choose": "Choose…"
   },
-  "prompt": {
-    "title": "Prompt",
-    "hint": "What each run sends, written as you’d write it to the agent.",
-    "placeholder": "Check yesterday’s failed payments, and notify me if there are any."
+  "busy": {
+    "label": "If Busy"
   },
   "model": {
     "label": "Model",
-    "hint": "A new conversation starts with it; an existing one keeps its own.",
     "choose": "Choose a Model",
     "missing": "Runs need a model to start a new conversation."
   },
@@ -144,7 +187,30 @@
     "newConversation": "New conversation",
     "existing": "“{title}”",
     "days": "{days} {time}",
-    "existingGone": "A deleted conversation"
+    "existingGone": "A deleted conversation",
+    "repeat": {
+      "days": "Every day | Every {count} days",
+      "weeks": "Every week | Every {count} weeks",
+      "months": "Every month | Every {count} months",
+      "years": "Every year | Every {count} years"
+    },
+    "tasks": "{count} task | {count} tasks",
+    "date": "Day {date}",
+    "lastDay": "Last day",
+    "week": {
+      "first": "First {weekday}",
+      "second": "Second {weekday}",
+      "third": "Third {weekday}",
+      "fourth": "Fourth {weekday}",
+      "last": "Last {weekday}"
+    },
+    "workingDay": {
+      "first": "First working day",
+      "last": "Last working day"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month} {date}",
+    "dayOfMonth": "{day} of {month}"
   },
   "bar": {
     "label": "Automation run",
@@ -163,6 +229,7 @@
     "delete": "Couldn’t Delete the Automation",
     "secret": "Couldn’t Show the Secret",
     "regenerate": "Couldn’t Regenerate the Secret",
-    "move": "Couldn’t Move the Conversation"
+    "move": "Couldn’t Move the Conversation",
+    "holidays": "Couldn’t Load the Holidays"
   }
 }

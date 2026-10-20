@@ -7,7 +7,11 @@ import {
   type AutomationConversation,
   type AutomationHost,
   type AutomationRun,
+  type AutomationTask,
+  type MonthDay,
   type PauseReason,
+  type Repeat,
+  type RepeatUnit,
   type RunNote,
   type RunState,
   type TimeSchedule,
@@ -118,8 +122,8 @@ export function weekdayName(day: Weekday, width: 'short' | 'long' = 'short'): st
   return new Intl.DateTimeFormat(undefined, { weekday: width }).format(new Date(2023, 0, 2 + WEEKDAYS.indexOf(day)))
 }
 
-/** A daily schedule in words: Every day 09:00, Weekdays 09:00, Mon, Thu 09:00. */
-export function dailyWords(time: string, days: readonly Weekday[]): string {
+/** Weekdays and a time in words: Every day 09:00, Weekdays 09:00, Mon 10:00, Mon, Thu 09:00. */
+export function weekdaysWords(time: string, days: readonly Weekday[]): string {
   const chosen = WEEKDAYS.filter((day) => days.includes(day))
   if (chosen.length === 7) {
     return t('words.daily', { time })
@@ -127,10 +131,88 @@ export function dailyWords(time: string, days: readonly Weekday[]): string {
   if (chosen.length === 5 && !chosen.includes('sat') && !chosen.includes('sun')) {
     return t('words.weekdays', { time })
   }
-  if (chosen.length === 1) {
-    return t('words.weekly', { day: weekdayName(chosen[0]!, 'long'), time })
-  }
   return t('words.days', { days: chosen.map((day) => weekdayName(day)).join(', '), time })
+}
+
+/** A month's short name in the page's language: Mar. */
+export function monthName(month: number, width: 'short' | 'long' = 'short'): string {
+  return new Intl.DateTimeFormat(undefined, { month: width }).format(new Date(2023, month - 1, 1))
+}
+
+/** A country's name in the page's language, from its ISO 3166 code: China. */
+export function countryName(code: string): string {
+  return new Intl.DisplayNames(undefined, { type: 'region' }).of(code) ?? code
+}
+
+/** The menu's choices of a repeat, each a cycle Calendar offers; any other is Custom. */
+export const REPEAT_PRESETS = [
+  { key: 'day', every: 1, unit: 'days' },
+  { key: 'week', every: 1, unit: 'weeks' },
+  { key: 'twoWeeks', every: 2, unit: 'weeks' },
+  { key: 'month', every: 1, unit: 'months' },
+  { key: 'threeMonths', every: 3, unit: 'months' },
+  { key: 'year', every: 1, unit: 'years' },
+] as const satisfies readonly { key: string; every: number; unit: RepeatUnit }[]
+
+/** The preset a repeat is, by its key; none for a custom one. */
+export function repeatPreset(repeat: Repeat): (typeof REPEAT_PRESETS)[number]['key'] | null {
+  return REPEAT_PRESETS.find((preset) => preset.every === repeat.every && preset.unit === repeat.unit)?.key ?? null
+}
+
+/** A repeat in words, as a sentence starts: Every week, Every 3 months. */
+export function repeatWords(repeat: Repeat): string {
+  return t(`words.repeat.${repeat.unit}`, { count: repeat.every }, repeat.every)
+}
+
+/** A day of a month in words: Day 15, Last day, Second Tuesday, Last working day. */
+export function monthDayWords(day: MonthDay): string {
+  switch (day.kind) {
+    case 'date':
+      return t('words.date', { date: day.date })
+    case 'last_day':
+      return t('words.lastDay')
+    case 'weekday':
+      return t(`words.week.${day.week}`, { weekday: weekdayName(day.weekday, 'long') })
+    case 'working_day':
+      return t(`words.workingDay.${day.which}`)
+  }
+}
+
+/** A task's moment in words, as the repeat's unit reads it: 09:00, Mon 10:00, Last working day 17:00, Mar 15 09:00. */
+export function taskWords(task: AutomationTask, unit: RepeatUnit): string {
+  switch (unit) {
+    case 'days':
+      return task.time
+    case 'weeks':
+      return weekdaysWords(task.time, task.days)
+    case 'months':
+      return t('words.moment', { day: monthDayWords(task.day), time: task.time })
+    case 'years': {
+      const day = task.day.kind === 'date'
+        ? t('words.monthDate', { month: monthName(task.month), date: task.day.date })
+        : t('words.dayOfMonth', { day: monthDayWords(task.day), month: monthName(task.month) })
+      return t('words.moment', { day, time: task.time })
+    }
+  }
+}
+
+/**
+ * A repeat in words, as the list shows it: one task every day or every week
+ * says its moment alone (Weekdays 09:00); one task in another cycle says
+ * both (Every month · Last working day 17:00); several tasks, their count.
+ */
+function repeatScheduleWords(repeat: Repeat, tasks: readonly AutomationTask[]): string {
+  const only = tasks.length === 1 ? tasks[0]! : null
+  if (only && repeat.every === 1 && (repeat.unit === 'days' || repeat.unit === 'weeks')) {
+    if (repeat.unit === 'days') {
+      return t('words.daily', { time: only.time })
+    }
+    return only.days.length === 1
+      ? t('words.weekly', { day: weekdayName(only.days[0]!, 'long'), time: only.time })
+      : weekdaysWords(only.time, only.days)
+  }
+  const what = only ? taskWords(only, repeat.unit) : t('words.tasks', { count: tasks.length }, tasks.length)
+  return `${repeatWords(repeat)} · ${what}`
 }
 
 /**
@@ -165,8 +247,8 @@ export function scheduleWords(schedule: TimeSchedule, zone?: string): string {
   switch (schedule.kind) {
     case 'once':
       return shortMoment(schedule.at, zone)
-    case 'daily':
-      return dailyWords(schedule.time, schedule.days)
+    case 'repeat':
+      return repeatScheduleWords(schedule.repeat, schedule.tasks)
     case 'every':
       return intervalWords(schedule.minutes)
     case 'cron':

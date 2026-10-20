@@ -14,7 +14,9 @@
 //!   - counts what its limit holds back;
 //!   - makes a run's credential reads ask.
 //! - `demi automation` needs the user's permission, which a run's own agent
-//!   cannot use.
+//!   uses as any agent does, on its own automation too.
+//! - A run's message to a busy existing conversation that steers reaches the
+//!   running turn; Run Now runs the task it names.
 //!
 //! The model is the scripted family of the subagent scenarios; the device is a
 //! real runner. No test calls a real model.
@@ -25,7 +27,9 @@ use std::time::Duration;
 use demi_backend_user_shard::holds::{StepHold, WatchStep};
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_shared_types::Block;
-use demi_web_api_protocol::automations::{AutomationAnswer, AutomationDto, AutomationList, AutomationSecret, RunNote, RunState};
+use demi_web_api_protocol::automations::{
+    AutomationAnswer, AutomationDto, AutomationList, AutomationSecret, RepeatUnit, RunNote, RunState, Schedule, Trigger,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::permissions::PermissionRequest;
 use hmac::{Hmac, Mac};
@@ -35,7 +39,7 @@ use sha2::Sha256;
 
 use crate::conversations::{FIRST, Socket, send, summaries, summary, transcript};
 use crate::permissions::{categories, permissions};
-use crate::subagents::{Scripts, WAIT, background, say, shell, tree_on};
+use crate::subagents::{Scripts, WAIT, background, hang, say, shell, tree_on};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, elapse, eventually};
 
 async fn automations(backend: &TestBackend, session: &Session) -> Vec<AutomationDto> {
@@ -121,11 +125,15 @@ async fn a_time_trigger_runs_in_a_filed_conversation_and_once_for_the_times_a_re
         json!({
             "name": "Failed payments every weekday",
             "trigger": { "kind": "time", "schedule": {
-                "kind": "daily", "time": time, "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                "kind": "repeat",
+                "repeat": { "every": 1, "unit": "days", "start": null },
+                "tasks": [{
+                    "id": "payments", "time": time, "days": ["mon"], "day": { "kind": "date", "date": 1 },
+                    "month": 1, "holidays": null, "prompt": "Check yesterday's failed payments."
+                }]
             } },
             "timeZone": "UTC",
             "target": { "kind": "new", "target": { "kind": "device", "deviceId": paired.id(), "path": root } },
-            "prompt": "Check yesterday's failed payments.",
             "model": model(&provider),
             "paused": false
         }),
@@ -138,7 +146,7 @@ async fn a_time_trigger_runs_in_a_filed_conversation_and_once_for_the_times_a_re
     // paused clock, fires it at the time.
     scripts.child(vec![say("2 failed payments: #8812 and #8820")]);
     set_clock(&harness, at.checked_sub(jiff::SignedDuration::from_secs(1)).unwrap());
-    changed(&backend, &master, automation.id.as_str(), json!({ "prompt": "Check yesterday's failed payments." })).await;
+    changed(&backend, &master, automation.id.as_str(), json!({ "name": "Failed payments every weekday" })).await;
     assert!(the_automation(&backend, &master).await.runs.is_empty());
     set_clock(&harness, at);
     elapse(Duration::from_secs(2)).await;
@@ -148,6 +156,8 @@ async fn a_time_trigger_runs_in_a_filed_conversation_and_once_for_the_times_a_re
     .await;
     let run = the_automation(&backend, &master).await.runs.remove(0);
     assert_eq!(run.at.to_jiff(), at);
+    // The run records the task that started it, whose message it sent.
+    assert_eq!(run.task_id.as_deref(), Some("payments"));
     assert_eq!(run.line.as_deref(), Some("2 failed payments: #8812 and #8820"));
     assert!(run.filed);
     let conversation = run.conversation_id.clone().expect("the run made a conversation");
@@ -193,7 +203,7 @@ async fn a_time_trigger_runs_in_a_filed_conversation_and_once_for_the_times_a_re
         say("No failed payments."),
     ]);
     let started = backend
-        .post(&format!("/api/automations/{}/run", automation.id), Some(&master), json!({}))
+        .post(&format!("/api/automations/{}/run", automation.id), Some(&master), json!({ "taskId": null }))
         .await;
     assert_eq!(started.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&started.body));
     eventually("the run ends", || async {
@@ -260,7 +270,7 @@ async fn a_watch_records_first_fires_on_a_change_and_waits_for_the_next_day_at_i
             "name": "Price of the X100",
             "trigger": { "kind": "change", "command": "cat price.txt", "everyMinutes": 1 },
             "timeZone": "UTC",
-            "target": { "kind": "existing", "conversationId": FIRST },
+            "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" },
             "prompt": "Tell me the new price.",
             "paused": false
         }),
@@ -342,7 +352,7 @@ async fn a_url_takes_only_its_secret_and_makes_one_run_of_a_burst() {
             "trigger": { "kind": "url" },
             "timeZone": "UTC",
             "maxRunsPerDay": 2,
-            "target": { "kind": "existing", "conversationId": FIRST },
+            "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" },
             "prompt": "Review what the pull request changed.",
             "paused": false
         }),
@@ -504,7 +514,7 @@ async fn a_url_takes_only_its_secret_and_makes_one_run_of_a_burst() {
 
 // Several seconds: a real device runs the agent's commands over five turns.
 #[tokio::test]
-async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
+async fn the_agent_manages_automations_with_permission_and_a_run_manages_its_own() {
     let scripts = Arc::new(Scripts::default());
     let (_harness, backend, master, _paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -512,7 +522,7 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
 
     // The create asks the user and creates nothing while it waits; allowed,
     // it creates the automation.
-    let create = "demi automation create --name 'Morning summary' --daily 09:00 --days mon-fri --tz Asia/Shanghai <<< 'Summarize the open issues.'";
+    let create = "demi automation create --name 'Morning summary' --repeat week --task-at 'mon-fri 09:00' --tz Asia/Shanghai <<< 'Summarize the open issues.'";
     scripts.root(FIRST, vec![background("t1", create), say("asked"), say("created"), say("created")]);
     socket.chat("m1", "Summarize the open issues every weekday at 9").await;
     let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
@@ -544,30 +554,39 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
     let automation = &listed[0];
     assert!(!automation.paused);
     assert_eq!(automation.time_zone, "Asia/Shanghai");
-    assert_eq!(automation.prompt, "Summarize the open issues.");
+    // A repeat's one task holds the message, on its weekdays at its time.
+    assert_eq!(automation.prompt, "");
+    let Trigger::Time { schedule: Schedule::Repeat { repeat, tasks } } = &automation.trigger else {
+        panic!("a repeat: {:?}", automation.trigger);
+    };
+    assert_eq!((repeat.every, repeat.unit), (1, RepeatUnit::Weeks));
+    assert_eq!(
+        (tasks.len(), tasks[0].time.as_str(), tasks[0].days.len(), tasks[0].prompt.as_str()),
+        (1, "09:00", 5, "Summarize the open issues.")
+    );
     // Without a target option it wakes the conversation it was made in.
     assert_eq!(
         serde_json::to_value(&automation.target).unwrap(),
-        json!({ "kind": "existing", "conversationId": FIRST })
+        json!({ "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" })
     );
 
-    // A run's agent lists automations and may not change one, whatever the
-    // conversation's grants. While the conversation works, the run's
-    // message waits in its queue.
+    // A run's agent lists and shows automations and, with the conversation's
+    // grant, changes its own: it pauses it once its job is done. While the
+    // conversation works, the run's message waits in its queue.
     scripts.root(FIRST, vec![shell("t3", WAIT), say("waited")]);
     socket.send(&send("m3", "Wait")).await;
     socket.until(|frame| format!("{frame:?}").contains("t3")).await;
     let id = automation.id.as_str().to_owned();
-    let run = backend.post(&format!("/api/automations/{id}/run"), Some(&master), json!({})).await;
+    let run = backend.post(&format!("/api/automations/{id}/run"), Some(&master), json!({ "taskId": null })).await;
     assert_eq!(run.status, StatusCode::ACCEPTED);
     scripts.root(
         FIRST,
         vec![
             shell(
                 "t4",
-                &format!("demi automation list; demi automation show {id}; demi automation list --json; demi automation delete {id}; echo exit=$?"),
+                &format!("demi automation list; demi automation show {id}; demi automation list --json; demi automation edit {id} --paused; echo exit=$?"),
             ),
-            say("could not"),
+            say("paused"),
         ],
     );
     assert_eq!(the_automation(&backend, &master).await.runs[0].state, RunState::Running);
@@ -578,15 +597,18 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
     .await;
     let returned = last_asked(&scripts, FIRST);
     // A row per automation, its ID first and its name last; one as labelled
-    // lines, its prompt last; the list as a JSON array.
+    // lines with its tasks, each at its moment as --task-at takes it; the
+    // list as a JSON array.
     assert!(returned.contains("ID                                STATUS  TRIGGER  NEXT RUN              LAST RUN              NAME\\n"), "{returned}");
     assert!(returned.contains(&format!("\\n{id}  ")) && returned.contains("  Morning summary\\nID: "), "{returned}");
     assert!(returned.contains(&format!("ID: {id}\\nName: Morning summary\\nStatus: ")), "{returned}");
-    assert!(returned.contains("\\nPrompt:\\n  Summarize the open issues.\\n"), "{returned}");
+    assert!(returned.contains("Repeat: every 1 weeks") && returned.contains("mon,tue,wed,thu,fri 09:00"), "{returned}");
+    assert!(returned.contains("Summarize the open issues."), "{returned}");
     assert!(returned.contains(&format!("[{{\\\"id\\\":\\\"{id}\\\"")), "{returned}");
-    assert!(returned.contains("an automation's run may not delete automations") && returned.contains("exit=1"), "{returned}");
-    assert_eq!(automations(&backend, &master).await.len(), 1);
-    assert_eq!(the_automation(&backend, &master).await.runs[0].line.as_deref(), Some("could not"));
+    assert!(returned.contains("Status: paused") && returned.contains("exit=0"), "{returned}");
+    let paused = the_automation(&backend, &master).await;
+    assert!(paused.paused && paused.paused_because.is_none());
+    assert_eq!(paused.runs[0].line.as_deref(), Some("paused"));
 
     // An archived conversation pauses the automation that wakes it.
     let archived = backend.patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true })).await;
@@ -600,6 +622,61 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
     backend.close().await;
 }
 
+// About a second: one turn whose model never answers, and the run's turn.
+#[tokio::test]
+async fn a_steering_run_reaches_the_turn_its_busy_conversation_runs() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, _root, _provider) = tree_on(&scripts, Harness::new()).await;
+    let task = |id: &str, prompt: &str| {
+        json!({
+            "id": id, "time": "09:00", "days": ["mon"], "day": { "kind": "date", "date": 1 },
+            "month": 1, "holidays": null, "prompt": prompt
+        })
+    };
+    let automation = created(
+        &backend,
+        &master,
+        json!({
+            "name": "Orders",
+            "trigger": { "kind": "time", "schedule": {
+                "kind": "repeat",
+                "repeat": { "every": 1, "unit": "weeks", "start": null },
+                "tasks": [task("today", "Add today's orders."), task("week", "Sum up the week's orders.")]
+            } },
+            "timeZone": "UTC",
+            "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "steer" }
+        }),
+    )
+    .await;
+    let id = automation.id.as_str().to_owned();
+
+    // Among several tasks, Run Now names one.
+    let unnamed = backend.post(&format!("/api/automations/{id}/run"), Some(&master), json!({ "taskId": null })).await;
+    assert_eq!(unnamed.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::TaskNotFound));
+
+    // The conversation works on a turn that would never end by itself; the
+    // run's message reaches it, which ends that turn, and its own runs.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root(FIRST, vec![hang(), say("summed up")]);
+    socket.send(&send("m1", "Work on the dashboard")).await;
+    eventually("the turn asks its model", || async {
+        !scripts.asked(|session| session == FIRST).is_empty()
+    })
+    .await;
+    let run = backend.post(&format!("/api/automations/{id}/run"), Some(&master), json!({ "taskId": "week" })).await;
+    assert_eq!(run.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&run.body));
+    eventually("the run is done", || async {
+        the_automation(&backend, &master).await.runs.first().is_some_and(|run| run.state == RunState::Done)
+    })
+    .await;
+    let run = the_automation(&backend, &master).await.runs.remove(0);
+    assert_eq!((run.task_id.as_deref(), run.line.as_deref()), (Some("week"), Some("summed up")));
+    let asked = last_asked(&scripts, FIRST);
+    assert!(asked.contains("Sum up the week's orders.") && !asked.contains("Add today's orders."), "{asked}");
+    backend.close().await;
+}
+
 // Two runs, neither of which reaches a model.
 #[tokio::test(flavor = "local")]
 async fn a_new_automation_takes_the_next_conversations_model_and_one_without_skips_its_runs() {
@@ -610,10 +687,16 @@ async fn a_new_automation_takes_the_next_conversations_model_and_one_without_ski
     let before = summaries(&backend, &master).await.len();
 
     // Without a model chosen anywhere, a run into a new conversation is
-    // skipped and starts none.
-    let bare = created(&backend, &master, json!({})).await;
+    // skipped and starts none. New Automation's one task has no message, so
+    // the run is of a single trigger's.
+    let bare = created(
+        &backend,
+        &master,
+        json!({ "trigger": { "kind": "time", "schedule": { "kind": "every", "minutes": 60 } }, "prompt": "Check." }),
+    )
+    .await;
     assert_eq!(bare.model, None);
-    let run = backend.post(&format!("/api/automations/{}/run", bare.id), Some(&master), json!({})).await;
+    let run = backend.post(&format!("/api/automations/{}/run", bare.id), Some(&master), json!({ "taskId": null })).await;
     assert_eq!(run.status, StatusCode::ACCEPTED);
     eventually("the run is listed", || async { !the_automation(&backend, &master).await.runs.is_empty() }).await;
     let listed = the_automation(&backend, &master).await.runs.remove(0);
@@ -640,7 +723,7 @@ async fn url_automation(backend: &TestBackend, session: &Session, name: &str) ->
             "name": name,
             "trigger": { "kind": "url" },
             "timeZone": "UTC",
-            "target": { "kind": "existing", "conversationId": FIRST },
+            "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" },
             "prompt": "Look at what the call sent.",
             "paused": false
         }),
@@ -759,7 +842,8 @@ async fn a_notification_marks_only_the_run_its_turn_works_for_and_the_count_hold
                 master,
                 json!({
                     "name": name,
-                    "target": { "kind": "existing", "conversationId": FIRST },
+                    "trigger": { "kind": "time", "schedule": { "kind": "every", "minutes": 60 } },
+                    "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" },
                     "prompt": "Check.",
                     "model": model(&provider),
                 }),
@@ -773,7 +857,7 @@ async fn a_notification_marks_only_the_run_its_turn_works_for_and_the_count_hold
         let backend = &backend;
         let master = &master;
         async move {
-            let started = backend.post(&format!("/api/automations/{id}/run"), Some(master), json!({})).await;
+            let started = backend.post(&format!("/api/automations/{id}/run"), Some(master), json!({ "taskId": null })).await;
             assert_eq!(started.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&started.body));
         }
     };
@@ -902,7 +986,7 @@ async fn a_check_its_command_was_edited_under_records_nothing() {
             "name": "Price",
             "trigger": { "kind": "change", "command": format!("touch started; {WAIT}; echo old"), "everyMinutes": 1 },
             "timeZone": "UTC",
-            "target": { "kind": "existing", "conversationId": FIRST },
+            "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" },
             "prompt": "Tell me.",
             "paused": false
         }),
@@ -951,7 +1035,7 @@ async fn a_change_before_the_last_16_kb_of_the_output_fires() {
             "name": "Report",
             "trigger": { "kind": "change", "command": "cat big.txt", "everyMinutes": 1 },
             "timeZone": "UTC",
-            "target": { "kind": "existing", "conversationId": FIRST },
+            "target": { "kind": "existing", "conversationId": FIRST, "ifBusy": "queue" },
             "prompt": "Tell me.",
             "paused": false
         }),

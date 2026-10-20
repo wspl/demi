@@ -31,7 +31,12 @@ pub const RUNS_SHOWN: usize = 50;
 /// The name a new automation starts with.
 pub const NEW_NAME: &str = "New Automation";
 
-/// A day of the week, as a daily schedule names the days it runs on.
+/// The most tasks a repeat holds.
+pub const TASKS_MAX: usize = 50;
+/// The longest cycle a repeat counts, in its unit.
+pub const EVERY_MAX: u32 = 999;
+
+/// A day of the week, as a weekly task names the days it runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Weekday {
@@ -73,6 +78,161 @@ impl Weekday {
     }
 }
 
+/// The unit a repeat's cycle counts in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RepeatUnit {
+    Days,
+    Weeks,
+    Months,
+    Years,
+}
+
+impl RepeatUnit {
+    pub const ALL: [RepeatUnit; 4] = [Self::Days, Self::Weeks, Self::Months, Self::Years];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Days => "days",
+            Self::Weeks => "weeks",
+            Self::Months => "months",
+            Self::Years => "years",
+        }
+    }
+}
+
+/// A repeating cycle, as Calendar's repeat: every `every` days, weeks,
+/// months or years. A cycle of several units counts from the day, week,
+/// month or year of `start`, its first cycle, and runs its tasks in each
+/// cycle's first unit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct Repeat {
+    #[garde(range(min = 1, max = EVERY_MAX))]
+    pub every: u32,
+    pub unit: RepeatUnit,
+    /// The first cycle's day, as `2026-01-01`, for a cycle of several
+    /// units; null for one unit.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(custom(start_of(self.every)))]
+    pub start: Option<String>,
+}
+
+/// A cycle of several units has a first cycle, and one of one unit none.
+fn start_of(every: u32) -> impl FnOnce(&Option<String>, &()) -> garde::Result {
+    move |start, _| match (every > 1, start) {
+        (true, Some(day)) if day.parse::<jiff::civil::Date>().is_ok() && day.len() == 10 => Ok(()),
+        (true, Some(_)) => Err(garde::Error::new("is not a day such as 2026-01-01")),
+        (true, None) => Err(garde::Error::new("a cycle of several units needs its first cycle's day")),
+        (false, Some(_)) => Err(garde::Error::new("a cycle of one unit has no first cycle's day")),
+        (false, None) => Ok(()),
+    }
+}
+
+/// Which of a month's weekdays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WeekOfMonth {
+    First,
+    Second,
+    Third,
+    Fourth,
+    Last,
+}
+
+/// The first or the last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FirstOrLast {
+    First,
+    Last,
+}
+
+/// A day of a month: a date, which a month without it skips; the last day;
+/// a weekday's first to fourth or last; or the first or last working day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum MonthDay {
+    Date {
+        #[garde(range(min = 1, max = 31))]
+        date: u8,
+    },
+    LastDay {},
+    Weekday {
+        #[garde(skip)]
+        week: WeekOfMonth,
+        #[garde(skip)]
+        weekday: Weekday,
+    },
+    WorkingDay {
+        #[garde(skip)]
+        which: FirstOrLast,
+    },
+}
+
+/// A country by its ISO 3166 code, and one of its regions whose holidays
+/// differ, by the code the holidays' table gives it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HolidayPlace {
+    #[garde(length(min = 2, max = 3))]
+    pub country: String,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(inner(length(min = 1, max = 64)))]
+    pub region: Option<String>,
+}
+
+/// A task of a repeat: a moment in its cycle and the message it sends.
+///
+/// Its moment is `time` and, as the repeat's unit asks, `days` (weeks),
+/// `day` (months), or `month` and `day` (years); the parts another unit
+/// reads are kept, so a repeat changed back finds them as they were.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Task {
+    /// Unique among the repeat's tasks; the page or the command makes it.
+    #[garde(length(min = 1, max = 64))]
+    pub id: String,
+    /// A clock time as `09:00`.
+    #[garde(pattern(r"^([01][0-9]|2[0-3]):[0-5][0-9]$"))]
+    pub time: String,
+    /// One to seven distinct days.
+    #[garde(length(min = 1, max = 7), custom(distinct_days))]
+    pub days: Vec<Weekday>,
+    #[garde(dive)]
+    pub day: MonthDay,
+    /// 1 to 12.
+    #[garde(range(min = 1, max = 12))]
+    pub month: u8,
+    /// The country, and its region, whose working week and public
+    /// holidays a first or last working day follows; null for Monday to
+    /// Friday.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<HolidayPlace>")]
+    #[garde(dive)]
+    pub holidays: Option<HolidayPlace>,
+    /// Empty until written; a task without a message does not run.
+    #[garde(length(max = PROMPT_MAX_BYTES))]
+    pub prompt: String,
+}
+
+fn distinct_tasks(tasks: &[Task], _: &()) -> garde::Result {
+    let mut seen = std::collections::BTreeSet::new();
+    if tasks.iter().all(|task| seen.insert(task.id.as_str())) {
+        Ok(())
+    } else {
+        Err(garde::Error::new("a task's id is used twice"))
+    }
+}
+
 /// When a time trigger fires, in the automation's time zone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(
@@ -87,13 +247,12 @@ pub enum Schedule {
         #[garde(skip)]
         at: Timestamp,
     },
-    /// Every day of `days` at `time`, a clock time as `09:00`.
-    Daily {
-        #[garde(pattern(r"^([01][0-9]|2[0-3]):[0-5][0-9]$"))]
-        time: String,
-        /// One to seven distinct days.
-        #[garde(length(min = 1, max = 7), custom(distinct_days))]
-        days: Vec<Weekday>,
+    /// On a repeating cycle, each of its tasks at its moment in it.
+    Repeat {
+        #[garde(dive)]
+        repeat: Repeat,
+        #[garde(length(min = 1, max = TASKS_MAX), custom(distinct_tasks), dive)]
+        tasks: Vec<Task>,
     },
     /// Every `minutes`, from when the schedule was set.
     Every {
@@ -177,7 +336,19 @@ pub enum AutomationTarget {
     Existing {
         #[garde(skip)]
         conversation_id: ConversationId,
+        #[garde(skip)]
+        if_busy: IfBusy,
     },
+}
+
+/// What a run's message does while its existing conversation is busy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IfBusy {
+    /// It waits until the running turn ends.
+    Queue,
+    /// It reaches the running turn, as the composer's Steer does.
+    Steer,
 }
 
 /// Why an automation paused itself; none when the user paused it.
@@ -243,6 +414,10 @@ pub struct AutomationRunDto {
     pub id: AutomationRunId,
     /// When its trigger fired.
     pub at: Timestamp,
+    /// The repeat's task that started it; null for a single trigger.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub task_id: Option<String>,
     pub state: RunState,
     /// Why it was skipped or failed.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -279,6 +454,7 @@ pub struct AutomationDto {
     #[schemars(with = "Nullable<u32>")]
     pub max_runs_per_day: Option<u32>,
     pub target: AutomationTarget,
+    /// What a single trigger's runs send; a repeat's tasks hold their own.
     pub prompt: String,
     /// The model settings a new conversation starts with; null for none
     /// chosen, which skips a run that needs a new conversation.
@@ -304,8 +480,9 @@ pub struct AutomationDto {
 }
 
 /// `POST /automations` and `PATCH /automations/:id`: what changes; a new
-/// automation starts from its defaults, *New Automation*, paused, daily at
-/// 09:00 in a new conversation on the Cloud, and takes these over them.
+/// automation starts from its defaults, *New Automation*, paused, every day
+/// with one task at 09:00 and no message, in a new conversation on the
+/// Cloud, and takes these over them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutomationPatch {
@@ -362,6 +539,39 @@ pub struct AutomationAnswer {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AutomationList {
     pub automations: Vec<AutomationDto>,
+}
+
+/// `POST /automations/:id/run`: Run Now, of the repeat's task `taskId`;
+/// null for a single trigger.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RunNow {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(inner(length(min = 1, max = 64)))]
+    pub task_id: Option<String>,
+}
+
+/// `GET /automations/holidays`: the countries whose public holidays a
+/// task's working days can skip, each with the regions whose holidays
+/// differ.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct HolidayCountries {
+    pub countries: Vec<HolidayCountry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct HolidayCountry {
+    /// ISO 3166-1 alpha-2, which the page names in its language.
+    pub code: String,
+    pub regions: Vec<HolidayRegion>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct HolidayRegion {
+    pub code: String,
+    /// Its name as the holidays' table gives it.
+    pub name: String,
 }
 
 /// `GET` and `POST /automations/:id/secret`: a URL trigger's secret, which

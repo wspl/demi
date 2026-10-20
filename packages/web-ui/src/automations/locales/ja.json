@@ -27,18 +27,40 @@
       "conversation_deleted": "対象の会話が削除されたため一時停止しています。"
     }
   },
-  "trigger": {
-    "title": "トリガー",
-    "kind": "開始",
-    "time": "決まった時刻",
+  "when": {
+    "label": "実行タイミング",
+    "once": "1 回",
+    "presets": {
+      "day": "毎日",
+      "week": "毎週",
+      "twoWeeks": "2週間ごと",
+      "month": "毎月",
+      "threeMonths": "3か月ごと",
+      "year": "毎年"
+    },
+    "everyMenu": "数分または数時間ごと…",
+    "cronMenu": "Cron…",
+    "cron": "Cron",
     "change": "出力が変わったとき",
     "url": "URL が呼ばれたとき",
-    "repeat": "繰り返し",
-    "once": "1 回",
-    "repeating": "間隔",
-    "cron": "Cron",
+    "customMenu": "カスタム…"
+  },
+  "custom": {
+    "title": "カスタム",
+    "countLead": "間隔",
+    "count": "数",
+    "unit": "単位",
+    "units": {
+      "days": "日 | 日",
+      "weeks": "週間 | 週間",
+      "months": "か月 | か月",
+      "years": "年 | 年"
+    },
+    "starts": "開始日",
+    "startInvalid": "2026-01-01 の形式で日付を入力してください。"
+  },
+  "trigger": {
     "moment": "日時",
-    "momentHint": "2026-10-18 08:00 の形式で。",
     "momentInvalid": "日時を 2026-10-18 08:00 の形式で入力してください。",
     "interval": "間隔",
     "intervalInvalid": "1 以上の整数を入力してください。",
@@ -48,13 +70,10 @@
       "days": "日"
     },
     "expression": "Cron 式",
-    "expressionHint": "分、時、日、月、曜日：{words}。",
     "expressionInvalid": "0 9 * * 1-5 のように 5 つのフィールドを入力してください。",
     "timeZone": "時間帯",
     "command": "コマンド",
-    "commandHint": "ターゲットのディレクトリで実行します。出力か終了ステータスが変わると実行が始まります。最初のチェックは記録だけです。",
     "checkEvery": "チェック間隔",
-    "cloudCost": "チェックのたびにクラウドで実行してクラウドを起こすため、頻繁にチェックするとクラウドが動き続けます。",
     "address": "アドレス",
     "secret": "シークレット",
     "secretHidden": "シークレット（非表示）",
@@ -63,43 +82,67 @@
     "regenerateBody": "以降、現在のシークレットによる呼び出しは拒否されます。",
     "regenerateAction": "再生成",
     "stripe": "Stripe の署名シークレット",
-    "stripeHint": "Stripe は独自のシークレットを使います。ここにペーストすると、Stripe が署名したイベントを受け付けます。",
-    "daily": "毎日",
-    "dailyTime": "時刻",
-    "days": "曜日",
     "clockInvalid": "09:00 の形式で時刻を入力してください。",
     "limit": "1日の実行回数",
-    "limitHint": "上限に達すると、深夜0時まで以降の変化や呼び出しでは実行されません。",
     "noLimit": "制限なし",
     "limitInvalid": "1以上の整数を入力するか、空欄にしてください。",
-    "addressHint": "他のシステムがこのアドレスに POST すると実行が始まります。",
-    "secretHint": "Authorization: Bearer <secret> として送るか、GitHub の Webhook の Secret 欄にペーストします。",
     "show": "シークレットを表示",
     "hide": "シークレットを隠す",
     "stripePaste": "シークレットをペースト"
   },
+  "tasks": {
+    "title": "タスク",
+    "add": "タスクを追加",
+    "noMessage": "メッセージなし",
+    "actions": "タスクのアクション",
+    "runNow": "今すぐ実行",
+    "delete": "削除",
+    "lastOne": "自動化には少なくとも1つのタスクが必要です。",
+    "editTitle": "タスク",
+    "days": "曜日",
+    "day": "日",
+    "date": "日付",
+    "month": "月",
+    "time": "時刻",
+    "message": "メッセージ",
+    "messageMissing": "メッセージを書くまで、このタスクは実行されません。",
+    "done": "完了",
+    "dateInvalid": "1〜31 の日を入力してください。",
+    "weekday": "曜日",
+    "dayKinds": {
+      "date": "日付を指定",
+      "lastDay": "最終日",
+      "first": "第1",
+      "second": "第2",
+      "third": "第3",
+      "fourth": "第4",
+      "last": "最終",
+      "firstWorking": "最初の営業日",
+      "lastWorking": "最後の営業日"
+    },
+    "placeholder": "昨日失敗した支払いを確認し、あれば通知してください。"
+  },
+  "holidays": {
+    "label": "祝日",
+    "none": "なし",
+    "region": "地域",
+    "allRegions": "全国"
+  },
   "target": {
-    "title": "ターゲット",
     "host": "デバイス",
     "project": "プロジェクト",
     "noProject": "なし",
     "conversation": "会話",
-    "new": "実行ごとに新しい会話",
-    "existing": "既存の会話",
-    "newHint": "実行ごとに空の会話が始まり、プロンプトに書かれたことだけを知っています。",
-    "existingHint": "実行ごとにメッセージで起こし、それまでの内容をすべて引き継いで続けます。",
     "pick": "会話を選択",
-    "noConversations": "{host} に会話はありません",
-    "offline": "オフライン"
+    "offline": "オフライン",
+    "newEach": "実行ごとに新規",
+    "choose": "選択…"
   },
-  "prompt": {
-    "title": "プロンプト",
-    "hint": "実行ごとに送る内容です。エージェントに書くように書いてください。",
-    "placeholder": "昨日失敗した支払いを確認し、あれば通知してください。"
+  "busy": {
+    "label": "実行中の場合"
   },
   "model": {
     "label": "モデル",
-    "hint": "新しい会話はこのモデルで始まります。既存の会話は自身のモデルを使い続けます。",
     "choose": "モデルを選択",
     "missing": "新しい会話を始めるにはモデルが必要です。"
   },
@@ -144,7 +187,30 @@
     "newConversation": "新しい会話",
     "existing": "“{title}”",
     "days": "{days} {time}",
-    "existingGone": "削除された会話"
+    "existingGone": "削除された会話",
+    "repeat": {
+      "days": "毎日 | {count} 日ごと",
+      "weeks": "毎週 | {count} 週間ごと",
+      "months": "毎月 | {count} か月ごと",
+      "years": "毎年 | {count} 年ごと"
+    },
+    "tasks": "{count} 個のタスク",
+    "date": "{date} 日",
+    "lastDay": "最終日",
+    "week": {
+      "first": "第1{weekday}",
+      "second": "第2{weekday}",
+      "third": "第3{weekday}",
+      "fourth": "第4{weekday}",
+      "last": "最終{weekday}"
+    },
+    "workingDay": {
+      "first": "最初の営業日",
+      "last": "最後の営業日"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{month}{date}日",
+    "dayOfMonth": "{month}の{day}"
   },
   "bar": {
     "label": "オートメーションの実行",
@@ -163,6 +229,7 @@
     "delete": "オートメーションを削除できませんでした",
     "secret": "シークレットを表示できませんでした",
     "regenerate": "シークレットを再生成できませんでした",
-    "move": "会話を移動できませんでした"
+    "move": "会話を移動できませんでした",
+    "holidays": "祝日を読み込めませんでした"
   }
 }

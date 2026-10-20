@@ -13,7 +13,9 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use demi_backend_user_shard::automations::{AutomationError, CALLS_PER_MINUTE, HookAnswer, HookCall, check_unknown};
 use demi_shared_types::AutomationId;
-use demi_web_api_protocol::automations::{AutomationAnswer, AutomationList, AutomationPatch, AutomationSecret};
+use demi_web_api_protocol::automations::{
+    AutomationAnswer, AutomationList, AutomationPatch, AutomationSecret, HolidayCountries, RunNow,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 
@@ -153,15 +155,24 @@ pub(super) async fn run(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    JsonBody(body): JsonBody<RunNow>,
 ) -> Result<StatusCode, ApiError> {
     let id = automation_id(id)?;
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.run_automation_now(&id).await.map(drop) })
+        .call(move |shard, _| async move { shard.run_automation_now(&id, body.task_id).await.map(drop) })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// `GET /automations/holidays`: the countries and regions a task's working
+/// days can follow, the same for every user.
+pub(super) async fn holidays(AuthUser(_): AuthUser) -> Json<HolidayCountries> {
+    Json(HolidayCountries {
+        countries: demi_backend_user_shard::automations::holiday_countries(),
+    })
 }
 
 /// `GET /automations/:id/secret`: Show.
@@ -229,6 +240,11 @@ fn refused(error: AutomationError) -> ApiError {
         AutomationError::LimitNotTaken => (StatusCode::BAD_REQUEST, ErrorCode::LimitNotTaken),
         AutomationError::NotUrl => (StatusCode::CONFLICT, ErrorCode::NotUrlTrigger),
         AutomationError::NotFiled => (StatusCode::CONFLICT, ErrorCode::NotFiled),
+        AutomationError::Holidays(_) => (StatusCode::BAD_REQUEST, ErrorCode::UnknownHolidays),
+        AutomationError::NoTask(_) | AutomationError::TaskNeeded | AutomationError::NoTasks => {
+            (StatusCode::BAD_REQUEST, ErrorCode::TaskNotFound)
+        }
+        AutomationError::NoMessage => (StatusCode::CONFLICT, ErrorCode::TaskWithoutMessage),
         AutomationError::Change(refusal) => {
             if let demi_backend_host_access::transition::ChangeRefusal::Storage(error) = refusal {
                 return error.into();

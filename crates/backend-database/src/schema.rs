@@ -113,6 +113,7 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.32's, before a ledger row kept its price and its prompt's hashes.
 /// - 0.1.36's, which 0.1.33 to 0.1.35 shipped too, before a saved message was
 ///   edited in place.
+/// - 0.1.37's, before an automation repeated on a cycle with tasks in it.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -272,8 +273,101 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.36.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_36),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.37.sql"),
+            migration: Migration::Code(control_from_0_1_37),
+        },
     ],
 };
+
+/// From 0.1.37's control schema to the current one.
+///
+/// - An automation's trigger is format 2: a daily schedule is a repeat with
+///   one task at its time, carrying the automation's prompt, Every Day when
+///   it ran every day and Every Week on its days otherwise; its prompt
+///   column is then empty, as a repeat's is.
+/// - Its target is format 2: an existing conversation's message waits in its
+///   queue while it is busy, as every run's did.
+/// - A run records the repeat's task that started it: each run of a daily
+///   schedule's, its one task.
+fn control_from_0_1_37(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch("ALTER TABLE automation_runs ADD COLUMN task_id TEXT;")?;
+    let rows: Vec<(String, String, String, String)> = transaction
+        .prepare("SELECT id, trigger, target, prompt FROM automations")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (id, trigger, target, prompt) in rows {
+        let (trigger, prompt, task) = automation_trigger_2(&trigger, prompt)?;
+        let target = automation_target_2(&target)?;
+        transaction.execute(
+            "UPDATE automations SET trigger = ?2, target = ?3, prompt = ?4 WHERE id = ?1",
+            rusqlite::params![id, to_json(&trigger), to_json(&target), prompt],
+        )?;
+        if let Some(task) = task {
+            transaction.execute(
+                "UPDATE automation_runs SET task_id = ?2 WHERE automation_id = ?1",
+                rusqlite::params![id, task],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// The id of the one task a daily schedule becomes.
+const DAILY_TASK: &str = "daily";
+
+/// A trigger of format 1 in format 2, with the prompt the automation keeps
+/// and the id of the task a daily schedule became.
+fn automation_trigger_2(
+    text: &str,
+    prompt: String,
+) -> rusqlite::Result<(demi_web_api_protocol::automations::Trigger, String, Option<&'static str>)> {
+    use demi_web_api_protocol::automations::{MonthDay, Repeat, RepeatUnit, Schedule, Task, Trigger, Weekday};
+    /// What format 1 had that format 2 does not.
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+    enum Daily {
+        Daily { time: String, days: Vec<Weekday> },
+    }
+    let mut value: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
+    let daily = value
+        .get_mut("schedule")
+        .filter(|schedule| schedule.get("kind").and_then(serde_json::Value::as_str) == Some("daily"))
+        .map(serde_json::Value::take);
+    let Some(daily) = daily else {
+        let trigger: Trigger = serde_json::from_value(value).map_err(corrupt)?;
+        return Ok((trigger, prompt, None));
+    };
+    let Daily::Daily { time, days } = serde_json::from_value(daily).map_err(corrupt)?;
+    let unit = if days.len() == Weekday::ALL.len() { RepeatUnit::Days } else { RepeatUnit::Weeks };
+    let trigger = Trigger::Time {
+        schedule: Schedule::Repeat {
+            repeat: Repeat { every: 1, unit, start: None },
+            tasks: vec![Task {
+                id: DAILY_TASK.into(),
+                time,
+                days,
+                day: MonthDay::Date { date: 1 },
+                month: 1,
+                holidays: None,
+                prompt,
+            }],
+        },
+    };
+    garde::Validate::validate(&trigger).map_err(corrupt)?;
+    Ok((trigger, String::new(), Some(DAILY_TASK)))
+}
+
+/// A target of format 1 in format 2: an existing conversation queues.
+fn automation_target_2(text: &str) -> rusqlite::Result<demi_web_api_protocol::automations::AutomationTarget> {
+    let mut value: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
+    if value.get("kind").and_then(serde_json::Value::as_str) == Some("existing")
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("ifBusy".into(), serde_json::Value::String("queue".into()));
+    }
+    serde_json::from_value(value).map_err(corrupt)
+}
 
 /// From 0.1.36's control schema, which 0.1.33 to 0.1.35 shipped too, to the
 /// current one.
@@ -3804,8 +3898,8 @@ CREATE TABLE user_credentials (
 CREATE INDEX user_credentials_by_expiry ON user_credentials (keep_until) WHERE keep_until IS NOT NULL;
 
 -- Each user's automations (`automations.md`): the trigger as JSON,
--- automation trigger format 1, the `Trigger` of the web contract; the
--- target as JSON, automation target format 1, with the existing
+-- automation trigger format 2, the `Trigger` of the web contract; the
+-- target as JSON, automation target format 2, with the existing
 -- conversation it wakes again in `conversation_id`, null for a new one each
 -- run; the model settings as JSON, null for none chosen; why it paused
 -- itself, null while it is on or the user paused it; when its trigger was
@@ -3846,8 +3940,9 @@ CREATE INDEX automations_by_conversation ON automations (conversation_id) WHERE 
 -- conversation it ran in with the turn its message started, whether that
 -- new conversation is still filed under the automation, out of the
 -- sidebar, whether it notified and its conversation was not opened since,
--- and whether its agent notified at all, which makes it end Notified. A
--- run's conversation outlives it.
+-- and whether its agent notified at all, which makes it end Notified, and
+-- the repeat's task that started it, null for a single trigger's. A run's
+-- conversation outlives it.
 CREATE TABLE automation_runs (
   id              TEXT PRIMARY KEY,
   automation_id   TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
@@ -3860,7 +3955,8 @@ CREATE TABLE automation_runs (
   turn_id         TEXT,
   filed           INTEGER NOT NULL CHECK (filed IN (0, 1)),
   unread          INTEGER NOT NULL CHECK (unread IN (0, 1)),
-  notified        INTEGER NOT NULL CHECK (notified IN (0, 1))
+  notified        INTEGER NOT NULL CHECK (notified IN (0, 1)),
+  task_id         TEXT
 ) STRICT;
 CREATE INDEX automation_runs_by_automation ON automation_runs (automation_id, at);
 CREATE INDEX automation_runs_by_conversation ON automation_runs (conversation_id) WHERE conversation_id IS NOT NULL;
@@ -7319,6 +7415,76 @@ mod tests {
                 0
             )
         );
+    }
+
+    /// 0.1.37's automations become format 2: a daily schedule on every day is
+    /// Every Day with one task, one on some days Every Week with one task on
+    /// them, each task holding the prompt and each of its runs naming it; an
+    /// existing conversation queues; another trigger stays as it was.
+    #[test]
+    fn the_automations_of_0_1_37_repeat_with_one_task_and_queue() {
+        use demi_web_api_protocol::automations::{AutomationTarget, IfBusy, RepeatUnit, Schedule, Trigger, Weekday};
+        let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.37.sql"));
+        connection
+            .execute_batch(
+                r#"INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                     VALUES ('u1', 'alex@example.com', 'Alex', 'h', 'master', 1);
+                   INSERT INTO automations (id, user_id, name, trigger, time_zone, target, conversation_id,
+                       prompt, paused, schedule_since, created_at, updated_at)
+                     VALUES
+                     ('every-day', 'u1', 'Orders', '{"kind":"time","schedule":{"kind":"daily","time":"18:00","days":["mon","tue","wed","thu","fri","sat","sun"]}}',
+                       'UTC', '{"kind":"existing","conversationId":"0b6f5a52-7c3e-4c1e-9d55-2f1a8e6b4c10"}', '0b6f5a52-7c3e-4c1e-9d55-2f1a8e6b4c10', 'Add today''s orders.', 0, 1, 1, 1),
+                     ('weekdays', 'u1', 'Payments', '{"kind":"time","schedule":{"kind":"daily","time":"09:00","days":["mon","tue","wed","thu","fri"]}}',
+                       'UTC', '{"kind":"new","target":{"kind":"cloud"}}', NULL, 'Check failed payments.', 0, 1, 1, 1),
+                     ('cron', 'u1', 'Report', '{"kind":"time","schedule":{"kind":"cron","expression":"0 10 * * 1"}}',
+                       'UTC', '{"kind":"new","target":{"kind":"cloud"}}', NULL, 'Report.', 0, 1, 1, 1);
+                   INSERT INTO automation_runs (id, automation_id, cause, at, state, filed, unread, notified)
+                     VALUES ('r1', 'weekdays', 'time', 2, 'done', 0, 0, 0),
+                            ('r2', 'cron', 'time', 2, 'done', 0, 0, 0);"#,
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let read = |id: &str| -> (Trigger, AutomationTarget, String) {
+            connection
+                .query_row("SELECT trigger, target, prompt FROM automations WHERE id = ?1", [id], |row| {
+                    Ok((
+                        serde_json::from_str(&row.get::<_, String>(0)?).unwrap(),
+                        serde_json::from_str(&row.get::<_, String>(1)?).unwrap(),
+                        row.get(2)?,
+                    ))
+                })
+                .unwrap()
+        };
+        for (id, unit, days, time, prompt) in [
+            ("every-day", RepeatUnit::Days, 7, "18:00", "Add today's orders."),
+            ("weekdays", RepeatUnit::Weeks, 5, "09:00", "Check failed payments."),
+        ] {
+            let (trigger, _, kept) = read(id);
+            let Trigger::Time { schedule: Schedule::Repeat { repeat, tasks } } = trigger else {
+                panic!("{id} is a repeat");
+            };
+            assert_eq!((repeat.every, repeat.unit, repeat.start), (1, unit, None), "{id}");
+            assert_eq!(tasks.len(), 1, "{id}");
+            assert_eq!((tasks[0].days.len(), tasks[0].time.as_str(), tasks[0].prompt.as_str()), (days, time, prompt));
+            assert_eq!(kept, "", "{id}");
+        }
+        let (_, target, _) = read("every-day");
+        assert!(matches!(target, AutomationTarget::Existing { if_busy: IfBusy::Queue, .. }));
+        let (trigger, _, prompt) = read("cron");
+        assert!(matches!(trigger, Trigger::Time { schedule: Schedule::Cron { .. } }));
+        assert_eq!(prompt, "Report.");
+        let tasks: Vec<Option<String>> = connection
+            .prepare("SELECT task_id FROM automation_runs ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let (weekdays, ..) = read("weekdays");
+        let Trigger::Time { schedule: Schedule::Repeat { tasks: weekly, .. } } = weekdays else { unreachable!() };
+        assert_eq!(tasks, [Some(weekly[0].id.clone()), None]);
+        assert_eq!(weekly[0].days[0], Weekday::Mon);
     }
 
     /// A database of the control schema before passkeys keeps its accounts,

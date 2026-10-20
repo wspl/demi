@@ -42,6 +42,10 @@ import type { SentenceText } from '../ui/ui-text'
  *
  * Properties and slots:
  *
+ * - `phoneStacked` drops the control under the text on a phone whatever its
+ *   width, for rows of a group whose controls line up, such as a target's
+ *   Device and Project, where one short value would leave its row the odd
+ *   one out.
  * - `muted` fades the label side only, so actions stay at full strength.
  * - `disabled` mutes the row, blocks its click, and shows `disabledReason` on
  *   hover.
@@ -68,6 +72,8 @@ const props = defineProps<{
   /** The `leading` item is taller than a line of text, such as a 32 px avatar: it centres on the row instead of sitting on the name's line. */
   centerLeading?: boolean
   isolateControls?: boolean
+  /** On a phone, the control takes the line under the text whatever its width. */
+  phoneStacked?: boolean
   muted?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
@@ -184,6 +190,7 @@ const working = provideRowTarget(() => props.target)
         class="flex min-w-0 items-center justify-end gap-2 self-stretch"
         :class="[
         inset ? 'shrink-0' : 'max-w-full grow *:data-field:grow',
+        phoneStacked && !inset ? 'phone:basis-full' : '',
         topAligned && !inset ? 'h-5 self-start' : '',
         topAligned && inset ? '@sm:h-5 @sm:self-start' : '',
         disabled ? 'pointer-events-none' : '',

@@ -238,7 +238,7 @@ impl Shard {
                 RunNote::Offline { device: device.to_string() },
             ),
             Checked::Unrunnable(Unrunnable::Gone(reason)) => {
-                if let AutomationTarget::Existing { conversation_id } = &automation.target {
+                if let AutomationTarget::Existing { conversation_id, .. } = &automation.target {
                     self.automation_target_gone(conversation_id, reason).await;
                 }
                 (RunState::Skipped, RunNote::TargetGone)
@@ -289,6 +289,7 @@ impl Shard {
         control.set_watch_output(automation.id.clone(), Some(record)).await?;
         let fired = Fired {
             cause: RunCause::Change,
+            task: None,
             at: now,
             payload: Payload::Change {
                 before: Output {
@@ -311,7 +312,7 @@ impl Shard {
         }
         let failed = |error: &dyn std::fmt::Display| Checked::Failed(error.to_string());
         match &automation.target {
-            AutomationTarget::Existing { conversation_id } => {
+            AutomationTarget::Existing { conversation_id, .. } => {
                 let context = match demi_backend_runners::command_context::command_context(
                     control,
                     self.user(),

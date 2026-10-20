@@ -1,5 +1,5 @@
 import type { Block } from '@demicodes/protocol'
-import { WEEKDAYS, type Automation, type AutomationConversation, type AutomationHost, type AutomationRun } from '@demicodes/web-ui/automations/types'
+import type { Automation, AutomationConversation, AutomationHost, AutomationRun, AutomationTask, HolidayCountry } from '@demicodes/web-ui/automations/types'
 import { demoModel } from './blocks'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import { GALLERY_MARKS, shownAmong } from './device-marks'
@@ -21,17 +21,91 @@ export function automationHosts(): AutomationHost[] {
   ])
 }
 
-/** The conversations an automation can wake, with their Hosts. */
+/** The conversations an automation can wake, with their Hosts, the most recent first. */
 export function automationConversations(): AutomationConversation[] {
   return [
     { id: 'c-cloud-orders', title: 'Orders dashboard', hostId: 'cloud' },
     { id: 'c-price-watch', title: 'Price watch', hostId: 'mbp' },
     { id: 'c-login-test', title: 'Fix the failing login test', hostId: 'mbp' },
+    { id: 'c-team-board', title: 'Team board', hostId: 'cloud' },
+    { id: 'c-release-notes', title: 'Release notes for 2.4', hostId: 'mbp' },
+    { id: 'c-backups', title: 'Nightly backups', hostId: 'mini' },
+    { id: 'c-invoices', title: 'Invoices from suppliers', hostId: 'cloud' },
   ]
 }
 
 /** The user's own time zone first, then others. */
 export const TIME_ZONES = ['Asia/Shanghai', 'America/Los_Angeles', 'America/New_York', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'UTC'] as const
+
+/**
+ * The countries whose holidays working days can skip: a few, some with
+ * regions whose holidays differ, as the backend lists every country it has.
+ */
+export const HOLIDAY_COUNTRIES: HolidayCountry[] = [
+  { code: 'CN', regions: [] },
+  { code: 'DE', regions: [{ code: 'BW', name: 'Baden-Württemberg' }, { code: 'BY', name: 'Bavaria' }, { code: 'BE', name: 'Berlin' }, { code: 'NW', name: 'North Rhine-Westphalia' }] },
+  { code: 'FR', regions: [] },
+  { code: 'GB', regions: [{ code: 'ENG', name: 'England' }, { code: 'NIR', name: 'Northern Ireland' }, { code: 'SCT', name: 'Scotland' }, { code: 'WLS', name: 'Wales' }] },
+  { code: 'JP', regions: [] },
+  { code: 'US', regions: [{ code: 'CA', name: 'California' }, { code: 'NY', name: 'New York' }, { code: 'TX', name: 'Texas' }] },
+]
+
+/** A task of a repeat, at the cycle's first moment unless `parts` says otherwise. */
+function task(id: string, prompt: string, parts: Partial<AutomationTask> = {}): AutomationTask {
+  return { id, time: '09:00', days: ['mon'], day: { kind: 'date', date: 1 }, month: 1, holidays: null, prompt, ...parts }
+}
+
+/**
+ * The `back`th most recent moment before now, 0 the latest, on one of
+ * `weekdays` (0 Sunday to 6 Saturday) at `hour`:`minute` local time: a run
+ * of a weekly task, whatever day the gallery opens on.
+ */
+function lastOn(weekdays: readonly number[], hour: number, minute = 0, back = 0): string {
+  const moment = new Date()
+  moment.setHours(hour, minute, 0, 0)
+  let found = -1
+  while (true) {
+    if (moment.getTime() < Date.now() && weekdays.includes(moment.getDay())) {
+      found += 1
+      if (found === back) {
+        return moment.toISOString()
+      }
+    }
+    moment.setDate(moment.getDate() - 1)
+  }
+}
+const WORKDAYS = [1, 2, 3, 4, 5]
+
+/** The next moment after now on one of `weekdays` at `hour`:`minute` local time: a weekly task's next run. */
+function nextOn(weekdays: readonly number[], hour: number, minute = 0): string {
+  const moment = new Date()
+  moment.setHours(hour, minute, 0, 0)
+  while (moment.getTime() <= Date.now() || !weekdays.includes(moment.getDay())) {
+    moment.setDate(moment.getDate() + 1)
+  }
+  return moment.toISOString()
+}
+
+/** At `hour`:00 on the last weekday of the month `offset` months from this one, local time, holidays aside. */
+function lastWeekdayOfMonth(hour: number, offset = 0): string {
+  const moment = new Date()
+  moment.setMonth(moment.getMonth() + offset + 1, 0)
+  while (moment.getDay() === 0 || moment.getDay() === 6) {
+    moment.setDate(moment.getDate() - 1)
+  }
+  moment.setHours(hour, 0, 0, 0)
+  return moment.toISOString()
+}
+
+/** At `hour`:00 on the first Monday of the next quarter of the year, local time. */
+function firstMondayOfNextQuarter(hour: number): string {
+  const now = new Date()
+  const moment = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 1, hour)
+  while (moment.getDay() !== 1) {
+    moment.setDate(moment.getDate() + 1)
+  }
+  return moment.toISOString()
+}
 
 /** At `hour`:00 `days` days ago, local time: a run of a schedule at that hour. */
 function at(days: number, hour: number, minute = 0): string {
@@ -46,27 +120,95 @@ const SONNET = { providerId: 'anthropic', modelId: 'claude-sonnet', thinkingEffo
  * The page's automations, one of each trigger and a paused one: the
  * payments check notified this morning and its conversation is unread; the
  * price watch wakes an existing conversation; the pull requests' URL failed
- * yesterday.
+ * yesterday. Weekly ops has several weekly tasks, the payroll summary runs
+ * on the last working day of China's calendar, and the subscriptions review
+ * every 3 months from January.
  */
 export function galleryAutomations(): Automation[] {
   const base = { maxRunsPerDay: null, pausedBecause: null, address: null, stripeSigning: false, nextAt: null, timeZone: 'Asia/Shanghai', model: SONNET, paused: false }
   const run = (id: string, when: string, state: AutomationRun['state'], line: string | null, conversationId: string | null, parts: Partial<AutomationRun> = {}): AutomationRun =>
-    ({ id, at: when, state, note: null, line, conversationId, unread: false, filed: conversationId !== null && conversationId.startsWith('run-'), ...parts })
+    ({ id, at: when, taskId: null, state, note: null, line, conversationId, unread: false, filed: conversationId !== null && conversationId.startsWith('run-'), ...parts })
   return [
     {
       ...base,
       id: 'a-payments',
       name: 'Failed payments every weekday',
-      trigger: { kind: 'time', schedule: { kind: 'daily', time: '09:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] } },
+      trigger: {
+        kind: 'time',
+        schedule: {
+          kind: 'repeat',
+          repeat: { every: 1, unit: 'weeks', start: null },
+          tasks: [task('t-pay', 'Check yesterday’s failed payments in the Stripe dashboard export. If there are any, notify me with their order numbers and reasons.', { days: ['mon', 'tue', 'wed', 'thu', 'fri'] })],
+        },
+      },
       target: { kind: 'new', hostId: 'cloud', projectId: 'p-shop' },
-      prompt: 'Check yesterday’s failed payments in the Stripe dashboard export. If there are any, notify me with their order numbers and reasons.',
-      nextAt: at(-1, 9),
+      prompt: '',
+      nextAt: nextOn(WORKDAYS, 9),
       runs: [
-        run('r-pay-4', at(0, 9), 'notified', '2 failed payments: #8812 and #8820, both declined by the card issuer.', 'run-pay-4', { unread: true }),
-        run('r-pay-3', at(1, 9), 'done', 'No failed payments.', 'run-pay-3'),
-        run('r-pay-2', at(2, 9), 'done', 'No failed payments.', 'run-pay-2', { filed: false }),
-        run('r-pay-1', at(3, 9), 'failed', null, 'run-pay-1', { note: { kind: 'turn_failed', message: 'HTTP 401: invalid x-api-key', code: 'auth_expired' } }),
+        run('r-pay-4', lastOn(WORKDAYS, 9), 'notified', '2 failed payments: #8812 and #8820, both declined by the card issuer.', 'run-pay-4', { unread: true, taskId: 't-pay' }),
+        run('r-pay-3', lastOn(WORKDAYS, 9, 0, 1), 'done', 'No failed payments.', 'run-pay-3', { taskId: 't-pay' }),
+        run('r-pay-2', lastOn(WORKDAYS, 9, 0, 2), 'done', 'No failed payments.', 'run-pay-2', { filed: false, taskId: 't-pay' }),
+        run('r-pay-1', lastOn(WORKDAYS, 9, 0, 3), 'failed', null, 'run-pay-1', { note: { kind: 'turn_failed', message: 'HTTP 401: invalid x-api-key', code: 'auth_expired' }, taskId: 't-pay' }),
       ],
+    },
+    {
+      ...base,
+      id: 'a-ops',
+      name: 'Weekly ops',
+      trigger: {
+        kind: 'time',
+        schedule: {
+          kind: 'repeat',
+          repeat: { every: 1, unit: 'weeks', start: null },
+          tasks: [
+            task('t-ops-payments', 'Sum up last week’s failed payments by reason, and notify me if any reason doubled.', { time: '10:00' }),
+            task('t-ops-todos', 'Sort this week’s to-dos by due date and post them to the team’s board.', { days: ['wed'], time: '20:00' }),
+            task('t-ops-standup', 'Collect yesterday’s merged pull requests into a short stand-up note.', { days: ['mon', 'tue', 'wed', 'thu', 'fri'], time: '08:30' }),
+          ],
+        },
+      },
+      target: { kind: 'new', hostId: 'cloud', projectId: 'p-shop' },
+      prompt: '',
+      nextAt: nextOn(WORKDAYS, 8, 30),
+      runs: [
+        run('r-ops-3', lastOn([3], 20), 'done', '14 to-dos sorted; 3 are due this week.', 'run-ops-3', { taskId: 't-ops-todos' }),
+        run('r-ops-2', lastOn(WORKDAYS, 8, 30), 'done', '5 pull requests merged.', 'run-ops-2', { taskId: 't-ops-standup' }),
+        run('r-ops-1', lastOn([1], 10), 'notified', 'Card declines doubled, from 4 to 9.', 'run-ops-1', { taskId: 't-ops-payments' }),
+      ],
+    },
+    {
+      ...base,
+      id: 'a-payroll',
+      name: 'Payroll summary',
+      trigger: {
+        kind: 'time',
+        schedule: {
+          kind: 'repeat',
+          repeat: { every: 1, unit: 'months', start: null },
+          tasks: [task('t-payroll', 'Send this month’s payroll summary to finance, with the totals by team.', { day: { kind: 'working_day', which: 'last' }, time: '17:00', holidays: { country: 'CN', region: null } })],
+        },
+      },
+      target: { kind: 'new', hostId: 'cloud', projectId: 'p-shop' },
+      prompt: '',
+      nextAt: lastWeekdayOfMonth(17),
+      runs: [run('r-payroll-1', lastWeekdayOfMonth(17, -1), 'done', 'Sent: 182,400 in total, 6 teams.', 'run-payroll-1', { taskId: 't-payroll' })],
+    },
+    {
+      ...base,
+      id: 'a-subscriptions',
+      name: 'Subscriptions review',
+      trigger: {
+        kind: 'time',
+        schedule: {
+          kind: 'repeat',
+          repeat: { every: 3, unit: 'months', start: '2026-01-01' },
+          tasks: [task('t-subscriptions', 'List the paid subscriptions we used less than once a week this quarter, with what each costs a year.', { day: { kind: 'weekday', week: 'first', weekday: 'mon' } })],
+        },
+      },
+      target: { kind: 'new', hostId: 'mbp', projectId: null },
+      prompt: '',
+      nextAt: firstMondayOfNextQuarter(9),
+      runs: [],
     },
     {
       ...base,
@@ -74,7 +216,7 @@ export function galleryAutomations(): Automation[] {
       name: 'Price of the X100',
       trigger: { kind: 'change', command: 'curl -s https://example.com/x100 | jq .price', everyMinutes: 10 },
       maxRunsPerDay: 10,
-      target: { kind: 'existing', conversationId: 'c-price-watch' },
+      target: { kind: 'existing', conversationId: 'c-price-watch', ifBusy: 'queue' },
       prompt: 'The X100’s price changed. Tell me the old and the new price, and notify me if it dropped below 1,200.',
       nextAt: ago(-7 * MINUTE),
       runs: [
@@ -102,11 +244,19 @@ export function galleryAutomations(): Automation[] {
       ...base,
       id: 'a-orders',
       name: 'Orders summary every evening',
-      trigger: { kind: 'time', schedule: { kind: 'daily', time: '18:00', days: [...WEEKDAYS] } },
-      target: { kind: 'existing', conversationId: 'c-cloud-orders' },
-      prompt: 'Add today’s orders to the dashboard and tell me the total.',
+      trigger: {
+        kind: 'time',
+        schedule: {
+          kind: 'repeat',
+          repeat: { every: 1, unit: 'days', start: null },
+          tasks: [task('t-orders', 'Add today’s orders to the dashboard and tell me the total.', { time: '18:00' })],
+        },
+      },
+      // The dashboard's conversation is often at work on it, and the total belongs in that work.
+      target: { kind: 'existing', conversationId: 'c-cloud-orders', ifBusy: 'steer' },
+      prompt: '',
       nextAt: at(0, 18),
-      runs: [run('r-orders-1', at(1, 18), 'done', '42 orders, 3,180 in total.', 'c-cloud-orders')],
+      runs: [run('r-orders-1', at(1, 18), 'done', '42 orders, 3,180 in total.', 'c-cloud-orders', { taskId: 't-orders' })],
     },
     {
       ...base,
@@ -115,7 +265,7 @@ export function galleryAutomations(): Automation[] {
       trigger: { kind: 'url' },
       address: 'https://demi.example.com/hooks/9c3b7e1d5a2f48c6b0e4d8a1f7c2e5b3',
       stripeSigning: true,
-      target: { kind: 'existing', conversationId: 'c-cloud-orders' },
+      target: { kind: 'existing', conversationId: 'c-cloud-orders', ifBusy: 'queue' },
       prompt: 'A customer asked for a refund. Add it to the dashboard’s refunds.',
       paused: true,
       runs: [],
@@ -146,6 +296,10 @@ export const RUN_TITLES: Record<string, string> = {
   'r-pulls-2': 'Review of pull request #415',
   'r-pulls-1': 'Review of pull request #412',
   'r-deps-1': 'Dependency report',
+  'r-ops-3': 'This week’s to-dos',
+  'r-ops-2': 'Stand-up note',
+  'r-ops-1': 'Card declines doubled',
+  'r-payroll-1': 'Payroll summary for September',
 }
 
 /** What the agent answers in a run's conversation, by its run's state. */
@@ -164,6 +318,12 @@ function answer(run: AutomationRun): string {
 function clockOf(iso: string): string {
   const moment = new Date(iso)
   return `${String(moment.getHours()).padStart(2, '0')}:${String(moment.getMinutes()).padStart(2, '0')}`
+}
+
+/** What a run sent: its task's message, or a single trigger's prompt. */
+function runMessage(automation: Automation, run: AutomationRun): string {
+  const schedule = automation.trigger.kind === 'time' ? automation.trigger.schedule : null
+  return schedule?.kind === 'repeat' ? schedule.tasks.find((each) => each.id === run.taskId)?.prompt ?? '' : automation.prompt
 }
 
 /**
@@ -197,7 +357,7 @@ export function runConversationBlocks(automation: Automation, run: AutomationRun
     : automation.trigger.kind === 'change'
       ? ['The output before (exit status 0):', '```text', '1349', '```', '', 'The output now (exit status 0):', '```text', '1329', '```']
       : []
-  const text = [head, '', automation.prompt, ...(extra.length ? ['', ...extra] : [])].join('\n')
+  const text = [head, '', runMessage(automation, run), ...(extra.length ? ['', ...extra] : [])].join('\n')
   const blocks: Block[] = [
     {
       type: 'user', id: `${run.id}-message`, turnId: `${run.id}-turn`, createdAt: asked, model: demoModel,

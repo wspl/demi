@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { BellOff, ChevronLeft, ChevronRight, Eye, EyeOff, Play, TextCursorInput, Trash2 } from '@lucide/vue'
+import { BellOff, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, Eye, EyeOff, Play, Plus, TextCursorInput, Trash2, TriangleAlert } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import ModelMenu from '../agent/ModelMenu.vue'
@@ -14,8 +14,10 @@ import CommitTextInput from '../ui/CommitTextInput.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import CopyCode from '../ui/CopyCode.vue'
 import Dropdown from '../ui/Dropdown.vue'
+import FilterDialog from '../ui/FilterDialog.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
+import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Segmented from '../ui/Segmented.vue'
 import Switch from '../ui/Switch.vue'
@@ -26,26 +28,54 @@ import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { hostGlyph } from '../devices/device-glyphs'
+import { t as shared } from '../locales/text'
+import AutomationRepeatDialog from './AutomationRepeatDialog.vue'
+import AutomationTaskDialog from './AutomationTaskDialog.vue'
 import { t } from './locales/text'
-import {
-  WEEKDAYS,
-  type Automation,
-  type AutomationChange,
-  type AutomationConversation,
-  type AutomationHost,
-  type AutomationRun,
-  type AutomationTrigger,
-  type RunState,
-  type TimeSchedule,
-  type Weekday,
+import { hasMessage } from './types'
+import type {
+  Automation,
+  AutomationChange,
+  AutomationConversation,
+  AutomationHost,
+  AutomationRun,
+  AutomationTask,
+  AutomationTrigger,
+  HolidayCountry,
+  IfBusy,
+  Repeat,
+  RunState,
+  TimeSchedule,
 } from './types'
-import { cronWords, fieldMoment, intervalOf, minutesOf, pausedWords, runLine, shortMoment, weekdayName, zonedMoment } from './words'
+import {
+  REPEAT_PRESETS,
+  fieldMoment,
+  intervalOf,
+  intervalWords,
+  minutesOf,
+  pausedWords,
+  repeatPreset,
+  repeatWords,
+  runLine,
+  shortMoment,
+  taskWords,
+  zonedMoment,
+} from './words'
 
 /**
- * One automation, every part editable in place as a provider's page is:
+ * One automation, every part editable in place as a provider's page is, each
+ * choice one menu as Calendar's and Reminders' are, with no explanation under
+ * a row:
  *
- * - Its name, On or Paused and Run Now, in its header.
- * - Its trigger, target, prompt and model.
+ * - Its name, Run Now and On or Paused, in its header; Run Now runs a
+ *   repeat's only task, or offers its tasks when it has several.
+ * - When it runs, one menu of the repeats, the single triggers and Custom…,
+ *   whose sheet (AutomationRepeatDialog) sets any cycle; then a repeat's
+ *   tasks, each opening its sheet (AutomationTaskDialog), or a single
+ *   trigger's own fields and its message; and the time zone.
+ * - Its conversation, one menu of a new one each run, the recent ones and
+ *   Choose…; then the Device and Project of a new one, or what the message
+ *   does while an existing one is busy; and the model.
  * - Its runs, newest first, each opening its conversation.
  * - Delete, which asks first.
  *
@@ -54,10 +84,12 @@ import { cronWords, fieldMoment, intervalOf, minutesOf, pausedWords, runLine, sh
 const props = defineProps<{
   automation: Automation
   hosts: readonly AutomationHost[]
-  /** The conversations an existing-conversation target can name, with their Hosts. */
+  /** The conversations an existing-conversation target can name, with their Hosts, the most recent first. */
   conversations: readonly AutomationConversation[]
   /** The time zones to choose from, the user's own first. */
   timeZones: readonly string[]
+  /** The countries whose holidays a task's working days can skip. */
+  holidayCountries: readonly HolidayCountry[]
   providers: ProviderInfo[]
   /** The models the menu offers, by provider. */
   models: Record<string, ModelInfo[]>
@@ -71,7 +103,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   change: [change: AutomationChange]
   back: []
-  runNow: []
+  /** Run Now: the task it runs, a repeat's; none for a single trigger. */
+  runNow: [taskId: string | null]
   delete: []
   showSecret: []
   hideSecret: []
@@ -80,12 +113,19 @@ const emit = defineEmits<{
   turnOnNotifications: []
 }>()
 
-const automation = computed(() => props.automation)
 const renaming = ref(false)
 const deleteAsked = ref(false)
 const regenerateAsked = ref(false)
+/** The task whose sheet is open. */
+const openTaskId = ref<string | null>(null)
+const customOpen = ref(false)
+const choosing = ref(false)
+const query = ref('')
 watch(() => props.automation.id, () => {
   renaming.value = false
+  openTaskId.value = null
+  customOpen.value = false
+  choosing.value = false
 })
 
 function rename(name: string): void {
@@ -96,67 +136,46 @@ function rename(name: string): void {
   }
 }
 
-// The trigger.
+// When it runs.
 
-const triggerKinds = computed(() => [
-  { value: 'time' as const, label: t('trigger.time') },
-  { value: 'change' as const, label: t('trigger.change') },
-  { value: 'url' as const, label: t('trigger.url') },
-])
-const scheduleKinds = computed(() => [
-  { value: 'once' as const, label: t('trigger.once') },
-  { value: 'daily' as const, label: t('trigger.daily') },
-  { value: 'every' as const, label: t('trigger.repeating') },
-  { value: 'cron' as const, label: t('trigger.cron') },
-])
-const units = computed(() => (['minutes', 'hours', 'days'] as const).map((value) => ({ value, label: t(`trigger.units.${value}`) })))
+/** A repeat's tasks; none for a single trigger. */
+const tasks = computed<AutomationTask[] | null>(() => {
+  const trigger = props.automation.trigger
+  return trigger.kind === 'time' && trigger.schedule.kind === 'repeat' ? trigger.schedule.tasks : null
+})
+const repeat = computed<Repeat | null>(() => {
+  const trigger = props.automation.trigger
+  return trigger.kind === 'time' && trigger.schedule.kind === 'repeat' ? trigger.schedule.repeat : null
+})
+/** A single time trigger's schedule; none for a repeat or another trigger. */
+const single = computed(() => {
+  const trigger = props.automation.trigger
+  return trigger.kind === 'time' && trigger.schedule.kind !== 'repeat' ? trigger.schedule : null
+})
+
+/** The message runs send: a single trigger's prompt, or a repeat's first task's. */
+function message(): string {
+  return tasks.value?.[0]?.prompt ?? props.automation.prompt
+}
+
+/** A task at the cycle's first moment, Monday, the 1st, in January, at 09:00. */
+function newTask(prompt: string): AutomationTask {
+  return { id: crypto.randomUUID(), time: '09:00', days: ['mon'], day: { kind: 'date', date: 1 }, month: 1, holidays: null, prompt }
+}
+
+/** Today by the automation's clocks, as 2026-10-20. */
+function today(): string {
+  return fieldMoment(new Date().toISOString(), props.automation.timeZone).slice(0, 10)
+}
 
 /**
- * The trigger of `kind`, keeping what the current one has that the new one
- * uses: a change watch keeps an interval's span.
+ * A change to `trigger`, with the message moved to where the new trigger
+ * keeps it: a repeat's one task takes the prompt, and a single trigger takes
+ * the first task's message.
  */
-function triggerOf(kind: AutomationTrigger['kind']): AutomationTrigger {
-  const current = props.automation.trigger
-  const minutes = current.kind === 'change'
-    ? current.everyMinutes
-    : current.kind === 'time' && current.schedule.kind === 'every' ? current.schedule.minutes : 10
-  switch (kind) {
-    case 'time':
-      return { kind: 'time', schedule: { kind: 'daily', time: '09:00', days: [...WEEKDAYS] } }
-    case 'change':
-      return { kind: 'change', command: current.kind === 'change' ? current.command : 'date +%F', everyMinutes: minutes }
-    case 'url':
-      return { kind: 'url' }
-  }
-}
-
-function setTriggerKind(kind: AutomationTrigger['kind']): void {
-  if (kind !== props.automation.trigger.kind) {
-    emit('change', { trigger: triggerOf(kind) })
-  }
-}
-
-
-const MOMENT = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/
-const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/
-
-function scheduleOf(kind: TimeSchedule['kind']): TimeSchedule {
-  switch (kind) {
-    case 'once': {
-      // Tomorrow 08:00 by the automation's clocks.
-      const today = fieldMoment(new Date().toISOString(), props.automation.timeZone)
-      const [year, month, day] = today.slice(0, 10).split('-').map(Number) as [number, number, number]
-      const tomorrow = new Date(Date.UTC(year, month - 1, day + 1))
-      const at = zonedMoment(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth() + 1, tomorrow.getUTCDate(), 8, 0, props.automation.timeZone)
-      return { kind: 'once', at: at.toISOString() }
-    }
-    case 'daily':
-      return { kind: 'daily', time: '09:00', days: [...WEEKDAYS] }
-    case 'every':
-      return { kind: 'every', minutes: 120 }
-    case 'cron':
-      return { kind: 'cron', expression: '0 9 * * 1-5' }
-  }
+function changeTrigger(trigger: AutomationTrigger): void {
+  const repeats = trigger.kind === 'time' && trigger.schedule.kind === 'repeat'
+  emit('change', { trigger, prompt: repeats ? '' : message() })
 }
 
 function setSchedule(schedule: TimeSchedule): void {
@@ -165,16 +184,84 @@ function setSchedule(schedule: TimeSchedule): void {
   }
 }
 
-/** A daily schedule with `day` chosen or not; the last chosen day stays. */
-function toggleDay(day: Weekday): void {
+/** The repeat `next`, keeping the tasks of a repeat or making one from a single trigger's message. */
+function setRepeat(next: Repeat): void {
+  if (tasks.value) {
+    setSchedule({ kind: 'repeat', repeat: next, tasks: tasks.value })
+  } else {
+    changeTrigger({ kind: 'time', schedule: { kind: 'repeat', repeat: next, tasks: [newTask(message())] } })
+  }
+}
+
+type WhenChoice = 'once' | (typeof REPEAT_PRESETS)[number]['key'] | 'every' | 'cron' | 'change' | 'url' | 'custom'
+
+const when = computed<WhenChoice>(() => {
   const trigger = props.automation.trigger
-  if (trigger.kind !== 'time' || trigger.schedule.kind !== 'daily') {
+  if (trigger.kind !== 'time') {
+    return trigger.kind
+  }
+  const schedule = trigger.schedule
+  return schedule.kind === 'repeat' ? repeatPreset(schedule.repeat) ?? 'custom' : schedule.kind
+})
+/** The menu's face: its choice, or what a choice that asks for more is set to. */
+const whenLabel = computed(() => {
+  const choice = when.value
+  if (choice === 'custom') {
+    return repeat.value ? repeatWords(repeat.value) : ''
+  }
+  if (choice === 'every') {
+    return single.value?.kind === 'every' ? intervalWords(single.value.minutes) : ''
+  }
+  if (choice === 'once' || choice === 'cron' || choice === 'change' || choice === 'url') {
+    return t(`when.${choice}`)
+  }
+  return t(`when.presets.${choice}`)
+})
+
+/** The single time trigger of `kind`, at a default moment. */
+function scheduleOf(kind: 'once' | 'every' | 'cron'): TimeSchedule {
+  switch (kind) {
+    case 'once': {
+      // Tomorrow 08:00 by the automation's clocks.
+      const [year, month, day] = today().split('-').map(Number) as [number, number, number]
+      const tomorrow = new Date(Date.UTC(year, month - 1, day + 1))
+      const at = zonedMoment(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth() + 1, tomorrow.getUTCDate(), 8, 0, props.automation.timeZone)
+      return { kind: 'once', at: at.toISOString() }
+    }
+    case 'every':
+      return { kind: 'every', minutes: 120 }
+    case 'cron':
+      return { kind: 'cron', expression: '0 9 * * 1-5' }
+  }
+}
+
+/** A choice of the When menu; Custom… opens its sheet instead. */
+function choose(choice: WhenChoice): void {
+  if (choice === when.value && choice !== 'custom') {
     return
   }
-  const { time, days } = trigger.schedule
-  const next = days.includes(day) ? days.filter((each) => each !== day) : WEEKDAYS.filter((each) => each === day || days.includes(each))
-  if (next.length > 0) {
-    setSchedule({ kind: 'daily', time, days: next })
+  switch (choice) {
+    case 'custom':
+      customOpen.value = true
+      return
+    case 'once':
+    case 'every':
+    case 'cron':
+      changeTrigger({ kind: 'time', schedule: scheduleOf(choice) })
+      return
+    case 'change': {
+      const minutes = single.value?.kind === 'every' ? single.value.minutes : 10
+      changeTrigger({ kind: 'change', command: 'date +%F', everyMinutes: minutes })
+      return
+    }
+    case 'url':
+      changeTrigger({ kind: 'url' })
+      return
+    default: {
+      const preset = REPEAT_PRESETS.find((each) => each.key === choice)!
+      const start = preset.every > 1 ? repeat.value?.start ?? today() : null
+      setRepeat({ every: preset.every, unit: preset.unit, start })
+    }
   }
 }
 
@@ -184,18 +271,21 @@ const minutes = computed<number | null>(() => {
   if (trigger.kind === 'change') {
     return trigger.everyMinutes
   }
-  return trigger.kind === 'time' && trigger.schedule.kind === 'every' ? trigger.schedule.minutes : null
+  return single.value?.kind === 'every' ? single.value.minutes : null
 })
 const interval = computed(() => (minutes.value === null ? null : intervalOf(minutes.value)))
+const units = computed(() => (['minutes', 'hours', 'days'] as const).map((value) => ({ value, label: t(`trigger.units.${value}`) })))
 
 function setMinutes(next: number): void {
   const trigger = props.automation.trigger
   if (trigger.kind === 'change') {
     emit('change', { trigger: { ...trigger, everyMinutes: next } })
-  } else if (trigger.kind === 'time' && trigger.schedule.kind === 'every') {
+  } else if (single.value?.kind === 'every') {
     setSchedule({ kind: 'every', minutes: next })
   }
 }
+
+const MOMENT = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/
 
 function validCount(value: string): string | null {
   return /^[1-9]\d*$/.test(value.trim()) ? null : t('trigger.intervalInvalid')
@@ -203,15 +293,13 @@ function validCount(value: string): string | null {
 function validMoment(value: string): string | null {
   return MOMENT.test(value.trim()) ? null : t('trigger.momentInvalid')
 }
-function validClock(value: string): string | null {
-  return CLOCK.test(value.trim()) ? null : t('trigger.clockInvalid')
-}
 function validCron(value: string): string | null {
   return value.trim().split(/\s+/).length === 5 ? null : t('trigger.expressionInvalid')
 }
 function validLimit(value: string): string | null {
   return value.trim() === '' || /^[1-9]\d*$/.test(value.trim()) ? null : t('trigger.limitInvalid')
 }
+/** What the field last edited found wrong, under its row until it is right. */
 const problem = ref<string | null>(null)
 
 function setOnce(value: string): void {
@@ -237,7 +325,70 @@ function setLimit(value: string): void {
 /** A time trigger's times and a daily limit's midnight are read in the time zone. */
 const zoned = computed(() => props.automation.trigger.kind === 'time' || props.automation.maxRunsPerDay !== null)
 
-// The target.
+// The tasks.
+
+const openTask = computed(() => tasks.value?.find((each) => each.id === openTaskId.value) ?? null)
+
+function setTasks(next: AutomationTask[]): void {
+  if (repeat.value) {
+    setSchedule({ kind: 'repeat', repeat: repeat.value, tasks: next })
+  }
+}
+
+/** Add Task: one at the cycle's first moment with no message, opened. */
+function addTask(): void {
+  if (tasks.value) {
+    const task = newTask('')
+    setTasks([...tasks.value, task])
+    openTaskId.value = task.id
+  }
+}
+function changeTask(id: string, change: Partial<Omit<AutomationTask, 'id'>>): void {
+  if (tasks.value) {
+    setTasks(tasks.value.map((each) => (each.id === id ? { ...each, ...change } : each)))
+  }
+}
+function deleteTask(id: string): void {
+  if (tasks.value && tasks.value.length > 1) {
+    setTasks(tasks.value.filter((each) => each.id !== id))
+  }
+}
+
+// A single trigger's message, saved when the field is left.
+
+const prompt = ref(props.automation.prompt)
+watch(() => props.automation.prompt, (value) => {
+  prompt.value = value
+})
+function commitPrompt(): void {
+  if (prompt.value !== props.automation.prompt) {
+    emit('change', { prompt: prompt.value })
+  }
+}
+
+// The conversation.
+
+/** The recent conversations the menu offers; the rest are found with Choose…. */
+const RECENT = 5
+const existing = computed(() => {
+  const target = props.automation.target
+  return target.kind === 'existing' ? target : null
+})
+const conversationTitle = computed(() => existing.value
+  ? props.conversations.find((each) => each.id === existing.value?.conversationId)?.title ?? t('words.existingGone')
+  : t('target.newEach'))
+const recent = computed(() => {
+  const first = props.conversations.slice(0, RECENT)
+  const chosen = props.conversations.find((each) => each.id === existing.value?.conversationId)
+  return chosen && !first.includes(chosen) ? [...first, chosen] : first
+})
+const found = computed(() => {
+  const words = query.value.trim().toLowerCase()
+  return props.conversations.filter((each) => each.title.toLowerCase().includes(words))
+})
+function hostName(id: string): string {
+  return props.hosts.find((each) => each.id === id)?.name ?? ''
+}
 
 const targetHostId = computed(() => {
   const target = props.automation.target
@@ -248,47 +399,33 @@ const project = computed(() => {
   const target = props.automation.target
   return target.kind === 'new' ? host.value?.projects.find((candidate) => candidate.id === target.projectId) : undefined
 })
-const hostConversations = computed(() => props.conversations.filter((each) => each.hostId === targetHostId.value))
-const existingTitle = computed(() => {
-  const target = props.automation.target
-  return target.kind === 'existing' ? props.conversations.find((each) => each.id === target.conversationId)?.title ?? t('words.existingGone') : ''
-})
-/** A change watch on the Cloud wakes it at every check, which the trigger says. */
-const watchesCloud = computed(() => props.automation.trigger.kind === 'change' && host.value?.kind === 'cloud')
 
-/** Another Host has other projects and conversations: the target starts over on it, with a new conversation. */
+/** New Each Run: a new conversation on the Host the conversation was on, in no project. */
+function chooseNew(): void {
+  if (existing.value) {
+    emit('change', { target: { kind: 'new', hostId: targetHostId.value ?? 'cloud', projectId: null } })
+  }
+}
+/** An existing conversation, keeping what the message does while it is busy. */
+function chooseConversation(id: string): void {
+  choosing.value = false
+  if (id !== existing.value?.conversationId) {
+    emit('change', { target: { kind: 'existing', conversationId: id, ifBusy: existing.value?.ifBusy ?? 'queue' } })
+  }
+}
+
+/** Another Host has other projects: the new conversation starts there in none. */
 function chooseHost(id: string): void {
   if (id !== targetHostId.value) {
     emit('change', { target: { kind: 'new', hostId: id, projectId: null } })
   }
 }
 
-const conversationKinds = computed(() => [
-  { value: 'new' as const, label: t('target.new') },
-  { value: 'existing' as const, label: t('target.existing') },
-])
-
-function setConversationKind(kind: 'new' | 'existing'): void {
-  if (kind === props.automation.target.kind) {
-    return
-  }
-  const first = hostConversations.value[0]
-  if (kind === 'existing' && first) {
-    emit('change', { target: { kind: 'existing', conversationId: first.id } })
-  } else if (kind === 'new' && targetHostId.value) {
-    emit('change', { target: { kind: 'new', hostId: targetHostId.value, projectId: null } })
-  }
-}
-
-// The prompt, saved when the field is left.
-
-const prompt = ref(props.automation.prompt)
-watch(() => props.automation.prompt, (value) => {
-  prompt.value = value
-})
-function commitPrompt(): void {
-  if (prompt.value !== props.automation.prompt) {
-    emit('change', { prompt: prompt.value })
+/** What a run's message does while the existing conversation is busy, in the composer's words. */
+const busyWays = computed(() => (['queue', 'steer'] as const).map((value) => ({ value, label: shared(`sendWay.${value}`) })))
+function setIfBusy(ifBusy: IfBusy): void {
+  if (existing.value && existing.value.ifBusy !== ifBusy) {
+    emit('change', { target: { ...existing.value, ifBusy } })
   }
 }
 
@@ -315,11 +452,15 @@ const STATE_TONE: Record<RunState, 'neutral' | 'accent' | 'success' | 'warning' 
   failed: 'danger',
 }
 
-/** A run's line, with where its conversation went once it left the automation. */
+/**
+ * A run's line, with where its conversation went once it left the
+ * automation; among several tasks, the message of the task that started it
+ * comes first.
+ */
 function runText(run: AutomationRun): string {
   const moved = props.automation.target.kind === 'new' && run.conversationId !== null && !run.filed
-  const line = runLine(run)
-  return moved ? [line, t('runs.moved')].filter(Boolean).join(' · ') : line
+  const task = tasks.value && tasks.value.length > 1 ? tasks.value.find((each) => each.id === run.taskId) : undefined
+  return [task?.prompt, runLine(run), moved ? t('runs.moved') : ''].filter(Boolean).join(' · ')
 }
 </script>
 
@@ -360,7 +501,34 @@ function runText(run: AutomationRun): string {
           </Tooltip>
         </template>
         <div class="ml-auto flex items-center gap-1.5">
-          <Button size="sm" @click="emit('runNow')">
+          <!-- Among several tasks, Run Now asks which, as a pull-down button does. -->
+          <Dropdown v-if="tasks && tasks.length > 1" :overlay-store="overlayStore">
+            <template #trigger="{ isOpen: menuOpen }">
+              <Button size="sm" :pressed="menuOpen">
+                <Play :size="ICON_PX.in24" /> {{ t('editor.runNow') }} <ChevronDown :size="ICON_PX.in24" />
+              </Button>
+            </template>
+            <template #content="{ close }">
+              <Menu>
+                <MenuItem
+                  v-for="task in tasks"
+                  :key="task.id"
+                  :label="taskWords(task, repeat?.unit ?? 'days')"
+                  :detail="task.prompt || undefined"
+                  :disabled="!hasMessage(task)"
+                  :disabled-reason="t('tasks.messageMissing')"
+                  @select="emit('runNow', task.id); close()"
+                />
+              </Menu>
+            </template>
+          </Dropdown>
+          <Button
+            v-else
+            size="sm"
+            :disabled="tasks?.[0] ? !hasMessage(tasks[0]) : false"
+            :disabled-reason="t('tasks.messageMissing')"
+            @click="emit('runNow', tasks?.[0]?.id ?? null)"
+          >
             <Play :size="ICON_PX.in24" /> {{ t('editor.runNow') }}
           </Button>
           <Switch
@@ -388,96 +556,117 @@ function runText(run: AutomationRun): string {
       </SettingsRow>
     </SettingsGroup>
 
-    <SettingsGroup :title="t('trigger.title')">
-      <SettingsRow :label="t('trigger.kind')">
-        <!-- A pop-up menu, as macOS offers a choice of long names: a segmented control would cut them on a phone. -->
-        <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('trigger.kind')">
-          <template #trigger>{{ triggerKinds.find((kind) => kind.value === automation.trigger.kind)?.label }}</template>
+    <SettingsGroup>
+      <SettingsRow :label="t('when.label')" :description="problem ?? undefined">
+        <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('when.label')">
+          <template #trigger>{{ whenLabel }}</template>
           <template #content="{ close }">
             <Menu>
+              <MenuItem :label="t('when.once')" choice :is-selected="when === 'once'" @select="choose('once'); close()" />
               <MenuItem
-                v-for="kind in triggerKinds"
-                :key="kind.value"
-                :label="kind.label"
+                v-for="preset in REPEAT_PRESETS"
+                :key="preset.key"
+                :label="t(`when.presets.${preset.key}`)"
                 choice
-                :is-selected="automation.trigger.kind === kind.value"
-                @select="setTriggerKind(kind.value); close()"
+                :is-selected="when === preset.key"
+                @select="choose(preset.key); close()"
               />
+              <MenuDivider />
+              <MenuItem :label="t('when.everyMenu')" choice :is-selected="when === 'every'" @select="choose('every'); close()" />
+              <MenuItem :label="t('when.cronMenu')" choice :is-selected="when === 'cron'" @select="choose('cron'); close()" />
+              <MenuItem :label="t('when.change')" choice :is-selected="when === 'change'" @select="choose('change'); close()" />
+              <MenuItem :label="t('when.url')" choice :is-selected="when === 'url'" @select="choose('url'); close()" />
+              <MenuDivider />
+              <MenuItem :label="t('when.customMenu')" choice :is-selected="when === 'custom'" @select="choose('custom'); close()" />
             </Menu>
           </template>
         </Dropdown>
       </SettingsRow>
-      <template v-if="automation.trigger.kind === 'time'">
-        <SettingsRow :label="t('trigger.repeat')">
-          <Segmented
-            data-field
-            size="sm"
-            :model-value="automation.trigger.schedule.kind"
-            :options="scheduleKinds"
-            @update:model-value="setSchedule(scheduleOf($event))"
-          />
-        </SettingsRow>
-        <SettingsRow
-          v-if="automation.trigger.schedule.kind === 'once'"
-          :label="t('trigger.moment')"
-          :description="problem ?? t('trigger.momentHint')"
-        >
-          <CommitTextInput
-            class="w-44"
-            literal
-            :model-value="fieldMoment(automation.trigger.schedule.at, automation.timeZone)"
-            :validate="validMoment"
-            :aria-label="t('trigger.moment')"
-            @problem="problem = $event"
-            @commit="setOnce"
-          />
-        </SettingsRow>
-        <template v-else-if="automation.trigger.schedule.kind === 'daily'">
-          <SettingsRow :label="t('trigger.dailyTime')" :description="problem ?? undefined">
-            <CommitTextInput
-              class="w-20"
-              literal
-              :model-value="automation.trigger.schedule.time"
-              :validate="validClock"
-              :aria-label="t('trigger.dailyTime')"
-              @problem="problem = $event"
-              @commit="automation.trigger.kind === 'time' && automation.trigger.schedule.kind === 'daily' && setSchedule({ ...automation.trigger.schedule, time: $event.trim() })"
-            />
-          </SettingsRow>
-          <SettingsRow :label="t('trigger.days')">
-            <!-- The days are toggles, as Clock's alarms and Reminders' repeat choose them. -->
-            <div class="flex flex-wrap gap-1" role="group" :aria-label="t('trigger.days')">
-              <Button
-                v-for="day in WEEKDAYS"
-                :key="day"
-                size="sm"
-                variant="ghost"
-                :pressed="automation.trigger.schedule.days.includes(day)"
-                :aria-pressed="automation.trigger.schedule.days.includes(day)"
-                :aria-label="weekdayName(day, 'long')"
-                class="min-w-10"
-                @click="toggleDay(day)"
-              >{{ weekdayName(day) }}</Button>
+
+      <SettingsRow v-if="repeat && tasks" :label="t('tasks.title')">
+        <template #below>
+          <!-- The rows share one grid, so every message starts where the longest moment ends. -->
+          <div class="grid grid-cols-[max-content_minmax(0,1fr)_auto] gap-y-1 phone:grid-cols-[minmax(0,1fr)_auto]">
+            <!-- A task's row opens its sheet; its ··· holds Run Now and Delete. -->
+            <div
+              v-for="task in tasks"
+              :key="task.id"
+              class="-mx-2 col-span-full grid grid-cols-subgrid items-center rounded-md pr-1 hover:bg-hover"
+            >
+              <button
+                type="button"
+                class="col-span-2 grid cursor-default grid-cols-subgrid items-center gap-x-4 px-2 py-1.5 text-left text-setting-small focus-visible:outline-none phone:col-span-1 phone:grid-cols-1"
+                :aria-label="taskWords(task, repeat.unit)"
+                @click="openTaskId = task.id"
+              >
+                <span class="whitespace-nowrap tabular-nums text-fg-body">{{ taskWords(task, repeat.unit) }}</span>
+                <span v-if="hasMessage(task)" class="min-w-0 truncate text-fg-muted"><TruncatedText :text="task.prompt" /></span>
+                <span v-else class="flex items-center gap-1.5 text-fg-muted">
+                  <TriangleAlert :size="ICON_PX.in24" class="shrink-0 text-on-warning" />
+                  {{ t('tasks.noMessage') }}
+                </span>
+              </button>
+              <Dropdown :overlay-store="overlayStore">
+                <template #trigger="{ isOpen: menuOpen }">
+                  <Tooltip :content="t('tasks.actions')">
+                    <IconButton :icon="Ellipsis" size="sm" variant="ghost" :aria-label="t('tasks.actions')" :pressed="menuOpen" />
+                  </Tooltip>
+                </template>
+                <template #content="{ close }">
+                  <Menu>
+                    <MenuItem
+                      :icon="Play"
+                      :label="t('tasks.runNow')"
+                      :disabled="!hasMessage(task)"
+                      :disabled-reason="t('tasks.messageMissing')"
+                      @select="emit('runNow', task.id); close()"
+                    />
+                    <MenuDivider />
+                    <MenuItem
+                      :icon="Trash2"
+                      :label="t('tasks.delete')"
+                      is-danger
+                      :disabled="tasks.length === 1"
+                      :disabled-reason="t('tasks.lastOne')"
+                      @select="deleteTask(task.id); close()"
+                    />
+                  </Menu>
+                </template>
+              </Dropdown>
             </div>
-          </SettingsRow>
+            <div class="-ml-2 col-span-full">
+              <Button variant="ghost" size="sm" @click="addTask">
+                <Plus :size="ICON_PX.in24" /> {{ t('tasks.add') }}
+              </Button>
+            </div>
+          </div>
         </template>
-        <SettingsRow
-          v-else-if="automation.trigger.schedule.kind === 'cron'"
-          :label="t('trigger.expression')"
-          :description="problem ?? t('trigger.expressionHint', { words: cronWords(automation.trigger.schedule.expression) })"
-        >
-          <CommitTextInput
-            class="w-44"
-            literal
-            :model-value="automation.trigger.schedule.expression"
-            :validate="validCron"
-            :aria-label="t('trigger.expression')"
-            @problem="problem = $event"
-            @commit="setSchedule({ kind: 'cron', expression: $event.trim().split(/\s+/).join(' ') })"
-          />
-        </SettingsRow>
-      </template>
-      <SettingsRow v-else-if="automation.trigger.kind === 'change'" :label="t('trigger.command')" :description="t('trigger.commandHint')">
+      </SettingsRow>
+
+      <!-- A single trigger's own fields, then its message, in place of the tasks. -->
+      <SettingsRow v-if="single?.kind === 'once'" :label="t('trigger.moment')">
+        <CommitTextInput
+          class="w-44"
+          literal
+          :model-value="fieldMoment(single.at, automation.timeZone)"
+          :validate="validMoment"
+          :aria-label="t('trigger.moment')"
+          @problem="problem = $event"
+          @commit="setOnce"
+        />
+      </SettingsRow>
+      <SettingsRow v-if="single?.kind === 'cron'" :label="t('trigger.expression')">
+        <CommitTextInput
+          class="w-44"
+          literal
+          :model-value="single.expression"
+          :validate="validCron"
+          :aria-label="t('trigger.expression')"
+          @problem="problem = $event"
+          @commit="setSchedule({ kind: 'cron', expression: $event.trim().split(/\s+/).join(' ') })"
+        />
+      </SettingsRow>
+      <SettingsRow v-if="automation.trigger.kind === 'change'" :label="t('trigger.command')">
         <template #below>
           <CommitTextInput
             literal
@@ -489,11 +678,7 @@ function runText(run: AutomationRun): string {
           />
         </template>
       </SettingsRow>
-      <SettingsRow
-        v-if="interval"
-        :label="automation.trigger.kind === 'change' ? t('trigger.checkEvery') : t('trigger.interval')"
-        :description="problem ?? (watchesCloud ? t('trigger.cloudCost') : undefined)"
-      >
+      <SettingsRow v-if="interval" :label="automation.trigger.kind === 'change' ? t('trigger.checkEvery') : t('trigger.interval')">
         <div class="flex items-center gap-2">
           <CommitTextInput
             class="w-16"
@@ -513,13 +698,13 @@ function runText(run: AutomationRun): string {
         </div>
       </SettingsRow>
       <template v-if="automation.trigger.kind === 'url'">
-        <SettingsRow :label="t('trigger.address')" :description="t('trigger.addressHint')">
+        <SettingsRow :label="t('trigger.address')">
           <template #below>
             <CopyCode :code="automation.address ?? ''" />
           </template>
         </SettingsRow>
         <!-- The secret stays readable, hidden until Show, as a credential's value is. -->
-        <SettingsRow :label="t('trigger.secret')" :description="t('trigger.secretHint')">
+        <SettingsRow :label="t('trigger.secret')">
           <template #below>
             <div class="flex items-center gap-1.5">
               <CopyCode v-if="secret" class="min-w-0 flex-1" :code="secret" />
@@ -540,7 +725,7 @@ function runText(run: AutomationRun): string {
           </template>
           <Button size="sm" @click="regenerateAsked = true">{{ t('trigger.regenerate') }}</Button>
         </SettingsRow>
-        <SettingsRow :label="t('trigger.stripe')" :description="t('trigger.stripeHint')">
+        <SettingsRow :label="t('trigger.stripe')">
           <CommitTextInput
             model-value=""
             masked="secret"
@@ -553,11 +738,7 @@ function runText(run: AutomationRun): string {
           />
         </SettingsRow>
       </template>
-      <SettingsRow
-        v-if="automation.trigger.kind !== 'time'"
-        :label="t('trigger.limit')"
-        :description="problem ?? t('trigger.limitHint')"
-      >
+      <SettingsRow v-if="automation.trigger.kind !== 'time'" :label="t('trigger.limit')">
         <CommitTextInput
           class="w-20"
           literal
@@ -568,6 +749,13 @@ function runText(run: AutomationRun): string {
           @problem="problem = $event"
           @commit="setLimit"
         />
+      </SettingsRow>
+      <SettingsRow v-if="!tasks" :label="t('tasks.message')">
+        <template #below>
+          <div @focusout="commitPrompt">
+            <TextArea v-model="prompt" :rows="4" :aria-label="t('tasks.message')" :placeholder="t('tasks.placeholder')" />
+          </div>
+        </template>
       </SettingsRow>
       <SettingsRow v-if="zoned" :label="t('trigger.timeZone')">
         <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('trigger.timeZone')">
@@ -588,112 +776,98 @@ function runText(run: AutomationRun): string {
       </SettingsRow>
     </SettingsGroup>
 
-    <SettingsGroup :title="t('target.title')">
-      <SettingsRow :label="t('target.host')">
-        <Dropdown
-          :overlay-store="overlayStore"
-          variant="field"
-          size="sm"
-          width="shrink"
-          :trigger-label="t('target.host')"
-          :icon="host ? hostGlyph(host) : undefined"
-        >
-          <template #trigger><span class="min-w-0 truncate">{{ host?.name ?? '' }}</span></template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem
-                v-for="each in hosts"
-                :key="each.id"
-                :icon="hostGlyph(each)"
-                :label="each.name"
-                :value="each.state === 'online' ? undefined : t('target.offline')"
-                choice
-                :is-selected="each.id === targetHostId"
-                @select="chooseHost(each.id); close()"
-              />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <!-- An existing conversation has its own place, so only a new one asks for a project. -->
-      <SettingsRow v-if="automation.target.kind === 'new'" :label="t('target.project')">
-        <Dropdown
-          :overlay-store="overlayStore"
-          variant="field"
-          size="sm"
-          width="shrink"
-          :trigger-label="t('target.project')"
-        >
-          <template #trigger>{{ project?.name ?? t('target.noProject') }}</template>
-          <template #content="{ close }">
-            <Menu>
-              <MenuItem
-                :label="t('target.noProject')"
-                choice
-                :is-selected="automation.target.projectId === null"
-                @select="automation.target.kind === 'new' && emit('change', { target: { ...automation.target, projectId: null } }); close()"
-              />
-              <MenuItem
-                v-for="each in host?.projects ?? []"
-                :key="each.id"
-                :label="each.name"
-                choice
-                :is-selected="each.id === automation.target.projectId"
-                @select="automation.target.kind === 'new' && emit('change', { target: { ...automation.target, projectId: each.id } }); close()"
-              />
-            </Menu>
-          </template>
-        </Dropdown>
-      </SettingsRow>
-      <SettingsRow
-        :label="t('target.conversation')"
-        :description="automation.target.kind === 'new' ? t('target.newHint') : t('target.existingHint')"
-      >
-        <template #below>
-          <div class="flex flex-wrap items-center gap-2">
-            <Segmented
-              size="sm"
-              :model-value="automation.target.kind"
-              :options="conversationKinds"
-              :disabled="!hostConversations.length && automation.target.kind === 'new'"
-              :disabled-reason="t('target.noConversations', { host: host?.name ?? '' })"
-              @update:model-value="setConversationKind"
-            />
-            <Dropdown
-              v-if="automation.target.kind === 'existing'"
-              :overlay-store="overlayStore"
-              variant="field"
-              size="sm"
-              width="shrink"
-              :trigger-label="t('target.pick')"
-            >
-              <template #trigger>{{ existingTitle }}</template>
-              <template #content="{ close }">
-                <Menu>
-                  <MenuItem
-                    v-for="each in hostConversations"
-                    :key="each.id"
-                    :label="each.title"
-                    choice
-                    :is-selected="automation.target.kind === 'existing' && automation.target.conversationId === each.id"
-                    @select="emit('change', { target: { kind: 'existing', conversationId: each.id } }); close()"
-                  />
-                </Menu>
-              </template>
-            </Dropdown>
-          </div>
-        </template>
-      </SettingsRow>
-    </SettingsGroup>
-
-    <SettingsGroup :title="t('prompt.title')" :description="t('prompt.hint')">
-      <div class="p-3" @focusout="commitPrompt">
-        <TextArea v-model="prompt" :rows="4" :placeholder="t('prompt.placeholder')" />
-      </div>
-    </SettingsGroup>
-
     <SettingsGroup>
-      <SettingsRow :label="t('model.label')" :description="t('model.hint')">
+      <SettingsRow :label="t('target.conversation')">
+        <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('target.conversation')">
+          <template #trigger><span class="min-w-0 truncate">{{ conversationTitle }}</span></template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem :label="t('target.newEach')" choice :is-selected="!existing" @select="chooseNew(); close()" />
+              <MenuDivider />
+              <MenuItem
+                v-for="each in recent"
+                :key="each.id"
+                :label="each.title"
+                :value="hostName(each.hostId)"
+                choice
+                :is-selected="existing?.conversationId === each.id"
+                @select="chooseConversation(each.id); close()"
+              />
+              <MenuDivider />
+              <MenuItem :label="t('target.choose')" @select="choosing = true; close()" />
+            </Menu>
+          </template>
+        </Dropdown>
+      </SettingsRow>
+      <template v-if="automation.target.kind === 'new'">
+        <SettingsRow :label="t('target.host')" phone-stacked>
+          <Dropdown
+            :overlay-store="overlayStore"
+            variant="field"
+            size="sm"
+            width="shrink"
+            :trigger-label="t('target.host')"
+            :icon="host ? hostGlyph(host) : undefined"
+          >
+            <template #trigger><span class="min-w-0 truncate">{{ host?.name ?? '' }}</span></template>
+            <template #content="{ close }">
+              <Menu>
+                <MenuItem
+                  v-for="each in hosts"
+                  :key="each.id"
+                  :icon="hostGlyph(each)"
+                  :label="each.name"
+                  :value="each.state === 'online' ? undefined : t('target.offline')"
+                  choice
+                  :is-selected="each.id === targetHostId"
+                  @select="chooseHost(each.id); close()"
+                />
+              </Menu>
+            </template>
+          </Dropdown>
+        </SettingsRow>
+        <SettingsRow :label="t('target.project')" phone-stacked>
+          <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('target.project')">
+            <template #trigger><span class="min-w-0 truncate">{{ project?.name ?? t('target.noProject') }}</span></template>
+            <template #content="{ close }">
+              <Menu>
+                <MenuItem
+                  :label="t('target.noProject')"
+                  choice
+                  :is-selected="automation.target.projectId === null"
+                  @select="automation.target.kind === 'new' && emit('change', { target: { ...automation.target, projectId: null } }); close()"
+                />
+                <MenuItem
+                  v-for="each in host?.projects ?? []"
+                  :key="each.id"
+                  :label="each.name"
+                  choice
+                  :is-selected="each.id === automation.target.projectId"
+                  @select="automation.target.kind === 'new' && emit('change', { target: { ...automation.target, projectId: each.id } }); close()"
+                />
+              </Menu>
+            </template>
+          </Dropdown>
+        </SettingsRow>
+      </template>
+      <SettingsRow v-else :label="t('busy.label')">
+        <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('busy.label')">
+          <template #trigger>{{ busyWays.find((each) => each.value === existing?.ifBusy)?.label }}</template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem
+                v-for="way in busyWays"
+                :key="way.value"
+                :label="way.label"
+                choice
+                :is-selected="existing?.ifBusy === way.value"
+                @select="setIfBusy(way.value); close()"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
+      </SettingsRow>
+      <SettingsRow :label="t('model.label')">
         <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('model.label')">
           <template #trigger>
             <ModelChoiceTrigger :label="modelLabel" :missing="modelMissing" />
@@ -742,6 +916,38 @@ function runText(run: AutomationRun): string {
       </Button>
     </div>
 
+    <AutomationTaskDialog
+      v-if="openTask && repeat"
+      :is-open="true"
+      :task="openTask"
+      :unit="repeat.unit"
+      :holiday-countries="holidayCountries"
+      :overlay-store="overlayStore"
+      @change="openTask && changeTask(openTask.id, $event)"
+      @close="openTaskId = null"
+    />
+    <AutomationRepeatDialog
+      :is-open="customOpen"
+      :repeat="repeat ?? { every: 1, unit: 'weeks', start: null }"
+      :today="today()"
+      :overlay-store="overlayStore"
+      @done="setRepeat($event); customOpen = false"
+      @close="customOpen = false"
+    />
+    <FilterDialog v-model:query="query" :is-open="choosing" :overlay-store="overlayStore" :label="t('target.pick')" @close="choosing = false">
+      <div class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float">
+        <button
+          v-for="each in found"
+          :key="each.id"
+          type="button"
+          class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left text-setting-small hover:bg-hover phone:h-auto phone:min-h-row phone:py-1.5"
+          @click="chooseConversation(each.id)"
+        >
+          <span class="min-w-0 flex-1 truncate text-fg-body">{{ each.title }}</span>
+          <span class="shrink-0 text-fg-muted">{{ hostName(each.hostId) }}</span>
+        </button>
+      </div>
+    </FilterDialog>
     <ConfirmDialog
       :is-open="deleteAsked"
       :overlay-store="overlayStore"
