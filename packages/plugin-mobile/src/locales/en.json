@@ -1,5 +1,6 @@
 {
   "toolbar": {
+    "model": "({model})",
     "rotateLeft": "Rotate Left",
     "rotateRight": "Rotate Right",
     "appearance": "Toggle Appearance",

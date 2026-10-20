@@ -239,6 +239,12 @@ pub struct LiveDevice {
     pub platform: MobilePlatform,
     #[garde(skip)]
     pub os: String,
+    /// The model it simulates, such as iPhone 17 Pro, as its driver reads
+    /// it; none when the driver knows none.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub model: Option<String>,
     /// Whether a recording of it runs, whoever started it.
     #[garde(skip)]
     pub recording: bool,

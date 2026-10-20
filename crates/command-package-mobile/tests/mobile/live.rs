@@ -259,6 +259,21 @@ async fn the_view_gets_the_frame_for_its_size_and_again_when_the_device_turns() 
     assert_eq!(drawn, 2, "a frame drawn once for each size and orientation");
 }
 
+/// The view lists each open device with the model its driver reads, which
+/// the toolbar shows after its name. Planted defect this catches: the model
+/// left out of the view's list. One fake device, milliseconds.
+#[tokio::test]
+async fn the_view_lists_a_devices_model() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    let state = serde_json::to_value(page.until("state").await).unwrap();
+    // The fake driver's model is the simulator's name.
+    assert_eq!(state["devices"][0]["model"], "iPhone 17");
+}
+
 /// A recording shows on every view of the device, whoever started it: the
 /// agent's command starts one, and the view lists the device as
 /// recording until it stops. Planted defect this catches: a recording the

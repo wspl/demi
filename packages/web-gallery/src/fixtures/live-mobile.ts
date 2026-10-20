@@ -46,6 +46,8 @@ const decoder = new TextDecoder()
 interface GallerySimulator {
   name: string
   platform: MobilePlatform
+  /** The model the driver reads, which the toolbar shows after the name. */
+  model: string
   os: string
   nativeId: string
   points: { width: number; height: number }
@@ -106,8 +108,9 @@ const SETTINGS_HEIGHT = SETTINGS_TOP + SETTINGS_GROUPS.reduce((height, group) =>
 /** The simulators the agent opens, in turn: an iPhone, an iPad, then an Android emulator, as `demi mobile open` would. */
 const SIMULATORS: readonly GallerySimulator[] = [
   {
-    name: 'iPhone 17 Pro',
+    name: 'Work iPhone',
     platform: 'ios',
+    model: 'iPhone 17 Pro',
     os: 'iOS 26.5',
     nativeId: '5F1C2B3A-7D44-4E2B-9C11-0A1B2C3D4E5F',
     points: { width: 402, height: 874 },
@@ -120,10 +123,11 @@ const SIMULATORS: readonly GallerySimulator[] = [
     ],
   },
   {
-    name: 'iPad Air 13-inch (M3)',
+    name: 'Test iPad',
     platform: 'ios',
+    model: 'iPad Air 13-inch (M3)',
     os: 'iOS 26.5',
-    nativeId: '247C3132-2366-4D6C-A4B9-9051A0EE8EAC',
+    nativeId: '8E2D4F61-3B5A-4C7D-9E0F-1A2B3C4D5E6F',
     points: { width: 1032, height: 1376 },
     corners: alike({ kind: 'round', radius: 18 }),
     buttons: [
@@ -135,6 +139,7 @@ const SIMULATORS: readonly GallerySimulator[] = [
   {
     name: 'Pixel 8 API 36',
     platform: 'android',
+    model: 'Pixel 8',
     os: 'Android 16',
     nativeId: 'Pixel_8_API_36',
     points: { width: 411, height: 914 },
@@ -246,7 +251,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       open.set(shown.id, shown)
     }
     if (!panel.all.some((tab) => tab.kind === 'mobile' && shows(tab) === shown.id)) {
-      const data = { device: shown.id, nativeId: simulator.nativeId, name: simulator.name, platform: simulator.platform }
+      const data = { device: shown.id, nativeId: simulator.nativeId, name: simulator.name, platform: simulator.platform, model: simulator.model }
       panel.apply({ type: 'create', tab: { id: `mobile-${shown.id}`, kind: 'mobile', data } })
     }
     changed()
@@ -459,6 +464,7 @@ class MobileView {
         name: each.simulator.name,
         platform: each.simulator.platform,
         os: each.simulator.os,
+        model: each.simulator.model,
         recording: each.recording,
       })),
       watched: this.watching,

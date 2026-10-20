@@ -1,5 +1,6 @@
 {
   "toolbar": {
+    "model": "（{model}）",
     "rotateLeft": "向左旋轉",
     "rotateRight": "向右旋轉",
     "appearance": "切換外觀",

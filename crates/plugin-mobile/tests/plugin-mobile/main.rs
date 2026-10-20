@@ -164,6 +164,38 @@ async fn the_panel_shows_the_devices_open_on_the_conversations_own_host() {
     assert!(tabs(&demi).is_empty(), "a closed device keeps its tab");
 }
 
+/// A device's tab carries the model its driver reads, which the toolbar
+/// shows after the name, and none for a device whose driver knows none.
+/// Planted defect this catches: the model dropped between the device list
+/// and the tab. One loopback, milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_devices_tab_carries_the_model_its_driver_reads() {
+    let demi = TestDemi::new();
+    demi.package_calls.replace(Some(Box::new(|_operation, _args: &Map<String, Value>, _kind| {
+        let device = |handle: &str, model: &str| json!({
+            "name": "Work Phone", "platform": "android", "model": model, "os": "Android 16",
+            "state": "booted", "nativeId": format!("AVD-{handle}"), "open": handle, "elsewhere": false,
+        });
+        Ok(json!({ "devices": [device("m1", "Pixel 10"), device("m2", "")], "unavailable": [] }))
+    })));
+    let plugin = loopback(Mobile::new().instance());
+    plugin
+        .call(
+            Request::PackageMessage {
+                user: UserId::try_from("u1").unwrap(),
+                conversation: conversation(),
+                message: json!({ "devices": "changed" }),
+            },
+            demi.port(),
+        )
+        .await
+        .unwrap();
+    let tabs = demi.panel().tabs;
+    let model = |id: &str| tabs.iter().find(|tab| tab.id == id).expect("the device has a tab").data.get("model").cloned();
+    assert_eq!(model("mobile-m1"), Some(json!("Pixel 10")));
+    assert_eq!(model("mobile-m2"), None, "a device of no known model has none");
+}
+
 /// When what the package kept on a Host ends, the panel shows what the
 /// conversation's Host has open now: an attached Host's loss leaves the
 /// tabs, the Host's own stop loses them. Planted defect this catches:
