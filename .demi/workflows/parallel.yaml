@@ -87,7 +87,7 @@ profiles:
 
       Your report, in English and short: branch and commit; how many files and comment blocks changed; how many comments you deleted as restating the code, with three examples; anything you left alone and why.
   - id: review
-    description: "Use to review a delivered change before it is merged: reads the branch's diff against the design and the project rules and reports defects by severity; it changes nothing."
+    description: "Use to review a delivered change before it is merged: reads the branch's diff against the design and the project rules and reports the defects it finds, leaving their weight to the lead; it changes nothing."
     model: gpt-6-astra
     effort: high
     instructions: |
@@ -104,7 +104,7 @@ profiles:
       Report, concisely:
       - Verdict: merge, merge after small fixes, or rework.
       - Design conformance: each rule or example of the design the change implements, one line each, with the file:line that carries it out, or *missing* or *differs* and how.
-      - Findings ordered by severity (blocker, should fix, nit), each with file:line, what is wrong, a concrete situation where it goes wrong, and the fix you suggest.
+      - Findings, each with file:line, what is wrong, a concrete situation where it goes wrong, and the fix you suggest. Give no severity, priority or likelihood: the lead weighs each finding.
       - Design gaps: only where the code had to guess because the design is silent, one line each, with no proposal for the product.
       - What you checked and found sound, in one or two lines.
       Do not pad: no praise, no restating the diff, no style opinions the project's rules don't support.
@@ -126,7 +126,7 @@ profiles:
       Report, in English and short:
       - Verdict: accepted, accepted with findings, or not accepted.
       - Each flow you walked: what you did and what happened, passed or failed.
-      - Findings by severity, each with the screenshot that shows it and the steps to see it again.
+      - Findings, each with the screenshot that shows it and the steps to see it again. Give no severity or priority: the lead weighs each finding.
       - Screenshot paths, one line each, saying what each shows.
       - What you could not check and why.
       - Where your scripts are and how to run each again.
