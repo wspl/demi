@@ -1,13 +1,18 @@
-//! An agent reads its own earlier history: after a compaction the next
-//! request tells the model that `demi conversation history` finds and
-//! reads what the summary left out; `read` prints a range of the agent's
-//! transcript, messages and texts whole and other blocks as one line
-//! each, up to about 8,000 characters; `open` prints a command's script
-//! and its output a page at a time, a thinking block, a subagent's
-//! report, or saves a message's attachment under the scratch directory; a
-//! subagent reads its own transcript, where its brief is its parent's.
-//! The model is the scripted family of the subagent scenarios, the device
-//! a real runner. No test calls a real model.
+//! An agent reads its own earlier history.
+//!
+//! Scenarios:
+//!
+//! - After a compaction the next request tells the model that `demi
+//!   conversation history` finds and reads what the summary left out.
+//! - `read` prints a range of the agent's transcript, messages and texts whole
+//!   and other blocks as one line each, up to about 8,000 characters.
+//! - `open` prints a command's script and its output a page at a time, a
+//!   thinking block or a subagent's report, or saves a message's attachment
+//!   under the scratch directory.
+//! - A subagent reads its own transcript, where its brief is its parent's.
+//!
+//! The model is the scripted family of the subagent scenarios, the device a
+//! real runner. No test calls a real model.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -530,11 +535,12 @@ async fn an_agent_searches_its_history_for_every_word_or_any_and_pages_the_hits(
     backend.close().await;
 }
 
-// About a second: nine turns of a scripted model, the index following each
-// within the 20 ms interval the test sets, and a real device runs the shell
-// jobs of the last. The user is in Shanghai, eight hours ahead of UTC, and
-// the second turn comes ten hours after the first: the next day there, the
-// same day in UTC.
+// About a second: nine turns of a scripted model, the index following each within
+// the 20 ms interval the test sets, and a real device runs the shell jobs of the
+// last.
+//
+// The user is in Shanghai, eight hours ahead of UTC, and the second turn comes
+// ten hours after the first: the next day there, the same day in UTC.
 #[tokio::test]
 async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
     let scripts = Arc::new(Scripts::default());

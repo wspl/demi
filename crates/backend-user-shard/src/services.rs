@@ -1,6 +1,7 @@
-//! The services every shard is given (`crates/backend/src/lib.rs`): the
-//! ones that span users, or that are needed before the user is known, which
-//! the edge and every shard share, over the storage they are opened on.
+//! The services every shard is given (`crates/backend/src/lib.rs`).
+//!
+//! They span users, or are needed before the user is known. The edge and every
+//! shard share them, over the storage they are opened on.
 
 use std::path::Path;
 use std::sync::Arc;

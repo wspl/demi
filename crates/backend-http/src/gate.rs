@@ -1,25 +1,36 @@
-//! What stands in front of the web app's routes: the check that a request
-//! that could act comes from a page of the product, over every web app
-//! route, and the session gate over every `/api` path except the public
-//! entrances.
+//! What stands in front of the web app's routes.
 //!
-//! The origin check stands in front of the web app's routes rather than in
-//! each of them, so a new route has it without asking. Setup and login need
-//! no cookie, yet they are covered, since they set one: a login from another
-//! page would sign the visitor's browser in to the page author's account,
-//! where a device paired from Settings would give that account a runner on
-//! the visitor's computer, and a setup from another page could take the
-//! master account of an instance the author cannot reach but the visitor's
-//! browser can, such as one on `localhost`. Other GET, HEAD, OPTIONS and
-//! TRACE requests pass: their routes only read, and another page cannot read
-//! their answers. Runner routes and public downloads have no such check,
-//! since no cookie authenticates them.
+//! - The origin check: a request that could act must come from a page of the
+//!   product, over every web app route.
+//! - The session gate, over every `/api` path except the public entrances.
 //!
-//! The session gate covers every other `/api` path, unknown ones included,
-//! so an unauthenticated request for a path that does not exist answers 401,
-//! not 404. The synchronization channel checks the session cookie itself,
-//! since the gate would renew the session and a channel never does: only
-//! requests renew a session.
+//! # The origin check
+//!
+//! The origin check stands in front of the web app's routes rather than in each
+//! of them, so a new route has it without asking. Setup and login need no
+//! cookie, yet they are covered, since they set one:
+//!
+//! - A login from another page would sign the visitor's browser in to the page
+//!   author's account.
+//! - A device paired from Settings would give that account a runner on the
+//!   visitor's computer.
+//! - A setup from another page could take the master account of an instance the
+//!   author cannot reach but the visitor's browser can, such as one on
+//!   `localhost`.
+//!
+//! Other GET, HEAD, OPTIONS and TRACE requests pass: their routes only read,
+//! and another page cannot read their answers. Runner routes and public
+//! downloads have no such check, since no cookie authenticates them.
+//!
+//! # The session gate
+//!
+//! The session gate covers every other `/api` path, unknown ones included, so
+//! an unauthenticated request for a path that does not exist answers 401, not
+//! 404.
+//!
+//! The synchronization channel checks the session cookie itself, since the gate
+//! would renew the session and a channel never does: only requests renew a
+//! session.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -48,17 +59,23 @@ use demi_backend_user_shard::services::Services;
 /// from.
 const SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
 
-/// Refuses a request that could act with the user's session and comes from
-/// a page other than the product's, with 403 `forbidden_origin`, before any
-/// route sees it. The user's browser sends the session cookie from every
-/// page of the product's site, one on another host of it such as
-/// `blog.demi.example` among them, and lets such a page send a POST or open
-/// a WebSocket without asking the backend. A request could act when its
-/// method is unsafe or it upgrades the connection, as a WebSocket does. One without `Origin` passes: every web browser sends
-/// `Origin` with such a request, so it comes from a program that is not a
-/// web browser, such as curl, which could send any origin it liked. A web
-/// browser's request without `Origin` lost it at a proxy, which turns the
-/// check off: it passes too, and the edge warns about the proxy once.
+/// Refuses a request that could act with the user's session and comes from a
+/// page other than the product's, with 403 `forbidden_origin`, before any
+/// route sees it.
+///
+/// The user's browser sends the session cookie from every page of the
+/// product's site, one on another host of it such as `blog.demi.example` among
+/// them, and lets such a page send a POST or open a WebSocket without asking
+/// the backend. A request could act when its method is unsafe or it upgrades
+/// the connection, as a WebSocket does.
+///
+/// A request without `Origin` passes, in either of two cases:
+///
+/// - Every web browser sends `Origin` with such a request, so one without it
+///   comes from a program that is not a web browser, such as curl, which could
+///   send any origin it liked.
+/// - A web browser's request without `Origin` lost it at a proxy, which turns
+///   the check off. It passes too, and the edge warns about the proxy once.
 pub(super) async fn product_pages(
     State(site): State<Arc<Site>>,
     request: Request,
@@ -193,11 +210,13 @@ impl<S: Send + Sync> FromRequestParts<S> for AdminUser {
     }
 }
 
-/// Passes a request whose cookie names a live session, with its user and
-/// the session, and renews the cookie with the session. A missing or
-/// expired session answers 401 `unauthenticated`, and a cookie that names
-/// no live session is cleared. A request that wrote the session's last
-/// activity marks the account's sessions for its pages.
+/// Passes a request whose cookie names a live session, with its user and the
+/// session, and renews the cookie with the session.
+///
+/// - A missing or expired session answers 401 `unauthenticated`.
+/// - A cookie that names no live session is cleared.
+/// - A request that wrote the session's last activity marks the account's
+///   sessions for its pages.
 pub(super) async fn session(
     State(services): State<Arc<Services>>,
     jar: CookieJar,

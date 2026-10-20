@@ -1,10 +1,15 @@
-//! Shares: each share's record in the control database, which the token finds,
-//! and its list in its conversation's database, the messages and texts it shows
-//! by the transcript rows that hold them or by its copies of the few still
-//! being written, and the counts of the steps between them, which a share's
-//! pages read as a conversation's pages read its transcript
-//! ([`tree::Transcript::Shared`]). A record goes with its conversation; the
-//! list goes with the conversation's database.
+//! Shares.
+//!
+//! Each share's record is in the control database, which the token finds.
+//!
+//! Its list is in its conversation's database: the messages and texts it shows by
+//! the transcript rows that hold them or by its copies of the few still being
+//! written, and the counts of the steps between them. A share's pages read the
+//! list as a conversation's pages read its transcript
+//! ([`tree::Transcript::Shared`]).
+//!
+//! A record goes with its conversation; the list goes with the conversation's
+//! database.
 
 use std::collections::BTreeSet;
 use std::ops::Range;
@@ -230,12 +235,13 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
     list(transaction, token, &root, 0..i64::MAX)
 }
 
-/// Makes the list of the root's answer `block` under `token`: the user's
-/// message that starts its request, through the text, with the texts and
-/// the steps between them, along the root's current path. False, and
-/// nothing made, when `block` is not a complete text of that path: the
-/// page offers Share only on the text that ends a reply, and which text
-/// does is the page's to judge.
+/// Makes the list of the root's answer `block` under `token`: the user's message
+/// that starts its request, through the text, with the texts and the steps between
+/// them, along the root's current path.
+///
+/// False, and nothing made, when `block` is not a complete text of that path: the
+/// page offers Share only on the text that ends a reply, and which text does is
+/// the page's to judge.
 pub fn take_answer(
     transaction: &Transaction<'_>,
     token: &ShareToken,
@@ -298,19 +304,21 @@ const SAID: &str = "('user', 'steer', 'text')";
 /// and counts nothing.
 const STEPS: &str = "('thinking', 'redacted_thinking', 'tool_call')";
 
-/// Lists under `token` the rows of the root's current path numbered within
-/// `rows`, the one place a share's list is made: each message and text by
-/// the row that holds it, in order, and in place of each run of steps
-/// around them one entry of their count. Along a path, each row's number
-/// is above the one it follows, so the rows' order is the path's. The list
-/// is made from the transcript's index of block types, without reading a
-/// block: only the texts still being written are read, to copy them, and
-/// the copies, for the blobs they name.
+/// Lists under `token` the rows of the root's current path numbered within `rows`,
+/// the one place a share's list is made.
 ///
-/// A text still being written is one after the last `response` of the
-/// root's path, which ends each request the model answered: the model may
-/// still be writing it. Its entry points at its copy, as it stands, without
-/// the vendor's record of the session, which never leaves the backend.
+/// The list holds each message and text by the row that holds it, in order, and in
+/// place of each run of steps around them one entry of their count. Along a path,
+/// each row's number is above the one it follows, so the rows' order is the path's.
+///
+/// The list is made from the transcript's index of block types, without reading a
+/// block: only the texts still being written are read, to copy them, and the
+/// copies, for the blobs they name.
+///
+/// A text still being written is one after the last `response` of the root's path,
+/// which ends each request the model answered: the model may still be writing it.
+/// Its entry points at its copy, as it stands, without the vendor's record of the
+/// session, which never leaves the backend.
 fn list(transaction: &Transaction<'_>, token: &ShareToken, root: &str, rows: Range<i64>) -> Result<(), StorageError> {
     // Each step is counted in the run of those after the same number of
     // messages and texts; a run is placed where its first step stands.
@@ -375,11 +383,12 @@ fn name_copied_blobs(transaction: &Transaction<'_>, token: &ShareToken) -> Resul
     Ok(())
 }
 
-/// Keeps what every share shows of the row `index` of `node` before a
-/// write replaces it, as a later event marks it: a listed row is copied into
-/// the share as it stands, with the blobs it names, and its entry points at the
-/// copy, in the write's transaction. The one guard of every write to `blocks`
-/// that changes a row; no write removes one.
+/// Keeps what every share shows of the row `index` of `node` before a write
+/// replaces it, as a later event marks it.
+///
+/// A listed row is copied into the share as it stands, with the blobs it names,
+/// and its entry points at the copy, in the write's transaction. The one guard of
+/// every write to `blocks` that changes a row; no write removes one.
 pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index: i64) -> Result<(), StorageError> {
     let rows = "entry.node_id = ?1 AND entry.idx = ?2";
     let parameters = params![node.as_str(), index];
@@ -418,12 +427,13 @@ fn point_at_copies(transaction: &Transaction<'_>, token: &ShareToken) -> Result<
     Ok(())
 }
 
-/// Copies into the share whose token is `?1` of `parameters` each
-/// attachment the query `named` lists, by its `attachment` number and the
-/// `node` whose text names it, that exists now and that node's reply shows
-/// ([`crate::conversation_attachments::SHOWN`]), so one uploaded later stays
-/// out until the list is made again, and one the node's agent did not
-/// upload stays out for good; its blob stays shared.
+/// Copies into the share whose token is `?1` of `parameters` each attachment the
+/// query `named` lists, by its `attachment` number and the `node` whose text names
+/// it, that exists now and that node's reply shows
+/// ([`crate::conversation_attachments::SHOWN`]).
+///
+/// One uploaded later stays out until the list is made again, and one the node's
+/// agent did not upload stays out for good. Its blob stays shared.
 fn keep_attachments(
     transaction: &Transaction<'_>,
     named: &str,
@@ -443,21 +453,24 @@ fn keep_attachments(
     Ok(())
 }
 
-/// The attachments a text delivers as blocks: each line whose whole content,
-/// after the Markdown that places it (a list item's marker, a quote's `>`), is
-/// the tag `<attachment id="a3" />`, the space before `/>` optional. A tag in
-/// code, in an HTML comment or block, or among other content on its line names
-/// none, nor does a link or an image to `attachment:a3`. The web app's renderer
-/// follows the same rule (`packages/web-ui/src/markdown/attachment-block.ts`);
-/// both are held to the cases of
+/// The attachments a text delivers as blocks.
+///
+/// A text delivers an attachment in each line whose whole content, after the
+/// Markdown that places it (a list item's marker, a quote's `>`), is the tag
+/// `<attachment id="a3" />`, the space before `/>` optional. A tag in code, in an
+/// HTML comment or block, or among other content on its line names none, nor does
+/// a link or an image to `attachment:a3`.
+///
+/// The web app's renderer follows the same rule
+/// (`packages/web-ui/src/markdown/attachment-block.ts`); both are held to the
+/// cases of
 /// `crates/shared-types/tests/shared-types/fixtures/attachment-blocks.json`.
 ///
-/// CommonMark reads the tag as raw HTML, which starts an HTML block that runs
-/// on to the next blank line, while the renderer gives the tag's line a block
-/// of its own. So each tag is read as a word of its own first, a mark no text
-/// holds, and a block is a paragraph's line that holds only that word: code,
-/// an HTML block or comment keep it as their text, emphasis wraps it, other
-/// words join it.
+/// CommonMark reads the tag as raw HTML, which starts an HTML block that runs on
+/// to the next blank line, while the renderer gives the tag's line a block of its
+/// own. So each tag is read as a word of its own first, a mark no text holds, and
+/// a block is a paragraph's line that holds only that word: code, an HTML block or
+/// comment keep it as their text, emphasis wraps it, other words join it.
 pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
     if !text.contains("<attachment") {
         return BTreeSet::new();
@@ -786,12 +799,12 @@ mod tests {
         }
     }
 
-    // The user edits the last message after sharing: the edit removes the
-    // message and what follows, and the new turn writes its blocks at the
-    // same indices. The share goes on showing the message and the answer it
-    // was made with, the hidden and later blocks at those indices stay out,
-    // and the image the old message showed is still the share's and still
-    // kept.
+    // The user edits the last message after sharing: the edit removes the message
+    // and what follows, and the new turn writes its blocks at the same indices.
+    //
+    // The share goes on showing the message and the answer it was made with, the
+    // hidden and later blocks at those indices stay out, and the image the old
+    // message showed is still the share's and still kept.
     #[tokio::test(flavor = "local")]
     async fn an_edit_after_sharing_leaves_the_share_as_it_was() {
         let (tree, stores, _data) = store().await;
@@ -920,10 +933,11 @@ mod tests {
         assert_eq!(ids(&shared(&stores).await), ["u1", "steps 2", "t1", "steps 2"]);
     }
 
-    // The user edits the first message, and the agent answers it again;
-    // the conversation, which has a subagent, is shared after. Its list is
-    // the current path: neither the first version's rows, a step nor the
-    // subagent's blocks are reached, by id or as an anchor, which a share's
+    // The user edits the first message, and the agent answers it again; the
+    // conversation, which has a subagent, is shared after.
+    //
+    // Its list is the current path: neither the first version's rows, a step nor
+    // the subagent's blocks are reached, by id or as an anchor, which a share's
     // route answers as a token that names no share.
     #[tokio::test(flavor = "local")]
     async fn a_share_reaches_no_other_branch_step_or_subagent() {

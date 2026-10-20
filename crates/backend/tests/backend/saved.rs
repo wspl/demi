@@ -1,12 +1,22 @@
-//! Messages saved for later: a save of the composer's message empties the conversation's draft,
-//! keeping one its page never showed to restore, an edit exchanges a saved message with the draft
-//! in one go, Undo's save leaves the draft alone, a removal and a send take one off the list, and
-//! the conversation's summary counts them with the list's revision. Every write answers the
-//! revisions after it, and a write sent again answers as it first did: a save by its id, an edit by
-//! its operation id, a removal of a message gone already. A saved message leaves the list once the
-//! session takes it as the turn the page named, and stays when the session fails its send; a send
-//! of it with that turn again answers as the first did, and one with another turn is rejected. No
-//! test calls a real model.
+//! Messages saved for later.
+//!
+//! Scenarios:
+//!
+//! - A save of the composer's message empties the conversation's draft,
+//!   keeping one its page never showed to restore.
+//! - An edit exchanges a saved message with the draft in one go.
+//! - Undo's save leaves the draft alone.
+//! - A removal and a send take one off the list.
+//! - The conversation's summary counts them with the list's revision.
+//! - Every write answers the revisions after it, and a write sent again
+//!   answers as it first did: a save by its id, an edit by its operation id, a
+//!   removal of a message gone already.
+//! - A saved message leaves the list once the session takes it as the turn the
+//!   page named, and stays when the session fails its send. A send of it with
+//!   that turn again answers as the first did, and one with another turn is
+//!   rejected.
+//!
+//! No test calls a real model.
 
 use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, Refusal, SavedDelivery, ServerFrame, SteerOutcome,
@@ -478,13 +488,16 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
     backend.close().await;
 }
 
-// About a second: two turns against a scripted endpoint.
+// About a second: two turns against a scripted endpoint. A paired runner; a few
+// seconds.
+//
 // A saved message the backend or the session refuses is answered as the
-// `send_saved` the page sent, whichever frame the message became: the page
-// waits on that command alone, without a deadline, so a refusal named
-// `send` left the message Requesting for good. Here the session refuses a
-// file on a device gone offline, and the backend an archived conversation.
-// A paired runner; a few seconds.
+// `send_saved` the page sent, whichever frame the message became: the page waits
+// on that command alone, without a deadline, so a refusal named `send` left the
+// message Requesting for good.
+//
+// Here the session refuses a file on a device gone offline, and the backend an
+// archived conversation.
 #[tokio::test]
 async fn a_saved_message_refused_by_the_session_or_the_backend_is_answered_as_its_send_saved() {
     let vendor = MockVendor::start().await;

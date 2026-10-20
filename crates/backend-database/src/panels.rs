@@ -1,7 +1,9 @@
 //! Work panels: each conversation's tabs, the ids it ever had and the revision
-//! that counts its changes. A request of changes reads the row and writes it in
-//! one transaction, so one conversation's requests apply one at a time, each
-//! whole or not at all. The backend never interprets a tab.
+//! that counts its changes.
+//!
+//! A request of changes reads the row and writes it in one transaction, so one
+//! conversation's requests apply one at a time, each whole or not at all. The
+//! backend never interprets a tab.
 
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::{PanelChange, PanelDocument, PanelEffect, Refused, WorkPanel};

@@ -1,15 +1,21 @@
-//! `demi conversation history`: an agent finds and reads its own
-//! transcript, which keeps every block a compaction summarized, from the
-//! conversation's database. `read` prints a range of blocks as plain text,
-//! each message and text whole and every other block as one line that names
-//! how to open it; `open` prints what such a line names, or saves an
-//! attachment under the scratch directory. The commands reach no Host, but
-//! for the one write of a saved attachment, and need no permission. A block
-//! is named by its index in the agent's transcript, written bare: a word
-//! that starts with `#` is a comment to a shell, so that every line the
-//! commands print can be run as it stands. A search covers messages, texts
-//! and the commands' descriptions only: thinking, scripts and command output
-//! are most of a transcript's text and would drown what was said.
+//! `demi conversation history`: an agent finds and reads its own transcript,
+//! which keeps every block a compaction summarized, from the conversation's
+//! database.
+//!
+//! - `read` prints a range of blocks as plain text, each message and text whole
+//!   and every other block as one line that names how to open it.
+//! - `open` prints what such a line names, or saves an attachment under the
+//!   scratch directory.
+//! - A search covers messages, texts and the commands' descriptions only.
+//!   Thinking, scripts and command output are most of a transcript's text and
+//!   would drown what was said.
+//!
+//! The commands reach no Host, but for the one write of a saved attachment, and
+//! need no permission.
+//!
+//! A block is named by its index in the agent's transcript, written bare: a word
+//! that starts with `#` is a comment to a shell, so that every line the commands
+//! print can be run as it stands.
 
 use std::ops::{Range, RangeInclusive};
 use std::rc::{Rc, Weak};
@@ -854,11 +860,12 @@ const NEXT_CHARS: usize = 100;
 /// The room a page of `open` leaves for the line that names its block.
 const HEAD_CHARS: usize = 200;
 
-/// The characters of `body` each page of `open` shows, under the line that
-/// names the block and above the line that names the next page: the one
-/// cut a read's cut block and `open`'s pages both follow, so every page a
-/// line names exists. The size is the same for every block, since the head
-/// of one block changes, as its time gains its year.
+/// The characters of `body` each page of `open` shows, under the line that names
+/// the block and above the line that names the next page.
+///
+/// The one cut a read's cut block and `open`'s pages both follow, so every page a
+/// line names exists. The size is the same for every block, since the head of one
+/// block changes, as its time gains its year.
 fn text_pages(body: &str) -> Vec<Range<usize>> {
     let size = BUDGET - HEAD_CHARS - NEXT_CHARS;
     let length = body.chars().count();
@@ -891,11 +898,13 @@ fn next_line(at: usize, page: u64, pages: u64) -> String {
     )
 }
 
-/// Saves a message's file in the calling agent's scratch directory on the
-/// Host the calling job runs on, inside the one the Host's runner names
-/// (`crates/runner-jobs/src/scratch.rs`), as `<name>-<file name>` or the first
-/// free name after it, and answers the path. A call stopped before the file
-/// is written, `cancel`, writes nothing.
+/// Saves a message's file in the calling agent's scratch directory on the Host
+/// the calling job runs on, and answers the path.
+///
+/// The directory is inside the one the Host's runner names
+/// (`crates/runner-jobs/src/scratch.rs`). The file is named
+/// `<name>-<file name>` or the first free name after it. A call stopped before
+/// the file is written, `cancel`, writes nothing.
 async fn save<A>(
     shard: &Shard,
     call: &Call<A>,

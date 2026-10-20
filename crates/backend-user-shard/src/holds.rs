@@ -1,10 +1,15 @@
 //! A test's hold on a flow at one of its steps, for the scenarios that race
-//! something against a flow while it waits: the runners' hellos
-//! (`HelloStep`), the pages' synchronization channels (`SyncStep`), a
-//! failed turn's resume at its retry time (`RetryStep`), a change
-//! watch's check (`WatchStep`) and a call's permission check
-//! (`PermissionStep`). From
-//! `StepHolds::hold` until the hold is released or dropped, whatever passes
+//! something against a flow while it waits.
+//!
+//! The flows and their steps are:
+//!
+//! - the runners' hellos (`HelloStep`);
+//! - the pages' synchronization channels (`SyncStep`);
+//! - a failed turn's resume at its retry time (`RetryStep`);
+//! - a change watch's check (`WatchStep`);
+//! - a call's permission check (`PermissionStep`).
+//!
+//! From `StepHolds::hold` until the hold is released or dropped, whatever passes
 //! the held step waits there.
 
 use std::sync::{Arc, Mutex, PoisonError};

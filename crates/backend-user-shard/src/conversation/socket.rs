@@ -1,20 +1,34 @@
 //! The conversation socket: `WS /api/conversations/:id/stream`, moved into the
-//! user's shard once upgraded. The socket decodes each message into a client
-//! frame and hands it to the conversation's agent connection, one at a time in
-//! arrival order; the connection's outbox carries every server frame back, with
-//! the failure facts of the error blocks it brings; its media are references
-//! into the owner's blobs already. A frame the backend refuses before the agent
-//! sees it is answered with an `error` frame: one that is not a valid frame
-//! (`invalid_frame`), one sent while the conversation is archived
-//! (`conversation_archived`), an `open` of a conversation that has no model yet
-//! (`model_not_selected`) or whose provider the user may no longer use
-//! (`provider_not_found`), and one that storage failed to prepare
-//! (`frame_delivery_failed`); a message that is not JSON closes the socket. An
-//! `open` takes the conversation's settings order, so the tree opens with the
-//! model selection the record holds. A `send_saved` becomes the `send` or
-//! `steer` of the message saved for later it names, which leaves the list as
-//! the session takes it; one the list no longer holds is answered with a
-//! `rejected` frame (`saved_not_found`).
+//! user's shard once upgraded.
+//!
+//! The socket decodes each message into a client frame and hands it to the
+//! conversation's agent connection, one at a time in arrival order. The
+//! connection's outbox carries every server frame back, with the failure facts
+//! of the error blocks it brings; its media are references into the owner's
+//! blobs already.
+//!
+//! # Refused frames
+//!
+//! A frame the backend refuses before the agent sees it is answered with an
+//! `error` frame:
+//!
+//! - `invalid_frame`: the message is not a valid frame.
+//! - `conversation_archived`: the frame was sent while the conversation is
+//!   archived.
+//! - `model_not_selected`: an `open` of a conversation that has no model yet.
+//! - `provider_not_found`: an `open` of a conversation whose provider the user
+//!   may no longer use.
+//! - `frame_delivery_failed`: storage failed to prepare the frame.
+//!
+//! A message that is not JSON closes the socket.
+//!
+//! # Frames the socket rewrites
+//!
+//! - An `open` takes the conversation's settings order, so the tree opens with
+//!   the model selection the record holds.
+//! - A `send_saved` becomes the `send` or `steer` of the message saved for later
+//!   it names, which leaves the list as the session takes it. One the list no
+//!   longer holds is answered with a `rejected` frame (`saved_not_found`).
 
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -113,13 +127,17 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
 }
 
 impl Shard {
-    /// Serves a socket of `conversation` until either end closes it or the
-    /// shard closes. A frame the socket has handed to the agent is handled to
-    /// its end, even when the shard closes meanwhile; until then, the
-    /// outbox's frames keep flowing to the page. A socket that has sent
-    /// nothing for the heartbeat interval sends a `heartbeat`. `origin` is
-    /// who opened it, which its log lines name. The session it opened with,
-    /// `session`, closes it as it is signed out or as it expires.
+    /// Serves a socket of `conversation` until either end closes it or the shard
+    /// closes.
+    ///
+    /// - A frame the socket has handed to the agent is handled to its end, even
+    ///   when the shard closes meanwhile; until then, the outbox's frames keep
+    ///   flowing to the page.
+    /// - A socket that has sent nothing for the heartbeat interval sends a
+    ///   `heartbeat`.
+    /// - `origin` is who opened it, which its log lines name.
+    /// - The session it opened with, `session`, closes it as it is signed out or
+    ///   as it expires.
     pub async fn serve_conversation_socket(
         self: Rc<Self>,
         conversation: ConversationRecord,
@@ -263,11 +281,11 @@ impl Shard {
         }
     }
 
-    /// Restores the conversation's tree with no page attached, as an `open`
-    /// does: under the conversation's file
-    /// gate and its settings order, with the model its record holds, and
-    /// only when the backend would deliver an `open`. A tree that is live
-    /// already is left as it is.
+    /// Restores the conversation's tree with no page attached, as an `open` does.
+    ///
+    /// It runs under the conversation's file gate and its settings order, with the
+    /// model its record holds, and only when the backend would deliver an `open`.
+    /// A tree that is live already is left as it is.
     pub(crate) async fn restore_tree(&self, conversation: &ConversationId) -> Result<(), String> {
         let services = self.services();
         services
@@ -309,11 +327,18 @@ impl Shard {
     }
 
     /// Decodes one message and hands the frame to the conversation's agent
-    /// connection, unless the backend refuses it first: a frame that is not
-    /// valid, one sent while the conversation is archived, an `open` of a
-    /// conversation without a model or whose provider the user may not use,
-    /// or a frame storage failed to prepare. A refused edit answers its
-    /// `edit_result`, and a refused removal its `remove_result`.
+    /// connection, unless the backend refuses it first.
+    ///
+    /// The backend refuses:
+    ///
+    /// - a frame that is not valid;
+    /// - one sent while the conversation is archived;
+    /// - an `open` of a conversation without a model or whose provider the user
+    ///   may not use;
+    /// - a frame storage failed to prepare.
+    ///
+    /// A refused edit answers its `edit_result`, and a refused removal its
+    /// `remove_result`.
     async fn handle_message(
         &self,
         conversation: &ConversationId,
@@ -330,9 +355,10 @@ impl Shard {
                 )]);
             }
         };
-        // A message saved for later goes as the frame the composer would
-        // send, as the turn the page named, one at a time; it leaves the list
-        // once the session takes it, and stays when the session refuses it.
+        // A message saved for later goes as the frame the composer would send, as
+        // the turn the page named, one at a time. It leaves the list once the
+        // session takes it, and stays when the session refuses it.
+        //
         // One a send already took as that turn answers as that send did: the
         // session holds it, so nothing is sent again.
         let (frame, saved, _sending) = match frame {
@@ -412,11 +438,13 @@ impl Shard {
         handled
     }
 
-    /// What the backend does before the agent sees `frame`: the conversation
-    /// must not be archived, except to close it; an `open` needs the model the
-    /// conversation's record holds, of a provider of the user's scope; a `send`
-    /// is activity in the conversation; a `resume` carries the reason the model
-    /// reads.
+    /// What the backend does before the agent sees `frame`:
+    ///
+    /// - The conversation must not be archived, except to close it.
+    /// - An `open` needs the model the conversation's record holds, of a provider
+    ///   of the user's scope.
+    /// - A `send` is activity in the conversation.
+    /// - A `resume` carries the reason the model reads.
     async fn prepare_frame(
         &self,
         conversation: &ConversationId,
@@ -651,11 +679,14 @@ enum Prepared {
     Refused(ErrorCode, String),
 }
 
-/// The answer to a frame the backend refused: an edit's or a Regenerate's
-/// `edit_result`, a removal's `remove_result` `gone_on`, since it reached
-/// no session to hold what it names, a send's `rejected` as the page's
-/// `command`, a saved message's whichever frame it became, and an `error`
-/// frame for any other.
+/// The answer to a frame the backend refused:
+///
+/// - an edit's or a Regenerate's `edit_result`;
+/// - a removal's `remove_result` `gone_on`, since it reached no session to hold
+///   what it names;
+/// - a send's `rejected` as the page's `command`;
+/// - a saved message's whichever frame it became;
+/// - an `error` frame for any other.
 fn refused_frame(frame: ClientFrame, command: ClientFrameKind, code: ErrorCode, message: String) -> ServerFrame {
     if matches!(command, ClientFrameKind::Send | ClientFrameKind::SendSaved) {
         // A send is refused as itself, so the page marks its message not
@@ -739,11 +770,12 @@ fn sent_again(turn: TurnId, delivery: SavedDelivery) -> Vec<ServerFrame> {
     }
 }
 
-/// The frame the composer would send for a saved message: a message, which
-/// waits in the queue while a turn runs, or a steer, with `turn`, the page's
-/// id for the send, as the turn's or the steer's. Its text is split at the marks
-/// where its files stand, as the page joins a message's content, without the
-/// blank space at its ends.
+/// The frame the composer would send for a saved message: a message, which waits
+/// in the queue while a turn runs, or a steer.
+///
+/// The frame carries `turn`, the page's id for the send, as the turn's or the
+/// steer's. Its text is split at the marks where its files stand, as the page
+/// joins a message's content, without the blank space at its ends.
 fn sent_saved(message: SavedMessage, turn: TurnId, delivery: SavedDelivery) -> ClientFrame {
     let mut files = message.files.into_iter().map(|file| match file {
         DraftFile::Upload {
@@ -827,12 +859,15 @@ fn to_text(frame: &ServerFrame) -> String {
 
 /// The files of a frame's content: an upload becomes its blocks under the
 /// conversation's next attachment number, and a remote file becomes its
-/// reference once its device may be read. The uploads are numbered first, in
-/// the order of the content, so a frame whose upload cannot be read grants
-/// no remote file. A send writes nothing to the Host: most files are only for
-/// the model to read, which it does from the blob, so a Host that is slow to
-/// reach, offline or a stopped Cloud never holds a message; a command that
-/// needs the file fetches it with `demi attachment download`.
+/// reference once its device may be read.
+///
+/// The uploads are numbered first, in the order of the content, so a frame whose
+/// upload cannot be read grants no remote file.
+///
+/// A send writes nothing to the Host: most files are only for the model to read,
+/// which it does from the blob, so a Host that is slow to reach, offline or a
+/// stopped Cloud never holds a message. A command that needs the file fetches it
+/// with `demi attachment download`.
 struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,

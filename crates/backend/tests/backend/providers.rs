@@ -1,9 +1,14 @@
 //! Provider entries (`crates/backend-providers/src/vault/entries.rs`,
-//! `crates/shared-types/src/catalog.rs`): API-key entries sealed at rest and
-//! answered without their key, the master's entries serving every user's
-//! conversations on a shared instance and nobody else's on an isolated one, the
-//! vendor list from a scripted models.dev, each catalog source with its cache,
-//! and the provider test through a real family against a scripted vendor.
+//! `crates/shared-types/src/catalog.rs`).
+//!
+//! Scenarios:
+//!
+//! - API-key entries are sealed at rest and answered without their key.
+//! - The master's entries serve every user's conversations on a shared
+//!   instance and nobody else's on an isolated one.
+//! - The vendor list comes from a scripted models.dev, each catalog source
+//!   with its cache.
+//! - The provider test runs through a real family against a scripted vendor.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -432,12 +437,14 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         .with_models_dev(vendor.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
     vendor.respond(served(&models_dev_document()));
-    // Only vendors a family speaks to, by name: Bedrock's package has no
-    // family, and Copilot is excluded by name. A vendor that names no
-    // endpoint and has no official one starts without; xAI's is the one
-    // xAI documents, on its preferred Responses API. ElevenLabs, a vendor
-    // of media alone, comes from the media catalog with the endpoint it
-    // names; Stability AI, whose shape no family builds, is not offered.
+    // Only vendors a family speaks to, by name: Bedrock's package has no family, and
+    // Copilot is excluded by name.
+    //
+    // - A vendor that names no endpoint and has no official one starts without;
+    //   xAI's is the one xAI documents, on its preferred Responses API.
+    // - ElevenLabs, a vendor of media alone, comes from the media catalog with the
+    //   endpoint it names.
+    // - Stability AI, whose shape no family builds, is not offered.
     let offered = backend
         .get("/api/providers/catalog", Some(&master))
         .await
@@ -1034,11 +1041,13 @@ fn setup(missing: &[&str]) -> Value {
     })
 }
 
-/// Google as models.dev lists it: two models an agent can work with, one of
-/// them stating an output limit above its window; a text model that calls
-/// tools but states no window, which compaction needs; and a video and a
-/// speech model whose output limits exceed their windows, as Veo's and the
-/// TTS models' do.
+/// Google as models.dev lists it:
+///
+/// - two models an agent can work with, one of them stating an output limit above
+///   its window;
+/// - a text model that calls tools but states no window, which compaction needs;
+/// - a video and a speech model whose output limits exceed their windows, as Veo's
+///   and the TTS models' do.
 fn google_with_media_models() -> Value {
     let agentic = |name: &str, context: u32, output: u32| {
         json!({
@@ -1244,11 +1253,13 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
     backend.close().await;
 }
 
-/// A compatible entry is created with nothing but its kind and edited
-/// after: its protocol changes any time and keeps its endpoint, key and
-/// models, its key is optional and sent only when set, and its endpoint is
-/// what it cannot work without. One backend and a scripted vendor, three
-/// test requests; well under a second.
+/// A compatible entry is created with nothing but its kind and edited after.
+///
+/// - Its protocol changes any time and keeps its endpoint, key and models.
+/// - Its key is optional and sent only when set.
+/// - Its endpoint is what it cannot work without.
+///
+/// One backend and a scripted vendor, three test requests; well under a second.
 #[tokio::test]
 async fn a_compatible_entry_starts_empty_and_takes_its_protocol_endpoint_and_key_at_any_time() {
     let vendor = MockVendor::start().await;

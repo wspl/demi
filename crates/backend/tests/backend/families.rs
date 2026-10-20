@@ -1,8 +1,10 @@
-//! Scripted provider families: an API-key family whose directory the test
-//! answers, and a subscription family whose device login and quota probe the
-//! test scripts, both over the account operations and the
-//! quota every family shares, and makes images and videos as the test
-//! scripts. No test calls a real vendor.
+//! Scripted provider families.
+//!
+//! - An API-key family whose directory the test answers.
+//! - A subscription family whose device login and quota probe the test scripts.
+//!
+//! Both work over the account operations and the quota every family shares, and
+//! make images and videos as the test scripts. No test calls a real vendor.
 
 use demi_provider_common::media_catalog::Catalog;
 use std::collections::VecDeque;

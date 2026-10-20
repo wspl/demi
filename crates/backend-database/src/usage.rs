@@ -1,9 +1,10 @@
-//! The usage ledger of the control store: one row per vendor call, kept as
-//! written and announced as it is, and the totals and a conversation's cost
-//! computed when they are read. The counts are the vendor's, so the ledger is a
-//! record for reconciliation and not a bill. Prices tiered by a request's
-//! length, as some models charge more past 200K tokens, are not modelled: a
-//! call is priced at the model's base rates.
+//! The usage ledger of the control store: one row per vendor call, kept as written
+//! and announced as it is, and the totals and a conversation's cost computed when
+//! they are read.
+//!
+//! The counts are the vendor's, so the ledger is a record for reconciliation and
+//! not a bill. Prices tiered by a request's length, as some models charge more
+//! past 200K tokens, are not modelled: a call is priced at the model's base rates.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -80,11 +81,14 @@ pub struct ApiPrice {
 }
 
 impl ApiPrice {
-    /// The call's tokens at the model's catalog prices, `cost` per million
-    /// tokens: input, cache read and cache write at their rates, the part
-    /// of the write kept for an hour at twice the input rate, as the
-    /// Messages API prices it, and output at its rate. None when the model
-    /// has no price for a kind the call used.
+    /// The call's tokens at the model's catalog prices, `cost` per million tokens.
+    ///
+    /// - Input, cache read and cache write are priced at their rates.
+    /// - The part of the write kept for an hour is priced at twice the input rate,
+    ///   as the Messages API prices it.
+    /// - Output is priced at its rate.
+    ///
+    /// None when the model has no price for a kind the call used.
     pub fn of(cost: &ModelCost, usage: &TokenUsage, cache_write_1h_tokens: u64) -> Option<Self> {
         let part = |tokens: u64, rate: Option<f64>| -> Option<f64> {
             if tokens == 0 {
@@ -621,9 +625,10 @@ fn agent_cost(agent: u64, price: f64, labels: &[AgentLabel]) -> AgentCost {
 }
 
 /// The main conversation's turn calls among `rows`, each with its row's id,
-/// whether it follows a compaction and why it missed the cache: a call that
-/// wrote again more than [`MISS_SHARE`] of its prompt and at least
-/// [`MISS_TOKENS`], except the first call and the first after a compaction,
+/// whether it follows a compaction and why it missed the cache.
+///
+/// A call missed when it wrote again more than [`MISS_SHARE`] of its prompt and at
+/// least [`MISS_TOKENS`], except the first call and the first after a compaction,
 /// which start a new prompt.
 fn turn_calls(rows: &[CostRow]) -> Vec<(String, CostCall)> {
     let mut calls = Vec::new();
@@ -794,18 +799,26 @@ mod tests {
         (data, control, master.id)
     }
 
-    /// A call of the main conversation that wrote again more than 5% of its
-    /// prompt and at least 2,000 tokens is a miss, with the first cause
-    /// that applies: the model, the tools, the system prompt, the time
-    /// since the previous call past the vendor's five minutes or, after the
-    /// same model's latest write was kept for an hour, its hour, across a
-    /// switch of model and a compaction, and otherwise the provider; the
-    /// first call and the first after an answered compaction are never
-    /// misses, and a call the vendor reported no counts for is no call.
-    /// Planted
-    /// defects: a threshold of share or tokens alone, the causes in another
-    /// order, the hour-long write ignored or taken from another model, or a
-    /// miss after a compaction.
+    /// A call of the main conversation that wrote again more than 5% of its prompt
+    /// and at least 2,000 tokens is a miss, with the first cause that applies.
+    ///
+    /// The causes, in order:
+    ///
+    /// 1. The model.
+    /// 2. The tools.
+    /// 3. The system prompt.
+    /// 4. The time since the previous call past the vendor's five minutes or, after
+    ///    the same model's latest write was kept for an hour, its hour, across a
+    ///    switch of model and a compaction.
+    /// 5. Otherwise the provider.
+    ///
+    /// The first call and the first after an answered compaction are never misses,
+    /// and a call the vendor reported no counts for is no call.
+    ///
+    /// Planted defects: a threshold of share or tokens alone, the causes in another
+    /// order, the hour-long write ignored or taken from another model, or a miss
+    /// after a compaction.
+    ///
     /// Twenty rows of an in-memory ledger: milliseconds.
     #[tokio::test]
     async fn misses_are_the_rewrites_past_the_threshold_each_with_its_first_cause() {
@@ -879,15 +892,20 @@ mod tests {
         control.close().await.unwrap();
     }
 
-    /// The totals sum every row of the conversation, every agent's,
-    /// compactions, titles and media included: the counts, each kind's
-    /// price, and the price, which for a call whose tokens have no price is
-    /// the vendor's own cost in dollars and never one in another currency;
-    /// each agent with a priced call has its price, named by its profile,
-    /// and the calls are the main conversation's
-    /// turns. Planted defects: a cost
-    /// in yuan counted as dollars, a title counted as an agent, or a
-    /// subagent's call among the main conversation's.
+    /// The totals sum every row of the conversation, every agent's, compactions,
+    /// titles and media included.
+    ///
+    /// They are:
+    ///
+    /// - the counts, each kind's price, and the price, which for a call whose
+    ///   tokens have no price is the vendor's own cost in dollars and never one in
+    ///   another currency;
+    /// - each agent with a priced call, with its price, named by its profile;
+    /// - the calls, which are the main conversation's turns.
+    ///
+    /// Planted defects: a cost in yuan counted as dollars, a title counted as an
+    /// agent, or a subagent's call among the main conversation's.
+    ///
     /// Six rows of an in-memory ledger: milliseconds.
     #[tokio::test]
     async fn the_cost_sums_every_row_and_names_each_priced_agent() {

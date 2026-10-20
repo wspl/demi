@@ -1,6 +1,7 @@
-//! Workspaces: the user's named directories on their devices, created, renamed
-//! and deleted as pointers that never touch a file. Deleting one archives its
-//! conversations.
+//! Workspaces: the user's named directories on their devices.
+//!
+//! They are created, renamed and deleted as pointers that never touch a file.
+//! Deleting one archives its conversations.
 
 use std::sync::Arc;
 

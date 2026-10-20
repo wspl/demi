@@ -1,7 +1,8 @@
-//! `WS /api/sync`: the page's synchronization channel. It requires the session
-//! cookie, which it checks without renewing the session, since only requests
-//! renew it; once upgraded, the socket moves into the user's shard, which
-//! serves it until it closes.
+//! `WS /api/sync`: the page's synchronization channel.
+//!
+//! It requires the session cookie, which it checks without renewing the
+//! session, since only requests renew it. Once upgraded, the socket moves into
+//! the user's shard, which serves it until it closes.
 
 use axum::extract::State;
 use axum::extract::ws::WebSocketUpgrade;

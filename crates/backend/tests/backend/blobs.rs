@@ -1,7 +1,8 @@
 //! Transcript media by reference
-//! (`crates/backend-host-access/src/uploads.rs`): the blob route serves the
-//! caller's own blobs, inert and cached for good, and by byte range, so a
-//! player can play and seek a video.
+//! (`crates/backend-host-access/src/uploads.rs`).
+//!
+//! The blob route serves the caller's own blobs, inert and cached for good,
+//! and by byte range, so a player can play and seek a video.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;

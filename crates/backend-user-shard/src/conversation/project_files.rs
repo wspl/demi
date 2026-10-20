@@ -1,10 +1,15 @@
 //! What the shard keeps of its conversations' project files
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`): the instruction files of each
-//! node's working directory, the workflows of each conversation's
-//! directory, and each plugin's project search of it, per Host and
-//! directory, kept current by the runner's file watch through host access
-//! ([`Kept`]). A request takes what is held; only a directory's first
-//! search holds it, for at most 5 seconds.
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//!
+//! The shard keeps three things, per Host and directory:
+//!
+//! - the instruction files of each node's working directory;
+//! - the workflows of each conversation's directory;
+//! - each plugin's project search of it.
+//!
+//! The runner's file watch keeps them current through host access ([`Kept`]). A
+//! request takes what is held; only a directory's first search holds it, for at
+//! most 5 seconds.
 
 use std::rc::{Rc, Weak};
 
@@ -201,12 +206,13 @@ impl Shard {
         })
     }
 
-    /// What `plugin`'s project search holds for the conversation of `root`;
-    /// none outside a project, whatever its directory, which is then neither
+    /// What `plugin`'s project search holds for the conversation of `root`.
+    ///
+    /// None outside a project, whatever its directory, which is then neither
     /// searched nor watched: a conversation working in the home folder would
-    /// otherwise take another agent's own skills for a project's. A move
-    /// into or out of a project releases what was kept, so the next request
-    /// starts or skips the search.
+    /// otherwise take another agent's own skills for a project's. A move into or
+    /// out of a project releases what was kept, so the next request starts or
+    /// skips the search.
     pub(crate) async fn kept_project_search(&self, plugin: &PluginId, root: &NodeId) -> Option<Value> {
         let id = conversation_of(root);
         let at = match self.kept_at(&id).await {

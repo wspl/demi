@@ -1,20 +1,31 @@
-//! Each user's search index: `search/<userId>.sqlite`, an FTS5 table over
-//! one row per searchable text, a conversation's title or the text of a
-//! message, an answer or a command's title of any of its agents, with the
-//! saved version of each agent's transcript it was built from. The product's
-//! search finds titles and the root's messages and answers; `demi
-//! conversation history search` finds an agent's own rows. Without an index
-//! a search would open every conversation's database for each query.
+//! Each user's search index: `search/<userId>.sqlite`, an FTS5 table over one row
+//! per searchable text.
+//!
+//! A searchable text is a conversation's title or the text of a message, an
+//! answer or a command's title of any of its agents, with the saved version of
+//! each agent's transcript it was built from.
+//!
+//! - The product's search finds titles and the root's messages and answers.
+//! - `demi conversation history search` finds an agent's own rows.
+//!
+//! Without an index a search would open every conversation's database for each
+//! query.
+//!
+//! # No history, no migration
 //!
 //! The index is derived from the conversations, so it has no history and no
-//! migration: an index of another schema, or one that fails to open, is
-//! deleted and built again empty, and announced, so the backend's indexer
-//! fills it. Every operation takes its user's turn and runs on a short-lived
-//! connection on the blocking pool, so a rebuild never removes a file
-//! another operation has open, and no index holds a thread while nobody
-//! searches. A row is known by its conversation and block; its integer id
-//! is FTS5's handle on it within one read alone, since SQLite gives a
-//! removed row's id to the next one.
+//! migration: an index of another schema, or one that fails to open, is deleted
+//! and built again empty, and announced, so the backend's indexer fills it.
+//!
+//! # Connections
+//!
+//! Every operation takes its user's turn and runs on a short-lived connection on
+//! the blocking pool, so a rebuild never removes a file another operation has
+//! open, and no index holds a thread while nobody searches.
+//!
+//! A row is known by its conversation and block. Its integer id is FTS5's handle
+//! on it within one read alone, since SQLite gives a removed row's id to the next
+//! one.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -429,15 +440,20 @@ impl SearchIndexes {
         .await
     }
 
-    /// Applies one save's `change` to the rows of its agent, in one
-    /// transaction, when the index holds the agent at exactly the version
-    /// the change follows, an agent it holds nothing of at the empty one: each written block's row replaced when
-    /// its text or its index changed and removed when it has no text, any
-    /// other block's row at its index removed, the rows from the change's
-    /// block count on removed, and the change's version recorded. Answers
-    /// false, changing nothing, otherwise: the index lacks the conversation
-    /// or a change before this one, and the conversation has to be read
-    /// whole.
+    /// Applies one save's `change` to the rows of its agent, in one transaction,
+    /// when the index holds the agent at exactly the version the change follows, an
+    /// agent it holds nothing of at the empty one.
+    ///
+    /// The change:
+    ///
+    /// - replaces each written block's row when its text or its index changed, and
+    ///   removes it when it has no text;
+    /// - removes any other block's row at its index;
+    /// - removes the rows from the change's block count on;
+    /// - records the change's version.
+    ///
+    /// Answers false, changing nothing, otherwise: the index lacks the conversation
+    /// or a change before this one, and the conversation has to be read whole.
     pub async fn apply(
         &self,
         user: &UserId,
@@ -553,12 +569,13 @@ impl SearchIndexes {
         .await
     }
 
-    /// The block indices of the texts of the conversation's agent `agent`
-    /// that `query` finds: those of its kinds and between its bounds that
-    /// hold every one of its words, or any, case ignored, newest first or
-    /// oldest first as it says: what `demi conversation history search`
-    /// finds. A word is found as [`SearchIndexes::find`] finds it: through
-    /// the trigram index, or by a scan when it is shorter.
+    /// The block indices of the texts of the conversation's agent `agent` that
+    /// `query` finds: what `demi conversation history search` finds.
+    ///
+    /// They are those of its kinds and between its bounds that hold every one of
+    /// its words, or any, case ignored, newest first or oldest first as it says. A
+    /// word is found as [`SearchIndexes::find`] finds it: through the trigram index,
+    /// or by a scan when it is shorter.
     pub async fn find_in(
         &self,
         user: &UserId,
@@ -622,14 +639,15 @@ impl SearchIndexes {
         .await
     }
 
-    /// The conversations with a text that holds every one of `words`, case
-    /// ignored, among `ranked`, which lists the conversations a result may
-    /// name in the order results of a kind come in: at most `limit` of them,
-    /// those whose title holds every word first, each with the newest of its
-    /// messages that does, cut to its line around the first match. The
-    /// matches and the lines come from one read of the index, and only the
-    /// texts of the conversations answered with are read. A word of fewer
-    /// than three characters is matched by a scan.
+    /// The conversations with a text that holds every one of `words`, case ignored,
+    /// among `ranked`, which lists the conversations a result may name in the order
+    /// results of a kind come in.
+    ///
+    /// It answers at most `limit` of them, those whose title holds every word
+    /// first, each with the newest of its messages that does, cut to its line around
+    /// the first match. The matches and the lines come from one read of the index,
+    /// and only the texts of the conversations answered with are read. A word of
+    /// fewer than three characters is matched by a scan.
     pub async fn find(
         &self,
         user: &UserId,
@@ -915,10 +933,11 @@ fn open_current(path: &Path) -> Result<Option<Connection>, StorageError> {
     Ok(Some(connection))
 }
 
-/// The text a search finds of a block: a user's message's or steer's, an
-/// answer's, or the title of the command a `shell` call ran. Thinking,
-/// other tools' calls and every call's result, commands' scripts and output,
-/// files and the blocks the runtime writes have none, and neither does a
+/// The text a search finds of a block: a user's message's or steer's, an answer's,
+/// or the title of the command a `shell` call ran.
+///
+/// Thinking, other tools' calls and every call's result, commands' scripts and
+/// output, files and the blocks the runtime writes have none, and neither does a
 /// message without text.
 pub fn searchable_text(block: &Block) -> Option<Searchable> {
     let (kind, text) = match block {

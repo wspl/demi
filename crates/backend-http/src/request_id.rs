@@ -1,17 +1,22 @@
-//! Request IDs: the edge names every request as it arrives, a WebSocket's
-//! upgrade included, and never takes a name from the client. The ID is a
-//! field of the request's `tracing` span, every response carries it in
-//! `X-Request-Id`, and every JSON error carries it as `requestId`. Every
-//! request logs one line as it is answered, or as its client abandons it, so
-//! that an ID a user copies always finds its request.
+//! Request IDs.
+//!
+//! The edge names every request as it arrives, a WebSocket's upgrade included,
+//! and never takes a name from the client.
+//!
+//! - The ID is a field of the request's `tracing` span.
+//! - Every response carries it in `X-Request-Id`.
+//! - Every JSON error carries it as `requestId`.
+//! - Every request logs one line as it is answered, or as its client abandons
+//!   it, so that an ID a user copies always finds its request.
 //!
 //! Work the request starts in another task is started inside its span: a
 //! session it opens, a Host operation it sends and a store write it waits for
-//! log under the same ID. A socket keeps the ID of its upgrade for its whole
-//! life, and work that outlives a request, such as a turn a socket's frame
-//! started, logs under the socket's ID with its own conversation and turn
-//! IDs. What an abandoned request started goes on or stops by that work's own
-//! rule; its line only records it.
+//! log under the same ID.
+//!
+//! A socket keeps the ID of its upgrade for its whole life. Work that outlives
+//! a request, such as a turn a socket's frame started, logs under the socket's
+//! ID with its own conversation and turn IDs. What an abandoned request started
+//! goes on or stops by that work's own rule; its line only records it.
 
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
@@ -104,12 +109,13 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
 /// How long an abandoned request runs before its line is a warning.
 const SLOW_ABANDONED: Duration = Duration::from_secs(10);
 
-/// Logs *a request was abandoned* for a request whose client went away
-/// before its answer, a closed tab or a timed-out fetch: hyper then drops
-/// the answer's future, and with it this middleware's guard, which no
-/// answer released. Runs inside the request's span, which it logs in, so
-/// the line carries the span's ID, method, path, user and `cf-ray`. The
-/// work the request started goes on or stops as that work's own rule says.
+/// Logs *a request was abandoned* for a request whose client went away before
+/// its answer, a closed tab or a timed-out fetch.
+///
+/// Hyper then drops the answer's future, and with it this middleware's guard,
+/// which no answer released. Runs inside the request's span, which it logs in,
+/// so the line carries the span's ID, method, path, user and `cf-ray`. The work
+/// the request started goes on or stops as that work's own rule says.
 pub(crate) async fn watch_abandon(request: Request, next: Next) -> Response {
     let mut pending = Pending {
         span: tracing::Span::current(),

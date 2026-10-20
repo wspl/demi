@@ -1,6 +1,7 @@
 //! A conversation's permission routes: the read of its undecided requests and a
-//! decision on one, each in the user's shard. An archived conversation has no
-//! requests and refuses a decision.
+//! decision on one, each in the user's shard.
+//!
+//! An archived conversation has no requests and refuses a decision.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;

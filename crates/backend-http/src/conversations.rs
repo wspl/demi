@@ -1,7 +1,15 @@
-//! `/api/conversations`: creating a conversation under the id the web app chose, listing the caller's
-//! conversations, changing their fields one patch at a time or in a batch, forking one, acknowledging
-//! its output, deleting it, and its socket, `WS /conversations/:id/stream`, which moves into the
-//! caller's shard once upgraded. A conversation the caller does not own answers like a missing one.
+//! `/api/conversations`.
+//!
+//! The routes:
+//!
+//! - creating a conversation under the id the web app chose;
+//! - listing the caller's conversations;
+//! - changing their fields one patch at a time or in a batch;
+//! - forking one, acknowledging its output and deleting it;
+//! - its socket, `WS /conversations/:id/stream`, which moves into the caller's
+//!   shard once upgraded.
+//!
+//! A conversation the caller does not own answers like a missing one.
 
 use axum::Json;
 use axum::extract::ws::WebSocketUpgrade;
@@ -74,12 +82,16 @@ pub(super) async fn list(
     Ok(Json(Conversations { conversations }))
 }
 
-/// `POST /conversations { id, ... }`: a new conversation with what the
-/// request names, 201; the caller's conversation of that id again, applying
-/// nothing, 200; 409 `id_unavailable` when another user's conversation
-/// holds the id or a Fork reserved it. A part of the request that is refused
-/// answers its own status and code, and nothing is created. Both answer the
-/// conversation.
+/// `POST /conversations { id, ... }`: creates a conversation.
+///
+/// - A new conversation with what the request names answers 201.
+/// - The caller's conversation of that id again applies nothing and answers
+///   200.
+/// - Another user's conversation holding the id, or a Fork reserving it,
+///   answers 409 `id_unavailable`.
+///
+/// A part of the request that is refused answers its own status and code, and
+/// nothing is created. Both successes answer the conversation.
 pub(super) async fn create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -112,11 +124,12 @@ pub(super) async fn create(
 }
 
 /// `GET /conversations/:id/attachments/:attachment`: an attachment of the
-/// conversation, by its number such as `a3`, from the conversation's
-/// database alone; it wakes no Host. With `?node=`, only one that node's
-/// replies show (`conversation_attachments::read_shown`). A number the
-/// conversation does not have, or those replies do not show, answers 404
-/// `not_found`.
+/// conversation, by its number such as `a3`, from the conversation's database
+/// alone; it wakes no Host.
+///
+/// With `?node=`, only one that node's replies show
+/// (`conversation_attachments::read_shown`). A number the conversation does not
+/// have, or those replies do not show, answers 404 `not_found`.
 pub(super) async fn attachment(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

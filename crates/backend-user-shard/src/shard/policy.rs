@@ -1,28 +1,41 @@
-//! The backend's rules for the calls a runner connection relays: a call runs
-//! only for a live job on the connection whose command context names the
-//! conversation of the Host that started it, and it reaches that job's agent
-//! node's commands. A native service's conversation numbers come only from a
-//! conversation of the user that reaches the device
-//! (`crates/command-protocol/src/numbers.rs`), a direct stream counts as the
-//! activity of such a conversation only, and a service's message reaches its
-//! plugin only about such a conversation
-//! (`crates/command-protocol/src/messages.rs`).
+//! The backend's rules for the calls a runner connection relays.
+//!
+//! # Who may call
+//!
+//! A call runs only for a live job on the connection whose command context names
+//! the conversation of the Host that started it, and it reaches that job's agent
+//! node's commands.
+//!
+//! - A native service's conversation numbers come only from a conversation of
+//!   the user that reaches the device
+//!   (`crates/command-protocol/src/numbers.rs`).
+//! - A direct stream counts as the activity of such a conversation only.
+//! - A service's message reaches its plugin only about such a conversation
+//!   (`crates/command-protocol/src/messages.rs`).
+//!
+//! # Registering a job
 //!
 //! The backend registers a job before sending it. Its live record binds the
-//! device, the shell, the invoking Host, the command context's conversation
-//! and the agent node, and these stay fixed for the job even when another
-//! shell starts or another conversation uses the same device: node `a1`'s job
-//! on the primary laptop and its job on attached `ci` each call back for `a1`,
-//! each with its own invoking Host. A callback supplies only its job
-//! reference; the backend checks the authenticated device connection and the
-//! live job record, gives the handler the command context from that record
-//! and validates the arguments. An unknown, completed or disconnected job
-//! cannot invoke a callback, and a device token never authorizes another
-//! user's jobs. A job that runs on another Host carries its originating job's
-//! context, and its pipes stay bound to the participating device endpoints.
-//! The callback is authorized here, where the backend holds the device's
-//! runner connection, in the owner's shard, rather than delegated to the
-//! generic Host adapter, which knows no user policy.
+//! device, the shell, the invoking Host, the command context's conversation and
+//! the agent node. These stay fixed for the job even when another shell starts or
+//! another conversation uses the same device: node `a1`'s job on the primary
+//! laptop and its job on attached `ci` each call back for `a1`, each with its
+//! own invoking Host.
+//!
+//! # Callbacks
+//!
+//! A callback supplies only its job reference. The backend checks the
+//! authenticated device connection and the live job record, gives the handler the
+//! command context from that record and validates the arguments.
+//!
+//! - An unknown, completed or disconnected job cannot invoke a callback.
+//! - A device token never authorizes another user's jobs.
+//! - A job that runs on another Host carries its originating job's context, and
+//!   its pipes stay bound to the participating device endpoints.
+//!
+//! The callback is authorized here, where the backend holds the device's runner
+//! connection, in the owner's shard, rather than delegated to the generic Host
+//! adapter, which knows no user policy.
 
 use std::rc::{Rc, Weak};
 
@@ -76,12 +89,13 @@ impl LinkPolicy for ShardPolicy {
         }
     }
 
-    /// Runs the call in its node's commands: once the command set checked
-    /// the call, what it needs, its leaf's category or the host its
-    /// `bringsHost` argument brings into the conversation, or the computer
-    /// `demi host pair` pairs, is checked against the conversation's grants
-    /// and the hosts it may reach before the handler runs, and a call that
-    /// lacks it waits for the user's answer.
+    /// Runs the call in its node's commands.
+    ///
+    /// Once the command set checked the call, what it needs is checked against the
+    /// conversation's grants and the hosts it may reach before the handler runs.
+    /// What it needs is its leaf's category, the host its `bringsHost` argument
+    /// brings into the conversation, or the computer `demi host pair` pairs. A call
+    /// that lacks it waits for the user's answer.
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,
@@ -231,13 +245,15 @@ impl LinkPolicy for ShardPolicy {
         })
     }
 
-    /// Knows a direct stream of a conversation of the user that reaches
-    /// this device as an open user stream: it holds the conversation active
-    /// with a demand lease of its stream gate, and its idle watch started, as
-    /// a Host admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`), and
-    /// installs what a relay stream of the user stream `name` may: the
-    /// executable of the package the name binds, which the runner fetches
-    /// from where the published catalog says.
+    /// Knows a direct stream of a conversation of the user that reaches this
+    /// device as an open user stream.
+    ///
+    /// It holds the conversation active with a demand lease of its stream gate,
+    /// and its idle watch started, as a Host admission starts it
+    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`). It installs what a
+    /// relay stream of the user stream `name` may: the executable of the package
+    /// the name binds, which the runner fetches from where the published catalog
+    /// says.
     fn direct_stream(
         &self,
         conversation: String,

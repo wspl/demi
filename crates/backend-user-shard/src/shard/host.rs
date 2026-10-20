@@ -1,7 +1,8 @@
 //! The shard's side of the conversations' host access
-//! (`crates/backend-host-access/src/access.rs`): what host access needs of
-//! the shard (`HostShard`), whose operations the edge and the shard's own
-//! work reach through `host_shard`.
+//! (`crates/backend-host-access/src/access.rs`).
+//!
+//! It holds what host access needs of the shard (`HostShard`), whose operations
+//! the edge and the shard's own work reach through `host_shard`.
 
 use std::rc::Rc;
 use std::sync::Arc;

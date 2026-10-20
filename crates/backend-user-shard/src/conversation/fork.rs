@@ -1,28 +1,47 @@
-//! Conversation Fork on the backend: a new conversation holding the source's history through one of
-//! its completed assistant texts. The creation reserves its destination's id in the control store,
-//! the agent prepares the seed, the kept edits of its retained shell calls are copied into the
-//! destination's namespace, the outputs of its commands and the conversation's attachments are
-//! copied into the destination's database, the agent commits the destination's root in the
-//! destination's own database, and a control transaction then publishes the destination. Requests
-//! for one destination run one at a time, a retry of the same attempt finds its destination, and
-//! startup publishes a destination whose root committed before its publication.
+//! Conversation Fork on the backend: a new conversation holding the source's
+//! history through one of its completed assistant texts.
 //!
-//! The control metadata and the conversation's history live in different
-//! SQLite files, so no transaction spans them: the reservation makes the
-//! attempt durable and the public conversation row is the publication
-//! boundary. Listing and opening show the destination only after its root
-//! checkpoint is committed, and a failure never publishes an empty or partial
-//! conversation. A retry after a lost confirmation must create no second
-//! conversation and recapture no newer data over a committed destination.
+//! # Steps
 //!
-//! A Fork copies history and configuration, not live state: the destination
+//! 1. The creation reserves its destination's id in the control store.
+//! 2. The agent prepares the seed.
+//! 3. The kept edits of its retained shell calls are copied into the
+//!    destination's namespace.
+//! 4. The outputs of its commands and the conversation's attachments are copied
+//!    into the destination's database.
+//! 5. The agent commits the destination's root in the destination's own
+//!    database.
+//! 6. A control transaction publishes the destination.
+//!
+//! Requests for one destination run one at a time, a retry of the same attempt
+//! finds its destination, and startup publishes a destination whose root
+//! committed before its publication.
+//!
+//! # Publication
+//!
+//! The control metadata and the conversation's history live in different SQLite
+//! files, so no transaction spans them. The reservation makes the attempt
+//! durable and the public conversation row is the publication boundary.
+//!
+//! - Listing and opening show the destination only after its root checkpoint is
+//!   committed.
+//! - A failure never publishes an empty or partial conversation.
+//! - A retry after a lost confirmation must create no second conversation and
+//!   recapture no newer data over a committed destination.
+//!
+//! # What a Fork copies
+//!
+//! A Fork copies history and configuration, not live state. The destination
 //! starts idle, with no queue, pending steer, edit receipt, child, running
 //! command, permission grant or request (the user decides for the new
-//! conversation again), and attached hosts are copied as configuration, but a
-//! device revoked before publication is left out, as its revocation detached
-//! it from the source. The destination's execution-context revision starts
-//! where the source's stood, so the context blocks its copied transcript
-//! holds are older than any announced later, its first switch included.
+//! conversation again).
+//!
+//! Attached hosts are copied as configuration, but a device revoked before
+//! publication is left out, as its revocation detached it from the source.
+//!
+//! The destination's execution-context revision starts where the source's
+//! stood, so the context blocks its copied transcript holds are older than any
+//! announced later, its first switch included.
 
 use demi_backend_database::Selection;
 use demi_agent_session::ForkError;
@@ -169,11 +188,12 @@ impl Shard {
             }
         };
         // The destination's blocks reference the same blobs as the source's,
-        // media and edit copies alike, so no bytes are copied. The outputs of
-        // the commands its history names are its too, which `demi shell
-        // output` reads there as in the source; a retry copies them again.
-        // The commands of the rows the seed names are read where they
-        // are, in the source's database, as the rows are copied there.
+        // media and edit copies alike, so no bytes are copied.
+        //
+        // The outputs of the commands its history names are its too, which `demi
+        // shell output` reads there as in the source; a retry copies them again.
+        // The commands of the rows the seed names are read where they are, in the
+        // source's database, as the rows are copied there.
         let mut commands = command_outputs::commands_of(&seed.checkpoint.transcript);
         let prefix = seed.prefix.clone();
         let rows = services
@@ -197,12 +217,13 @@ impl Shard {
                 .call(move |connection| command_outputs::insert(connection, &rows))
                 .await?;
         }
-        // The attachments its messages name are its too, with the blobs
-        // shared (`crates/backend-host-access/src/attachment_commands.rs`). They are read before
-        // the sequences, so every number copied lies below the next one.
-        // The source's root uploaded what the destination's root, which
-        // holds its history, did: its replies show them still; another
-        // agent's stay that agent's, which no reply here shows.
+        // The attachments its messages name are its too, with the blobs shared
+        // (`crates/backend-host-access/src/attachment_commands.rs`). They are read
+        // before the sequences, so every number copied lies below the next one.
+        //
+        // The source's root uploaded what the destination's root, which holds its
+        // history, did: its replies show them still. Another agent's stay that
+        // agent's, which no reply here shows.
         let (source_root, destination_root) = (root_of(&source.id), root_of(&destination));
         let attachments: Vec<_> = services
             .conversations

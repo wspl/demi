@@ -372,22 +372,31 @@ impl Shard {
         &self.forks
     }
 
-    /// Ends the user's work in order: the synchronization channels close;
-    /// the idle watches stop, and a retirement already running finishes;
-    /// title requests are aborted; the conversation sockets end, and so do
-    /// the restores of trees with no page attached; open file transfers and
-    /// user streams end, and stay closed; the agent turns are aborted, and
-    /// the commands they watched run on; a reset or transition of the Cloud
-    /// finishes, and a running Cloud keeps running; the runner connections
-    /// close, and then the pipes fail. Nothing on a Host stops.
+    /// Ends the user's work in order.
     ///
-    /// The order has reasons. The channels go first, so no page is sent what
-    /// the steps below change; a page reads the state again from the next
-    /// backend. The sockets end before the agents, so no tree opens and no
-    /// frame reaches a tree after its shutdown. A root's running turn is
-    /// marked in `interrupted_turns` before it is aborted, so the next start
-    /// resumes it however far the shutdown got. Transfers and user streams
-    /// end before the Cloud stops, so the Cloud can still save.
+    /// 1. The synchronization channels close.
+    /// 2. The idle watches stop, and a retirement already running finishes.
+    /// 3. Title requests are aborted.
+    /// 4. The conversation sockets end, and so do the restores of trees with no
+    ///    page attached.
+    /// 5. Open file transfers and user streams end, and stay closed.
+    /// 6. The agent turns are aborted, and the commands they watched run on.
+    /// 7. A reset or transition of the Cloud finishes, and a running Cloud keeps
+    ///    running.
+    /// 8. The runner connections close, and then the pipes fail.
+    ///
+    /// Nothing on a Host stops.
+    ///
+    /// The order has reasons:
+    ///
+    /// - The channels go first, so no page is sent what the steps below change; a
+    ///   page reads the state again from the next backend.
+    /// - The sockets end before the agents, so no tree opens and no frame reaches a
+    ///   tree after its shutdown.
+    /// - A root's running turn is marked in `interrupted_turns` before it is
+    ///   aborted, so the next start resumes it however far the shutdown got.
+    /// - Transfers and user streams end before the Cloud stops, so the Cloud can
+    ///   still save.
     async fn close(&self) {
         self.closing.cancel();
         self.sync_channels.close();

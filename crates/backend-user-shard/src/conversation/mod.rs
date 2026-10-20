@@ -1,10 +1,15 @@
-//! Conversations on the user's shard (`crates/backend/src/lib.rs`): the
-//! agent server that hosts each conversation's tree over the
-//! conversation's database, the conversation socket, the provider runtimes
-//! the sessions infer with, the Claude Code CLI's work on the user's Cloud
-//! and the provider test, the conversations' summaries, the failure facts
-//! of their history and the resume of a failed turn at its retry time,
-//! their deletion, and the search index that follows them.
+//! Conversations on the user's shard (`crates/backend/src/lib.rs`).
+//!
+//! The module holds:
+//!
+//! - the agent server that hosts each conversation's tree over the
+//!   conversation's database;
+//! - the conversation socket;
+//! - the provider runtimes the sessions infer with;
+//! - the Claude Code CLI's work on the user's Cloud, and the provider test;
+//! - the conversations' summaries and the failure facts of their history;
+//! - the resume of a failed turn at its retry time;
+//! - their deletion, and the search index that follows them.
 
 mod announcement;
 pub mod claude_cli;
@@ -79,11 +84,12 @@ pub(crate) struct ConversationParts {
     pub titles: Titles,
 }
 
-/// The conversation parts of `shard`, the user's. The agent server's trees
-/// keep their state in the conversations' databases, their sessions infer
-/// with the user's providers under the user's rate limit, as the title
-/// requests do, and their nodes' shells run on the conversations' Hosts
-/// through the shard's host access.
+/// The conversation parts of `shard`, the user's.
+///
+/// The agent server's trees keep their state in the conversations' databases.
+/// Their sessions infer with the user's providers under the user's rate limit,
+/// as the title requests do, and their nodes' shells run on the conversations'
+/// Hosts through the shard's host access.
 pub(crate) fn conversation_parts(
     shard: Weak<Shard>,
     user: UserId,

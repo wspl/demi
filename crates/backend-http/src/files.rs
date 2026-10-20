@@ -1,8 +1,9 @@
 //! A conversation's files: listings, directories, deletes and file text, a
-//! file's bytes in both directions, and the working tree's changes. Each
-//! reaches the conversation's Host through its host access
+//! file's bytes in both directions, and the working tree's changes.
+//!
+//! Each reaches the conversation's Host through its host access
 //! (`crates/backend-host-access/src/access.rs`), in the user's shard, which
-//! also checks that the conversation is the caller's; the bytes of a download
+//! also checks that the conversation is the caller's. The bytes of a download
 //! or an upload move here while the shard holds their admission.
 
 use axum::Json;
@@ -203,11 +204,13 @@ enum TextRead {
     NotModified { version: String },
 }
 
-/// A file's text: UTF-8 without a NUL byte, up to the size an edit keeps,
-/// with its version as the ETag. A request whose `If-None-Match` names the
-/// file's version answers 304, and its text never leaves the Host
-/// (`crates/runner-host/src/files.rs`). A file that is binary or too large is an
-/// answer like any other, with its ETag and number.
+/// A file's text: UTF-8 without a NUL byte, up to the size an edit keeps, with
+/// its version as the ETag.
+///
+/// A request whose `If-None-Match` names the file's version answers 304, and
+/// its text never leaves the Host (`crates/runner-host/src/files.rs`). A file
+/// that is binary or too large is an answer like any other, with its ETag and
+/// number.
 pub(super) async fn text(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

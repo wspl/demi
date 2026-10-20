@@ -1,12 +1,17 @@
-//! A root's turn a graceful shutdown interrupted: once the backend is back
-//! it resumes by itself, without a page, with the child it waited on, each
-//! once, the model told the backend restarted, and a later restart resumes
-//! nothing again; a shutdown cut short after it marked the root still
-//! resumes it; with the user's `resumeAfterRestart` off the root waits for
-//! the user's Resume, and its child resumes when the conversation opens; and
-//! a crash's interruption never resumes by itself. The model is the scripted
-//! tree family; the device is a real runner, which the child's spawn runs
-//! on. No test calls a real model.
+//! A root's turn a graceful shutdown interrupted.
+//!
+//! Scenarios:
+//!
+//! - Once the backend is back, the turn resumes by itself, without a page,
+//!   with the child it waited on, each once, the model told the backend
+//!   restarted. A later restart resumes nothing again.
+//! - A shutdown cut short after it marked the root still resumes it.
+//! - With the user's `resumeAfterRestart` off, the root waits for the user's
+//!   Resume, and its child resumes when the conversation opens.
+//! - A crash's interruption never resumes by itself.
+//!
+//! The model is the scripted tree family; the device is a real runner, which
+//! the child's spawn runs on. No test calls a real model.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -123,13 +128,14 @@ impl World {
     }
 }
 
-/// With the preference absent, a root's turn and its child's, which the
-/// shutdown interrupted, resume once the backend is back, without a page:
-/// the root's next request says why, once, and each asks the model once
-/// more. The root's resumed turn finishes, so the next restart resumes
-/// nothing: the user's next message is the next thing the root asks.
-// Several seconds: two restarts with a real device, whose runner connects
-// again after each.
+/// With the preference absent, a root's turn and its child's, which the shutdown
+/// interrupted, resume once the backend is back, without a page: the root's next
+/// request says why, once, and each asks the model once more.
+///
+/// The root's resumed turn finishes, so the next restart resumes nothing: the
+/// user's next message is the next thing the root asks.
+// Several seconds: two restarts with a real device, whose runner connects again
+// after each.
 #[tokio::test(flavor = "local")]
 async fn a_turn_the_shutdown_interrupted_resumes_with_its_child_once_the_backend_is_back() {
     let mut world = World::start().await;
@@ -167,10 +173,9 @@ async fn a_turn_the_shutdown_interrupted_resumes_with_its_child_once_the_backend
     world.backend.close().await;
 }
 
-/// With the preference off, nothing resumes after the restart; opening the
-/// conversation brings the child back, as a restored tree does, and offers
-/// Resume, and the user's Resume continues the root's turn, with no word of
-/// a restart.
+/// With the preference off, nothing resumes after the restart. Opening the
+/// conversation brings the child back, as a restored tree does, and offers Resume,
+/// and the user's Resume continues the root's turn, with no word of a restart.
 // A few seconds: one restart with a real device.
 #[tokio::test(flavor = "local")]
 async fn with_the_preference_off_the_root_waits_for_the_users_resume_and_its_child_for_the_open() {
@@ -278,10 +283,12 @@ async fn a_turn_a_crash_interrupted_waits_for_the_user() {
     world.backend.close().await;
 }
 
-/// A shutdown cut short after it marked a root, as when a deployment stops
-/// waiting while a tree is slow to close: the root's turn was aborted but
-/// its record never saved. The next start writes the record as the
-/// conversation opens, and resumes the turn, since its mark is there.
+/// A shutdown cut short after it marked a root, as when a deployment stops waiting
+/// while a tree is slow to close: the root's turn was aborted but its record never
+/// saved.
+///
+/// The next start writes the record as the conversation opens, and resumes the
+/// turn, since its mark is there.
 // A few seconds: one restart with a real device.
 #[tokio::test(flavor = "local")]
 async fn a_shutdown_cut_short_after_marking_a_root_still_resumes_it() {

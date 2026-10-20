@@ -1,8 +1,13 @@
-//! Device records: who owns a device, how it came to be, and the hash of
-//! its current token, which finds the device of a runner's hello or pipe
-//! request through one index lookup, and what its runner last reported its
-//! artifact cache holds. Whether a device is online is its runner
-//! connection's, not a record's.
+//! Device records.
+//!
+//! A record holds:
+//!
+//! - who owns the device and how it came to be;
+//! - the hash of its current token, which finds the device of a runner's hello or
+//!   pipe request through one index lookup;
+//! - what its runner last reported its artifact cache holds.
+//!
+//! Whether a device is online is its runner connection's, not a record's.
 
 use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
@@ -135,11 +140,13 @@ impl ManagedMachine {
     }
 }
 
-/// What a runner's hello leaves to do: none, or for a paired device whose
-/// home the backend never heard, which holds projects or conversations an
-/// earlier release left in its directories, the directories its runner
-/// resolves before [`ControlService::settle_first_home`] records the home
-/// and puts them where they belong (`crates/server/src/main.rs`).
+/// What a runner's hello leaves to do.
+///
+/// It is none, or, for a paired device whose home the backend never heard, which
+/// holds projects or conversations an earlier release left in its directories,
+/// the directories its runner resolves before
+/// [`ControlService::settle_first_home`] records the home and puts them where they
+/// belong (`crates/server/src/main.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirstHome {
     pub home: String,
@@ -453,23 +460,29 @@ impl ControlService {
         .await
     }
 
-    /// Records the operating system, the runner release, the instance and
-    /// the home `device`'s runner reported in its hello, and advances the
-    /// execution context of each conversation whose context the report
-    /// changes (`crates/backend-database/src/selection.rs`): when the
-    /// system changed, of those whose primary Host the device is; when the
-    /// home differs from the one its contexts named before, the Cloud's
-    /// `/home/demi` before its first report, of those whose context names a
-    /// directory under that home: a Cloud conversation working in its own
-    /// directory, one in the device's home, and one the device is attached
-    /// to without a directory of its own. The first home a paired device
-    /// reports since the upgrade that began keeping it moves each of its
-    /// conversations the earlier release left in a directory of it to its
-    /// home or the workspace of that directory
-    /// (`crates/server/src/main.rs`), which changes no directory they work
-    /// in. A paired device whose mark has no number yet, or whose logo the
-    /// report changes, takes one more than the highest number among its
-    /// user's other devices of its new logo.
+    /// Records the operating system, the runner release, the instance and the home
+    /// `device`'s runner reported in its hello, and advances the execution context
+    /// of each conversation whose context the report changes
+    /// (`crates/backend-database/src/selection.rs`).
+    ///
+    /// The execution context advances:
+    ///
+    /// - When the system changed, for the conversations whose primary Host the
+    ///   device is.
+    /// - When the home differs from the one its contexts named before, the Cloud's
+    ///   `/home/demi` before its first report, for the conversations whose
+    ///   context names a directory under that home: a Cloud conversation working
+    ///   in its own directory, one in the device's home, and one the device is
+    ///   attached to without a directory of its own.
+    ///
+    /// The first home a paired device reports since the upgrade that began keeping
+    /// it moves each of its conversations the earlier release left in a directory
+    /// of it to its home or the workspace of that directory
+    /// (`crates/server/src/main.rs`), which changes no directory they work in.
+    ///
+    /// A paired device whose mark has no number yet, or whose logo the report
+    /// changes, takes one more than the highest number among its user's other
+    /// devices of its new logo.
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
@@ -556,14 +569,17 @@ impl ControlService {
         .await
     }
 
-    /// Records `home` as `device`'s first and puts what an earlier release
-    /// left on it where its directories say, each as its runner resolved it
-    /// in `resolved`, or as it is kept when the runner could not
-    /// (`crates/server/src/main.rs`): workspaces of one directory become
-    /// the oldest of them, with their conversations; one at the home goes,
-    /// and its conversations run in the home; and each conversation outside
-    /// a project moves to the home or its directory's workspace, made when
-    /// there is none. Nothing when the home was recorded meanwhile.
+    /// Records `home` as `device`'s first and puts what an earlier release left on
+    /// it where its directories say, each as its runner resolved it in `resolved`,
+    /// or as it is kept when the runner could not (`crates/server/src/main.rs`).
+    ///
+    /// - Workspaces of one directory become the oldest of them, with their
+    ///   conversations.
+    /// - One at the home goes, and its conversations run in the home.
+    /// - Each conversation outside a project moves to the home or its directory's
+    ///   workspace, made when there is none.
+    ///
+    /// Nothing when the home was recorded meanwhile.
     pub async fn settle_first_home(
         &self,
         device: DeviceId,
@@ -691,12 +707,12 @@ impl ControlService {
         .await
     }
 
-    /// Sets what `change` names of `device`; none when there is no such
-    /// device. A conversation that reaches the device, as an attached host
-    /// or as its primary one, calls it by its name, which its attached
-    /// hosts' names count, so a new name advances the execution context and
-    /// the attached hosts' revision of each; the answer names those
-    /// conversations.
+    /// Sets what `change` names of `device`; none when there is no such device.
+    ///
+    /// A conversation that reaches the device, as an attached host or as its
+    /// primary one, calls it by its name, which its attached hosts' names count, so
+    /// a new name advances the execution context and the attached hosts' revision
+    /// of each. The answer names those conversations.
     pub async fn change_device(
         &self,
         device: DeviceId,
@@ -843,11 +859,12 @@ pub(crate) fn cloud_device_before_0_1_25_in(
     machine_in_or_create(connection, user, ManagedMachine::Cloud, now, DEVICE_COLUMNS_BEFORE_0_1_25)
 }
 
-/// The user's managed device of `machine`, made now when it was never
-/// made, in the caller's transaction. The partial unique index admits one
-/// of each per user, so concurrent first uses find the same one. Its token
-/// is issued when it boots. `columns` reads the row: `DEVICE_COLUMNS`, or
-/// those of the schema a migration step works on.
+/// The user's managed device of `machine`, made now when it was never made, in
+/// the caller's transaction.
+///
+/// The partial unique index admits one of each per user, so concurrent first uses
+/// find the same one. Its token is issued when it boots. `columns` reads the row:
+/// `DEVICE_COLUMNS`, or those of the schema a migration step works on.
 fn machine_in_or_create(
     connection: &Connection,
     user: &UserId,
@@ -882,11 +899,10 @@ fn machine_in_or_create(
     })
 }
 
-/// Writes `selection` as the conversation's, changing nothing else: a
-/// selection of the directory it works in already.
-/// The directories an earlier release left on the paired device `device`:
-/// its workspaces' and those of its conversations outside projects, each
-/// once.
+/// Writes `selection` as the conversation's, changing nothing else: a selection of
+/// the directory it works in already.
+/// The directories an earlier release left on the paired device `device`: its
+/// workspaces' and those of its conversations outside projects, each once.
 fn left_directories(connection: &Connection, device: &DeviceId) -> Result<Vec<String>, StorageError> {
     Ok(connection
         .prepare(

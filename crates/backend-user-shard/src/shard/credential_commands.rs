@@ -1,29 +1,44 @@
-//! The product's `demi credentials` group: an agent lists the user's
-//! credentials and shows one, asks the user for one and waits for the
-//! answer, reads one field's value onto its standard output once the
-//! conversation may use the credential, and, with the user's Manage
-//! Credentials, removes one. No output of these commands carries a secret
-//! value but `read`'s, which the agent passes on.
+//! The product's `demi credentials` group.
 //!
-//! An agent that needs a secret asks the user for it with `request` rather
-//! than reading it from the message, where it would sit in the transcript and
-//! reach the model's vendor. `read` writes the value to its standard output,
-//! wherever that goes: Demi refuses and masks nothing, and how the value is
-//! passed on is the agent's choice. A field's kind is advice, not a rule: the
-//! command's help recommends passing a secret where the model does not read
-//! it, into a pipe, a file or a `$(…)`, since a value the job prints joins the
-//! transcript. The command line the model wrote, which the transcript keeps,
-//! holds the `$(…)` as written, never its value, and Demi writes no value
-//! into the transcript, a log or a frame to the page, but the Settings page's
-//! reveal. A value enters the transcript only when an agent's command prints
-//! it.
+//! An agent can:
 //!
-//! A credential is used in a conversation only once the user allowed it there:
-//! one the user saved from that conversation's request is allowed at once, any
-//! other asks first, and an allowance lasts the conversation's life for every
-//! agent of its tree. How long a credential is kept is the agent's decision,
-//! with the request's `--keep`, since it knows what the secret is for; the
-//! card offers no choice, as a form does not ask how long its data is kept.
+//! - list the user's credentials and show one;
+//! - ask the user for one and wait for the answer;
+//! - read one field's value onto its standard output once the conversation may
+//!   use the credential;
+//! - with the user's Manage Credentials, remove one.
+//!
+//! No output of these commands carries a secret value but `read`'s, which the
+//! agent passes on.
+//!
+//! # Passing a secret on
+//!
+//! An agent that needs a secret asks the user for it with `request` rather than
+//! reading it from the message, where it would sit in the transcript and reach
+//! the model's vendor.
+//!
+//! `read` writes the value to its standard output, wherever that goes: Demi
+//! refuses and masks nothing, and how the value is passed on is the agent's
+//! choice. A field's kind is advice, not a rule: the command's help recommends
+//! passing a secret where the model does not read it, into a pipe, a file or a
+//! `$(…)`, since a value the job prints joins the transcript.
+//!
+//! The command line the model wrote, which the transcript keeps, holds the
+//! `$(…)` as written, never its value. Demi writes no value into the transcript,
+//! a log or a frame to the page, but the Settings page's reveal. A value enters
+//! the transcript only when an agent's command prints it.
+//!
+//! # Allowance and keeping
+//!
+//! A credential is used in a conversation only once the user allowed it there.
+//!
+//! - One the user saved from that conversation's request is allowed at once.
+//! - Any other asks first.
+//! - An allowance lasts the conversation's life for every agent of its tree.
+//!
+//! How long a credential is kept is the agent's decision, with the request's
+//! `--keep`, since it knows what the secret is for. The card offers no choice,
+//! as a form does not ask how long its data is kept.
 
 use std::collections::BTreeSet;
 use std::rc::{Rc, Weak};

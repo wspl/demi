@@ -1,10 +1,18 @@
-//! The schemas of the control database and of each conversation's database:
-//! one SQL text each, applied to a new database in a transaction, whose
-//! digest is the version a database records, and the history of the schemas
-//! published releases shipped before it, each with the migration to the
-//! next. Times are integer milliseconds since the Unix epoch; a closed set
-//! is text a CHECK limits; JSON columns are text their reader decodes and
-//! validates; sealed values are BLOBs.
+//! The schemas of the control database and of each conversation's database.
+//!
+//! The module holds:
+//!
+//! - one SQL text for each database, applied to a new database in a transaction,
+//!   whose digest is the version a database records;
+//! - the history of the schemas published releases shipped before it, each with
+//!   the migration to the next.
+//!
+//! The columns follow these conventions:
+//!
+//! - Times are integer milliseconds since the Unix epoch.
+//! - A closed set is text a CHECK limits.
+//! - JSON columns are text their reader decodes and validates.
+//! - Sealed values are BLOBs.
 
 use std::{collections::HashMap, path::Path};
 
@@ -61,41 +69,52 @@ impl ReadBlob for NoBlobs {
     }
 }
 
-/// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema, and of each
-/// development build a server keeps data of (`upgrades.md` § A development
-/// build on a server): 0.1.22-dev.20261011T123543Z's, the one with the
-/// plugins' secrets before a request had a read state, the one with the
-/// users' credentials before passkeys, the one with passkeys before the
-/// signed-in browsers, the one with the signed-in browsers before the
-/// messages saved for later, and the one with them before administered
-/// accounts, the one with administered accounts before a conversation's
-/// workflow, the one with the workflow before the edits and sends of
-/// saved messages were kept, the one with them before an attached host
-/// went by its device's name, the one with device names before a
-/// subagent profile had a Context of its own, and the one with a profile's
-/// Context before an API-key entry's sealed configuration had a format,
-/// and the one with that format before account rotation, and the one with
-/// account rotation before a placeholder title held no words, the one with
-/// placeholder titles before interrupted turns were kept, and the one with
-/// interrupted turns before a conversation kept the hosts it may reach,
-/// the one with them before shares, the one with shares before a
-/// device's mark had a number, 0.1.22-dev.20261015T105826Z's, before a
-/// project remembered the model and workflow its next conversation starts
-/// with, 0.1.22-dev.20261015T134426Z's, before a quota window had a
-/// kind instead of an English name, 0.1.22-dev.20261016T043704Z's,
-/// before the usage ledger kept a row per vendor call and before the
-/// Claude Code machine and the accounts whose CLI keeps their sign-in, and
-/// 0.1.22-dev.20261016T095626Z's, before each account had the size of its
-/// Cloud disks, 0.1.22's, before a ledger row could be an image's, and
-/// 0.1.25's, which 0.1.23 and 0.1.24 shipped too, before an entry had its
-/// Image Generation switch and a device why it will not start its runner by
-/// itself, 0.1.27's, before the users' port forwards, and 0.1.32's, before
-/// a ledger row kept its price and its prompt's hashes.
-/// The schemas with the subagent
-/// limits, without Detect Title, with the kept limits and with the plugins'
-/// secrets and read states no server keeps, but development databases do,
-/// and the server's migrate through them.
+/// The control database's schema.
+///
+/// Its history holds the schema of each published release before the one that
+/// ships the current schema, and of each development build a server keeps data
+/// of (`upgrades.md` § A development build on a server). The history holds, in
+/// order:
+///
+/// - 0.1.22-dev.20261011T123543Z's.
+/// - The one with the plugins' secrets, before a request had a read state.
+/// - The one with the users' credentials, before passkeys.
+/// - The one with passkeys, before the signed-in browsers.
+/// - The one with the signed-in browsers, before the messages saved for later.
+/// - The one with them, before administered accounts.
+/// - The one with administered accounts, before a conversation's workflow.
+/// - The one with the workflow, before the edits and sends of saved messages were
+///   kept.
+/// - The one with them, before an attached host went by its device's name.
+/// - The one with device names, before a subagent profile had a Context of its
+///   own.
+/// - The one with a profile's Context, before an API-key entry's sealed
+///   configuration had a format.
+/// - The one with that format, before account rotation.
+/// - The one with account rotation, before a placeholder title held no words.
+/// - The one with placeholder titles, before interrupted turns were kept.
+/// - The one with interrupted turns, before a conversation kept the hosts it may
+///   reach.
+/// - The one with them, before shares.
+/// - The one with shares, before a device's mark had a number.
+/// - 0.1.22-dev.20261015T105826Z's, before a project remembered the model and
+///   workflow its next conversation starts with.
+/// - 0.1.22-dev.20261015T134426Z's, before a quota window had a kind instead of
+///   an English name.
+/// - 0.1.22-dev.20261016T043704Z's, before the usage ledger kept a row per vendor
+///   call and before the Claude Code machine and the accounts whose CLI keeps
+///   their sign-in.
+/// - 0.1.22-dev.20261016T095626Z's, before each account had the size of its Cloud
+///   disks.
+/// - 0.1.22's, before a ledger row could be an image's.
+/// - 0.1.25's, which 0.1.23 and 0.1.24 shipped too, before an entry had its Image
+///   Generation switch and a device why it will not start its runner by itself.
+/// - 0.1.27's, before the users' port forwards.
+/// - 0.1.32's, before a ledger row kept its price and its prompt's hashes.
+///
+/// The schemas with the subagent limits, without Detect Title, with the kept
+/// limits and with the plugins' secrets and read states no server keeps, but
+/// development databases do, and the server's migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -250,12 +269,15 @@ pub(crate) const CONTROL: Schema = Schema {
     ],
 };
 
-/// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to
-/// the current one: a usage ledger row keeps what each kind of its tokens
-/// would cost on the vendor's API and the hashes of the system prompt and
-/// the tools its request sent (`crates/backend-database/src/usage.rs`), null
-/// for every row written before; and the ledger is read by conversation,
-/// for a conversation's cost (§ A conversation's cost).
+/// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to the
+/// current one.
+///
+/// - A usage ledger row keeps what each kind of its tokens would cost on the
+///   vendor's API and the hashes of the system prompt and the tools its request
+///   sent (`crates/backend-database/src/usage.rs`), null for every row written
+///   before.
+/// - The ledger is read by conversation, for a conversation's cost (§ A
+///   conversation's cost).
 const CONTROL_FROM_0_1_32: &str = "
 ALTER TABLE usage_ledger ADD COLUMN api_price_input REAL CHECK (api_price_input >= 0);
 ALTER TABLE usage_ledger ADD COLUMN api_price_cache_write REAL CHECK (api_price_cache_write >= 0);
@@ -266,19 +288,24 @@ ALTER TABLE usage_ledger ADD COLUMN tools_hash TEXT;
 CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
 ";
 
-/// From 0.1.27's control schema to the current one: the users' port
-/// forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`) and exposed ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`),
-/// none before; each owner's entries
-/// have an order of their own, which the user sets by dragging Settings ›
-/// Providers and generated media try them in, first the order they were
-/// added in (`crates/backend-user-shard/src/provider_settings.rs`); and preferences no
-/// longer choose an entry per vendor's images, which the order and the
-/// switches say instead, so a saved choice is dropped; an entry whose provider makes videos has a
-/// Video Generation switch, and one whose provider makes audio an Audio Generation switch, each on
-/// for every entry stored before; and a usage ledger row may be a video's or an audio file's, with
-/// the seconds made and the cost the vendor reported (`crates/backend-database/src/usage.rs`),
-/// which SQLite's checks let in only on a table made again, its rows as they were with null for
-/// both.
+/// From 0.1.27's control schema to the current one.
+///
+/// - The users' port forwards
+///   (`crates/backend-user-shard/src/shard/port_forwards.rs`) and exposed ports
+///   (`crates/backend-user-shard/src/shard/exposed_ports.rs`), none before.
+/// - Each owner's entries have an order of their own, which the user sets by
+///   dragging Settings › Providers and generated media try them in, first the
+///   order they were added in
+///   (`crates/backend-user-shard/src/provider_settings.rs`).
+/// - Preferences no longer choose an entry per vendor's images, which the order
+///   and the switches say instead, so a saved choice is dropped.
+/// - An entry whose provider makes videos has a Video Generation switch, and one
+///   whose provider makes audio an Audio Generation switch, each on for every
+///   entry stored before.
+/// - A usage ledger row may be a video's or an audio file's, with the seconds
+///   made and the cost the vendor reported
+///   (`crates/backend-database/src/usage.rs`), which SQLite's checks let in only
+///   on a table made again, its rows as they were with null for both.
 const CONTROL_FROM_0_1_27: &str = "
 CREATE TABLE port_forwards (
   id                TEXT PRIMARY KEY,
@@ -362,22 +389,27 @@ ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (
 ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
 ";
 
-/// From 0.1.25's control schema to 0.1.27's: an entry whose
-/// provider makes images has an Image Generation switch, on for every entry
-/// stored before (`crates/backend-user-shard/src/provider_settings.rs`); a device keeps why
-/// it will not start its runner by itself, which no device stored before
-/// has said (`crates/runner/src/autostart.rs`).
+/// From 0.1.25's control schema to 0.1.27's.
+///
+/// - An entry whose provider makes images has an Image Generation switch, on for
+///   every entry stored before
+///   (`crates/backend-user-shard/src/provider_settings.rs`).
+/// - A device keeps why it will not start its runner by itself, which no device
+///   stored before has said (`crates/runner/src/autostart.rs`).
 const CONTROL_FROM_0_1_25: &str = "
 ALTER TABLE providers ADD COLUMN image_generation INTEGER NOT NULL DEFAULT 1 CHECK (image_generation IN (0, 1));
 ALTER TABLE devices ADD COLUMN autostart_unavailable TEXT;
 ";
 
-/// From 0.1.22's control schema to 0.1.25's: a usage ledger row may
-/// be an image's, which SQLite's checks let in only on a table made again, its
-/// rows as they were; each browser's push subscription is kept; a running job
-/// may wait to be sent to its device (`sessions-and-targets.md` § Host
-/// operations), which every one recorded before was; and the users' automations
-/// and their runs, none before.
+/// From 0.1.22's control schema to 0.1.25's.
+///
+/// - A usage ledger row may be an image's, which SQLite's checks let in only on a
+///   table made again, its rows as they were.
+/// - Each browser's push subscription is kept.
+/// - A running job may wait to be sent to its device
+///   (`sessions-and-targets.md` § Host operations), which every one recorded
+///   before was.
+/// - The users' automations and their runs, none before.
 const CONTROL_FROM_0_1_22: &str = "
 ALTER TABLE running_jobs ADD COLUMN sent INTEGER NOT NULL DEFAULT 1 CHECK (sent IN (0, 1));
 CREATE TABLE usage_ledger_images (
@@ -509,45 +541,61 @@ CREATE INDEX automation_calls_by_delivery ON automation_calls (automation_id, de
   WHERE delivery_id IS NOT NULL;
 ";
 
-/// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
-/// data of, to the current one, in two steps. First the usage ledger keeps a
-/// row per vendor call (`crates/backend-database/src/usage.rs`), a managed
-/// device says which managed machine it is, and a Claude Code account may
-/// hold no secret, [`CONTROL_FROM_0_1_22_DEV_20261016T043704Z`]. Then where a
-/// conversation runs decides its project (`crates/server/src/main.rs`): a
-/// device keeps the home its runner last reported, none until its runner's
-/// next hello; a Cloud workspace's directory loses a trailing separator, and
-/// the user has one workspace per device and directory, of several the
-/// oldest, which the others' conversations and pending moves move to; a Cloud
-/// workspace at the Cloud's home goes, its conversations running in the home;
-/// a workspace selection keeps its device and directory; a Cloud conversation
-/// in a directory of its own choosing moves to the Cloud's home,
-/// `/home/demi`, a conversation's directory under `/home/demi/sessions`, or
-/// else the workspace of its directory, made when there is none; and a
-/// permission request of a category and a host at once, which only the
-/// removed `demi conversation move` raised, goes. A paired device's
-/// workspaces and conversations wait for its runner to resolve their
-/// directories when it first reports its home (`devices.rs`).
+/// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps data
+/// of, to the current one, in two steps.
+///
+/// First, [`CONTROL_FROM_0_1_22_DEV_20261016T043704Z`]:
+///
+/// - The usage ledger keeps a row per vendor call
+///   (`crates/backend-database/src/usage.rs`).
+/// - A managed device says which managed machine it is.
+/// - A Claude Code account may hold no secret.
+///
+/// Then where a conversation runs decides its project
+/// (`crates/server/src/main.rs`):
+///
+/// - A device keeps the home its runner last reported, none until its runner's
+///   next hello.
+/// - A Cloud workspace's directory loses a trailing separator, and the user has
+///   one workspace per device and directory, of several the oldest, which the
+///   others' conversations and pending moves move to.
+/// - A Cloud workspace at the Cloud's home goes, its conversations running in the
+///   home.
+/// - A workspace selection keeps its device and directory.
+/// - A Cloud conversation in a directory of its own choosing moves to the Cloud's
+///   home, `/home/demi`, a conversation's directory under
+///   `/home/demi/sessions`, or else the workspace of its directory, made when
+///   there is none.
+/// - A permission request of a category and a host at once, which only the
+///   removed `demi conversation move` raised, goes.
+///
+/// A paired device's workspaces and conversations wait for its runner to resolve
+/// their directories when it first reports its home (`devices.rs`).
 fn control_from_0_1_22_dev_20261016t043704z(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_FROM_0_1_22_DEV_20261016T043704Z)?;
     control_by_directory(transaction, blobs)
 }
 
-/// The usage ledger's step of [`control_from_0_1_22_dev_20261016t043704z`],
-/// to the ledger that keeps a row per vendor call with its agent, turn,
-/// purpose, account, ids, outcome, observed quota and times
-/// (`crates/backend-database/src/usage.rs`). A row written before keeps null
-/// for what it lacked; its `created_at`, written as its response ended, is
-/// its `ended_at`. A call's counts are null when the vendor reported none.
-/// In the same schema a managed device says which managed machine it is, the
-/// user's Cloud or the master's Claude Code machine
-/// (`crates/backend-cloud/src/lib.rs`), and a subscription account may hold
-/// no secret, as a Claude Code account whose CLI keeps its sign-in does, and
-/// says whether the vendor signed it out
-/// (`crates/provider-claude-code/src/account.rs`). Every managed device of
-/// the earlier schema is a Cloud. A Claude Code account keeps the tokens it
-/// holds until its first use hands them over. No table refers to
-/// `provider_credentials`, so it is made again.
+/// The usage ledger's step of [`control_from_0_1_22_dev_20261016t043704z`], to the
+/// ledger that keeps a row per vendor call with its agent, turn, purpose,
+/// account, ids, outcome, observed quota and times
+/// (`crates/backend-database/src/usage.rs`).
+///
+/// A row written before keeps null for what it lacked; its `created_at`, written
+/// as its response ended, is its `ended_at`. A call's counts are null when the
+/// vendor reported none.
+///
+/// In the same schema:
+///
+/// - A managed device says which managed machine it is, the user's Cloud or the
+///   master's Claude Code machine (`crates/backend-cloud/src/lib.rs`). Every
+///   managed device of the earlier schema is a Cloud.
+/// - A subscription account may hold no secret, as a Claude Code account whose
+///   CLI keeps its sign-in does, and says whether the vendor signed it out
+///   (`crates/provider-claude-code/src/account.rs`). A Claude Code account keeps
+///   the tokens it holds until its first use hands them over.
+///
+/// No table refers to `provider_credentials`, so it is made again.
 const CONTROL_FROM_0_1_22_DEV_20261016T043704Z: &str = "
 CREATE TABLE usage_ledger_calls (
   id                    TEXT PRIMARY KEY,
@@ -633,14 +681,16 @@ DROP TABLE kept_workspaces;
 CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
 ",
     )?;
-    // The table's CHECK changes. Making the table again would drop the
-    // table every conversation's rows name, which cascades while foreign
-    // keys are on, as they are in a migration's transaction; its columns
-    // stay as they are, so its text changes in place, the procedure SQLite
-    // gives for a change of constraints alone (lang_altertable.html § 7),
-    // to the current schema's own text. The rows the new CHECK refuses are
-    // rewritten next, and the integrity check, which tests CHECK
-    // constraints, proves none is left.
+    // The table's CHECK changes.
+    //
+    // Making the table again would drop the table every conversation's rows name,
+    // which cascades while foreign keys are on, as they are in a migration's
+    // transaction. Its columns stay as they are, so its text changes in place, the
+    // procedure SQLite gives for a change of constraints alone
+    // (lang_altertable.html § 7), to the current schema's own text.
+    //
+    // The rows the new CHECK refuses are rewritten next, and the integrity check,
+    // which tests CHECK constraints, proves none is left.
     let start = CONTROL_V1
         .find("CREATE TABLE conversations (")
         .expect("the control schema makes the conversations table");
@@ -701,11 +751,14 @@ DELETE FROM permission_requests WHERE kind = 'permission'
     Ok(())
 }
 
-/// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
-/// data of, to the one in which a workspace keeps what its project's next
-/// conversation starts with, none before the first choice, and a Fork's metadata
-/// holds the workflow its destination keeps (format 3). A Fork reserved before was
-/// reserved to start with Global Workflow, which its record keeps.
+/// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps data
+/// of, to the one in which:
+///
+/// - A workspace keeps what its project's next conversation starts with, none
+///   before the first choice.
+/// - A Fork's metadata holds the workflow its destination keeps (format 3). A
+///   Fork reserved before was reserved to start with Global Workflow, which its
+///   record keeps.
 fn control_from_0_1_22_dev_20261015t105826z(
     transaction: &Transaction<'_>,
     _: &dyn ReadBlob,
@@ -796,15 +849,17 @@ CREATE UNIQUE INDEX shares_of_conversation ON shares (conversation_id) WHERE kin
 CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE kind = 'answer';
 ";
 
-/// From the control schema that keeps the turns a shutdown interrupted to
-/// the one in which a conversation keeps the hosts it may reach and a request
-/// may ask for one (`crates/backend-database/src/conversation_index.rs`), which replace the Manage Devices
-/// category. Every attached host seeds its conversation's list: a host
-/// attached by name took Manage Devices to attach, and one attached with a
-/// directory is a primary target the conversation left, which the list
-/// holds anyway. The grants of Manage Devices go, and so do the undecided
-/// requests that asked for it, which no command asks for any more; a
-/// decided one stays until its message is delivered.
+/// From the control schema that keeps the turns a shutdown interrupted to the one
+/// in which a conversation keeps the hosts it may reach and a request may ask for
+/// one (`crates/backend-database/src/conversation_index.rs`), which replace the
+/// Manage Devices category.
+///
+/// - Every attached host seeds its conversation's list: a host attached by name
+///   took Manage Devices to attach, and one attached with a directory is a primary
+///   target the conversation left, which the list holds anyway.
+/// - The grants of Manage Devices go, and so do the undecided requests that asked
+///   for it, which no command asks for any more. A decided one stays until its
+///   message is delivered.
 const CONTROL_FROM_INTERRUPTED_TURNS: &str = "
 ALTER TABLE permission_requests ADD COLUMN host_device_id TEXT
     CHECK (host_device_id IS NULL OR kind = 'permission');
@@ -847,11 +902,11 @@ CREATE TABLE interrupted_turns (
 const CONTROL_FROM_ACCOUNT_ROTATION: &str =
     "UPDATE conversations SET title = '' WHERE title_origin = 'placeholder';";
 
-/// From the control schema whose API-key entries sealed configuration
-/// format 2 to the one with account rotation
-/// (`crates/backend-providers/src/llm/rotation.rs`): every entry keeps its
-/// manual rotation, and each entry's
-/// accounts keep the order they were listed in, by their ids.
+/// From the control schema whose API-key entries sealed configuration format 2 to
+/// the one with account rotation (`crates/backend-providers/src/llm/rotation.rs`).
+///
+/// - Every entry keeps its manual rotation.
+/// - Each entry's accounts keep the order they were listed in, by their ids.
 const CONTROL_FROM_CONFIG_FORMAT_2: &str = "
 ALTER TABLE providers ADD COLUMN rotation TEXT NOT NULL DEFAULT 'manual'
     CHECK (rotation IN ('manual', 'in_order', 'balanced')
@@ -863,13 +918,13 @@ UPDATE provider_credentials SET position = (
 );
 ";
 
-/// From the control schema whose API-key entries sealed their bare
-/// configuration, format 1, to provider configuration format 2, which
-/// tells a compatible entry by its naming no vendor
-/// (`crates/backend-user-shard/src/provider_settings.rs`). The vault opens,
-/// decodes and
-/// checks each one and seals it again; one it cannot read stops the
-/// migration, so the database stays as it was.
+/// From the control schema whose API-key entries sealed their bare configuration,
+/// format 1, to provider configuration format 2, which tells a compatible entry
+/// by its naming no vendor
+/// (`crates/backend-user-shard/src/provider_settings.rs`).
+///
+/// The vault opens, decodes and checks each one and seals it again. One it cannot
+/// read stops the migration, so the database stays as it was.
 fn control_sealed_config_format_2(
     transaction: &Transaction<'_>,
     seals: &dyn ResealConfigs,
@@ -909,25 +964,28 @@ const CONTROL_FROM_DEVICE_NAMES: &str =
 /// (`crates/backend-database/src/conversation_index.rs`) and a switch is known by the
 /// revision it made.
 ///
-/// The hosts' table loses the names conversations gave them, rebuilt since
-/// SQLite drops no column a constraint names, with the rows in the order the
-/// names were listed in, which their row ids keep. A Fork's metadata goes
-/// from format 1, whose attached hosts carry names, to format 2, which
-/// holds the source's execution-context revision at the Fork instead: each
-/// record is decoded as format 1 and the result checked as format 2, so a
-/// record of neither stops the migration. A reservation stays once its
-/// destination is published, which never reads it again, and keeps the
-/// destination's revision; one that waits
-/// takes its source's revision now, at least the one at the Fork and so as
-/// good. One whose source is gone too, deleted while the Fork waited, takes
-/// 0: none is known, and the cost, a first switch of the destination that
-/// its copied blocks hide, is the one a switch made before the upgrade
-/// takes, below. A switch made before records revision
-/// 0, which every node read or passed, since the revision it made is not
-/// known: the conversation's current one may have moved past it while its
-/// nodes were idle, and would announce a switch they saw once more. So a
-/// switch made while its nodes were idle that none of them had read yet
-/// loses its one announcement, which is accepted: the conversation's
+/// The hosts' table loses the names conversations gave them, rebuilt since SQLite
+/// drops no column a constraint names, with the rows in the order the names were
+/// listed in, which their row ids keep.
+///
+/// A Fork's metadata goes from format 1, whose attached hosts carry names, to
+/// format 2, which holds the source's execution-context revision at the Fork
+/// instead: each record is decoded as format 1 and the result checked as format 2,
+/// so a record of neither stops the migration.
+///
+/// - A reservation stays once its destination is published, which never reads it
+///   again, and keeps the destination's revision.
+/// - One that waits takes its source's revision now, at least the one at the Fork
+///   and so as good.
+/// - One whose source is gone too, deleted while the Fork waited, takes 0: none is
+///   known, and the cost, a first switch of the destination that its copied blocks
+///   hide, is the one a switch made before the upgrade takes, below.
+///
+/// A switch made before records revision 0, which every node read or passed, since
+/// the revision it made is not known: the conversation's current one may have
+/// moved past it while its nodes were idle, and would announce a switch they saw
+/// once more. So a switch made while its nodes were idle that none of them had read
+/// yet loses its one announcement, which is accepted: the conversation's
 /// transcript shows the user the move.
 fn control_from_saved_edits(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
@@ -1070,12 +1128,15 @@ ALTER TABLE conversations ADD COLUMN workflow_id TEXT CHECK ((workflow_kind = 'w
 ";
 
 /// From the control schema with the messages saved for later to the one with
-/// administered accounts: an account is enabled and has chosen its own
-/// password, as every account that exists did, and was last active when its
-/// latest session was; a session was not made by an administrator's code;
-/// each user's one handoff code becomes their handoff code of its kind, and
-/// no sign-in code exists. The codes' table is rebuilt, since SQLite changes
-/// a primary key only so.
+/// administered accounts.
+///
+/// - An account is enabled and has chosen its own password, as every account that
+///   exists did, and was last active when its latest session was.
+/// - A session was not made by an administrator's code.
+/// - Each user's one handoff code becomes their handoff code of its kind, and no
+///   sign-in code exists.
+///
+/// The codes' table is rebuilt, since SQLite changes a primary key only so.
 const CONTROL_FROM_SAVED_MESSAGES: &str = "
 ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1));
 ALTER TABLE users ADD COLUMN chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1));
@@ -1131,12 +1192,15 @@ CREATE TABLE saved_messages (
 CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
 ";
 
-/// From the control schema with passkeys to the one with the signed-in
-/// browsers and handoff codes: each session gets an id, and the browser it
-/// signed in from, which no session before kept, reads `Web Browser`; when
-/// it signed in and was last active, which none kept either, read its last
-/// renewal, 30 days before its expiry. No session was verified. The handoff
-/// codes start empty.
+/// From the control schema with passkeys to the one with the signed-in browsers
+/// and handoff codes.
+///
+/// - Each session gets an id, and the browser it signed in from, which no session
+///   before kept, reads `Web Browser`.
+/// - When it signed in and was last active, which none kept either, read its last
+///   renewal, 30 days before its expiry.
+/// - No session was verified.
+/// - The handoff codes start empty.
 const CONTROL_FROM_PASSKEYS: &str = "
 CREATE TABLE web_sessions_new (
   token_hash     TEXT PRIMARY KEY,
@@ -1191,11 +1255,15 @@ CREATE TABLE passkey_challenges (
 CREATE INDEX passkey_challenges_expiry ON passkey_challenges (expires_at);
 ";
 
-/// From the control schema with the plugins' secrets to the one with the
-/// users' credentials: two new tables, empty; and a conversation's
-/// requests of three kinds, of which every stored one is a permission
-/// request. The requests' table is rebuilt, since SQLite cannot make a
-/// column nullable in place.
+/// From the control schema with the plugins' secrets to the one with the users'
+/// credentials.
+///
+/// - Two new tables, empty.
+/// - A conversation's requests of three kinds, of which every stored one is a
+///   permission request.
+///
+/// The requests' table is rebuilt, since SQLite cannot make a column nullable in
+/// place.
 const CONTROL_FROM_PLUGIN_SECRETS: &str = "
 CREATE TABLE user_credentials (
   id           TEXT PRIMARY KEY,
@@ -1279,25 +1347,34 @@ CREATE TABLE plugin_oauth_clients (
 ) STRICT, WITHOUT ROWID;
 ";
 
-/// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that ships the current schema, and of
-/// each development build a server keeps data of (`upgrades.md` § A
-/// development build on a server); the one of transcript block format 5 in
-/// which a node says which agent it was forked from is the last of those.
-/// The schemas of transcript block formats 4 and 5 before it no server
-/// keeps, but development databases do, and the server's migrate through
-/// them, as they do through the one before a node said which agent it was
-/// forked from, through the one of transcript block format 6 before a
-/// child's row kept its working directory, through the one with child
-/// directories before a node kept its profile's Context, and through the
-/// one of format 6 before a shell call marked the paths outside its
-/// agent's directory, and the one of format 7 before account rotation, and the one of format 8
-/// before the shares' snapshots. The last of those a server keeps is the
-/// one `0.1.22-dev.20261015T105826Z` deployed, of format 8, the one
-/// `0.1.22-dev.20261015T134426Z` deployed, of format 9, and the one
-/// `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees of
-/// rows. 0.1.22 shipped that one too, before a running command kept its
-/// turn, and 0.1.33 the one before a running command kept its call's script.
+/// Each conversation's database's schema.
+///
+/// Its history holds the schema of each published release before the one that
+/// ships the current schema, and of each development build a server keeps data of
+/// (`upgrades.md` § A development build on a server). The one of transcript block
+/// format 5 in which a node says which agent it was forked from is the last of
+/// those.
+///
+/// The schemas of transcript block formats 4 and 5 before it no server keeps, but
+/// development databases do, and the server's migrate through them, as they do
+/// through:
+///
+/// - the one before a node said which agent it was forked from;
+/// - the one of transcript block format 6 before a child's row kept its working
+///   directory;
+/// - the one with child directories before a node kept its profile's Context;
+/// - the one of format 6 before a shell call marked the paths outside its agent's
+///   directory;
+/// - the one of format 7 before account rotation;
+/// - the one of format 8 before the shares' snapshots.
+///
+/// The last of those a server keeps are:
+///
+/// - the one `0.1.22-dev.20261015T105826Z` deployed, of format 8;
+/// - the one `0.1.22-dev.20261015T134426Z` deployed, of format 9;
+/// - the one `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees
+///   of rows. 0.1.22 shipped that one too, before a running command kept its
+///   turn, and 0.1.33 the one before a running command kept its call's script.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1388,12 +1465,14 @@ pub(crate) const CONVERSATION: Schema = Schema {
     ],
 };
 
-/// From 0.1.33's conversation schema, which 0.1.33 shipped, to the current
-/// one: a running command keeps its call's script beside its title, which
-/// the pages' view of it carries. A command recorded before takes both
-/// from the call that started it, the latest of its id in its node's
-/// transcript; one whose call names no title is titled by its number, and
-/// one whose call names no script keeps none. A title a record kept stays.
+/// From 0.1.33's conversation schema, which 0.1.33 shipped, to the current one: a
+/// running command keeps its call's script beside its title, which the pages'
+/// view of it carries.
+///
+/// A command recorded before takes both from the call that started it, the latest
+/// of its id in its node's transcript. One whose call names no title is titled by
+/// its number, and one whose call names no script keeps none. A title a record
+/// kept stays.
 fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE running_commands ADD COLUMN script TEXT NOT NULL DEFAULT '';")?;
     let rows = transaction
@@ -1432,32 +1511,39 @@ fn conversation_from_0_1_33(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
     Ok(())
 }
 
-/// From 0.1.22's conversation schema to 0.1.27's: a running
-/// command keeps the turn
-/// whose shell call started it, which a command's call's usage ledger row
-/// names (`crates/backend-database/src/usage.rs`); one recorded before keeps
-/// none. A command whose start waits for its Host keeps what it starts
-/// (`crates/backend-host-access/src/access.rs`); every one recorded before
-/// was sent. A `user` block (transcript block format 11) and a queued
-/// message (checkpoint state format 5) may name the automation's run that
-/// sent it; one stored before names none, as a message the user wrote, so
-/// neither is rewritten.
+/// From 0.1.22's conversation schema to 0.1.27's.
+///
+/// - A running command keeps the turn whose shell call started it, which a
+///   command's call's usage ledger row names
+///   (`crates/backend-database/src/usage.rs`). One recorded before keeps none.
+/// - A command whose start waits for its Host keeps what it starts
+///   (`crates/backend-host-access/src/access.rs`). Every one recorded before was
+///   sent.
+/// - A `user` block (transcript block format 11) and a queued message (checkpoint
+///   state format 5) may name the automation's run that sent it. One stored before
+///   names none, as a message the user wrote, so neither is rewritten.
 const CONVERSATION_FROM_0_1_22: &str = "
 ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
 ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 ";
 
-/// From 0.1.28's conversation schema, shipped through 0.1.32, of transcript
-/// block format 11 and checkpoint state format 5, to the current one, of block
-/// format 12 and state format 6, in which an attachment record names the file
-/// by its number in the conversation's `attachment` sequence, `a7`, instead of
-/// its path on the Host, since a send no longer writes the file there
-/// (`crates/backend-host-access/src/uploads.rs`): see [`number_attachments`].
-/// An attachment keeps the node of the agent that uploaded it, whose replies
-/// alone show it. No release kept it: a file a message holds, which this step
-/// or an earlier one numbered, is the user's, and every other row, an agent's
-/// upload, is the upload of the agent whose text first delivered it as a
-/// block, or the root's when none did, so a reply that showed it still does.
+/// From 0.1.28's conversation schema, shipped through 0.1.32, of transcript block
+/// format 11 and checkpoint state format 5, to the current one, of block format 12
+/// and state format 6.
+///
+/// An attachment record names the file by its number in the conversation's
+/// `attachment` sequence, `a7`, instead of its path on the Host, since a send no
+/// longer writes the file there (`crates/backend-host-access/src/uploads.rs`): see
+/// [`number_attachments`].
+///
+/// An attachment keeps the node of the agent that uploaded it, whose replies alone
+/// show it. No release kept it:
+///
+/// - A file a message holds, which this step or an earlier one numbered, is the
+///   user's.
+/// - Every other row, an agent's upload, is the upload of the agent whose text
+///   first delivered it as a block, or the root's when none did, so a reply that
+///   showed it still does.
 fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE attachments ADD COLUMN node_id TEXT;")?;
     number_attachments(transaction)?;
@@ -1507,17 +1593,21 @@ fn held_attachments(value: &serde_json::Value) -> Vec<i64> {
     }
 }
 
-/// Numbers each file an attachment record names by its path on the Host,
-/// as every release from 0.1.20 through 0.1.32 stored one: the file takes
-/// the conversation's next attachment number, in the order the records were
-/// stored, and a row of `attachments` with its name, media type, size and
-/// blob, without its size in pixels, which its header gave only to a row
-/// stored since. The records of one file, its path and its bytes, take one
-/// number, in the transcripts, their branches, the shares' copies and the
-/// queues of the checkpoints alike; two files at one path, as on two Hosts
-/// with one home, take two. A record numbered already stays, so this runs
-/// first in every step that reads blocks or states with the current types,
-/// which take a numbered record alone, and once more at the end.
+/// Numbers each file an attachment record names by its path on the Host, as every
+/// release from 0.1.20 through 0.1.32 stored one.
+///
+/// The file takes the conversation's next attachment number, in the order the
+/// records were stored, and a row of `attachments` with its name, media type, size
+/// and blob, without its size in pixels, which its header gave only to a row
+/// stored since.
+///
+/// - The records of one file, its path and its bytes, take one number, in the
+///   transcripts, their branches, the shares' copies and the queues of the
+///   checkpoints alike.
+/// - Two files at one path, as on two Hosts with one home, take two.
+/// - A record numbered already stays, so this runs first in every step that reads
+///   blocks or states with the current types, which take a numbered record alone,
+///   and once more at the end.
 fn number_attachments(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let mut numbers = AttachmentNumbers {
         by_file: HashMap::new(),
@@ -1574,11 +1664,12 @@ struct AttachmentNumbers {
 }
 
 impl AttachmentNumbers {
-    /// Rewrites every attachment record within `value` that names its file
-    /// by path to name it by number, storing a row through `insert` for a
-    /// file not numbered yet; answers whether it rewrote any. Such a record
-    /// holds `name`, `path`, `mediaType`, `sizeBytes` and `sha256`; one that
-    /// lacks any fails the migration.
+    /// Rewrites every attachment record within `value` that names its file by path
+    /// to name it by number, storing a row through `insert` for a file not numbered
+    /// yet; answers whether it rewrote any.
+    ///
+    /// Such a record holds `name`, `path`, `mediaType`, `sizeBytes` and `sha256`;
+    /// one that lacks any fails the migration.
     fn renumber(
         &mut self,
         value: &mut serde_json::Value,
@@ -1631,12 +1722,14 @@ impl AttachmentNumbers {
     }
 }
 
-/// From 0.1.27's conversation schema to 0.1.28's: the sequences
-/// gain `device`, which numbers the conversation's simulators
-/// (`crates/command-package-mobile/src/operations.rs`); every sequence keeps
-/// its next number. A node
-/// may have no number, a side question's, whose row the new `side_questions`
-/// holds; every node of 0.1.27 is an agent and keeps its number.
+/// From 0.1.27's conversation schema to 0.1.28's.
+///
+/// - The sequences gain `device`, which numbers the conversation's simulators
+///   (`crates/command-package-mobile/src/operations.rs`). Every sequence keeps its
+///   next number.
+/// - A node may have no number, a side question's, whose row the new
+///   `side_questions` holds. Every node of 0.1.27 is an agent and keeps its
+///   number.
 fn conversation_from_0_1_27(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
@@ -1649,13 +1742,16 @@ DROP TABLE sequences;
 ALTER TABLE sequences_next RENAME TO sequences;
 ",
     )?;
-    // The nodes' NOT NULL on `number` goes. Making the table again would
-    // drop the table every block row names, which cascades while foreign
-    // keys are on, as they are in a migration's transaction; its columns
-    // stay as they are, so its text changes in place, the procedure SQLite
-    // gives for a change of constraints alone (lang_altertable.html § 7),
-    // to the current schema's own text. Every row keeps its number, which
-    // the integrity check proves the new text accepts.
+    // The nodes' NOT NULL on `number` goes.
+    //
+    // Making the table again would drop the table every block row names, which
+    // cascades while foreign keys are on, as they are in a migration's
+    // transaction. Its columns stay as they are, so its text changes in place, the
+    // procedure SQLite gives for a change of constraints alone
+    // (lang_altertable.html § 7), to the current schema's own text.
+    //
+    // Every row keeps its number, which the integrity check proves the new text
+    // accepts.
     let start = CONVERSATION_V1
         .find("CREATE TABLE nodes (")
         .expect("the conversation schema makes the nodes table");
@@ -1687,14 +1783,16 @@ ALTER TABLE sequences_next RENAME TO sequences;
     Ok(())
 }
 
-/// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
-/// data of, to the one whose quota snapshots (format 2) give each window a
-/// kind, which with its period and its scope the page names it from in the
-/// user's language (`crates/shared-types/src/quota.rs`), instead of the
-/// English name format 1 held. Each window's kind is the one its old name
-/// says, read by its vendor's old namer ([`old_window_name`]); a name that
-/// namer did not make, or a vendor with none, fails the migration. Each
-/// snapshot is decoded and checked as format 2 before it is written back.
+/// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps data
+/// of, to the one whose quota snapshots (format 2) give each window a kind, which
+/// with its period and its scope the page names it from in the user's language
+/// (`crates/shared-types/src/quota.rs`), instead of the English name format 1
+/// held.
+///
+/// Each window's kind is the one its old name says, read by its vendor's old
+/// namer ([`old_window_name`]); a name that namer did not make, or a vendor with
+/// none, fails the migration. Each snapshot is decoded and checked as format 2
+/// before it is written back.
 fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // The shares made before a share held only what was said, each of
     // which held every block and its subagents, are removed, and their
@@ -1740,17 +1838,21 @@ fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) 
     Ok(())
 }
 
-/// From the conversation schema that `0.1.22-dev.20261015T134426Z`
-/// deployed, of transcript block format 9, to format 10, in which an
-/// `account_switch` block holds what names the window that was used up, its
-/// kind, period and scope, instead of its English name, so the line reads in
-/// the viewer's language (`crates/shared-types/src/quota.rs`). The old
-/// name says them, read by every vendor's old namer, since the block does
+/// From the conversation schema that `0.1.22-dev.20261015T134426Z` deployed, of
+/// transcript block format 9, to format 10, in which an `account_switch` block
+/// holds what names the window that was used up, its kind, period and scope,
+/// instead of its English name, so the line reads in the viewer's language
+/// (`crates/shared-types/src/quota.rs`).
+///
+/// The old name says them, read by every vendor's old namer, since the block does
 /// not name the vendor ([`old_window_name`]); a name none made fails the
-/// migration. Each block is decoded and checked as format 10 before it is
-/// written back. Then the shares become lists of what was said
-/// ([`shares_as_lists`]). Last, each transcript becomes a tree of rows of
-/// one path ([`ONE_PATH`]).
+/// migration. Each block is decoded and checked as format 10 before it is written
+/// back.
+///
+/// Then:
+///
+/// 1. The shares become lists of what was said ([`shares_as_lists`]).
+/// 2. Each transcript becomes a tree of rows of one path ([`ONE_PATH`]).
 fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let switches = "json_extract(block, '$.type') = 'account_switch'";
     let rows = transaction
@@ -1770,13 +1872,15 @@ fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -
 /// the interval its calls asked for as they bounded it then.
 const INTERVAL_BOUNDS_MS: (i64, i64) = (15_000, 600_000);
 
-/// From the conversation schema that `0.1.22-dev.20261016T043704Z` deployed to
-/// the one in which each running command's record keeps the interval its call
-/// asked it to report at, read from the call's input in the transcript as that
-/// build bounded it, or none for a call that asked for none
+/// From the conversation schema that `0.1.22-dev.20261016T043704Z` deployed to the
+/// one in which each running command's record keeps the interval its call asked it
+/// to report at, read from the call's input in the transcript as that build
+/// bounded it, or none for a call that asked for none
 /// (`crates/agent-session/src/reports.rs`): a command whose call a restart
-/// interrupted reports as its call asked. A record whose call the transcript
-/// lacks, or whose call's input names no interval, fails the migration.
+/// interrupted reports as its call asked.
+///
+/// A record whose call the transcript lacks, or whose call's input names no
+/// interval, fails the migration.
 fn commands_with_their_intervals(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE running_commands ADD COLUMN interval_ms INTEGER CHECK (interval_ms >= 1);")?;
     let rows = transaction
@@ -1981,15 +2085,19 @@ fn codex_length(text: &str, unit: u64) -> Option<Option<u64>> {
     Some(Some(seconds as u64))
 }
 
-/// From the conversation schema that `0.1.22-dev.20261015T105826Z`
-/// deployed, of transcript block format 8, to format 9, in which a call's
-/// block records when it returned, `endedAt`, which a run's time adds up.
-/// A stored call kept no record of it: one that returned ends the time its
-/// shell view says its command ran until then, `runningMs`, after it
-/// started, and a call of another tool where it started; a call still
-/// executing has not returned. Each block is decoded and checked as format
-/// 9 before it is written back; the shares' snapshots are removed later
-/// ([`shares_as_lists`]).
+/// From the conversation schema that `0.1.22-dev.20261015T105826Z` deployed, of
+/// transcript block format 8, to format 9, in which a call's block records when it
+/// returned, `endedAt`, which a run's time adds up.
+///
+/// A stored call kept no record of it:
+///
+/// - One that returned ends the time its shell view says its command ran until
+///   then, `runningMs`, after it started.
+/// - A call of another tool ends where it started.
+/// - A call still executing has not returned.
+///
+/// Each block is decoded and checked as format 9 before it is written back; the
+/// shares' snapshots are removed later ([`shares_as_lists`]).
 fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let calls = "json_extract(block, '$.type') = 'tool_call'";
     let rows = transaction
@@ -2005,12 +2113,14 @@ fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rus
     Ok(())
 }
 
-/// From the shares whose snapshots copied every block of a conversation
-/// and its subagents to shares that list what was said: the shares made before
-/// are removed, as the control database removes their records
-/// ([`snapshots_with_window_kinds`]), and the tables of the lists start empty.
-/// Each blob a block names is listed in `block_blobs` and each attachment a
-/// text names in `block_attachments`, each block decoded once.
+/// From the shares whose snapshots copied every block of a conversation and its
+/// subagents to shares that list what was said.
+///
+/// - The shares made before are removed, as the control database removes their
+///   records ([`snapshots_with_window_kinds`]), and the tables of the lists start
+///   empty.
+/// - Each blob a block names is listed in `block_blobs` and each attachment a text
+///   names in `block_attachments`, each block decoded once.
 fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(SHARES_AS_LISTS)?;
     // It reads blocks with the current types (`number_attachments`).
@@ -2080,12 +2190,12 @@ fn ended_call(text: &str) -> rusqlite::Result<Option<String>> {
     Ok(Some(to_json(&block)))
 }
 
-/// A stored call of transcript block format 8 or before as format 9 holds
-/// it, with when it returned (`calls_with_their_ends`); true when it
-/// changed. A start or a time that is not what its format says is corrupt
-/// data, which fails the migration. The migrations before that format's
-/// decode the blocks they relist as the current format, so they read a
-/// call through this too.
+/// A stored call of transcript block format 8 or before as format 9 holds it, with
+/// when it returned (`calls_with_their_ends`); true when it changed.
+///
+/// A start or a time that is not what its format says is corrupt data, which fails
+/// the migration. The migrations before that format's decode the blocks they
+/// relist as the current format, so they read a call through this too.
 fn with_its_end(block: &mut serde_json::Value) -> rusqlite::Result<bool> {
     let Some(fields) = block.as_object_mut() else {
         return Ok(false);
@@ -2145,22 +2255,22 @@ CREATE TABLE share_attachments (
 ) STRICT;
 ";
 
-/// From the conversation schema of transcript block format 7 and checkpoint
-/// state format 3 to block format 8, which adds the `account_switch` block,
-/// and state format 4, which keeps an agent's account
-/// (`crates/backend-providers/src/llm/rotation.rs`). Every stored block and
-/// state is one of the new
-/// formats as it is: none switched accounts, and none has taken an account
-/// of its own yet.
+/// From the conversation schema of transcript block format 7 and checkpoint state
+/// format 3 to block format 8, which adds the `account_switch` block, and state
+/// format 4, which keeps an agent's account
+/// (`crates/backend-providers/src/llm/rotation.rs`).
+///
+/// Every stored block and state is one of the new formats as it is: none switched
+/// accounts, and none has taken an account of its own yet.
 const CONVERSATION_FROM_BLOCK_FORMAT_7: &str = "";
 
-/// From the conversation schema of transcript block format 6 to format 7,
-/// in which a shell call's own files mark the paths outside its agent's
-/// working directory `outside` in place of the paths in a temporary
-/// directory `temporary`, and its renames and removals mark none
-/// (`crates/agent-store/src/changes.rs`). This database does
-/// not know the root's directory, so a file marked temporary is marked
-/// outside, and the stored run and request lists, which already left those
+/// From the conversation schema of transcript block format 6 to format 7, in which
+/// a shell call's own files mark the paths outside its agent's working directory
+/// `outside` in place of the paths in a temporary directory `temporary`, and its
+/// renames and removals mark none (`crates/agent-store/src/changes.rs`).
+///
+/// This database does not know the root's directory, so a file marked temporary is
+/// marked outside, and the stored run and request lists, which already left those
 /// out, stay as they are.
 fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let rows = transaction
@@ -2179,11 +2289,12 @@ fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
     Ok(())
 }
 
-/// A stored shell view of transcript block format 6 or before as format 7
-/// holds it: each own file's `temporary` becomes `outside`, and its renames
-/// and removals lose theirs; true when it changed. A flag that is not a
-/// boolean is corrupt data, which fails the migration. The migrations
-/// before that format's decode the blocks they relist as the current
+/// A stored shell view of transcript block format 6 or before as format 7 holds
+/// it: each own file's `temporary` becomes `outside`, and its renames and removals
+/// lose theirs; true when it changed.
+///
+/// A flag that is not a boolean is corrupt data, which fails the migration. The
+/// migrations before that format's decode the blocks they relist as the current
 /// format, so they read a view through this too.
 fn with_outside_paths(block: &mut serde_json::Value) -> Result<bool, serde_json::Error> {
     let Some(view) = block.get_mut("view").and_then(serde_json::Value::as_object_mut) else {
@@ -2218,19 +2329,20 @@ fn with_outside_paths(block: &mut serde_json::Value) -> Result<bool, serde_json:
 const CONVERSATION_FROM_CHILD_DIRECTORIES: &str =
     "ALTER TABLE nodes ADD COLUMN context_limit INTEGER CHECK (context_limit >= 1);";
 
-/// From the conversation schema of transcript block format 6, whose
-/// checkpoint state (format 2) kept the node's working directory, to the
-/// one in which a child's row keeps it with where the conversation worked
-/// when it was set (`crates/agent-server/src/node/mod.rs`), checkpoint state
-/// format 3: each child's directory moves from its state into its row, and
-/// the root's goes, since the root works in the conversation's directory.
-/// Where the conversation worked then is not in this database, and no
-/// device is recorded: a child of that schema worked in the conversation's
-/// directory, and it does again, since no device the conversation runs on
-/// now is none. Format 6, which no server has kept, now also lets a
-/// `context` block name a directory, which no stored block does, so the
-/// blocks are as they were. Each state is decoded and checked as format 3
-/// before it is written back.
+/// From the conversation schema of transcript block format 6, whose checkpoint
+/// state (format 2) kept the node's working directory, to the one in which a
+/// child's row keeps it with where the conversation worked when it was set
+/// (`crates/agent-server/src/node/mod.rs`), checkpoint state format 3.
+///
+/// - Each child's directory moves from its state into its row, and the root's
+///   goes, since the root works in the conversation's directory.
+/// - Where the conversation worked then is not in this database, and no device is
+///   recorded: a child of that schema worked in the conversation's directory, and
+///   it does again, since no device the conversation runs on now is none.
+/// - Format 6, which no server has kept, now also lets a `context` block name a
+///   directory, which no stored block does, so the blocks are as they were.
+///
+/// Each state is decoded and checked as format 3 before it is written back.
 fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
@@ -2317,13 +2429,16 @@ fn with_no_kept_messages(block: &mut serde_json::Value) -> bool {
 }
 
 /// From the conversation schema of the development build
-/// 0.1.22-dev.20261011T123543Z, which a server keeps data of
-/// (`upgrades.md` § A development build on a server): a command's records
-/// keep the title of the call that started it, which its reports name
-/// (`crates/agent-session/src/reports.rs`), and the blocks move from transcript
-/// block format 3 to format 4 ([`relist_blocks`]). No record that build
-/// wrote kept a title, and none is guessed: theirs stay empty, and their
-/// reports name the command by its number.
+/// 0.1.22-dev.20261011T123543Z, which a server keeps data of (`upgrades.md` § A
+/// development build on a server).
+///
+/// - A command's records keep the title of the call that started it, which its
+///   reports name (`crates/agent-session/src/reports.rs`).
+/// - The blocks move from transcript block format 3 to format 4
+///   ([`relist_blocks`]).
+///
+/// No record that build wrote kept a title, and none is guessed: theirs stay
+/// empty, and their reports name the command by its number.
 fn from_0_1_22_dev_20261011t123543z(
     transaction: &Transaction<'_>,
     blobs: &dyn ReadBlob,
@@ -2337,11 +2452,12 @@ ALTER TABLE running_commands ADD COLUMN title TEXT NOT NULL DEFAULT '';
     relist_blocks(transaction, blobs)
 }
 
-/// From the control schema of the development build
-/// 0.1.22-dev.20261011T123543Z, which a server keeps data of: each user's
-/// subagent settings hold the two limits
-/// (`crates/agent-server/src/server/tree/profiles.rs`), which a user who turned
-/// the Subagents switch has at their defaults, as a user with no row has.
+/// From the control schema of the development build 0.1.22-dev.20261011T123543Z,
+/// which a server keeps data of: each user's subagent settings hold the two limits
+/// (`crates/agent-server/src/server/tree/profiles.rs`).
+///
+/// A user who turned the Subagents switch has them at their defaults, as a user
+/// with no row has.
 const CONTROL_FROM_0_1_22_DEV_20261011T123543Z: &str = "
 ALTER TABLE user_subagents ADD COLUMN max_live INTEGER DEFAULT 10 CHECK (max_live >= 1);
 ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 1);
@@ -2355,11 +2471,12 @@ ALTER TABLE conversations DROP COLUMN user_messages;
 ALTER TABLE conversations DROP COLUMN titled_messages;
 ";
 
-/// From the control schema without Detect Title: each subagent limit keeps
-/// its number while it is lifted (`crates/agent-server/src/server/tree/profiles.rs`), so a limit
-/// stored as Unlimited, a null, takes its default number and stays
-/// Unlimited. The table is rebuilt, since SQLite cannot make a column NOT
-/// NULL in place.
+/// From the control schema without Detect Title: each subagent limit keeps its
+/// number while it is lifted (`crates/agent-server/src/server/tree/profiles.rs`),
+/// so a limit stored as Unlimited, a null, takes its default number and stays
+/// Unlimited.
+///
+/// The table is rebuilt, since SQLite cannot make a column NOT NULL in place.
 const CONTROL_FROM_NO_DETECT_TITLE: &str = "
 CREATE TABLE user_subagents_kept (
   user_id             TEXT PRIMARY KEY REFERENCES users (id),
@@ -2437,18 +2554,21 @@ const CONTROL_FROM_0_1_20: &str = "
 ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server'));
 ";
 
-/// From 0.1.21's control schema: a conversation keeps the move an agent
-/// asked for and an attached host the detach it waits with, none for every
-/// conversation 0.1.21 left; a permission request names its categories, the
-/// one category of each request 0.1.21 stored. SQLite cannot drop a column
-/// an index names, so the requests' table is made anew, as for 0.1.11's
-/// conversations. The web preview is gone, and the deployment's namespace
-/// at the preview domain with it. Users keep personal instructions, which
-/// no user migrated from 0.1.21 has. Yield wakeups are gone, and the index
-/// of when each conversation's earliest one is due with them. Running jobs
-/// are recorded by device, none of which 0.1.21 kept, since its jobs ended
-/// with their connections, and a device keeps its runner's instance, which
-/// no runner of 0.1.21 named.
+/// From 0.1.21's control schema.
+///
+/// - A conversation keeps the move an agent asked for and an attached host the
+///   detach it waits with, none for every conversation 0.1.21 left.
+/// - A permission request names its categories, the one category of each request
+///   0.1.21 stored. SQLite cannot drop a column an index names, so the requests'
+///   table is made anew, as for 0.1.11's conversations.
+/// - The web preview is gone, and the deployment's namespace at the preview domain
+///   with it.
+/// - Users keep personal instructions, which no user migrated from 0.1.21 has.
+/// - Yield wakeups are gone, and the index of when each conversation's earliest
+///   one is due with them.
+/// - Running jobs are recorded by device, none of which 0.1.21 kept, since its
+///   jobs ended with their connections.
+/// - A device keeps its runner's instance, which no runner of 0.1.21 named.
 const CONTROL_FROM_0_1_21: &str = "
 DROP INDEX conversations_wakeup;
 ALTER TABLE conversations DROP COLUMN wakeup_at;
@@ -2588,13 +2708,13 @@ DROP TABLE command_outputs;
 ALTER TABLE command_outputs_next RENAME TO command_outputs;
 ";
 
-/// From 0.1.21's control schema ([`CONTROL_FROM_0_1_21`]); and a stored
-/// catalog's models no longer say whether they read attachments or video:
-/// their accepted types come from the source's input modalities alone
-/// (`crates/shared-types/src/model.rs`), so the two flags go and each
-/// model keeps the list it held, null where the source stated none. Each
-/// record changed is decoded and checked as the format it becomes before
-/// it is written back.
+/// From 0.1.21's control schema ([`CONTROL_FROM_0_1_21`]); and a stored catalog's
+/// models no longer say whether they read attachments or video.
+///
+/// Their accepted types come from the source's input modalities alone
+/// (`crates/shared-types/src/model.rs`), so the two flags go and each model keeps
+/// the list it held, null where the source stated none. Each record changed is
+/// decoded and checked as the format it becomes before it is written back.
 fn control_from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_FROM_0_1_21)?;
     let records = transaction
@@ -2633,20 +2753,21 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
     }
 }
 
-/// From 0.1.21's conversation schema: commands no longer run in shells, the
-/// model has one tool, `shell`, and command reports replace yield wakeups
-/// (`crates/agent-session/src/reports.rs`). A command's output keeps no media:
-/// the model views a file again when it needs it
-/// (`crates/agent-tools/src/result.rs`), so the media column goes, which a
-/// CHECK names, and the table is made anew, as for 0.1.11. Block format 2 also
-/// lets a block keep the entries of a vendor's own record of the session
-/// (`crates/provider-claude-code/src/session.rs`), which no block 0.1.21
-/// stored has, so leaving the field out writes them as format 2. Commands
-/// outlive their connections: a running one is recorded, none of which 0.1.21
-/// kept, and a lost one says why (command ending format 2), which for 0.1.21's,
-/// lost with their connections, is that. A page of history is read by the
-/// blocks' types and found by a block's id or a command's, which the new
-/// indexes serve.
+/// From 0.1.21's conversation schema: commands no longer run in shells, the model
+/// has one tool, `shell`, and command reports replace yield wakeups
+/// (`crates/agent-session/src/reports.rs`).
+///
+/// - A command's output keeps no media: the model views a file again when it needs
+///   it (`crates/agent-tools/src/result.rs`), so the media column goes, which a
+///   CHECK names, and the table is made anew, as for 0.1.11.
+/// - Block format 2 also lets a block keep the entries of a vendor's own record of
+///   the session (`crates/provider-claude-code/src/session.rs`), which no block
+///   0.1.21 stored has, so leaving the field out writes them as format 2.
+/// - Commands outlive their connections: a running one is recorded, none of which
+///   0.1.21 kept, and a lost one says why (command ending format 2), which for
+///   0.1.21's, lost with their connections, is that.
+/// - A page of history is read by the blocks' types and found by a block's id or a
+///   command's, which the new indexes serve.
 fn from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
@@ -2720,10 +2841,13 @@ fn corrupt_text(message: &str) -> rusqlite::Error {
     corrupt(std::io::Error::other(message.to_owned()))
 }
 
-/// From 0.1.21's checkpoint states to checkpoint state format 2: the yield
-/// wakeups a node saved go, none of them to fire, and the state keeps the
-/// command reports and the commands' intervals, none for a node 0.1.21
-/// saved. Format 2 is not the current one: the migration to format 3
+/// From 0.1.21's checkpoint states to checkpoint state format 2.
+///
+/// - The yield wakeups a node saved go, none of them to fire.
+/// - The state keeps the command reports and the commands' intervals, none for a
+///   node 0.1.21 saved.
+///
+/// Format 2 is not the current one: the migration to format 3
 /// ([`nodes_with_their_directories`]) decodes and checks each state.
 fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let states = transaction
@@ -2742,16 +2866,19 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
     Ok(())
 }
 
-/// From 0.1.21's transcript blocks (transcript block format 2): a stored
-/// call of `shell_exec` is the `shell` call it became, with its input, and
-/// its repeat guard's view is `repeated_shell`; a call of `yield` keeps its
-/// name, which replays as text, and loses its `yield_wakeup` view, which no
-/// tool has any more; a stored shell view no longer names a shell; and a
-/// fired wakeup becomes what it stood for: one a command's end fired, that
-/// command's report, titled by the `description` of the call that started
-/// the command; one its time fired, a `resume` block. Each block changed is
-/// decoded and written again through the block's own encoding; a block that
-/// does not decode stops the migration.
+/// From 0.1.21's transcript blocks (transcript block format 2).
+///
+/// - A stored call of `shell_exec` is the `shell` call it became, with its input,
+///   and its repeat guard's view is `repeated_shell`.
+/// - A call of `yield` keeps its name, which replays as text, and loses its
+///   `yield_wakeup` view, which no tool has any more.
+/// - A stored shell view no longer names a shell.
+/// - A fired wakeup becomes what it stood for: one a command's end fired, that
+///   command's report, titled by the `description` of the call that started the
+///   command; one its time fired, a `resume` block.
+///
+/// Each block changed is decoded and written again through the block's own
+/// encoding; a block that does not decode stops the migration.
 fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let titles = command_titles_of_0_1_21(transaction)?;
     let mut blocks = Vec::new();
@@ -2778,25 +2905,34 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// From the conversation schemas of the development builds a server keeps
-/// data of (`upgrades.md` § A development build on a server), each
-/// block's run and each shell call's lists computed anew: from
-/// 0.1.22-dev.20261011T064359Z's, whose blocks have neither, to transcript
-/// block format 3, where each block of a run carries its run, and each
-/// shell call's view its own files with those it removed and renamed, its
-/// run's and its request's (`crates/agent-store/src/changes.rs`); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
-/// a `resume` block and at a Stop the user continued, to format 4, where
-/// the steps after them join the run before, with the run's files to match; from format 5's in
-/// which a node says which agent it was forked from, which the server keeps data of, to format 6,
-/// where redacted reasoning is a step of its run, and a run it opens is named after it (format 6
-/// also leaves out of a `response` the usage its provider did not report,
-/// `crates/provider-claude-code/src/output.rs`: every stored response carries one, which format 6
-/// reads as it is; responses whose usage summed a Claude Code run stay as recorded, and the next
-/// response anchors the estimate in their place). Each agent's
-/// transcript is walked in order from the edit copies in the conversation's blob namespace, by the
-/// code that computes them for a new block. The tables are as they were. A copy that cannot be read
-/// stops the migration, which the next open tries again; one the namespace no longer holds leaves
-/// its file named alone.
+/// From the conversation schemas of the development builds a server keeps data of
+/// (`upgrades.md` § A development build on a server), each block's run and each
+/// shell call's lists computed anew.
+///
+/// The steps are:
+///
+/// - From 0.1.22-dev.20261011T064359Z's, whose blocks have neither, to transcript
+///   block format 3, where each block of a run carries its run, and each shell
+///   call's view its own files with those it removed and renamed, its run's and
+///   its request's (`crates/agent-store/src/changes.rs`).
+/// - From 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at a `resume`
+///   block and at a Stop the user continued, to format 4, where the steps after
+///   them join the run before, with the run's files to match.
+/// - From format 5's in which a node says which agent it was forked from, which
+///   the server keeps data of, to format 6, where redacted reasoning is a step of
+///   its run, and a run it opens is named after it. Format 6 also leaves out of a
+///   `response` the usage its provider did not report,
+///   `crates/provider-claude-code/src/output.rs`: every stored response carries
+///   one, which format 6 reads as it is. Responses whose usage summed a Claude
+///   Code run stay as recorded, and the next response anchors the estimate in
+///   their place.
+///
+/// Each agent's transcript is walked in order from the edit copies in the
+/// conversation's blob namespace, by the code that computes them for a new block.
+/// The tables are as they were.
+///
+/// A copy that cannot be read stops the migration, which the next open tries
+/// again; one the namespace no longer holds leaves its file named alone.
 fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
     // It reads blocks with the current types (`number_attachments`).
     number_attachments(transaction)?;
@@ -3046,11 +3182,13 @@ pub mod testing {
             > 0
     }
 
-    /// Turns the closed database of `kind` at `path`, of this build's
-    /// schema, into one of the newest schema a published release shipped
-    /// before it, as an upgrade finds it: the tables, columns and indexes of
-    /// that schema, with the rows of this one in the columns both have, and
-    /// that schema's version. Its values stay as this build wrote them.
+    /// Turns the closed database of `kind` at `path`, of this build's schema, into
+    /// one of the newest schema a published release shipped before it, as an
+    /// upgrade finds it.
+    ///
+    /// The result has the tables, columns and indexes of that schema, with the rows
+    /// of this one in the columns both have, and that schema's version. Its values
+    /// stay as this build wrote them.
     pub fn store_as_shipped(path: &Path, kind: DatabaseKind) {
         store_as_shipped_before(path, kind, 0);
     }
@@ -4583,12 +4721,13 @@ mod tests {
         assert_eq!(schema.current(version_of("CREATE TABLE other (id TEXT) STRICT;")), None);
     }
 
-    /// Every schema a published release shipped migrates to the current
-    /// one: the same tables, columns, indexes, constraints and foreign keys
-    /// as a new database.
-    /// The server runs 0.1.22-dev.20261016T095626Z, whose control schema
-    /// its database records: an upgrade keeps its accounts and gives each
-    /// the default size of its Cloud disks.
+    /// Every schema a published release shipped migrates to the current one: the
+    /// same tables, columns, indexes, constraints and foreign keys as a new
+    /// database.
+    ///
+    /// The server runs 0.1.22-dev.20261016T095626Z, whose control schema its
+    /// database records: an upgrade keeps its accounts and gives each the default
+    /// size of its Cloud disks.
     #[test]
     fn a_control_database_of_0_1_22_dev_20261016t095626z_keeps_its_accounts_and_gets_the_default_cloud_storage() {
         let deployed = include_str!("schema/control-0.1.22-dev.20261016T095626Z.sql");
@@ -4713,16 +4852,21 @@ mod tests {
         assert_eq!(removed_at, 2000);
     }
 
-    /// A conversation of 0.1.21 whose messages named their files by their
-    /// paths opens through every step since: the steps that read blocks and
-    /// states with the current types see each record numbered, one number per
-    /// file, its path and its bytes, in the transcript and the queue. Before,
-    /// the first such step stopped at the record's path, so the conversation
-    /// never opened. The files the messages hold stay the user's, numbered by
-    /// an early step as they are, and only the agent's upload of 0.1.21 is
-    /// the root's. Planted defect this catches: the last step taking every
-    /// row an early step numbered for the root's upload, so the root's
-    /// replies show the user's files. One small database, milliseconds.
+    /// A conversation of 0.1.21 whose messages named their files by their paths
+    /// opens through every step since.
+    ///
+    /// The steps that read blocks and states with the current types see each record
+    /// numbered, one number per file, its path and its bytes, in the transcript and
+    /// the queue. Before, the first such step stopped at the record's path, so the
+    /// conversation never opened.
+    ///
+    /// The files the messages hold stay the user's, numbered by an early step as
+    /// they are, and only the agent's upload of 0.1.21 is the root's.
+    ///
+    /// Planted defect this catches: the last step taking every row an early step
+    /// numbered for the root's upload, so the root's replies show the user's files.
+    ///
+    /// One small database, milliseconds.
     #[test]
     fn a_conversation_of_0_1_21_with_files_opens_through_every_step_with_them_numbered() {
         use demi_shared_types::{Block, BlobRef, UserContentBlock};
@@ -4838,12 +4982,13 @@ mod tests {
         .to_string()
     }
 
-    /// 0.1.21's checkpoint states lose their yield wakeups and hold no
-    /// command report and no command's interval; a state that is not one of
-    /// 0.1.21's stops the migration.
+    /// 0.1.21's checkpoint states lose their yield wakeups and hold no command
+    /// report and no command's interval; a state that is not one of 0.1.21's stops
+    /// the migration.
+    ///
     /// Planted defect this catches: a stored catalog left with its models'
-    /// attachment flags, which no longer decodes, so the entry would read
-    /// as corrupt until its source answers again.
+    /// attachment flags, which no longer decodes, so the entry would read as
+    /// corrupt until its source answers again.
     #[test]
     fn a_catalog_of_0_1_21_keeps_its_models_without_their_attachment_flags() {
         let shipped = include_str!("schema/control-0.1.21.sql");
@@ -4880,14 +5025,19 @@ mod tests {
         );
     }
 
-    /// Every API-key entry's sealed configuration of the schema before
-    /// provider configuration format 2 is sealed again by the vault's side,
-    /// a subscription entry's left alone, in the one transaction that
-    /// records the current version; one configuration it cannot read stops
-    /// the migration and leaves every row and the version as they were.
-    /// Planted defect this catches: an unreadable configuration skipped,
-    /// which leaves a format 1 value that no read of the new format decodes,
-    /// or a migration that commits the rows it resealed before it.
+    /// Every API-key entry's sealed configuration of the schema before provider
+    /// configuration format 2 is sealed again by the vault's side, a subscription
+    /// entry's left alone, in the one transaction that records the current version.
+    ///
+    /// One configuration it cannot read stops the migration and leaves every row and
+    /// the version as they were.
+    ///
+    /// Planted defects this catches:
+    ///
+    /// - An unreadable configuration skipped, which leaves a format 1 value that no
+    ///   read of the new format decodes.
+    /// - A migration that commits the rows it resealed before it.
+    ///
     /// One small database each, milliseconds.
     #[test]
     fn sealed_configurations_are_resealed_together_or_not_at_all() {
@@ -4958,12 +5108,13 @@ mod tests {
         assert_eq!(configs(&connection), before);
     }
 
-    /// The attached hosts of a database that stored their names lose them
-    /// and keep the order those names gave them, and a Fork's attached hosts
-    /// read without theirs.
+    /// The attached hosts of a database that stored their names lose them and keep
+    /// the order those names gave them, and a Fork's attached hosts read without
+    /// theirs.
+    ///
     /// Planted defect this catches: a Fork reserved before the upgrade whose
-    /// metadata still names its hosts, which no longer decodes, so its
-    /// destination would never be published.
+    /// metadata still names its hosts, which no longer decodes, so its destination
+    /// would never be published.
     #[test]
     fn attached_hosts_lose_the_names_conversations_gave_them() {
         use crate::conversation_index::AttachedHostRecord;
@@ -5026,12 +5177,13 @@ mod tests {
         assert_eq!(migrated, metadata);
     }
 
-    /// A conversation's attached hosts seed the hosts it may reach, which
-    /// replace Manage Devices: its grants go, and so does an undecided
-    /// request for it, while a decided one waits for its message.
-    /// Planted defect this catches: a migration that seeded nothing, after
-    /// which a conversation could no longer attach again a device it had
-    /// attached, or move back to the host it had left, without asking.
+    /// A conversation's attached hosts seed the hosts it may reach, which replace
+    /// Manage Devices: its grants go, and so does an undecided request for it, while
+    /// a decided one waits for its message.
+    ///
+    /// Planted defect this catches: a migration that seeded nothing, after which a
+    /// conversation could no longer attach again a device it had attached, or move
+    /// back to the host it had left, without asking.
     #[test]
     fn attached_hosts_seed_the_hosts_a_conversation_may_reach_and_manage_devices_goes() {
         let shipped = include_str!("schema/control-0.1.22-dev.interrupted-turns.sql");
@@ -5067,13 +5219,14 @@ mod tests {
         assert_eq!(rows("SELECT id FROM permission_requests ORDER BY id"), ["r2", "r3"]);
     }
 
-    /// A switch announced before the upgrade is not announced again: a node
-    /// that read it at revision 3, then idled while runner reports moved the
-    /// conversation to 7, counts it as seen after the upgrade, since the
-    /// switch's revision is one its latest block reached.
+    /// A switch announced before the upgrade is not announced again: a node that
+    /// read it at revision 3, then idled while runner reports moved the conversation
+    /// to 7, counts it as seen after the upgrade, since the switch's revision is one
+    /// its latest block reached.
+    ///
     /// Planted defect this catches: the switch recorded at the revision the
-    /// conversation stood at, 7, which the node's block of 3 does not reach,
-    /// so its next context announced the old switch again.
+    /// conversation stood at, 7, which the node's block of 3 does not reach, so its
+    /// next context announced the old switch again.
     #[tokio::test]
     async fn a_switch_announced_before_the_upgrade_is_not_announced_again() {
         use crate::conversation_index::{ExecutionTarget, TargetSwitch};
@@ -5230,13 +5383,15 @@ mod tests {
         }
     }
 
-    /// 0.1.21's shell sequence goes with its row; a stored `shell_exec`
-    /// call is a `shell` call with its input, its shell view naming no
-    /// shell and its repeat guard's view `repeated_shell`; a `yield` and a
-    /// `shell_status` call keep their names, and the `yield` loses its
-    /// view; a wakeup a command's end fired is that command's report, titled
-    /// by the call that started it, and one its time fired a resume. Every
-    /// other number keeps its next value.
+    /// 0.1.21's shell sequence goes with its row.
+    ///
+    /// - A stored `shell_exec` call is a `shell` call with its input, its shell view
+    ///   naming no shell and its repeat guard's view `repeated_shell`.
+    /// - A `yield` and a `shell_status` call keep their names, and the `yield` loses
+    ///   its view.
+    /// - A wakeup a command's end fired is that command's report, titled by the call
+    ///   that started it, and one its time fired a resume.
+    /// - Every other number keeps its next value.
     #[test]
     fn a_conversation_of_0_1_21_becomes_one_of_the_shell_tool() {
         use demi_shared_types::{Block, CommandId, CommandReport, ReportEvent, Sequence, ToolView};
@@ -5410,14 +5565,15 @@ mod tests {
         }
     }
 
-    /// The shell calls of 0.1.21 and of the development build a server
-    /// keeps data of each get their run and its files, and the files of
-    /// their request, counted from the edit copies in the owner's
-    /// namespace: two calls of one run that wrote `a.txt` list it once,
-    /// counted from before the first to after the second, and a file a call
-    /// removed is listed deleted. A copy that cannot be read stops the
-    /// migration, which leaves the database as it was for the next open to
-    /// try again.
+    /// The shell calls of 0.1.21 and of the development build a server keeps data of
+    /// each get their run and its files, and the files of their request, counted
+    /// from the edit copies in the owner's namespace.
+    ///
+    /// - Two calls of one run that wrote `a.txt` list it once, counted from before
+    ///   the first to after the second.
+    /// - A file a call removed is listed deleted.
+    /// - A copy that cannot be read stops the migration, which leaves the database as
+    ///   it was for the next open to try again.
     // Cost: four databases on disk, a few milliseconds.
     #[test]
     fn stored_shell_calls_get_their_lists_from_their_edit_copies() {
@@ -5596,12 +5752,12 @@ mod tests {
         state.to_string()
     }
 
-    /// A conversation 0.1.22-dev.20261011T123543Z stored with its runs
-    /// split at a `resume` block, as after a restart: a call wrote `a.txt`
-    /// and was lost, the turn resumed, and the next call wrote it again.
-    /// Migrated, the second call joins the first's run, and its run's files
-    /// list `a.txt` once, counted from before the first call to after the
-    /// second.
+    /// A conversation 0.1.22-dev.20261011T123543Z stored with its runs split at a
+    /// `resume` block, as after a restart: a call wrote `a.txt` and was lost, the
+    /// turn resumed, and the next call wrote it again.
+    ///
+    /// Migrated, the second call joins the first's run, and its run's files list
+    /// `a.txt` once, counted from before the first call to after the second.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_run_stored_split_at_a_resume_is_joined() {
@@ -5845,11 +6001,14 @@ mod tests {
     }
 
     /// Calls stored in transcript block format 8, by the schema that
-    /// `0.1.22-dev.20261015T105826Z` deployed, kept no record of when they
-    /// returned: migrated to format 9, a shell call ends the time its view
-    /// says its command ran after it started, a call of another tool where
-    /// it started, and a call still executing has not returned; a share's
-    /// snapshot of a call is migrated the same way.
+    /// `0.1.22-dev.20261015T105826Z` deployed, kept no record of when they returned.
+    ///
+    /// Migrated to format 9:
+    ///
+    /// - A shell call ends the time its view says its command ran after it started.
+    /// - A call of another tool ends where it started.
+    /// - A call still executing has not returned.
+    /// - A share's snapshot of a call is migrated the same way.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_stored_call_gets_when_it_returned() {
@@ -5935,12 +6094,13 @@ mod tests {
         );
     }
 
-    /// The quota snapshots of 0.1.22-dev.20261015T134426Z's control schema
-    /// named each window in English: migrated, each window has the kind its
-    /// vendor's old namer meant by the name, and keeps its period and its
-    /// scope. A name that namer never made, such as another vendor's, a
-    /// count Codex did not write or no name at all, fails the migration
-    /// instead of becoming a model's name.
+    /// The quota snapshots of 0.1.22-dev.20261015T134426Z's control schema named
+    /// each window in English.
+    ///
+    /// Migrated, each window has the kind its vendor's old namer meant by the name,
+    /// and keeps its period and its scope. A name that namer never made, such as
+    /// another vendor's, a count Codex did not write or no name at all, fails the
+    /// migration instead of becoming a model's name.
     // Cost: eight databases on disk, a few milliseconds each.
     #[test]
     fn a_stored_snapshot_gets_its_windows_kinds() {
@@ -6017,10 +6177,11 @@ mod tests {
         }
     }
 
-    /// An `account_switch` block of transcript block format 9 named the
-    /// window that was used up in English: migrated to format 10, it holds
-    /// the kind, the period and the model that name said, and one that
-    /// named none still names none.
+    /// An `account_switch` block of transcript block format 9 named the window that
+    /// was used up in English.
+    ///
+    /// Migrated to format 10, it holds the kind, the period and the model that name
+    /// said, and one that named none still names none.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_linear_transcript_becomes_one_path() {
@@ -6082,10 +6243,9 @@ mod tests {
         assert_eq!(crate::tree::root_blocks(&connection).unwrap(), blocks);
     }
 
-    /// A command that ran under 0.1.22-dev.20261016T043704Z keeps the
-    /// interval its call asked for, as that build bounded it, or none for a
-    /// call that asked for none: a restart that interrupted its call
-    /// watches it at that interval.
+    /// A command that ran under 0.1.22-dev.20261016T043704Z keeps the interval its
+    /// call asked for, as that build bounded it, or none for a call that asked for
+    /// none: a restart that interrupted its call watches it at that interval.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_running_command_keeps_the_interval_its_call_asked_for() {
@@ -6151,13 +6311,16 @@ mod tests {
         );
     }
 
-    /// A command that ran under 0.1.33 takes its call's script, which the
-    /// pages' view of it carries with its title, and a title when its record
-    /// had none: its call's description, or its number when the call is gone
-    /// or names none; a title its record kept stays. Planted defects this
-    /// catches: a migration that leaves the script empty, so a taken-up
-    /// command's terminal opens without its prompt line, and one that leaves
-    /// an empty title, so its Running tab has no name.
+    /// A command that ran under 0.1.33 takes its call's script, which the pages'
+    /// view of it carries with its title, and a title when its record had none: its
+    /// call's description, or its number when the call is gone or names none. A
+    /// title its record kept stays.
+    ///
+    /// Planted defects this catches:
+    ///
+    /// - A migration that leaves the script empty, so a taken-up command's terminal
+    ///   opens without its prompt line.
+    /// - One that leaves an empty title, so its Running tab has no name.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_running_command_of_0_1_33_takes_its_calls_script_and_a_title() {
@@ -6232,15 +6395,21 @@ mod tests {
     }
 
     /// A conversation of 0.1.28 to 0.1.32 whose messages named their files by their
-    /// paths on the Host names each by a number of its attachments, after
-    /// the agent's own: one file, its path and its bytes, one number, in the
-    /// transcript, a branch of it, a share's copy and the queue alike, and
-    /// another file at the same path, as on another Host with the same home,
-    /// a number of its own; each file has its row, which the page and
-    /// `demi attachment download` read. Planted defects this catches: a
-    /// number per record, so one file sent twice becomes two attachments,
-    /// and a number per path, so the second file's download is the first's
-    /// bytes. One small database, milliseconds.
+    /// paths on the Host names each by a number of its attachments, after the
+    /// agent's own.
+    ///
+    /// - One file, its path and its bytes, gets one number, in the transcript, a
+    ///   branch of it, a share's copy and the queue alike.
+    /// - Another file at the same path, as on another Host with the same home, gets
+    ///   a number of its own.
+    /// - Each file has its row, which the page and `demi attachment download` read.
+    ///
+    /// Planted defects this catches:
+    ///
+    /// - A number per record, so one file sent twice becomes two attachments.
+    /// - A number per path, so the second file's download is the first's bytes.
+    ///
+    /// One small database, milliseconds.
     #[test]
     fn a_conversation_of_0_1_28_numbers_the_files_its_messages_named_by_path() {
         use demi_shared_types::{Attachment, Block, BlobRef, QueuedMessage, Sequence, TurnId, UserContentBlock};
@@ -6391,11 +6560,13 @@ mod tests {
         assert_eq!(sequences::next(&connection, Sequence::Attachment).unwrap(), 6);
     }
 
-    /// A conversation of 0.1.27 keeps the next number of each sequence,
-    /// and its simulators are numbered from m1, which 0.1.27's schema
-    /// refused. Planted defect this catches: a rebuild of the sequences
-    /// that drops their rows, so a conversation numbers its commands from 1
-    /// again. One small database, milliseconds.
+    /// A conversation of 0.1.27 keeps the next number of each sequence, and its
+    /// simulators are numbered from m1, which 0.1.27's schema refused.
+    ///
+    /// Planted defect this catches: a rebuild of the sequences that drops their
+    /// rows, so a conversation numbers its commands from 1 again.
+    ///
+    /// One small database, milliseconds.
     #[test]
     fn a_conversation_of_0_1_27_keeps_its_sequences_and_numbers_its_devices() {
         use demi_shared_types::Sequence;
@@ -6414,12 +6585,13 @@ mod tests {
         assert_eq!(sequences::next(&connection, Sequence::Device).unwrap(), 1);
     }
 
-    /// A command running when 0.1.22 stopped keeps its record, its title
-    /// and interval included, with no turn,
-    /// and a command recorded afterwards keeps its turn, which a backend
-    /// that starts again hands the job it takes up.
-    /// Planted defect this catches: a turn the record drops, so a command
-    /// taken up after a restart counts its calls under no turn.
+    /// A command running when 0.1.22 stopped keeps its record, its title and
+    /// interval included, with no turn, and a command recorded afterwards keeps its
+    /// turn, which a backend that starts again hands the job it takes up.
+    ///
+    /// Planted defect this catches: a turn the record drops, so a command taken up
+    /// after a restart counts its calls under no turn.
+    ///
     /// One small database, milliseconds.
     #[test]
     fn a_running_command_keeps_its_turn_and_one_from_before_keeps_none() {
@@ -6583,13 +6755,13 @@ mod tests {
         }
     }
 
-    /// The shares made before a share held only what was said, each a
-    /// snapshot of every block and its subagents, are removed by the
-    /// migration: their copies, subagents and attachments go, and their
-    /// tokens read nothing. Every blob a stored block names is listed, so
-    /// the collection of the user's namespace keeps it, and every attachment
-    /// a stored text names, so a new share of the migrated database lists
-    /// both.
+    /// The shares made before a share held only what was said, each a snapshot of
+    /// every block and its subagents, are removed by the migration: their copies,
+    /// subagents and attachments go, and their tokens read nothing.
+    ///
+    /// Every blob a stored block names is listed, so the collection of the user's
+    /// namespace keeps it, and every attachment a stored text names, so a new share
+    /// of the migrated database lists both.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_share_made_before_is_removed_and_each_blob_stays_named() {
@@ -6678,9 +6850,10 @@ mod tests {
         assert_eq!(shot.map(|row| row.name), Some("shot.png".to_owned()));
     }
 
-    /// The control database of 0.1.22-dev.20261015T134426Z held the
-    /// records of shares made before a share held only what was said: the
-    /// migration removes them, so their links answer as ones that never
+    /// The control database of 0.1.22-dev.20261015T134426Z held the records of
+    /// shares made before a share held only what was said.
+    ///
+    /// The migration removes them, so their links answer as ones that never
     /// existed, and keeps the conversation.
     // Cost: one database on disk, a few milliseconds.
     #[test]
@@ -6708,12 +6881,15 @@ mod tests {
         assert_eq!((count("shares"), count("conversations")), (0, 1));
     }
 
-    /// A shell call stored in transcript block format 6, whose own files
-    /// and renames marked the paths in a temporary directory `temporary`:
-    /// migrated to format 7, a file marked temporary is marked `outside`,
-    /// the others and the renames are marked nothing, and the stored
-    /// request list stays as it was. A flag that is not a boolean fails the
-    /// migration.
+    /// A shell call stored in transcript block format 6, whose own files and
+    /// renames marked the paths in a temporary directory `temporary`.
+    ///
+    /// Migrated to format 7:
+    ///
+    /// - A file marked temporary is marked `outside`.
+    /// - The others and the renames are marked nothing.
+    /// - The stored request list stays as it was.
+    /// - A flag that is not a boolean fails the migration.
     // Cost: three databases on disk, a few milliseconds.
     #[test]
     fn a_call_stored_with_temporary_paths_marks_them_outside() {
@@ -6861,11 +7037,12 @@ mod tests {
         }
     }
 
-    /// A conversation the server's build stored (transcript block format 5,
-    /// which a node says it was forked from) whose turn opened with
-    /// redacted reasoning: that block belonged to no run, and the thinking
-    /// after it opened its own. Migrated to format 6, the redacted
-    /// reasoning is the run's first step and the thinking joins its run.
+    /// A conversation the server's build stored (transcript block format 5, which a
+    /// node says it was forked from) whose turn opened with redacted reasoning: that
+    /// block belonged to no run, and the thinking after it opened its own.
+    ///
+    /// Migrated to format 6, the redacted reasoning is the run's first step and the
+    /// thinking joins its run.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn redacted_reasoning_stored_outside_a_run_opens_its_run() {
@@ -7189,11 +7366,12 @@ mod tests {
             .unwrap();
     }
 
-    /// A database of 0.1.27's control schema gives each owner's entries the
-    /// order they were added in, the same instant's in the order stored,
-    /// and drops a saved image entry per vendor while the rest of the
-    /// preferences stay. Planted defects: one order across owners; the
-    /// choice kept, or the preferences dropped with it.
+    /// A database of 0.1.27's control schema gives each owner's entries the order
+    /// they were added in, the same instant's in the order stored, and drops a saved
+    /// image entry per vendor while the rest of the preferences stay.
+    ///
+    /// Planted defects: one order across owners; the choice kept, or the
+    /// preferences dropped with it.
     #[test]
     fn entries_of_0_1_27_take_the_order_they_were_added_in_and_the_image_choice_goes() {
         let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.27.sql"));
@@ -7341,16 +7519,18 @@ mod tests {
         );
     }
 
-    /// The development builds' schemas are the ones their server's
-    /// databases record, the one with `forked_from` included, and formats
-    /// 4 and 5's, the subagent limits' and
-    /// the one without Detect Title the ones development databases record.
-    /// A server records the one with the plugins' secrets before read
-    /// states, and may record the one with the users' credentials before
-    /// passkeys and the one with passkeys before the signed-in browsers.
-    /// A ledger row of 0.1.22-dev.20261016T043704Z keeps its user,
-    /// conversation, entry, model, counts and order, its `created_at` as its
-    /// `ended_at`, and null for what it lacked.
+    /// The schemas development builds record.
+    ///
+    /// - The development builds' schemas are the ones their server's databases
+    ///   record, the one with `forked_from` included, and formats 4 and 5's, the
+    ///   subagent limits' and the one without Detect Title the ones development
+    ///   databases record.
+    /// - A server records the one with the plugins' secrets before read states, and
+    ///   may record the one with the users' credentials before passkeys and the one
+    ///   with passkeys before the signed-in browsers.
+    /// - A ledger row of 0.1.22-dev.20261016T043704Z keeps its user, conversation,
+    ///   entry, model, counts and order, its `created_at` as its `ended_at`, and null
+    ///   for what it lacked.
     #[test]
     fn a_ledger_row_from_before_calls_keeps_its_counts_and_null_for_what_it_lacked() {
         let (_directory, path, mut connection) =
@@ -7396,13 +7576,15 @@ mod tests {
         );
     }
 
-    /// A database of 0.1.27's control schema keeps each ledger row whole,
-    /// with no seconds and no cost, takes a video's and an audio file's row
-    /// with both, and its entries make videos and audio, as a new entry
-    /// does (`crates/backend-database/src/usage.rs`,
-    /// `crates/backend-user-shard/src/provider_settings.rs`). Planted defects:
-    /// the purpose's check left as it was,
-    /// the columns copied out of order, or a switch that starts off.
+    /// A database of 0.1.27's control schema keeps each ledger row whole, with no
+    /// seconds and no cost, takes a video's and an audio file's row with both, and
+    /// its entries make videos and audio, as a new entry does
+    /// (`crates/backend-database/src/usage.rs`,
+    /// `crates/backend-user-shard/src/provider_settings.rs`).
+    ///
+    /// Planted defects: the purpose's check left as it was, the columns copied out
+    /// of order, or a switch that starts off.
+    ///
     /// One small database, milliseconds.
     #[test]
     fn a_ledger_of_0_1_27_stays_whole_and_takes_video_and_audio_rows_and_its_entries_make_both() {
@@ -7453,11 +7635,13 @@ mod tests {
         assert!(video && audio);
     }
 
-    /// A ledger row of 0.1.22 keeps every column
-    /// through the table made again, and the ledger then takes an image's
-    /// row. Planted defect this catches: a migration that leaves the
-    /// purpose's check as it was, or copies the columns out of order. One
-    /// small database, milliseconds.
+    /// A ledger row of 0.1.22 keeps every column through the table made again, and
+    /// the ledger then takes an image's row.
+    ///
+    /// Planted defect this catches: a migration that leaves the purpose's check as
+    /// it was, or copies the columns out of order.
+    ///
+    /// One small database, milliseconds.
     #[test]
     fn a_ledger_row_of_0_1_22_stays_whole_and_the_ledger_takes_an_images_row() {
         let (_directory, path, mut connection) =
@@ -7491,10 +7675,12 @@ mod tests {
         assert_eq!(kept, "row-1user-1conversation-12turn-1turnentry-1account-1model-1request-1vendor-112345answered[]1020");
     }
 
-    /// An entry stored by 0.1.25 makes images after the migration, as a
-    /// new entry does (`crates/backend-user-shard/src/provider_settings.rs`).
-    /// Planted defect this catches: a switch that starts off, so every
-    /// entry of an upgraded server stops making images.
+    /// An entry stored by 0.1.25 makes images after the migration, as a new entry
+    /// does (`crates/backend-user-shard/src/provider_settings.rs`).
+    ///
+    /// Planted defect this catches: a switch that starts off, so every entry of an
+    /// upgraded server stops making images.
+    ///
     /// One small database, milliseconds.
     #[test]
     fn an_entry_of_0_1_25_keeps_making_images() {
@@ -7515,11 +7701,13 @@ mod tests {
         assert!(on);
     }
 
-    /// A device stored by 0.1.25 keeps its record and has said nothing yet
-    /// of starting its runner by itself (`crates/runner/src/autostart.rs`),
-    /// which its runner's next hello records.
-    /// Planted defect this catches: a migration that leaves the column out,
-    /// so reading any device of an upgraded server fails.
+    /// A device stored by 0.1.25 keeps its record and has said nothing yet of
+    /// starting its runner by itself (`crates/runner/src/autostart.rs`), which its
+    /// runner's next hello records.
+    ///
+    /// Planted defect this catches: a migration that leaves the column out, so
+    /// reading any device of an upgraded server fails.
+    ///
     /// One small database, milliseconds.
     #[test]
     fn a_device_of_0_1_25_has_said_nothing_of_starting_by_itself() {
@@ -7566,17 +7754,21 @@ mod tests {
     }
 
     /// The control migration to projects by directory
-    /// (`crates/server/src/main.rs`): a Cloud conversation in a directory
-    /// of its own choosing moves to the Cloud's home, a conversation's
-    /// directory under `/home/demi/sessions` or the workspace of its
-    /// directory, made when there is none; one in its own directory, a
-    /// project's and a paired device's stay; workspaces of one directory, a
-    /// Cloud's in two spellings included, become the oldest, with the
-    /// others' conversations; a Cloud workspace at the home goes, its
-    /// conversations running in the home; every device's home is unknown
-    /// until its next hello. Planted defect this catches: a Cloud directory
-    /// left outside projects, or a workspace selection that loses its
-    /// directory. One small database, milliseconds.
+    /// (`crates/server/src/main.rs`).
+    ///
+    /// - A Cloud conversation in a directory of its own choosing moves to the
+    ///   Cloud's home, a conversation's directory under `/home/demi/sessions` or the
+    ///   workspace of its directory, made when there is none.
+    /// - One in its own directory, a project's and a paired device's stay.
+    /// - Workspaces of one directory, a Cloud's in two spellings included, become
+    ///   the oldest, with the others' conversations.
+    /// - A Cloud workspace at the home goes, its conversations running in the home.
+    /// - Every device's home is unknown until its next hello.
+    ///
+    /// Planted defect this catches: a Cloud directory left outside projects, or a
+    /// workspace selection that loses its directory.
+    ///
+    /// One small database, milliseconds.
     #[test]
     fn the_migration_puts_each_cloud_conversation_where_its_directory_says() {
         let (_directory, path, mut connection) =

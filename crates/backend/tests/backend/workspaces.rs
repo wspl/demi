@@ -1,7 +1,10 @@
-//! Workspaces and the sidebar's order: a workspace is a named pointer at a
-//! directory of one of the user's devices, one per directory and never its home,
-//! and deleting it archives its conversations; the sidebar keeps the order the
-//! user gave it, within each partition, however much the rows change.
+//! Workspaces and the sidebar's order.
+//!
+//! - A workspace is a named pointer at a directory of one of the user's
+//!   devices, one per directory and never its home. Deleting it archives its
+//!   conversations.
+//! - The sidebar keeps the order the user gave it, within each partition,
+//!   however much the rows change.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -303,10 +306,9 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_
     backend.close().await;
 }
 
-/// Revoking a device, which nothing refuses, removes its projects with it
-/// but never their files: a project's conversation stays with its history,
-/// outside any project, targeting the project's directory on the device
-/// directly.
+/// Revoking a device, which nothing refuses, removes its projects with it but
+/// never their files: a project's conversation stays with its history, outside any
+/// project, targeting the project's directory on the device directly.
 // About a second: a scripted model answers one turn on the paired runner.
 #[tokio::test]
 async fn revoking_a_device_removes_its_projects_but_not_their_conversations_or_files() {

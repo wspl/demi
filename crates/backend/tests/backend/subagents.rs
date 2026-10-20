@@ -1,18 +1,25 @@
-//! Subagents through a conversation (`crates/backend-host-access/src/access.rs`,
-//! `crates/backend-host-access/src/transition.rs`): the root and its child each learn the Host they work on before their
-//! first request, once; a child works on the
-//! conversation's Host in its parent's files, keeps its own identity even
-//! for a command it runs through `demi host shell`, and runs on after
-//! its spawn command has exited; a Fork taken while a child runs leaves the
-//! child with its source; a spawn reads the user's subagent settings and
-//! builds its child's model from the catalog; a live tree's subagent list
-//! is the one its open sends; and a Cloud reset holds a
-//! conversation whose child's profile infers with a provider on the Cloud.
-//! Every node gets the project directory's skills and no others, and a spawn
-//! takes the workflow the backend holds without asking a Host.
-//! The model is a scripted family that answers each
-//! node of a tree from a script of its own; the device is a real runner. No
-//! test calls a real model.
+//! Subagents through a conversation
+//! (`crates/backend-host-access/src/access.rs`,
+//! `crates/backend-host-access/src/transition.rs`).
+//!
+//! Scenarios:
+//!
+//! - The root and its child each learn the Host they work on before their
+//!   first request, once.
+//! - A child works on the conversation's Host in its parent's files, keeps its
+//!   own identity even for a command it runs through `demi host shell`, and
+//!   runs on after its spawn command has exited.
+//! - A Fork taken while a child runs leaves the child with its source.
+//! - A spawn reads the user's subagent settings and builds its child's model
+//!   from the catalog.
+//! - A live tree's subagent list is the one its open sends.
+//! - A Cloud reset holds a conversation whose child's profile infers with a
+//!   provider on the Cloud.
+//! - Every node gets the project directory's skills and no others, and a spawn
+//!   takes the workflow the backend holds without asking a Host.
+//!
+//! The model is a scripted family that answers each node of a tree from a
+//! script of its own; the device is a real runner. No test calls a real model.
 
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
@@ -348,12 +355,17 @@ impl ProviderRuntime for TreeRuntime {
     }
 }
 
-/// A backend whose master has an entry of the scripted family `tree`, with the
-/// model `m`, which lists no effort, and the model `n`, which lists `low`
-/// and `high`, and the conversation `FIRST` on `m` and a paired device's
-/// `work` directory; the harness holds the backend's data and the device.
-/// Answers the entry's id last. The family `tree-process` scripts the same
-/// answers from a provider that runs a process on the Cloud.
+/// A backend whose master has an entry of the scripted family `tree`.
+///
+/// The backend has:
+///
+/// - the model `m`, which lists no effort, and the model `n`, which lists `low`
+///   and `high`;
+/// - the conversation `FIRST` on `m` and a paired device's `work` directory.
+///
+/// The harness holds the backend's data and the device. Answers the entry's id
+/// last. The family `tree-process` scripts the same answers from a provider that
+/// runs a process on the Cloud.
 async fn tree(
     scripts: &Arc<Scripts>,
 ) -> (

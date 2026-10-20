@@ -53,11 +53,12 @@ pub(crate) struct Automations {
     tried: RefCell<HashMap<AutomationId, Timestamp>>,
 }
 
-/// What an automation has under way in the shard: a URL's burst waiting
-/// out its quiet, and a change watch's check. Pausing it, editing its
-/// trigger or deleting it drops both, which stops their tasks, and moves
-/// its generation on, so what either finishes after is not recorded. The
-/// shard's end drops them all.
+/// What an automation has under way in the shard: a URL's burst waiting out its
+/// quiet, and a change watch's check.
+///
+/// Pausing the automation, editing its trigger or deleting it drops both, which
+/// stops their tasks, and moves its generation on, so what either finishes after
+/// is not recorded. The shard's end drops them all.
 #[derive(Default)]
 struct Pending {
     generation: u64,
@@ -222,11 +223,13 @@ impl Shard {
         })
     }
 
-    /// `POST /automations`, and `demi automation create`: a new automation
-    /// from its defaults, *New Automation*, paused, daily at 09:00 in the
-    /// user's time zone in a new conversation on the Cloud, with `patch`
-    /// over them. A URL trigger gets its secret at once; the answer carries
-    /// it when there is one, which the agent's command prints once.
+    /// `POST /automations`, and `demi automation create`: a new automation from
+    /// its defaults, with `patch` over them.
+    ///
+    /// The defaults are *New Automation*, paused, daily at 09:00 in the user's
+    /// time zone in a new conversation on the Cloud. A URL trigger gets its
+    /// secret at once; the answer carries it when there is one, which the agent's
+    /// command prints once.
     pub async fn create_automation(
         &self,
         patch: AutomationPatch,
@@ -556,11 +559,13 @@ impl Shard {
         }
     }
 
-    /// Fires the automations of the user as their times come, until the
-    /// shard closes: it settles the runs a run of the backend before left
-    /// running, then fires what is due, starts the change watches whose time
-    /// came, and sleeps until the nearest next time or a change of the
-    /// automations. A time that passed while the backend was down fires once.
+    /// Fires the automations of the user as their times come, until the shard
+    /// closes.
+    ///
+    /// It settles the runs a run of the backend before left running, then fires
+    /// what is due, starts the change watches whose time came, and sleeps until
+    /// the nearest next time or a change of the automations. A time that passed
+    /// while the backend was down fires once.
     pub(crate) async fn follow_automations(self: Rc<Self>) {
         self.settle_left_runs().await;
         self.resume_pending_calls().await;

@@ -1,8 +1,10 @@
 //! The users' passkeys and the challenges of their sign-ins and additions
 //! (`crates/backend/src/config/secret.rs`,
-//! `crates/backend-accounts/src/passkeys.rs`). A passkey is stored as
-//! `webauthn-rs` encodes it, and a challenge as the state `webauthn-rs`
-//! finishes it with; the accounts service decides when each is written.
+//! `crates/backend-accounts/src/passkeys.rs`).
+//!
+//! A passkey is stored as `webauthn-rs` encodes it, and a challenge as the state
+//! `webauthn-rs` finishes it with. The accounts service decides when each is
+//! written.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;

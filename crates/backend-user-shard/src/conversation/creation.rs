@@ -1,9 +1,12 @@
-//! A conversation's creation: one request makes it with what it starts with, its
-//! target and its settings, each checked as its own change would check it before
-//! anything is created, so a refused one creates nothing. Its directory is selected
-//! as a move's is, in the transaction that creates it, which makes the directory's
-//! project when there is none, by the directory's name on its Host
-//! (`crates/backend-database/src/selection.rs`).
+//! A conversation's creation.
+//!
+//! One request makes the conversation with what it starts with, its target and
+//! its settings. Each is checked as its own change would check it before
+//! anything is created, so a refused one creates nothing.
+//!
+//! Its directory is selected as a move's is, in the transaction that creates
+//! it, which makes the directory's project when there is none, by the
+//! directory's name on its Host (`crates/backend-database/src/selection.rs`).
 
 use demi_backend_database::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;

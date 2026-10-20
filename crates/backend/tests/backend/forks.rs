@@ -1,8 +1,17 @@
-//! Conversation Fork: a new conversation with the source's history through one of its
-//! completed assistant texts, and the edits and command outputs of that history, created
-//! once per destination id, while the source runs on and after the backend no longer holds
-//! the source. The edits' blobs are the source's: a Fork copies no bytes; and the
-//! destination's numbers go on from the source's. No test calls a real model.
+//! Conversation Fork.
+//!
+//! A Fork makes a new conversation with the source's history through one of
+//! its completed assistant texts, and the edits and command outputs of that
+//! history.
+//!
+//! Scenarios:
+//!
+//! - It is created once per destination id, while the source runs on and after
+//!   the backend no longer holds the source.
+//! - The edits' blobs are the source's: a Fork copies no bytes.
+//! - The destination's numbers go on from the source's.
+//!
+//! No test calls a real model.
 
 use demi_agent_tools::testing::field;
 use demi_backend_blobs::counting::ObjectCounts;

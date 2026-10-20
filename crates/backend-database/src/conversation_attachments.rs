@@ -1,15 +1,23 @@
 //! The conversation's attachments, the files its messages sent and those the
-//! agent uploaded (`crates/backend-host-access/src/attachment_commands.rs`): a
-//! sent file's bytes, and those `demi attachment upload` stores, are a blob of
-//! the conversation owner's namespace, and the conversation's `attachments`
-//! table holds one row per attachment, keyed by its number in the conversation's
-//! `attachment` sequence, with the file's name, its media type, its size, an
-//! image's or a video's size in pixels, its blob, and the node of the agent that
-//! uploaded it, none for a file the user sent. A row is written once, or copied
-//! into a Fork's destination, and never changes. A reply shows only the
-//! attachments its own agent uploaded, or the agent it was forked from for the
-//! history it copied: the page asks for each as [`read_shown`] reads it, and a
-//! share keeps each as [`SHOWN`] pairs it.
+//! agent uploaded
+//! (`crates/backend-host-access/src/attachment_commands.rs`).
+//!
+//! A sent file's bytes, and those `demi attachment upload` stores, are a blob of
+//! the conversation owner's namespace. The conversation's `attachments` table
+//! holds one row per attachment, keyed by its number in the conversation's
+//! `attachment` sequence, with:
+//!
+//! - the file's name, its media type and its size;
+//! - an image's or a video's size in pixels;
+//! - its blob;
+//! - the node of the agent that uploaded it, none for a file the user sent.
+//!
+//! A row is written once, or copied into a Fork's destination, and never
+//! changes.
+//!
+//! A reply shows only the attachments its own agent uploaded, or the agent it was
+//! forked from for the history it copied. The page asks for each as
+//! [`read_shown`] reads it, and a share keeps each as [`SHOWN`] pairs it.
 
 use std::fmt;
 use std::str::FromStr;
@@ -79,12 +87,14 @@ pub struct StoredAttachment {
     pub node: Option<NodeId>,
 }
 
-/// The table `shown (node, uploader)`, a recursive common table
-/// expression a statement starts `WITH`: the replies of `node` show what
-/// `uploader` uploaded, for each node and itself, and for each node and
-/// every agent it was forked from, recursively, since the history a forked
-/// agent copied was written by the agent it was forked from. A file the
-/// user sent, or another agent uploaded, is no file of its replies.
+/// The table `shown (node, uploader)`, a recursive common table expression a
+/// statement starts `WITH`.
+///
+/// The replies of `node` show what `uploader` uploaded, for each node and
+/// itself, and for each node and every agent it was forked from, recursively,
+/// since the history a forked agent copied was written by the agent it was forked
+/// from. A file the user sent, or another agent uploaded, is no file of its
+/// replies.
 pub const SHOWN: &str = "RECURSIVE shown (node, uploader) AS (
        SELECT id, id FROM nodes
        UNION

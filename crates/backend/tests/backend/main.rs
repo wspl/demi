@@ -3,16 +3,20 @@
 //!
 //! A scenario that takes more than a second (`testing.md` § Cost) says above
 //! it which part of its contract takes the time. Measured on four cores
-//! (2026-09-26): a runner's first native command installs its package from
-//! the backend, which downloads and verifies the debug `demi-file` or
-//! `demi-browser`, about a second for the browser's, on each runner and again
-//! after a Cloud's reset; every shell job starts a login shell, which reads
-//! the machine's profile, 0.3 to 0.5 s where that loads nvm and rbenv;
-//! pairing a device or booting a Cloud starts a runner, a few hundred
-//! milliseconds; and a configured window passes in real time. The first
-//! scenario of a process with a package also computes the package's digest
-//! and publishes it, about a second for `demi-browser`, which every later one
-//! reuses (`support::Built`).
+//! (2026-09-26), the time goes to:
+//!
+//! - A runner's first native command installs its package from the backend,
+//!   which downloads and verifies the debug `demi-file` or `demi-browser`:
+//!   about a second for the browser's, on each runner and again after a
+//!   Cloud's reset.
+//! - Every shell job starts a login shell, which reads the machine's profile:
+//!   0.3 to 0.5 s where that loads nvm and rbenv.
+//! - Pairing a device or booting a Cloud starts a runner: a few hundred
+//!   milliseconds.
+//! - A configured window passes in real time.
+//! - The first scenario of a process with a package also computes the
+//!   package's digest and publishes it, about a second for `demi-browser`,
+//!   which every later one reuses (`support::Built`).
 
 mod accounts;
 mod agent_profiles;

@@ -1,14 +1,20 @@
-//! A local store end to end (`crates/backend-runners/src/publication.rs`). The harness writes the command packages the workspace
-//! built as development releases of a server release, which the backend's
-//! local store takes from the release's files when a runner first needs
-//! them and serves itself (`support::Harness::with_file_package`), so every
-//! scenario whose runner runs a native command, on a paired device or on the
-//! Cloud, installs it from the backend. This file shows the store's own
-//! promises: a runner installs a package from the backend's route and runs
-//! it, and the route serves only what the catalog names; the device then
-//! lists what its runner's cache holds, even while it is offline
-//! (§ Installed artifacts). The backend stores the executables ahead for
-//! the targets of its Hosts, before a command needs them.
+//! A local store end to end (`crates/backend-runners/src/publication.rs`).
+//!
+//! The harness writes the command packages the workspace built as development
+//! releases of a server release, which the backend's local store takes from
+//! the release's files when a runner first needs them and serves itself
+//! (`support::Harness::with_file_package`). So every scenario whose runner
+//! runs a native command, on a paired device or on the Cloud, installs it from
+//! the backend.
+//!
+//! This file shows the store's own promises:
+//!
+//! - A runner installs a package from the backend's route and runs it, and the
+//!   route serves only what the catalog names.
+//! - The device then lists what its runner's cache holds, even while it is
+//!   offline (§ Installed artifacts).
+//! - The backend stores the executables ahead for the targets of its Hosts,
+//!   before a command needs them.
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::wire::HostArtifact;
@@ -103,10 +109,12 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
     backend.close().await;
 }
 
-/// The first command on a device after an upgrade finds its executable in
-/// the store: the backend stores it for the device's target as the device
-/// pairs, before any command, and again for the targets of the Hosts it
-/// knows as it starts (`crates/backend-runners/src/publication.rs`).
+/// The first command on a device after an upgrade finds its executable in the
+/// store.
+///
+/// The backend stores it for the device's target as the device pairs, before any
+/// command, and again for the targets of the Hosts it knows as it starts
+/// (`crates/backend-runners/src/publication.rs`).
 // A few seconds: a runner pairs.
 #[tokio::test]
 async fn a_backend_stores_its_hosts_executables_ahead_as_a_device_pairs_and_as_it_starts() {

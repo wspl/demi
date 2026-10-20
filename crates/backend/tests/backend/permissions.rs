@@ -1,16 +1,23 @@
-//! Conversation permissions: a `demi skills` command whose category the
-//! conversation has not been granted raises a request the pages list and
-//! waits for the user's answer, and the agent reads that it waits, in its
-//! result and its progress reports; the user's Allow grants the category for
-//! the whole tree and runs each waiting command once, whose end reports to
-//! the agent as any command's does, and the decision's message tells the
-//! agent, waking it even after the user stopped its turn; a Deny ends the
-//! command unrun and remembers nothing; a newer run replaces an undecided
-//! request and ends the older command; a stopped command leaves its request
-//! to the user; an archive waits for the answer and keeps the grants; a Fork
-//! copies none; and a decision a restart cut off reaches the agent at the
-//! next start. The model is the scripted family of the subagent scenarios;
-//! the device is a real runner. No test calls a real model.
+//! Conversation permissions.
+//!
+//! Scenarios:
+//!
+//! - A `demi skills` command whose category the conversation has not been
+//!   granted raises a request the pages list and waits for the user's answer.
+//!   The agent reads that it waits, in its result and its progress reports.
+//! - The user's Allow grants the category for the whole tree and runs each
+//!   waiting command once, whose end reports to the agent as any command's
+//!   does. The decision's message tells the agent, waking it even after the
+//!   user stopped its turn.
+//! - A Deny ends the command unrun and remembers nothing.
+//! - A newer run replaces an undecided request and ends the older command.
+//! - A stopped command leaves its request to the user.
+//! - An archive waits for the answer and keeps the grants.
+//! - A Fork copies none.
+//! - A decision a restart cut off reaches the agent at the next start.
+//!
+//! The model is the scripted family of the subagent scenarios; the device is a
+//! real runner. No test calls a real model.
 
 use std::sync::Arc;
 
@@ -211,11 +218,12 @@ fn command_id(text: &str) -> String {
     text[at..].chars().take_while(char::is_ascii_digit).collect()
 }
 
-/// Waits until each of the subagent sessions `children` read the end of
-/// its command and the allow's message, and answers the history each was
-/// last asked with. Each child's command is `demi skills add acme/tools`,
-/// which prints what the plugin did, and the history of one session is
-/// its own.
+/// Waits until each of the subagent sessions `children` read the end of its
+/// command and the allow's message, and answers the history each was last asked
+/// with.
+///
+/// Each child's command is `demi skills add acme/tools`, which prints what the
+/// plugin did, and the history of one session is its own.
 async fn ran_after_allow(scripts: &Scripts, children: &[String]) -> Vec<String> {
     let last = |child: &String| scripts.asked(|session| session == child).pop().unwrap_or_default();
     eventually("each subagent's command ended and each was told", || async {

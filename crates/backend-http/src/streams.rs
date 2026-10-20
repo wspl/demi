@@ -1,6 +1,8 @@
-//! User streams at the edge: the upgrade of a declared stream, and the relay of
-//! its bytes between the page's socket and the Host's pipes, taken from the Host
-//! only as fast as the page takes them.
+//! User streams at the edge.
+//!
+//! - The upgrade of a declared stream.
+//! - The relay of its bytes between the page's socket and the Host's pipes,
+//!   taken from the Host only as fast as the page takes them.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -117,12 +119,16 @@ impl End {
     }
 }
 
-/// Relays an open stream: the page's binary messages go to the Host in
-/// order, each after the Host took the one before, and the Host's bytes go
-/// to the page, each after the page's socket took the one before. Message
-/// boundaries mean nothing. Whichever side ends first ends the stream, and
-/// so does `plugin_off`, once the user turns its plugin off; dropping the
-/// lease then ends it in the shard.
+/// Relays an open stream.
+///
+/// - The page's binary messages go to the Host in order, each after the Host
+///   took the one before.
+/// - The Host's bytes go to the page, each after the page's socket took the one
+///   before.
+/// - Message boundaries mean nothing.
+/// - Whichever side ends first ends the stream, and so does `plugin_off`, once
+///   the user turns its plugin off; dropping the lease then ends it in the
+///   shard.
 async fn relay(
     socket: WebSocket,
     tuning: PageTuning,

@@ -1,12 +1,17 @@
-//! The usage ledger (`crates/backend-database/src/usage.rs`): a row per
-//! vendor call of a conversation, with its agent, turn, purpose, account and
-//! ids, a compaction's summary request among them, written as each call
-//! ends, and a write that fails losing the row but no turn; and its totals,
-//! one group per entry and model in the order each pair was first used,
-//! each user's own, and on a shared instance every account's for an
-//! administrator, read from rows written to the ledger directly. The rows of
-//! a Claude Code run, of a title request and of a refused call are their
-//! modules' (`claude`, `titles`, `rotation`).
+//! The usage ledger (`crates/backend-database/src/usage.rs`).
+//!
+//! Scenarios:
+//!
+//! - A row per vendor call of a conversation, with its agent, turn, purpose,
+//!   account and ids, a compaction's summary request among them. It is written
+//!   as each call ends, and a write that fails loses the row but no turn.
+//! - Its totals, read from rows written to the ledger directly:
+//!   - one group per entry and model, in the order each pair was first used;
+//!   - each user's own;
+//!   - on a shared instance, every account's for an administrator.
+//!
+//! The rows of a Claude Code run, of a title request and of a refused call are
+//! their modules' (`claude`, `titles`, `rotation`).
 
 use demi_conversation_socket_protocol::{ClientFrame, CostCall, ServerFrame};
 use demi_provider_common::testing::MockVendor;
@@ -234,11 +239,12 @@ async fn totals_group_by_entry_and_model_in_first_use_order_and_the_instance_vie
     backend.close().await;
 }
 
-/// Each call of a conversation on an API key is a row as it ends, with the
-/// root's agent, its turn and no account, the message's id and its counts,
-/// the hour-long part of its cache write among them; a compaction's
-/// summary request is a row that says so. A ledger that cannot be written
-/// loses the row, and the turn goes on.
+/// Each call of a conversation on an API key is a row as it ends, with the root's
+/// agent, its turn and no account, the message's id and its counts, the hour-long
+/// part of its cache write among them.
+///
+/// A compaction's summary request is a row that says so. A ledger that cannot be
+/// written loses the row, and the turn goes on.
 // A backend and three answers of a scripted vendor: about half a second.
 #[tokio::test]
 async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_no_turn() {
@@ -313,17 +319,21 @@ async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_n
     backend.close().await;
 }
 
-/// Each call of a conversation reaches its open page as a `cost` frame of
-/// what its row adds, the call itself for a turn call of the main
-/// conversation, and `GET /api/conversations/:id/cost` sums the rows, its
-/// second call a miss once it wrote the prompt again
-/// (`crates/backend-database/src/usage.rs`). Each frame and the answer count
-/// the rows they include, so
-/// the page can tell a frame it holds from one past a gap, and a page that
-/// opens the conversation again receives the count with the handshake,
-/// which tells it of a row whose frame it missed. An entry whose
-/// models have no price leaves every price null and lists no agent. Planted
-/// defect: no frame, which the socket waits for until the test's timeout.
+/// Each call of a conversation reaches its open page as a `cost` frame of what
+/// its row adds, the call itself for a turn call of the main conversation. `GET
+/// /api/conversations/:id/cost` sums the rows, its second call a miss once it
+/// wrote the prompt again (`crates/backend-database/src/usage.rs`).
+///
+/// Each frame and the answer count the rows they include, so the page can tell
+/// a frame it holds from one past a gap. A page that opens the conversation
+/// again receives the count with the handshake, which tells it of a row whose
+/// frame it missed.
+///
+/// An entry whose models have no price leaves every price null and lists no
+/// agent.
+///
+/// Planted defect: no frame, which the socket waits for until the test's
+/// timeout.
 // A backend and two answers of a scripted vendor: about half a second.
 #[tokio::test]
 async fn each_call_reaches_the_open_page_as_a_cost_frame_and_the_cost_sums_the_rows() {

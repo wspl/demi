@@ -1,8 +1,8 @@
-//! The browser suite through the whole stack: the backend, a paired
-//! device's real runner, the `demi.browser` package the workspace built,
-//! and the pinned Chrome for Testing that `DEMI_TEST_CHROME` names, on
-//! Linux with the pinned Chrome runtime that `DEMI_TEST_CHROME_RUNTIME`
-//! names, with a scripted model. An ordinary run ignores it.
+//! The browser suite through the whole stack: the backend, a paired device's
+//! real runner, the `demi.browser` package the workspace built, and the pinned
+//! Chrome for Testing that `DEMI_TEST_CHROME` names, with a scripted model. On
+//! Linux it also needs the pinned Chrome runtime that `DEMI_TEST_CHROME_RUNTIME`
+//! names. An ordinary run ignores it.
 //!
 //! ```sh
 //! DEMI_TEST_CHROME=<chrome> cargo test --workspace \
@@ -10,12 +10,14 @@
 //! ```
 //!
 //! Each test answers the browser program's request for Chrome through the
-//! runner's artifact cache, so none downloads Chrome. The model's shell job
-//! opens a page a local HTTP server serves and reads it with `demi browser`,
-//! the page's `browser` user stream brings the live view's first key frame of
-//! that tab through the backend, and archiving the conversation releases it on
-//! the device, after which no Chrome process runs from the device's
-//! installation.
+//! runner's artifact cache, so none downloads Chrome. In each test:
+//!
+//! - The model's shell job opens a page a local HTTP server serves and reads
+//!   it with `demi browser`.
+//! - The page's `browser` user stream brings the live view's first key frame
+//!   of that tab through the backend.
+//! - Archiving the conversation releases the tab on the device, after which no
+//!   Chrome process runs from the device's installation.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -205,13 +207,13 @@ impl View {
     }
 }
 
-/// An agent on a paired device opens a page served on the loopback
-/// interface with `demi browser` and reads it, the user watches the tab
-/// through the backend's `browser` user stream, and archiving the
-/// conversation releases it on the device, which leaves no Chrome process.
-/// About 13 s here: the
-/// device installs the package, Chrome starts, and the view's first picture
-/// is encoded.
+/// An agent on a paired device opens a page served on the loopback interface with
+/// `demi browser` and reads it, the user watches the tab through the backend's
+/// `browser` user stream, and archiving the conversation releases it on the
+/// device, which leaves no Chrome process.
+///
+/// About 13 s here: the device installs the package, Chrome starts, and the view's
+/// first picture is encoded.
 #[tokio::test]
 #[ignore = "the browser suite: needs DEMI_TEST_CHROME, and DEMI_TEST_CHROME_RUNTIME on Linux"]
 async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_release() {

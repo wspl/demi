@@ -1,8 +1,14 @@
-//! `GET /api/models` (`crates/backend-providers/src/llm/catalog.rs`): the catalog
-//! of every entry the caller infers with, each model with the selection the
-//! backend builds from it and each entry with its health, and what the
-//! small model's Automatic resolves to. It wakes no Cloud and runs no model;
-//! `refresh=true` waits for a shared forced refresh.
+//! `GET /api/models` (`crates/backend-providers/src/llm/catalog.rs`): the
+//! catalog of every entry the caller infers with.
+//!
+//! The answer holds:
+//!
+//! - each model with the selection the backend builds from it;
+//! - each entry with its health;
+//! - what the small model's Automatic resolves to.
+//!
+//! It wakes no Cloud and runs no model. `refresh=true` waits for a shared
+//! forced refresh.
 
 use std::sync::Arc;
 

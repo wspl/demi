@@ -1,6 +1,8 @@
-//! The session cookie: `demi_session`, `HttpOnly`, `SameSite=Lax` and
-//! `Path=/`, and `Secure` for a request that came over HTTPS, directly or
-//! through a proxy.
+//! The session cookie.
+//!
+//! It is named `demi_session` and is `HttpOnly`, `SameSite=Lax` and `Path=/`.
+//! It is `Secure` for a request that came over HTTPS, directly or through a
+//! proxy.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;

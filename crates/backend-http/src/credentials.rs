@@ -1,9 +1,12 @@
-//! The caller's credentials, which only their owner reads and changes: each route acts
-//! in the caller's shard, and a change reaches the caller's pages as the `credentials`
-//! part, which carries a visible field's value and never a secret one's. Only the reveal
-//! answers every value. Each refusal is in words for the user, which the page shows as
-//! they are. The reveal, which is the only route that answers a secret's value, takes
-//! the session's confirmation that it is the user, as a handoff code does.
+//! The caller's credentials, which only their owner reads and changes.
+//!
+//! - Each route acts in the caller's shard.
+//! - A change reaches the caller's pages as the `credentials` part, which
+//!   carries a visible field's value and never a secret one's.
+//! - Only the reveal answers every value. It is the only route that answers a
+//!   secret's value, and it takes the session's confirmation that it is the
+//!   user, as a handoff code does.
+//! - Each refusal is in words for the user, which the page shows as they are.
 
 use axum::Json;
 use axum::extract::{Path, State};

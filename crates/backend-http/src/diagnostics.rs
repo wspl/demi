@@ -1,6 +1,8 @@
-//! The page's own error reports and the server log: `POST /page-errors`
-//! logs a failure the page found itself under the report's request ID, and
-//! `GET /server/log` is how an administrator finds a request's lines.
+//! The page's own error reports and the server log.
+//!
+//! - `POST /page-errors` logs a failure the page found itself under the
+//!   report's request ID.
+//! - `GET /server/log` is how an administrator finds a request's lines.
 
 use std::time::Duration;
 

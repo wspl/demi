@@ -1,7 +1,10 @@
-//! The product's `demi conversation` group (`crates/backend-host-access/src/host_commands.rs`): with the user's Organize Conversations, an
-//! agent renames its conversation at once and lists the user's projects.
-//! Where the conversation runs decides its project, so an agent moves it
-//! into or out of one with `demi host move` (`host_commands.rs`).
+//! The product's `demi conversation` group
+//! (`crates/backend-host-access/src/host_commands.rs`).
+//!
+//! With the user's Organize Conversations, an agent renames its conversation at
+//! once and lists the user's projects. Where the conversation runs decides its
+//! project, so an agent moves it into or out of one with `demi host move`
+//! (`host_commands.rs`).
 
 use std::future::Future;
 use std::rc::{Rc, Weak};

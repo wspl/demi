@@ -1,9 +1,15 @@
-//! Side questions on the backend: asked about a reply's words over HTTP,
-//! answered in a side conversation whose transcript the page reads by its node,
-//! kept with its anchor and its fold across a restart, announced to the pages
-//! through the summary's revision, counted under the conversation in the usage
-//! ledger, and never copied by a Fork or shown by a share. No test calls a real
-//! model.
+//! Side questions on the backend.
+//!
+//! A side question is asked about a reply's words over HTTP and answered in a
+//! side conversation:
+//!
+//! - The page reads its transcript by its node.
+//! - It is kept with its anchor and its fold across a restart.
+//! - It is announced to the pages through the summary's revision.
+//! - It is counted under the conversation in the usage ledger.
+//! - A Fork never copies it, and a share never shows it.
+//!
+//! No test calls a real model.
 
 use demi_provider_common::testing::{MockResponse, MockVendor, sse_body};
 use demi_shared_types::Block;
@@ -44,15 +50,20 @@ async fn revision(backend: &TestBackend, session: &Session) -> u64 {
         .side_questions_revision
 }
 
-// The conversation's agent answers; the user asks about its words. The
-// side's request ends with the asked words, the instruction and the
-// question; its answer is its transcript's, read by its node, and the
-// conversation's own transcript gains nothing. The same request again
-// finds it; another question under its id is refused. The fold is kept,
-// each change raises the summary's revision, and both survive a restart.
-// Its request is counted under the conversation, under no agent. A Fork of
-// the reply copies no side question and a share reaches none of its
-// blocks. A backend with a mock vendor and a restart: about two seconds.
+// The conversation's agent answers; the user asks about its words.
+//
+// - The side's request ends with the asked words, the instruction and the
+//   question. Its answer is its transcript's, read by its node, and the
+//   conversation's own transcript gains nothing.
+// - The same request again finds it; another question under its id is
+//   refused.
+// - The fold is kept, each change raises the summary's revision, and both
+//   survive a restart.
+// - Its request is counted under the conversation, under no agent.
+// - A Fork of the reply copies no side question and a share reaches none of
+//   its blocks.
+//
+// A backend with a mock vendor and a restart: about two seconds.
 #[tokio::test]
 async fn a_side_question_is_answered_beside_the_conversation_and_kept_with_its_reply() {
     let vendor = MockVendor::start().await;

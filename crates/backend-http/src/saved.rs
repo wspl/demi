@@ -1,9 +1,16 @@
-//! `GET/POST /conversations/:id/saved`, `POST .../saved/from-draft`,
-//! `POST .../saved/:messageId/edit` and `DELETE .../saved/:messageId`: the conversation's messages saved for later. A save of
-//! the composer's message empties the conversation's draft and an edit exchanges a message with the draft, each in one
-//! transaction, while a plain save, Undo's, leaves the draft alone; an archived conversation reads its list and refuses the
-//! rest, as it does its draft. Sending one is the conversation socket's `send_saved` frame. A save names its message's id; one
-//! sent again with the same id and content answers as the first did.
+//! The conversation's messages saved for later: `GET/POST
+//! /conversations/:id/saved`, `POST .../saved/from-draft`,
+//! `POST .../saved/:messageId/edit` and `DELETE .../saved/:messageId`.
+//!
+//! - A save of the composer's message empties the conversation's draft, and an
+//!   edit exchanges a message with the draft, each in one transaction. A plain
+//!   save, Undo's, leaves the draft alone.
+//! - An archived conversation reads its list and refuses the rest, as it does
+//!   its draft.
+//! - A save names its message's id; one sent again with the same id and content
+//!   answers as the first did.
+//!
+//! Sending one is the conversation socket's `send_saved` frame.
 
 use std::sync::Arc;
 

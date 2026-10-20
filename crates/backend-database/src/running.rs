@@ -1,11 +1,13 @@
-//! The records of commands that run: the conversation's `running_commands` row
-//! of each, written when its job starts, or as not yet sent while its start
-//! waits for its Host, and deleted in the transaction that writes its
-//! `command_outputs` row, and the control database's `running_jobs` index of
-//! their jobs by device, written before each job starts and deleted with its
-//! command's end. A backend that starts again reads them to take the commands
-//! up when their runners connect
-//! (`crates/backend-remote-host/src/device_jobs.rs`).
+//! The records of commands that run.
+//!
+//! - The conversation's `running_commands` row of each, written when its job
+//!   starts, or as not yet sent while its start waits for its Host, and deleted in
+//!   the transaction that writes its `command_outputs` row.
+//! - The control database's `running_jobs` index of their jobs by device, written
+//!   before each job starts and deleted with its command's end.
+//!
+//! A backend that starts again reads them to take the commands up when their
+//! runners connect (`crates/backend-remote-host/src/device_jobs.rs`).
 
 use std::collections::BTreeMap;
 

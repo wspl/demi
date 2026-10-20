@@ -1,8 +1,10 @@
-//! What the profile changes of `demi agent profiles` need of the user's
-//! shard (`crates/agent-server/src/server/tree/profiles.rs`): a command's change resolved
-//! into the body the settings page sends, written by the same path with the
-//! same checks and the same words; and the user's entries with their
-//! catalogs, which `demi providers` lists too.
+//! What the profile changes of `demi agent profiles` need of the user's shard
+//! (`crates/agent-server/src/server/tree/profiles.rs`).
+//!
+//! - A command's change is resolved into the body the settings page sends,
+//!   written by the same path with the same checks and the same words.
+//! - The user's entries come with their catalogs, which `demi providers` lists
+//!   too.
 
 use demi_agent_tools::{
     EFFORT_OFF, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit, TIER_DEFAULT,

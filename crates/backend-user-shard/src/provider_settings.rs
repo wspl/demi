@@ -1,20 +1,29 @@
 //! The changes of the provider entries in a user's scope, and the model search
 //! that fills a configured model
-//! (`crates/backend-providers/src/llm/vendors.rs`): one path, with its checks
-//! and its words, for the settings page and for `demi providers`
-//! (`crates/backend-user-shard/src/shard/provider_commands.rs`). An entry may
-//! be added with nothing but its kind; it is incomplete until it has what it
-//! needs.
+//! (`crates/backend-providers/src/llm/vendors.rs`).
 //!
-//! A vendor entry and a compatible one differ in who decides the models: a
-//! vendor's own API serves the vendor's catalog, so its entry lists them at
-//! once, while a compatible API serves whatever models it chooses under
-//! whatever names, so its entry starts empty and never borrows the protocol's
-//! vendor's catalog. An entry stays the kind it was added as. An entry that
-//! cannot infer yet is incomplete and shows what it lacks plainly, never as a
-//! failure, since nothing failed; nothing is checked against the vendor while
-//! the user types. A model added with a taken id takes the first free `-2`,
-//! `-3` suffix.
+//! There is one path, with its checks and its words, for the settings page and
+//! for `demi providers` (`crates/backend-user-shard/src/shard/provider_commands.rs`).
+//!
+//! An entry may be added with nothing but its kind; it is incomplete until it has
+//! what it needs.
+//!
+//! # Vendor and compatible entries
+//!
+//! A vendor entry and a compatible one differ in who decides the models:
+//!
+//! - A vendor's own API serves the vendor's catalog, so its entry lists them at
+//!   once.
+//! - A compatible API serves whatever models it chooses under whatever names, so
+//!   its entry starts empty and never borrows the protocol's vendor's catalog.
+//!
+//! # Rules
+//!
+//! - An entry stays the kind it was added as.
+//! - An entry that cannot infer yet is incomplete and shows what it lacks
+//!   plainly, never as a failure, since nothing failed.
+//! - Nothing is checked against the vendor while the user types.
+//! - A model added with a taken id takes the first free `-2`, `-3` suffix.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::providers::MediaSwitches;
@@ -150,11 +159,12 @@ impl Services {
             .ok_or(ProviderRefusal::Busy)
     }
 
-    /// Creates an API-key entry: a vendor entry from the vendor list, or from
-    /// a family alone for its own vendor; or a compatible entry, Anthropic
-    /// Messages unless the body names another protocol. Its label is the
-    /// vendor's or the family's name, or *Compatible API*, unless the body
-    /// gives one, and what the body leaves out leaves it incomplete.
+    /// Creates an API-key entry: a vendor entry from the vendor list, or from a
+    /// family alone for its own vendor; or a compatible entry, Anthropic Messages
+    /// unless the body names another protocol.
+    ///
+    /// Its label is the vendor's or the family's name, or *Compatible API*, unless
+    /// the body gives one. What the body leaves out leaves it incomplete.
     pub async fn create_provider(
         &self,
         user: &UserDto,
@@ -348,12 +358,12 @@ impl Services {
                 }
                 config.audio_shape = shape;
             }
-            // A model added of a kind the entry does not make is no model of
-            // it: only a compatible entry with a shape for the kind lists
-            // one. One kept from before the shape was set to None stays,
-            // unused and hidden, and comes back with the shape,
-            // so a list that still
-            // carries it, as an edit of a text model sends, is taken.
+            // A model added of a kind the entry does not make is no model of it:
+            // only a compatible entry with a shape for the kind lists one.
+            //
+            // One kept from before the shape was set to None stays, unused and
+            // hidden, and comes back with the shape, so a list that still carries
+            // it, as an edit of a text model sends, is taken.
             let shapes = MediaShapes {
                 image: config.image_shape.filter(|_| config.is_compatible()),
                 video: config.video_shape.filter(|_| config.is_compatible()),

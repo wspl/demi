@@ -1,12 +1,18 @@
-//! The agent's `demi audio`, the `audio` plugin over the port's
-//! Providers service: a compatible API whose audio shape and models the
-//! agent sets with `demi providers`, its OpenAI Speech request sent to a
-//! scripted server and its file written with a ledger row of its
-//! seconds; an ElevenLabs entry of media alone, offered from the media
-//! catalog, its key checked by Test Connection through its models, the
-//! call that takes one of its models sent there, and speech without a
-//! voice refused before anything is sent; a model asked for a kind it
-//! does not make refused likewise. No test calls a real vendor.
+//! The agent's `demi audio`, the `audio` plugin over the port's Providers
+//! service.
+//!
+//! Scenarios:
+//!
+//! - A compatible API whose audio shape and models the agent sets with `demi
+//!   providers`: its OpenAI Speech request is sent to a scripted server, and
+//!   its file is written with a ledger row of its seconds.
+//! - An ElevenLabs entry of media alone, offered from the media catalog:
+//!   - Test Connection checks its key through its models.
+//!   - The call that takes one of its models is sent there.
+//!   - Speech without a voice is refused before anything is sent.
+//! - A model asked for a kind it does not make is refused likewise.
+//!
+//! No test calls a real vendor.
 
 use std::sync::Arc;
 
@@ -35,18 +41,22 @@ fn audio_rows(harness: &Harness) -> Vec<Row> {
     rows(harness).into_iter().filter(|row| row.purpose.as_deref() == Some("audio")).collect()
 }
 
-// About a second: two scripted servers and a real device's shell jobs of
-// two turns, the second woken by the user's decision.
+// About a second: two scripted servers and a real device's shell jobs of two
+// turns, the second woken by the user's decision.
 //
-// Planted defects: Test Connection of an entry of media alone needing a
-// model; a refused key not told in the vendor's words; the catalog's
-// longest text left out of `demi audio models <model>`; an audio shape stored for a compatible entry without
-// the permission; an audio model added to an entry with no audio shape; a
-// compatible server without `/audio/voices` failing the listing; the
-// ledger row's seconds left out; ElevenLabs offered without its endpoint,
-// or Stability AI offered; an entry of media alone tested with a chat
-// message; ElevenLabs speech without a voice sent; a speech model sent a
-// music call.
+// Planted defects:
+//
+// - Test Connection of an entry of media alone needing a model.
+// - A refused key not told in the vendor's words.
+// - The catalog's longest text left out of `demi audio models <model>`.
+// - An audio shape stored for a compatible entry without the permission.
+// - An audio model added to an entry with no audio shape.
+// - A compatible server without `/audio/voices` failing the listing.
+// - The ledger row's seconds left out.
+// - ElevenLabs offered without its endpoint, or Stability AI offered.
+// - An entry of media alone tested with a chat message.
+// - ElevenLabs speech without a voice sent.
+// - A speech model sent a music call.
 #[tokio::test]
 async fn a_compatible_api_and_an_elevenlabs_entry_make_audio_the_agent_asks_for() {
     let proxy_server = MockVendor::start().await;

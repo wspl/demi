@@ -18,12 +18,16 @@ path = "src/main.rs"
 test = false
 
 [features]
-# A hold on the commits of the conversations' checkpoints (`CommitHold`), for
-# the scenarios that stop a save at its commit, a conversation's file gate
-# with the view of the entrants waiting at it (`Backend::file_gate`), an
-# object store that counts what reaches it (`ObjectCounts`), and the holds of
-# the runners' hellos and the pages' synchronization channels (`StepHold`),
-# and the authorities the plugins' outbound requests trust (`web_roots`).
+# Test support, for the scenarios that need:
+#
+# - a hold on the commits of the conversations' checkpoints (`CommitHold`), to
+#   stop a save at its commit;
+# - a conversation's file gate with the view of the entrants waiting at it
+#   (`Backend::file_gate`);
+# - an object store that counts what reaches it (`ObjectCounts`);
+# - the holds of the runners' hellos and the pages' synchronization channels
+#   (`StepHold`);
+# - the authorities the plugins' outbound requests trust (`web_roots`).
 testing = [
   "dep:reqwest",
   "demi-backend-http/testing",

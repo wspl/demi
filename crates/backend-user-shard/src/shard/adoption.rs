@@ -1,8 +1,11 @@
-//! Runner adoption (`crates/runner-protocol/src/wire/mod.rs`): the shard of a
-//! device's owner takes the socket the edge accepted, binds it to the device
-//! with the connection's policy, and serves it until either end closes it;
-//! the revocation that ends a device's connection for good; and a device's
-//! new name.
+//! Runner adoption (`crates/runner-protocol/src/wire/mod.rs`).
+//!
+//! The shard of a device's owner:
+//!
+//! - takes the socket the edge accepted, binds it to the device with the
+//!   connection's policy, and serves it until either end closes it;
+//! - revokes a device, which ends its connection for good;
+//! - renames a device.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -223,14 +226,17 @@ impl Shard {
         self.forwards_presence(&id, false).await;
     }
 
-    /// Publishes a new connection of the device under the shard's policy,
-    /// with what records its runner's hello: its system and release, and
-    /// the advance of each execution context the report changes
-    /// (`crates/backend-database/src/selection.rs`). The record answers
-    /// what settles a paired device's first home, which its caller runs
-    /// while the connection serves, since the runner resolves its
-    /// directories (`crates/server/src/main.rs`). None once the shard is
-    /// closing, whose close ends every connection it published before.
+    /// Publishes a new connection of the device under the shard's policy, with
+    /// what records its runner's hello: its system and release, and the advance
+    /// of each execution context the report changes
+    /// (`crates/backend-database/src/selection.rs`).
+    ///
+    /// The record answers what settles a paired device's first home, which its
+    /// caller runs while the connection serves, since the runner resolves its
+    /// directories (`crates/server/src/main.rs`).
+    ///
+    /// None once the shard is closing, whose close ends every connection it
+    /// published before.
     fn bind(
         self: &Rc<Self>,
         device: &DeviceId,
@@ -297,12 +303,13 @@ impl Shard {
         Some((serving, reported))
     }
 
-    /// Restores the trees of the conversations whose commands ran on the
-    /// user's Cloud `device`, which does not run as the backend starts: an
-    /// upgrade stopped it. Each tree's agent takes its commands up, which
-    /// starts the Cloud again, whose runner's hello then says the commands
-    /// were lost, to the upgrade when the release changed
-    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    /// Restores the trees of the conversations whose commands ran on the user's
+    /// Cloud `device`, which does not run as the backend starts: an upgrade
+    /// stopped it.
+    ///
+    /// Each tree's agent takes its commands up, which starts the Cloud again,
+    /// whose runner's hello then says the commands were lost, to the upgrade when
+    /// the release changed (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
         match self.services().control.running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),
@@ -313,8 +320,9 @@ impl Shard {
     }
 
     /// Restores the tree of each of `conversations`, whose commands ran on a
-    /// device whose runner just connected, as an `open` does, so the agent
-    /// that ran each command takes it up again and hears of its end
+    /// device whose runner just connected, as an `open` does.
+    ///
+    /// The agent that ran each command takes it up again and hears of its end
     /// (`crates/agent-session/src/reports.rs`). A tree that is live already is
     /// left as it is.
     fn take_up(self: &Rc<Self>, conversations: impl Iterator<Item = ConversationId>) {
@@ -342,11 +350,12 @@ impl Shard {
         }
     }
 
-    /// Shows `device` as updating: its runner was just sent to the
-    /// backend's runner release (`crates/runner/src/update.rs`), from the
-    /// first such 409 until its next hello, or until the window of the
-    /// runners' tuning passes without a byte of its download served; a
-    /// retry's 409 changes nothing.
+    /// Shows `device` as updating: its runner was just sent to the backend's
+    /// runner release (`crates/runner/src/update.rs`).
+    ///
+    /// It shows so from the first such 409 until its next hello, or until the
+    /// window of the runners' tuning passes without a byte of its download served.
+    /// A retry's 409 changes nothing.
     pub fn runner_updating(self: &Rc<Self>, device: &DeviceId) {
         let until = tokio::time::Instant::now() + self.services().runners.updating;
         let began = self
@@ -467,11 +476,12 @@ impl Shard {
         }
     }
 
-    /// Revokes a device, which nothing refuses: its row goes with its
-    /// attachments and its workspaces, whose conversations stay outside any
-    /// workspace, and its runner hears that it was revoked and removes
-    /// itself. The user's revocation and the
-    /// runner's own request both come here.
+    /// Revokes a device, which nothing refuses.
+    ///
+    /// Its row goes with its attachments and its workspaces, whose conversations
+    /// stay outside any workspace, and its runner hears that it was revoked and
+    /// removes itself. The user's revocation and the runner's own request both
+    /// come here.
     pub async fn revoke_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         let removal = self
             .services()
@@ -634,11 +644,12 @@ impl Shard {
         serving.into_driver()
     }
 
-    /// Connects `device` through a runner the test plays, working in `home`:
-    /// it answers each ping, and each conversation release once
-    /// `on_release` ran for the released conversation, so what that reads
-    /// is the state before the release was answered. The answer says what
-    /// the runner says of its own accord.
+    /// Connects `device` through a runner the test plays, working in `home`.
+    ///
+    /// It answers each ping, and each conversation release once `on_release` ran
+    /// for the released conversation, so what that reads is the state before the
+    /// release was answered. The answer says what the runner says of its own
+    /// accord.
     pub(crate) async fn play_runner_for_tests(
         self: &Rc<Self>,
         device: &DeviceId,

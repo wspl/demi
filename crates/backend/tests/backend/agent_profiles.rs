@@ -1,13 +1,18 @@
 //! An agent's view and changes of the user's subagent profiles
-//! (`crates/agent-server/src/server/tree/profiles.rs`): `demi providers list` lists the
-//! entries the user has on and `show` their models, an entry or a model the
-//! user turned off left out of the list unless `--all`, the model the agent
-//! runs on marked; a profile change asks
-//! the user's permission first, then goes through the settings page's
-//! checks with their words and reaches the settings page at once; and the
-//! next spawn with a profile just created runs on its model. The model is
-//! the scripted family of the subagent scenarios; the device is a real
-//! runner. No test calls a real model.
+//! (`crates/agent-server/src/server/tree/profiles.rs`).
+//!
+//! Scenarios:
+//!
+//! - `demi providers list` lists the entries the user has on, and `show` lists
+//!   their models. An entry or a model the user turned off is left out unless
+//!   `--all`, and the model the agent runs on is marked.
+//! - A profile change asks the user's permission first, then goes through the
+//!   settings page's checks with their words and reaches the settings page at
+//!   once.
+//! - The next spawn with a profile just created runs on its model.
+//!
+//! The model is the scripted family of the subagent scenarios; the device is a
+//! real runner. No test calls a real model.
 
 use std::sync::Arc;
 

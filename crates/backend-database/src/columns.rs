@@ -1,7 +1,8 @@
-//! How stored values become their types again. Every read decodes and
-//! validates what it reads, as it would any input from outside the process;
-//! a value outside its type is corrupt, and the error names its table and
-//! column. Nothing repairs or defaults it.
+//! How stored values become their types again.
+//!
+//! Every read decodes and validates what it reads, as it would any input from
+//! outside the process. A value outside its type is corrupt, and the error names
+//! its table and column. Nothing repairs or defaults it.
 
 use std::fmt::Display;
 

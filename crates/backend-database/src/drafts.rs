@@ -1,7 +1,8 @@
 //! Conversation drafts: each conversation's draft with its revision, the revision
-//! its text and files were written at, and the version a save replaced. Every
-//! change reads the row and writes it in one transaction, so two saves never build
-//! on the same revision.
+//! its text and files were written at, and the version a save replaced.
+//!
+//! Every change reads the row and writes it in one transaction, so two saves
+//! never build on the same revision.
 
 use demi_agent_store::media::comment_references;
 use demi_shared_types::{BlobRef, MessageComment};
@@ -190,11 +191,11 @@ impl ControlService {
         .await
     }
 
-    /// Saves `text`, `files` and `comments` as the draft of `owner`'s conversation. The
-    /// save always takes effect; when `base` is not the current revision, the
-    /// version it replaces is kept as the replaced one, unless that version
-    /// is empty or the one saved. Each upload is presented with what its
-    /// record holds.
+    /// Saves `text`, `files` and `comments` as the draft of `owner`'s conversation.
+    ///
+    /// The save always takes effect. When `base` is not the current revision, the
+    /// version it replaces is kept as the replaced one, unless that version is empty
+    /// or the one saved. Each upload is presented with what its record holds.
     pub async fn save_draft(
         &self,
         conversation: ConversationId,

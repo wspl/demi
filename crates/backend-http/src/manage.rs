@@ -1,8 +1,9 @@
-//! The backend's management socket (`crates/server/src/main.rs`): a Unix
-//! socket only root may open, on which the next release's `demi-server`
-//! names the runner release that comes next. The backend has its connected
-//! paired devices' runners download it ahead and answers how far they are,
-//! a line of JSON each time one moves on, until none is downloading or the
+//! The backend's management socket (`crates/server/src/main.rs`).
+//!
+//! It is a Unix socket only root may open, on which the next release's
+//! `demi-server` names the runner release that comes next. The backend has its
+//! connected paired devices' runners download it ahead and answers how far they
+//! are, a line of JSON each time one moves on, until none is downloading or the
 //! asker stops waiting.
 //!
 //! The socket takes requests without credentials and acts on every user's

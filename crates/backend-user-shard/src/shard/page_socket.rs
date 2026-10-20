@@ -1,25 +1,36 @@
-//! A socket to a page: the synchronization channel and the conversation sockets,
-//! which the shard serves, and the file watch, the direct channel's signaling and
-//! the user streams, which the edge serves. Each sends its protocol's heartbeat once
-//! it has sent nothing else for the heartbeat interval, so that the page can tell a
-//! quiet socket from one that died without a close, and each ends with a close frame
-//! that a page which stopped reading cannot hold up
-//! (`crates/backend/src/backend.rs`). Each but a user stream, which carries bytes
-//! alone, answers the page's `{ ping: id }` with `pong` at once, ahead of any
-//! message its owner has yet to send, whatever the owner is doing meanwhile: the
-//! page asks so as it returns, to learn whether the socket is still alive. The ping
-//! never reaches the owner.
+//! A socket to a page.
 //!
-//! So that a pong never waits for the owner, one writer task per socket
-//! sends everything the socket sends: the owner's messages, one at a time
-//! and each awaited, and the pongs the receiving half reads, which go first
-//! at each message's end. The task ends with the socket's sending half, the
-//! close's bound included, whether the owner ends it or is dropped.
+//! The shard serves the synchronization channel and the conversation sockets.
+//! The edge serves the file watch, the direct channel's signaling and the user
+//! streams.
+//!
+//! # Heartbeat, close and ping
+//!
+//! - Each sends its protocol's heartbeat once it has sent nothing else for the
+//!   heartbeat interval, so that the page can tell a quiet socket from one that
+//!   died without a close.
+//! - Each ends with a close frame that a page which stopped reading cannot hold
+//!   up (`crates/backend/src/backend.rs`).
+//! - Each but a user stream, which carries bytes alone, answers the page's
+//!   `{ ping: id }` with `pong` at once, ahead of any message its owner has yet
+//!   to send, whatever the owner is doing meanwhile. The page asks so as it
+//!   returns, to learn whether the socket is still alive. The ping never reaches
+//!   the owner.
+//!
+//! # The writer task
+//!
+//! So that a pong never waits for the owner, one writer task per socket sends
+//! everything the socket sends: the owner's messages, one at a time and each
+//! awaited, and the pongs the receiving half reads, which go first at each
+//! message's end. The task ends with the socket's sending half, the close's bound
+//! included, whether the owner ends it or is dropped.
+//!
+//! # Logging
 //!
 //! Each socket is logged here, and only here, once as it opens and once as it
-//! ends, under the request ID of its upgrade, which ties the two lines, so
-//! that a drop a user saw can be traced afterwards. The lines never carry what
-//! the socket carried.
+//! ends, under the request ID of its upgrade, which ties the two lines, so that a
+//! drop a user saw can be traced afterwards. The lines never carry what the
+//! socket carried.
 
 use std::collections::VecDeque;
 use std::net::IpAddr;

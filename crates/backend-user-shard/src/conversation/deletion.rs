@@ -1,11 +1,18 @@
-//! Deleting a conversation (`crates/backend-database/src/deletions.rs`):
-//! nothing refuses it. Its work stops as Stop stops it, its subagents and
-//! commands included, and its streams and Host operations end as an archive
-//! ends them; then one transaction of the control database removes its records
-//! and records the deletion as pending, its tree closes, its Hosts hear the
-//! conversation release, which closes its tabs in the conversation browser, its
-//! database goes, and the pending record last. The owner's blob namespace is
-//! collected after it (`lifecycle::collection`).
+//! Deleting a conversation (`crates/backend-database/src/deletions.rs`).
+//!
+//! Nothing refuses a deletion. Its work stops as Stop stops it, its subagents
+//! and commands included, and its streams and Host operations end as an archive
+//! ends them. Then, in order:
+//!
+//! 1. One transaction of the control database removes its records and records
+//!    the deletion as pending.
+//! 2. Its tree closes.
+//! 3. Its Hosts hear the conversation release, which closes its tabs in the
+//!    conversation browser.
+//! 4. Its database goes.
+//! 5. The pending record goes last.
+//!
+//! The owner's blob namespace is collected after it (`lifecycle::collection`).
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
@@ -111,11 +118,13 @@ impl Shard {
     }
 
     /// Steps 3 and 4 of the deletion of `id`, whose records are gone: its
-    /// database goes, then the pending record. Its rows in the search index
-    /// go with the summary mark step 1 raised, since the indexer drops the
-    /// rows of a conversation it no longer finds (`search.rs`). A start runs them for each deletion it finds pending; the
-    /// Hosts need no release then, since a runner that lost its connection
-    /// to the backend ended what it held for every conversation
+    /// database goes, then the pending record.
+    ///
+    /// Its rows in the search index go with the summary mark step 1 raised,
+    /// since the indexer drops the rows of a conversation it no longer finds
+    /// (`search.rs`). A start runs them for each deletion it finds pending; the
+    /// Hosts need no release then, since a runner that lost its connection to
+    /// the backend ended what it held for every conversation
     /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     pub async fn finish_deletion(&self, id: &ConversationId) -> Result<(), StorageError> {
         let services = self.services();

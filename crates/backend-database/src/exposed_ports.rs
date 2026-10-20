@@ -1,8 +1,9 @@
 //! The users' exposed ports
-//! (`crates/backend-user-shard/src/shard/exposed_ports.rs`): each a port of one
-//! of the user's Hosts, missing until the user enters it, and its label. A
-//! request the backend makes for the user reaches a device's port only while a
-//! row exposes it.
+//! (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
+//!
+//! Each is a port of one of the user's Hosts, missing until the user enters it,
+//! and its label. A request the backend makes for the user reaches a device's
+//! port only while a row exposes it.
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::exposed_ports::port_taken;

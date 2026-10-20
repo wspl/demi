@@ -1,12 +1,19 @@
-//! ByteDance's entries (`crates/backend/src/families.rs`): BytePlus ModelArk and Doubao
-//! Speech offered from the media catalog with the endpoints it names,
-//! Volcengine Ark from models.dev, each with the shapes its vendor makes;
-//! a speech key checked by Test Connection through a request the service
-//! refuses for its body; a model asked for a kind it does not make and
-//! speech without a speaker refused before anything is sent; the
-//! catalog's speakers listed; Seed Audio's effect and speech and a
-//! Volcengine Ark image made through their vendors. No test calls a real
-//! vendor.
+//! ByteDance's entries (`crates/backend/src/families.rs`).
+//!
+//! Scenarios:
+//!
+//! - BytePlus ModelArk and Doubao Speech are offered from the media catalog
+//!   with the endpoints it names, and Volcengine Ark from models.dev, each
+//!   with the shapes its vendor makes.
+//! - A speech key is checked by Test Connection through a request the service
+//!   refuses for its body.
+//! - A model asked for a kind it does not make, and speech without a speaker,
+//!   are refused before anything is sent.
+//! - The catalog's speakers are listed.
+//! - Seed Audio's effect and speech, and a Volcengine Ark image, are made
+//!   through their vendors.
+//!
+//! No test calls a real vendor.
 
 use std::sync::Arc;
 
@@ -31,15 +38,21 @@ fn json_answer(status: u16, body: serde_json::Value) -> MockResponse {
 
 // About a second: one scripted server and a real device's shell job.
 //
-// Planted defects: a ByteDance vendor of media alone not offered, or
-// offered without the catalog's endpoint; Volcengine Ark's key making no
-// images or videos, or its images not Seedream's; a speech key checked by
-// a listing, a body refusal failing the test or a key refusal passing it;
-// Seed speech's model offered for effects; speech sent without a speaker;
-// Seed Audio's speech not sent to Seed Audio, or its speaker outside its
-// `references`; the speakers not the catalog's, or Seed Audio listing
-// none; a speed past 2× sent as asked or without its warning; a refusal's
-// words without its code and the request's log ID.
+// Planted defects:
+//
+// - A ByteDance vendor of media alone not offered, or offered without the
+//   catalog's endpoint.
+// - Volcengine Ark's key making no images or videos, or its images not
+//   Seedream's.
+// - A speech key checked by a listing, a body refusal failing the test or a
+//   key refusal passing it.
+// - Seed speech's model offered for effects.
+// - Speech sent without a speaker.
+// - Seed Audio's speech not sent to Seed Audio, or its speaker outside its
+//   `references`.
+// - The speakers not the catalog's, or Seed Audio listing none.
+// - A speed past 2× sent as asked or without its warning.
+// - A refusal's words without its code and the request's log ID.
 #[tokio::test]
 async fn bytedance_entries_make_their_vendors_media_and_check_a_key_by_a_refused_body() {
     let vendor = MockVendor::start().await;

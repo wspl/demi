@@ -1,7 +1,11 @@
 // The Git branch the backend is built from, which picks the media catalog it
-// downloads (`crates/xtask/src/native/package.rs`): the release workflow's
-// `GITHUB_REF_NAME`, else the checkout's branch, else none, for a checkout
-// on no branch or outside Git.
+// downloads (`crates/xtask/src/native/package.rs`).
+//
+// The branch is, in order:
+//
+// 1. The release workflow's `GITHUB_REF_NAME`.
+// 2. The checkout's branch.
+// 3. None, for a checkout on no branch or outside Git.
 use std::process::Command;
 
 fn main() {

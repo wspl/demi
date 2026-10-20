@@ -1,12 +1,14 @@
-//! The provider runtimes of a user's conversations. A session's runtime
-//! resolves the conversation's provider entry at every inference boundary: a
-//! fresh read of the entry in the user's scope, the entry's configured model
-//! facts applied again, and a runtime that serves the request. It keeps its
-//! runtime while the entry and the model stay the same, and builds a new one,
-//! closing the old, when either changes; a running request finishes with the
-//! runtime it started with. Every runtime is metered: the user's rate limit
-//! applies before each run, and each response is a usage ledger row before
-//! the agent sees it.
+//! The provider runtimes of a user's conversations.
+//!
+//! A session's runtime resolves the conversation's provider entry at every
+//! inference boundary: a fresh read of the entry in the user's scope, the
+//! entry's configured model facts applied again, and a runtime that serves the
+//! request. It keeps its runtime while the entry and the model stay the same,
+//! and builds a new one, closing the old, when either changes. A running request
+//! finishes with the runtime it started with.
+//!
+//! Every runtime is metered: the user's rate limit applies before each run, and
+//! each response is a usage ledger row before the agent sees it.
 
 use std::cell::RefCell;
 use std::num::NonZeroU32;
@@ -315,14 +317,17 @@ fn refused(message: impl Into<String>, code: Option<ErrorCode>) -> ProviderFailu
 }
 
 impl ConversationRuntime {
-    /// Resolves the entry for `request`: the entry must still be in the user's scope,
-    /// and a subscription entry must have an account. The account is the
-    /// active one, or under the entry's rotation the agent's own: the one
-    /// the request names while it is still the entry's and taken under the
-    /// entry's rotation, else one taken now. Answers the model's output
-    /// limit, which the entry's configured model decides when it has a
-    /// configured list; the request's own cap is not the model's, and stays
-    /// (`crates/provider-common/src/contract.rs`).
+    /// Resolves the entry for `request`: the entry must still be in the user's
+    /// scope, and a subscription entry must have an account.
+    ///
+    /// The account is the active one, or under the entry's rotation the agent's
+    /// own: the one the request names while it is still the entry's and taken
+    /// under the entry's rotation, else one taken now.
+    ///
+    /// Answers the model's output limit, which the entry's configured model
+    /// decides when it has a configured list; the request's own cap is not the
+    /// model's, and stays (`crates/provider-common/src/contract.rs`).
+    ///
     /// `runs` says whether the request runs now, which counts the agent as
     /// running on its account, or is only readied ahead.
     async fn admit(
@@ -385,11 +390,16 @@ impl ConversationRuntime {
         }
     }
 
-    /// The account the agent uses under `entry`'s rotation: `named`, the
-    /// one the session keeps, while the entry still has it, its rotation is
-    /// the one it was taken under and it is not marked used up; else one
-    /// taken now, which the session is told of. A request that `runs`
-    /// counts the agent as running on it.
+    /// The account the agent uses under `entry`'s rotation.
+    ///
+    /// It is `named`, the one the session keeps, while:
+    ///
+    /// - the entry still has it;
+    /// - its rotation is the one it was taken under;
+    /// - it is not marked used up.
+    ///
+    /// Otherwise it is one taken now, which the session is told of. A request that
+    /// `runs` counts the agent as running on it.
     async fn agent_account(
         &mut self,
         entry: &ProviderEntry,
@@ -459,11 +469,12 @@ impl ConversationRuntime {
         self.account = Some(account);
     }
 
-    /// The agent's account failed with `failure`, a usage limit: marks it
-    /// used up until the moment the failure or its quota names, or for 30
-    /// minutes, whether the request is sent again or not, so no agent takes
-    /// it meanwhile. Answers the account, the moment and the window used
-    /// up.
+    /// The agent's account failed with `failure`, a usage limit: marks it used up
+    /// until the moment the failure or its quota names, or for 30 minutes.
+    ///
+    /// The mark is made whether the request is sent again or not, so no agent
+    /// takes the account meanwhile. Answers the account, the moment and the window
+    /// used up.
     fn mark_used_up(
         &mut self,
         entry: &ProviderEntry,
@@ -494,11 +505,12 @@ impl ConversationRuntime {
         Some((used_up, moment, window))
     }
 
-    /// The agent's account failed with `failure`, a usage limit, before
-    /// anything of the run reached the agent: the account is marked used
-    /// up, and the agent takes another, whose runtime serves the same
-    /// request again. Answers the move, or nothing when every account is
-    /// used up (`crates/backend-providers/src/llm/rotation.rs`).
+    /// The agent's account failed with `failure`, a usage limit, before anything
+    /// of the run reached the agent: the account is marked used up, and the agent
+    /// takes another, whose runtime serves the same request again.
+    ///
+    /// Answers the move, or nothing when every account is used up
+    /// (`crates/backend-providers/src/llm/rotation.rs`).
     async fn switch_account(
         &mut self,
         failure: &ProviderFailure,
@@ -535,11 +547,13 @@ impl ConversationRuntime {
         Ok((switch, agent_account(&next, entry.rotation())))
     }
 
-    /// Makes the current runtime one of `entry`'s provider for `selection`
-    /// and `account`: the one there is while the entry, the account and the
-    /// model are unchanged, otherwise a new one, and the one it replaces is
-    /// closed. A Claude Code agent that changes account so closes its CLI
-    /// process and starts one with the other account's token.
+    /// Makes the current runtime one of `entry`'s provider for `selection` and
+    /// `account`.
+    ///
+    /// It is the one there is while the entry, the account and the model are
+    /// unchanged, otherwise a new one, and the one it replaces is closed. A Claude
+    /// Code agent that changes account so closes its CLI process and starts one
+    /// with the other account's token.
     async fn serve(
         &mut self,
         entry: &ProviderEntry,
@@ -660,16 +674,20 @@ fn uses_up(failure: &ProviderFailure) -> bool {
 }
 
 impl ProviderRuntime for ConversationRuntime {
-    /// Resolves the entry, then runs the request on the runtime that serves
-    /// it. A request whose token is cancelled while the entry is read ends
-    /// without an event, as every cancelled run does. Under rotation, a
-    /// usage limit before anything of the run reached the agent moves the
-    /// agent to another account and sends the same request again at once,
-    /// which is no retry of the agent's (`crates/backend-providers/src/llm/rotation.rs`).
-    /// Such an attempt leaves nothing: the vendor's record it mirrored, such
-    /// as the previous call's result, is held until the model's first output
-    /// and dropped when the attempt is given up, so the session the next
-    /// account resumes holds nothing of it twice (`crates/provider-claude-code/src/session.rs`).
+    /// Resolves the entry, then runs the request on the runtime that serves it.
+    ///
+    /// A request whose token is cancelled while the entry is read ends without
+    /// an event, as every cancelled run does.
+    ///
+    /// Under rotation, a usage limit before anything of the run reached the agent
+    /// moves the agent to another account and sends the same request again at once,
+    /// which is no retry of the agent's
+    /// (`crates/backend-providers/src/llm/rotation.rs`).
+    ///
+    /// Such an attempt leaves nothing: the vendor's record it mirrored, such as the
+    /// previous call's result, is held until the model's first output and dropped
+    /// when the attempt is given up, so the session the next account resumes holds
+    /// nothing of it twice (`crates/provider-claude-code/src/session.rs`).
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         Box::pin(async_stream::stream! {
             let cancel = request.cancel.clone();

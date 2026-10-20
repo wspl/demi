@@ -1,14 +1,21 @@
-//! Credentials: an agent asks the user for a credential and waits; the
-//! user's answer saves it, allows it in the conversation and returns the
-//! command, and the agent pipes a field's value into a file on the Host
-//! without the value reaching the transcript, the backend's log, a page's
-//! synchronization channel or what `list` and `show` print. A read of a
-//! credential the conversation may not use asks for an allowance and fails
-//! until the user allows it; `remove` needs Manage Credentials; a rename
-//! keeps the values readable; and a credential kept for a while is removed
-//! at its time and, after a backend that was down then, at start. The model
-//! is the scripted family of the subagent scenarios; the device is a real
-//! runner. No test calls a real model.
+//! Credentials.
+//!
+//! Scenarios:
+//!
+//! - An agent asks the user for a credential and waits. The user's answer
+//!   saves it, allows it in the conversation and returns the command.
+//! - The agent pipes a field's value into a file on the Host without the value
+//!   reaching the transcript, the backend's log, a page's synchronization
+//!   channel or what `list` and `show` print.
+//! - A read of a credential the conversation may not use asks for an allowance
+//!   and fails until the user allows it.
+//! - `remove` needs Manage Credentials.
+//! - A rename keeps the values readable.
+//! - A credential kept for a while is removed at its time and, after a backend
+//!   that was down then, at start.
+//!
+//! The model is the scripted family of the subagent scenarios; the device is a
+//! real runner. No test calls a real model.
 
 use crate::agent_profiles::assert_shows;
 use std::sync::Arc;

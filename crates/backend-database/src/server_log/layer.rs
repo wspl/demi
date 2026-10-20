@@ -1,8 +1,11 @@
-//! The `tracing` layer that turns each event into a row of the server log:
-//! its spans' fields, outermost first, then its own, the later naming a
-//! field winning; the request, user, conversation and turn IDs go to columns
-//! of their own. It never waits and never fails: an event the writer has no
-//! room for is dropped and counted rather than holding up what it describes.
+//! The `tracing` layer that turns each event into a row of the server log.
+//!
+//! A row holds the event's spans' fields, outermost first, then its own, the later
+//! naming a field winning. The request, user, conversation and turn IDs go to
+//! columns of their own.
+//!
+//! The layer never waits and never fails: an event the writer has no room for is
+//! dropped and counted rather than holding up what it describes.
 
 use std::fmt::{self, Write as _};
 use std::sync::Arc;

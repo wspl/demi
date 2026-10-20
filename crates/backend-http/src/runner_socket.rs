@@ -1,8 +1,11 @@
 //! A runner's socket at the edge (`crates/runner-protocol/src/wire/mod.rs`).
-//! The runner's first message is its hello, which must come within the
-//! hello deadline. A known token moves the socket into the shard of the
-//! device's owner; a runner without one waits here for its user to claim the
-//! code it printed, the code changing every claim lifetime while it waits.
+//!
+//! The runner's first message is its hello, which must come within the hello
+//! deadline.
+//!
+//! - A known token moves the socket into the shard of the device's owner.
+//! - A runner without one waits here for its user to claim the code it printed,
+//!   the code changing every claim lifetime while it waits.
 
 use std::sync::Arc;
 

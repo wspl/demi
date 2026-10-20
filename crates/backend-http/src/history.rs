@@ -1,7 +1,15 @@
-//! A conversation's history as its database holds it: one page of an agent's transcript at a time, in
-//! light form, a block whole, the conversation's subagents, where the call that started a command lies,
-//! and what the conversation cost. Every route reads the database alone: it wakes no Host and needs no
-//! live session.
+//! A conversation's history as its database holds it.
+//!
+//! The routes read:
+//!
+//! - one page of an agent's transcript at a time, in light form;
+//! - a block whole;
+//! - the conversation's subagents;
+//! - where the call that started a command lies;
+//! - what the conversation cost.
+//!
+//! Every route reads the database alone: it wakes no Host and needs no live
+//! session.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -61,11 +69,12 @@ fn changed() -> ApiError {
     )
 }
 
-/// A page read as its route answers it, without failure facts: a
-/// conversation without a database yet has an empty transcript, and a node
-/// or a block the transcript lacks, an index it does not reach, or an edge
-/// no longer at its index, answers `no_node`, `no_block`, `outside` or
-/// `changed`.
+/// A page read as its route answers it, without failure facts.
+///
+/// - A conversation without a database yet has an empty transcript.
+/// - A node or a block the transcript lacks, an index it does not reach, or an
+///   edge no longer at its index, answers `no_node`, `no_block`, `outside` or
+///   `changed`.
 pub(super) fn page_answer(
     read: Option<PageRead>,
     no_node: fn() -> ApiError,

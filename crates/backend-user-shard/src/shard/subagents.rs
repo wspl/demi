@@ -1,10 +1,16 @@
 //! The user's subagent settings: the Subagents switch, the limits and the
-//! profiles, written here for the settings page and for `demi agent profiles`
-//! alike, after the same checks: a profile's name and texts by the accounts
-//! service's rules, and its model against its entry's catalog as a conversation's
-//! model settings are, stored with its effort explicit. Each change reaches the
-//! user's pages as the `subagents` part, and the next spawn of every conversation
-//! reads it, since a spawn reads the settings each time.
+//! profiles.
+//!
+//! They are written here for the settings page and for `demi agent profiles`
+//! alike, after the same checks:
+//!
+//! - A profile's name and texts follow the accounts service's rules.
+//! - Its model is checked against its entry's catalog as a conversation's model
+//!   settings are, and stored with its effort explicit.
+//!
+//! Each change reaches the user's pages as the `subagents` part, and the next
+//! spawn of every conversation reads it, since a spawn reads the settings each
+//! time.
 
 use demi_backend_accounts::subagents::{self, ContextRefusal, ProfileTextError};
 use demi_backend_database::StorageError;

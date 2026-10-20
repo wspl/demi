@@ -1,7 +1,8 @@
-//! A conversation's side questions as the web app lists them: each
-//! `side_questions` row, which the tree store writes with its node, and the two
-//! fields the backend changes afterwards, the title the small model writes once
-//! and whether the card is folded.
+//! A conversation's side questions as the web app lists them.
+//!
+//! The module stores each `side_questions` row, which the tree store writes with
+//! its node, and the two fields the backend changes afterwards: the title the
+//! small model writes once, and whether the card is folded.
 
 use demi_shared_types::{BlockId, MediaSource, NodeId};
 use demi_web_api_protocol::side_questions::SideQuestion;

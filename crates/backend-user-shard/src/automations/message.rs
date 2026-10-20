@@ -1,7 +1,12 @@
-//! What a run sends: the prompt, behind a line naming the automation and why it
-//! fired; a change adds the two outputs, and a URL's calls each call's time,
-//! method, headers and the path of its body's file, with the bodies' first 16
-//! KB in all, newest first, inside the frame `demi web` puts around a page.
+//! What a run sends.
+//!
+//! The message is the prompt, behind a line naming the automation and why it
+//! fired.
+//!
+//! - A change adds the two outputs.
+//! - A URL's calls add each call's time, method, headers and the path of its
+//!   body's file, with the bodies' first 16 KB in all, newest first, inside the
+//!   frame `demi web` puts around a page.
 
 use demi_backend_database::automations::{RunCause, StoredAutomation};
 use demi_shared_types::Timestamp;

@@ -1,16 +1,25 @@
-//! Port forwards between the user's Hosts (`crates/backend-user-shard/src/shard/port_forwards.rs`), with
-//! real runners: the Listen On runner listens on 127.0.0.1 only and
-//! carries each connection's bytes both ways, over the relay or over a
-//! direct peer between the two runners; a taken port says so until Try
-//! Again finds it free; a connection to an offline target ends at once; a
-//! restarted runner listens again; a relayed connection a target resets
-//! ends both ways; a change of where a forward listens or connects ends its
-//! connections, and a removed Host takes its forwards; a forward's state
-//! comes only from its Listen On and a peer closes only from its pair; a
-//! forward from a Host to itself joins there and counts Direct; and `demi
-//! host forward add` and `remove` need Manage Port Forwards. The program at
-//! the far end is a TCP echo server in the test process, which both runners
-//! reach on 127.0.0.1.
+//! Port forwards between the user's Hosts
+//! (`crates/backend-user-shard/src/shard/port_forwards.rs`), with real
+//! runners.
+//!
+//! Scenarios:
+//!
+//! - The Listen On runner listens on 127.0.0.1 only and carries each
+//!   connection's bytes both ways, over the relay or over a direct peer
+//!   between the two runners.
+//! - A taken port says so until Try Again finds it free.
+//! - A connection to an offline target ends at once.
+//! - A restarted runner listens again.
+//! - A relayed connection a target resets ends both ways.
+//! - A change of where a forward listens or connects ends its connections, and
+//!   a removed Host takes its forwards.
+//! - A forward's state comes only from its Listen On, and a peer closes only
+//!   from its pair.
+//! - A forward from a Host to itself joins there and counts Direct.
+//! - `demi host forward add` and `remove` need Manage Port Forwards.
+//!
+//! The program at the far end is a TCP echo server in the test process, which
+//! both runners reach on 127.0.0.1.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -535,11 +544,11 @@ async fn changing_where_a_forward_listens_or_connects_ends_its_connections_and_a
     let _program = opened(moved_port).await;
     assert_eq!(next_seen(&mut second).await, Seen::Accepted(1));
 
-    // Turned off, its connections end and it no longer listens. The page
-    // hears that before it is turned on again: the states it heard before,
-    // listening with no connection once the connection to the first target
-    // ended, would otherwise answer the wait below before the runner
-    // listens again.
+    // Turned off, its connections end and it no longer listens.
+    //
+    // The page hears that before it is turned on again: the states it heard
+    // before, listening with no connection once the connection to the first target
+    // ended, would otherwise answer the wait below before the runner listens again.
     let off = backend.patch(&path, &master, json!({ "enabled": false })).await;
     assert_eq!(off.status, StatusCode::OK);
     assert_eq!(next_seen(&mut second).await, Seen::Ended(1));

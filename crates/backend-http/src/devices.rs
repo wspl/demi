@@ -1,7 +1,14 @@
-//! `/api/devices`: the caller's devices, pairing, renaming and routes, revocation,
-//! browsing a paired device's directories to choose a target, and a Host's log.
+//! `/api/devices`: the caller's devices.
+//!
+//! The routes:
+//!
+//! - pairing, renaming and routes, and revocation;
+//! - browsing a paired device's directories to choose a target;
+//! - a Host's log.
+//!
 //! Browsing and the log reach the device through device access, which wakes
-//! nothing: a device whose runner is not connected answers 409 `device_offline`.
+//! nothing: a device whose runner is not connected answers 409
+//! `device_offline`.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -162,8 +169,9 @@ pub(super) async fn browse(
 /// `GET /devices/:id/workflows?directory=`: the Workflow menu's list for a new
 /// conversation that works in `directory` of a paired device, before its first
 /// message gives it a record
-/// (`crates/backend-user-shard/src/conversation/workflows.rs`), with the Host's
-/// number before the read.
+/// (`crates/backend-user-shard/src/conversation/workflows.rs`).
+///
+/// The answer carries the Host's number before the read.
 pub(super) async fn workflows(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

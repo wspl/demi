@@ -1,14 +1,17 @@
 //! Generated conversation titles: one small request beside the first turn, on
 //! the user's small model, which writes the title only while it is still the one
-//! the request began from. A side question's card is titled the same way, after
-//! its first question. An archive or the shard's close aborts them.
+//! the request began from.
+//!
+//! A side question's card is titled the same way, after its first question. An
+//! archive or the shard's close aborts them.
 //!
 //! The request runs beside the first turn instead of as a copy of the session,
-//! as a compaction's summary does: that keeps the agent's system prompt, tools
+//! as a compaction's summary does. That keeps the agent's system prompt, tools
 //! and history out of a job that needs one message, and makes the title
-//! independent of whether the first turn succeeds. The page learns the title as
-//! it learns a rename, from the conversation's summary; there is no title event
-//! of its own.
+//! independent of whether the first turn succeeds.
+//!
+//! The page learns the title as it learns a rename, from the conversation's
+//! summary; there is no title event of its own.
 
 use tracing::Instrument as _;
 use std::cell::RefCell;

@@ -1,11 +1,15 @@
-//! The users' credentials (`crates/backend/src/config/secret.rs`): each
-//! credential's name, note, fields and times in the clear, and its values
-//! sealed with the user and the name as the additional data, so a rename
-//! seals them again in the same transaction; and the conversations allowed
-//! to use each. The control database stores the values only sealed; whoever
-//! calls seals and opens them through [`CredentialSeal`], on the database's
-//! thread, so that a change that reads and writes values does so in one
-//! transaction.
+//! The users' credentials (`crates/backend/src/config/secret.rs`).
+//!
+//! The module stores:
+//!
+//! - each credential's name, note, fields and times in the clear;
+//! - its values, sealed with the user and the name as the additional data, so a
+//!   rename seals them again in the same transaction;
+//! - the conversations allowed to use each.
+//!
+//! The control database stores the values only sealed. Whoever calls seals and
+//! opens them through [`CredentialSeal`], on the database's thread, so that a
+//! change that reads and writes values does so in one transaction.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -339,8 +343,9 @@ impl ControlService {
         .await
     }
 
-    /// Removes the user's credential `id` and its allowances; an
-    /// allowance request that named it then shows it removed, and a waiting
+    /// Removes the user's credential `id` and its allowances.
+    ///
+    /// An allowance request that named it then shows it removed, and a waiting
     /// credential request of its name no longer renews it. Answers the
     /// conversations of those requests, or none when the user has no such
     /// credential.

@@ -1,7 +1,8 @@
 //! The built-in provider families, one per vendor crate
-//! (`crates/backend-providers/src/llm/families.rs`): the registry the backend
-//! starts with,
-//! beside which a test registers scripted families.
+//! (`crates/backend-providers/src/llm/families.rs`).
+//!
+//! They are the registry the backend starts with, beside which a test registers
+//! scripted families.
 
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
@@ -219,19 +220,22 @@ impl ProviderFamily for GoogleFamily {
     }
 }
 
-/// The `media` family: an API-key
-/// entry of a vendor that makes media and no text, such as ElevenLabs or
-/// BytePlus ModelArk, built by its vendor's crate. A vendor whose shapes
-/// are not built yet, Stability AI, has none here, so it is not offered.
+/// The `media` family: an API-key entry of a vendor that makes media and no
+/// text, such as ElevenLabs or BytePlus ModelArk, built by its vendor's crate.
+///
+/// A vendor whose shapes are not built yet, Stability AI, has none here, so it
+/// is not offered.
 ///
 /// These vendors sell media without a text model and models.dev lists none of
-/// them, so the backend offers them beside models.dev's vendors, from the media
-/// catalog. The family makes no text request, so its entry is never in the
-/// model menu, and its key is checked by its vendor's media model list, not a
-/// chat message. A vendor whose API lists no model to its key (ByteDance's) has
-/// its key checked by a request the vendor refuses for its body before making
-/// anything, such as an image request with an empty
-/// prompt: a refusal of the body passes the key, a refusal of the key fails it.
+/// them, so the backend offers them beside models.dev's vendors, from the
+/// media catalog. The family makes no text request, so its entry is never in
+/// the model menu.
+///
+/// Its key is checked by its vendor's media model list, not a chat message. A
+/// vendor whose API lists no model to its key (ByteDance's) has its key checked
+/// by a request the vendor refuses for its body before making anything, such
+/// as an image request with an empty prompt: a refusal of the body passes the
+/// key, a refusal of the key fails it.
 struct MediaFamily;
 
 impl ProviderFamily for MediaFamily {

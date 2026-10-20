@@ -1,14 +1,22 @@
-//! A device's exposed ports (`crates/backend-user-shard/src/shard/exposed_ports.rs`), with a real runner: a
-//! Compatible entry whose endpoint names the user's device by its id
-//! reaches a scripted vendor on the device's 127.0.0.1 once the port is
-//! exposed, and streams its answer; before, the request is refused without
-//! reaching the device, and the failed turn and Test Connection offer to
-//! expose the port; a stopped turn and a removed port each end the runner's
-//! connection to the port in the middle of an answer; an entry naming
-//! another user's device, or a redirect naming one of the user's, reaches
-//! an unknown host; and an offline device refuses at once, a failed turn
-//! naming it. The vendor runs in the test process, which the runner reaches
-//! on 127.0.0.1.
+//! A device's exposed ports
+//! (`crates/backend-user-shard/src/shard/exposed_ports.rs`), with a real
+//! runner.
+//!
+//! Scenarios:
+//!
+//! - A Compatible entry whose endpoint names the user's device by its id
+//!   reaches a scripted vendor on the device's 127.0.0.1 once the port is
+//!   exposed, and streams its answer.
+//! - Before the port is exposed, the request is refused without reaching the
+//!   device, and the failed turn and Test Connection offer to expose the port.
+//! - A stopped turn and a removed port each end the runner's connection to the
+//!   port in the middle of an answer.
+//! - An entry naming another user's device, or a redirect naming one of the
+//!   user's, reaches an unknown host.
+//! - An offline device refuses at once, a failed turn naming it.
+//!
+//! The vendor runs in the test process, which the runner reaches on
+//! 127.0.0.1.
 
 use std::time::Duration;
 

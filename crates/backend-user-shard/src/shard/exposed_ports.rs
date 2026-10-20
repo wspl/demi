@@ -1,29 +1,43 @@
-//! The user's exposed ports in their shard: what a
-//! device's page in Settings › Devices and `demi host expose` read and
-//! change, and the backend's requests for the user to a device's port. Such
-//! a request names one of the user's devices by its id, goes only to a port
-//! the device exposed, and travels to its runner as pipes; an offline
-//! device, or a stopped Cloud, which it never wakes, refuses it at once,
-//! from the device's state the shard holds.
+//! The user's exposed ports in their shard.
 //!
-//! Exposure is for the backend's requests, such as a provider entry's, not for
-//! programs on a Host (those use a port forward); the backend listens on no
-//! port for either, since on a shared instance every user's programs on the
-//! server could connect to it. The host of the address is the device's id, as
-//! a container's name is its host on a Docker network: it is stable while the
-//! user renames the device, and no name on the internet has that form, so it
-//! never shadows a real host. Only exposed ports are reachable, so a provider
-//! entry, a pasted URL or an agent's command can never reach anything else on
-//! the device or its network. A device's exposed ports serve the requests made
-//! for its owner, and on a shared instance an administrator's shared entry
-//! that names the administrator's device serves every user of the entry; an
-//! address naming another user's device is an ordinary, unknown host. A
-//! redirect is followed as the network's: an address naming a device is an
-//! unknown host there, so no redirect reaches a device. Removing a port ends
-//! the requests under way through it. A request for a device that is offline
-//! fails with that headline, not the unreachable endpoint's, since the user's
-//! next step is to bring the device online; it is retried as an unreachable
-//! endpoint is.
+//! The module serves:
+//!
+//! - what a device's page in Settings › Devices and `demi host expose` read and
+//!   change;
+//! - the backend's requests for the user to a device's port.
+//!
+//! Such a request names one of the user's devices by its id, goes only to a port
+//! the device exposed, and travels to its runner as pipes. An offline device, or
+//! a stopped Cloud, which it never wakes, refuses it at once, from the device's
+//! state the shard holds.
+//!
+//! # Why exposure is shaped this way
+//!
+//! - Exposure is for the backend's requests, such as a provider entry's, not for
+//!   programs on a Host (those use a port forward). The backend listens on no
+//!   port for either, since on a shared instance every user's programs on the
+//!   server could connect to it.
+//! - The host of the address is the device's id, as a container's name is its
+//!   host on a Docker network: it is stable while the user renames the device,
+//!   and no name on the internet has that form, so it never shadows a real host.
+//! - Only exposed ports are reachable, so a provider entry, a pasted URL or an
+//!   agent's command can never reach anything else on the device or its network.
+//!
+//! # Who a port serves
+//!
+//! - A device's exposed ports serve the requests made for its owner.
+//! - On a shared instance, an administrator's shared entry that names the
+//!   administrator's device serves every user of the entry.
+//! - An address naming another user's device is an ordinary, unknown host.
+//! - A redirect is followed as the network's: an address naming a device is an
+//!   unknown host there, so no redirect reaches a device.
+//!
+//! # Lifetime and failure
+//!
+//! - Removing a port ends the requests under way through it.
+//! - A request for a device that is offline fails with that headline, not the
+//!   unreachable endpoint's, since the user's next step is to bring the device
+//!   online. It is retried as an unreachable endpoint is.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

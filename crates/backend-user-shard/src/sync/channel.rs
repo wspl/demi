@@ -1,11 +1,19 @@
-//! A page's synchronization channel in the user's shard: registered for
-//! changes before it reads the product state, it sends that state, then
-//! waits for marks and sends each marked part as it is when the channel
-//! takes it, and a heartbeat once its page socket has been silent for the
-//! heartbeat interval. It keeps what the page says it shows, which holds
-//! back the session's notifications of that conversation while the channel
-//! lives. It ends with its session, at shutdown, when the page sends
-//! anything else, and when a part cannot be read.
+//! A page's synchronization channel in the user's shard.
+//!
+//! The channel:
+//!
+//! 1. Registers for changes before it reads the product state.
+//! 2. Sends that state.
+//! 3. Waits for marks, and sends each marked part as it is when the channel
+//!    takes it.
+//! 4. Sends a heartbeat once its page socket has been silent for the heartbeat
+//!    interval.
+//!
+//! It keeps what the page says it shows, which holds back the session's
+//! notifications of that conversation while the channel lives.
+//!
+//! It ends with its session, at shutdown, when the page sends anything else, and
+//! when a part cannot be read.
 
 use std::collections::BTreeSet;
 use std::convert::Infallible;
@@ -156,14 +164,15 @@ impl Channel<'_> {
                         .syncs
                         .pass(super::SyncStep::Changes)
                         .await;
-                    // The parts go in their order, each read only after the
-                    // change that marked it: a part marked while another was
-                    // read goes first when it comes before it, and the part
-                    // read is read again after it, since the read may show a
-                    // later change than what the page has of the part before. A
-                    // login's completion, read after the provider publication
-                    // that marked the providers first, thereby never reaches
-                    // the page before its account.
+                    // The parts go in their order, each read only after the change
+                    // that marked it.
+                    //
+                    // A part marked while another was read goes first when it
+                    // comes before it, and the part read is read again after it,
+                    // since the read may show a later change than what the page has
+                    // of the part before. A login's completion, read after the
+                    // provider publication that marked the providers first, thereby
+                    // never reaches the page before its account.
                     let mut pending = BTreeSet::new();
                     loop {
                         let marked = self.registration.take();

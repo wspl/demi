@@ -1,5 +1,6 @@
-//! The usage ledger's totals (`crates/backend-database/src/usage.rs`): each
-//! user's own, and on a shared instance every account's for an
+//! The usage ledger's totals (`crates/backend-database/src/usage.rs`).
+//!
+//! Each user's own, and on a shared instance every account's for an
 //! administrator.
 
 use std::sync::Arc;

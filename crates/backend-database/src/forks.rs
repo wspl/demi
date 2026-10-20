@@ -1,8 +1,11 @@
-//! Fork creation attempts in the control store: each reserves its
-//! destination's id with its owner, source, text and creation metadata, and
-//! a control transaction publishes the destination into the conversation
-//! index once its root is committed in its own database. Publication is the
-//! public conversation row; a reservation without one stays hidden.
+//! Fork creation attempts in the control store.
+//!
+//! Each attempt reserves its destination's id with its owner, source, text and
+//! creation metadata. A control transaction publishes the destination into the
+//! conversation index once its root is committed in its own database.
+//!
+//! Publication is the public conversation row; a reservation without one stays
+//! hidden.
 
 use demi_shared_types::{BlockId, ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -140,15 +143,19 @@ impl ControlService {
         .await
     }
 
-    /// Publishes the destination `id` reserved: its conversation first in
-    /// the owner's sidebar, with the title, target, model, workflow and attached hosts
-    /// of the attempt, the title the user's. A destination published already
-    /// is answered as it is. An attached host whose device is gone since is
-    /// left out, as its revocation left the source. Its directory is
-    /// selected as a move's is (`crates/backend-database/src/selection.rs`), and the workspace that makes, if any, is answered with it;
-    /// a directory that selects nothing any more, its device revoked or its
-    /// project deleted since the Fork began, starts it on the Cloud in its
-    /// own directory.
+    /// Publishes the destination `id` reserved: its conversation first in the
+    /// owner's sidebar, with the title, target, model, workflow and attached hosts
+    /// of the attempt, the title the user's.
+    ///
+    /// - A destination published already is answered as it is.
+    /// - An attached host whose device is gone since is left out, as its
+    ///   revocation left the source.
+    /// - Its directory is selected as a move's is
+    ///   (`crates/backend-database/src/selection.rs`), and the workspace that
+    ///   makes, if any, is answered with it.
+    /// - A directory that selects nothing any more, its device revoked or its
+    ///   project deleted since the Fork began, starts it on the Cloud in its own
+    ///   directory.
     pub async fn publish_fork(
         &self,
         id: ConversationId,

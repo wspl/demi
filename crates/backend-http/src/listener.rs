@@ -1,14 +1,18 @@
-//! The edge's own listener and connections: shutdown can stop accepting
-//! connections while the open ones go on serving, and close those later,
-//! which axum's own graceful shutdown, closing connections as it stops
-//! accepting, cannot. Each connection also has a control a request can
-//! close it through, and an idle deadline a file transfer arms
-//! (`crates/backend-host-access/src/access.rs`): a connection on which no
-//! byte moves for the deadline is closed, whoever stopped moving them. The
-//! edge serves its connections itself, with hyper's HTTP/1 server, since
-//! axum's `serve` gives a connection neither a control nor a deadline. The
-//! same listener serves the network's connections and those of the
-//! backend's runner socket.
+//! The edge's own listener and connections.
+//!
+//! Shutdown can stop accepting connections while the open ones go on serving,
+//! and close those later, which axum's own graceful shutdown, closing
+//! connections as it stops accepting, cannot. Each connection also has:
+//!
+//! - a control a request can close it through;
+//! - an idle deadline a file transfer arms
+//!   (`crates/backend-host-access/src/access.rs`): a connection on which no
+//!   byte moves for the deadline is closed, whoever stopped moving them.
+//!
+//! The edge serves its connections itself, with hyper's HTTP/1 server, since
+//! axum's `serve` gives a connection neither a control nor a deadline. The same
+//! listener serves the network's connections and those of the backend's runner
+//! socket.
 
 use std::convert::Infallible;
 use std::future::Future;
@@ -91,13 +95,16 @@ where
     }
 }
 
-/// Small frames leave a network connection at once. The runner and
-/// conversation sockets carry small messages whose latency matters, and with
-/// Nagle's algorithm on, a small message written while an earlier one is
-/// unacknowledged waits for the acknowledgement, which the peer may delay by
-/// tens of milliseconds: the device token a claimed runner receives follows
-/// its pairing code and would wait for the runner to acknowledge the code. A
-/// connection that keeps the algorithm still works, only later, so it is
+/// Small frames leave a network connection at once.
+///
+/// The runner and conversation sockets carry small messages whose latency
+/// matters. With Nagle's algorithm on, a small message written while an earlier
+/// one is unacknowledged waits for the acknowledgement, which the peer may
+/// delay by tens of milliseconds: the device token a claimed runner receives
+/// follows its pairing code and would wait for the runner to acknowledge the
+/// code.
+///
+/// A connection that keeps the algorithm still works, only later, so it is
 /// served anyway.
 pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
     if let Err(error) = stream.set_nodelay(true) {
@@ -105,16 +112,18 @@ pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
     }
 }
 
-/// Keeps a runner socket connection from queueing more than a Cloud's
-/// sandbox reads at once. gVisor reads at most the host socket's default
-/// send buffer per call, however much is queued, and the runner takes a
-/// short read for an empty socket, so bytes left behind after a sender
-/// finished were never read (google/gvisor#15639). A quarter of the default,
-/// which Linux doubles, stays under one read. Remove this once the pinned
-/// gVisor reads a stream socket up to the reader's buffer.
+/// Keeps a runner socket connection from queueing more than a Cloud's sandbox
+/// reads at once.
 ///
-/// Only Linux: on a Mac the sandbox reads the socket Lima forwards inside
-/// its VM, whose queue this connection's buffer does not bound.
+/// gVisor reads at most the host socket's default send buffer per call,
+/// however much is queued, and the runner takes a short read for an empty
+/// socket, so bytes left behind after a sender finished were never read
+/// (google/gvisor#15639). A quarter of the default, which Linux doubles, stays
+/// under one read. Remove this once the pinned gVisor reads a stream socket up
+/// to the reader's buffer.
+///
+/// Only Linux: on a Mac the sandbox reads the socket Lima forwards inside its
+/// VM, whose queue this connection's buffer does not bound.
 pub(super) fn within_one_sandbox_read(stream: &mut tokio::net::UnixStream) {
     #[cfg(target_os = "linux")]
     {
@@ -132,10 +141,11 @@ pub(super) fn within_one_sandbox_read(stream: &mut tokio::net::UnixStream) {
 }
 
 /// Serves each connection `listener` accepts, answering each request with
-/// `respond`, until `stop` is cancelled: then no connection is accepted,
-/// the open ones finish the requests they serve, and this resolves once
-/// they closed. A connection's upgraded stream, such as a WebSocket, lives
-/// on without it.
+/// `respond`, until `stop` is cancelled.
+///
+/// Then no connection is accepted, the open ones finish the requests they
+/// serve, and this resolves once they closed. A connection's upgraded stream,
+/// such as a WebSocket, lives on without it.
 pub(super) async fn serve<L, R, F>(
     mut listener: EdgeListener<L>,
     stop: CancellationToken,

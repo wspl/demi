@@ -1,14 +1,19 @@
-//! The context block a node reads before its first request, and before
-//! its next one once the conversation's execution context changed
-//! (`crates/backend-host-access/src/transition.rs`). Every block
-//! names the primary Host with its system and the directory its shells
-//! start in. Then, after a switch, the departed and current targets, that
-//! no files moved, and the departed device under the name it stays
-//! attached as; after a change of the attached hosts, that change. Every
-//! block ends with the attached hosts as they now stand, and a block after
-//! a reset of the user's Cloud says so before what changed. What a node saw
-//! is the context blocks of its own transcript: each block names the
-//! revision it describes, and a switch and a reset are each announced to a
+//! The context block a node reads before its first request, and before its next
+//! one once the conversation's execution context changed
+//! (`crates/backend-host-access/src/transition.rs`).
+//!
+//! A block holds, in order:
+//!
+//! 1. The primary Host with its system and the directory its shells start in.
+//! 2. For a block after a reset of the user's Cloud, a line that says so, before
+//!    what changed.
+//! 3. After a switch, the departed and current targets, that no files moved, and
+//!    the departed device under the name it stays attached as.
+//! 4. After a change of the attached hosts, that change.
+//! 5. The attached hosts as they now stand.
+//!
+//! What a node saw is the context blocks of its own transcript: each block names
+//! the revision it describes, and a switch and a reset are each announced to a
 //! node once.
 
 use demi_backend_database::StorageError;
@@ -173,13 +178,14 @@ impl Shard {
         })
     }
 
-    /// Every subagent the conversation `id` has had, in the order they
-    /// started, each working where the conversation works now: its live
-    /// tree's own list whenever a tree is live as the answer is made, the
-    /// one the open's `subagents` frame sends, and otherwise the store's
-    /// (`crates/agent-server/src/server/tree.rs`). The store's reading awaits, and a tree
-    /// opened meanwhile answers instead, so the answer never disagrees with
-    /// a handshake made before it.
+    /// Every subagent the conversation `id` has had, in the order they started,
+    /// each working where the conversation works now.
+    ///
+    /// The list is the live tree's own whenever a tree is live as the answer is
+    /// made, the one the open's `subagents` frame sends, and otherwise the
+    /// store's (`crates/agent-server/src/server/tree.rs`). The store's reading
+    /// awaits, and a tree opened meanwhile answers instead, so the answer never
+    /// disagrees with a handshake made before it.
     pub async fn subagents(&self, id: &ConversationId) -> Result<Vec<SubagentJob>, SubagentsError> {
         let placement = self.placement(id).await?;
         let live = || {
@@ -220,12 +226,20 @@ impl Shard {
         Ok(device.map_or(HostPaths::Posix, |record| host_paths(record.platform)))
     }
 
-    /// The primary Host as the model reads it: its name, its operating
-    /// system with its architecture as its runner last reported them, the
-    /// directory its shells start in, where the files only the agent needs
-    /// go, and that its standard utilities are GNU's, with where a Mac's own
-    /// are and what a Windows Host's shell is. A Host whose runner never connected, such as a Cloud not made
-    /// yet, is named without its system.
+    /// The primary Host as the model reads it.
+    ///
+    /// It gives:
+    ///
+    /// - its name;
+    /// - its operating system with its architecture as its runner last reported
+    ///   them;
+    /// - the directory its shells start in, and where the files only the agent
+    ///   needs go;
+    /// - that its standard utilities are GNU's, with where a Mac's own are and
+    ///   what a Windows Host's shell is.
+    ///
+    /// A Host whose runner never connected, such as a Cloud not made yet, is named
+    /// without its system.
     async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
         let (device, name) = self.primary_host(target).await?;
         let utilities = match device.as_ref().map(|record| &record.platform) {
@@ -312,11 +326,12 @@ fn entry(host: &AttachedHost) -> String {
     format!("\"{}\" (host {}, ", host.name, host.device)
 }
 
-/// Whether the hosts `attached` now are others than the ones the block
-/// `seen`, a node's latest, listed, in order: a host joined or left, or a
-/// name now stands for another device, as when a rename gives a device the
-/// name another went by. A host's connection or directory is no change of
-/// the attached hosts.
+/// Whether the hosts `attached` now are others than the ones the block `seen`, a
+/// node's latest, listed, in order.
+///
+/// The attached hosts changed when a host joined or left, or a name now stands
+/// for another device, as when a rename gives a device the name another went by.
+/// A host's connection or directory is no change of the attached hosts.
 fn attached_changed(seen: &str, attached: &[AttachedHost]) -> bool {
     let Some(listed) = seen.lines().find(|line| line.starts_with(ATTACHED)) else {
         return true;
@@ -469,10 +484,11 @@ mod tests {
     }
 
     /// A switch is announced to a node once, however its devices are named
-    /// afterwards: renaming either end gives the node a block that names
-    /// them anew and announces no second switch.
-    /// Planted defect this catches: a switch known by its description,
-    /// which names the devices, so a rename announced it again.
+    /// afterwards: renaming either end gives the node a block that names them
+    /// anew and announces no second switch.
+    ///
+    /// Planted defect this catches: a switch known by its description, which
+    /// names the devices, so a rename announced it again.
     #[tokio::test(flavor = "local")]
     async fn a_rename_after_an_announced_switch_announces_no_other_switch() {
         let data = tempfile::tempdir().unwrap();
@@ -513,11 +529,12 @@ mod tests {
         assert_eq!(block(&pool, &owner, &id, &seen).await, None);
     }
 
-    /// A Fork's first switch is announced in the Fork once, though the
-    /// transcript it copied holds blocks of the source's later revisions
-    /// than the Fork's own first ones would be.
-    /// Planted defect this catches: a Fork that starts at revision 0, whose
-    /// first switch, at revision 1, the copied block of revision 7 hid.
+    /// A Fork's first switch is announced in the Fork once, though the transcript
+    /// it copied holds blocks of the source's later revisions than the Fork's own
+    /// first ones would be.
+    ///
+    /// Planted defect this catches: a Fork that starts at revision 0, whose first
+    /// switch, at revision 1, the copied block of revision 7 hid.
     #[tokio::test(flavor = "local")]
     async fn a_forks_first_switch_is_announced_once_past_the_blocks_it_copied() {
         use demi_backend_database::forks::{ForkMetadata, ForkOperation};

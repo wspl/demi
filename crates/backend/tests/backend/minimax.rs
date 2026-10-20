@@ -1,8 +1,14 @@
-//! MiniMax's entries: a models.dev `minimax` entry makes MiniMax's
-//! images, Hailuo's videos and its speech on its endpoint's origin, and a
-//! coding plan makes none; a Hailuo job read by the request its model
-//! takes; speech without a voice refused before anything is sent, and the
-//! voices MiniMax lists. No test calls a real vendor.
+//! MiniMax's entries.
+//!
+//! Scenarios:
+//!
+//! - A models.dev `minimax` entry makes MiniMax's images, Hailuo's videos and
+//!   its speech on its endpoint's origin, and a coding plan makes none.
+//! - A Hailuo job is read by the request its model takes.
+//! - Speech without a voice is refused before anything is sent, and the voices
+//!   MiniMax lists.
+//!
+//! No test calls a real vendor.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,12 +39,16 @@ fn ok(mut body: serde_json::Value) -> MockResponse {
 
 // About a second: one scripted server and a real device's shell job.
 //
-// Planted defects: a MiniMax key making no media, or a coding plan making
-// some; media asked on the text API's path rather than its origin; a v2
-// job read at v1's address, as a job read without its model would be;
-// the options v2 needs not filled in; speech sent without a voice; the
-// voices not MiniMax's list; a usage limit stated on HTTP 200 read as
-// made, or its words without its code and the request's trace ID.
+// Planted defects:
+//
+// - A MiniMax key making no media, or a coding plan making some.
+// - Media asked on the text API's path rather than its origin.
+// - A v2 job read at v1's address, as a job read without its model would be.
+// - The options v2 needs not filled in.
+// - Speech sent without a voice.
+// - The voices not MiniMax's list.
+// - A usage limit stated on HTTP 200 read as made, or its words without its
+//   code and the request's trace ID.
 #[tokio::test]
 async fn a_minimax_key_makes_its_media_on_the_endpoints_origin() {
     let vendor = MockVendor::start().await;

@@ -1,9 +1,16 @@
-//! Account rotation (`crates/backend-providers/src/llm/rotation.rs`): an entry's rotation and account order over the
-//! API, each agent's own account kept across requests and a restart and
-//! taken again after a compaction, a used-up account's request sent again
-//! on another account, every account used up, and Manual's *Continue with*.
-//! The family is scripted: its runtimes answer with their account's ID, and
-//! an account the test marks used up fails with a usage limit.
+//! Account rotation (`crates/backend-providers/src/llm/rotation.rs`).
+//!
+//! Scenarios:
+//!
+//! - An entry's rotation and account order over the API.
+//! - Each agent's own account is kept across requests and a restart and taken
+//!   again after a compaction.
+//! - A used-up account's request is sent again on another account.
+//! - Every account is used up.
+//! - Manual's *Continue with*.
+//!
+//! The family is scripted: its runtimes answer with their account's ID, and an
+//! account the test marks used up fails with a usage limit.
 
 use std::sync::Arc;
 

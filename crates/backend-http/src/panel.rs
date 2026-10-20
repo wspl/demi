@@ -1,14 +1,18 @@
-//! The work panel's routes: the read of a conversation's tabs, and a request of changes,
-//! which the user's shard applies whole or not at all and answers with the panel's
-//! revision. An archived conversation reads its tabs and refuses every change.
+//! The work panel's routes: the read of a conversation's tabs, and a request of
+//! changes, which the user's shard applies whole or not at all and answers with
+//! the panel's revision.
+//!
+//! An archived conversation reads its tabs and refuses every change.
 //!
 //! The backend applies a conversation's panel changes one at a time, the page's
 //! and the plugin's alike. A plugin whose work on one conversation's tabs takes
 //! several port operations, such as reading the browser's tabs and then adding
 //! the missing ones, does that work one piece at a time per conversation, so a
 //! change it makes is never based on what it read before its own earlier
-//! change. The user creates a tab of a plugin's kind only through an intent the
-//! kind opens; otherwise the plugin creates them.
+//! change.
+//!
+//! The user creates a tab of a plugin's kind only through an intent the kind
+//! opens; otherwise the plugin creates them.
 
 use std::sync::Arc;
 

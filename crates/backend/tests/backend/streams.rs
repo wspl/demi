@@ -1,9 +1,16 @@
-//! User streams end to end: the page's socket, the backend's admission and relay,
-//! the runner's service stream and a resident native service, and an open stream as
-//! the conversation's activity (`crates/backend-user-shard/src/lifecycle/mod.rs`).
-//! The streams bind the runner's test fixture package: `echo` answers what the page
-//! sends, `where` reports its context and directory, `tell` tells the fixture's
-//! plugin what the page sends (`crates/command-protocol/src/messages.rs`).
+//! User streams end to end.
+//!
+//! The scenarios cover the page's socket, the backend's admission and relay,
+//! the runner's service stream and a resident native service, and an open
+//! stream as the conversation's activity
+//! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+//!
+//! The streams bind the runner's test fixture package
+//! (`crates/command-protocol/src/messages.rs`):
+//!
+//! - `echo` answers what the page sends.
+//! - `where` reports its context and directory.
+//! - `tell` tells the fixture's plugin what the page sends.
 
 use std::time::Duration;
 
@@ -377,14 +384,15 @@ async fn an_open_stream_keeps_the_cloud_it_watches_awake_until_it_closes() {
     backend.close().await;
 }
 
-/// A user stream behind an edge that holds each request's body until it
-/// ends, as Cloudflare's does (`crates/runner-host/src/lib.rs`): the Host's
-/// bytes reach the page as they are written, while the stream stays open,
-/// since the runner sends a stream pipe over a WebSocket; its close frame
-/// ends the stream as completed, and a connection lost without one fails it,
-/// while the runner stays online.
-// About a second: a real device installs the fixture package behind the
-// edge, and three streams open on it.
+/// A user stream behind an edge that holds each request's body until it ends,
+/// as Cloudflare's does (`crates/runner-host/src/lib.rs`):
+///
+/// - The Host's bytes reach the page as they are written, while the stream
+///   stays open, since the runner sends a stream pipe over a WebSocket.
+/// - Its close frame ends the stream as completed, and a connection lost
+///   without one fails it, while the runner stays online.
+// About a second: a real device installs the fixture package behind the edge,
+// and three streams open on it.
 #[tokio::test]
 async fn behind_an_edge_that_holds_request_bodies_a_streams_bytes_arrive_as_written() {
     let harness = Harness::new().with_native_fixture();

@@ -1,8 +1,9 @@
 //! The public installation routes: the installer of the backend's current
-//! runner release, and each release's executables. An installer run here
-//! installs this build's runner for its backend and starts it, and the runner
-//! then waits to be paired; the test stops every runner it installed
-//! ([`DetachedRunners`]).
+//! runner release, and each release's executables.
+//!
+//! An installer run here installs this build's runner for its backend and
+//! starts it, and the runner then waits to be paired. The test stops every
+//! runner it installed ([`DetachedRunners`]).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -293,12 +294,13 @@ impl Silence {
     }
 }
 
-/// Waits until `check` holds while the runner of the installation in
-/// `state` updates itself, a chain of a backend's restart, the runner's
-/// reconnection, a download of this build's runner (170 MB), its check and
-/// the new runner's start, whose length depends on how busy the machine is.
-/// It fails only once the installation has shown no progress for
-/// [`PATIENCE`] ([`Progress`]).
+/// Waits until `check` holds while the runner of the installation in `state`
+/// updates itself.
+///
+/// The update is a chain of a backend's restart, the runner's reconnection, a
+/// download of this build's runner (170 MB), its check and the new runner's start,
+/// whose length depends on how busy the machine is. The wait fails only once the
+/// installation has shown no progress for [`PATIENCE`] ([`Progress`]).
 async fn while_updating<F, Fut>(what: &str, state: &Path, mut check: F)
 where
     F: FnMut() -> Fut,
@@ -320,10 +322,11 @@ where
     }
 }
 
-/// What a progress guard has seen of an installation. Progress is what it
-/// has not seen before: a line of the runner's log, a release put in place,
-/// what `release-id` or `active.json` holds, or a staged download larger
-/// than any before. A runner that retries a failing step shows the same
+/// What a progress guard has seen of an installation.
+///
+/// Progress is what it has not seen before: a line of the runner's log, a release
+/// put in place, what `release-id` or `active.json` holds, or a staged download
+/// larger than any before. A runner that retries a failing step shows the same
 /// again: its line, its lock and its download's stage come and go.
 #[derive(Debug, Default)]
 struct Progress {
@@ -363,11 +366,12 @@ impl Progress {
     }
 }
 
-/// Runs `installer`, which stays until its runner is paired: it shows each
-/// pairing code as its runner receives one. With an `expiring` lifetime the
-/// first code is let expire, by letting that lifetime elapse, and the next
-/// is claimed with `session`; without, the first is. What it printed, once
-/// it exited successfully.
+/// Runs `installer`, which stays until its runner is paired: it shows each pairing
+/// code as its runner receives one.
+///
+/// With an `expiring` lifetime the first code is let expire, by letting that
+/// lifetime elapse, and the next is claimed with `session`; without, the first is.
+/// Returns what it printed, once it exited successfully.
 async fn paired(
     mut installer: tokio::process::Command,
     backend: &TestBackend,
@@ -402,10 +406,10 @@ async fn pairs(
     let mut stderr_open = true;
     let mut printed = String::new();
     // An installer that never sees its runner paired would wait for ever.
-    // Its guard hears each line and each chunk on either stream, its
-    // download's progress meter included, so a slow download that moves is
-    // no hang; nor is a code's lifetime, which elapses at once between two
-    // lines.
+    //
+    // Its guard hears each line and each chunk on either stream, its download's
+    // progress meter included, so a slow download that moves is no hang; nor is a
+    // code's lifetime, which elapses at once between two lines.
     let mut silence = Silence::new(Duration::from_secs(60));
     let read = loop {
         let heard = tokio::select! {
@@ -661,13 +665,13 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
     backend.close().await;
 }
 
-/// A runner that replaces itself with its backend's release stops its jobs
-/// first, with `TERM` as a stop does, since the new runner cannot take them
-/// over; its hello tells the backend they were lost to the update
+/// A runner that replaces itself with its backend's release stops its jobs first,
+/// with `TERM` as a stop does, since the new runner cannot take them over. Its
+/// hello tells the backend they were lost to the update
 /// (`crates/runner/src/update.rs`).
 // Several seconds: the installer downloads this build's runner (170 MB) and
-// starts it, the call that starts the command waits for two quiet seconds,
-// and the runner downloads the backend's new release.
+// starts it, the call that starts the command waits for two quiet seconds, and
+// the runner downloads the backend's new release.
 #[tokio::test]
 async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_the_update() {
     use crate::work::{Driven, resident, say};
@@ -733,13 +737,14 @@ fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
-/// Interrupting an installer at its terminal while it shows the code leaves
-/// the runner it started running. An installer that finds its runner
-/// running and waiting to be paired asks it to write its state again and
-/// shows the code it waits with, not the lines of an earlier pairing that
-/// its log holds (`crates/runner/src/console.rs`).
-// Several seconds: the first installer downloads this build's runner
-// (170 MB) and starts it; the second finds it running.
+/// Interrupting an installer at its terminal while it shows the code leaves the
+/// runner it started running.
+///
+/// An installer that finds its runner running and waiting to be paired asks it to
+/// write its state again and shows the code it waits with, not the lines of an
+/// earlier pairing that its log holds (`crates/runner/src/console.rs`).
+// Several seconds: the first installer downloads this build's runner (170 MB) and
+// starts it; the second finds it running.
 #[tokio::test]
 async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlier_pairing() {
     use tokio::io::AsyncBufReadExt as _;
@@ -797,12 +802,12 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
     backend.close().await;
 }
 
-/// An installer shows the codes of the runner it started and no earlier
-/// runner's, whose lines its log keeps (`crates/runner/src/console.rs`).
+/// An installer shows the codes of the runner it started and no earlier runner's,
+/// whose lines its log keeps (`crates/runner/src/console.rs`).
 // Several seconds (8 s here under load): the installer downloads this build's
-// runner (170 MB) from its backend, verifies it and starts it, and shows a
-// code, which the test lets expire at once, before it shows the one claimed;
-// a scripted model then runs one job on the paired runner.
+// runner (170 MB) from its backend, verifies it and starts it, and shows a code,
+// which the test lets expire at once, before it shows the one claimed; a scripted
+// model then runs one job on the paired runner.
 #[tokio::test]
 async fn an_installer_shows_each_code_until_paired_and_its_runner_works_as_the_users_programs() {
     let releases = Releases::new(runner_binary());
@@ -890,10 +895,11 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_as_the_u
 
 /// A person pastes the install command into a terminal whose shell has job
 /// control, with dash as `sh`, as on Debian: the pipeline is the terminal's
-/// foreground job, led by the program that fetches the installer. The
-/// installer shows the code, says the device is paired, and exits with 0
-/// (`crates/runner/src/console.rs`). Skipped where the
-/// system gives no pseudo-terminal, or has no dash or bash.
+/// foreground job, led by the program that fetches the installer. The installer
+/// shows the code, says the device is paired, and exits with 0
+/// (`crates/runner/src/console.rs`).
+///
+/// Skipped where the system gives no pseudo-terminal, or has no dash or bash.
 // Several seconds: the installer downloads this build's runner (170 MB),
 // verifies it and starts it.
 #[tokio::test]
@@ -934,11 +940,11 @@ async fn an_installer_piped_into_dash_at_a_terminal_pairs_and_exits_with_0() {
     backend.close().await;
 }
 
-/// The command a paired device shows starts its stopped runner again in
-/// the background: `run start` of the installation its runner reported,
-/// here one the person named apart from the default (`crates/runner/src/console.rs`).
-// Several seconds: the installer downloads this build's runner (170 MB)
-// and starts it, and the runner starts a second time.
+/// The command a paired device shows starts its stopped runner again in the
+/// background: `run start` of the installation its runner reported, here one the
+/// person named apart from the default (`crates/runner/src/console.rs`).
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it, and the runner starts a second time.
 #[tokio::test]
 async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     let releases = Releases::new(runner_binary());
@@ -982,11 +988,12 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     backend.close().await;
 }
 
-/// An installer run with `DEMI_HOME` installs the runner into the directory
-/// it names, not under `~/.demi/instances` (`crates/runner/src/console.rs`): the removal command it shows and the start command
-/// the paired device shows name that directory's launcher.
-// Several seconds: the installer downloads this build's runner (170 MB)
-// and starts it.
+/// An installer run with `DEMI_HOME` installs the runner into the directory it
+/// names, not under `~/.demi/instances` (`crates/runner/src/console.rs`): the
+/// removal command it shows and the start command the paired device shows name
+/// that directory's launcher.
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it.
 #[tokio::test]
 async fn an_installer_installs_into_the_directory_demi_home_names() {
     let releases = Releases::new(runner_binary());
@@ -1018,11 +1025,11 @@ async fn an_installer_installs_into_the_directory_demi_home_names() {
     backend.close().await;
 }
 
-/// A backend sources the runner executables of its paired devices' systems
-/// as it starts, so that a runner's update after the server's upgrade waits
-/// on no origin (`crates/backend-http/src/install.rs`).
-// Several seconds: the installer downloads this build's runner (170 MB)
-// and starts it.
+/// A backend sources the runner executables of its paired devices' systems as it
+/// starts, so that a runner's update after the server's upgrade waits on no origin
+/// (`crates/backend-http/src/install.rs`).
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it.
 #[tokio::test]
 async fn a_backend_sources_the_runners_of_its_paired_devices_as_it_starts() {
     let releases = Releases::new(runner_binary());
@@ -1144,12 +1151,12 @@ async fn ask_socket(
     }
 }
 
-/// A runner the backend sends to an update names its device with its token,
-/// and the device shows as updating from that first 409 until its next hello
-/// or the window ends, which a retry does not extend; a runner of an earlier
-/// release names none, and its device shows as offline (`crates/runner/src/update.rs`).
-// Several seconds: the installer downloads this build's runner (170 MB)
-// and starts it, and the window passes once.
+/// A runner the backend sends to an update names its device with its token, and
+/// the device shows as updating from that first 409 until its next hello or the
+/// window ends, which a retry does not extend. A runner of an earlier release names
+/// none, and its device shows as offline (`crates/runner/src/update.rs`).
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it, and the window passes once.
 #[tokio::test]
 async fn a_runner_sent_to_an_update_shows_its_device_updating_until_its_next_hello_or_the_window_ends() {
     let releases = Releases::new(runner_binary());
@@ -1242,14 +1249,14 @@ async fn prefetch(socket: &Path, release: &str, root: &Path) -> PrefetchProgress
     }
 }
 
-/// An upgrade names the next runner release while the current one serves,
-/// one that speaks a wire version this backend does not: the paired
-/// device's runner downloads it ahead, connected throughout, and once the
-/// server switches, its update finds the executable in place and downloads
+/// An upgrade names the next runner release while the current one serves, one that
+/// speaks a wire version this backend does not.
+///
+/// The paired device's runner downloads it ahead, connected throughout, and once
+/// the server switches, its update finds the executable in place and downloads
 /// nothing (`crates/runner/src/update.rs`).
-// Several seconds: the installer downloads this build's runner (170 MB)
-// and starts it, the runner downloads it again ahead, and the updated
-// runner starts.
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it, the runner downloads it again ahead, and the updated runner starts.
 #[tokio::test]
 async fn a_runner_downloads_the_next_release_ahead_and_its_update_downloads_nothing() {
     let releases = Releases::new(runner_binary());
@@ -1305,14 +1312,15 @@ async fn a_runner_downloads_the_next_release_ahead_and_its_update_downloads_noth
     backend.close().await;
 }
 
-/// The device whose runner downloads an update shows as updating, never
-/// offline, for as long as its download moves, however long past the
-/// window that ends an update without one; its pages hear its progress on
-/// the synchronization channel; once its bytes stop, the window passes and
-/// it shows as offline (`crates/runner/src/update.rs`).
-// Several seconds: the installer downloads this build's runner (170 MB)
-// and starts it, the download is read at a slow link's pace past the
-// window, and the window passes once.
+/// The device whose runner downloads an update shows as updating, never offline,
+/// for as long as its download moves, however long past the window that ends an
+/// update without one.
+///
+/// Its pages hear its progress on the synchronization channel. Once its bytes
+/// stop, the window passes and it shows as offline (`crates/runner/src/update.rs`).
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it, the download is read at a slow link's pace past the window, and the
+// window passes once.
 #[tokio::test]
 async fn a_device_whose_update_downloads_shows_updating_with_its_progress_while_bytes_move() {
     let releases = Releases::new(runner_binary());

@@ -1,10 +1,13 @@
-//! The public installation routes: the runner installers for the backend's
-//! current runner release, the runner executables of each release its server
-//! release's `runners/` names, sourced into the object store on their first
-//! download, and a local store's
-//! command executables (`crates/backend-runners/src/publication.rs`). None holds a
-//! credential; pairing grants device access. Without runner releases, the
-//! installers answer 503 and the runner executables 404.
+//! The public installation routes.
+//!
+//! - The runner installers for the backend's current runner release.
+//! - The runner executables of each release its server release's `runners/`
+//!   names, sourced into the object store on their first download.
+//! - A local store's command executables
+//!   (`crates/backend-runners/src/publication.rs`).
+//!
+//! None holds a credential; pairing grants device access. Without runner
+//! releases, the installers answer 503 and the runner executables 404.
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -137,10 +140,11 @@ fn request_origin(https: bool, headers: &HeaderMap) -> Result<Url, ApiError> {
 }
 
 /// A release's executable for one target, immutable once published: the
-/// backend's own release's, or the next one's an upgrade announced. The compressed copy answers a
-/// Range request from a byte on with 206, and what it serves a paired
-/// device whose token the request carries counts as that device's
-/// download (`crates/runner/src/update.rs`).
+/// backend's own release's, or the next one's an upgrade announced.
+///
+/// The compressed copy answers a Range request from a byte on with 206. What it
+/// serves a paired device whose token the request carries counts as that
+/// device's download (`crates/runner/src/update.rs`).
 pub(super) async fn artifact(
     State(state): State<AppState>,
     Path((release, target, file)): Path<(String, String, String)>,

@@ -1,9 +1,16 @@
-//! When an automation fires by itself: the next time of its schedule after a
-//! moment, in its time zone, and the latest one a backend that was down missed,
-//! which fires once. A clock time that a change to summer time skips fires at
-//! the first minute after the gap, and one that the change back repeats fires
-//! the first time, as cron does. No crate the workspace uses reads cron
-//! expressions over `jiff`'s time zones, so the five fields are read here.
+//! When an automation fires by itself.
+//!
+//! This module finds the next time of a schedule after a moment, in its time
+//! zone, and the latest one a backend that was down missed, which fires once.
+//!
+//! Daylight saving time follows cron:
+//!
+//! - A clock time that a change to summer time skips fires at the first minute
+//!   after the gap.
+//! - One that the change back repeats fires the first time.
+//!
+//! No crate the workspace uses reads cron expressions over `jiff`'s time zones,
+//! so the five fields are read here.
 
 use demi_web_api_protocol::automations::{Schedule, Weekday};
 use jiff::civil::{Date, DateTime, Time};

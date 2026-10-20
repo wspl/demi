@@ -2,28 +2,44 @@
 //! services and the shard threads, and opens the listener;
 //! `Backend::close` shuts them down in order.
 //!
-//! Start recovers before it serves. The machine manager settles what an
-//! earlier backend left and keeps every running Cloud and its sandbox; an
-//! interrupted Cloud reset finishes committing its disks and is marked
-//! failed, so that a retry starts the Cloud; the Fork creations whose
-//! destination root committed are published. Running commands are taken up as
-//! their runners connect, and a command that reports restores its
-//! conversation's tree. The manager's first message names its wire version,
-//! so a manager of another release stops the start here. The turns a graceful
-//! shutdown interrupted resume in the background, each owner's on its shard,
-//! and the start waits for none of them. The listener opens last, so nothing
-//! reaches a half-recovered backend.
+//! # Start
+//!
+//! Start recovers before it serves:
+//!
+//! - The machine manager settles what an earlier backend left and keeps every
+//!   running Cloud and its sandbox.
+//! - An interrupted Cloud reset finishes committing its disks and is marked
+//!   failed, so that a retry starts the Cloud.
+//! - The Fork creations whose destination root committed are published.
+//! - Running commands are taken up as their runners connect, and a command
+//!   that reports restores its conversation's tree.
+//! - The manager's first message names its wire version, so a manager of
+//!   another release stops the start here.
+//! - The turns a graceful shutdown interrupted resume in the background, each
+//!   owner's on its shard, and the start waits for none of them.
+//!
+//! The listener opens last, so nothing reaches a half-recovered backend.
+//!
+//! # Shutdown
 //!
 //! Shutdown closes the listener first, so no new work starts and no runner
-//! reconnects into a backend that is closing; a request on a connection
-//! already open answers 503 `backend_closing`, and a pipe a runner would open
-//! is refused, so shutdown reads nothing from a Host. It stops nothing that
-//! runs on a Host: commands and Clouds go on, and the next start takes them
-//! up. Every step runs even when an earlier one fails, the failures are
-//! reported together, and the process exits with a failure status. A page
-//! cannot hold up shutdown, nor can a Host: a page socket's close waits at
-//! most a second for the page to take the close frame, and a runner
-//! connection's end at most five seconds for the work it carries.
+//! reconnects into a backend that is closing:
+//!
+//! - A request on a connection already open answers 503 `backend_closing`.
+//! - A pipe a runner would open is refused, so shutdown reads nothing from a
+//!   Host.
+//! - It stops nothing that runs on a Host: commands and Clouds go on, and the
+//!   next start takes them up.
+//!
+//! Every step runs even when an earlier one fails, the failures are reported
+//! together, and the process exits with a failure status.
+//!
+//! A page cannot hold up shutdown, nor can a Host:
+//!
+//! - A page socket's close waits at most a second for the page to take the
+//!   close frame.
+//! - A runner connection's end waits at most five seconds for the work it
+//!   carries.
 
 use std::fmt;
 use std::io;
@@ -390,11 +406,12 @@ impl Backend {
                 "the pending moves cannot be listed"
             );
         }
-        // A credential request's command ended with the run before, so no
-        // one waits for its answer; and a credential whose time came while
-        // the backend was down is removed. A failure does not stop the
-        // start: the user's shard removes what is past due when it starts,
-        // and the next start withdraws the requests.
+        // A credential request's command ended with the run before, so no one waits
+        // for its answer; and a credential whose time came while the backend was down
+        // is removed.
+        //
+        // A failure does not stop the start: the user's shard removes what is past due
+        // when it starts, and the next start withdraws the requests.
         if let Err(error) = services.control.withdraw_credential_requests().await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,

@@ -1,10 +1,15 @@
-//! A conversation's model settings (`crates/shared-types/src/catalog.rs`). A patch names the parts it changes, and the
-//! conversation's settings order applies one change at a time to the
-//! selection the record holds: the change is checked against the entry's
-//! catalog, a live tree gets the runtime a new provider entry needs, the
-//! record commits, and then the live tree switches. A crash between the
-//! commit and the switch leaves the change in the record, which the tree
-//! takes when it next opens.
+//! A conversation's model settings (`crates/shared-types/src/catalog.rs`).
+//!
+//! A patch names the parts it changes, and the conversation's settings order
+//! applies one change at a time to the selection the record holds:
+//!
+//! 1. The change is checked against the entry's catalog.
+//! 2. A live tree gets the runtime a new provider entry needs.
+//! 3. The record commits.
+//! 4. The live tree switches.
+//!
+//! A crash between the commit and the switch leaves the change in the record,
+//! which the tree takes when it next opens.
 
 use demi_agent_server::ResolveError;
 use demi_backend_database::conversation_index::{RecordChange, SettingsChange};
@@ -57,12 +62,14 @@ impl Shard {
         committed
     }
 
-    /// The selection `change` makes of the conversation's selection
-    /// `current`: a switch takes the new model's facts from the entry's
-    /// catalog with the parts it names, the model's first effort when it
-    /// names none, and the vendor's default tier when it names none; a change
-    /// of parts keeps the model's facts and changes those parts. Each part it
-    /// names is one the catalog's model offers.
+    /// The selection `change` makes of the conversation's selection `current`.
+    ///
+    /// - A switch takes the new model's facts from the entry's catalog with the
+    ///   parts it names, the model's first effort when it names none, and the
+    ///   vendor's default tier when it names none.
+    /// - A change of parts keeps the model's facts and changes those parts.
+    ///
+    /// Each part it names is one the catalog's model offers.
     async fn settings_selection(
         &self,
         current: Option<&ModelSelection>,
@@ -93,12 +100,15 @@ impl Shard {
     }
 
     /// The selection the model settings `chosen` make
-    /// (`crates/shared-types/src/catalog.rs`): the model's facts from the
-    /// entry's
-    /// catalog now, with the effort it names, else the model's first, and
-    /// the tier it names, else the vendor's default. Each part is one the
-    /// catalog's model offers; a conversation's model switch and a
-    /// subagent profile's model build their selections here.
+    /// (`crates/shared-types/src/catalog.rs`).
+    ///
+    /// It takes the model's facts from the entry's catalog now:
+    ///
+    /// - the effort it names, else the model's first;
+    /// - the tier it names, else the vendor's default.
+    ///
+    /// Each part is one the catalog's model offers. A conversation's model
+    /// switch and a subagent profile's model build their selections here.
     pub(crate) async fn chosen_selection(
         &self,
         chosen: &ModelSettings,

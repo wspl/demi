@@ -1,7 +1,10 @@
-//! A conversation's side questions: the list a page reads when the summary's
-//! revision passes what it holds, asking one under the id the page chose, a
-//! follow-up, a Retry and folding its card, each in the user's shard. Its
-//! answers are its transcript, read with `GET
+//! A conversation's side questions, each in the user's shard.
+//!
+//! - The list a page reads when the summary's revision passes what it holds.
+//! - Asking one under the id the page chose, a follow-up, a Retry and folding
+//!   its card.
+//!
+//! Its answers are its transcript, read with `GET
 //! /conversations/:id/transcript?node=` and followed on the conversation's
 //! socket.
 
