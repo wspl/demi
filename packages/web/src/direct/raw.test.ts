@@ -33,7 +33,7 @@ test('a video\'s part carries the relay\'s headers, its range and its version', 
   expect(rawAnswer(request({ range: 'bytes=100-199' }), file)).toEqual({
     status: 206,
     headers: {
-      'cache-control': 'private, no-cache',
+      'cache-control': 'private, no-cache, no-transform',
       vary: 'Cookie',
       'x-accel-buffering': 'no',
       'x-content-type-options': 'nosniff',
@@ -48,7 +48,7 @@ test('a video\'s part carries the relay\'s headers, its range and its version', 
   // A URL that names its version is kept for a year.
   const versioned = rawAnswer(request({ version: file.version }), file)
   expect(versioned.status).toBe(200)
-  expect(versioned.headers['cache-control']).toBe('private, max-age=31536000, immutable')
+  expect(versioned.headers['cache-control']).toBe('private, max-age=31536000, immutable, no-transform')
   expect(versioned.bytes).toEqual({ offset: 0, length: 1000 })
 })
 
@@ -74,7 +74,7 @@ test('a version the page holds answers 304 and a range past the end 416, without
   const held = rawAnswer(request({ ifNoneMatch: '"3e8-18f"' }), file)
   expect(held).toEqual({
     status: 304,
-    headers: { 'cache-control': 'private, no-cache', vary: 'Cookie', 'x-accel-buffering': 'no', etag: file.version },
+    headers: { 'cache-control': 'private, no-cache, no-transform', vary: 'Cookie', 'x-accel-buffering': 'no', etag: file.version },
     bytes: null,
   })
   const past = rawAnswer(request({ range: 'bytes=2000-' }), file)

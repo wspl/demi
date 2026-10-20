@@ -241,7 +241,13 @@ async fn the_history_routes_read_branches_a_log_and_a_commits_files_through_the_
     let branches: Value = device.get("/changes/branches").await.json();
     assert_eq!(branches["current"], json!("main"));
     assert_eq!(branches["head"], Value::Null);
-    let log: Value = device.get("/changes/log").await.json();
+    let listed = device.get("/changes/log").await;
+    // A log the page holds is not sent again, also under the weak tag a
+    // compressing proxy passes on in place of the strong one.
+    let tag = header(&listed, "etag").unwrap().to_owned();
+    let held = device.call(Method::GET, "/changes/log", &[("if-none-match", &format!("W/{tag}"))], None).await;
+    assert_eq!(held.status, StatusCode::NOT_MODIFIED);
+    let log: Value = listed.json();
     assert_eq!(log["more"], json!(false));
     let commits = log["commits"].as_array().unwrap();
     assert_eq!(
@@ -505,7 +511,10 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
     );
     assert_eq!(header(&whole, "x-content-type-options"), Some("nosniff"));
     assert_eq!(header(&whole, "x-accel-buffering"), Some("no"));
-    assert_eq!(header(&whole, "cache-control"), Some("private, no-cache"));
+    assert_eq!(
+        header(&whole, "cache-control"),
+        Some("private, no-cache, no-transform")
+    );
     assert_eq!(header(&whole, "accept-ranges"), Some("bytes"));
     let etag = header(&whole, "etag").unwrap().to_owned();
     let (size, time) = etag
@@ -528,6 +537,12 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
     assert_eq!(header(&head, "content-length"), Some("300000"));
     assert_eq!(header(&head, "etag"), Some(etag.as_str()));
     assert!(header(&head, "last-modified").is_some());
+    // The page describes a file by these headers; a proxy that compresses
+    // an SVG would drop its length, so no proxy may transform the answer.
+    assert_eq!(
+        header(&head, "cache-control"),
+        Some("private, no-cache, no-transform")
+    );
 
     let part = device
         .call(
@@ -568,7 +583,7 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
     assert_eq!(pinned.status, StatusCode::OK);
     assert_eq!(
         header(&pinned, "cache-control"),
-        Some("private, max-age=31536000, immutable")
+        Some("private, max-age=31536000, immutable, no-transform")
     );
     std::fs::write(device.root.join("logo.svg"), pattern(10, 0)).unwrap();
     let changed = device.get(&raw("logo.svg", &[("version", &etag)])).await;
