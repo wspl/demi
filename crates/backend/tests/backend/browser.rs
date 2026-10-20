@@ -3,7 +3,7 @@
 //! (`web-api-sync.md` § Conversation state of plugins, § Plugin calls) against
 //! the `demi.browser` package the workspace built, on a paired device's real
 //! runner, on a Cloud that never started, and on a running Cloud, which listing
-//! its tabs does not keep awake (`resource-lifecycle.md` § Activity). No
+//! its tabs does not keep awake (`crates/backend-user-shard/src/lifecycle/mod.rs`). No
 //! browser runs: the operations answer as a browser that does not run does, so
 //! no Chrome is needed. Opening a tab starts one, which the browser's own tests
 //! and the live view's acceptance cover.

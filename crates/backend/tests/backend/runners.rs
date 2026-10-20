@@ -1,4 +1,4 @@
-//! Runners and their devices (`runner.md` § Connection and identity,
+//! Runners and their devices (`crates/runner-protocol/src/wire/mod.rs`,
 //! `web-api-hosts.md` § Workspaces, devices, and attached hosts, § Device log):
 //! pairing, the runner socket's protocol, one live connection per device,
 //! revocation, the pipe routes' authentication, the device routes, and a
@@ -354,8 +354,7 @@ async fn a_device_holds_one_live_connection_and_a_newcomer_is_adopted_once_the_f
 }
 
 /// Hellos with one token at once bind one socket: the other is a second
-/// runner as long as the bound one answers its ping (`runner.md`
-/// § Connection and identity).
+/// runner as long as the bound one answers its ping (`crates/runner-protocol/src/wire/mod.rs`).
 #[tokio::test(flavor = "multi_thread")]
 async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_changes_nothing() {
     let harness = Harness::new();
@@ -422,8 +421,7 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
 
 /// A connection lost without a close leaves the backend holding a socket
 /// nobody answers; the runner's new hello finds it silent and takes the
-/// device once the probe's wait is over (`runner.md` § Connection and
-/// identity).
+/// device once the probe's wait is over (`crates/runner-protocol/src/wire/mod.rs`).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_held_connection_that_does_not_answer_its_ping_gives_way_to_the_devices_new_hello() {
     let mut harness = Harness::new();
@@ -457,7 +455,7 @@ async fn a_held_connection_that_does_not_answer_its_ping_gives_way_to_the_device
 /// A device whose runner cannot register with its system's service manager
 /// shows why, so the user learns it before a restart, and goes on showing
 /// it after the backend's own restart, until a runner that registered says
-/// nothing (`runner.md` § Starting with the computer).
+/// nothing (`crates/runner/src/autostart.rs`).
 /// Planted defect this catches: a reason kept only in memory, which a
 /// backend's restart forgets.
 #[tokio::test(flavor = "multi_thread")]
@@ -505,7 +503,7 @@ async fn shown(backend: &TestBackend, session: &Session) -> Option<AutostartUnav
 }
 
 /// Revoking a device tells its connected runner, which then removes itself
-/// (`runner.md` § Installation, pairing and removal), before the backend
+/// (`crates/runner/src/console.rs`), before the backend
 /// closes the connection.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_revoked_devices_runner_hears_it_was_revoked_before_its_connection_closes() {
@@ -529,7 +527,7 @@ async fn a_revoked_devices_runner_hears_it_was_revoked_before_its_connection_clo
 }
 
 /// A runner asks the backend to revoke its device, as `run uninstall` does
-/// (`runner.md` § Installation, pairing and removal), which nothing refuses:
+/// (`crates/runner/src/console.rs`), which nothing refuses:
 /// the device leaves the list with its attachment, and its connection ends
 /// with `revoked`, which names the project that went with it.
 #[tokio::test(flavor = "multi_thread")]
@@ -641,8 +639,7 @@ async fn a_runner_reserves_numbers_only_of_its_users_conversations_that_reach_it
 
 /// A runner that goes away while its token is looked up is let go at once,
 /// without waiting for the lookup: the backend never adopts its socket, so
-/// the device never comes online for it (`runner.md` § Connection and
-/// identity).
+/// the device never comes online for it (`crates/runner-protocol/src/wire/mod.rs`).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_runner_that_goes_away_while_its_token_is_looked_up_is_let_go_and_never_comes_online() {
     let harness = Harness::new();
@@ -665,8 +662,7 @@ async fn a_runner_that_goes_away_while_its_token_is_looked_up_is_let_go_and_neve
 
 /// A runner whose hello reaches its device's shard as the backend shuts
 /// down is not welcomed: a closing shard binds no runner, so the runner's
-/// connection closes without an answer, and the shutdown ends (`runner.md`
-/// § Connection and identity, `backend.md` § Startup and shutdown).
+/// connection closes without an answer, and the shutdown ends (`crates/runner-protocol/src/wire/mod.rs`, `backend.md` § Startup and shutdown).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_runner_whose_hello_meets_the_shutdown_is_never_welcomed() {
     let harness = Harness::new();
@@ -1289,7 +1285,7 @@ async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
 
 /// A runner's welcome names the user's conversations that still exist,
 /// archived ones included and deleted ones not, whose scratch directories
-/// the runner keeps (`runner.md` § Scratch directory). About a second: a
+/// the runner keeps (`crates/runner-jobs/src/scratch.rs`). About a second: a
 /// runner pairs.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_runners_welcome_names_the_conversations_that_still_exist() {

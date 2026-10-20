@@ -96,8 +96,7 @@ esac
 /// Writes in `directory` a login shell that reads no file of the user's and
 /// runs the command it is given as `-i -l -c <command>` with the
 /// environment it was given, and returns its path: the `SHELL` the runners
-/// a test starts read their device environment from (`runner.md` § Host
-/// operations), so that none reads the test machine's shell files.
+/// a test starts read their device environment from (`crates/runner/src/environment.rs`), so that none reads the test machine's shell files.
 #[cfg(unix)]
 pub fn login_shell_stand_in(directory: &Path) -> PathBuf {
     const SCRIPT: &str = r#"#!/bin/sh

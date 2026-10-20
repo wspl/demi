@@ -285,7 +285,7 @@ orientation `demi-mobile` set, or the appearance read once, resolves. The
 panel's Screenshot and Record save the picture or the MP4 on the user's
 computer, as the browser view's download does: the file is written first
 into the conversation's scratch directory, `mobile/m1-<time>.png`, which no
-change view shows ([Scratch directory](../execution/runner.md#scratch-directory)),
+change view shows (`crates/runner-jobs/src/scratch.rs`),
 and removed when the device closes.
 
 The view is the browser's live view (`crates/command-package-browser-chrome/src/live.rs`) with a

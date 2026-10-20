@@ -1,8 +1,7 @@
-//! `timeout DURATION COMMAND…`: runs COMMAND as a part of the job of its
-//! own and stops it as `kill` stops a task once DURATION has passed, with
-//! GNU's options, durations, messages and statuses (`runner.md` § Background
-//! tasks and timeouts). The job's shell runs COMMAND as `command` would; a
-//! utility that starts `timeout`, such as `xargs`, starts COMMAND as it
+//! `timeout DURATION COMMAND…`: runs COMMAND as a part of the job of its own and
+//! stops it as `kill` stops a task once DURATION has passed, with GNU's options,
+//! durations, messages and statuses. The job's shell runs COMMAND as `command`
+//! would; a utility that starts `timeout`, such as `xargs`, starts COMMAND as it
 //! starts any program.
 
 use std::{ffi::OsString, future::Future, io::Write, sync::Arc, time::Duration};
@@ -299,7 +298,7 @@ pub(crate) fn not_run(command: &str, reason: &str, not_found: bool, stderr: &mut
 /// once `KILL` was sent, or with `--preserve-status` COMMAND's own, 128 plus
 /// the signal that stopped it when it gave none. On Windows, where nothing
 /// catches a signal, it is always 128 plus the signal, the status COMMAND
-/// would give on Unix (`runner.md` § Builtins that act on a process).
+/// would give on Unix (`crates/runner-shell/src/process_builtins.rs`).
 pub(crate) async fn supervise<E>(
     options: &Options,
     scope: &Scope,
@@ -358,7 +357,7 @@ pub(crate) async fn supervise<E>(
 }
 
 /// Starts `timeout` as a child program a utility started, such as `xargs
-/// timeout 5 sed …` (`runner.md` § Standard utilities): it starts COMMAND as
+/// timeout 5 sed …` (`crates/runner-shell/src/utilities.rs`): it starts COMMAND as
 /// the utility would, a standard utility by its name or a program, in a part
 /// of the job of its own, which killing the child kills.
 pub(crate) fn start(

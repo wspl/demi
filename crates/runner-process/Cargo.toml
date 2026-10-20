@@ -22,25 +22,25 @@ futures-util.workspace = true
 # The line counts of a change, the diff gix's blob diff is.
 process-wrap.workspace = true
 # HTTP/2 where the backend's edge offers it over TLS, so concurrent pipes
-# share one connection (`runner.md` § Host operations); plain HTTP stays
+# share one connection (`crates/runner-host/src/lib.rs`); plain HTTP stays
 # HTTP/1.1.
 reqwest = { workspace = true, features = ["http2", "rustls", "stream"] }
 serde.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-# Stream pipes, which the runner sends over a WebSocket (`runner.md` § Host operations).
+# Stream pipes, which the runner sends over a WebSocket (`crates/runner-host/src/lib.rs`).
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tracing.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 # The pipes a spawned process inherits besides its standard streams
-# (`runner.md` § Host operations).
+# (`crates/runner-host/src/lib.rs`).
 command-fds = "0.3"
-# The open-file limit, raised at start and restored in children (`runner.md` § Load).
+# The open-file limit, raised at start and restored in children (`crates/command-sdk/src/descriptors.rs`).
 rlimit = "0.11"
 rustix = { version = "1", features = ["fs", "process"] }
 # The environments of the user's processes, where a stop finds a job's
-# processes that left its groups (`runner.md` § Cancellation and completion).
+# processes that left its groups (`crates/runner-shell/src/job.rs`).
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 # The runner's umask, read without changing it, and an ended child's

@@ -237,7 +237,7 @@ the runner's work at about the same speed. `opt-level = "z"` would save a
 quarter more, but it also gives up the speed optimizations that `"s"` keeps,
 and the runner's utilities run searches and sorts in process. Panics unwind in
 every profile: the runner contains a utility's panic to its job
-([Shell jobs](../execution/runner.md#shell-jobs)), and a resident command
+(`crates/runner-shell/src/lib.rs`), and a resident command
 service fails one invocation, not every conversation it holds; `panic =
 "abort"` would end the whole process. A panic that ends a program anyway,
 such as one inside a destructor, which Rust turns into an abort, writes its
@@ -557,7 +557,7 @@ The runner job of each Apple target signs the runner before packaging it,
 with Demi's self-signed code-signing certificate, *demi Code Signing*, and
 the identifier `sh.demi.runner`, and checks that the signature satisfies
 that identifier and that certificate, so every release has the same
-designated requirement ([Starting with the computer](../execution/runner.md#starting-with-the-computer)).
+designated requirement (`crates/runner/src/autostart.rs`).
 The certificate and its password are the repository's Actions secrets
 `MACOS_SIGNING_CERTIFICATE` (the PKCS #12 file, Base64) and
 `MACOS_SIGNING_CERTIFICATE_PASSWORD`; a release without them fails at that

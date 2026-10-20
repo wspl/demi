@@ -25,8 +25,7 @@ export interface ChangeFile {
 
 /**
  * A path of the working tree that `git status` lists: how it differs from
- * the last commit, and git's two status letters for it (`runner.md`
- * § Working tree), which mark it the way VS Code's Git does (`gitMark`).
+ * the last commit, and git's two status letters for it (`crates/runner-host/src/git.rs`), which mark it the way VS Code's Git does (`gitMark`).
  */
 export interface WorkingTreeChange extends ChangeFile {
   status: string

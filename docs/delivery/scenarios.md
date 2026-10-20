@@ -140,7 +140,7 @@ fixture must not define an alternative execution contract.
 | Backend restart after dispatch but before a result | The call has an explicit unknown outcome and is never silently replayed |
 | Backend shutdown | Every shutdown step runs even when one fails; open transfers and user streams end before the user's Cloud hibernates, so the Cloud still saves ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)) |
 | Runner death | Its running jobs fail; reconnect permits new work; persistent files remain |
-| Runner connection lost during a conversation release | The archive, target switch or detach that sent the release succeeds, and the runner hears the release again after it connects ([A release that fails](../execution/resource-lifecycle.md#a-release-that-fails)) |
+| Runner connection lost during a conversation release | The archive, target switch or detach that sent the release succeeds, and the runner hears the release again after it connects (`crates/backend-user-shard/src/lifecycle/conversations.rs`) |
 | Cloud hibernate/wake | System and home changes survive; processes and temporary output do not |
 | Checkpoint publication failure | Previous committed generation remains usable; working files remain available for retry |
 | Reset failure before publication | Home and the previous generation remain recoverable; new work cannot use an indeterminate system |
@@ -166,7 +166,7 @@ test pins them where the runner sends them, in the job table's tests of
 beyond them, while the backend follows the job, at most 16 KiB of the newest
 bytes per stream and interval, otherwise the newest 8 KiB every 2 seconds,
 the last before `job_exit`
-([Pipes and output](../execution/runner.md#pipes-and-output)).
+(`crates/runner-jobs/src/tasks.rs`).
 
 The world does not record the runner's wire frames either. `job_exit` and
 `pipe_done` are pinned where the runner sends them, by the runner tests of
@@ -176,7 +176,7 @@ every frame their runner sends: each job's end there comes from its
 file read whose reader left, and service streams. A scenario sees
 a missing `job_exit` as a command that never ends. The backend uses
 `pipe_done` only to end a pipe early, failed, or whole when its reader
-stopped reading ([Pipes and output](../execution/runner.md#pipes-and-output));
+stopped reading (`crates/runner-jobs/src/tasks.rs`);
 otherwise the end of the pipe's HTTP exchange is what settles it.
 
 The usage ledger is checked by the scenarios that read it through

@@ -296,7 +296,7 @@ async fn a_staged_file_appears_only_when_published() {
         .unwrap();
     abandoned.file().write_all(b"partial").await.unwrap();
     // Its name says whose it is, should its process die before it is
-    // published (`runner.md` § File contents).
+    // published (`crates/runner-host/src/files.rs`).
     let names: Vec<String> = std::fs::read_dir(directory.path())
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())

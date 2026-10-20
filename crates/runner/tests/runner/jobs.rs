@@ -1,4 +1,4 @@
-//! Shell jobs as the backend runs them (`runner.md` § Shell jobs): large
+//! Shell jobs as the backend runs them (`crates/runner-shell/src/lib.rs`): large
 //! output through functions and compound pipelines drains, a kill ends a
 //! job that blocks in a utility, and each job runs with the manifest its
 //! start names (`commands.md` § Dispatch the same declaration on each
@@ -166,7 +166,7 @@ async fn until_exists(path: &std::path::Path) {
     }
 }
 
-/// A job outlives its connection (`runner.md` § Command lifetime): one that
+/// A job outlives its connection (`crates/runner/src/connection/kept.rs`): one that
 /// ends while the runner is away is listed ended in the next hello, by the
 /// same instance, with what it printed meanwhile counted, and its exit
 /// follows the hello's answer. About a second: a login shell starts.
@@ -283,7 +283,7 @@ async fn a_start_that_arrives_twice_runs_the_job_once() {
 
 /// A connection loss stops nothing, however long it lasts; only the
 /// backend's refusal of the runner, as for a revoked device, stops its jobs
-/// (`runner.md` § Command lifetime). The runner's attempts to connect again
+/// (`crates/runner/src/connection/kept.rs`). The runner's attempts to connect again
 /// while it stays away mark the time that passes, so the test waits for
 /// them, not for time. About seven seconds: a login shell starts, the
 /// runner tries twice in vain and is back within two, and the refused
@@ -393,7 +393,7 @@ fn stray_program() {
 /// programs that left its groups and writes its process id to `pid` in the
 /// runner's home traps `TERM` and runs on: `TERM` reaches the program, and
 /// once `KILL` follows, the program has ended by the time the job reports
-/// its end (`runner.md` § Cancellation and completion).
+/// its end (`crates/runner-shell/src/job.rs`).
 #[cfg(unix)]
 async fn stop_reaches_the_program_that_left(host: &mut Host, job: &str) {
     let pid = host.home().join("pid");
@@ -431,7 +431,7 @@ async fn stop_reaches_the_program_that_left(host: &mut Host, job: &str) {
 
 /// A stop reaches a program that left the job's process groups and whose
 /// parent has ended, as a daemon's does, by the job's id in its environment
-/// (`runner.md` § Cancellation and completion). The program holds the job's
+/// (`crates/runner-shell/src/job.rs`). The program holds the job's
 /// output, so the job runs until `KILL`. Before, neither signal reached it,
 /// and it ran on after the job had been reported killed. About a second: a
 /// login shell starts.
@@ -454,8 +454,7 @@ async fn a_stop_reaches_an_orphan_that_left_the_jobs_groups_by_its_environment()
 }
 
 /// A stop reaches an Apple program that left the job's process groups while
-/// its parent runs, as the parent's descendant (`runner.md` § Cancellation
-/// and completion): macOS shows no environment of Apple's own programs,
+/// its parent runs, as the parent's descendant (`crates/runner-shell/src/job.rs`): macOS shows no environment of Apple's own programs,
 /// such as `/bin/sh` and `perl`. The parent ignores `TERM` and waits. Before,
 /// neither signal reached the program. About a second: a login shell starts.
 #[cfg(unix)]
@@ -557,7 +556,7 @@ async fn a_move_out_of_tmp_carries_the_files_edits_and_a_made_and_removed_file_i
 }
 
 /// Each agent of a conversation finds its own scratch directory made and
-/// named by `DEMI_SCRATCH` (`runner.md` § Scratch directory): the root
+/// named by `DEMI_SCRATCH` (`crates/runner-jobs/src/scratch.rs`): the root
 /// agent's is the conversation's, each subagent's its `agent-<number>`
 /// folder inside it, so two subagents that save one relative name keep
 /// their own files. Under a second: three short jobs, one after another.
@@ -607,7 +606,7 @@ async fn each_agent_finds_its_own_scratch_directory_made_and_named() {
 /// A runner that connects removes the scratch directory of a conversation
 /// the backend's welcome no longer names, a deleted one's, and keeps those
 /// of the conversations it names, and anything under `scratch` that is no
-/// directory (`runner.md` § Scratch directory). About a second: the runner
+/// directory (`crates/runner-jobs/src/scratch.rs`). About a second: the runner
 /// starts twice and runs two jobs.
 #[tokio::test]
 async fn a_reconnect_removes_the_scratch_directory_of_a_deleted_conversation_only() {

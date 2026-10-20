@@ -1,12 +1,24 @@
-//! The runner's console (`runner.md` § Installation, pairing and removal):
-//! its standard output and standard error, where it writes the lines for
-//! the person at the terminal, among them the ones the installers read
-//! (`demi_runner_protocol::console`). A runner started in the background
-//! writes its console to its installation's log itself: it appends to
-//! `runner.log`, and once the file has passed 10 MiB it renames it
-//! `runner.log.1`, replacing the one before, and starts a new one. The
-//! installer and `run start` read the log from where it ended when they
-//! started the runner.
+//! The runner's console: its standard output and error, where it writes the lines
+//! for the person at the terminal, among them the pairing code and result the
+//! installers read (`demi_runner_protocol::console`). A runner started in the
+//! background writes it to its installation's log itself (`runner.log`, rotated at
+//! 10 MiB to `runner.log.1`) rather than the installer redirecting it, so what a
+//! runner printed before a crash survives and a person who closed the terminal
+//! early finds the lines there. The log holds pairing codes, so it is private to its
+//! owner, and the Host log never holds one.
+//!
+//! A runner started with `run --log` leaves its terminal first of all
+//! ([`leave_terminal`]): a session of its own has no controlling terminal, so
+//! Ctrl-C at the installer or a closed SSH connection never reaches the runner or
+//! its jobs. A process that leads its process group cannot make a session; it asks
+//! whether it still has a terminal (opening `/dev/tty` fails with `ENXIO` only when
+//! it has none) and if so starts itself again in a session of its own, made between
+//! fork and exec so that nothing of the installation is open yet, and exits 0.
+//!
+//! The installer leaves this to the runner and never turns on the shell's job
+//! control (`set -m`): with `curl … | sh`, a shell turning it off again hands the
+//! terminal back to curl's already ended process group, and dash fails with exit
+//! code 2 after the runner has started.
 
 use std::{
     fmt::Display,
@@ -48,8 +60,7 @@ pub enum Departure {
 /// Makes this process a runner in the background of its own, with no
 /// controlling terminal, so that neither an interrupt at the terminal it
 /// was started from, nor that terminal's closing, as when an SSH connection
-/// ends, reaches it or the jobs it starts (`runner.md` § Installation,
-/// pairing and removal). It makes a new session, which has none. A process
+/// ends, reaches it or the jobs it starts. It makes a new session, which has none. A process
 /// group's leader cannot: one that `run start` started in a session of its
 /// own, one that replaced itself with its update, or one a shell with job
 /// control started, at a terminal's foreground or not. When such a process

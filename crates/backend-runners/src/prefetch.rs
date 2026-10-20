@@ -1,4 +1,4 @@
-//! Downloading ahead (`runner.md` § Runner updates): the runner release an
+//! Downloading ahead (`crates/runner/src/update.rs`): the runner release an
 //! upgrade announced as next, over the management socket
 //! (`upgrades.md` § Prepare), which every connected paired device's runner
 //! downloads while the current release serves, and how far each device has

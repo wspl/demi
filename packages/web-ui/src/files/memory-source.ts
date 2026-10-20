@@ -89,7 +89,7 @@ function within(path: string, ancestor: string): boolean {
 
 /**
  * A Host's file watch as a page sees it, simulated over a memory tree, for
- * gallery specimens and tests (`runner.md` § Watching files): it counts its
+ * gallery specimens and tests (`crates/runner-host/src/subscriptions.rs`): it counts its
  * changes with one number, answers each subscription `live` from the number
  * now, or `unavailable`, reports a `change` to each subscription it
  * concerns with the change's number, acknowledges each renew, and sends a

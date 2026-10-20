@@ -1,4 +1,4 @@
-//! A job's kept output (`runner.md` § Pipes and output): every read of its
+//! A job's kept output (`crates/runner-jobs/src/kept_output.rs`): every read of its
 //! stdout and stderr, in the order the runner read them, one MessagePack
 //! record after another, within [`JOB_KEPT_BYTES`]. The runner writes it
 //! while the job runs and `job_read` streams it; the backend decodes it here,

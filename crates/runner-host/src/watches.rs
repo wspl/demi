@@ -1,12 +1,10 @@
-//! The file system watches of one backend connection (`runner.md`
-//! § Watching files): one watch per path and reach, shared by everything
-//! that follows it. The working tree's changes and the subscriptions of the
-//! same tree learn from one watch, which stops when the last of them lets
-//! it go.
+//! The file system watches of one backend connection: one watch per path and
+//! reach, shared by everything that follows it. The working tree's changes
+//! (`git`) and the subscriptions (`subscriptions`) of the same tree learn from
+//! one watch, which stops when the last of them lets it go.
 //!
 //! A tree's watch also covers its repository's `.git` when that lies
-//! outside it, as the working tree's changes need (`runner.md` § Working
-//! tree).
+//! outside it, as the working tree's changes need.
 
 use std::{
     collections::HashMap,
@@ -24,8 +22,7 @@ use crate::ignore::IgnoreFilter;
 use crate::tree_watch::{Change, Event, Reach, TreeWatch};
 
 /// The most watches of single files and folders a connection keeps on
-/// macOS, each a kqueue or a stream of its own (`runner.md` § Watching
-/// files).
+/// macOS, each a kqueue or a stream of its own (`tree_watch`).
 pub(crate) const MAX_SINGLE_WATCHES: usize = 64;
 
 /// Where a shared watch is.

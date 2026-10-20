@@ -161,7 +161,7 @@ async fn a_file_replaced_by_a_rename_is_modified_with_both_sides() {
     // A formatter's output, written before the job.
     fs::write(outside.path().join("style.css"), "new style\n").unwrap();
     // Quoted in the script: a Windows path's backslashes would be escapes
-    // (`runner.md` § Windows paths).
+    // (`crates/runner-shell/src/lib.rs`).
     let outside = outside.path().display();
     run(
         root.path(),
@@ -212,7 +212,7 @@ async fn a_move_carries_the_jobs_edits_to_the_new_name() {
     fs::create_dir(root.path().join("old")).unwrap();
     fs::write(root.path().join("old/x.ts"), "x\n").unwrap();
     // Quoted in the script: a Windows path's backslashes would be escapes
-    // (`runner.md` § Windows paths).
+    // (`crates/runner-shell/src/lib.rs`).
     let outside = outside.path().display();
     run(
         root.path(),
@@ -269,7 +269,7 @@ async fn a_job_lists_its_renames_and_removals_in_order() {
     fs::write(root.path().join("scratch/a.txt"), "a\n").unwrap();
     fs::write(root.path().join("scratch/deep/b.txt"), "b\n").unwrap();
     // Quoted in the script: a Windows path's backslashes would be escapes
-    // (`runner.md` § Windows paths).
+    // (`crates/runner-shell/src/lib.rs`).
     let outside_path = outside.path().display();
     run(
         root.path(),

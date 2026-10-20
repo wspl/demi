@@ -54,8 +54,8 @@ pub struct ConversationSlot {
     /// other work holds the conversation through `file_gate`.
     files: FileGate,
     /// Every open user stream holds a demand lease of it: someone watches
-    /// the conversation's Host, which is activity (`resource-lifecycle.md`
-    /// § Activity). Nothing reserves it, since a transition ends the streams
+    /// the conversation's Host, which is activity (`backend-user-shard`'s
+    /// `crates/backend-user-shard/src/lifecycle/mod.rs`). Nothing reserves it, since a transition ends the streams
     /// instead of waiting for them.
     pub streams: ActivityGate,
     /// The open file transfers and user streams.
@@ -333,7 +333,7 @@ pub struct Admitted {
 }
 
 /// What an admission that never wakes the Host is to the conversation's
-/// activity (`resource-lifecycle.md` § Activity).
+/// activity (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Attention {
     /// An open user stream: someone watches the Host, and the conversation
@@ -827,10 +827,9 @@ impl dyn HostShard + '_ {
     /// is connected, a paired device's or a running Cloud's. It takes no file
     /// gate and wakes nothing: a device whose runner is not connected, a
     /// stopped Cloud among them, lost the conversation's services with its
-    /// connection, and holds no files of it (`resource-lifecycle.md`
-    /// § Conversation release). A release that fails is logged with the Host
-    /// and the reason, and fails nothing that sent it, since nothing is left
-    /// for it (`resource-lifecycle.md` § A release that fails).
+    /// connection, and holds no files of it. A release that fails is logged
+    /// with the Host and the reason, and fails nothing that sent it, since
+    /// nothing is left for it (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId) {
         let Some(link) = self.devices().link(device) else {
             return;

@@ -516,8 +516,7 @@ async fn a_job_whose_directory_does_not_exist_fails_before_its_script_runs() {
 /// A message the runner cannot decode ends the connection: the runner's
 /// close frame names its type and the decoding error, and a process lost
 /// with the connection says it, while the job, which outlives connections,
-/// goes on over the next (`runner.md` § Connection and identity, § Command
-/// lifetime). About 0.5 s: one job, a login shell.
+/// goes on over the next (`crates/runner-protocol/src/wire/mod.rs`, `crates/runner/src/connection/kept.rs`). About 0.5 s: one job, a login shell.
 #[tokio::test(flavor = "local")]
 async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_process_says_which() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
@@ -689,7 +688,7 @@ async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothin
 
 /// A connection loss stops nothing: the runner keeps the job, the output it
 /// printed while away reaches the command, and the command ends as the job
-/// does (`runner.md` § Command lifetime). About a second: the runner
+/// does (`crates/runner/src/connection/kept.rs`). About a second: the runner
 /// connects twice, and the job is a login shell.
 #[tokio::test(flavor = "local")]
 async fn a_lost_connection_keeps_the_job_and_its_output_and_the_command_ends_as_it_does() {
@@ -1783,7 +1782,7 @@ async fn a_busy_native_command_blocks_neither_the_runner_nor_its_abort_and_a_sec
         .expect("a second runner ends")
         .unwrap();
     // Nothing comes of starting it again, so a service manager does not
-    // (`runner.md` § Starting with the computer).
+    // (`crates/runner/src/autostart.rs`).
     assert_eq!(second.status.code(), Some(0));
     assert!(
         String::from_utf8_lossy(&second.stderr).contains("another runner of this installation is running"),

@@ -129,8 +129,7 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
 }
 
 /// A stop shows the command stopping, and still running, until its runner
-/// says that the job ended; that end is the stop (`runner.md`
-/// § Cancellation and completion). Before, a stop the runner had not
+/// says that the job ended; that end is the stop (`crates/runner-shell/src/job.rs`). Before, a stop the runner had not
 /// confirmed marked the command stopped after ten seconds while it ran on.
 #[test]
 fn a_stop_shows_the_command_stopping_until_its_end_which_is_the_stop() {

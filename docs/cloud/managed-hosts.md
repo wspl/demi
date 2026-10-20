@@ -17,7 +17,7 @@ host.
 This document owns provisioning, isolation, persistence, reset, and the stored
 disk generations of Cloud machines. The
 [execution-target contract](../execution/sessions-and-targets.md) owns Host
-access and admission; [resource lifecycle](../execution/resource-lifecycle.md)
+access and admission; `crates/backend-user-shard/src/lifecycle/mod.rs`
 owns the idle rule and its clock. [Cloud setup](setup.md) owns deployment
 configuration; [Cloud images](images.md) owns image production.
 [Crates and packages](../architecture/crates-and-packages.md) defines the
@@ -286,18 +286,18 @@ runner's are on the system image, in directories the image makes for the
 
 - `/var/lib/demi/jobs/`, the job root: the directory of each running job,
   with its kept output of up to 16 MiB
-  ([Pipes and output](../execution/runner.md#pipes-and-output)). It goes once
+  (`crates/runner-jobs/src/tasks.rs`). It goes once
   the backend has read the job's end, so it holds nothing after a stop, and the
   runner removes any job directory it finds there when it starts.
 - `/var/lib/demi/tmp/`, the temporary directory: the runner's environment
   names it as `TMPDIR`, so jobs and every program they start put their
-  temporary files there ([Shell jobs](../execution/runner.md#shell-jobs)).
+  temporary files there (`crates/runner-shell/src/lib.rs`).
   The runner makes it when it is missing and empties it when it starts,
   which in a Cloud is once per boot; the image makes only `/var/lib/demi`,
   since a Cloud pinned to an older base keeps that base's `/var` while
   `/opt/demi` brings the new runner, and a runner that needed `tmp` from the
   image could not start on a production server's Cloud pinned to 0.1.11's base.
-- `/var/log/demi/`, the [Host log](../execution/runner.md#host-log), which
+- `/var/log/demi/`, the Host log (`crates/runner/src/host_log.rs`), which
   outlives a stop.
 
 None belongs in `/run` or `/tmp`, 256 MiB of memory each: a few busy jobs'
@@ -415,7 +415,7 @@ The OCI process is a shipped minimal init (`tini`) running as `demi`, UID/GID
 1000, which starts the runner, `/opt/demi/bin/demi-runner`, and reaps orphaned
 descendants. The runner's environment names its release in `DEMI_RELEASE_ID`,
 from the manifest of the base it comes from, which the runner presents to the
-backend ([Runner updates](../execution/runner.md#runner-updates)), and its
+backend (`crates/runner/src/update.rs`), and its
 temporary directory in `TMPDIR`, `/var/lib/demi/tmp` ([Images](#images)). The manager
 supplies mounts, network configuration, and, with its
 [resource limits](#resource-limits) on, the cgroup limits before start. The
@@ -562,14 +562,14 @@ uses join one allocation and wake. Metadata alone never creates a sandbox.
 | Resetting → running | Publish a fresh system with retained home, then boot. |
 | Failed boot, save, or reset | Keep the device and operation error; retry only after recovery establishes the authoritative state. |
 
-The [idle rule](../execution/resource-lifecycle.md#idle-window) applies across
+The idle rule (`crates/backend-user-shard/src/lifecycle/mod.rs`) applies across
 every conversation using this device. Tabs, resident services, attachments, and
 a look at what runs there, such as a tab listing, do not keep it active.
 Maintenance does not restart the idle clock. Stopping Cloud ends all in-sandbox
 conversation browser and native state. A running Cloud hears each
 conversation's release as a paired device does; a stop needs none, since it
 ends everything a release would
-([A Cloud's idle stop](../execution/resource-lifecycle.md#a-clouds-idle-stop)),
+(`crates/backend-cloud/src/maintenance.rs`),
 and cleanup never wakes a stopped Cloud.
 
 The hard lifetime cap can stop unattended jobs only after reserving admission
@@ -928,7 +928,7 @@ device. Rotation rejects the previous boot's token. Sandbox root can inspect its
 own runner and credential; the boundary is against other users and
 infrastructure, not against the owner of that Cloud. The ordinary paired-device
 registration and persistent token path remain separate, as defined by the
-[runner](../execution/runner.md).
+`crates/runner/src/main.rs`.
 
 ## Verification
 

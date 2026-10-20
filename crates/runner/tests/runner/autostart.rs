@@ -1,4 +1,4 @@
-//! Starting with the computer (`runner.md` § Starting with the computer):
+//! Starting with the computer (`crates/runner/src/autostart.rs`):
 //! the runner of an installer's installation keeps its registration with
 //! the system's service manager and removes it last as it goes; its exit
 //! status says whether a new start may cure what ended it; `run start`

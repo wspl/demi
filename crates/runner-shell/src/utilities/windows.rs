@@ -1,9 +1,9 @@
-//! `chmod` and `chown` on Windows, which has no Unix mode or owner
-//! (`runner.md` § Standard utilities): each reads GNU's command line and
-//! checks what GNU's checks, its operands, the mode or the owner and group,
-//! and each file, failing with GNU's message and status; a valid change
-//! changes nothing, so a script's `chmod +x build.sh` succeeds. An owner or
-//! group is a number or the name of an account Windows knows.
+//! `chmod` and `chown` on Windows, which has no Unix mode or owner: each
+//! reads GNU's command line and checks what GNU's checks, its operands, the
+//! mode or the owner and group, and each file, failing with GNU's message and
+//! status; a valid change changes nothing, so a script's `chmod +x build.sh`
+//! succeeds. An owner or group is a number or the name of an account Windows
+//! knows.
 
 use std::{
     ffi::OsString,

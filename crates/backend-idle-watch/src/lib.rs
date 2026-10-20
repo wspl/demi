@@ -1,5 +1,7 @@
-//! The idle rule's mechanism (`resource-lifecycle.md`): one idle window,
-//! and one watch per resource.
+//! The idle rule's mechanism: one idle window, and one watch per resource.
+//! The rule itself, what counts as activity and what a retirement does, is
+//! `crates/backend-user-shard/src/lifecycle/mod.rs`'s.
+//!
 //! A watch reads its resource's gates: the resource is idle once its last
 //! demand ended, and new demand, however brief, restarts a full window. At
 //! the deadline the watch reserves the resource, reads it again under the
@@ -7,7 +9,9 @@
 //! is never retired. Maintenance holds a gate without demand: it postpones
 //! a retirement without restarting the window, and the retirement follows
 //! its release. The watch does not know what its resource is: its callers
-//! read, reserve and retire it through an [`IdlePolicy`].
+//! read, reserve and retire it through an [`IdlePolicy`]. A watch never
+//! asks a Host or a service whether it is busy: activity is what the
+//! resource's gates admitted.
 
 use std::future::Future;
 use std::time::Duration;

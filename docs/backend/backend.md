@@ -54,8 +54,8 @@ over the manager's Unix socket.
 | `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the Claude Code machine, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` and `demi attachment` groups | [Host operations](../execution/sessions-and-targets.md#host-operations) |
 | `plugins` | `backend-plugins`, `demi-backend` (`plugins`) | The plugin host: the registry and its checks, the command set, instructions and context sources the agent server is given, each user's instances, the port's operations, page state and page calls (`backend-plugins`); the built-in plugins, in their order of registration (the backend's `plugins`) | [Plugins](../architecture/plugins.md) |
-| `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `lifecycle` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock and the conversation release (`backend-user-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
+| `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | `crates/runner/src/main.rs`, [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
+| `crates/backend-user-shard/src/lifecycle/mod.rs` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock and the conversation release (`backend-user-shard`) | `crates/backend-user-shard/src/lifecycle/mod.rs` |
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
 | `storage` | `backend-database`, `backend-blobs` | The control service, conversation databases and the tree store with its records of commands' outputs and attachments (`backend-database`); the object store (`backend-blobs`) | [Storage](storage.md) |
@@ -332,9 +332,9 @@ minutes while it waits. A signed-in user claims the code with
 the waiting runner only, and hands the socket to the user's shard. The edge
 accepts at most 10 claim attempts per user per minute and answers 429 beyond
 that. A Cloud guest always presents its token and never pairs
-([Runner](../execution/runner.md#managed-guests-and-verification)). Pipe
+(`crates/runner/src/main.rs`). Pipe
 requests carry the device token as a bearer token.
-[Runner](../execution/runner.md#connection-and-identity) defines the
+`crates/runner-protocol/src/wire/mod.rs` defines the
 connection itself.
 
 [Instance mode](../product/users.md#instance-mode-shared-vs-isolated)
@@ -589,7 +589,7 @@ An ID whose lines are no longer kept answers an empty list.
 
 Before anything else, the backend raises its own soft limit on open files
 as far as the system allows, to the hard limit, as the runner does
-([Load](../execution/runner.md#load)): every socket of a page or a runner,
+(`crates/runner/src/main.rs`): every socket of a page or a runner,
 every database and every pipe of a stream shares one table, and systemd
 starts a service with a soft limit of 1024 under a hard one of 524288. A
 system that refuses the raise leaves the limit as it was, and the log warns.
@@ -689,7 +689,7 @@ without the close frame, and connects again as it does after any close
 ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
 A Host cannot hold up shutdown either: a runner connection's end waits at
 most 5 seconds for the work it carries
-([Connection and identity](../execution/runner.md#connection-and-identity)).
+(`crates/runner-protocol/src/wire/mod.rs`).
 
 ## Configuration
 

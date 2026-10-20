@@ -1,6 +1,6 @@
 //! Host requests through a connection's owner: filesystem work and kills stay
 //! available while a job runs, jobs and raw processes get the environment
-//! `runner.md` § Host operations gives them, the device's without the
+//! `crates/runner/src/environment.rs` gives them, the device's without the
 //! runner's own names, and a job's directory lasts
 //! until the backend has what it needs of the job.
 
@@ -208,8 +208,7 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
 /// The device environment is the runner's own without its `DEMI_*` names,
 /// for a job and a raw process alike; and a job's temporary directory is the
 /// device's, never one under the job root, whose path is too long for a
-/// dev server's Unix socket on macOS (`runner.md` § Host operations, § Shell
-/// jobs). Before the fix, the job read the runner's release and setting and
+/// dev server's Unix socket on macOS (`crates/runner/src/environment.rs`, `crates/runner-shell/src/lib.rs`). Before the fix, the job read the runner's release and setting and
 /// a `TMPDIR` under its job directory.
 #[cfg(unix)]
 #[tokio::test]
@@ -370,7 +369,7 @@ async fn directories_become(host: &Host, count: usize) {
 
 /// A job's directory lasts until the backend releases the job, which keeps
 /// a running job's, and a runner that starts removes what an earlier one
-/// left (`runner.md` § Pipes and output). About two seconds: the runner
+/// left (`crates/runner-jobs/src/tasks.rs`). About two seconds: the runner
 /// starts three times, and two shell jobs start a login shell each.
 #[tokio::test]
 async fn job_directories_go_with_their_release_and_the_next_start() {

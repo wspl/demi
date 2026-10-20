@@ -1,12 +1,14 @@
-//! A connection's direct channels (`direct-channel.md`): the runner carries
-//! out each channel's operation as it carries out the backend's request for
-//! the same thing (`runner.md` § Host operations), with the same functions,
-//! limits, atomic writes and file watches, and opens a `stream` as a
-//! `service_open`, with a `user` caller in the conversation the header
-//! names. It gives each stream an id and tells the backend the stream's
-//! opening, before the stream asks the backend for its artifacts as a
-//! stream the backend opened does, and its closing; the backend counts the
-//! open stream as the conversation's activity.
+//! A connection's direct channels (`direct-channel.md`): a page reaches the runner
+//! without the backend in the middle, over WebRTC data channels the backend
+//! introduces and authorizes. The runner carries out each channel's operation as it
+//! carries out the backend's request for the same thing (`demi_runner_host`), with
+//! the same functions, limits, atomic writes and file watches, and opens a `stream`
+//! as a `service_open`, with a `user` caller in the conversation the header names.
+//! It tells the backend each stream's opening (`direct_stream`), before the stream
+//! asks the backend for its artifacts as a stream the backend opened does, and its
+//! closing: the backend counts an open stream as the conversation's activity, so a
+//! live view watched only over the direct channel keeps the conversation from its
+//! idle release. Every peer closes when the connection to the backend ends.
 
 use std::{
     collections::HashMap,
@@ -171,7 +173,7 @@ impl Operations for HostOperations {
     fn text(&self, scope: Scope, path: String, held: Option<String>) -> Answer<FileText> {
         let cancel = self.closed.clone();
         Box::pin(async move {
-            // Before anything is read (`runner.md` § Watching files).
+            // Before anything is read (`crates/runner-host/src/subscriptions.rs`).
             let read_at = demi_runner_host::numbers::read_at();
             let target = resolve(&scope.cwd, &path);
             // One byte more than the limit, so a file past it is refused
@@ -216,7 +218,7 @@ impl Operations for HostOperations {
         let cancel = self.closed.clone();
         let home = self.home.clone();
         Box::pin(async move {
-            // Before anything is read (`runner.md` § Watching files).
+            // Before anything is read (`crates/runner-host/src/subscriptions.rs`).
             let read_at = demi_runner_host::numbers::read_at();
             let path = path.unwrap_or_else(|| scope.cwd.clone());
             let request = Inbound::FsReaddir {

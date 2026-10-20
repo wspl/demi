@@ -1,5 +1,5 @@
 //! A command's whole output in the runner wire's kept-output records
-//! (`runner.md` § Pipes and output): what `job_read` streams, and what the
+//! (`crates/runner-jobs/src/kept_output.rs`): what `job_read` streams, and what the
 //! backend stores as the command's output (`storage.md` § Command outputs).
 
 use bytes::Bytes;

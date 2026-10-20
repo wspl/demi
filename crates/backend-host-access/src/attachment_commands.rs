@@ -7,7 +7,7 @@
 //! access, and refuses one over 25 MiB before reading a byte; a blob the
 //! conversation owner's namespace holds already is not read again, only its
 //! first 64 KiB from the object store for its media type. Otherwise the runner streams the file's bytes to the backend
-//! through a pipe (`runner.md` § File contents), and the backend stores the
+//! through a pipe (`crates/runner-host/src/files.rs`), and the backend stores the
 //! blob in that namespace. The backend reads the media type from the bytes
 //! as it does for the user's uploads, and stores the record under the next
 //! number of the conversation's `attachment` sequence. The command returns

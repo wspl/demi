@@ -1,6 +1,6 @@
 #![cfg(unix)]
 //! With no open file left, recording an edit waits for one rather than leave
-//! the edit out (`runner.md` § Load). Its own binary: it lowers the process's
+//! the edit out (`crates/command-sdk/src/descriptors.rs`). Its own binary: it lowers the process's
 //! open-file limit and holds every remaining descriptor.
 
 use std::{

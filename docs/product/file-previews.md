@@ -10,7 +10,7 @@ page, when a transfer ends, and what file content may do in the page. It also
 owns how a message shows the files it names, and how a tool call shows the
 images and videos its result carries. The routes belong to
 [Web API](web-api-hosts.md#file-text-and-working-tree-changes), the runner's byte
-transport to [Runner](../execution/runner.md#file-contents), and Host access
+transport to `crates/runner-host/src/files.rs`, and Host access
 to [Sessions and targets](../execution/sessions-and-targets.md#host-operations).
 The gallery shows what each preview looks like.
 
@@ -148,7 +148,7 @@ holds `vendor → ../shared/vendor` and `config.json → ~/.config/app.json`:
   folder whose target is gone says it does not exist.
 
 The listing says what each link's target is
-([Host operations](../execution/runner.md)), so the tree shows all of this
+(`crates/runner-host/src/lib.rs`), so the tree shows all of this
 without a request per link. The attachment picker and a device's folder
 dialog show links the same way, and act on what a link leads to when it is
 chosen, after reading it again, as the tree does: a link to a folder opens
@@ -834,7 +834,7 @@ in the product's origin:
 
 | Where | Responsibility |
 | --- | --- |
-| The runner | Moves file contents through pipes ([Runner](../execution/runner.md#file-contents)). |
+| The runner | Moves file contents through pipes (`crates/runner-host/src/files.rs`). |
 | The Host contract and the backend's remote Host | Streamed reads, whole or by range, and writes, over pipes. |
 | The backend | The raw routes, their headers and ranges, and ending transfers. |
 | The `shared-types` contract crate | The file-type table and its lookup, generated for the web app into `@demicodes/protocol`. |

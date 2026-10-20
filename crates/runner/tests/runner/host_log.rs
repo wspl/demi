@@ -1,4 +1,4 @@
-//! The Host log (`runner.md` § Host log) as `log_read` answers it: a page
+//! The Host log (`crates/runner/src/host_log.rs`) as `log_read` answers it: a page
 //! holds what its cursor, limit and source ask for; the numbering carries
 //! across a restart and past a torn line; and long lines fill the newer
 //! file, which then replaces the older one, while a cursor still reads every
@@ -13,7 +13,7 @@ use serde_json::json;
 
 use crate::Host;
 
-/// What each of the log's two files holds (`runner.md` § Host log).
+/// What each of the log's two files holds (`crates/runner/src/host_log.rs`).
 const FILE_BYTES: u64 = 4 * 1024 * 1024;
 /// What a page holds.
 const PAGE_BYTES: usize = 2 * 1024 * 1024;

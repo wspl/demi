@@ -498,7 +498,7 @@ for a long time, `demi shell status 17 --wait 5m` or a stop that waits for its
 command's end, outlasts a proxy's limit on an unanswered request, such as
 Cloudflare's 100 seconds, which once ended such a call with
 `pipe refused (524)`, and its body keeps itself alive while the call says
-nothing ([Pipes and output](runner.md#pipes-and-output)). A stdout pipe handed to a job on another device that then
+nothing (`crates/runner-jobs/src/tasks.rs`). A stdout pipe handed to a job on another device that then
 fails ends the call with 1 and its cause on stderr, as any failing relayed
 pipe does, below. A call's stdout lives until all of it has
 reached the calling process: a call that ends while its output is still on
@@ -525,7 +525,7 @@ exiting, a relayed pipe failing, or the backend shutting down, ends with 1 and
 its cause on stderr. When several causes stop a call, the first is the one
 reported. A call whose runner connection ends is stopped as well, and a
 handler that has not ended 5 seconds later is aborted
-([Connection and identity](runner.md#connection-and-identity)).
+(`crates/runner-protocol/src/wire/mod.rs`).
 
 ## External command clients
 
@@ -533,7 +533,7 @@ An external program such as `xargs` calls a declared root through an alias to
 `demi-runner`. The alias basename selects the root. The client forwards raw argv,
 cwd, environment, and its live execution context, then streams command IO. It
 compares its own stdin with the job's input, as a builtin does, and
-forwards the answer ([A job's own input](runner.md#a-jobs-own-input)). It
+forwards the answer (`crates/runner-process/src/stdio.rs`). It
 contains no native command algorithms. Brush builtins call the dispatcher directly
 and do not need this extra process or connection.
 
@@ -548,7 +548,7 @@ accepts local connections only from the current account:
 | Windows | Account-restricted byte-mode named pipe |
 
 Each client opens one HTTP/2 connection and one invocation stream. The runner
-accepts every local connection ([Load](runner.md#load)). When it cannot accept
+accepts every local connection (`crates/runner/src/main.rs`). When it cannot accept
 one yet, because its queue of waiting connections is full or it has no open
 file to spare, the client waits and connects again for as long as the runner
 runs. A refused connection looks the same whether the runner is busy or gone,
@@ -564,7 +564,7 @@ Aliases use the runner release selected for their backend registration. That
 registration's authenticated local management endpoint provides status and drain.
 Unix and PowerShell installers verify release metadata, size, and SHA-256 before
 publishing the executable, with installation locks protecting upgrades. The
-[runner design](runner.md#connection-and-identity) owns registration lifetime;
+runner design (`crates/runner-protocol/src/wire/mod.rs`) owns registration lifetime;
 [builds and releases](../delivery/builds-and-releases.md) owns release production
 and checks.
 
@@ -619,7 +619,7 @@ the bytes it makes to its stdout for a pipe into `demi file view` or a file.
   The dispatcher in the runner hands every medium to the invocation's job,
   whatever the command's stdout is: a pipe, a file, a command substitution or
   the job's output. The job numbers and keeps it
-  ([Pipes and output](runner.md#pipes-and-output)) and writes its line into
+  (`crates/runner-jobs/src/tasks.rs`) and writes its line into
   the job's output as it arrives. A medium never becomes stdout bytes.
 - **Checks.** A medium from a leaf that does not declare `media`, and a
   medium over 16 MiB, fail the command: each is a defect of its handler,
@@ -636,7 +636,7 @@ beside the file. Each resolves relative paths against the invocation's cwd
 and stops at the invocation's cancellation. Mutations run one at a time in a
 service: one mutation's planning and writes finish before the next begins.
 Each replaced file is published atomically, from a temporary file beside it
-whose name says it is Demi's ([File contents](runner.md#file-contents)), and
+whose name says it is Demi's (`crates/runner-host/src/files.rs`), and
 an edit or a patch that changes several files restores the files it already
 changed when a later write fails. Edit and patch record their writes for
 [edit tracking](edit-tracking.md).
@@ -811,7 +811,7 @@ paths or its stdin, and declares `media`; it prints nothing to stdout
 (`crates/command-package-file/src/files.rs`). It
 has no reading of text: a model reads a file with `cat`, `sed -n` or `rg`,
 the standard utilities on every Host
-([Standard utilities](runner.md#standard-utilities)), and a text file given
+(`crates/runner-shell/src/utilities.rs`), and a text file given
 to `demi file view` fails with the line that names `cat`.
 
 ## Attachment commands
@@ -876,7 +876,7 @@ The sign-in page works again:
   holds already is not read again, and the record names it, with the media
   type the backend reads from the blob's first 64 KiB. Otherwise the runner
   streams the file's bytes to the backend through a pipe
-  ([File contents](runner.md#file-contents)), and the backend stores the blob
+  (`crates/runner-host/src/files.rs`), and the backend stores the blob
   and then the record.
 
 
@@ -898,7 +898,7 @@ a7  screenshot.png
 - **Never replaces.** The file takes the first free name, `screenshot-2.png`
   when a different `screenshot.png` is there, and the same bytes already
   under the name are that file, not written again
-  ([Host operations](runner.md#host-operations)).
+  (`crates/runner-host/src/lib.rs`).
 - **How it travels.** The backend offers the blob to the runner for the
   length of the call, at an address the runner's own token opens, and the
   runner fetches it through the one downloader

@@ -132,7 +132,7 @@ pub async fn running_hint(
 
 /// Runs one call on the connection that serves and returns its exit code;
 /// while the runner is away, the call waits for its next connection, and
-/// fails once the runner ends (`runner.md` § Command lifetime).
+/// fails once the runner ends (`crates/runner/src/connection/kept.rs`).
 pub async fn invoke(
     pipes: &PipeClient,
     request: Request,
@@ -384,7 +384,7 @@ async fn send_input(
             }
         });
         // A stream pipe: the call's input must reach the backend as it is
-        // read, however long it takes (`runner.md` § Host operations).
+        // read, however long it takes (`crates/runner/src/main.rs`).
         let result = pipes.stream(&reference.url, body, stop).await;
         // A failed upload ends nothing here: the backend hears of it from
         // the report, which fails a pipe still open and with it the call,

@@ -1,8 +1,42 @@
-//! The embedded brush shell and the standard utilities, which run in the
-//! runner's process (`runner.md` § Shell jobs): a fresh shell per job, the
-//! builtins that act on a process, the declared commands' builtins, which
-//! hand each invocation to the handler the job supplies, and the job shell
-//! contract's implementation.
+//! The embedded brush shell and the standard utilities, which run in the runner's
+//! process: a fresh shell per job, the builtins that act on a process, the declared
+//! commands' builtins (which hand each invocation to the handler the job supplies)
+//! and the job shell contract's implementation.
+//!
+//! A shell job owns its working directory, environment, IO and asynchronous work,
+//! and carries the command context the backend built for it (the runner never
+//! derives that from the job's environment). Brush runs inside the runner on a
+//! runtime of its own, apart from the control thread, and every in-process file
+//! write passes through the job's scope, which reports what the job created or
+//! modified when it exits (edit tracking). Cancelling job A releases its work and
+//! preserves the runner and job B:
+//!
+//! ```text
+//! Runner process
+//! +--------------------------------------------------+
+//! | Job A                    Job B                   |
+//! | +--------------------+   +--------------------+  |
+//! | | Brush execution    |   | Brush execution    |  |
+//! | | Background tasks   |   | Background tasks   |  |
+//! | | IO and child work  |   | IO and child work  |  |
+//! | +--------------------+   +--------------------+  |
+//! +--------------------------------------------------+
+//! ```
+//!
+//! The runner sets no `TMPDIR` for a job: it is the device environment's. A
+//! temporary directory of the job's own would break dev servers: macOS limits a Unix
+//! socket's path to 104 bytes, which a path under the job root exceeds, and a daemon
+//! the job started would outlive the directory. A job's `HOME` is the request's,
+//! else the device environment's, else the home the runner reports, so that a runner
+//! a service manager starts without `HOME` still has its jobs read `~/.profile`,
+//! where brush with `$HOME` unset would look for `/.local/bin/env`.
+//!
+//! Standard utilities behave as GNU's on every Host, macOS included, so a script
+//! written on a Linux Cloud runs on a Mac unchanged, and a model that writes a BSD
+//! form (`sed -i ''`) gets GNU's error for it, which names the problem and is the
+//! one models know best. On Windows a job takes drive paths as Windows writes them
+//! (`C:/Users/…`), never the Git Bash `/c/…` form, which would name `/c` at the root
+//! of the current drive.
 
 mod declared;
 mod interpreter;

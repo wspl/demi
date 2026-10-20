@@ -77,7 +77,7 @@ require a live runner in advance. The operation joins wake and waits for access.
 
 Scripts run in embedded brush on the target. Cloud jobs use the guest account;
 paired-device jobs use the device account. Login profiles, the directory each
-job starts in, background work, and cancellation follow the [runner job contract](runner.md#shell-jobs).
+job starts in, background work, and cancellation follow the runner job contract (`crates/runner-shell/src/lib.rs`).
 [Managed hosts](../cloud/managed-hosts.md) defines Cloud permissions and persistent volumes.
 
 ## Bind jobs to their caller
@@ -136,7 +136,7 @@ The backend performs one protected transition:
 4. Reserve conversation file admission. When the switch leaves the old device
    and that device's runner is connected, a paired device's or a running
    Cloud's, send it the
-   [conversation release](resource-lifecycle.md#conversation-release).
+   conversation release (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
 5. Commit the target and attachment changes against the expected old selection.
 6. Advance the execution-context revision and release all reservations. Admit
    file transfers and user streams again, against the resulting selection.
@@ -228,14 +228,14 @@ and release as its runner last reported them with the architecture, the
 directory its shells start in, that files only the agent needs, such as a
 screenshot it checks or a probe script, go in `$DEMI_SCRATCH`, which shows as
 no change and lasts as long as the conversation
-([Scratch directory](runner.md#scratch-directory)), and that the standard utilities are GNU's
-([Standard utilities](runner.md#standard-utilities)). On macOS it adds where
+(`crates/runner-jobs/src/scratch.rs`), and that the standard utilities are GNU's
+(`crates/runner-shell/src/utilities.rs`). On macOS it adds where
 the system's own are: `Standard utilities (sed, grep, cp, ls, find, …) are
 GNU's on every host; macOS's own are in /usr/bin.` On Windows it says what the
 shell is, since a model otherwise guesses Git Bash or MSYS and writes `/c/…`
 paths: `Shells are bash (Demi's own, not Git Bash or WSL); Windows programs
 such as cmd, powershell and git run by name. Write paths as C:/Users/…, not
-/c/Users/…; quote a path with backslashes.` ([Windows paths](runner.md#windows-paths)) A Host whose runner never connected, such as
+/c/Users/…; quote a path with backslashes.` (`crates/runner-shell/src/lib.rs`) A Host whose runner never connected, such as
 a Cloud that has not run yet, is named without the system.
 Its persisted context block describes the switch, attached hosts, and any Cloud
 reset. Observation is node-specific: the root seeing an update does not consume
@@ -340,7 +340,7 @@ hosts it reaches:
 | `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there, and so puts it in that directory's project, or among Conversations for the Host's home ([Resolve a target](#resolve-a-target)); the primary Host it leaves is attached. The command checks the directory at once and fails, with nothing pending, when the host is offline or the path is no directory there (`/srv/x is not a directory on build-box`) | The host, when the conversation may not reach it |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |
 | `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
-| `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | The new host, every time |
+| `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation (`crates/runner/src/console.rs`) | The new host, every time |
 | `demi host attach <device>` | Attaches a device to this conversation | The device, when the conversation may not reach it |
 | `demi host detach <host>` | Detaches one; the conversation may still reach it | none |
 
@@ -523,7 +523,7 @@ archived conversation, like any operation, with two differences:
 - Once admitted, it does not hold the conversation's file gate, so a
   transition ends it instead of waiting for it. While it is open the
   conversation is active, which keeps a Cloud awake
-  ([Activity](resource-lifecycle.md#activity)).
+  (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 
 An archive, a target or directory change, and a detach end the conversation's
 user streams as they end file transfers; a Cloud stop or reset ends them with
@@ -581,24 +581,24 @@ another Host.
 
 ### Lifecycle access
 
-Cleanup admission for [conversation idle and release](resource-lifecycle.md).
+Cleanup admission for conversation idle and release (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 
 A target/directory change or archive validates its request, reserves the idle
 tree, ends the conversation's file transfers, user streams and the one-shot
 user calls admitted like them, and awaits their release. Other file work
 follows normal busy admission and is not silently classified as a passive
 observer. After reserving conversation file admission, it sends the
-[conversation release](resource-lifecycle.md#conversation-release) through the
+conversation release (`crates/backend-user-shard/src/lifecycle/conversations.rs`) through the
 conversation's host access to each device the change leaves, then commits the
 target/archive change, also when a release failed
-([A release that fails](resource-lifecycle.md#a-release-that-fails)). The old
+(`crates/backend-user-shard/src/lifecycle/conversations.rs`). The old
 binding remains authoritative until commit.
 The release is a runner message, not Host IO: it needs no file gate, and it is
 skipped for a device whose runner is not connected, a stopped Cloud among
 them, because the connection loss or the stop has already ended the
 conversation's services there, and the device holds no files of the
 conversation for a release to remove
-([Conversation release](resource-lifecycle.md#conversation-release)).
+(`crates/backend-user-shard/src/lifecycle/conversations.rs`).
 
 If the database commit fails after the release, the old selection remains and
 the conversation browser starts fresh at its next open; the state of its tabs
@@ -702,7 +702,7 @@ these cases:
 | Not dispatched | A command waiting for its device waits again, and is sent once its runner connects; any other operation continues through the normal resume path. |
 
 A command outlives a connection loss and a backend restart, but not its
-runner ([Command lifetime](runner.md#command-lifetime)). The conversation's
+runner (`crates/runner/src/connection/kept.rs`). The conversation's
 database records each running command, with its job and its device
 ([Command outputs](../backend/storage.md#command-outputs)), and when the
 device's runner connects, the backend matches the jobs its hello lists with
@@ -736,7 +736,7 @@ conversations and deletes metadata, not its directory.
 
 Full shell output stays on the execution device until the conversation's Host
 resources are released: every Host removes it at the
-[conversation release](resource-lifecycle.md#conversation-release), and a
+conversation release (`crates/backend-user-shard/src/lifecycle/conversations.rs`), and a
 Cloud's reset removes all of it with the system image. Durable results must be
 written to persistent directories; the backend transcript retains only the
 recorded output view.
@@ -748,7 +748,7 @@ the conversation's host access, with its file gates and the admission of file
 transfers and user streams; each device's runner connection and the
 authorization of its callbacks; the conversation idle clock and the
 conversation release; and the Cloud's policy and machine transitions (see
-[Conversation idle and Host resource release](resource-lifecycle.md)). The edge
+`crates/backend-user-shard/src/lifecycle/mod.rs`). The edge
 moves the bytes of transfers and user streams; admitting them is the
 shard's. The agent owns tree admission and per-node context persistence. The
 Host adapter carries live execution facts without knowing user policy.

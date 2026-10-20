@@ -81,7 +81,7 @@ pub trait CloudShard {
     /// Where a booting Cloud's runner reaches this backend.
     fn public_url(&self) -> &PublicUrl;
     /// How long a Cloud no conversation uses stays awake
-    /// (`resource-lifecycle.md` § Idle window).
+    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`).
     fn idle_window(&self) -> Duration;
     /// The user's pages, which show the Cloud and the devices.
     fn marks(&self) -> UserMarks;

@@ -1,4 +1,4 @@
-//! The job shell contract (`runner.md` § Shell jobs): how the runner starts
+//! The job shell contract (`crates/runner-shell/src/lib.rs`): how the runner starts
 //! a job's script, feeds its input, signals, cancels and awaits it, without
 //! knowing which shell runs it.
 
@@ -34,11 +34,11 @@ pub struct JobCommands {
 pub struct JobStart {
     pub script: String,
     /// Where the job starts; a directory that does not exist fails the job
-    /// before its script runs (`runner.md` § Shell jobs).
+    /// before its script runs (`crates/runner-shell/src/lib.rs`).
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
     /// Whether the job's input is its own input rather than a stdin the
-    /// backend relays (`runner.md` § A job's own input).
+    /// backend relays (`crates/runner-process/src/stdio.rs`).
     pub live: bool,
     /// Ends the job and everything it runs when cancelled.
     pub cancellation: CancellationToken,
@@ -73,8 +73,7 @@ pub trait ShellJob: Send + Sync {
 
     /// Stops the job for a signal that ends it, which its exit reports:
     /// `KILL` at once, the others by ending its shell work and signalling
-    /// every process group it started (`runner.md` § Cancellation and
-    /// completion); other signals are refused.
+    /// every process group it started (`crates/runner-shell/src/job.rs`); other signals are refused.
     fn signal(&self, signal: Signal) -> io::Result<()>;
 
     fn cancel(&self);

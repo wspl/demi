@@ -1,4 +1,4 @@
-//! Downloading ahead (`runner.md` § Runner updates): a backend that names
+//! Downloading ahead (`crates/runner/src/update.rs`): a backend that names
 //! the runner release coming next has an installed runner download it while
 //! it serves, and the download resumes from the bytes it has when its
 //! connection breaks off or stalls. The backend here is scripted: it serves

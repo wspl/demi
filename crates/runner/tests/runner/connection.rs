@@ -1,4 +1,4 @@
-//! The backend connection (`runner.md` § Connection and identity): the
+//! The backend connection (`crates/runner/src/connection/mod.rs`): the
 //! runner's socket URL, its typed messages, a connection a malformed message
 //! or the backend ends, and an inbound queue that holds the reading back
 //! instead of closing the connection.
@@ -127,8 +127,7 @@ async fn malformed_input_fails_the_connection() {
 
 /// A connection the backend closes over a message of the runner's that it
 /// cannot decode ends with the backend's reason, which the runner's log
-/// reports; the runner connects again (`runner.md` § Connection and
-/// identity). About 0.5 s: a runner's start and a reconnect.
+/// reports; the runner connects again (`crates/runner/src/connection/mod.rs`). About 0.5 s: a runner's start and a reconnect.
 #[tokio::test]
 async fn a_backend_that_cannot_decode_a_message_ends_the_connection_with_its_reason() {
     tokio::time::timeout(Duration::from_secs(60), async {

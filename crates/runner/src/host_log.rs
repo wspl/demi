@@ -1,9 +1,22 @@
-//! The Host's log (`runner.md` § Host log): one bounded log of diagnostics
-//! per Host, kept in two files so the older can be replaced when the newer
-//! fills. Every part of the runner writes `tracing` events; the log is a
-//! `tracing` layer that queues each event's lines and never waits for the
-//! disk. One writer thread owns the files: it writes the queued lines and
-//! answers reads between them.
+//! The Host's log: one bounded log of diagnostics per Host, kept in two files so
+//! the older can be replaced when the newer fills. Without it a resident service
+//! that fails on a Cloud and writes why to its standard error leaves nothing, and
+//! the page only sees a view that never learns its tabs.
+//!
+//! Every part of the runner writes `tracing` events (the source and the conversation
+//! as fields); the log is a layer that writes them as lines, so no module holds a
+//! handle to the files, and a resident service's standard error enters the same way.
+//! Writing never holds up the work it describes: the layer queues each line, one
+//! writer thread owns the files, a line the queue has no room for is dropped and
+//! counted, and the writer answers reads between two lines, so a read holds every
+//! line queued before it and never races a write. A paired device keeps it in `log/`
+//! of its installation state; a managed guest's state is temporary, so it keeps it in
+//! `/var/log/demi` on the system layer, which outlives a stop.
+//!
+//! What a source writes is diagnostics: what it tried and why it failed. Page
+//! content, typed text, cookies, tokens and file contents never go to the log. A
+//! failure the user's page is waiting on is also told to the page; the log is where
+//! the cause is found, never the only place a failure is told.
 
 use std::{
     fmt::{self, Write as _},
@@ -46,7 +59,7 @@ struct Limits {
     page_bytes: usize,
 }
 
-/// Each file holds 4 MiB (`runner.md` § Host log), and a page 2 MiB, so an
+/// Each file holds 4 MiB, and a page 2 MiB, so an
 /// answer stays well within the connection's message limit.
 const LIMITS: Limits = Limits {
     file_bytes: 4 * 1024 * 1024,
@@ -238,7 +251,7 @@ impl<S: Subscriber> Layer<S> for HostLogLayer {
 
 /// The console layer: each event it is given goes to standard error, which a
 /// guest's console shows. Only what was tried and why it failed belongs there:
-/// never a token, a pairing code or content (`runner.md` § Host log).
+/// never a token, a pairing code or content.
 pub struct Console;
 
 impl<S: Subscriber> Layer<S> for Console {

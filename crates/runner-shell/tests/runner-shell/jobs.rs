@@ -1,5 +1,4 @@
-//! A job's shell as the runner starts it (`runner.md` § Shell jobs,
-//! § Cancellation and completion): a cancelled job reports the signal that
+//! A job's shell as the runner starts it (`crates/runner-shell/src/lib.rs`, `crates/runner-shell/src/job.rs`): a cancelled job reports the signal that
 //! asked for its end, ends with nothing left running wherever it blocks,
 //! while a sibling in the same process goes on, and a finished job keeps
 //! the output of its process substitutions.

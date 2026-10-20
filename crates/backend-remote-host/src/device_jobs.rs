@@ -1,5 +1,4 @@
-//! A device's jobs, which outlive each connection of its runner (`runner.md`
-//! § Command lifetime, `sessions-and-targets.md` § Recovery and
+//! A device's jobs, which outlive each connection of its runner (`crates/runner/src/connection/kept.rs`, `sessions-and-targets.md` § Recovery and
 //! persistence). A connection that ends leaves its jobs waiting for the
 //! next; the next one's hello lists the jobs its runner keeps, and each job
 //! the backend knows goes on there, ends with the status the runner kept, or

@@ -1,7 +1,39 @@
 #![cfg_attr(windows, feature(windows_process_extensions_inherit_handles))]
-//! The runner (`runner.md`): the execution host's program, which registers
-//! with the backend and serves its work, and, under a root command's name,
-//! the command alias that forwards one command line to it.
+//! The runner: the execution host's program. It turns a device into an execution
+//! target: it registers with the backend, performs Host filesystem and process
+//! operations, and owns shell jobs; under a root command's name it is the command
+//! alias that forwards one command line to it. The backend keeps agent sessions,
+//! provider selection and conversation history. This crate composes the `runner-*`
+//! crates and owns the installation (state, lock, pairing, removal, updates,
+//! starting with the computer), the backend connection and the Host log.
+//!
+//! Control work is kept apart from the work it controls, so that a burst of
+//! requests, a slow disk or a busy job never stops the runner from reading its
+//! connection:
+//!
+//! ```text
+//!   control thread: reads the backend connection, routes each message,
+//!   drives pipes and streams; only waits on the network, never blocks
+//!       |                      |                       |
+//!   blocking threads       shell runtime            peers thread
+//!   (runner-host: files,   (runner-shell: a thread  (runner-direct)
+//!   git, hashing; a few    per interpreter unit
+//!   at a time)             and utility)
+//! ```
+//!
+//! The runner never refuses, drops or fails a request because others are in
+//! flight: work that lasts as long as its caller wants is paced by its own
+//! backpressure, bounded Host work waits for a slot, and a process that runs out of
+//! open files waits for one (`command-sdk`'s `descriptors`). Every job, stream and
+//! request shares one table of open files (a job's login shell alone can hold a
+//! hundred while it loads nvm), so the runner raises its own limit at its start, and
+//! every process it starts gets back the limit the runner was started with, because
+//! some programs misbehave with a high one (`runner-process`'s `process`).
+//!
+//! On a Cloud the runner is an ordinary process under init in the sandbox: it
+//! decodes the boot file the machine manager wrote, fails on missing or invalid
+//! credentials and never falls back to pairing, and never updates itself, since its
+//! release is the image's. Boot, mounts and network are the manager's.
 
 mod autostart;
 mod connection;
@@ -384,7 +416,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     };
     #[cfg(windows)]
     let (resolved, unresolved): (_, Option<String>) = (own, None);
-    // The device environment (`runner.md` § Host operations), without the
+    // The device environment (`crates/runner/src/environment.rs`), without the
     // names that configure the runner or belong to whatever started it,
     // which no program it starts is meant to read. Nor the entries Windows
     // names `=C:` and the like, which are no variables but the current
@@ -408,7 +440,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     };
     let executable = std::env::current_exe()?;
     // A managed guest's runner comes with its image, never from an
-    // installer (`runner.md` § Runner updates).
+    // installer (`crates/runner/src/update.rs`).
     let installed = match &boot {
         Some(_) => None,
         None => update::Installed::of(
@@ -469,8 +501,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         autostart_unavailable: None,
     };
     // A managed guest's state is temporary; its log and its job output stay
-    // on the system layer, which a stop keeps (`runner.md` § Host log,
-    // § Pipes and output).
+    // on the system layer, which a stop keeps (`crates/runner/src/host_log.rs`, `crates/runner-jobs/src/job_directories.rs`).
     let (log_directory, jobs) = if boot.is_some() {
         (
             PathBuf::from("/var/log/demi"),
@@ -487,8 +518,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     if let Some(reason) = unresolved {
         tracing::warn!("the device environment is the runner's own: {reason}");
     }
-    // Every job and stream shares this process's open files (`runner.md`
-    // § Load); without the raise the runner still works, waiting sooner.
+    // Every job and stream shares this process's open files; without the raise the runner still works, waiting sooner.
     #[cfg(unix)]
     match demi_shared_cli::raise_open_file_limit() {
         Ok(limit) => {
@@ -592,7 +622,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         // the service manager's, or whose installation another runner
         // holds, or whose state no start can change, or whose backend no
         // longer knows its device or protocol: only a backend's own failure
-        // may pass (`runner.md` § Starting with the computer).
+        // may pass (`crates/runner/src/autostart.rs`).
         Ok(
             Ending::Stopped
             | Ending::Uninstalled(_)
@@ -690,8 +720,7 @@ async fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8
     Ok(0)
 }
 
-/// The Host's operating system as the hello names it (`runner.md`
-/// § Connection and identity). A release the system does not tell leaves
+/// The Host's operating system as the hello names it (`crates/runner/src/connection/mod.rs`). A release the system does not tell leaves
 /// its name alone.
 fn operating_system() -> wire::OperatingSystem {
     use sysinfo::System;

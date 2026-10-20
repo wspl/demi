@@ -1,14 +1,20 @@
 //! The schedules of a running Cloud (`managed-hosts.md` § Lifecycle and
 //! capacity): its idle watch, which stops it once no conversation using it
 //! has been active for the idle window (the Claude Code machine: once no
-//! work has held it, `managed-hosts.md` § The Claude Code machine), with no
-//! releases, since the stop
-//! ends what they would (`resource-lifecycle.md` § A Cloud's idle stop),
-//! and its maintenance loop, which saves it every checkpoint interval and
-//! stops it at its lifetime cap. Both belong to the running
-//! phase and end with it. Maintenance holds the Cloud's gate for
-//! maintenance, not demand, so it never restarts the idle clock; an idle
-//! stop that finds maintenance holding the gate waits for it to let go.
+//! work has held it, `managed-hosts.md` § The Claude Code machine), and its
+//! maintenance loop, which saves it every checkpoint interval and stops it
+//! at its lifetime cap. Both belong to the running phase and end with it.
+//! Maintenance holds the Cloud's gate for maintenance, not demand, so it
+//! never restarts the idle clock; an idle stop that finds maintenance
+//! holding the gate waits for it to let go.
+//!
+//! A stop sends no conversation releases: what a release would end, such as
+//! a conversation's Chrome, ends with the machine, and no command's output
+//! is left on its disk to save with it. The conversations' own idle watches
+//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`) find the Cloud stopped and release
+//! the conversations on their other Hosts. A Cloud that stops for another
+//! reason, at its lifetime cap, for a reset, at the backend's shutdown or
+//! because it died, is the same.
 
 use std::rc::{Rc, Weak};
 
@@ -185,7 +191,7 @@ impl dyn CloudShard {
 /// lifetime cap.
 const LIFETIME_CAP: &str = "the Cloud reached its lifetime cap";
 
-/// The idle rule for the Cloud (`resource-lifecycle.md` § Idle window): no
+/// The idle rule for the Cloud (`crates/backend-user-shard/src/lifecycle/mod.rs`): no
 /// conversation using it, in any role, active within the window, no job
 /// running on it and no operation holding it.
 struct CloudIdle {

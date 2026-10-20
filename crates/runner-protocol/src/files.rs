@@ -81,8 +81,7 @@ impl FsFailure {
     }
 }
 
-/// What a subscription watches, and so when it changes (`runner.md`
-/// § Watching files).
+/// What a subscription watches, and so when it changes (`crates/runner-host/src/subscriptions.rs`).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
@@ -279,7 +278,7 @@ struct Key {
 /// the Host, each once however many keys hold it. A subject inside the
 /// conversation's working tree also holds the working tree's own
 /// subscription, so that the Host watches it through the tree's one watch
-/// (`runner.md` § Watching files); the page hears of that one only under a
+/// (`crates/runner-host/src/subscriptions.rs`); the page hears of that one only under a
 /// key of its own.
 ///
 /// It holds no subscription itself: its owner holds and releases the

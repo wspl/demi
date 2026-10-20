@@ -1,7 +1,33 @@
-//! Working-tree requests answered in process (`runner.md` § Working tree):
-//! the uncommitted changes under a directory, and a file as the last commit
-//! has it. Computation runs on blocking threads with gitoxide; a filesystem
-//! watch per directory turns later requests incremental.
+//! Working-tree requests answered in process with gitoxide, so the device needs no
+//! git executable: `git_changes` lists the uncommitted changes under a directory and
+//! `git_show` sends a file as a commit has it. A computation stops at its next check
+//! when the connection closes or after thirty seconds, and a failure in the git
+//! library answers `internal` for that request alone.
+//!
+//! `git_changes` lists what `git status --porcelain --untracked-files=all` lists,
+//! but compares `kind` and the line counts with `head` whatever the index holds (a
+//! path git lists whose content matches `head` is `modified` with 0 and 0). Two cases
+//! differ from git's list: a path git lists twice, a deletion staged in the index and
+//! an untracked file on disk, is one entry, `??`; a path in neither `head` nor the
+//! working tree, added to the index and then deleted from disk, is left out, having
+//! no side to compare.
+//!
+//! The first request for a directory walks its whole tree and starts a filesystem
+//! watch (of `.git` too when it lies outside) that records only the paths changed
+//! since. No request waits for the watch to start, since FSEvents can take seconds
+//! when the system is busy; the first that finds it running walks once more, since
+//! the watch saw nothing before it ran. Later requests re-examine the recorded paths
+//! (with the other path of any staged rename, so that the two still pair) and merge
+//! them into the previous result. They walk the whole tree again when `HEAD`, a ref
+//! or `packed-refs` changed, when the index's entries changed (an index that `git
+//! status` only rewrote with fresh file times holds the same entries), when a
+//! `.gitignore` or `.gitattributes` changed, or when more than 100 paths changed,
+//! since a walk over some paths checks every index entry against each of them and
+//! past about a hundred costs more than a whole walk. Ignored paths are not recorded
+//! (the filter subscriptions use), so a build writing 20,000 files under `target/`
+//! leaves nothing to re-examine. A watch that could not be created or failed, lost
+//! events, or a computation that failed or timed out (it had already taken the
+//! recorded paths) makes the next request walk the whole tree.
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -126,7 +152,7 @@ impl Clone for GitError {
             GitError::Cancelled => GitError::Cancelled,
             GitError::Internal(message) => GitError::Internal(message.clone()),
             // Out of open files stays so, whatever the error wraps: the
-            // request then waits (`runner.md` § Load).
+            // request then waits (`crates/command-sdk/src/descriptors.rs`).
             GitError::Io(error) if demi_command_sdk::descriptors::exhausted(error) => {
                 GitError::Io(demi_command_sdk::descriptors::exhaustion())
             }
@@ -140,15 +166,14 @@ impl Clone for GitError {
 
 pub(crate) fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
     // Running out of open files stays an IO error, so the request waits for
-    // one (`runner.md` § Load).
+    // one (`crates/command-sdk/src/descriptors.rs`).
     if demi_command_sdk::descriptors::exhausted(&error) {
         return GitError::Io(io::Error::other(error));
     }
     GitError::Internal(error.to_string())
 }
 
-/// The working-tree service of one backend connection (`runner.md`
-/// § Working tree). One owner task keeps each requested directory's baseline
+/// The working-tree service of one backend connection. One owner task keeps each requested directory's baseline
 /// and watch, at most eight, and drops one after fifteen minutes without a
 /// request. Requests for a directory that arrive while it is being computed
 /// wait for the next computation, which they all share.
@@ -208,8 +233,7 @@ struct RootState {
 }
 
 /// A root's watch, from its start to its end: the connection's watch of the
-/// tree, which the subscriptions of the same tree share (`runner.md`
-/// § Watching files).
+/// tree, which the subscriptions of the same tree share (`crates/runner-host/src/subscriptions.rs`).
 enum Watch {
     /// Not started: the directory has not been found in a repository yet.
     Unstarted,
@@ -327,8 +351,7 @@ impl GitService {
     }
 
     /// How many times the service walked a whole tree: what a build's
-    /// thousands of ignored files must not cost (`runner.md` § Working
-    /// tree).
+    /// thousands of ignored files must not cost.
     pub fn whole_walks(&self) -> u64 {
         self.walks.load(Ordering::Relaxed)
     }
@@ -459,7 +482,7 @@ async fn canonical(root: &Path, cancel: &CancellationToken) -> Result<PathBuf, G
 }
 
 /// A history request's work, stopped as a computation is when the
-/// connection closes or after thirty seconds (`runner.md` § Working tree).
+/// connection closes or after thirty seconds.
 async fn history<T: Send + 'static>(
     cancel: &CancellationToken,
     work: impl FnOnce(Arc<AtomicBool>) -> Result<T, GitError> + Send + 'static,
@@ -686,7 +709,7 @@ async fn changes(
     if matches!(scope, Scope::Whole) {
         walks.fetch_add(1, Ordering::Relaxed);
     }
-    // Past the computation limit a request waits its turn (`runner.md` § Load).
+    // Past the computation limit a request waits its turn (`crates/runner-host/src/lib.rs`).
     let _permit = tokio::select! {
         permit = computations.clone().acquire_owned() => {
             permit.expect("working-tree computations are never closed")
@@ -785,7 +808,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// short work goes here (finding the repository, reading one blob); a
 /// computation, which can take long, goes through `interruptible`. A
 /// cancelled request waits for the thread before it answers, so the
-/// request's admission covers the thread (`runner.md` § Load).
+/// request's admission covers the thread (`crates/runner-host/src/lib.rs`).
 async fn blocking<T: Send + 'static>(
     cancel: &CancellationToken,
     work: impl FnOnce() -> Result<T, GitError> + Send + 'static,
@@ -828,7 +851,7 @@ async fn interruptible<T: Send + 'static>(
 
 /// Finds the repository around `root`; `None` when there is none.
 /// The repository `root` lies in, if any. Running out of open files is no
-/// answer about the directory (`runner.md` § Load), but gix gives the answer
+/// answer about the directory (`crates/command-sdk/src/descriptors.rs`), but gix gives the answer
 /// "no repository" when it could not open a candidate's files as well (on
 /// Linux, without the cause), so that answer stands only once the runner can
 /// open the directory itself.
@@ -1062,7 +1085,7 @@ fn rules_file(path: &Path) -> bool {
 
 /// Where git keeps what a working tree's repository reads: its own git
 /// directory, and in a linked worktree the main one's, which holds the refs
-/// and `packed-refs` every worktree shares (`runner.md` § Watching files).
+/// and `packed-refs` every worktree shares (`crates/runner-host/src/subscriptions.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GitDirs {
     pub(crate) git_dir: PathBuf,
@@ -1532,9 +1555,9 @@ pub async fn handle(
     cancel: &CancellationToken,
 ) -> Option<Result<Frame, wire::WireError>> {
     let id = message.git_request_id()?;
-    // Before anything is read (`runner.md` § Watching files).
+    // Before anything is read (`crates/runner-host/src/numbers.rs`).
     let read_at = crate::numbers::read_at();
-    // Out of open files, the request waits for one (`runner.md` § Load).
+    // Out of open files, the request waits for one (`crates/command-sdk/src/descriptors.rs`).
     let result = demi_command_sdk::descriptors::retry(cancel, || {
         call(service, message, default_cwd, &read_at, cancel)
     })

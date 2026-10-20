@@ -1,8 +1,7 @@
 //! The routes runners use, which authenticate with a device token instead of
 //! the user's session cookie (`web-api.md` § Resource index):
 //! `WS /api/runner`, the one socket each runner holds, and the device ends
-//! of a pipe at `/api/pipes/:id` (`runner.md` § Host operations, § Pipes and
-//! output). The source's runner puts a content pipe's bytes as a request
+//! of a pipe at `/api/pipes/:id` (`crates/runner-protocol/src/wire/pipe_frames.rs`). The source's runner puts a content pipe's bytes as a request
 //! body and sends a stream pipe's over a WebSocket, the sink's gets them,
 //! and the edge copies them between the requests and the pipe's ends; the
 //! pipe records are the device owner's shard's. Pipes have no size limit
@@ -40,7 +39,7 @@ use super::runner_socket::accept;
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
 /// wire's limit; a larger one closes it. A backend with runner releases
 /// opens it only for a runner of its current release, and answers any other
-/// with 409 and the release to update to (`runner.md` § Runner updates).
+/// with 409 and the release to update to (`crates/runner/src/update.rs`).
 pub(super) async fn socket(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -119,7 +118,7 @@ pub(super) async fn paired_device(state: &AppState, headers: &HeaderMap) -> Opti
 }
 
 /// Shows the device the request's token names as updating, since the 409
-/// sends its runner to an update (`runner.md` § Runner updates).
+/// sends its runner to an update (`crates/runner/src/update.rs`).
 async fn updating(state: &AppState, headers: &HeaderMap) {
     let Some(device) = paired_device(state, headers).await else {
         return;
@@ -159,7 +158,7 @@ pub(super) async fn put(
 
 /// `GET /api/pipes/:id`: the pipe's bytes for its sink, or, as a WebSocket
 /// upgrade, a stream pipe's bytes from its source. A sink's answer goes out
-/// at once, its body in the pipe's frames (`runner.md` § Pipes and output),
+/// at once, its body in the pipe's frames (`crates/runner-protocol/src/wire/pipe_frames.rs`),
 /// which say how the pipe ended.
 pub(super) async fn get(
     State(state): State<AppState>,
@@ -193,7 +192,7 @@ pub(super) async fn get(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     // A write whose reply is overdue closes this connection, which ends the
-    // device's read of what it still queues (`runner.md` § File contents).
+    // device's read of what it still queues (`crates/runner-host/src/files.rs`).
     sink.closes_with(peer.control.closer());
     let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     (
@@ -261,8 +260,7 @@ async fn claim_source(
     }
 }
 
-/// `WS /api/pipes/:id`: a stream pipe's source (`runner.md` § Host
-/// operations), relayed into the pipe as `accept_stream_pipe` says. A
+/// `WS /api/pipes/:id`: a stream pipe's source (`crates/runner-protocol/src/wire/pipe_frames.rs`), relayed into the pipe as `accept_stream_pipe` says. A
 /// refusal is an HTTP answer before the upgrade.
 async fn stream_source(
     state: &AppState,

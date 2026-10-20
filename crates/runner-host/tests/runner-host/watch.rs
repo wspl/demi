@@ -1,5 +1,4 @@
-//! Subscriptions and reading a file the backend holds (`runner.md`
-//! § Watching files, § File contents), through the connection's Host
+//! Subscriptions and reading a file the backend holds (`crates/runner-host/src/subscriptions.rs`, `crates/runner-host/src/files.rs`), through the connection's Host
 //! server: what each kind of subscription changes for, the numbers that
 //! order reads and changes, lost events, leases, and what git ignores.
 
@@ -240,7 +239,7 @@ async fn the_working_tree_changes_for_edits_modes_and_staging_and_its_last_commi
 /// In a linked worktree the refs live in the main repository's git
 /// directory: a branch made there changes the worktree's last commit
 /// subscription and its working tree's, as one made in a plain repository
-/// does (`runner.md` § Watching files). Under a second.
+/// does (`crates/runner-host/src/subscriptions.rs`). Under a second.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_branch_made_in_a_linked_worktrees_repository_is_announced() {
     tokio::time::timeout(GUARD, async {
@@ -264,7 +263,7 @@ async fn a_branch_made_in_a_linked_worktrees_repository_is_announced() {
 /// A folder that becomes a repository, as `git init` and a first commit
 /// make it, changes its working tree's and its last commit's subscriptions,
 /// which follow the new repository from then on: its next commit changes
-/// the last commit's again (`runner.md` § Watching files). Under a second.
+/// the last commit's again (`crates/runner-host/src/subscriptions.rs`). Under a second.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_folder_that_becomes_a_repository_is_followed_as_one() {
     tokio::time::timeout(GUARD, async {
@@ -294,7 +293,7 @@ async fn a_folder_that_becomes_a_repository_is_followed_as_one() {
 /// A build that writes 20,000 files under the ignored `target/` changes no
 /// working tree subscription and costs the working tree's changes no walk
 /// of the whole tree, while a subscription of a log under `target/`, as a
-/// page shows one, changes as any other (`runner.md` § Watching files).
+/// page shows one, changes as any other (`crates/runner-host/src/subscriptions.rs`).
 /// `target/` comes after the tree's watch started, so the watch hears the
 /// build and judges each path by git's rules. Costs 20,000 small writes,
 /// about a second.
@@ -468,7 +467,7 @@ mod fsevent_flags {
 
 /// A subscription is a lease that runs 10 minutes from its subscribe or its
 /// last renew: one not renewed ends when its lease runs out, and an
-/// unsubscribe ends one at once (`runner.md` § Watching files). The
+/// unsubscribe ends one at once (`crates/runner-host/src/subscriptions.rs`). The
 /// runtime's clock is held still while the leases run.
 #[tokio::test]
 async fn a_subscription_not_renewed_ends_with_its_lease_and_one_unsubscribed_at_once() {

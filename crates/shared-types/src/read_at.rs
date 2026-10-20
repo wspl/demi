@@ -1,4 +1,4 @@
-//! The Host's number a read was taken at (`runner.md` § Watching files):
+//! The Host's number a read was taken at (`crates/runner-host/src/subscriptions.rs`):
 //! the count of file system events the Host's runner had received when the
 //! read began, and the epoch that names the runner's run.
 

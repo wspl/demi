@@ -37,7 +37,7 @@ revokes a device in Settings, the page names the projects that go with it and
 says that their files and conversations stay. The answer, 200, is `{ removed
 }`, the ids of the workspaces removed. Revocation tells a connected runner to
 remove itself
-([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)),
+(`crates/runner/src/console.rs`),
 closes its connection and removes its conversation attachments.
 Pairing accepts a live code and returns the claimed device; expired/unknown codes
 return 404 and excessive attempts 429. The installation routes contain no
@@ -57,7 +57,7 @@ last reported, and `runnerVersion`, the runner release it last reported, such
 as `0.1.16`; both are null before its runner first connected;
 `autostartUnavailable`, the reason its runner last reported for not
 starting by itself after a restart, as the hello carries it
-([Connection and identity](../execution/runner.md)), kept on the device
+(`crates/runner-protocol/src/wire/mod.rs`), kept on the device
 record and shown on the device's page, null when it does or before it
 first connected; `mark`, the
 logo and number of its [mark](conversations.md#conversations-and-projects), null for the Cloud:
@@ -239,7 +239,7 @@ bytes. It closes the socket when the stream ends, with a code and a reason:
 ## Device log
 
 `GET /api/devices/:id/log` returns lines of the
-[Host's log](../execution/runner.md#host-log) for a device the user owns, the
+Host's log (`crates/runner/src/host_log.rs`) for a device the user owns, the
 user's Cloud included: `{ lines: [{ at, source, conversationId?, text }], next }`,
 oldest first. `since` is the `next` of an earlier answer; without it the
 answer ends at the newest line. `limit` defaults to 200 and is at most 1000.
@@ -259,7 +259,7 @@ its `target` as written and `leadsTo`, `{ kind, reason }`, where `kind` is
 system's words for an unreadable one
 ([Symbolic links](file-previews.md#symbolic-links)). The runner
 reads them beside each entry as it lists the directory, so a listing is one
-request ([Host operations](../execution/runner.md)); entries disappearing
+request (`crates/runner-host/src/lib.rs`); entries disappearing
 during the listing are omitted, other errors are returned. These device routes serve paired-device target selection
 only; the work panel and remote attachment picker use the conversation routes
 below. Managed devices are not accepted by the device directory routes. These
@@ -286,12 +286,12 @@ with status 201. `GET /api/conversations/:id/fs/file?path=...` returns
 `{ path, text }` with the file's ETag, the one the raw route reports; a
 request whose `If-None-Match` names the file's current ETag answers 304
 without reading the text past the Host, since the runner compares the version
-before it streams ([File contents](../execution/runner.md#file-contents)). The
+before it streams (`crates/runner-host/src/files.rs`). The
 files service checks a text it keeps this way
 ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)). Paths follow the Host's filesystem rules; the execution directory
 is a starting directory, not a permission boundary. Missing paths answer 404,
 and permission failures answer 403. A directory too large to list in one
-runner message ([Runner](../execution/runner.md#connection-and-identity))
+runner message (`crates/runner-protocol/src/wire/mod.rs`)
 answers 413 `directory_too_large`.
 
 All three operations use [conversation Host access](../execution/sessions-and-targets.md#host-operations),
@@ -344,10 +344,10 @@ transfers, a new one answers 409 `conversation_busy`.
 `PUT /api/conversations/:id/fs/raw?path=...&replace=true|false` writes the
 request body, a file's raw bytes, to `path`, streaming it to the Host as the
 Host takes it. The file appears whole or not at all: an upload cut short
-leaves the path as it was ([Runner](../execution/runner.md#file-contents)).
+leaves the path as it was (`crates/runner-host/src/files.rs`).
 A directory at the path answers 409 `is_directory`, and a file there answers
 409 `file_exists` unless `replace=true`; the Host checks as it writes, and no
-check precedes the write ([Host operations](../execution/runner.md#host-operations)).
+check precedes the write (`crates/runner-host/src/lib.rs`).
 The write makes the missing directories above the path, so an uploaded
 folder's files make its folders, and the web app makes only an empty folder
 with `POST`. Success answers 204. An upload is a file transfer whose pace the
@@ -372,7 +372,7 @@ the selected path becomes a remote reference when the message is sent.
 
 `GET /api/conversations/:id/changes/branches`, `changes/log?branch=&after=`
 and `changes/commit?commit=` answer the runner's `git_branches`, `git_log`
-and `git_commit` ([Runner](../execution/runner.md#working-tree)) for the
+and `git_commit` (`crates/runner-host/src/git.rs`) for the
 same directory and with the same `directory` query as `changes`;
 `changes/file` and `changes/raw` take `commit` to read a file as that commit
 has it, and `changes/file` takes `from`, a renamed file's earlier path, whose
@@ -385,7 +385,7 @@ on its primary Host, absolute, as a child's Change view asks for its own
 and `changes/raw` take the same `directory` and read that tree; a relative
 one answers 400 `invalid_query`. It answers as `{ root, repository, gitDir, head,
 files, truncated, watched }`, the runner's reply
-([Runner](../execution/runner.md#working-tree)) plus `root`, the directory the
+(`crates/runner-host/src/git.rs`) plus `root`, the directory the
 paths are relative to. `gitDir` is the absolute path of the repository's git
 directory, null outside a repository; the page reads the reports under it by
 [what each entry depends on](../architecture/plugin-pages.md#what-the-service-keeps).
@@ -398,7 +398,7 @@ file operation does
 a stopped Cloud wakes for it, a paired device without a live runner answers
 409 `device_offline`, and a Cloud that cannot wake answers 503 with the
 lifecycle's code. A request beyond the runner's working-tree capacity waits
-for a slot ([Load](../execution/runner.md#load)); the runner's timeout answers
+for a slot (`crates/runner/src/main.rs`); the runner's timeout answers
 503 `changes_timeout`, and the page then keeps its previous list and says
 the refresh failed.
 
@@ -414,7 +414,7 @@ range handling and `download` of the raw file route but no validators. The
 working-tree side comes from the raw file route. A path the last commit does
 not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
-([Runner](../execution/runner.md#working-tree)).
+(`crates/runner-host/src/git.rs`).
 
 Every answer of these routes that reads what a subscription covers, a
 listing, a file's text, the changes list, a changed file's sides and the
@@ -438,7 +438,7 @@ says. It never polls.
 
 `WS /api/conversations/:id/fs/watch` carries the page's subscriptions to
 what it keeps of the conversation's Host files, and the Host's word that one
-of them changed ([Watching files](../execution/runner.md#watching-files)). The
+of them changed (`crates/runner-host/src/subscriptions.rs`). The
 page holds one while it keeps any such entry, whether or not a view shows it
 ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
 The upgrade checks the session cookie and the `Origin` header as the browser
@@ -472,7 +472,7 @@ The backend sends:
 
 | Message | Carries | Sent when |
 | --- | --- | --- |
-| `live` | `key`, `since` and `epoch` | The Host's watch behind the subscription runs ([Numbers](../execution/runner.md#watching-files)) |
+| `live` | `key`, `since` and `epoch` | The Host's watch behind the subscription runs (`crates/runner-host/src/subscriptions.rs`) |
 | `changed` | `changes`, each `[key, at]` | The Host reported them, at most every 100 ms, each key once per message |
 | `unavailable` | `key` and the Host's `reason` | The Host cannot watch it; the subscription is over |
 | `refused` | `key` and `reason: "limit"` | The page holds 4,096 subscriptions, or 64 outside the conversation's working tree |

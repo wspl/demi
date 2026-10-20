@@ -37,7 +37,7 @@ impl Volumes {
         let output = self.output.clone();
         let stop = self.stop.clone();
         self.syncs.spawn(async move {
-            // Past the capacity a sync waits for a slot (`runner.md` § Load).
+            // Past the capacity a sync waits for a slot (`crates/runner-host/src/lib.rs`).
             let _permit = tokio::select! {
                 permit = capacity.acquire_owned() => permit.expect("sync capacity is never closed"),
                 _ = stop.cancelled() => return,

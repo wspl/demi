@@ -1,5 +1,5 @@
 //! Every message of the runner wire, in both directions, with the values
-//! they carry (`runner.md`). Fields are declared in wire order: MessagePack
+//! they carry (`crates/runner-protocol/src/wire/mod.rs`). Fields are declared in wire order: MessagePack
 //! maps are ordered, and a message is written in this order.
 
 use std::collections::BTreeMap;
@@ -30,7 +30,7 @@ use crate::values::DeviceToken;
 #[garde(allow_unvalidated)]
 pub enum Inbound {
     /// Ends what the runner's services hold for the conversation
-    /// (`resource-lifecycle.md` § Conversation release).
+    /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     ConversationRelease {
         id: String,
         #[garde(custom(conversation_name))]
@@ -39,7 +39,7 @@ pub enum Inbound {
     /// The device the hello's token names, by its id and the name the
     /// user sees, and the user's conversations that still exist, archived
     /// ones included, whose scratch directories the runner keeps
-    /// (`runner.md` § Scratch directory).
+    /// (`crates/runner-jobs/src/scratch.rs`).
     HelloOk {
         device_id: String,
         device_name: String,
@@ -61,7 +61,7 @@ pub enum Inbound {
     },
     /// The user revoked the device, or the backend did at the runner's
     /// `revoke`: the runner removes itself from it, and the backend closes
-    /// the connection (`runner.md` § Installation, pairing and removal).
+    /// the connection (`crates/runner/src/removal.rs`).
     /// `projects` names the projects that went with the device, whose files
     /// stay.
     Revoked {
@@ -71,8 +71,7 @@ pub enum Inbound {
     /// The runner release the backend moves to next, and its executable
     /// for the runner's target as a 409 would name it: a paired device's
     /// runner downloads it into its installation while it serves, and
-    /// answers `prefetched` or `prefetch_failed` (`runner.md` § Runner
-    /// updates).
+    /// answers `prefetched` or `prefetch_failed` (`crates/runner/src/update.rs`).
     Prefetch {
         #[garde(custom(digest))]
         release: String,
@@ -201,14 +200,14 @@ pub enum Inbound {
         signal: Option<Signal>,
     },
     /// Starts or stops sending the job's output beyond each stream's first
-    /// `JOB_VIEW_BYTES` (`runner.md` § Pipes and output). A job starts
+    /// `JOB_VIEW_BYTES` (`crates/runner-jobs/src/tasks.rs`). A job starts
     /// unfollowed.
     JobFollow {
         job_id: String,
         follow: bool,
     },
     /// Streams the job's kept output, as it stands, into `output`; the
-    /// runner answers with `job_read` (`runner.md` § Pipes and output).
+    /// runner answers with `job_read` (`crates/runner-jobs/src/kept_output.rs`).
     JobRead {
         id: String,
         job_id: String,
@@ -216,7 +215,7 @@ pub enum Inbound {
     },
     /// Streams the media `numbers` the job keeps into `output`, each after
     /// its length as [`FileRead`] describes; the runner answers with
-    /// `job_media_read` (`runner.md` § Pipes and output).
+    /// `job_media_read` (`crates/runner-jobs/src/job_media.rs`).
     JobMediaRead {
         id: String,
         job_id: String,
@@ -344,7 +343,7 @@ pub enum Inbound {
     /// Stream `length` bytes from `offset`, or to the end, into `output`.
     /// A request that names the `version` it holds streams nothing while
     /// the file still has it: the reply says it is unchanged
-    /// (`runner.md` § File contents).
+    /// (`crates/runner-host/src/files.rs`).
     #[serde(rename = "fs_readFile")]
     FsReadFile {
         id: String,
@@ -377,8 +376,7 @@ pub enum Inbound {
     },
     /// The file's size and SHA-256, and none of its bytes, so the backend
     /// can tell whether it holds them already; a file over `limit` bytes
-    /// answers its size alone, before a byte is read (`runner.md` § File
-    /// contents).
+    /// answers its size alone, before a byte is read (`crates/runner-host/src/files.rs`).
     #[serde(rename = "fs_hashFile")]
     FsHashFile {
         id: String,
@@ -426,7 +424,7 @@ pub enum Inbound {
         exists: WriteExists,
         source: FileOffer,
     },
-    /// Writes the directory `path` whole (`runner.md` § Host operations):
+    /// Writes the directory `path` whole (`crates/runner-host/src/lib.rs`):
     /// `files` lists its files, each by its path inside it, with `/`
     /// between the parts, and its mode, and `input` carries their contents
     /// in that order, each after its length as [`FileRead`] describes. The
@@ -450,7 +448,7 @@ pub enum Inbound {
         #[garde(length(min = 1))]
         paths: Vec<String>,
     },
-    /// Reads several files at once (`runner.md` § Host operations): the
+    /// Reads several files at once (`crates/runner-host/src/lib.rs`): the
     /// answer says of each whether it is read, and `output` carries the
     /// read ones' contents, each after its length, in the request's order.
     /// A file over `limit` bytes is not read.
@@ -468,7 +466,7 @@ pub enum Inbound {
         limit: u64,
         output: PipeRef,
     },
-    /// Looks at several paths at once (`runner.md` § Host operations):
+    /// Looks at several paths at once (`crates/runner-host/src/lib.rs`):
     /// each answers whether it exists, its kind, a directory's entries, or a
     /// file's size with its first bytes, up to the path's `limit`, which go
     /// into `output` one file after another in the request's order. Without
@@ -712,8 +710,7 @@ pub enum Inbound {
         root: String,
         commit: String,
     },
-    /// Subscribes `id` to what `kind` says of `path` (`runner.md` § Watching
-    /// files): `fs_live` answers once the watch behind it runs, or
+    /// Subscribes `id` to what `kind` says of `path` (`crates/runner-host/src/subscriptions.rs`): `fs_live` answers once the watch behind it runs, or
     /// `fs_failed` when it cannot, and `fs_changed` names it when its
     /// subject changed. Its lease runs 10 minutes from now; a subscription
     /// under an id that runs already is replaced.
@@ -968,7 +965,7 @@ pub enum Outbound {
         runner: RunnerInfo,
         /// A number this start of the runner drew, the same for each of its
         /// connections, so the backend tells a runner that kept its jobs
-        /// from one that started anew (`runner.md` § Command lifetime).
+        /// from one that started anew (`crates/runner/src/connection/kept.rs`).
         instance: u64,
         /// The jobs the runner keeps, running or ended and not yet
         /// released.
@@ -1050,8 +1047,7 @@ pub enum Outbound {
         )]
         spawn_error: Option<SpawnError>,
     },
-    /// A stream's bytes from `offset` while the job runs (`runner.md`
-    /// § Pipes and output). Beyond the stream's first `JOB_VIEW_BYTES`, an
+    /// A stream's bytes from `offset` while the job runs (`crates/runner-jobs/src/kept_output.rs`). Beyond the stream's first `JOB_VIEW_BYTES`, an
     /// offset past the end of the stream's previous bytes says the runner
     /// left the bytes between out, and a message without bytes says only
     /// that the stream is `offset` bytes long.
@@ -1115,7 +1111,7 @@ pub enum Outbound {
         files_truncated: bool,
     },
     /// A medium `demi file view` handed to the job, once the job keeps it
-    /// (`runner.md` § Pipes and output). Every one of a job precedes its
+    /// (`crates/runner-jobs/src/job_media.rs`). Every one of a job precedes its
     /// `job_exit`.
     JobMedium {
         job_id: String,
@@ -1211,7 +1207,7 @@ pub enum Outbound {
         error: Option<String>,
     },
     /// Subscription `id` is watched: a change at a number above `since` is
-    /// reported, numbers of `epoch` (`runner.md` § Watching files).
+    /// reported, numbers of `epoch` (`crates/runner-host/src/numbers.rs`).
     FsLive {
         id: String,
         since: u64,
@@ -1387,7 +1383,7 @@ pub enum HelloErrorCode {
     Internal,
 }
 
-/// A signal a kill request names (`runner.md` § Host operations): one
+/// A signal a kill request names (`crates/runner-host/src/lib.rs`): one
 /// closed set that raw processes and jobs share.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Signal {
@@ -1545,7 +1541,7 @@ pub struct RunnerInfo {
     )]
     pub managed: Option<bool>,
     /// A paired device's installation directory, whose launcher starts the
-    /// runner again (`runner.md` § Installation, pairing and removal).
+    /// runner again (`crates/runner/src/console.rs`).
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -1556,7 +1552,7 @@ pub struct RunnerInfo {
     /// Why the device will not start its runner by itself after a restart,
     /// such as a Linux without a systemd user manager; none when its
     /// registration with the system's service manager is in place
-    /// (`runner.md` § Starting with the computer).
+    /// (`crates/runner/src/autostart.rs`).
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -1567,7 +1563,7 @@ pub struct RunnerInfo {
 }
 
 /// Why a device will not start its runner by itself after a restart
-/// (`runner.md` § Starting with the computer): its cause, with what the
+/// (`crates/runner/src/autostart.rs`): its cause, with what the
 /// system said, so that Devices says it in the user's language and the
 /// runner's log and installer in English ([`AutostartUnavailable::sentence`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -1711,7 +1707,7 @@ pub struct HostIdentity {
     pub hostname: String,
     pub home_dir: String,
     /// The absolute directory that holds the conversations' scratch
-    /// directories, `<DEMI_HOME>/scratch` (`runner.md` § Scratch directory).
+    /// directories, `<DEMI_HOME>/scratch` (`crates/runner-jobs/src/scratch.rs`).
     pub scratch_root: String,
 }
 
@@ -1772,7 +1768,7 @@ pub struct FileStat {
 
 /// A file an `fs_readFile` opened: its metadata then, its version, and
 /// whether that is the version the request named, in which case nothing
-/// streams (`runner.md` § File contents).
+/// streams (`crates/runner-host/src/files.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OpenedFile {
@@ -1839,8 +1835,7 @@ pub struct DirEntry {
     pub link: Option<SymbolicLink>,
 }
 
-/// Where a symbolic link of a listing points (`runner.md` § Host
-/// operations): its target as written, and what is there once every link
+/// Where a symbolic link of a listing points (`crates/runner-host/src/lib.rs`): its target as written, and what is there once every link
 /// on the way is followed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1875,8 +1870,7 @@ pub struct DirectoryFile {
     pub mode: u32,
 }
 
-/// What a write does when its path is taken (`runner.md` § Host
-/// operations). A directory at the path is never written over: the write
+/// What a write does when its path is taken (`crates/runner-host/src/lib.rs`). A directory at the path is never written over: the write
 /// fails with `EISDIR`, unless it takes another name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2023,7 +2017,7 @@ pub struct GitChange {
     pub removed: u64,
 }
 
-/// A repository's local branches (`runner.md` § Working tree): by name,
+/// A repository's local branches (`crates/runner-host/src/git.rs`): by name,
 /// most recently committed first; the one checked out, or null with `head`
 /// when HEAD is detached.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
@@ -2159,8 +2153,7 @@ pub enum SpawnErrorKind {
 }
 
 /// Each stream's length when a job ended. The backend reads what it did not
-/// receive of them from the job's kept output (`runner.md` § Pipes and
-/// output).
+/// receive of them from the job's kept output (`crates/runner-jobs/src/kept_output.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OutputLengths {
@@ -2169,7 +2162,7 @@ pub struct OutputLengths {
 }
 
 /// A job a runner keeps through a connection loss, as its hello lists it
-/// (`runner.md` § Command lifetime): its end once it ended, each stream's
+/// (`crates/runner/src/connection/kept.rs`): its end once it ended, each stream's
 /// length, how many media it keeps, and the tasks that outlive its script. The exit of a job that ended follows
 /// the hello's answer, as when the job ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]

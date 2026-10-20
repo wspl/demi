@@ -1,10 +1,20 @@
-//! Jobs and raw processes (`runner.md` § Command lifetime): the
-//! registration owns its job table, which outlives each connection, and
-//! routes each job's input, signals, following and end to it; a raw process
-//! ends with the connection that started it. Every job keeps its output
-//! within `JOB_KEPT_BYTES` and sends bounded views of it (`runner.md` § Pipes
-//! and output), and keeps its exit with its directory, which the next
-//! connection reports again.
+//! Jobs and raw processes: the registration owns the job table, which outlives each
+//! connection, and routes each job's input, signals, following and end to it; a raw
+//! process ends with the connection that started it. A job keeps its output in its
+//! directory (`kept_output`) and sends the backend bounded views of it in
+//! `job_output` messages: the first `JOB_VIEW_BYTES` of each stream, then, while the
+//! backend follows the job, its newest bytes at most every `JOB_LIVE_INTERVAL`,
+//! otherwise only how far a stream grew, every `JOB_GROWTH_INTERVAL`. A job's last
+//! output leaves before `job_exit`. What goes beyond the first view never slows the
+//! job: a message that finds the connection's queue full waits for the stream's next
+//! interval and then carries the newest bytes. When a stream went beyond what the
+//! backend received, the backend reads the rest from the kept output, and when that
+//! read fails it keeps the first bytes, a line counting the bytes left out and the
+//! newest bytes, so the end of a build's log, where it says what failed, still shows.
+//!
+//! A job or process whose live stdin the runner has not taken, `INPUT_QUEUE` frames
+//! deep, is cancelled, because routing a message never waits for work that does not
+//! read its input.
 
 use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
@@ -238,8 +248,7 @@ impl JobTable {
                 Ok(terminal) => {
                     // A job's exit stays with its directory until the
                     // backend releases it, so a connection that lost it
-                    // hears it again from the next (`runner.md` § Command
-                    // lifetime).
+                    // hears it again from the next (`crates/runner/src/connection/kept.rs`).
                     if let WorkId::Job(job) = &key {
                         config.directories.ended(
                             job,
@@ -344,7 +353,7 @@ impl JobTable {
     }
 
     /// Stops every job as a stop does, first with `TERM`
-    /// (`runner.md` § Cancellation and completion). [`kill_jobs`] ends what
+    /// (`crates/runner-shell/src/job.rs`). [`kill_jobs`] ends what
     /// remains.
     ///
     /// [`kill_jobs`]: Self::kill_jobs
@@ -681,8 +690,7 @@ impl JobConfig {
                     receiver.poll_recv(cx).map(|bytes| bytes.map(Ok))
                 });
                 // A stream pipe: what the job prints must reach the backend
-                // as it prints it, however long it runs (`runner.md` § Host
-                // operations).
+                // as it prints it, however long it runs (`crates/runner/src/main.rs`).
                 let result = pipes.stream(&reference.url, stream, &cancel).await;
                 report_pipe(&output, reference.id, result, &shutdown).await;
             });

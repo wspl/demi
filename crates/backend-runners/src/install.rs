@@ -6,9 +6,17 @@
 //! per backend, drains an older runner of that installation before it
 //! upgrades, and starts the runner, which asks to be paired. It then shows
 //! the runner's pairing codes until the runner is paired, and the device's
-//! name and the removal command once it is (`runner.md` § Installation,
-//! pairing and removal). A script holds no credential: pairing grants device
-//! access.
+//! name and the removal command once it is. A script holds no credential:
+//! pairing grants device access.
+//!
+//! The scripts leave the runner's departure from its terminal to the runner
+//! (`crates/runner/src/console.rs`) and show only the lines it writes to its log,
+//! which `run start` reads the same way (`crates/runner/src/start.rs`), so they
+//! never compose them. They never turn on the shell's job control (`set -m`): with
+//! `curl … | sh` at a terminal, a shell turning it off again hands the terminal back
+//! to curl's ended process group, and dash fails with exit code 2 after the runner
+//! has started. The backend composes the install commands from its public URL, as it
+//! composes a device's `startCommand`.
 
 use std::path::Path;
 
@@ -47,8 +55,7 @@ fn registration(backend: &Url) -> String {
 }
 
 /// The commands that install and start the runner of `backend` on each
-/// system, which Add Device and `demi host install-command` show
-/// (`runner.md` § Installation, pairing and removal). They fetch the
+/// system, which Add Device and `demi host install-command` show. They fetch the
 /// installer from `backend`'s origin, which serves it whatever path the URL
 /// has. `curl` may use only the URL's scheme, and TLS 1.2 or newer for
 /// `https`, so a development backend's plain `http` is reached too.
@@ -78,7 +85,7 @@ pub fn install_commands(backend: &Url) -> InstallCommands {
 /// a device of `platform`, typed in a terminal there: the launcher of the
 /// installation, in `installation` as its runner reported it or where the
 /// installers put it by default, with `start`, which starts the runner in
-/// the background (`runner.md` § Installation, pairing and removal). A
+/// the background (`crates/runner/src/start.rs`). A
 /// directory in `home`, the device's home directory, is written from the
 /// home: `~` in a POSIX shell, `$env:USERPROFILE` in PowerShell, where `-File`
 /// does not expand `~`. On Windows it runs through PowerShell with a policy
@@ -286,8 +293,7 @@ case "$target" in
     ;;
 esac
 # The installation's directory: the one DEMI_HOME names, else this backend's
-# own under ~/.demi/instances (runner.md § Installation, pairing and
-# removal). Everything below, the launcher, the runner's service
+# own under ~/.demi/instances (`crates/runner/src/console.rs`). Everything below, the launcher, the runner's service
 # registration and its removal command, finds the installation from here.
 if [ -n "${DEMI_HOME:-}" ]; then
   state=$DEMI_HOME
@@ -301,8 +307,7 @@ else
   state="$HOME/.demi/instances/$registration"
 fi
 # The installation's files are the user's alone; the runner works with the
-# mask of the shell this installer runs in (runner.md § Builtins that act on
-# a process).
+# mask of the shell this installer runs in (`crates/runner-shell/src/process_builtins.rs`).
 user_umask=$(umask)
 umask 077
 mkdir -p "$state/releases"
@@ -449,7 +454,7 @@ begin=$seen
 shown=
 unstarted=
 # When the runner this installer started handed over to the service
-# manager's (runner.md § Starting with the computer), from which on the
+# manager's (`crates/runner/src/autostart.rs`), from which on the
 # installation's own status says whether a runner runs.
 handed=
 while :; do
@@ -526,7 +531,7 @@ $demiRemovalPrefix = @REMOVAL@
 $demiNoAutostartPrefix = @NO_AUTOSTART@
 $demiHandedOver = @HANDED_OVER@
 # When the runner this installer started handed over to the service
-# manager's (runner.md § Starting with the computer).
+# manager's (`crates/runner/src/autostart.rs`).
 $demiHanded = $null
 $demiArtifacts = @{
 @ARTIFACTS@
@@ -541,8 +546,7 @@ switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToSt
 if (-not $demiArtifacts.ContainsKey($demiTarget)) { throw "This server has no Demi runner for $demiTarget." }
 $demiHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath('UserProfile') }
 # The installation's directory: the one DEMI_HOME names, else this backend's
-# own under ~/.demi/instances (runner.md § Installation, pairing and
-# removal). Everything below, the launcher, the runner's service
+# own under ~/.demi/instances (`crates/runner/src/console.rs`). Everything below, the launcher, the runner's service
 # registration and its removal command, finds the installation from here.
 if ($env:DEMI_HOME) {
   # Absolute, as the runner and the lines this installer shows name it; a

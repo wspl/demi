@@ -960,8 +960,7 @@ impl HostResolver for LiveHosts {
 /// One node's environment: its command runs until the test ends it, and
 /// prints what the test hands it, which it reports to the node's feed. Like
 /// a runner that has not answered yet, a stop only marks the command
-/// stopping: it ends when the test says (`runner.md` § Cancellation and
-/// completion). Commands started while one runs, as the parallel calls of
+/// stopping: it ends when the test says (`crates/runner-shell/src/job.rs`). Commands started while one runs, as the parallel calls of
 /// one response, run beside it, numbered after it.
 pub struct ScriptedShell {
     /// The directory each of its jobs started in, in order; none for one

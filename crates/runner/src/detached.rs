@@ -1,5 +1,5 @@
 //! Starting a process on Windows that outlives the session its starter
-//! runs in (`runner.md` § Installation, pairing and removal: closing the
+//! runs in (`crates/runner/src/console.rs`: closing the
 //! terminal does not stop the runner).
 
 use std::io;

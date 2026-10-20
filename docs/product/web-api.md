@@ -63,7 +63,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](web-api-conversations.md#work-panel-state); `POST /conversations/:id/panel/changes { changes }` changes them |
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](web-api-conversations.md#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Conversation permissions | `GET /conversations/:id/permissions` reads the conversation's [permission requests](web-api-conversations.md#conversation-permissions); `POST /conversations/:id/permissions/requests/:request { decision }` decides a request |
-| Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
+| Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the Host's log (`crates/runner/src/host_log.rs`) |
 | Direct channel | `WS /devices/:deviceId/direct` introduces the page to a paired device's runner ([Direct channel](web-api-hosts.md#direct-channel)) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller ([A user's plugins](web-api-sync.md#a-users-plugins)); `GET /conversations/:id/plugins/:plugin/state` reads a plugin's [state for one conversation](web-api-sync.md#conversation-state-of-plugins); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](web-api-sync.md#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
@@ -76,7 +76,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `DELETE .../hosts/:deviceId`; agents attach with `demi host attach` ([What the agent can change](../execution/sessions-and-targets.md#what-the-agent-can-change)) |
-| Runner transport | `WS /runner`; device-authenticated pipes at `/pipes/:id`: `PUT` for a content pipe and `WS` for a stream pipe from the runner, `GET` for a pipe to it ([Host operations](../execution/runner.md#host-operations)) |
+| Runner transport | `WS /runner`; device-authenticated pipes at `/pipes/:id`: `PUT` for a content pipe and `WS` for a stream pipe from the runner, `GET` for a pipe to it (`crates/runner-host/src/lib.rs`) |
 | Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and, with a local object store, the command artifacts, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
 
 ### Authentication

@@ -100,7 +100,7 @@ impl dyn HostShard + '_ {
         let admitted = self.admit_host(&record.id, None, waits).await?;
         let host = &admitted.host.host;
         // The read answers the file's metadata with its first bytes, so it
-        // is the one request (`runner.md` § Host operations): it asks for
+        // is the one request (`crates/runner-host/src/lib.rs`): it asks for
         // the part the request names, read to the file's end when that
         // comes first. A HEAD reads nothing.
         let header = request.range.as_deref();
@@ -169,7 +169,7 @@ impl dyn HostShard + '_ {
     /// Admits an upload of one file to the conversation's primary Host: a
     /// directory at the path is never written over, and a file only when
     /// `replace` asks. The write itself checks, so no request precedes it
-    /// (`runner.md` § Host operations), and it makes the directories above
+    /// (`crates/runner-host/src/lib.rs`), and it makes the directories above
     /// the path that are missing.
     pub async fn open_upload(
         &self,

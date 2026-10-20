@@ -1,4 +1,29 @@
 //! Resident shell job with bounded input/output and an owned completion task.
+//! Completion means the job has released its local work and IO, not merely that its
+//! foreground script returned.
+//!
+//! A job is stopped in two steps, as a program in a terminal is. `TERM` stops its
+//! shell work at its next step and sends `SIGTERM` to every process group the job
+//! started, so a dev server can close its connections and remove its socket; `KILL`
+//! follows `STOP_GRACE` later for what remains. (A stop that went straight to
+//! `SIGKILL` left a dev server's backend running in a group of its own, holding its
+//! port.) A program can leave the job's groups (`setsid`, as a daemon does), so each
+//! signal also goes to every process that carries the job's `DEMI_JOB_ID` in its
+//! environment, as GitHub's runner finds a job's processes by `RUNNER_TRACKING_ID`,
+//! and on macOS, which shows the environment only of programs that are not Apple's,
+//! to the descendants of every process it reaches. A process that cleared its
+//! environment, or an Apple program orphaned by a double fork, escapes. The job ends
+//! once every process of those groups and every process a signal reached has exited.
+//!
+//! Work inside the runner (an embedded utility, an interpreter unit) cannot be
+//! killed: it stops at its next check of the job's cancellation, which each utility
+//! makes at least once per entry or block it reads, so even a quiet `find /` stops. A
+//! thread can still sit in a system call only a signal would interrupt, such as an
+//! `open()` the kernel holds while macOS asks the user for access to another app's
+//! data, so once `KILL` has gone the job ends `KILLED_WORK` later whatever in-process
+//! work is left, reporting `SIGKILL`, and the Host log names the work it left behind.
+//! A cancellation request alone does not establish that execution stopped: the
+//! backend counts a command as stopped only when the runner says its job ended.
 
 use crate::{
     ShellRuntime,
@@ -53,7 +78,7 @@ pub struct Job {
 const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 
 /// How long a killed job waits for its in-process work before it ends
-/// without it (`runner.md` § Cancellation and completion).
+/// without it.
 const KILLED_WORK: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// A job's three pipes: the ends the interpreter uses and the runner's.
@@ -65,14 +90,14 @@ struct Pipes {
     error_reader: File,
     stderr: File,
     /// A copy of the job's stdin pipe, which `DEMI_LIVE_INPUT` names
-    /// (`runner.md` § A job's own input); kept open until every
+    /// (`crates/runner-process/src/stdio.rs`); kept open until every
     /// interpreter task finishes.
     input_reference: File,
 }
 
 impl Pipes {
     /// Out of open files, this waits for one on a shell thread until the
-    /// job is cancelled (`runner.md` § Load).
+    /// job is cancelled (`crates/command-sdk/src/descriptors.rs`).
     async fn open(shell: &ShellRuntime, scope: &Scope) -> io::Result<Self> {
         let scope = scope.clone();
         shell
@@ -266,7 +291,7 @@ impl Job {
             };
             // A stopped job reports the signal that ended it, `KILL` once it
             // was killed, and no exit code: bash's own is the interruption's
-            // (`runner.md` § Cancellation and completion). What a killed job
+            //. What a killed job
             // left running goes to the Host log beside it.
             let stopped_by = if owner_cancel.is_cancelled() {
                 Some(Signal::Kill)
@@ -335,7 +360,7 @@ impl ShellJob for Job {
     }
 
     /// `KILL` ends the job at once; the other signals that end a job stop
-    /// it the first way (`runner.md` § Cancellation and completion): its
+    /// it the first way: its
     /// shell work ends at its next step, every process group it started
     /// takes the signal, and the job ends once every process of them has.
     /// Its processes that left its groups take each signal too.
@@ -380,8 +405,7 @@ impl ShellJob for Job {
 }
 
 /// Takes the signals that stop job `job` to its process groups and to its
-/// processes outside them, as a daemon that calls `setsid` is (`runner.md`
-/// § Cancellation and completion): for each signal, it finds those
+/// processes outside them, as a daemon that calls `setsid` is: for each signal, it finds those
 /// processes while the tree is whole, then signals the groups, through
 /// `scope`, and each of them. Once `killed` is cancelled, which kills the
 /// groups, it kills them too, with those the last signal reached that still

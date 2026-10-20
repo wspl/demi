@@ -161,7 +161,7 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
 /// there after every link on the way: nothing there is `missing`, and a
 /// target that cannot be reached, behind a directory closed to the user or
 /// round a loop of links, is `unreadable` with the system's reason; neither
-/// fails the listing (`runner.md` § Host operations).
+/// fails the listing (`crates/runner-host/src/lib.rs`).
 // Cost: a temporary directory; a few milliseconds.
 #[cfg(unix)]
 #[tokio::test]

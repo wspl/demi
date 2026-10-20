@@ -108,7 +108,7 @@ The control runtime is single-threaded because its state belongs to one
 registration and one connection. Plain `&mut` ownership then needs no locks,
 tests run deterministically on a paused clock, and the byte paths wait on IO
 rather than CPU. CPU and blocking work leave the thread through `Admission`,
-whose semaphores are the [Load](../execution/runner.md#load) limits.
+whose semaphores are the Load (`crates/runner/src/main.rs`) limits.
 
 Shell work has its own runtime. Each interpreter unit and utility needs an OS
 thread: builtins and utilities do synchronous IO, utilities keep their state in
@@ -308,7 +308,7 @@ not used. A queue's owner decides what a full queue means, and the
 rule lives with the owner: a conversation socket's outbox closes a connection
 that lags, and the client reconnects to the running session
 ([Frame protocol](../agent/rendering.md#frame-protocol)); the runner's
-connection stops reading until it has room ([Runner](../execution/runner.md)).
+connection stops reading until it has room (`crates/runner/src/main.rs`).
 
 ## Blocking work
 

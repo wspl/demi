@@ -613,7 +613,7 @@ async fn pipe_sink(
         }
         guard.disarm();
     }
-    // As the backend's edge answers (`runner.md` § Pipes and output).
+    // As the backend's edge answers (`crates/runner-protocol/src/wire/pipe_frames.rs`).
     let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     Response::builder()
         .status(StatusCode::OK)

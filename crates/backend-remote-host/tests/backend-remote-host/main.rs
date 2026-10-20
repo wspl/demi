@@ -12,8 +12,7 @@ use demi_backend_remote_host::DeviceSink;
 use demi_runner_protocol::wire::{PipeEnd, PipeFrame, PipeFrameDecoder};
 use futures_util::{StreamExt as _, stream::BoxStream};
 
-/// A sink's response as its device reads it, frame by frame (`runner.md`
-/// § Pipes and output).
+/// A sink's response as its device reads it, frame by frame (`crates/runner-jobs/src/tasks.rs`).
 pub(crate) struct Framed {
     body: BoxStream<'static, bytes::Bytes>,
     frames: PipeFrameDecoder,

@@ -1,9 +1,8 @@
 //! The pipe endpoints that carry file contents and output to the backend's
-//! pipe routes, and the report of a pipe's outcome (`runner.md` § Pipes and
-//! output). A content pipe from the runner is a `PUT` body; a stream pipe,
+//! pipe routes, and the report of a pipe's outcome (`crates/runner-protocol/src/wire/pipe_frames.rs`). A content pipe from the runner is a `PUT` body; a stream pipe,
 //! whose bytes must arrive as they are written, goes over a WebSocket at the
 //! same path, since a TLS edge in front of the backend may hold a request's
-//! body until it ends (`runner.md` § Host operations).
+//! body until it ends (`crates/runner-protocol/src/wire/pipe_frames.rs`).
 
 use bytes::Bytes;
 use crate::backend::Backend;
@@ -67,7 +66,7 @@ impl PipeClient {
     ) -> io::Result<Self> {
         let origin = backend.origin()?;
         // Over TLS the edge's ALPN picks HTTP/2 when it offers it, and the
-        // pipes share that one connection (`runner.md` § Host operations);
+        // pipes share that one connection (`crates/runner-protocol/src/wire/pipe_frames.rs`);
         // its windows grow with the link, so a file far away moves at the
         // link's pace.
         let http = backend
@@ -90,7 +89,7 @@ impl PipeClient {
     }
 
     /// Reads the pipe at `path`: the bytes of its data frames, until its end
-    /// frame (`runner.md` § Pipes and output). An end frame with a cause is
+    /// frame (`crates/runner-protocol/src/wire/pipe_frames.rs`). An end frame with a cause is
     /// that cause's error; a body that stops without an end frame is a
     /// broken pipe; idle frames pass nothing on.
     pub async fn get(
@@ -98,7 +97,7 @@ impl PipeClient {
         path: &str,
         cancel: CancellationToken,
     ) -> io::Result<BoxStream<'static, io::Result<Bytes>>> {
-        // Out of open files, the connection waits for one (`runner.md` § Load).
+        // Out of open files, the connection waits for one (`crates/command-sdk/src/descriptors.rs`).
         let response = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
             response = reconnecting(|| demi_command_sdk::descriptors::retry(&cancel, || async {
@@ -137,7 +136,7 @@ impl PipeClient {
                     match request.body(reqwest::Body::wrap_stream(body.attempt())).send().await {
                         Ok(response) => break response,
                         // Out of open files, the connection waits for one
-                        // (`runner.md` § Load). Only an attempt that read none
+                        // (`crates/command-sdk/src/descriptors.rs`). Only an attempt that read none
                         // of the body can be made again.
                         Err(error) if body.unread() && demi_command_sdk::descriptors::exhausted(&error) => {
                             backoff.wait().await;
@@ -186,7 +185,7 @@ impl PipeClient {
         let config = WebSocketConfig::default()
             .max_message_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES))
             .max_frame_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES));
-        // Out of open files, the connection waits for one (`runner.md` § Load).
+        // Out of open files, the connection waits for one (`crates/command-sdk/src/descriptors.rs`).
         let connecting = reconnecting(|| async {
             let connecting = demi_command_sdk::descriptors::retry(cancel, || async {
                 self.backend
@@ -212,7 +211,7 @@ impl PipeClient {
             loop {
                 // A ping after 30 s without a message keeps the socket
                 // through an edge that ends a silent connection, as a still
-                // page's live view is (`runner.md` § Pipes and output).
+                // page's live view is (`crates/runner-protocol/src/wire/pipe_frames.rs`).
                 let chunk = tokio::select! {
                     chunk = body.next() => chunk,
                     () = tokio::time::sleep(wire::PIPE_IDLE) => {

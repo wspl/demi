@@ -1,4 +1,4 @@
-//! What git ignores in a watched tree (`runner.md` § Watching files): the
+//! What git ignores in a watched tree (`crates/runner-host/src/subscriptions.rs`): the
 //! rules of the repository the tree lies in, with a cache of the folders it
 //! ignores whole, so a path under `target/` costs one lookup of `target`.
 //! A watch's thread asks it of each path it receives; an ignored path

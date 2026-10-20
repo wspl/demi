@@ -36,7 +36,7 @@ it, and a Cloud's ports can be exposed as a device's are.
   with its own HTTP client, the method, path, headers and body as given,
   and streams the answer back, its status and headers included; the
   request and the answer travel as pipes over the relay
-  ([Pipes and output](runner.md#pipes-and-output)). An `https` address is
+  (`crates/runner-jobs/src/tasks.rs`). An `https` address is
   made to `https://localhost:<port>`, connected to 127.0.0.1 whatever
   `localhost` resolves to on the device. The runner follows no redirect and
   drops the hop-by-hop headers, those `Connection` names included. The
@@ -110,7 +110,7 @@ Exposure adds one part and reuses the rest:
   provider builds its requests on the shard's client.
 - **Pipes.** The request and the answer travel as the relay's pipes, as a
   forwarded connection's relay path does
-  ([Pipes and output](runner.md#pipes-and-output)).
+  (`crates/runner-jobs/src/tasks.rs`).
 - **Device names and states.** The offline and stopped answers use the
   device's state the backend already holds, never asking the runner.
 

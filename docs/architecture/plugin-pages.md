@@ -325,7 +325,7 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 The service keeps what it read and learns from the Host's own file system
 when that changes, the way VS Code, JetBrains IDEs and Zed keep a remote
 workspace: it subscribes to what it keeps, and the Host says when a
-subscription's subject changed ([Watching files](../execution/runner.md#watching-files)).
+subscription's subject changed (`crates/runner-host/src/subscriptions.rs`).
 For example, the user reads `src/app.ts`, picks `README.md`, and picks
 `src/app.ts` again: its text shows at once, with its scroll where it was, and
 nothing is asked, since its subscription did not change. The agent then edits
@@ -387,7 +387,7 @@ nothing and read nothing.
 - **Whether an entry is current is worked out from numbers, never stored.**
   Each answer carries the Host's number taken before it read, and each
   subscription its `since` and the `at` of its last change
-  ([Numbers](../execution/runner.md#watching-files)). An entry is current when
+  (`crates/runner-host/src/subscriptions.rs`). An entry is current when
   its answer has the Host's present epoch, and each of its subscriptions is
   live, started at or before the answer's number, changed last at or before
   it, and within its lease as the page counts it

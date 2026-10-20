@@ -1,6 +1,6 @@
 //! An edge in front of the backend that holds each request's body until the
 //! body ends, as a TLS edge such as Cloudflare's does, and passes a
-//! WebSocket's bytes as they come (`runner.md` § Host operations). It speaks
+//! WebSocket's bytes as they come (`crates/runner-host/src/lib.rs`). It speaks
 //! HTTP/1.1, as the backend's listener does, and reads each request's head
 //! and body by their framing; what the backend answers it passes on as it
 //! comes.
@@ -19,7 +19,7 @@ pub struct HoldingEdge {
     /// Cancelled to cut every pipe WebSocket the edge carries.
     cut: CancellationToken,
     /// The body of each pipe upload the edge carried: a runner sends a
-    /// file's bytes to the backend with one (`runner.md` § File contents).
+    /// file's bytes to the backend with one (`crates/runner-host/src/files.rs`).
     pipe_uploads: Arc<Mutex<Vec<Vec<u8>>>>,
     _accepting: AbortOnDropHandle<()>,
 }

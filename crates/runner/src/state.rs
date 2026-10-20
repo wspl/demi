@@ -1,4 +1,4 @@
-//! The installation's state (`runner.md` § Connection and identity): its
+//! The installation's state (`crates/runner/src/registration.rs`): its
 //! configuration, device token and lock, and the record of the runner that
 //! holds it. Each file is checked as it is read.
 

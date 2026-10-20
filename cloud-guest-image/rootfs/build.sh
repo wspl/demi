@@ -157,8 +157,7 @@ in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
 # The runner's Host log, its job output and the temporary directory its
 # TMPDIR names live on the system layer, so the log outlives a stop and a
-# wake, and a build's temporary files do not fill /tmp's memory (runner.md
-# § Host log, managed-hosts.md § Images). The runner makes its job root and
+# wake, and a build's temporary files do not fill /tmp's memory (`crates/runner/src/host_log.rs`, managed-hosts.md § Images). The runner makes its job root and
 # temporary directory in /var/lib/demi itself, as a Cloud on an earlier base
 # needs.
 # Made inside the tree, where `demi` is a name: uutils' install on the build

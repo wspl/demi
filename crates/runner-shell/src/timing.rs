@@ -1,6 +1,5 @@
 //! What `time` reports of a pipeline in a job: the processor time of the
-//! processes the pipeline started, none of the runner's (`runner.md`
-//! § Builtins that act on a process).
+//! processes the pipeline started, none of the runner's (`crates/runner-shell/src/process_builtins.rs`).
 
 use std::sync::{Arc, Mutex, PoisonError};
 

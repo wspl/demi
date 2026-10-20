@@ -1,16 +1,32 @@
-//! The conversation idle clock (`resource-lifecycle.md` § Idle window): a
-//! conversation that has not been active for the idle window hears the
-//! conversation release on every Host it reaches, primary or attached, whose
-//! runner is connected: a paired device or a running Cloud. Its watch starts
-//! with the conversation's first Host admission and ends once it released;
-//! a won target switch starts it again, so a deadline of the old binding
-//! never releases the new one; an archive ends it. A release a Host did not
-//! take ends the watch as one it took does, since the Host hears it again
-//! (`resource-lifecycle.md` § A release that fails). A Host that did not
-//! hear a release, because its runner was not connected or its Cloud
-//! stopped, is sent none later: the connection's loss or the stop ended
-//! what the release would have (`resource-lifecycle.md` § Conversation
-//! release).
+//! The conversation idle clock: a conversation that has not been active for the
+//! idle window (`super`) hears the conversation release on every Host it reaches,
+//! primary or attached, whose runner is connected. Its watch starts with the
+//! conversation's first Host admission and ends once it released; a won target
+//! switch starts it again, so a deadline of the old binding never releases the new
+//! one; an archive ends it.
+//!
+//! The release is one generic runner message, sent through the conversation's host
+//! access in its lifecycle form, which takes no file gate and wakes nothing; it also
+//! goes to the Host a conversation stops using (a target switch, a detach) and to
+//! every Host when the conversation is archived or deleted. The runner forwards it
+//! to each resident service on the device, which ends whatever it holds for the
+//! conversation (the browser closes its Chrome and removes its profile). It can be
+//! sent without checking what runs there because no job of the conversation runs
+//! when it arrives: it is sent only while the backend holds the conversation's file
+//! gate, and every job runs in a lease of that gate. Repeating one is harmless, and
+//! it never starts a service.
+//!
+//! It is never sent to a stopped Cloud or an offline device, nor later: the stop or
+//! the connection loss already ended every service's state. A release that fails
+//! (the connection lost before the answer, a service that could not end what it
+//! held, no answer within six minutes) is logged with the Host and the reason, fails
+//! nothing that sent it and is not sent again, because nothing is left for it: a
+//! runner that lost its connection has ended every service's state, a service that
+//! failed is retired and so ends what it held, and one that answers too late
+//! finishes all the same. An archive, a target switch and a detach are the user's
+//! changes to their own conversation, and failing one because a Host's cleanup
+//! failed would leave a refusal to retry that changes nothing on the Host. So the
+//! watch ends after its release however a Host answered. Forking releases nothing.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

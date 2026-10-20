@@ -112,7 +112,7 @@ impl Recorder {
 
     fn locked(&self) -> io::Result<Recording> {
         // Out of open files, recording waits for one rather than leave an
-        // edit out (`runner.md` § Load).
+        // edit out (`crates/command-sdk/src/descriptors.rs`).
         let mut options = OpenOptions::new();
         options.create(true).truncate(false).read(true).write(true);
         let lock = crate::descriptors::retry_blocking(|| options.open(&self.context.lock))?;

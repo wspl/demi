@@ -1,4 +1,4 @@
-//! The connection engine (`runner.md` § Connection and identity): one runner
+//! The connection engine (`crates/runner-protocol/src/wire/mod.rs`): one runner
 //! connection's state, keyed by the ids of what the backend asked and waits
 //! for, the routing of every message the runner sends, liveness, and the
 //! teardown that ends everything in flight when the connection goes.
@@ -63,7 +63,7 @@ const PACKAGE_EVENTS: usize = 1024;
 /// How long the backend's work for a connection may go on once the
 /// connection ended, such as an rpc handler committing; whatever still runs
 /// then is aborted, so the device goes offline and its next hello is
-/// answered (`runner.md` § Connection and identity).
+/// answered (`crates/runner-protocol/src/wire/mod.rs`).
 pub const END_GRACE: Duration = Duration::from_secs(5);
 
 /// How long a conversation release may take on the runner.
@@ -91,7 +91,7 @@ pub trait LinkPolicy {
     fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>>;
 
     /// The device's runner asks that the device be revoked, as `run
-    /// uninstall` does (`runner.md` § Installation, pairing and removal):
+    /// uninstall` does (`crates/runner/src/removal.rs`):
     /// once it is, its connection ends with `revoked`; or why it could not
     /// be.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>>;
@@ -213,7 +213,7 @@ pub struct LinkOptions {
     /// The device's jobs, which outlive the connection.
     pub jobs: DeviceJobs,
     /// What the runner's hello says of its jobs, which the connection takes
-    /// up (`runner.md` § Command lifetime).
+    /// up (`crates/runner/src/connection/kept.rs`).
     pub hello: Hello,
 }
 
@@ -236,7 +236,7 @@ pub enum LinkEnd {
 impl LinkEnd {
     /// What the connection's end fails its work with: a refusal on either
     /// side names the message, so a command lost with the connection says
-    /// why (`runner.md` § Connection and identity).
+    /// why (`crates/runner-protocol/src/wire/mod.rs`).
     fn reason(&self) -> String {
         match self {
             Self::Closed(_) => "runner disconnected".to_owned(),
@@ -473,7 +473,7 @@ struct SharedState<E, C> {
     outliving: Vec<String>,
 }
 
-/// One message of a job's output (`runner.md` § Pipes and output): the
+/// One message of a job's output (`crates/runner-jobs/src/tasks.rs`): the
 /// stream's bytes from `offset`. Beyond the stream's first `JOB_VIEW_BYTES`,
 /// an offset past the end of the stream's previous bytes says the runner
 /// left the bytes between out, and one without bytes says only that the
@@ -648,7 +648,7 @@ impl JobEnd {
 }
 
 /// A medium a job's command returned to the job, as the runner announced it
-/// once it kept it (`runner.md` § Pipes and output).
+/// once it kept it (`crates/runner-jobs/src/tasks.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobMedium {
     pub number: u32,
@@ -686,8 +686,7 @@ impl Link {
 
     /// A connection, and the driver its owner serves the socket with. The
     /// jobs its runner's hello lists go on over it, are stopped when the
-    /// backend has no command for them, or are lost (`runner.md` § Command
-    /// lifetime).
+    /// backend has no command for them, or are lost (`crates/runner/src/connection/kept.rs`).
     pub fn new(options: LinkOptions) -> (Link, LinkDriver) {
         let (outbound, frames) = mpsc::channel(OUTBOUND_FRAMES);
         let (package_events, mut events) = mpsc::channel(PACKAGE_EVENTS);
@@ -775,8 +774,7 @@ impl Link {
 
     /// Reads the kept output of `job`, which goes on over this connection,
     /// and delivers what its consumer did not receive: the output the
-    /// runner printed while no connection served (`runner.md` § Command
-    /// lifetime). A read that fails delivers only what arrives from now on.
+    /// runner printed while no connection served (`crates/runner/src/connection/kept.rs`). A read that fails delivers only what arrives from now on.
     async fn resync(&self, job: &str, lengths: wire::OutputLengths) {
         let read = async {
             let reader = crate::remote_host::filled_job_read(self, job).await?;
@@ -860,8 +858,7 @@ impl Link {
     }
 
     /// Whether the runner answers a ping within `within`, as a new hello for
-    /// the device asks of the connection that holds it (`runner.md`
-    /// § Connection and identity): any pong that arrives meanwhile is an
+    /// the device asks of the connection that holds it (`crates/runner-protocol/src/wire/mod.rs`): any pong that arrives meanwhile is an
     /// answer. A connection that is closing does not answer; one whose
     /// liveness is paused does, since its silence is no death.
     pub async fn answers(&self, within: Duration) -> bool {
@@ -905,8 +902,7 @@ impl Link {
     }
 
     /// Asks the runner to download runner release `release` ahead, whose
-    /// executable for its target has `sha256` and `size` (`runner.md`
-    /// § Runner updates): done once it is in place, or why it is not. The
+    /// executable for its target has `sha256` and `size` (`crates/runner/src/update.rs`): done once it is in place, or why it is not. The
     /// runner names its answer by the release, which stands for the
     /// request's id.
     pub async fn prefetch(&self, release: &str, sha256: &str, size: u64) -> Result<(), HostError> {
@@ -1946,7 +1942,7 @@ impl Link {
     /// processes end as lost, service and direct streams close (a direct
     /// stream's token is a child of `closed`), calls stop, and the device's
     /// pipes fail; its jobs wait for the device's next connection
-    /// (`runner.md` § Command lifetime). Idempotent.
+    /// (`crates/runner/src/connection/kept.rs`). Idempotent.
     pub(crate) fn teardown(&self, reason: &str) {
         if self.0.end.borrow().is_some() {
             return;

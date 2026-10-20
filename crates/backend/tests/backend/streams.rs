@@ -1,7 +1,7 @@
 //! User streams end to end (`web-api-hosts.md` § User streams): the page's
 //! socket, the backend's admission and relay, the runner's service stream
 //! and a resident native service, and an open stream as the conversation's
-//! activity (`resource-lifecycle.md` § Activity). The streams bind the
+//! activity (`crates/backend-user-shard/src/lifecycle/mod.rs`). The streams bind the
 //! runner's test fixture package: `echo` answers what the page sends,
 //! `where` reports its context and directory, `tell` tells the fixture's
 //! plugin what the page sends (`native-runtime.md` § Messages to the
@@ -380,7 +380,7 @@ async fn an_open_stream_keeps_the_cloud_it_watches_awake_until_it_closes() {
 }
 
 /// A user stream behind an edge that holds each request's body until it
-/// ends, as Cloudflare's does (`runner.md` § Host operations): the Host's
+/// ends, as Cloudflare's does (`crates/runner-host/src/lib.rs`): the Host's
 /// bytes reach the page as they are written, while the stream stays open,
 /// since the runner sends a stream pipe over a WebSocket; its close frame
 /// ends the stream as completed, and a connection lost without one fails it,

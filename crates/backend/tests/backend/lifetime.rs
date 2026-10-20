@@ -1,5 +1,4 @@
-//! Commands outlive their connections and the backend (`runner.md`
-//! § Command lifetime, `sessions-and-targets.md` § Recovery and
+//! Commands outlive their connections and the backend (`crates/runner/src/connection/kept.rs`, `sessions-and-targets.md` § Recovery and
 //! persistence): a connection that drops and comes back within the grace
 //! stops nothing, and the command reports its end with what it printed
 //! meanwhile; one that stays away loses the command for that reason; a
@@ -653,7 +652,7 @@ async fn an_rpc_call_made_while_the_connection_is_away_waits_for_it_and_is_serve
 
     // The job asks the backend about itself while its runner is away: the
     // call waits, and the connection that comes back serves it
-    // (`runner.md` § Command lifetime).
+    // (`crates/runner/src/connection/kept.rs`).
     network.cut();
     backend.until_online(&master, alpha.id(), false).await;
     std::fs::write(home.join("go"), "").unwrap();

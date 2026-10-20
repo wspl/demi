@@ -1,4 +1,4 @@
-//! The Host contract (`runner.md` § Host operations): an execution target's
+//! The Host contract (`crates/runner-host/src/lib.rs`): an execution target's
 //! filesystem and processes, as the agent, the providers and the backend
 //! reach them. A Host is shard-local, so its futures and streams of control
 //! are not `Send`; file contents are, so a byte path can leave the shard.
@@ -44,7 +44,7 @@ pub struct HostIdentity {
     pub home_dir: String,
     /// The absolute directory that holds the conversations' scratch
     /// directories on the Host, each named by its conversation's id, as the
-    /// runner reported it (`runner.md` § Scratch directory); empty for a Host
+    /// runner reported it (`crates/runner-jobs/src/scratch.rs`); empty for a Host
     /// that never connected.
     pub scratch_root: String,
     /// How the Host writes its paths, from the system its runner reports.
@@ -71,8 +71,7 @@ pub trait Host {
 }
 
 /// Why a Host operation failed. A failed read the Host answered also
-/// carries the Host's number taken before it read (`runner.md` § Watching
-/// files): a file that is not there is an answer like any other.
+/// carries the Host's number taken before it read (`crates/runner-host/src/subscriptions.rs`): a file that is not there is an answer like any other.
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct HostError {
@@ -193,7 +192,7 @@ pub enum FileKind {
 /// One entry of a directory, with its own metadata as `lstat` reports it:
 /// a symbolic link's size and modification time are the link's, and it
 /// carries `link`, where it points. A listing carries them so that it is
-/// one request to the Host (`runner.md` § Host operations).
+/// one request to the Host (`crates/runner-host/src/lib.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirEntry {
     pub name: String,
@@ -404,7 +403,7 @@ impl fmt::Debug for Descriptor {
     }
 }
 
-/// The environment a process starts with (`runner.md` § Host operations).
+/// The environment a process starts with (`crates/runner/src/environment.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpawnEnv {
     /// The Host's own environment.

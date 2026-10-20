@@ -1,5 +1,5 @@
 //! `RemoteHost`: a Host over its device's runner connection
-//! (`runner.md` § Host operations). Every filesystem operation is one request
+//! (`crates/runner-host/src/lib.rs`). Every filesystem operation is one request
 //! and its reply, with a file's contents in a pipe beside it; processes and
 //! jobs stream over their own messages. A Host is a value: two handles with
 //! equal keys are the same Host, whichever connection serves them, and a
@@ -61,7 +61,7 @@ pub enum Admission {
 }
 
 /// A file a read opened: its metadata and version then, its bytes, and the
-/// Host's number before it read (`runner.md` § Watching files).
+/// Host's number before it read (`crates/runner-host/src/subscriptions.rs`).
 pub struct OpenedRead {
     pub stat: FileStat,
     pub version: String,
@@ -258,7 +258,7 @@ impl RemoteHost {
 
     /// A pipe the device's runner fills with `range` of the file, once the
     /// file is open, with the file's metadata and version then, so no `stat`
-    /// precedes a read (`runner.md` § Host operations): a file that cannot
+    /// precedes a read (`crates/runner-host/src/lib.rs`): a file that cannot
     /// be opened, or is not a regular file, fails here, before any byte. A
     /// range is read up to the end the file had when it was opened. Dropping
     /// the reader stops the read.
@@ -283,7 +283,7 @@ impl RemoteHost {
 
     /// The size and SHA-256 of the file at `path` beside `cwd`, none of
     /// whose bytes travel, or its size alone when it is over `limit` bytes
-    /// (`runner.md` § File contents).
+    /// (`crates/runner-host/src/files.rs`).
     pub async fn hash_file_in(
         &self,
         cwd: &str,
@@ -307,7 +307,7 @@ impl RemoteHost {
     }
 
     /// [`RemoteHost::read_pipe`], except that a file that still has the
-    /// version `held` streams nothing (`runner.md` § File contents).
+    /// version `held` streams nothing (`crates/runner-host/src/files.rs`).
     pub async fn read_pipe_unless(
         &self,
         path: &str,
@@ -358,15 +358,14 @@ impl RemoteHost {
         }))
     }
 
-    /// A holder of the Host's subscriptions (`runner.md` § Watching
-    /// files): pages that hold the same subject share one subscription. It
+    /// A holder of the Host's subscriptions (`crates/runner-host/src/subscriptions.rs`): pages that hold the same subject share one subscription. It
     /// holds no admission, so it keeps no Cloud awake.
     pub fn subscriber(&self) -> Result<HostSubscriber, HostError> {
         Ok(self.link()?.subscriber())
     }
 
     /// A directory's entries with their metadata, in one request
-    /// (`runner.md` § Host operations), and the Host's number before it
+    /// (`crates/runner-host/src/lib.rs`), and the Host's number before it
     /// listed.
     pub async fn list_directory(&self, path: &str) -> Result<(Vec<DirEntry>, ReadAt), HostError> {
         let link = self.link()?;
@@ -458,8 +457,7 @@ impl RemoteHost {
         }
     }
 
-    /// Writes the directory `path` whole with one request (`runner.md`
-    /// § Host operations): each of `files` by its path inside it, with its
+    /// Writes the directory `path` whole with one request (`crates/runner-host/src/lib.rs`): each of `files` by its path inside it, with its
     /// mode and bytes, and every directory in it with `directory_mode`. The
     /// runner puts it in place once every file is written; a directory at
     /// `path` already is kept.
@@ -519,8 +517,7 @@ impl RemoteHost {
         .map(|_| ())
     }
 
-    /// Reads several files with one request (`runner.md` § Host
-    /// operations): each file's bytes, or why it was not read, in the
+    /// Reads several files with one request (`crates/runner-host/src/lib.rs`): each file's bytes, or why it was not read, in the
     /// order of `paths`. A file over `limit` bytes is not read.
     pub async fn read_files(
         &self,
@@ -545,8 +542,7 @@ impl RemoteHost {
         split_reads(reader, reads, paths.len(), limit).await
     }
 
-    /// Looks at several paths with one request (`runner.md` § Host
-    /// operations): each answers what is there, in the order of `paths`.
+    /// Looks at several paths with one request (`crates/runner-host/src/lib.rs`): each answers what is there, in the order of `paths`.
     /// A path the Host could not read answers so; a failure that is not
     /// about one path fails the look. The Host's number before it looked
     /// comes with the answers.
@@ -625,7 +621,7 @@ impl RemoteHost {
         Ok((looks, read_at))
     }
 
-    /// The uncommitted changes under `root` (`runner.md` § Working tree),
+    /// The uncommitted changes under `root` (`crates/runner-host/src/git.rs`),
     /// and the Host's number before it read them.
     pub async fn git_changes(&self, root: &str) -> Result<(GitChanges, ReadAt), HostError> {
         let link = self.link()?;
@@ -644,7 +640,7 @@ impl RemoteHost {
     }
 
     /// The local branches of `root`'s repository and the one checked out
-    /// (`runner.md` § Working tree), and the Host's number before it read
+    /// (`crates/runner-host/src/git.rs`), and the Host's number before it read
     /// them.
     pub async fn git_branches(&self, root: &str) -> Result<(GitBranches, ReadAt), HostError> {
         let link = self.link()?;
@@ -726,7 +722,7 @@ impl RemoteHost {
     }
 
     /// Up to `limit` lines of the Host's log after `since`, oldest first, of
-    /// one `source` when named (`runner.md` § Host log).
+    /// one `source` when named (`crates/runner/src/host_log.rs`).
     pub async fn read_log(
         &self,
         since: Option<u64>,
@@ -750,7 +746,7 @@ impl RemoteHost {
 
     /// Opens a user stream: `request`'s operation in the resident service
     /// that holds the conversation's state, its input and output the two
-    /// pipes (`runner.md` § Service streams). It admits no work: a stream is
+    /// pipes (`crates/runner-jobs/src/commands/streams.rs`). It admits no work: a stream is
     /// retention, not activity.
     pub async fn open_service(
         &self,
@@ -971,7 +967,7 @@ pub struct JobStart {
     pub id: String,
     pub script: String,
     /// Where the job starts; one that does not exist fails it before its
-    /// script runs (`runner.md` § Shell jobs).
+    /// script runs (`crates/runner-shell/src/lib.rs`).
     pub cwd: String,
     /// Exactly the variables the job's shell starts with, above the device's.
     pub env: BTreeMap<String, String>,
@@ -994,7 +990,7 @@ pub struct JobStart {
 }
 
 /// One shell job on the runner, over whichever connection of its device
-/// serves it (`runner.md` § Command lifetime).
+/// serves it (`crates/runner/src/connection/kept.rs`).
 #[derive(Clone)]
 pub struct RemoteJob {
     id: String,
@@ -1064,7 +1060,7 @@ impl RemoteJob {
     }
 
     /// Starts or stops the runner's sending of the job's output beyond each
-    /// stream's first `JOB_VIEW_BYTES` (`runner.md` § Pipes and output);
+    /// stream's first `JOB_VIEW_BYTES` (`crates/runner-jobs/src/tasks.rs`);
     /// nothing once the job ended or while no connection serves it.
     pub async fn follow(&self, follow: bool) -> Result<(), HostError> {
         match self.live() {
@@ -1138,7 +1134,7 @@ impl RemoteJob {
             .ok_or_else(|| HostError::offline("the job's runner is not connected"))
     }
 
-    /// The job's kept output as it stands (`runner.md` § Pipes and output):
+    /// The job's kept output as it stands (`crates/runner-jobs/src/tasks.rs`):
     /// while the job runs, and after it ended until its release.
     pub async fn read_output(&self) -> Result<WholeOutput, HostError> {
         let link = self.connected()?;
@@ -1155,7 +1151,7 @@ impl RemoteJob {
     }
 
     /// The bytes of the media `numbers` the job keeps, with one request
-    /// (`runner.md` § Pipes and output): while the job runs, and after it
+    /// (`crates/runner-jobs/src/tasks.rs`): while the job runs, and after it
     /// ended until its release. Each answers its bytes or why it was not
     /// read, in the order of `numbers`.
     pub async fn read_media(
@@ -1195,8 +1191,11 @@ impl RemoteJob {
         }
     }
 
-    /// Stops the job (`runner.md` § Cancellation and completion): `TERM`,
-    /// then `KILL` once [`wire::STOP_GRACE`] has passed without its end. A
+    /// Stops the job (`crates/runner-shell/src/job.rs` says what each signal
+    /// does there): `TERM`, then `KILL` once [`wire::STOP_GRACE`] has passed
+    /// without its end. A command counts as stopped only when its runner says its
+    /// job ended, so a stop while the runner is away leaves it running, shown as
+    /// stopping, until the link is back. A
     /// signal sent while no connection served the job reached nothing, and
     /// one sent over a connection that ended may not have reached the
     /// runner, so both go again each time the job goes on over a connection
@@ -1777,8 +1776,7 @@ struct SpawnControl {
 
 impl Drop for SpawnControl {
     /// Nobody controls a process whose handle is gone, so one that has not
-    /// ended is killed; the runner is asked without waiting (`runner.md`
-    /// § Host operations).
+    /// ended is killed; the runner is asked without waiting (`crates/runner-host/src/lib.rs`).
     fn drop(&mut self) {
         if let Some(link) = live(&self.link, &self.shared) {
             link.post(&Inbound::SpawnKill {
@@ -2024,7 +2022,7 @@ fn pipe_error(error: PipeError) -> HostError {
 }
 
 /// How long a write's reply may take once its input's last byte left
-/// (`runner.md` § File contents).
+/// (`crates/runner-host/src/files.rs`).
 const REPLY_AFTER_INPUT: Duration = Duration::from_secs(60);
 
 /// `reply`, the answer to a write whose bytes travel through `input`. Once
@@ -2079,7 +2077,7 @@ pub fn host_identity(runner: &wire::RunnerInfo) -> HostIdentity {
     }
 }
 
-/// How a Host of `platform` writes its paths (`runner.md` § Windows paths).
+/// How a Host of `platform` writes its paths (`crates/runner-shell/src/lib.rs`).
 pub fn host_paths(platform: wire::RunnerPlatform) -> HostPaths {
     match platform {
         wire::RunnerPlatform::Win32 => HostPaths::Windows,

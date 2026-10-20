@@ -1,17 +1,37 @@
-//! Starting with the computer (`runner.md` § Starting with the computer):
-//! the installation's registration with the service manager the system
-//! offers its user, which starts the runner at the user's login and again
-//! after a crash. Every runner of an installer's installation makes sure of
-//! it as it starts, and one the manager did not start hands the
-//! installation over to the manager's; `run start` asks the manager for the
-//! runner; a removal removes the registration last.
+//! Starting with the computer: the installation's registration with the service
+//! manager the system offers its user (a LaunchAgent, a systemd user unit, a
+//! scheduled task or the `Run` value on Windows, none needing administrator
+//! rights), which starts the runner at the user's login and again after a crash, so a
+//! paired device is back online by itself after a restart. The files the managers
+//! read are written directly and the managers are asked through their own commands,
+//! since none offers its user a library interface.
 //!
-//! The files the managers read are written directly; the managers are asked
-//! through their own commands, `launchctl`, `systemctl` and `loginctl`, and
-//! on Windows PowerShell's ScheduledTasks module, since none offers its user
-//! a library interface (the Task Scheduler's COM interface aside, which
-//! PowerShell's module wraps); the `HKCU\…\Run` value is written through
-//! the registry's API.
+//! - Every runner of an installer's installation makes sure of the registration as
+//!   it starts, so a person who deleted it has it back at the next start. It runs
+//!   the installation's launcher, never a release's binary, so it outlives every
+//!   update.
+//! - Exit status decides a restart: a runner exits 0 when nothing would come of
+//!   starting it again (stopped, drained, removed, its device no longer paired,
+//!   another runner holding the lock, a state no start can change) and non-zero only
+//!   on a failure a new start may cure, so a revoked device or a second copy never
+//!   loops.
+//! - The manager's runner is the one that runs: a runner the manager did not start
+//!   hands over once its registration works (it releases the lock, asks the manager
+//!   to start the installation's runner, exits 0), so a runner is supervised from the
+//!   first minute after an install or an update. The manager names its own with
+//!   `DEMI_SUPERVISED`, so it never hands over.
+//! - Removal removes the registration last, so the manager never starts a runner
+//!   that is gone. Where none can be made (Linux without a systemd user manager, a
+//!   Windows that refuses both, lingering the system refuses), the runner goes on and
+//!   says so in its log and hello (`AutostartUnavailable`), so the user learns before
+//!   a restart that the device will not come back.
+//!
+//! On macOS a grant of the protected folders is remembered per designated
+//! requirement, so the release workflow signs the runner with Demi's own
+//! certificate, the same in every release (`sh.demi.runner`); an ad hoc signature
+//! names the build's hash, and the system would ask again after every update. The
+//! certificate is self-signed and not for Gatekeeper, which never checks a runner
+//! that curl downloaded.
 
 use std::{
     io,

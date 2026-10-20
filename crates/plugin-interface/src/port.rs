@@ -463,8 +463,8 @@ pub enum EntryKind {
 }
 
 /// What a package call does on the Host, which decides whether it wakes a
-/// stopped Cloud and whether it is activity (`resource-lifecycle.md`
-/// § Activity).
+/// stopped Cloud and whether it is activity (`backend-user-shard`'s
+/// `crates/backend-user-shard/src/lifecycle/mod.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CallKind {
@@ -502,7 +502,7 @@ pub enum PortRefusal {
     Operation { stderr: String },
     /// The Host could not start the operation: its package's service did
     /// not start, or the runner refused to start it, in the runner's words
-    /// (`runner.md` § Service streams).
+    /// (`crates/runner-jobs/src/commands/streams.rs`).
     #[error("{message}")]
     Service { message: String },
     /// Another write of the value came first.

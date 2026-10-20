@@ -49,7 +49,7 @@ reason, resumes a session file the provider writes from the transcript
 depends on an earlier process or on files the machine kept.
 
 The provider uses the same Host process interface as every other Host
-operation ([Host operations](../execution/runner.md#host-operations)), not a
+operation (`crates/runner-host/src/lib.rs`), not a
 copy of its own. It relies on three of its properties: an environment entry can
 unset an inherited variable; standard output and standard error are byte
 streams that end when the process exits, and waiting reports the exit code, the
@@ -239,7 +239,7 @@ was. It has two operations:
 The backend and the package decode these records with the same Rust types
 ([Contract crates](../architecture/contracts.md#contract-crates)). The backend
 reaches the operations through a
-[service stream](../execution/runner.md#service-streams), which carries no
+service stream (`crates/runner-jobs/src/commands/streams.rs`), which carries no
 arguments: the record is the stream's input, read to its end, and the answer is
 one JSON document on its output, since the output is all a service stream
 brings back: `{ ok: true, … }`, or `{ ok: false, code, message }` with one of
@@ -301,7 +301,7 @@ conversation's file gate
 ([Host operations](../execution/sessions-and-targets.md#host-operations)).
 
 The process is **retained** between turns and is not activity
-([Activity](../execution/resource-lifecycle.md#activity)): a machine with no
+(`crates/backend-user-shard/src/lifecycle/mod.rs`): a machine with no
 work left goes idle and stops with its processes, and the next request wakes
 it and starts the CLI again, which resumes the conversation's session
 ([The session a process resumes](#the-session-a-process-resumes)). It runs in

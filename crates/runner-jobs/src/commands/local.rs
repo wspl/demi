@@ -63,7 +63,7 @@ impl Server {
                                 });
                             }
                             // Out of open files, the connection stays queued until one
-                            // closes (`runner.md` § Load).
+                            // closes (`crates/command-sdk/src/descriptors.rs`).
                             Err(error) if demi_command_sdk::descriptors::exhausted(&error) => backoff.wait().await,
                             Err(error) => break Err(error),
                         }

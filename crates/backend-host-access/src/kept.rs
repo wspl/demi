@@ -3,7 +3,7 @@
 //! `crates/backend-user-shard/src/conversation/workflows.rs`): for each Host
 //! and directory a loaded conversation uses, one search through the
 //! conversation's host access in the form that never wakes a Host, kept current
-//! by the runner's file watch (`runner.md` § Watching files). A request takes
+//! by the runner's file watch (`crates/runner-host/src/subscriptions.rs`). A request takes
 //! what is held: only the first search of a directory holds it, for at most
 //! [`FIRST_SEARCH_HOLD`].
 //!

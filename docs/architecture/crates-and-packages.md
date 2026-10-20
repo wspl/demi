@@ -29,7 +29,7 @@ trusted conversation and caller identity on every invocation, and the generic
 conversation release with its status query
 ([Conversation-scoped state](../execution/native-runtime.md#conversation-scoped-state)).
 The backend owns one policy: when a conversation is idle
-([Conversation idle and Host resource release](../execution/resource-lifecycle.md)).
+(`crates/backend-user-shard/src/lifecycle/mod.rs`).
 Each tool owns its own state and cleanup.
 
 For example, the conversation browser keeps its tabs between shell jobs. Its
@@ -351,7 +351,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - the frames of a pipe the runner reads (`wire::pipe_frames`: data, idle
     and end, their encoder and incremental decoder, and `PIPE_IDLE`), which
     any transport between the two ends carries
-    ([Pipes and output](../execution/runner.md#pipes-and-output));
+    (`crates/runner-jobs/src/tasks.rs`);
   - the managed boot record (`ManagedBoot`) and the runner release record
     (`RunnerRelease`);
   - a server release's record (`ServerRelease`, the root's `release.json`),
@@ -360,7 +360,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - the release check before a runner's socket opens: its two headers and
     the body of the backend's 409 answer, the one part of the connection
     that every release keeps
-    ([Runner updates](../execution/runner.md#runner-updates));
+    (`crates/runner/src/update.rs`);
   - the backend's management socket, on which an upgrade's `demi-server`
     names the runner release that comes next: its default path, its request
     and its progress lines ([Prepare](../delivery/upgrades.md#prepare));
@@ -374,7 +374,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - the lines a runner writes to its console that the installers read
     (`console`): the pairing code, the paired device with its removal
     command, and the removed projects
-    ([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)).
+    (`crates/runner/src/console.rs`).
 - **Conversation scope:** jobs and service streams carry the
   [command context](../execution/native-runtime.md#command-context);
   `conversation_release` is the one generic release message, and
@@ -385,7 +385,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   machine manager uses `ManagedBoot`, and `machine-manager-protocol`'s image manifest
   check and `xtask`'s image build use `ARTIFACTS_PATH`. `xtask` writes a server
   release's record and files, and the backend's publication reads them. Behavior:
-  [Runner](../execution/runner.md).
+  `crates/runner/src/main.rs`.
 - **Must not:** contain network IO, a Host implementation, a shell environment,
   the job table, credentials, claim policy, the device registry or conversation
   state.
@@ -506,7 +506,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   the `host-allocator` feature, which those programs turn on ([Memory allocator](../delivery/builds-and-releases.md#memory-allocator)).
   And raising a program's soft limit on open files as far as the system
   allows, which the runner and the backend do as they start
-  ([Load](../execution/runner.md#load),
+  (Load (`crates/runner/src/main.rs`),
   [Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
 - **Public boundary:** `unknown_variable`, over the program's clap command,
   `install_panic_hook` and `raise_open_file_limit`.
@@ -691,7 +691,7 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** the items above; `host_interface::testing` supplies the Host
   conformance cases, an in-memory port for rpc handler tests
   (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
-  [Host operations](../execution/runner.md#host-operations); the handler
+  Host operations (`crates/runner-host/src/lib.rs`); the handler
   interface is [the TypeScript boundary](contracts.md#the-typescript-boundary).
 - **Must not:** depend on the agent's crates, `provider-common`, a concrete provider,
   a plugin or a Host implementation.
@@ -855,7 +855,7 @@ guide (`ServerDeps::guide`), the profiles, the
   - pipe records (`Pipes`) and their `Send` ends, and, behind its `edge`
     feature, the device end of a stream pipe, `accept_stream_pipe`, which
     the edge's `GET /api/pipes/:id` route and the testing fixture's edge
-    both use ([Host operations](../execution/runner.md#host-operations));
+    both use (`crates/runner-host/src/lib.rs`);
   - `RemoteShellEnvironment`, the production `ShellEnvironment` over real
     runner jobs, and its factory: at a job's end it reads what the backend
     does not hold of the command's output and its edit copies, hands them to
@@ -870,7 +870,7 @@ guide (`ServerDeps::guide`), the profiles, the
   (`TestDevice`, whose connections are `TestLink`s), a command package the
   workspace built (`NativeFixture`, such as the runner's native fixture
   package) and a policy that runs every call in one command set
-  (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
+  (`CommandPolicy`). Behavior: `crates/runner/src/main.rs` and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-artifacts).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
@@ -1027,14 +1027,14 @@ demi-runner (executable: connection, registration, Host log, composition)
 - **Owns:** the runner's child processes and their IO: starting a process in
   a process group of its own with the runner's attributes (`ChildAttributes`:
   the umask and resource limits of
-  [Builtins that act on a process](../execution/runner.md#builtins-that-act-on-a-process)),
+  Builtins that act on a process (`crates/runner-shell/src/process_builtins.rs`)),
   killing and reaping it; standard IO plumbing; the way to the backend, at its
   URL or through a Cloud's runner socket
   ([Backend socket](../cloud/managed-hosts.md#backend-socket)); the pipe endpoints that carry
   file contents and output to the backend's pipe routes, and the report of a
-  pipe's outcome ([Pipes and output](../execution/runner.md#pipes-and-output));
+  pipe's outcome (`crates/runner-jobs/src/tasks.rs`);
   the identity of a job's own input, which tells a command whether its
-  stdin is the job's input ([A job's own input](../execution/runner.md#a-jobs-own-input));
+  stdin is the job's input (`crates/runner-process/src/stdio.rs`);
   the split of a stream into lines and the kept tail of a stream; private
   state files written atomically, through `shared-artifacts`'s publication; the line
   counts of a change to a file; the
@@ -1052,7 +1052,7 @@ demi-runner (executable: connection, registration, Host log, composition)
 #### `runner-host`
 
 - **Owns:** the Host operations the backend asks for
-  ([Host operations](../execution/runner.md#host-operations)): filesystem
+  (`crates/runner-host/src/lib.rs`): filesystem
   operations and file contents through pipes, the working tree with its
   status, diffs and change watch (gix and notify), and the
   volumes a Host reports. It resolves a request's paths and waits out a lack
@@ -1105,7 +1105,7 @@ demi-runner (executable: connection, registration, Host log, composition)
 #### `runner-shell`
 
 - **Owns:** the embedded brush shell and the standard utilities, which run in
-  process ([Shell jobs](../execution/runner.md#shell-jobs)): the shell
+  process (`crates/runner-shell/src/lib.rs`): the shell
   options, the builtins that act on a process, the declared commands'
   builtins, which hand each invocation to the handler the job supplies, a
   utility's panic contained to its job, and the job shell contract's
@@ -1238,7 +1238,7 @@ demi-backend (executable: configuration, composition)
   first needed, and the local store's artifact route,
   and the backend's public address
   that runners reach (`PublicUrl`)
-  ([Runner](../execution/runner.md),
+  (`crates/runner/src/main.rs`,
   [Native runtime](../execution/native-runtime.md#backend-deployment-configuration)).
   Publication uploads to the object store `backend-blobs` configures, and
   the file gate is a `shared-gates` gate, which is why it depends on both.
@@ -1258,7 +1258,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the idle rule's mechanism: one idle window, and one watch per
   resource over that resource's gates, which reserves the resource and reads
   it again before it retires it
-  ([Conversation idle and Host resource release](../execution/resource-lifecycle.md)).
+  (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 - **Public boundary:** the watch, its policy and the activity it reads.
 - **Must not:** know what the resource is; its callers retire it.
 
@@ -1497,7 +1497,7 @@ demi-backend (executable: configuration, composition)
   until the test releases it (`StepHold`): `Backend::hold_hellos` holds
   runners' hellos (`HelloStep`: the token's lookup, or the shard's bind) for
   the scenarios that race a hello against its runner going away and against
-  shutdown ([Runner](../execution/runner.md#connection-and-identity)), and
+  shutdown (`crates/runner-protocol/src/wire/mod.rs`), and
   `Backend::hold_sync` holds the pages' synchronization channels
   (`SyncStep`: once a channel has read its snapshot, before it sends it; or
   once a change woke it, before it takes and reads the parts that changed)
@@ -1571,7 +1571,7 @@ demi-backend (executable: configuration, composition)
 - **Public boundary:** the executable; the crate has no library. Its test
   binary drives the built program, as a backend does; the open-file test, a
   binary of its own, runs the runner libraries in its process. Behavior:
-  [Runner](../execution/runner.md) and
+  `crates/runner/src/main.rs` and
   [Native command execution](../execution/native-runtime.md).
 - **Must not:** own conversations or provider implementations; administer
   Cloud mounts, networking or volumes, which belong to the machine manager;

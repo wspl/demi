@@ -44,7 +44,7 @@ impl CommandCaller {
     /// The folder inside the conversation's scratch directory that is the
     /// caller's own, `agent-<number>` for a subagent; none for the root
     /// agent and the user, whose scratch directory is the conversation's
-    /// (`runner.md` § Scratch directory).
+    /// (`crates/runner-jobs/src/scratch.rs`).
     pub fn scratch_folder(&self) -> Option<String> {
         self.agent_number()
             .filter(|number| *number != 0)
@@ -135,7 +135,7 @@ pub struct Invocation {
     pub json: Option<bool>,
     /// Whether the calling process's stdin is the job's own input, which
     /// `demi shell input` feeds and which ends only with the job, for an
-    /// invocation a job's command makes (`runner.md` § A job's own input).
+    /// invocation a job's command makes (`crates/runner-process/src/stdio.rs`).
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -214,7 +214,7 @@ pub const CONVERSATION_NAME_CHARS: usize = 64;
 /// A garde rule: the value names a conversation, or the provider entry that
 /// work outside any conversation serves, as 1 to 64 ASCII letters, digits,
 /// `-` and `_`. The runner names a job's directory after it
-/// (`runner.md` § Pipes and output), so it can never name another path.
+/// (`crates/runner-jobs/src/tasks.rs`), so it can never name another path.
 pub fn conversation_name(value: &str, _: &()) -> garde::Result {
     let valid = !value.is_empty()
         && value.len() <= CONVERSATION_NAME_CHARS

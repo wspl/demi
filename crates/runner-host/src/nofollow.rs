@@ -1,5 +1,4 @@
-//! A look that follows no link below a directory (`runner.md` § Host
-//! operations, `crates/backend-user-shard/src/conversation/workflows.rs`): each component
+//! A look that follows no link below a directory (`crates/runner-host/src/lib.rs`, `crates/backend-user-shard/src/conversation/workflows.rs`): each component
 //! from that directory down is looked at without following it and opened
 //! only when it is no link, so a link swapped in between a listing and a
 //! read is still not followed. On Unix each step opens the next component

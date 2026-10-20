@@ -1,6 +1,5 @@
 //! How work running under the runner reaches the backend and the
-//! registration's owner (`runner.md` § Connection and identity, § Command
-//! lifetime): a callback call registers where its events go, an artifact
+//! registration's owner (`crates/runner-protocol/src/wire/mod.rs`, `crates/runner/src/connection/kept.rs`): a callback call registers where its events go, an artifact
 //! download asks where its artifact is, a service asks for its conversation
 //! numbers, and a job makes its execution context live. The handle outlives
 //! each connection, since a job does: work that needs the backend waits for
@@ -34,7 +33,7 @@ const REQUESTS: usize = 64;
 const NUMBERS_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Why work that needs the backend did not reach it: the runner ends
-/// (`runner.md` § Command lifetime).
+/// (`crates/runner/src/connection/kept.rs`).
 pub const UNREACHABLE: &str = "the backend is unreachable";
 
 /// Whether the runner reaches its backend now.

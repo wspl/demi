@@ -1,8 +1,27 @@
-//! File contents (`runner.md` § File contents): a file's bytes travel through
-//! a pipe, never in a message. A read replies once the file is open and
-//! positioned, before its first byte; a write replies once the file is in
-//! place. A pipe that fails, because its reader went away or the connection
-//! closed, ends the transfer and closes the file.
+//! File contents: a file's bytes travel through a pipe, never in a message, the way
+//! command IO does. A pipe that fails, because its reader went away or the
+//! connection closed, ends the transfer and closes the file.
+//!
+//! A read replies once the file is open and positioned, before its first byte, so a
+//! file that cannot be opened is an error reply and never an empty stream. A write
+//! goes to a temporary file beside the destination (`.demi-partial-`, from
+//! `demi_shared_artifacts`'s publication, as a file command's is) and is renamed into
+//! place only when the pipe ends cleanly, so a failed or cancelled pipe leaves the
+//! destination as it was; one left behind by a crash is safe to delete, and a write
+//! still running when it goes fails instead of replacing the file.
+//!
+//! Every pipe end named to the runner is reported with `pipe_done`, including one a
+//! refused request never used. A runner that stops reading before the end because
+//! nothing reads it any more (a job ended or closed its input) reports success, so
+//! the backend ends the pipe for its writer as a whole one and the writer stops
+//! without a message, as a local writer does whose reader left: `… | demi host shell
+//! --host x 'read l; echo $l'` prints the far command's line and status alone.
+//!
+//! A write's reply comes within 60 seconds of its last byte leaving the backend
+//! (`reply_after_input` in `demi_backend_remote_host`). A session file's last bytes
+//! once stayed queued where gVisor left them and the write waited all night; the
+//! deadline turns such a stall into one failed start and a retry. The pipe itself
+//! keeps no deadline.
 
 use std::{
     io::{self, SeekFrom},
@@ -72,7 +91,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a file read"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
@@ -125,7 +144,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a read of several files"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
         let targets = paths.iter().map(|path| resolve(&base, path)).collect();
@@ -164,7 +183,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a directory write"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let target = resolve(default_cwd, &path);
         let reply = self.output.clone();
@@ -214,7 +233,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a look"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
         let reply = self.output.clone();
@@ -274,7 +293,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a file write"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
@@ -323,7 +342,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a file download"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
@@ -369,7 +388,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a git show"));
         };
         self.admit()?;
-        // Before anything is read (`runner.md` § Watching files).
+        // Before anything is read (`crates/runner-host/src/numbers.rs`).
         let read_at = crate::numbers::read_at();
         let root = resolve(default_cwd, &root);
         let reply = self.output.clone();
@@ -378,13 +397,13 @@ impl FileTransfers {
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             // Past the working-tree capacity a request waits for a slot
-            // (`runner.md` § Load).
+            // (`crates/runner-host/src/lib.rs`).
             let permit = tokio::select! {
                 permit = capacity.acquire_owned() => permit.expect("working-tree capacity is never closed"),
                 _ = transfer.cancelled() => return,
             };
             let decoded = match root {
-                // Out of open files, the request waits for one (`runner.md` § Load).
+                // Out of open files, the request waits for one (`crates/command-sdk/src/descriptors.rs`).
                 Ok(root) => {
                     demi_command_sdk::descriptors::retry(&transfer, || git.show(&root, &path, commit.as_deref(), &transfer)).await
                 }
@@ -447,7 +466,7 @@ pub struct OpenedRead {
 pub type FileBody = std::pin::Pin<Box<dyn futures_util::Stream<Item = io::Result<Bytes>> + Send>>;
 
 /// Opens the range of a file a read names, the backend's `fs_readFile` or a
-/// direct channel's `read` and `text` (`runner.md` § File contents): the
+/// direct channel's `read` and `text`: the
 /// regular file at `target` positioned at `offset`, `length` bytes of it or
 /// to its end, with its metadata and version; a read that names the
 /// version the file still has gets no bytes.
@@ -505,7 +524,7 @@ pub async fn hash(
 /// The regular file at `target`, positioned at `offset` and limited to
 /// `length` bytes, or to the end it had when it was opened, with its
 /// metadata then, which the read answers so that no `stat` precedes it
-/// (`runner.md` § Host operations).
+/// (`crates/runner-host/src/lib.rs`).
 async fn open_range(
     target: io::Result<PathBuf>,
     offset: u64,
@@ -513,7 +532,7 @@ async fn open_range(
     cancel: &CancellationToken,
 ) -> io::Result<(impl AsyncRead + Unpin + Send + 'static, wire::FileStat)> {
     let target = target?;
-    // Out of open files, the transfer waits for one (`runner.md` § Load).
+    // Out of open files, the transfer waits for one (`crates/command-sdk/src/descriptors.rs`).
     let mut file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
     let metadata = file.metadata().await?;
     if !metadata.is_file() {
@@ -554,7 +573,7 @@ async fn open_file(
     cancel: &CancellationToken,
 ) -> io::Result<OpenFile> {
     let target = target?;
-    // Out of open files, the read waits for one (`runner.md` § Load).
+    // Out of open files, the read waits for one (`crates/command-sdk/src/descriptors.rs`).
     let file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
     let metadata = file.metadata().await?;
     if !metadata.is_file() {
@@ -694,7 +713,7 @@ async fn look_at(
     }
     let start = bytes.len();
     let read = async {
-        // Out of open files, the look waits for one (`runner.md` § Load).
+        // Out of open files, the look waits for one (`crates/command-sdk/src/descriptors.rs`).
         let file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
         file.take(limit).read_to_end(bytes).await
     };
@@ -720,8 +739,7 @@ fn chunks(
 }
 
 /// Writes a file the way every write of a page's does, the backend's
-/// `fs_writeFile` or a direct channel's `write` (`runner.md` § File
-/// contents): `body`, once it opens, streams into a file staged beside
+/// `fs_writeFile` or a direct channel's `write`: `body`, once it opens, streams into a file staged beside
 /// `target`, making the directories above it that are missing, and the file
 /// is published there when the body ends cleanly, as `exists` says when the
 /// path is taken; any failure removes the staged file and leaves `target`
@@ -791,7 +809,7 @@ async fn staged_write(
         permissions: Permissions::Default,
         durable: false,
     };
-    // Out of open files, the write waits for one (`runner.md` § Load).
+    // Out of open files, the write waits for one (`crates/command-sdk/src/descriptors.rs`).
     demi_command_sdk::descriptors::retry(cancel, || Staged::new(target, publication))
         .await
         .map_err(io_error)

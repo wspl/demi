@@ -106,7 +106,7 @@ pub enum PageState {
     /// *Waiting for MacBook Pro*, and it counts as running.
     Waiting { host: String },
     /// It runs while a stop waits for its runner to say that it ended
-    /// (`runner.md` § Cancellation and completion): the pages tag it
+    /// (`crates/runner-shell/src/job.rs`): the pages tag it
     /// *Stopping…*, and it still counts as running.
     Stopping,
     Exited { exit_code: i32 },
@@ -362,7 +362,7 @@ impl CommandRecord {
     }
 
     /// Marks a running command as being stopped: it runs until its runner
-    /// says that it ended (`runner.md` § Cancellation and completion). True
+    /// says that it ended (`crates/runner-shell/src/job.rs`). True
     /// when the pages' view changed.
     /// Shows the command waiting for its Host, the device `host` names,
     /// while its start waits for that device's runner, or running again

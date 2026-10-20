@@ -125,7 +125,7 @@ const offlineStart = computed(() => (device.value?.state === 'offline' ? (device
 /**
  * Why the device will not start its runner by itself after a restart,
  * which the header says whatever its state, so the user learns it before a
- * restart (`runner.md` § Starting with the computer): a plain sentence of
+ * restart (`crates/runner/src/autostart.rs`): a plain sentence of
  * the cause, and the command that removes it, when one does.
  */
 const noAutostart = computed(() => {

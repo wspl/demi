@@ -1,4 +1,4 @@
-//! How a Host writes its paths (`runner.md` § Windows paths): the backend
+//! How a Host writes its paths (`crates/runner-shell/src/lib.rs`): the backend
 //! builds paths on a Host, such as where an attachment is saved, with the
 //! separator of the system the Host's runner reports, so a Windows Host
 //! shows `C:\Users\alex\.demi\attachments\…`, never `C:\Users\alex/.demi/…`.

@@ -220,7 +220,7 @@ impl LinkPolicy for ShardPolicy {
     /// Knows a direct stream of a conversation of the user that reaches
     /// this device as an open user stream: it holds the conversation active
     /// with a demand lease of its stream gate, and its idle watch started, as
-    /// a Host admission starts it (`resource-lifecycle.md` § Activity), and
+    /// a Host admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`), and
     /// installs what a relay stream of the user stream `name` may: the
     /// executable of the package the name binds, which the runner fetches
     /// from where the published catalog says.

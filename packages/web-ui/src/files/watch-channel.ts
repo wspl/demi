@@ -25,7 +25,7 @@ export const RENEW_MS = 3 * 60 * 1000
 /** The most subscriptions or keys one message names (`web-api-hosts.md` § File watch). */
 const MESSAGE_KEYS = 4096
 
-/** What a subscription watches, and so when it changes (`runner.md` § Watching files). */
+/** What a subscription watches, and so when it changes (`crates/runner-host/src/subscriptions.rs`). */
 export type SubscriptionKind = 'file' | 'folder_names' | 'folder_details' | 'worktree' | 'head'
 
 /** What a subscription is to: a kind and an absolute path on the Host. */

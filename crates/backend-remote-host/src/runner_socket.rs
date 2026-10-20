@@ -1,5 +1,5 @@
 //! A runner's WebSocket as the connection's driver reads and ends it
-//! (`runner.md` § Connection and identity): for the backend's runner route
+//! (`crates/runner-protocol/src/wire/mod.rs`): for the backend's runner route
 //! and the test fixture's edge alike.
 
 use axum::extract::ws::{CloseFrame, Message, close_code};

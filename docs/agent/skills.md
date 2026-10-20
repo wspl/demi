@@ -212,7 +212,7 @@ code in any case.
 plugin reads them through its port's
 [Host files](../architecture/plugins.md#reading-a-conversations-files), which
 never wakes a Host, and keeps them current with the runner's
-[file watch](../execution/runner.md#watching-files):
+file watch (`crates/runner-host/src/subscriptions.rs`):
 
 - For each Host and project directory a loaded conversation uses, the plugin
   searches once and subscribes to what shows a skill coming, going or its

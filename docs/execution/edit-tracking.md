@@ -12,7 +12,7 @@ Edit tracking has one consumer: the conversation's view of what the agent
 changed, the file pills under a shell call and the line under a request's
 reply, and the work panel's change view in Conversation mode that they open.
 Nothing else reads it. The model
-never receives it; the working tree view ([Runner](runner.md#working-tree))
+never receives it; the working tree view (`crates/runner-host/src/git.rs`)
 answers a different question, "what is uncommitted?", for the whole directory.
 The two share the file entry shape and the diff view and nothing else.
 
@@ -39,7 +39,7 @@ conversation's, a subagent's its own
 the agent works in `~/shop`, writes `/tmp/fix.py`, runs it, edits
 `~/shop/src/cart.ts` and `~/.zshrc`: the pills and the Change view show
 `src/cart.ts` alone. Commits mode reads the same directory
-([Working tree](runner.md#working-tree)), so both modes show the same part
+(`crates/runner-host/src/git.rs`), so both modes show the same part
 of the Host.
 
 - **A file outside the working directory** the agent's call started in is
@@ -122,7 +122,7 @@ The lock is held for a single file operation, never while a command waits for
 input, another command, or a background task. Pipes, devices and directories do
 not enter the recorder. Closing the lock file releases it on normal return,
 unwinding or process death. Recording failures never change the command result;
-they go to the [Host log](runner.md#host-log): the runner writes its own as log
+they go to the Host log (`crates/runner/src/host_log.rs`): the runner writes its own as log
 events, and a native service writes its own to its standard error, which the
 runner drains into the log.
 
@@ -168,7 +168,7 @@ At job completion, after all job-owned work has stopped, the runner reads the
 journal, omits absent paths and empty edits, and sends the report. It never uses
 the current file bytes as an edit's after contents. Journal and copies share the
 job directory's lifetime: they go once the backend has read the job's end
-([Pipes and output](runner.md#pipes-and-output)).
+(`crates/runner-jobs/src/tasks.rs`).
 
 Uncooperative external writers do not take this lock. Their concurrent writes
 cannot be isolated by these hooks; they can affect a before/after capture.
@@ -196,7 +196,7 @@ not listed, since nothing of it was there before or is there after, as
 
 The call's view keeps these files and adds, from `pathChanges`, each file the
 call removed as `deleted` and each it renamed as `renamed` with the old path
-in `from`, the kinds the working tree uses ([Runner](runner.md#working-tree)),
+in `from`, the kinds the working tree uses (`crates/runner-host/src/git.rs`),
 so a call's pills show what it removed and moved. The edit sequence belongs
 only to the call's history.
 
@@ -204,7 +204,7 @@ only to the call's history.
 
 When a command's exit reaches the backend, the backend reads each entry's
 copies from the target, every copy of the command in one request and one pipe
-([Host operations](runner.md#host-operations)), a copy two edits share once,
+(`crates/runner-host/src/lib.rs`), a copy two edits share once,
 and stores each as a blob in the conversation owner's namespace, then hands
 the tool its status with the list. The read is part of
 completing the command inside the tool call's host access, the same way the
@@ -413,7 +413,7 @@ together. For example, Alex opens it on `~/shop`, checked out on
 - **It follows the repository.** A commit, a checkout or a new branch made
   anywhere, in the agent's shell or the user's terminal, changes the list
   and the menu at once, from the same watch that announces the working
-  tree's changes ([Working tree](runner.md#working-tree)). When the branch
+  tree's changes (`crates/runner-host/src/git.rs`). When the branch
   shown is deleted, the list returns to the checked-out one.
 - **A commit link**, `commit:3f2a9c1` in a message
   ([Links](../product/file-previews.md)), opens the Change view in Commits

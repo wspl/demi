@@ -33,7 +33,7 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 - Each paired device's runner reconnects, finds that the backend serves
   another runner release, replaces itself with it and connects again, without
-  its user doing anything ([Runner updates](../execution/runner.md#runner-updates)).
+  its user doing anything (`crates/runner/src/update.rs`).
 - Each Cloud, left running by the shutdown, is restarted by the new backend
   with 0.2.0's runner and command programs. Its system, the packages the user installed, stays on the
   image it was created or last reset with, until the user resets it
@@ -130,7 +130,7 @@ which the configuration names.
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
 | A Cloud's system | Stays on the image it is pinned to; Cloud settings says when a newer one is available, and a reset moves to it ([Cloud settings](../product/hosts.md#cloud-settings)) | When the user resets |
-| A paired device's runner | The runner updates itself when the backend names another runner release ([Runner updates](../execution/runner.md#runner-updates)) | Its next connection |
+| A paired device's runner | The runner updates itself when the backend names another runner release (`crates/runner/src/update.rs`) | Its next connection |
 | A paired device's command programs | The backend's catalog names the new packages; the runner downloads each the first time it needs it ([Install artifacts](../execution/native-runtime.md#install-artifacts)) | Each program's next use |
 | Control database | Migrated as the backend starts ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)) | During the upgrade |
 | Conversation databases | Each migrated when its conversation is next opened | On use |
@@ -158,7 +158,7 @@ part of another release, and each is a contract that a release never breaks:
   understand that the backend serves another one, and how to fetch it. The
   release check before the runner's socket opens, its headers and the body
   of its 409 answer, never change; fields are only added
-  ([Runner updates](../execution/runner.md#runner-updates)). Everything after
+  (`crates/runner/src/update.rs`). Everything after
   that check is the release's own wire.
 - **Stored data.** The databases, the manager's records and the object
   store's keys outlive every release. A release reads what every earlier
@@ -276,7 +276,7 @@ current release serves:
    ([Backend socket](../cloud/managed-hosts.md#backend-socket)): a Cloud's
    root must never reach it, since the socket takes requests without
    credentials and acts on every user's devices. The backend has its connected paired runners
-   download it ahead ([Runner updates](../execution/runner.md#runner-updates))
+   download it ahead (`crates/runner/src/update.rs`)
    and answers as they finish; `demi-server` prints how many have, *3 of 4
    devices have the new runner*, and goes on once all have, or after 2
    minutes, naming those that have not: they download after the switch. A

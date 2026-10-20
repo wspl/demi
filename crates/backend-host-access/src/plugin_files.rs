@@ -74,7 +74,7 @@ impl dyn HostShard + '_ {
     /// woken, the read is no activity, and a transition ends it instead of
     /// waiting for it. A path the Host cannot read answers as unreadable;
     /// the rest answer in the order of `reads`, with the Host's number
-    /// before it read them (`runner.md` § Watching files).
+    /// before it read them (`crates/runner-host/src/subscriptions.rs`).
     pub async fn read_files(
         &self,
         id: &ConversationId,
@@ -133,7 +133,7 @@ impl dyn HostShard + '_ {
     }
 
     /// A holder of subscriptions on the conversation's primary Host
-    /// (`runner.md` § Watching files), and that Host's device, admitted as
+    /// (`crates/runner-host/src/subscriptions.rs`), and that Host's device, admitted as
     /// [`read_files`](Self::read_files) is: a stopped Cloud or an offline
     /// device is not running and is not woken. The holder keeps no
     /// admission, so it keeps no Cloud awake and no transition waits for it.
@@ -290,7 +290,7 @@ async fn install(
 }
 
 /// What each of `reads` finds on `host`, with one request to the Host
-/// (`runner.md` § Host operations): a failure on the Host about a path
+/// (`crates/runner-host/src/lib.rs`): a failure on the Host about a path
 /// answers for the path; any other, such as the connection's end, fails
 /// the read.
 pub async fn look_files(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<HostFile>, ReadAt), HostError> {

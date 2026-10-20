@@ -1,9 +1,15 @@
-//! `run start` (`runner.md` § Installation, pairing and removal): starts the
-//! installation's runner in the background again, as the installer does,
-//! and returns once it is connected or has said why it cannot connect. A
-//! runner already running is left as it is. An installation registered with
-//! the system's service manager has the manager start it, so the runner is
-//! the manager's (`runner.md` § Starting with the computer).
+//! `run start`: starts the installation's runner in the background again, as the
+//! installer does, and returns once it is connected or has said why it cannot. A
+//! runner already running is left as it is; an installation registered with the
+//! service manager has the manager start it (`crate::autostart`).
+//!
+//! The runner starts in a session of its own, so Ctrl-C while `run start` waits
+//! never reaches it (`crate::console`). `run start` and the installers read pairing
+//! codes and the connection's outcome from where the log ended when they began
+//! waiting, and first ask a runner they find running, through its management
+//! endpoint, to write its current state to the log again. The lines come from the
+//! runner alone, so they never compose them, and a pairing code reaches no channel
+//! but the log.
 
 use std::{
     io,
@@ -81,8 +87,7 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
     loop {
         let mut lines = log.lines().await?;
         // The runner this start started hands over to the service manager's
-        // once its registration works (`runner.md` § Starting with the
-        // computer), which this start then waits for as for one it asked
+        // once its registration works (`crates/runner/src/autostart.rs`), which this start then waits for as for one it asked
         // the manager for; it may have done so after the log was read.
         if let Started::Child(child) = &mut started {
             if child.try_wait()?.is_some() {
