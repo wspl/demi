@@ -57,7 +57,3 @@ A paired device runs the runner with the permissions of its local account. The
 device executes the requests the backend authorizes, so the backend is part of
 that device's execution trust boundary
 ([A conversation using a device](docs/overview.md#a-conversation-using-a-device)).
-
-An expose makes a service on a Host reachable at an unguessable public URL for
-a limited time, and anyone who has the URL reaches the service
-([Expose](docs/execution/expose.md)).

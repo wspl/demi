@@ -16,11 +16,10 @@ become a contributor, email [join@demi.sh](mailto:join@demi.sh).
   toolchain and lists its targets, which rustup installs with it. Host builds
   also need a C compiler.
 - The cross tools, to build for a platform other than your own
-  ([Toolchain](docs/delivery/builds-and-releases.md#toolchain)).
+  (`crates/xtask/src/native/mod.rs`).
 - [Bun](https://bun.sh), for the browser packages.
 - [Node](https://nodejs.org), for the web app's development server, which
-  runs Vite under Node
-  ([Development and checks](docs/product/web-application.md#development-and-checks)).
+  runs Vite under Node.
 
 `AGENTS.md` holds the rules the coding agents working in this repository
 follow, and `.demi/workflows/` the maintainers' subagent workflow for Demi
@@ -39,11 +38,11 @@ bun run test            # the TypeScript tests and the package boundary check
 ```
 
 Every Rust command selects the whole workspace with the runner's test
-fixtures, so they share one build; [Validation](docs/delivery/builds-and-releases.md#validation)
-lists the Chrome suite and how a test finds the programs it starts.
+fixtures, so they share one build; `crates/xtask/src/main.rs` lists the
+Chrome suite and how a test finds the programs it starts.
 
 Rust types are the only definition of every wire and stored format
-([Contracts](docs/architecture/contracts.md)). The browser's TypeScript types
+([Contracts](ARCHITECTURE.md#contracts)). The browser's TypeScript types
 and Zod schemas are generated from them and are not committed: the frontend
 scripts generate them before they run, and `bun run contracts` regenerates
 them on its own. After you change a type the browser uses,
@@ -64,12 +63,11 @@ a scripted Cloud and an Echo model, makes an account, and prints the account
 and the exact `web:dev` command to run; `.env` (copy `.env.example`) can name
 the account and add a real model. `--unseeded` makes no account, so the page
 opens on Set Up Demi, and `--data <dir>` keeps the data between runs
-([One-command development backend](docs/backend/backend.md#one-command-development-backend)).
+(`crates/xtask/src/dev/mod.rs`).
 
 A real Cloud needs Linux with gVisor. To run a server release built from your
 checkout, with the native programs it serves to runners, follow
-[Development backend](docs/backend/backend.md#development-backend) and
-[Builds and releases](docs/delivery/builds-and-releases.md).
+[A development build on a server](docs/delivery/upgrades.md#a-development-build-on-a-server).
 
 ## The README
 
@@ -81,14 +79,14 @@ follow the same rule.
 
 ## Architecture rules
 
-1. **Crates and packages.**
-   [Crates and packages](docs/architecture/crates-and-packages.md) is the
-   highest architectural constraint: what each crate and package owns, its
-   public boundary, and what it must not do. Its two dependency graphs are
-   read by the boundary checks, so the Rust tests fail when a crate's
-   dependencies differ from the Rust graph, and `bun run test` fails when a
-   browser package's differ from the TypeScript graph. A new crate, package or
-   dependency between them starts with a change to that document.
+1. **Crates and packages.** [ARCHITECTURE.md](ARCHITECTURE.md) is the map
+   of the code and the rules across it; what each crate and package owns and
+   must not do is in its entry comment (`lib.rs`, `main.rs`, `index.ts`). Its
+   two dependency graphs are read by the boundary checks, so the Rust tests
+   fail when a crate's dependencies differ from the Rust graph, and
+   `bun run test` fails when a browser package's differ from the TypeScript
+   graph. A new crate, package or dependency between them starts with a
+   change to its graph line.
 2. **One owner per helper.** Before you write a helper, search the standard
    library, the crate's declared dependencies and the workspace, in that order;
    in the browser packages, search the package's declared dependencies,
@@ -97,11 +95,11 @@ follow the same rule.
    Domain-specific helpers stay in the crate or package that owns the domain.
 3. **Concurrency.** State has one owner, read-mostly data is published as a
    snapshot, and blocking work leaves async threads
-   ([Concurrency](docs/architecture/concurrency.md)).
+   ([Concurrency](ARCHITECTURE.md#concurrency)).
 4. **Validation at entry.** A value from outside the process is decoded into
    its type and validated where it enters. Nothing is asserted onto a value,
    and corrupt data is refused, never repaired
-   ([Validation at entry](docs/architecture/contracts.md#validation-at-entry)).
+   (`crates/shared-types/src/lib.rs`).
 
 [AGENTS.md](AGENTS.md) holds the full working principles, writing rules and
 coding standards.
@@ -113,8 +111,8 @@ how it proves itself, what it may cost and how coverage is used; read it
 before you add or change a test.
 
 - Rust unit tests sit beside the code, and each crate has one integration test
-  binary ([Module layout](docs/architecture/crates-and-packages.md#module-layout)).
-  [Tests and time](docs/architecture/concurrency.md#tests-and-time) covers
+  binary ([Test binaries](ARCHITECTURE.md#test-binaries)).
+  [Tests and time](ARCHITECTURE.md#tests-and-time) covers
   clocks, real processes and built binaries.
 - Keep the suite green: before every commit, run the Rust tests, and when a
   browser package or JavaScript that a crate ships changed,
