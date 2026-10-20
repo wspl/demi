@@ -308,7 +308,7 @@ fn is_usage_of(node: &NodeId, tokens: u64) -> impl Fn(&ServerFrame) -> bool + '_
 /// A subagent's session reports its usage as the root's does, naming the
 /// child: after its response, and to a page that opens; the child's context
 /// card compacts that child with `compact { node }`, and the root keeps its
-/// transcript (`subagents.md` § What an agent runs on).
+/// transcript.
 // One tree, a child idle beside the command it left running, on a paused
 // clock, which the command's quiet start-up waits on: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]

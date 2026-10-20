@@ -3,7 +3,7 @@
 //! in the sidebar, read revision, target, execution-context revision and
 //! model selection, which is the conversation's model settings (`models.md`
 //! § A conversation's model settings), and Workflow menu choice
-//! (`subagents.md` § Workflows of a project). The agent tree itself is in the
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`). The agent tree itself is in the
 //! conversation's own database. A conversation's id is the one the web app chose, kept in the
 //! case it arrived in and compared without case, so an id another
 //! conversation holds in any spelling is taken.
@@ -45,7 +45,7 @@ pub struct ConversationRecord {
     /// The conversation's model selection; none until its first model is
     /// chosen.
     pub model: Option<ModelSelection>,
-    /// Its Workflow menu choice (`subagents.md` § Workflows of a project).
+    /// Its Workflow menu choice (`crates/backend-user-shard/src/conversation/workflows.rs`).
     pub workflow: WorkflowChoice,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,

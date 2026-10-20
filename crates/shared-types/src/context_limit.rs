@@ -60,7 +60,7 @@ pub fn effective_context_window(window: u32, limit: Option<u32>) -> u32 {
 }
 
 /// Whether a model whose context window is `window` offers `tokens` as a
-/// subagent profile's own Context (`subagents.md` § Profiles): its full
+/// subagent profile's own Context (`crates/agent-server/src/server/tree/profiles.rs`): its full
 /// window or one of its limits, for a window that has a Context row at all.
 pub fn offers_context(window: u32, tokens: u32) -> bool {
     let mut limits = context_limits(window).peekable();
@@ -84,7 +84,7 @@ pub fn is_context_limit(tokens: u32) -> bool {
 }
 
 /// A subagent profile's Context as `demi agent profiles --context` and a
-/// workflow's `context:` name it (`subagents.md` § Profiles): `default`,
+/// workflow's `context:` name it (`crates/agent-server/src/server/tree/profiles.rs`): `default`,
 /// the user's limit; `full`, the model's whole window; or a limit, such as
 /// `500K`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

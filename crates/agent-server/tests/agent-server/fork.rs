@@ -1,6 +1,7 @@
-//! `demi agent fork` at the tree's boundary (`subagents.md` § Fork): a new
-//! child of the caller from what one of its children already knows, on the
-//! profile the caller names, with the caller's message.
+//! `demi agent fork` at the tree's boundary
+//! (`crates/agent-server/src/server/tree/supervisor.rs`): a new child of the
+//! caller from what one of its children already knows, on the profile the
+//! caller names, with the caller's message.
 
 use std::rc::Rc;
 
@@ -382,7 +383,7 @@ async fn a_fork_onto_a_smaller_window_compacts_with_the_sources_model_first() {
 }
 
 /// Waits until the saved checkpoint of `node` holds the loss of a resident
-/// command for its next turn (`shell-tool.md` § Lost commands).
+/// command for its next turn (`crates/agent-session/src/reports.rs`).
 async fn until_loss_waits(store: &MemoryTreeStore, node: &NodeId) {
     for _ in 0..1_000 {
         let saved = store.session_store(node).load().await.unwrap().unwrap();
@@ -444,7 +445,7 @@ async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_n
 
 // The child's dev server was lost after it answered: its report waits for
 // the child's next turn, and the child's fork holds no report of it
-// (`subagents.md` § Fork). Under a second on the paused clock.
+// (`crates/agent-server/src/server/tree/supervisor.rs`). Under a second on the paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_subagent_fork_after_a_resident_commands_loss_holds_no_report() {
     let model = Model::default();

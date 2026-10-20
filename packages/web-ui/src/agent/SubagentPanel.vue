@@ -72,7 +72,7 @@ const emit = defineEmits<{
 }>()
 /**
  * Whether the panel is open, and the child it shows: none leaves it open,
- * empty, as it opens when no child runs (`subagents.md` § Product rendering).
+ * empty, as it opens when no child runs.
  */
 const open = defineModel<boolean>('open', { required: true })
 const activeId = defineModel<string | null>('activeId', { required: true })
@@ -111,7 +111,7 @@ function sent(agent: SubagentRecord): boolean {
 }
 // A child the panel holds none of reads its latest page when it shows,
 // unless the session sends it: a live child's transcript comes with the
-// socket's reset once the page shows it (`subagents.md` § Protocol). One
+// socket's reset once the page shows it (`crates/agent-server/src/server/tree.rs`). One
 // whose read failed waits for Retry; one that ends, or whose page loses its
 // session, before its reset came reads then.
 watch(

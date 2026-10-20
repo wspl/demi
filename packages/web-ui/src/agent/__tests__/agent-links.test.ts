@@ -3,7 +3,7 @@ import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { agentLinkWindow, findAgent, linkedAgent } from '../agent-links'
 import type { SubagentRecord } from '../subagents'
 
-// A message's link to an agent (`subagents.md` § Linking an agent). Pure,
+// A message's link to an agent. Pure,
 // under a millisecond.
 
 function agent(id: string, number: number, phase: SubagentRecord['phase']): SubagentRecord {

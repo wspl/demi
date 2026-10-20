@@ -1,10 +1,11 @@
-//! A command's whole output (`shell-tool.md` § Results and previews, § The
-//! whole output): the backend stores it when the command ends, and its Host
-//! then keeps nothing of it; the result that reports the end shows its first
-//! and last lines and names the rest; `demi shell output` prints what the
-//! result names a page at a time, the newest lines, or the bytes as they are,
-//! and what a running command's Host kept so far. The model is an Anthropic
-//! endpoint the test scripts; the device is a real runner.
+//! A command's whole output (`crates/agent-tools/src/result.rs`,
+//! `crates/agent-server/src/server/shell_output.rs`): the backend stores it
+//! when the command ends, and its Host then keeps nothing of it; the result
+//! that reports the end shows its first and last lines and names the rest;
+//! `demi shell output` prints what the result names a page at a time, the
+//! newest lines, or the bytes as they are, and what a running command's Host
+//! kept so far. The model is an Anthropic endpoint the test scripts; the device
+//! is a real runner.
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;

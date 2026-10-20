@@ -168,7 +168,7 @@ pub enum PortRequest {
     /// The call waits for the user's answer, until it ends or says it no
     /// longer does (`permissions.md` § The check): meanwhile its job's
     /// result carries `line` in place of the next step a running command's
-    /// result suggests (`shell-tool.md` § Results and previews), and the
+    /// result suggests (`crates/agent-tools/src/result.rs`), and the
     /// job reports no progress. None says it waits no longer.
     AwaitsUser {
         #[serde(deserialize_with = "Option::deserialize")]

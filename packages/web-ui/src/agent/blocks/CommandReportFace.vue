@@ -6,10 +6,10 @@ import CommandEndTag from './CommandEndTag.vue'
 import { reportMark, reportNotice, reportTitle, useCommandRevealer } from '../command-reports'
 
 /**
- * What a command's end says on its notice row (`shell-tool.md` § Command
- * reports), wherever the row stands, the folded face of a run included:
- * the words, the call's title, which a click brings into view, and the tag
- * of what went wrong.
+ * What a command's end says on its notice row
+ * (`crates/agent-session/src/reports.rs`), wherever the row stands, the folded
+ * face of a run included: the words, the call's title, which a click brings
+ * into view, and the tag of what went wrong.
  */
 const props = defineProps<{ report: CommandReport }>()
 

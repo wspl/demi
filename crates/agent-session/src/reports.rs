@@ -1,12 +1,31 @@
-//! Command reports (`shell-tool.md` § Command reports): the commands the
-//! session's `shell` calls left running, each with how often it reports and
-//! the task that watches it. The task reports the command's progress every
-//! interval while it runs, except while it waits for the user's answer, and
-//! its end once it ends; what each report says
-//! is the node's to tell ([`SessionRuntime::report`]), and the session admits
-//! it as input waiting for a boundary.
+//! Command reports: the commands the session's `shell` calls left running, each
+//! with how often it reports and the task that watches it. The task reports the
+//! command's progress every interval while it runs, except while it waits for
+//! the user's answer, and its end once it ends; what each report says is the
+//! node's to tell ([`SessionRuntime::report`]), and the session admits it as
+//! input waiting for a boundary.
 //!
 //! [`SessionRuntime::report`]: crate::SessionRuntime::report
+//!
+//! The model never asks to be woken: the work it waits for wakes it, as a
+//! background command or a subagent wakes Claude Code's model. Every end of a
+//! command whose call returned is reported, except one the model saw in a look
+//! or caused itself with `demi shell stop`; an end report carries the output
+//! and media a result would, because a model woken by an end without its output
+//! spent one more request on a look every time. A report names its command by
+//! number and the title of the call that started it, which the command's record
+//! keeps, so it reads the same whatever became of the call or the process that
+//! watched it. A command whose Host's connection is away sends no interval
+//! report, since the silence is the connection's and the node could do nothing
+//! with one.
+//!
+//! The loss of a resident command (interval `null`) opens no turn: it joins the
+//! running turn at its next boundary or waits for the next turn, so a
+//! conversation left idle with its dev server running is not woken, and charged
+//! a request, by every upgrade that replaces its runner. A lost command started
+//! with a number still wakes its node, which may be waiting for it. Reports not
+//! yet in the transcript and each command's interval are saved in the
+//! checkpoint, so both survive dispose and a restart.
 
 use tracing::Instrument as _;
 use std::{
@@ -119,10 +138,10 @@ impl Watched {
     }
 }
 
-/// Starts the task that watches `command`, which the session watches, and
-/// gives it to the session. Its reports count from its start, which was
-/// `ran` ago when its call watched it that long (`shell-tool.md` § Command
-/// reports): the first comes at the next whole interval since then.
+/// Starts the task that watches `command`, which the session watches, and gives
+/// it to the session. Its reports count from its start, which was `ran` ago
+/// when its call watched it that long: the first comes at the next whole
+/// interval since then.
 pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId, ran: Duration) {
     let Some(interval_ms) = s.read(|core| core.watched.get(command)) else {
         return;
@@ -226,8 +245,7 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) {
     else {
         return;
     };
-    // The loss of a resident command opens no turn: nothing waits for it
-    // (`shell-tool.md` § Lost commands).
+    // The loss of a resident command opens no turn: nothing waits for it.
     let opens = match (&report.event, interval_ms) {
         (ReportEvent::Lost { .. }, None) => Opens::Nothing,
         _ => Opens::Turn,

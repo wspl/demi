@@ -7,7 +7,7 @@ import { useProduct } from '../state/product'
 import { useConversations } from './store'
 import { useConversationWorkflows } from './workflows'
 
-// The Workflow menu's list (`subagents.md` § Workflows of a project) as the
+// The Workflow menu's list (`crates/backend-user-shard/src/conversation/workflows.rs`) as the
 // page reads and follows it, against a played backend: the product channel,
 // the workflows routes and the file watch.
 // Cost: no network, a fake WebSocket; a few event-loop turns each.

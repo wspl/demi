@@ -165,7 +165,7 @@ export class ConversationClient {
   private asked: number | undefined
   /** Each subagent transcript's revision, for the same patch rule as the root's. */
   private readonly subagentRevisions = new Map<string, number>()
-  /** The children whose transcripts the page shows, as it last named them (`subagents.md` § Protocol). */
+  /** The children whose transcripts the page shows, as it last named them (`crates/agent-server/src/server/tree.rs`). */
   private shown = new Set<string>()
   /**
    * The children the page stopped showing: a frame of their transcripts

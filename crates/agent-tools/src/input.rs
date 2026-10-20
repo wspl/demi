@@ -1,4 +1,4 @@
-//! The `shell` tool's input, declared once (`shell-tool.md` § Tool input): the
+//! The `shell` tool's input, declared once (`crates/agent-tools/src/lib.rs`): the
 //! JSON Schema the model receives and the check a call runs come from the
 //! same type.
 
@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 /// The least interval a command reports at, in milliseconds
-/// (`shell-tool.md` § Tool input).
+/// (`crates/agent-tools/src/lib.rs`).
 pub const INTERVAL_FLOOR_MS: u32 = 15_000;
 /// The greatest interval a command reports at: ten minutes.
 pub const INTERVAL_CAP_MS: u32 = 600_000;
@@ -66,7 +66,7 @@ fn interval<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Interva
 
 /// A command's interval as a node's shells take it: `asked`, within the
 /// bounds from `floor` to [`INTERVAL_CAP_MS`], and the line that says so
-/// when it was outside them (`shell-tool.md` § Tool input), naming it as
+/// when it was outside them (`crates/agent-tools/src/lib.rs`), naming it as
 /// `field` names it, such as `intervalMs 900000 is above the cap; taken as
 /// 600000`. The floor is [`INTERVAL_FLOOR_MS`] in the product; a test
 /// configures a shorter one.

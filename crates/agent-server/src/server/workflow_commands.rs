@@ -1,7 +1,8 @@
-//! The `demi agent workflows` group (`subagents.md` § Workflows of a
-//! project): the project's workflows as the conversation's Workflow menu
-//! lists them, and a file checked with the parser that reads them. Its help
-//! is where the file format is written.
+//! The `demi agent workflows` group
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`): the project's
+//! workflows as the conversation's Workflow menu lists them, and a file checked
+//! with the parser that reads them. Its help is where the file format is
+//! written.
 
 use std::rc::Weak;
 

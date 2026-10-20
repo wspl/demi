@@ -4,9 +4,9 @@ import { useShowing } from './showing'
 import type { FileContents } from './types'
 
 /**
- * Whether a file whose first bytes are `bytes` is binary by the rule the
- * text route refuses a file by (`shell-tool.md` § What `demi file view`
- * shows): a NUL byte in its first 8 KiB.
+ * Whether a file whose first bytes are `bytes` is binary by the rule the text
+ * route refuses a file by (`crates/command-package-file/src/files.rs`): a NUL
+ * byte in its first 8 KiB.
  */
 export function isBinary(bytes: Uint8Array): boolean {
   return bytes.subarray(0, 8 * 1024).includes(0)
@@ -17,7 +17,7 @@ export function isBinary(bytes: Uint8Array): boolean {
  * a character the cut splits is left out, as an editor that opens part of a
  * large file shows whole characters, and any other byte that is not UTF-8
  * shows as U+FFFD. Null when the bytes are binary by the rule the text route
- * refuses a file by (`shell-tool.md` § What `demi file view` shows): a NUL byte
+ * refuses a file by (`crates/command-package-file/src/files.rs`): a NUL byte
  * in their first 8 KiB. The media types that rule also names have their own
  * viewers, chosen by the file's name before its text is read.
  */

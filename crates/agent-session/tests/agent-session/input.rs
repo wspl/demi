@@ -1,5 +1,5 @@
 //! Input that waits for a boundary (`runtime.md` § Input, § Send now,
-//! § Command reports, `subagents.md` § Communication): human steers, also
+//! § Command reports, `crates/agent-session/src/input.rs`): human steers, also
 //! sent now, agent messages and command reports.
 
 use demi_agent_store::CommandInterval;
@@ -1396,7 +1396,7 @@ async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_n
 
 // The loss of a resident command, such as a dev server an upgrade ended,
 // opens no turn, also after a restart: the next turn's first request
-// carries it (`shell-tool.md` § Lost commands). One session restored once and
+// carries it (`crates/agent-session/src/reports.rs`). One session restored once and
 // two scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first_request() {
@@ -1450,7 +1450,7 @@ async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first
 }
 
 // The loss of a command started with an interval wakes its node, which may
-// be waiting for it (`shell-tool.md` § Lost commands). One session and three
+// be waiting for it (`crates/agent-session/src/reports.rs`). One session and three
 // scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_loss_of_a_command_with_an_interval_opens_a_turn() {
@@ -1481,7 +1481,7 @@ async fn a_loss_of_a_command_with_an_interval_opens_a_turn() {
 // A call that watched a command with an interval when the process died: the
 // restored session watches the command at the interval its record kept,
 // so its loss opens a turn as any loss of such a command does
-// (`shell-tool.md` § Lost commands). One session restored once and two
+// (`crates/agent-session/src/reports.rs`). One session restored once and two
 // scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_loss_opens_a_turn() {

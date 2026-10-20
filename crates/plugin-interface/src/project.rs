@@ -1,8 +1,8 @@
-//! The directories a project's instruction files and workflows are searched
-//! in (`instructions.md` § Which files are read, `subagents.md` § Workflows
-//! of a project): the working directory
-//! and each directory above it up to the root of its git repository, the
-//! nearest that holds `.git`; outside a repository, the working directory
+//! The directories a project's instruction files and workflows are searched in
+//! (`instructions.md` § Which files are read,
+//! `crates/backend-user-shard/src/conversation/workflows.rs`): the working
+//! directory and each directory above it up to the root of its git repository,
+//! the nearest that holds `.git`; outside a repository, the working directory
 //! alone.
 //!
 //! A Host's paths are walked and joined in its own form ([`HostPaths`]): on

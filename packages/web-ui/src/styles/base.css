@@ -1732,7 +1732,7 @@ html[data-theme="light"] .file-pill {
 }
 
 /* A link to an agent opens a window rather than a page, so it acts as a
-   button, but it flows as words do (`subagents.md` § Linking an agent): a long
+   button, but it flows as words do: a long
    name wraps at the line's end, its first line starting where the text before
    it ends, and the hover fill, its rounded ends and its space (`icon-link`) and
    the underline follow each line it spans. It reads as part of the sentence, as

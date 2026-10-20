@@ -3,10 +3,9 @@ import type { AgentRun, SubagentPhase, SubagentRecord } from './subagents'
 import { t } from './locales/text'
 
 /**
- * An agent a message links as `agent:<number>` (`subagents.md` § Linking an
- * agent): a subagent with its description and its round, whose phase
- * changes as it runs and ends, or the conversation's own agent, number 0,
- * which has no round of its own here.
+ * An agent a message links as `agent:<number>`: a subagent with its description
+ * and its round, whose phase changes as it runs and ends, or the conversation's
+ * own agent, number 0, which has no round of its own here.
  */
 export interface MessageAgent {
   number: number

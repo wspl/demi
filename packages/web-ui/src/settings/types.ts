@@ -526,7 +526,7 @@ export type SettingsProviderOperation =
 
 /**
  * A subagent profile as the Subagent section lists and edits it
- * (`subagents.md` § Profiles). The settings carry its model as a
+ * (`crates/agent-server/src/server/tree/profiles.rs`). The settings carry its model as a
  * conversation's are carried, or null for the parent's.
  */
 export interface SettingsSubagentProfile {

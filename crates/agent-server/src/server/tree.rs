@@ -1,9 +1,22 @@
-//! A conversation's live tree (`rendering.md` § Connections and the live
-//! tree, `subagents.md`): its root and every live child, the connections
-//! attached to it, the frames its sessions' events become, and its eviction
-//! once it has stayed detached and quiescent. The supervisor operations on
-//! its children are in [`supervisor`], and its commands' live output in
-//! [`live`].
+//! A conversation's live tree (`rendering.md` § Connections and the live tree):
+//! its root and every live child, the connections attached to it, the frames
+//! its sessions' events become, and its eviction once it has stayed detached
+//! and quiescent. The supervisor operations on its children are in
+//! [`supervisor`], and its commands' live output in [`live`].
+//!
+//! Subagent traffic of the whole tree travels on the conversation's one socket,
+//! flat: a job's `parentSessionId` is the tree. A child's transcript goes only
+//! to a connection that shows it (`show_subagents`), so opening a conversation
+//! whose five children each hold megabytes of output costs the root's latest
+//! page and five summaries; each open sends the `subagents` summary of every
+//! child, so one that started or finished while the page was away shows as it
+//! is. A child's blocks never reach another session's inference transcript: the
+//! parent never receiving a child's tool history is what subagents are for.
+//!
+//! A connection that closes only detaches. A tree detached and quiescent for
+//! `ServerConfig::idle_tree` is disposed, saving its checkpoints, and the next
+//! open restores it as after a restart; a live child or a running command is
+//! not quiescent, so only an idle root is evicted.
 
 mod live;
 mod profiles;
@@ -47,7 +60,7 @@ pub struct Tree<H: HostResolver> {
     server: Weak<AgentServer<H>>,
     root: Rc<Node<H>>,
     /// Every live child at any depth, by id; with the root, the agent
-    /// directory (`subagents.md` § Topology and the agent directory). A
+    /// directory (`crates/agent-server/src/server/tree/supervisor.rs`). A
     /// closing child stays until its close is complete.
     children: RefCell<HashMap<NodeId, Rc<Child<H>>>>,
     /// Every live side question, by its node (`comments-and-ask.md` § Side
@@ -59,8 +72,7 @@ pub struct Tree<H: HostResolver> {
     closed_sides: RefCell<HashMap<NodeId, sides::ClosedSide>>,
     /// Every child of the tree, live and closed, by number: read from the
     /// store when the tree opens, and changed in the step that changes a
-    /// child, so an open's snapshot lists them without an await
-    /// (`subagents.md` § Protocol).
+    /// child, so an open's snapshot lists them without an await.
     summaries: RefCell<BTreeMap<u64, Summary>>,
     /// Bumped whenever a child starts or closes, which every supervision
     /// and the eviction watch.
@@ -90,8 +102,9 @@ pub struct Tree<H: HostResolver> {
     sink: Rc<FrameSink>,
     /// The commands whose new output waits for the pages.
     live: Rc<LiveOutput>,
-    /// The shells of closed children while a command of theirs still
-    /// stops (`subagents.md` § Abort), each under the key it was kept with.
+    /// The shells of closed children while a command of theirs still stops
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`), each under the
+    /// key it was kept with.
     stopping: RefCell<HashMap<u64, StoppingShells>>,
     /// The key the next shells kept for a closed child go under.
     next_stopping: Cell<u64>,
@@ -115,9 +128,9 @@ pub struct Tree<H: HostResolver> {
 }
 
 /// The shells of a child that closed while its commands still ran
-/// (`subagents.md` § Abort): the pages see each command stopping, any agent
-/// can look at it or stop it, and its environment records its end when its
-/// runner reports it.
+/// (`crates/agent-server/src/server/tree/supervisor.rs`): the pages see each
+/// command stopping, any agent can look at it or stop it, and its environment
+/// records its end when its runner reports it.
 pub(crate) struct StoppingShells {
     /// The closed child whose commands they are.
     subagent: NodeId,
@@ -139,7 +152,7 @@ fn unended_views(environment: &dyn ShellEnvironment) -> impl Iterator<Item = Pag
 pub(crate) struct FrameSink {
     attachments: watch::Sender<Vec<Attachment>>,
     /// Whether any connection is attached, which the nodes' jobs follow
-    /// (`shell-tool.md` § Live output).
+    /// (`crates/agent-server/src/server/tree/live.rs`).
     attached: watch::Sender<bool>,
 }
 
@@ -148,7 +161,7 @@ pub(crate) struct Attachment {
     pub(crate) connection: u64,
     pub(crate) outbox: Rc<Outbox>,
     /// The children whose transcripts the connection shows, which its
-    /// `show_subagents` names (`subagents.md` § Protocol).
+    /// `show_subagents` names.
     pub(crate) shown: Shown,
 }
 
@@ -283,7 +296,7 @@ pub(crate) enum CommandPlace<H: HostResolver> {
     /// A node's shells hold it.
     Held(Rc<Node<H>>),
     /// The shells of a child that closed while it ran hold it until its
-    /// runner reports its end (`subagents.md` § Abort).
+    /// runner reports its end (`crates/agent-server/src/server/tree/supervisor.rs`).
     Stopping(Rc<dyn ShellEnvironment>),
     /// It ended, its end was given, and the store keeps how it ended.
     Stored,
@@ -499,7 +512,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// The provider entries the tree's live nodes infer with, the root's
     /// first: a child's profile may name another entry than its parent's
-    /// (`subagents.md` § Runtime).
+    /// (`crates/agent-server/src/node/mod.rs`).
     pub fn providers(&self) -> Vec<String> {
         let mut providers: Vec<String> = Vec::new();
         for node in self.nodes() {
@@ -527,7 +540,7 @@ impl<H: HostResolver> Tree<H> {
     /// the admission; what waits to run stays queued and runs once it is
     /// dropped.
     /// `hold` names the transition, as the stopped calls' results say it
-    /// (`shell-tool.md` § Interrupted calls), such as "the Cloud is being
+    /// (`crates/agent-session/src/core.rs`), such as "the Cloud is being
     /// reset".
     pub async fn interrupt(self: &Rc<Self>, hold: &str) -> Reservation {
         let stop = async {
@@ -557,7 +570,8 @@ impl<H: HostResolver> Tree<H> {
 
     /// Writes a page's input to the conversation's command `command`: through
     /// the shells of the live node that holds it, or of the closed child it
-    /// stays with while it stops (`subagents.md` § Abort); the root's shells
+    /// stays with while it stops
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`); the root's shells
     /// refuse a command nothing holds.
     pub(crate) async fn shell_write(&self, command: &CommandId, stdin: String) -> Result<(), String> {
         match (self.holder(command), self.stopping_shell(command)) {
@@ -633,7 +647,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The least interval its commands report at, in milliseconds
-    /// (`shell-tool.md` § Tool input).
+    /// (`crates/agent-tools/src/lib.rs`).
     pub(crate) fn interval_floor_ms(&self) -> u32 {
         self.interval_floor_ms
     }
@@ -809,9 +823,10 @@ impl<H: HostResolver> Tree<H> {
     }
 
 
-    /// The `shell_output` of each live command (`shell-tool.md` § Live
-    /// output): the root's, then each live child's, depth first in spawn
-    /// order, then each one a closed child's shells hold while it stops.
+    /// The `shell_output` of each live command
+    /// (`crates/agent-server/src/server/tree/live.rs`): the root's, then each
+    /// live child's, depth first in spawn order, then each one a closed child's
+    /// shells hold while it stops.
     fn live_commands(&self) -> Vec<ServerFrame> {
         let mut frames: Vec<ServerFrame> = self
             .root
@@ -846,7 +861,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// What a restored tree does next (`runtime.md` § Dispose and restore,
-    /// `subagents.md` § Persistence): the root continues under its policy,
+    /// `crates/agent-server/src/server/tree/supervisor.rs`): the root continues under its policy,
     /// then its children come back from the store, each restoring its own.
     pub(crate) async fn continue_restored(
         self: &Rc<Self>,

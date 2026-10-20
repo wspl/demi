@@ -53,9 +53,9 @@ impl ToolsetSource for Toolset {
     }
 }
 
-/// The user's subagent settings at one moment (`subagents.md` § Profiles,
-/// § Limits): the Subagents switch, the limits and the user's profiles, in
-/// name order.
+/// The user's subagent settings at one moment
+/// (`crates/agent-server/src/server/tree/profiles.rs`): the Subagents switch,
+/// the limits and the user's profiles, in name order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubagentSettings {
     /// Whether the user has subagents on.
@@ -109,7 +109,7 @@ pub struct ProfileModel {
 }
 
 /// What of a profile's model settings is missing now, which makes the
-/// profile unavailable (`subagents.md` § An unavailable profile). Each says
+/// profile unavailable (`crates/agent-server/src/server/tree/profiles.rs`). Each says
 /// what the user changes in settings.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Unavailable {
@@ -135,9 +135,9 @@ pub enum Unavailable {
     Failed(String),
 }
 
-/// The profiles a conversation's spawns use now (`subagents.md`
-/// § Workflows of a project): its Workflow menu choice, with the chosen
-/// workflow as its file reads at this moment.
+/// The profiles a conversation's spawns use now
+/// (`crates/backend-user-shard/src/conversation/workflows.rs`): its Workflow
+/// menu choice, with the chosen workflow as its file reads at this moment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConversationProfiles {
     /// Global Workflow: the user's Subagents settings.
@@ -225,11 +225,10 @@ pub struct ModelChoice {
 /// The effort option that turns thinking off.
 pub const EFFORT_OFF: &str = "off";
 
-/// What a job says a round on `selection` runs on (`subagents.md` § What an
-/// agent runs on): the entry's name `entry` and the model's name and Fast
-/// tier from its catalog model `catalog`, the names the model menu shows;
-/// the entry's id, the selection's model name and no Fast tier for what the
-/// user's scope no longer has.
+/// What a job says a round on `selection` runs on: the entry's name `entry` and
+/// the model's name and Fast tier from its catalog model `catalog`, the names
+/// the model menu shows; the entry's id, the selection's model name and no Fast
+/// tier for what the user's scope no longer has.
 pub fn runs_on(
     selection: &ModelSelection,
     entry: Option<&str>,
@@ -377,9 +376,8 @@ pub struct NodeContext<'a> {
     /// The conversation's root node. Every node of a tree runs on the
     /// conversation's execution target, which belongs to the root.
     pub root: &'a NodeId,
-    /// A child's working directory now (`subagents.md` § Working
-    /// directory); none for the root, whose directory is the
-    /// conversation's.
+    /// A child's working directory now (`crates/agent-server/src/node/mod.rs`);
+    /// none for the root, whose directory is the conversation's.
     pub cwd: Option<&'a str>,
 }
 
@@ -409,7 +407,7 @@ pub trait HostResolver: 'static {
 
     /// Where the conversation works now: its primary Host's device and its
     /// directory there, which a child's working directory is read against
-    /// (`subagents.md` § Working directory). By default its Host's key and
+    /// (`crates/agent-server/src/node/mod.rs`). By default its Host's key and
     /// the directory the Host starts its work in ([`Host::default_cwd`]).
     async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
         let host = self.host(context).await?;

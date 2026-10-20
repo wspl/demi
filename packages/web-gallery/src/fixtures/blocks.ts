@@ -464,14 +464,14 @@ export const editingShellTool = toolCall({
   }),
 })
 
-/** The line a command's output shows for its binary stdout (`shell-tool.md` § What `demi file view` shows). */
+/** The line a command's output shows for its binary stdout (`crates/command-package-file/src/files.rs`). */
 function binaryLine(bytes: number): string {
   return `<binary stdout: ${bytes} bytes>\n`
 }
 
 /**
  * A shell call that viewed one image or video with `demi file view`
- * (`shell-tool.md` § Media the model views): its output holds the medium's line,
+ * (`crates/command-package-file/src/files.rs`): its output holds the medium's line,
  * which the runner wrote, and the result attaches the medium, or the part
  * that took its place, after it.
  */
@@ -527,11 +527,12 @@ function captureText(capture: Capture): string {
 }
 
 /**
- * A shell call whose screenshots it viewed (`shell-tool.md` § Media the model
- * views): the output holds each screenshot's description, from its stderr,
- * and the line `[image n: …]` the runner wrote, then the lines of the media
- * it viewed after them, `after`; the result attaches the media after the
- * output, in order, then the lines for those it did not attach.
+ * A shell call whose screenshots it viewed
+ * (`crates/command-package-file/src/files.rs`): the output holds each
+ * screenshot's description, from its stderr, and the line `[image n: …]` the
+ * runner wrote, then the lines of the media it viewed after them, `after`; the
+ * result attaches the media after the output, in order, then the lines for
+ * those it did not attach.
  */
 function screenshotsCall(
   partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'> & Partial<Pick<ToolCallBlock, 'createdAt'>>,
@@ -1229,8 +1230,8 @@ function report(commandId: string, title: string, event: CommandReport['event'],
 const suite = 'Run the test suite'
 
 /**
- * The reports the report-row specimens show, one of each event (`shell-tool.md`
- * § Command reports), by the specimen's variant.
+ * The reports the report-row specimens show, one of each event
+ * (`crates/agent-session/src/reports.rs`), by the specimen's variant.
  */
 export function commandReportCases(): { variant: string, reports: CommandReport[] }[] {
   return [

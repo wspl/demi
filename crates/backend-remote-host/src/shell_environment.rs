@@ -1,17 +1,23 @@
 //! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a Host
 //! reached through its runner (`runner.md` § Shell jobs). Every exec is one
-//! job; the record holds the model's view of its output, the head while it
-//! runs and the whole output once it ended, and the pages' view, which also
-//! holds the newest output the runner sends while a page watches and the job
-//! is therefore followed (`shell-tool.md` § Live output). At the job's end the
-//! product's keeper stores the whole output, and the runner lets the job's
-//! directory go (`shell-tool.md` § The whole output). Every job starts in its
-//! node's working directory on the Host, and nothing of an earlier
-//! one carries over (`shell-tool.md` § Running shell tools). A command outlives
-//! the environment: its keeper records it running before its job starts, a
-//! disposed environment lets its jobs run on, and the next environment of
-//! its node takes them up again (`sessions-and-targets.md` § Recovery and
-//! persistence).
+//! job; the record holds the model's view of its output, the head while it runs
+//! and the whole output once it ended, and the pages' view, which also holds
+//! the newest output the runner sends while a page watches and the job is
+//! therefore followed (`crates/agent-server/src/server/tree/live.rs`). Every
+//! job starts in its node's working directory on the Host, and nothing of an
+//! earlier one carries over. A command outlives the environment: its keeper
+//! records it running before its job starts, a disposed environment lets its
+//! jobs run on, and the next environment of its node takes them up again
+//! (`sessions-and-targets.md` § Recovery and persistence).
+//!
+//! When a command ends, the keeper stores its whole output before any result
+//! reports the end, so the result and the pages show the same lines. The
+//! backend stores what it received when that is the whole output (each stream
+//! within its first 8 KiB and every byte received); otherwise it reads the
+//! Host's kept output once. A command lost with its connection keeps what the
+//! backend received up to the first byte it missed, followed by a line that
+//! counts the bytes lost. The stored output is never part of a request, so
+//! storing or removing it changes no request.
 
 use std::{
     cell::{Cell, RefCell},
@@ -73,7 +79,7 @@ pub struct JobWaiting<'a> {
 
 /// Keeps what a command leaves when it ends, before its command reads as
 /// ended: the copies of its edits (`edit-tracking.md` § Edit copies), and
-/// its whole output (`shell-tool.md` § The whole output). A failure to keep
+/// its whole output (`crates/agent-server/src/server/shell_output.rs`). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
     /// Records that `command` runs as the job `job` on the environment's
@@ -583,7 +589,7 @@ impl RemoteShellEnvironment {
             return Err("Shell command aborted".into());
         }
         // Every job starts in its node's working directory on the Host, the
-        // conversation's for the root (`shell-tool.md` § Running shell tools).
+        // conversation's for the root (`crates/agent-tools/src/lib.rs`).
         let cwd = request
             .cwd
             .unwrap_or_else(|| self.0.options.host.default_cwd().to_owned());
@@ -748,7 +754,7 @@ impl RemoteShellEnvironment {
                 // What the Host held beyond what the backend received went
                 // with the connection. The output keeps only what the
                 // command printed: the end says why it was lost
-                // (`shell-tool.md` § The whole output).
+                // (`crates/agent-server/src/server/shell_output.rs`).
                 let missing = Some(Missing {
                     bytes: streams.iter().map(Received::unreceived).sum(),
                     reason: LOST.into(),
@@ -841,7 +847,7 @@ impl RemoteShellEnvironment {
             page.insert_str(0, &format!("{}\n", binary_line(length)));
         }
         // A stop of the command, or of the call that watches it, is a stop
-        // (`shell-tool.md` § Live output), whatever signal ended the job.
+        // (`crates/agent-server/src/server/tree/live.rs`), whatever signal ended the job.
         let stopped = running.stop.is_cancelled();
         let end = if stopped {
             CommandEnd::Stopped
@@ -863,10 +869,10 @@ impl RemoteShellEnvironment {
         self.end(command, record, settlement, Some(job)).await;
     }
 
-    /// The media the job's commands returned (`shell-tool.md` § Where media
-    /// are kept), each with its bytes: from the conversation owner's
-    /// namespace when it holds them, otherwise read from the Host, all with
-    /// one request; or why the backend does not have them.
+    /// The media the job's commands returned
+    /// (`crates/agent-tools/src/result.rs`), each with its bytes: from the
+    /// conversation owner's namespace when it holds them, otherwise read from
+    /// the Host, all with one request; or why the backend does not have them.
     async fn media(&self, job: &RemoteJob) -> Vec<CommandMedium> {
         let announced = job.media();
         let mut held = Vec::with_capacity(announced.len());

@@ -1,9 +1,9 @@
-//! What a medium's header says of it (`shell-tool.md` § What `demi file view`
-//! shows): an image's size in pixels as a web browser shows it, and a
-//! video's size and length where its container's header gives them. The
-//! handler reads them once, and they travel with the medium record. Before
-//! that, an image is decoded whole, so a picture cut short is refused
-//! rather than shown to the model as its header promises.
+//! What a medium's header says of it
+//! (`crates/command-package-file/src/files.rs`): an image's size in pixels as a
+//! web browser shows it, and a video's size and length where its container's
+//! header gives them. The handler reads them once, and they travel with the
+//! medium record. Before that, an image is decoded whole, so a picture cut
+//! short is refused rather than shown to the model as its header promises.
 
 use std::io::Cursor;
 
@@ -19,9 +19,10 @@ const MAX_HEADER_ALLOC: u64 = 64 * 1024 * 1024;
 /// about 11,000 × 11,000 pixels.
 const MAX_DECODE_ALLOC: u64 = 512 * 1024 * 1024;
 
-/// Decodes `bytes`, an image of `media_type`, whole, so a line printed for
-/// it is a picture the model will see (`shell-tool.md` § Media the model
-/// views). A type the decoder does not read is taken as it is.
+/// Decodes `bytes`, an image of `media_type`, whole, so a line printed for it
+/// is a picture the model will see
+/// (`crates/command-package-file/src/files.rs`). A type the decoder does not
+/// read is taken as it is.
 pub(crate) fn decode_whole(bytes: &[u8], media_type: &str) -> Result<(), Undecodable> {
     let Some(format) = ImageFormat::from_mime_type(media_type) else {
         return Ok(());

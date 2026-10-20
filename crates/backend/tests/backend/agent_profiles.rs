@@ -1,5 +1,5 @@
 //! An agent's view and changes of the user's subagent profiles
-//! (`subagents.md` § Managing profiles): `demi providers list` lists the
+//! (`crates/agent-server/src/server/tree/profiles.rs`): `demi providers list` lists the
 //! entries the user has on and `show` their models, an entry or a model the
 //! user turned off left out of the list unless `--all`, the model the agent
 //! runs on marked; a profile change asks

@@ -11,7 +11,7 @@ Words used for session data:
 | transcript | A session's history: its ordered blocks |
 | status | A point-in-time answer an operation returns, such as a command's status; never stored as history |
 | checkpoint | The durable, restorable state of one session ([Tree store](runtime.md#tree-store)) |
-| whole output | A command's output as kept: on its Host while it runs, in the backend once it ends ([The whole output](shell-tool.md#the-whole-output)) |
+| whole output | A command's output as kept: on its Host while it runs, in the backend once it ends (`crates/agent-server/src/server/shell_output.rs`) |
 | view | Bounded data a block carries for the user; never replayed to the model |
 | blob | Content-addressed bytes, such as media, edit copies and commands' outputs, in the conversation owner's blob namespace |
 
@@ -19,11 +19,11 @@ Words used for session data:
 
 | Block | Written by | The model receives | The user sees it |
 | --- | --- | --- | --- |
-| `user` | A send or an edit: the submitted content, the comments sent with it (`comments`, each the quoted text and the comment, [Comments and side questions](../product/comments-and-ask.md)) and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then each comment as its quoted text in a `>` quote followed by the comment, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
+| `user` | A send or an edit: the submitted content, the comments sent with it (`comments`, each the quoted text and the comment, [Comments and side questions](../product/comments-and-ask.md)) and, for a subagent, its identity (`preamble`, Child context (`crates/agent-server/src/node/mod.rs`)) | A user message: the preamble, then each comment as its quoted text in a `>` quote followed by the comment, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
-| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a notice row for each end it reports, none for progress ([Command reports](shell-tool.md#command-reports)) |
+| `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a notice row for each end it reports, none for progress (`crates/agent-session/src/reports.rs`) |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
-| `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
+| `agent_message` | Another agent of the tree (`crates/agent-session/src/input.rs`) | A steer holding the message's source envelope | As a receipt row |
 | `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or a model switch that landed inside a turn and compacted | A user message: "Continue from where you left off." | No |
 | `abort` | Stop | Nothing | Yes, until the turn is continued and `isResumed` is set |
 | `thinking` | The provider: reasoning text and its signature | The text; a signed block whole | Yes |
@@ -300,7 +300,7 @@ a block cannot hold bytes and a provider cannot receive a reference:
 ### Images in the transcript
 
 An image enters the transcript once: when a tool result attaches it
-([Media the model views](shell-tool.md#media-the-model-views)), or when a message's upload
+(`crates/command-package-file/src/files.rs`), or when a message's upload
 becomes its native medium
 ([Attachments](../product/composer.md#attachments)). It is fitted then to what
 every provider accepts of one image, at most 2,000 px on each side and

@@ -17,7 +17,7 @@ pub(crate) enum CancelReason {
     Stop,
     /// A hold of the conversation, such as a Cloud reset or a deletion,
     /// stops it as the user's Stop does; the reason says which, as its
-    /// interrupted calls name it (`shell-tool.md` § Interrupted calls).
+    /// interrupted calls name it (`crates/agent-session/src/core.rs`).
     Hold(Rc<str>),
     /// The session is being disposed: the action leaves the interruption
     /// record.

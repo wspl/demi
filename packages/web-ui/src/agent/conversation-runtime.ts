@@ -82,7 +82,7 @@ export interface ConversationRuntimeOptions {
   onEvent?: (event: ClientSessionEvent) => void
   /**
    * The children whose transcripts the page shows now, which each connection
-   * names before its `open` (`subagents.md` § Protocol); `showSubagents`
+   * names before its `open` (`crates/agent-server/src/server/tree.rs`); `showSubagents`
    * names them again when they change.
    */
   shownSubagents?: () => readonly string[]

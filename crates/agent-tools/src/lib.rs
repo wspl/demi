@@ -1,12 +1,39 @@
-//! The one tool, `shell` (`shell-tool.md` § Tools): it reaches the
-//! conversation's current Host through the product's resolver and runs in
-//! the node's shell environment for that Host, which the product makes. A
-//! tool never reaches into its session: it returns its outcome, and a call
-//! that leaves its command running asks the session to watch it, so the
-//! command reports to the node (`shell-tool.md` § Command reports). What the
-//! `demi shell` commands and the reports show of a command is made here as
-//! well. The product also supplies the context sources, and the rules of the
-//! tool are a layer of every node's system prompt.
+//! The one tool, `shell`: it reaches the conversation's current Host through
+//! the product's resolver and runs in the node's shell environment for that
+//! Host, which the product makes. A tool never reaches into its session: it
+//! returns its outcome, and a call that leaves its command running asks the
+//! session to watch it, so the command reports to the node. What the `demi
+//! shell` commands and the reports show of a command is made here as well. The
+//! product also supplies the context sources, and the rules of the tool are a
+//! layer of every node's system prompt.
+//!
+//! There is one tool because a tool is only what the shell cannot do: start a
+//! script and watch it. Looking at a command, writing to its input and stopping
+//! it are shell work, so they are the `demi shell` commands, which a script
+//! combines with anything else; ending a turn needs no tool, and neither does
+//! waiting, since the work's end wakes the node. Two tools were dropped: one to
+//! look at a command, which a command does as well, and a `yield` that ended
+//! the turn and set a timer, which models used to wait for work that wakes them
+//! anyway and whose timer, fired after the work ended, opened a turn that only
+//! said so.
+//!
+//! `intervalMs` is required, with no default, so the model decides how a
+//! command is watched when it starts it. A call never holds the turn longer
+//! than [`CALL_WINDOW_MS`], and no tool text mentions it, so a user's steer
+//! waits at most that long to be read (a ten-minute interval used to hold the
+//! turn ten); a human steer ends no window, since steering rather than sending
+//! now means the user chose to wait. A value outside the bounds is taken as the
+//! nearest bound with a line that says so, because the command goes on either
+//! way and a refusal only cost the model a call each time.
+//!
+//! Every call starts a job of its own in its node's working directory and
+//! nothing of an earlier command carries over: a carried directory made `cd
+//! ./browse` fail inside `browse`, and models began every script with `cd
+//! <workspace>` because the context block's directory stopped being true after
+//! the first `cd`. Consecutive `shell` calls are one step and start together,
+//! each result recorded as its call returns, and each call takes its own lease
+//! of the conversation's file gate, so a step's calls never take a lease while
+//! holding another.
 
 mod environments;
 mod frames;
@@ -95,7 +122,7 @@ pub struct EnvironmentScope<'a> {
     pub commands: &'a Rc<CommandSet>,
     /// Where the environment tells the pages of its commands, and learns
     /// whether a page watches: the node's feed of its tree
-    /// (`shell-tool.md` § Live output).
+    /// (`crates/agent-server/src/server/tree/live.rs`).
     pub feed: &'a Rc<dyn PageFeed>,
     /// Where the environment's command numbers come from: the
     /// conversation's sequences, which the tree store gives out.
@@ -114,7 +141,7 @@ pub trait ShellEnvironmentFactory<H> {
 }
 
 /// A node's own working directory as its `shell` calls read it when each
-/// starts (`subagents.md` § Working directory): `demi agent cwd` changes it
+/// starts (`crates/agent-server/src/node/mod.rs`): `demi agent cwd` changes it
 /// while a call of the node runs, from the next start on.
 pub trait Directory {
     /// A child's own directory and where the conversation worked when it
@@ -148,7 +175,7 @@ pub fn definitions() -> Arc<[ToolDefinition]> {
 }
 
 /// Whether consecutive calls of `tool` in one round run together as one
-/// step: `shell`'s do (`shell-tool.md` § Dispatch and failures).
+/// step: `shell`'s do.
 pub fn runs_together(tool: &str) -> bool {
     tool == SHELL
 }
@@ -159,7 +186,7 @@ const QUIET: Duration = Duration::from_secs(2);
 const RESIDENT_WINDOW: Duration = Duration::from_secs(30);
 /// The longest a call of a command with an interval watches it, in
 /// milliseconds: a minute, so a steer waits at most that long for the model
-/// to read it (`shell-tool.md` § Tool input). No tool text mentions it.
+/// to read it. No tool text mentions it.
 pub const CALL_WINDOW_MS: u32 = 60_000;
 
 /// A node's access to its shell environments: the resolver that names the
@@ -253,7 +280,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         Ok(Some(own.effective(&now).to_owned()))
     }
 
-    /// Runs one step of a round (`shell-tool.md` § Dispatch and failures):
+    /// Runs one step of a round:
     /// `shell` calls, which start together, each a job of its own, or a call
     /// of a tool the node does not have, which completes as `Tool not
     /// found`. Yields each call's outcome, by its index, as the call
@@ -283,8 +310,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         }
     }
 
-    /// Starts a `shell` call's script and watches it as its interval says
-    /// (`shell-tool.md` § The window); a command that still runs then reports
+    /// Starts a `shell` call's script and watches it as its interval says;
+    /// a command that still runs then reports
     /// to the node from now on.
     async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never starts
@@ -372,7 +399,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         .await;
         if running {
             // Its reports count from its start, which its call watched
-            // for its running time (`shell-tool.md` § Command reports).
+            // for its running time (`crates/agent-session/src/reports.rs`).
             outcome.effect = Some(ToolEffect::Background {
                 command,
                 interval_ms,
@@ -439,7 +466,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
 
 /// Stops a call's command when the call is dropped while it watches it,
 /// unless the backend's shutdown ends the call, which leaves the command
-/// running (`shell-tool.md` § Interrupted calls).
+/// running (`crates/agent-session/src/core.rs`).
 struct CallStop {
     stop: Option<CancellationToken>,
     call: CallCommand,
@@ -462,7 +489,7 @@ impl Drop for CallStop {
     }
 }
 
-/// Watches `command` until the first of (`shell-tool.md` § The window): it
+/// Watches `command` until the first of: it
 /// ends; `window_ms` passes, or for a resident command, its output has
 /// been quiet for 2 seconds or 30 seconds have passed; or `until` resolves.
 /// Then returns its status, with what `until` gave when it ended the watch.

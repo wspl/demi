@@ -179,7 +179,7 @@ viewer the page chose; and the user's browser must not guess a type on its
 own (`nosniff`).
 
 The table also names every type a model reads natively
-([Media the model views](../agent/shell-tool.md#media-the-model-views)), and shows
+(`crates/command-package-file/src/files.rs`), and shows
 each in place: a tool's images and videos, and a message's, are served from
 their blobs by the same table
 ([Media a tool returned](#media-a-tool-returned)), and one it did not show in
@@ -342,7 +342,7 @@ does, in the prose's color over a faint underline, while a web page's link
 keeps the accent color a link has on the web. One fixed color for each kind
 would meet the accent the user picks: with an orange accent, a web link would
 read as a commit. A link that starts with an icon, a
-file's icon, a commit's or an agent's mark ([Linking an agent](../agent/subagents.md#linking-an-agent)),
+file's icon, a commit's or an agent's mark,
 is a small object in the sentence, as a mention is in Slack or Notion, so it
 keeps 0.2 em of space on each side, inside its hover fill where it has one
 and outside its underline: in "已经告诉[负责的 Agent](agent:57)：", the character before the
@@ -368,11 +368,11 @@ link's color, as GitHub shows it.
 
 | Target | A link | An image |
 | --- | --- | --- |
-| Relative path | Resolved against the working directory of the agent that wrote it, where its commands ran when it wrote it, the conversation's for the main agent ([Working directory](../agent/subagents.md#working-directory)); the file opens in the File view, and a `#L42` or `#L42-L50` after the path, or `:42`, opens it at line 42, scrolled there and marked for a moment as a search result is, in the file's source even where it has a preview, as GitHub's line links show the plain text | Resolved the same way and loaded from the Host |
+| Relative path | Resolved against the working directory of the agent that wrote it, where its commands ran when it wrote it, the conversation's for the main agent (`crates/agent-server/src/node/mod.rs`); the file opens in the File view, and a `#L42` or `#L42-L50` after the path, or `:42`, opens it at line 42, scrolled there and marked for a moment as a search result is, in the file's source even where it has a preview, as GitHub's line links show the plain text | Resolved the same way and loaded from the Host |
 | Absolute path, a path starting `~/` from the Host's home, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
 | `commit:3f2a9c1`, a commit of the repository the agent that wrote it worked in, by its id or at least 7 of its first hex digits; `commit:src/v8@86229da`, a commit of the repository in that folder, relative or absolute | Opens the Change view in Commits mode on that commit, in that repository ([Commits mode](../execution/edit-tracking.md#commits-mode)) | Its alt text |
-| `agent:4`, an agent of the conversation ([Linking an agent](../agent/subagents.md#linking-an-agent)) | Opens the Agents window on that agent's tab | Its alt text |
+| `agent:4`, an agent of the conversation | Opens the Agents window on that agent's tab | Its alt text |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 
@@ -497,7 +497,7 @@ number still to come shows once the upload stores it, as below.
 
 For example, the agent runs `demi browser screenshot t1 | demi file view`.
 The call's result attaches the PNG as an image the model reads
-([Media the model views](../agent/shell-tool.md#media-the-model-views)). The page
+(`crates/command-package-file/src/files.rs`). The page
 shows the same picture small in the call's row, after its title, whether
 the call is folded or open, and a click opens it in the
 [media viewer](#the-media-viewer):
@@ -573,7 +573,7 @@ the call is folded or open, and a click opens it in the
   and a blob is named by the hash of its bytes, and nothing changes them. The
   original bytes stay in the command's whole output, which the model reads
   with `demi shell output`
-  ([The whole output](../agent/shell-tool.md#the-whole-output)).
+  (`crates/agent-server/src/server/shell_output.rs`).
 
 ### A picture's preview on hover
 
@@ -746,7 +746,7 @@ with **Open File**, which shows the file as it is now.
 
 Text, including Markdown and SVG source, comes from the text route: at most
 8 MiB of text, a byte that is no UTF-8 shown as U+FFFD, and a file that is
-binary by the one rule ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows))
+binary by the one rule (`crates/command-package-file/src/files.rs`)
 shows its card instead. A larger text file shows its first 8 MiB, read from the raw route with a
 byte range and cut before a character the range splits, with a line above
 saying how much of how much it shows and Download, as VS Code opens a large

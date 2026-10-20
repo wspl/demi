@@ -506,13 +506,16 @@ fn complete_text(s: &SessionShared) {
 }
 
 /// Runs the calls the last response requested, after saving them as
-/// executing, in steps (`shell-tool.md` § Dispatch and failures): consecutive
+/// executing, in steps (`crates/agent-tools/src/lib.rs`): consecutive
 /// calls of a tool that runs together start together, and each other call
 /// is a step of its own. A step ends when each of its calls has returned;
 /// each result is recorded as its call returns, in its call's place, and a
 /// Stop keeps those of the calls that returned before it. Input that arrives
 /// meanwhile, but a human steer, is written after each step, unless the turn
-/// is about to compact. Returns whether the response requested any call.
+/// is about to compact. An action that fails before its calls ran, such as
+/// when the save before dispatch fails, completes them as aborted with that
+/// failure as the reason, as a stop does, so the next request replays no call
+/// without a result. Returns whether the response requested any call.
 async fn run_tools(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -593,7 +596,7 @@ async fn run_tools(
                     Err(stopped) => {
                         // The backend's shutdown leaves the calls' commands
                         // running, which the calls see as they are dropped
-                        // (`shell-tool.md` § Interrupted calls).
+                        // (`crates/agent-session/src/core.rs`).
                         if cancel.reason() == Some(CancelReason::Shutdown) {
                             for handle in &handles {
                                 handle.keep_running();

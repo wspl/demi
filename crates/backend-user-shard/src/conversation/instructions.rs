@@ -1,10 +1,10 @@
 //! The instructions source (`instructions.md`): the user's personal
 //! instructions and the project's `AGENTS.md` or `CLAUDE.md` file and
-//! `.demi/instructions.md` of each directory from the repository's root
-//! down to the node's working directory, and for the root the instructions
-//! of the workflow the conversation chose (`subagents.md` § Workflows of a
-//! project), as one context block, with the list of what it holds for the
-//! page.
+//! `.demi/instructions.md` of each directory from the repository's root down to
+//! the node's working directory, and for the root the instructions of the
+//! workflow the conversation chose
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`), as one context
+//! block, with the list of what it holds for the page.
 
 use std::rc::{Rc, Weak};
 

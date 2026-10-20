@@ -270,7 +270,7 @@ impl ToolResultKinds {
     }
 
     /// The media types `model` reads in a tool result, as a job carries
-    /// them (`shell-tool.md` § What `demi file view` shows); none when which
+    /// them (`crates/command-package-file/src/files.rs`); none when which
     /// types the model reads is unknown and the wire carries some.
     pub fn viewable(self, model: &Model) -> Option<Vec<String>> {
         if model.accepted_extensions.is_none() && self != Self::NONE {

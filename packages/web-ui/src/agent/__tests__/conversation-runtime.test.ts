@@ -746,7 +746,7 @@ test('the handshake\'s frames are applied once the session opens and are not kep
 })
 
 // A page that hides a child while its open's handshake is on its way lets
-// go of the child's transcript (`subagents.md` § Protocol); the reset the
+// go of the child's transcript (`crates/agent-server/src/server/tree.rs`); the reset the
 // handshake held for it revived it, stale from then on. A side question's
 // transcript, which no page names, still comes. Cost: one opening.
 test('a child the page hides while the handshake arrives takes nothing of it, and a side question its own', async () => {

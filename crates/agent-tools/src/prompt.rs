@@ -9,6 +9,11 @@ use demi_host_interface::CapabilityIndex;
 use crate::input::DESCRIPTION;
 
 /// The rules of the `shell` tool, which every node's system prompt carries.
+/// Waiting is ending the turn: a call that watches a `sleep` holds the turn
+/// while the user watches the agent wait, and the work's end wakes the model
+/// anyway. Piping into `head` or `tail` is discouraged because it hides the
+/// command's exit status behind the pipe's, hides a long command's output
+/// until it ends and turns a returned image into a fragment of its bytes.
 const TOOL_RULES: &[&str] = &[
     "The shell tool:",
     "- Use shell to run a script. Every call starts in your working directory. intervalMs says how often a command still running when its call returns reports to you: a number from 15000 to 600000 for a command that ends, such as a build or a test suite, which reports every interval until it ends, and when it ends. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its start-up output is quiet, and the command reports only its end.",

@@ -120,7 +120,7 @@ impl ShellToolView {
     /// The view of a call that names `command_id`, where `status` says the
     /// command is, without its output or files: what a call that something
     /// other than its tool ended shows when no look at the command is at
-    /// hand (`shell-tool.md` § Interrupted calls).
+    /// hand (`crates/agent-session/src/core.rs`).
     pub fn named(command_id: CommandId, status: ShellViewStatus) -> Self {
         Self {
             status,
@@ -141,7 +141,7 @@ impl ShellToolView {
 }
 
 /// Where a command is: running, exited, stopped, or lost by its runner
-/// (`shell-tool.md` § Lost commands).
+/// (`crates/agent-session/src/reports.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ShellViewStatus {

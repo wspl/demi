@@ -1,8 +1,10 @@
-//! The text the model reads of command reports (`shell-tool.md` § Command
-//! reports), rendered from a `wakeup` block's reports wherever they are
-//! replayed or estimated: each names the command by its number and its
-//! call's title, says what happened, and carries its output as a `shell`
-//! result shows it.
+//! The text the model reads of command reports, rendered from a `wakeup`
+//! block's reports wherever they are replayed or estimated: each names the
+//! command by its number and its call's title, says what happened, and carries
+//! its output as a `shell` result shows it. A report is data, never stored as
+//! text: the block holds its command, the call's title, its event and the
+//! output and media it carried, and the text is rendered from them in this one
+//! place.
 
 use demi_shared_types::{CommandId, CommandReport, ReportEvent, StoppedBy};
 

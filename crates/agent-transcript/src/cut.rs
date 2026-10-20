@@ -153,7 +153,7 @@ pub enum ForkEnd<'a> {
     /// The completed text the user picked, which a conversation Fork names.
     At(&'a BlockId),
     /// The newest completed text with no call before it still executing,
-    /// which `demi agent fork` takes (`subagents.md` § Fork).
+    /// which `demi agent fork` takes (`crates/agent-server/src/server/tree/supervisor.rs`).
     Newest,
     /// The completed text a side question asks about, with the response
     /// that ended it (`comments-and-ask.md` § Side questions); see

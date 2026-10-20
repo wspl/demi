@@ -83,7 +83,7 @@ const SONNET: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model
 const HAIKU: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Haiku 5.5', effort: 'low', fast: false }
 
 /**
- * What a gallery child runs on (`subagents.md` § What an agent runs on): its
+ * What a gallery child runs on: its
  * profile, none for the inherit profile, its model, and its round, fork and
  * working directory when they are not the first, none and the conversation's.
  */
@@ -110,8 +110,8 @@ const FIXTURE_FAILURE = 'The fixture could not reach the test server. No files w
 const SUITE_PATHS_UPDATE = 'The status file still lists the suites under `test/mjsunit/wasm-old/`; they moved to `test/mjsunit/wasm/`.'
 
 /**
- * The receipts the gallery's children sent their parent, one of each kind
- * (`subagents.md` § Product rendering): each names the block of its
+ * The receipts the gallery's children sent their parent, one of each kind:
+ * each names the block of its
  * child's transcript it came from, an update the call that sent it, a
  * completion the last answer; the stopped child gave none.
  */
@@ -501,9 +501,10 @@ export function briefSubagent(): SubagentRecord {
 }
 
 /**
- * A child spawned into another checkout (`subagents.md` § Working
- * directory): its links and its file change name that checkout's files, and
- * the folder in its status bar is where it works now.
+ * A child spawned into another checkout
+ * (`crates/agent-server/src/node/mod.rs`): its links and its file change name
+ * that checkout's files, and the folder in its status bar is where it works
+ * now.
  */
 export function slotSubagent(): SubagentRecord {
   return {

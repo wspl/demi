@@ -1,16 +1,33 @@
-//! The tree store contract (`runtime.md` § Tree store, `subagents.md`
-//! § Persistence): how the agent keeps a conversation's tree in the
-//! conversation's database. One store holds one conversation's tree: every
-//! node's record, with its parent link, and its checkpoint. The backend
-//! realizes it over the conversation's database; tests use
-//! [`MemoryTreeStore`](crate::testing::MemoryTreeStore).
+//! The tree store contract (`runtime.md` § Tree store): how the agent keeps a
+//! conversation's tree in the conversation's database. One store holds one
+//! conversation's tree: every node's record, with its parent link, and its
+//! checkpoint. The backend realizes it over the conversation's database; tests
+//! use [`MemoryTreeStore`](crate::testing::MemoryTreeStore).
 //!
-//! Creating, saving, closing, reopening and deleting a node are each one
-//! atomic commit, whatever the realization.
+//! Creating, saving, closing, reopening and deleting a node are each one atomic
+//! commit, whatever the realization. Parent and child are related by a column,
+//! never by a key path, and nothing about a node depends on a Host: a Host
+//! executes, the store remembers, so a node is readable while its target is
+//! offline. A child is rebuilt on restore and resume from what it was spawned
+//! with (its profile's name, the instructions the profile added, the spawn
+//! restriction) and its state row, never from the user's profiles.
+//!
+//! What the commits guarantee:
+//! - Create queues the first message in the checkpoint, so a child the process
+//!   loses before its first turn still has its brief.
+//! - A close follows the node's final checkpoint; a process that ends between
+//!   the two leaves a quiescent live node, and the next restore closes it with
+//!   the same result.
+//! - A closed round stays undelivered until the parent's checkpoint carries its
+//!   completion, and that save marks exactly that child round delivered in the
+//!   same commit, so a stale completion cannot mark a newer round delivered.
+//! - A closed child is archived, never pruned: it lives exactly as long as its
+//!   root, so a revivable ID stays revivable. Reopening one is a commit too,
+//!   which starts the next round with the message queued.
 //!
 //! Beside the contract: the media rules over the store's blob namespace
-//! (`media`), the fitting of an image as it enters a transcript (`images`),
-//! a medium's size in pixels (`pixels`) and what an upload becomes
+//! (`media`), the fitting of an image as it enters a transcript (`images`), a
+//! medium's size in pixels (`pixels`) and what an upload becomes
 //! (`attachments`) (`crates-and-packages.md` § agent-store).
 
 pub mod attachments;
@@ -119,7 +136,7 @@ pub trait AgentTreeStore {
     /// Every subagent of the tree, at any depth, live and closed, in the
     /// order of their numbers, each with the model selection its checkpoint
     /// saved: what a tree that opens keeps of its children
-    /// (`subagents.md` § Protocol). A side question is no subagent.
+    /// (`crates/agent-server/src/server/tree.rs`). A side question is no subagent.
     fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<StoredSubagent>, StoreError>>;
 
     /// Every side question of the tree (`comments-and-ask.md` § Side
@@ -174,7 +191,7 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Changes the child `id`'s working directory to `cwd`, as `demi agent
-    /// cwd` asks (`subagents.md` § Working directory).
+    /// cwd` asks (`crates/agent-server/src/node/mod.rs`).
     fn set_cwd<'a>(
         &'a self,
         id: &'a NodeId,
@@ -252,13 +269,13 @@ pub struct RunningCommand {
     /// The turn of the call; none for a command recorded before records
     /// kept it.
     pub turn: Option<TurnId>,
-    /// The title its reports name (`shell-tool.md` § Command reports).
+    /// The title its reports name (`crates/agent-session/src/reports.rs`).
     pub title: String,
     /// Its call's script, which the pages' view of it carries with its
     /// title (`rendering.md` § Frame protocol).
     pub script: String,
     /// How often its call asked it to report, or only its end when none
-    /// (`shell-tool.md` § Command reports): an interrupted call's command
+    /// (`crates/agent-session/src/reports.rs`): an interrupted call's command
     /// keeps it.
     pub interval_ms: Option<u32>,
     pub started: Timestamp,
@@ -317,11 +334,11 @@ pub struct NodeRecord {
     /// The instructions its profile added to its system prompt when it was
     /// spawned; none when its profile added none, or it has its parent's
     /// prompt. Restore and resume read them
-    /// here, never from the user's profiles (`subagents.md` § Persistence).
+    /// here, never from the user's profiles.
     pub instructions: Option<String>,
     /// The Context its profile chose, in tokens, which its sessions use in
     /// place of the user's limit while its model's window offers it
-    /// (`subagents.md` § Profiles); none for the user's limit. Kept here as
+    /// (`crates/agent-server/src/server/tree/profiles.rs`); none for the user's limit. Kept here as
     /// the instructions are, so restore and resume use what it was spawned
     /// with.
     pub context_limit: Option<u32>,
@@ -343,7 +360,7 @@ pub struct NodeRecord {
     /// versions existed, which is on every path.
     pub started_by: Option<BlockId>,
     /// A child's own working directory and where the conversation worked
-    /// when it was set (`subagents.md` § Working directory); none for the
+    /// when it was set (`crates/agent-server/src/node/mod.rs`); none for the
     /// root, whose directory is always the conversation's.
     pub cwd: Option<ChildDirectory>,
     /// What a side question's node asks about; none for every agent. Its
@@ -382,7 +399,7 @@ pub struct Placement {
 }
 
 /// A child's own working directory, and the conversation's placement it was
-/// set under (`subagents.md` § Working directory).
+/// set under (`crates/agent-server/src/node/mod.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildDirectory {
     pub cwd: String,
@@ -405,11 +422,11 @@ impl ChildDirectory {
 
 impl NodeRecord {
     /// A child as the `subagent` frames, the open's snapshot and the
-    /// conversation's subagents route describe it (`subagents.md`
-    /// § Protocol): running on `model` while it is live, else as it closed,
-    /// working where the conversation's placement `now` puts it; with `now`
-    /// unknown, in its own directory. The root, which no node spawned, has
-    /// none.
+    /// conversation's subagents route describe it
+    /// (`crates/agent-server/src/server/tree.rs`): running on `model` while it
+    /// is live, else as it closed, working where the conversation's placement
+    /// `now` puts it; with `now` unknown, in its own directory. The root, which
+    /// no node spawned, has none.
     pub fn child(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<SubagentChild> {
         let parent = self.parent.clone()?;
         Some(SubagentChild {
@@ -521,17 +538,16 @@ pub struct CheckpointState {
     #[garde(dive)]
     pub agent_inputs: Vec<PendingAgentInput>,
     /// The command reports that arrived and are not yet written into the
-    /// transcript, in arrival order (`shell-tool.md` § Command reports).
+    /// transcript, in arrival order (`crates/agent-session/src/reports.rs`).
     #[garde(dive)]
     pub reports: Vec<CommandReport>,
     /// The reports of lost resident commands, which open no turn and wait,
-    /// in arrival order, for the node's next one (`shell-tool.md` § Lost
-    /// commands).
+    /// in arrival order, for the node's next one (`crates/agent-session/src/reports.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub next_turn_reports: Vec<CommandReport>,
     /// The commands the session's `shell` calls left running, each with
-    /// how often it reports (`shell-tool.md` § Command reports).
+    /// how often it reports (`crates/agent-session/src/reports.rs`).
     #[garde(dive)]
     pub intervals: Vec<CommandInterval>,
     #[garde(dive)]
@@ -549,7 +565,7 @@ pub struct CheckpointState {
 
 /// A command a `shell` call left running, and how often it reports while
 /// it runs: every `interval_ms`, or, for a resident command, never; its end
-/// is reported either way (`shell-tool.md` § Command reports).
+/// is reported either way (`crates/agent-session/src/reports.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandInterval {
@@ -561,7 +577,7 @@ pub struct CommandInterval {
 }
 
 /// An agent message the session admitted and has not yet written into its
-/// transcript (`subagents.md` § Durable ownership and replay). Its id and
+/// transcript (`crates/agent-session/src/input.rs`). Its id and
 /// body live only in the message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -771,7 +787,7 @@ pub struct CheckpointUpdate {
     pub version: bool,
 }
 
-/// A subagent as the store holds it (`subagents.md` § Protocol): its
+/// A subagent as the store holds it (`crates/agent-server/src/server/tree.rs`): its
 /// record, the model selection its checkpoint saved, and whether the call
 /// that started it is on its parent's current path, which a child no call
 /// started is (`message-editing.md` § Versions).

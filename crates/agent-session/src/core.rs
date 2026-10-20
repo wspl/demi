@@ -82,8 +82,7 @@ pub(crate) struct SessionCore {
     /// The commands the session's calls left running, which report to it.
     pub(super) watched: Watched,
     /// The command each running call started, by the call's id, which the
-    /// call's result names when something other than its tool ends it
-    /// (`shell-tool.md` § Interrupted calls).
+    /// call's result names when something other than its tool ends it.
     pub(super) calls: HashMap<String, CallCommand>,
     pub(super) edits: Vec<EditReceipt>,
     /// The account the agent took under its entry's rotation, which every
@@ -213,8 +212,7 @@ impl PendingAction {
     }
 }
 
-/// What ended a running call other than its tool (`shell-tool.md`
-/// § Interrupted calls).
+/// What ended a running call other than its tool.
 pub(crate) enum CallEnd<'a> {
     /// The user's Stop.
     Stopped,
@@ -230,7 +228,10 @@ pub(crate) enum CallEnd<'a> {
 }
 
 /// The result of a call `end` ended, which watched `command`, when it
-/// started one (`shell-tool.md` § Interrupted calls).
+/// started one. It says what ended the call and what became of its command,
+/// since a model told only `Tool call aborted: shell_exec` spent calls on
+/// `ps` and `journalctl` to find out; a shutdown or a crash leaves the command
+/// running, and it reports as any command whose call returned does.
 pub(crate) fn interrupted_text(end: &CallEnd<'_>, command: Option<&CommandId>) -> String {
     let reason = match end {
         CallEnd::Stopped => "Tool call aborted: the user stopped the turn".to_owned(),
@@ -1025,7 +1026,7 @@ impl SessionCore {
     }
 
     /// Completes each running call as an error that says what ended it and
-    /// what became of its command (`shell-tool.md` § Interrupted calls),
+    /// what became of its command,
     /// keeping in its view the command it started, so that the command's
     /// later report and notice find their call (`runtime.md` § Stop); a
     /// command the backend's shutdown leaves running reports to the node
@@ -1262,7 +1263,7 @@ impl SessionCore {
     }
 
     /// What the windows of the running calls watch for
-    /// (`shell-tool.md` § The window).
+    /// (`crates/agent-tools/src/lib.rs`).
     pub(super) fn window_arrivals(&self) -> Arrivals {
         Arrivals {
             joining: self.inputs.joining(),
@@ -1421,15 +1422,14 @@ impl SessionCore {
 
     /// Admits a command's report for the next boundary: it joins the running
     /// turn, or opens a continuation unless it `opens` nothing, when it
-    /// waits for the node's next turn (`shell-tool.md` § Lost commands). A
+    /// waits for the node's next turn (`crates/agent-session/src/reports.rs`). A
     /// session that is closing keeps no more input.
     pub(super) fn admit_report(&mut self, report: CommandReport, opens: Opens) {
         if self.disposing || end_seen(self.runtime.as_ref(), &report) {
             return;
         }
         // The end report of a command a running call looks at ends no
-        // window: the call shows the end itself (`shell-tool.md` § Command
-        // reports).
+        // window: the call shows the end itself (`crates/agent-session/src/reports.rs`).
         if is_end(&report) && self.runtime.looks_at(&report.command_id) {
             self.inputs.add_quiet(report, opens);
         } else {
@@ -2390,7 +2390,7 @@ fn replace_switch(
 
 /// Whether `report` tells an end a look showed the node since the report was
 /// made: a `demi shell status`, with or without `--wait`, or a `shell`
-/// result. Such an end tells nothing more (`shell-tool.md` § Command reports).
+/// result. Such an end tells nothing more (`crates/agent-session/src/reports.rs`).
 /// A report never marks its own end seen, so a mark is always a look's;
 /// admission and delivery both ask here, since a look that runs while the
 /// report is made shows the end after it. An end whose job viewed media is

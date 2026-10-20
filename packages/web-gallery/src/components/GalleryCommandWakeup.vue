@@ -9,7 +9,7 @@ import { demoModel, shellView, withEnd } from '../fixtures/blocks'
 
 /**
  * A command that outlives its call, from start to the answer its end wakes
- * (`shell-tool.md` § Command reports): the call returns while the suite runs
+ * (`crates/agent-session/src/reports.rs`): the call returns while the suite runs
  * and the turn ends; a report of progress wakes the model without a row of
  * its own; the end shows as a notice where it arrived, which starts the
  * next turn, Requesting under it until the answer comes. The notice's title

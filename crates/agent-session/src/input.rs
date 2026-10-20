@@ -1,7 +1,18 @@
 //! A session's waiting input (`runtime.md` § Input, § Command reports): the
 //! human steers it accepted, the agent messages it admitted and the command
-//! reports that arrived, each waiting for a continuation boundary. Pure
-//! state: the session decides when a boundary takes them.
+//! reports that arrived, each waiting for a continuation boundary. Pure state:
+//! the session decides when a boundary takes them.
+//!
+//! An agent message enters the same queue as a human steer: its delivery is
+//! steering (it enters an active turn at its next boundary, and no provider
+//! receives input in the middle of a request) and its representation is the
+//! `agent_message` block. There is no separate inbox, scheduler or delivery
+//! loop for it. It never cancels a tool or restarts the turn, so a boundary can
+//! come later than the arrival, and the page must not claim the model has read
+//! a receipt because the runtime accepted it. Pending input is checked again
+//! before the session commits idle or a child closes, so a race between
+//! finishing and admission cannot lose a message; a compaction keeps it outside
+//! the compacted prefix and takes it before inference resumes.
 
 use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer};
 
@@ -32,7 +43,7 @@ impl Input {
 
 /// Whether a waiting command report opens a turn of its own. Each joins a
 /// running turn at its next boundary; the loss of a resident command opens
-/// none, and waits for the node's next turn (`shell-tool.md` § Lost commands).
+/// none, and waits for the node's next turn (`crates/agent-session/src/reports.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Opens {
     Turn,
@@ -49,7 +60,7 @@ pub(super) enum Take {
     /// The boundary after a response's stream writes only the agent
     /// messages: the command reports wait until the response's tools have
     /// run, so a look among them that shows a command's end takes its
-    /// report (`shell-tool.md` § Command reports), and the human steers wait
+    /// report (`crates/agent-session/src/reports.rs`), and the human steers wait
     /// for the request that carries them.
     AgentMessages,
     /// The boundary after a step of tool calls writes all but the human
@@ -78,7 +89,7 @@ pub(super) struct InputQueue {
     /// causes no request.
     arrivals: u64,
     /// How many of them were agent messages and command reports, which end
-    /// a shell call's window (`shell-tool.md` § The window).
+    /// a shell call's window (`crates/agent-tools/src/lib.rs`).
     joining: u64,
 }
 

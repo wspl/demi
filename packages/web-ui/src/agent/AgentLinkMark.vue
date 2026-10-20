@@ -5,8 +5,8 @@ import AgentMark from './AgentMark.vue'
 import { useMessageAgents } from './agent-links'
 
 /**
- * What a message's link to an agent shows beyond its text
- * (`subagents.md` § Linking an agent), for the link `element` a render
+ * What a message's link to an agent shows beyond its text,
+ * for the link `element` a render
  * made: the agent's mark in the place the render left for it, with its live
  * state. The link has no tip: its text already names the agent.
  */

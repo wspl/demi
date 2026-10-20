@@ -18,7 +18,7 @@ import GalleryWorkPanel from './GalleryWorkPanel.vue'
 
 /**
  * The Agents window over a child that works in another checkout of the
- * project (`subagents.md` § Working directory), beside the conversation's
+ * project (`crates/agent-server/src/node/mod.rs`), beside the conversation's
  * work panel: the child's links, its file change and the folder in its
  * status bar open the panel for the child's directory, while the panel's
  * own tabs stay on the conversation's. The agent's conversation is in

@@ -102,7 +102,7 @@ test('a finished child the window holds none of shows loading, a failed read sho
 })
 
 // A live child's transcript comes with the socket's reset once the page
-// shows it (`subagents.md` § Protocol): reading it over HTTP as well read a
+// shows it (`crates/agent-server/src/server/tree.rs`): reading it over HTTP as well read a
 // large child's page twice. It loads until the reset arrives.
 test('showing a live child reads nothing and loads until its transcript arrives', async () => {
   const reads: string[] = []

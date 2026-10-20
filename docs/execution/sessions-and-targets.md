@@ -294,7 +294,7 @@ Every command on an attached host starts in that host's starting directory:
 the conversation's directory there for a departed primary target, and the
 device's home for a device `demi host attach` attached. It is fixed when the
 host is attached, never moved by a command's `cd`, as on the primary Host
-([Running shell tools](../agent/shell-tool.md#running-shell-tools)), and it is not
+(`crates/agent-tools/src/lib.rs`), and it is not
 a permission boundary. Files can be transferred explicitly with ordinary
 shell pipelines:
 
@@ -402,7 +402,7 @@ run, since the user who stops expects nothing to start later; so does
 it waits it is recorded as a running command is, marked not yet sent, so a
 restart of the backend keeps it waiting and sends it once the runner
 connects; it sends no interval report, as a command whose Host is away
-sends none ([Interval reports](../agent/shell-tool.md)). The backend says
+sends none (`crates/agent-session/src/reports.rs`). The backend says
 on the conversation's summary when every running node of the tree waits
 only for the primary device, which is when the move below needs no stop;
 the page reads it there and infers nothing. A move of
@@ -556,7 +556,7 @@ touches no conversation's files. This table names every way to a Host:
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host; a plugin's [reads of the conversation's files](../architecture/plugins.md#reading-a-conversations-files) | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
 | Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the [device log](../product/web-api-hosts.md#device-log); browsing a paired device's directories to choose a target, and reading
-the [workflows](../agent/subagents.md#workflows-of-a-project) of a directory
+the workflows (`crates/backend-user-shard/src/conversation/workflows.rs`) of a directory
 for a new conversation there, on a paired device or the user's Cloud, with the [file watch](../product/web-api-hosts.md#file-watch) that keeps the dialog's listings current; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show, from the Claude Code machine; an [automation's change watch](../product/automations.md) whose target is a new conversation, on a paired device; a [port forward](port-forwarding.md)'s listener and connections | Nothing: the caller must own the device, or, for the Claude Code machine, own a Claude Code entry; its runner must be connected | Not woken |
 | Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; [placing a provider's process](../providers/claude-code.md#where-it-runs), a [Claude Code sign-in](../providers/claude-code.md#accounts-and-sign-in) and its usage probe, on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine); an [automation's change watch](../product/automations.md) whose target is a new conversation, on the user's Cloud | The machine's admission; no file gate | Woken; a running reset is waited for |
 
@@ -634,7 +634,7 @@ lifecycle does to conversations follows from the role alone:
 | `attached` | an extra Host the conversation can reach | keeps it awake | Nothing: it runs on its own target |
 
 The `provider` role is derived, never stored: a node of the conversation's
-tree, the root or any subagent ([Runtime](../agent/subagents.md#runtime)),
+tree, the root or any subagent (`crates/agent-server/src/node/mod.rs`),
 infers with a provider that needs a process on a Host, and the
 [placement](../providers/claude-code.md#where-it-runs) says which device that
 process runs on. The same placement starts the process, so the role and the
@@ -717,7 +717,7 @@ those records:
 
 A lost command is recorded as ended for that reason, and the node that ran
 it is told by its report
-([Lost commands](../agent/shell-tool.md#lost-commands)).
+(`crates/agent-session/src/reports.rs`).
 
 Two kinds of interruption follow ([Upgrades](../delivery/upgrades.md)):
 

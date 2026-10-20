@@ -48,10 +48,11 @@ fn a_gap_inside_a_line_keeps_the_numbering_of_the_raw_bytes() {
     assert_eq!(lines(text.backward()), backward);
 }
 
-/// A stdout is binary when its first 8 KiB hold a NUL byte or it begins as
-/// a media type, as git and GNU diff decide (`shell-tool.md` § What `demi file
-/// view` shows). Any other stdout is text, and a byte that is not UTF-8 costs
-/// one U+FFFD, where before it hid the whole output.
+/// A stdout is binary when its first 8 KiB hold a NUL byte or it begins as a
+/// media type, as git and GNU diff decide
+/// (`crates/command-package-file/src/files.rs`). Any other stdout is text, and
+/// a byte that is not UTF-8 costs one U+FFFD, where before it hid the whole
+/// output.
 #[test]
 fn a_stdout_is_binary_only_with_an_early_nul_or_as_a_media_type() {
     let stdout = |bytes: &[u8]| {

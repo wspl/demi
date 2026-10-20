@@ -1,7 +1,7 @@
-//! One command's record: the model's view, which its looks read, and
-//! the pages' view (`shell-tool.md` § Results and previews, § Live output).
-//! Every shell environment keeps its commands in these; a record does not
-//! know what ran the script.
+//! One command's record: the model's view, which its looks read, and the pages'
+//! view (`crates/agent-tools/src/result.rs`,
+//! `crates/agent-server/src/server/tree/live.rs`). Every shell environment
+//! keeps its commands in these; a record does not know what ran the script.
 //!
 //! Stream byte views cut only between characters. The model's merged view
 //! advances past whole lines, repeating an unfinished line until its newline
@@ -27,8 +27,7 @@ pub struct CommandRecord {
     /// The `shell` call that started the command.
     tool_use_id: String,
     /// That call's title, its `description`, which every report of the
-    /// command names, whatever became of the call (`shell-tool.md` § Command
-    /// reports).
+    /// command names, whatever became of the call (`crates/agent-session/src/reports.rs`).
     title: String,
     /// That call's script, which the pages' view of the command carries
     /// with its title (`rendering.md` § Frame protocol).
@@ -63,7 +62,7 @@ struct Positions {
     whole: bool,
 }
 
-/// The pages' view of a command's output (`shell-tool.md` § Live output): its
+/// The pages' view of a command's output (`crates/agent-server/src/server/tree/live.rs`): its
 /// last [`TAIL_CHARS`] characters, and how many characters it has held since
 /// the command started. No read moves it.
 #[derive(Debug, Default)]
@@ -81,7 +80,7 @@ impl PageText {
     }
 }
 
-/// A command as the pages see it (`shell-tool.md` § Live output): its handle,
+/// A command as the pages see it (`crates/agent-server/src/server/tree/live.rs`): its handle,
 /// the `shell` call that started it, with that call's title and script as
 /// the command's record keeps them, where it is, the last [`TAIL_CHARS`]
 /// characters of the pages' view of its output, and how many characters
@@ -112,7 +111,7 @@ pub enum PageState {
     Stopping,
     Exited { exit_code: i32 },
     Aborted,
-    /// Its runner lost it, for `reason` (`shell-tool.md` § Lost commands): the
+    /// Its runner lost it, for `reason` (`crates/agent-session/src/reports.rs`): the
     /// pages tag it *Lost*, as its notice does, not as a failure.
     Lost { reason: String },
 }
@@ -161,7 +160,7 @@ pub enum Ending {
     Exited(i32),
     /// It was stopped: its streams settle, its status is the stop.
     Aborted,
-    /// Its Host lost it, for this reason (`shell-tool.md` § Lost commands).
+    /// Its Host lost it, for this reason (`crates/agent-session/src/reports.rs`).
     Lost(String),
 }
 
@@ -229,8 +228,8 @@ impl CommandRecord {
         matches!(self.phase, Phase::Running | Phase::Waiting { .. } | Phase::Stopping)
     }
 
-    /// How long the command has printed nothing (`shell-tool.md` § Results and
-    /// previews), which no look moves.
+    /// How long the command has printed nothing
+    /// (`crates/agent-tools/src/result.rs`), which no look moves.
     pub fn quiet(&self) -> std::time::Duration {
         Instant::now() - self.last_output
     }
@@ -301,7 +300,7 @@ impl CommandRecord {
 
     /// `stream` grew to `length` bytes on the Host, beyond what the record
     /// holds, such as past the runner's view of it: the command is not idle
-    /// (`shell-tool.md` § Results and previews).
+    /// (`crates/agent-tools/src/result.rs`).
     pub fn grew(&mut self, stream: StreamKind, length: u64) {
         let host = &mut self.stream_mut(stream).host_bytes;
         *host = Some(host.map_or(length, |known| known.max(length)));
@@ -333,7 +332,7 @@ impl CommandRecord {
 
     /// Ends the command with its whole output, its binary stdout and the
     /// media its commands returned; `page` is what the end adds to the
-    /// pages' view (`shell-tool.md` § Live output). True when the pages' view
+    /// pages' view (`crates/agent-server/src/server/tree/live.rs`). True when the pages' view
     /// changed: a command that had ended already keeps the end the pages
     /// were shown.
     pub fn settle(

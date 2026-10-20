@@ -432,14 +432,14 @@ pub enum ForkError {
     Store(String),
 }
 
-/// A Fork's seed (`conversation-fork.md` § The fork seed): the history
-/// through the completed text a [`ForkEnd`] names
-/// (`conversation-fork.md` § Eligibility), idle, with nothing waiting: a
-/// new root's, or a forked child's or side question's (`subagents.md`
-/// § Fork). The blocks the source's store holds before its window are no
-/// part of it: `prefix` names them as rows, which the destination's store
-/// copies in the database ([`demi_agent_store::AgentTreeStore::create_node_after`]),
-/// and the checkpoint holds the blocks after them, from its `start`.
+/// A Fork's seed (`conversation-fork.md` § The fork seed): the history through
+/// the completed text a [`ForkEnd`] names (`conversation-fork.md` §
+/// Eligibility), idle, with nothing waiting: a new root's, or a forked child's
+/// or side question's (`crates/agent-server/src/server/tree/supervisor.rs`).
+/// The blocks the source's store holds before its window are no part of it:
+/// `prefix` names them as rows, which the destination's store copies in the
+/// database ([`demi_agent_store::AgentTreeStore::create_node_after`]), and the
+/// checkpoint holds the blocks after them, from its `start`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForkSeed {
     pub prefix: Option<StoredPrefix>,

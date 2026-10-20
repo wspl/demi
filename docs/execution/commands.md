@@ -12,8 +12,8 @@ The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
 [Browser automation](../browser/browser.md#command-contract). It uses this
 command contract rather than a separate shell or model tool loop. The
-`demi agent` group is specified in [Subagents](../agent/subagents.md), and the
-`demi shell` group in [The whole output](../agent/shell-tool.md#the-whole-output) and [The `demi shell` commands](../agent/shell-tool.md#the-demi-shell-commands).
+`demi agent` group is specified in `crates/agent-server/src/server/commands.rs`, and the
+`demi shell` group in `crates/agent-server/src/server/shell_output.rs`.
 
 ## Declare a command
 
@@ -347,7 +347,7 @@ credentials, Hosts. A command that prints content keeps the content's own
 form, a page as Markdown, a file's text, search results as numbered blocks
 under the untrusted-content line, and `demi shell status` prints a command's
 result in the shell tool's own format, which every shell call returns
-([The shell tool](../agent/shell-tool.md)).
+(`crates/agent-tools/src/result.rs`).
 
 ### Demi command inputs
 
@@ -607,7 +607,7 @@ a faulty handler that cannot stop follows the
 
 Beside stdout and stderr, a declared command may return media: images,
 videos and PDF documents that it hands to its job for the model to see.
-[Media the model views](../agent/shell-tool.md#media-the-model-views) owns the
+Media the model views (`crates/command-package-file/src/files.rs`) owns the
 rule and what the model receives; this section says how a command returns a
 medium. `demi file view` is the one command that does, so a model has one way
 to show itself a file, and every other command, a plugin's included, writes
@@ -625,7 +625,7 @@ the bytes it makes to its stdout for a pipe into `demi file view` or a file.
   medium over 16 MiB, fail the command: each is a defect of its handler,
   which the dispatcher reports rather than repairs. `demi file view` checks
   the bytes' type itself, against the list the job carries, before it returns
-  them ([Media the model views](../agent/shell-tool.md#what-demi-file-view-shows)).
+  them (`crates/command-package-file/src/files.rs`).
   Only an invocation a job's command makes can return media; a user stream's
   or a package call's writer refuses them.
 
@@ -808,7 +808,7 @@ file and hunk, and changes nothing.
 
 `demi file view` shows the model images, videos and PDF documents, from its
 paths or its stdin, and declares `media`; it prints nothing to stdout
-([Media the model views](../agent/shell-tool.md#media-the-model-views)). It
+(`crates/command-package-file/src/files.rs`). It
 has no reading of text: a model reads a file with `cat`, `sed -n` or `rg`,
 the standard utilities on every Host
 ([Standard utilities](runner.md#standard-utilities)), and a text file given

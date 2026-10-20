@@ -267,7 +267,7 @@ export function standaloneRequest(block: Block): Block[] {
   return [user(`${block.id}-request`, 700_000, 'Fix the cookie rename.'), ...inRun(ownLists(block))]
 }
 
-/** The child that works in another checkout (`subagents.md` § Working directory). */
+/** The child that works in another checkout (`crates/agent-server/src/node/mod.rs`). */
 export const SLOT_NODE = 'gallery-slot'
 
 /** A `working_directory` block, as the runtime appends one before a child's first request and after each change. */

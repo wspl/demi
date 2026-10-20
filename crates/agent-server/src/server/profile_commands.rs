@@ -1,4 +1,4 @@
-//! The `demi agent profiles` group (`subagents.md` § Managing profiles):
+//! The `demi agent profiles` group (`crates/agent-server/src/server/tree/profiles.rs`):
 //! the user's profiles listed, shown, created, edited and deleted through
 //! the product's settings path. The changes need the user's permission, the
 //! category [`PROFILES_CATEGORY`] names.
@@ -18,7 +18,7 @@ use super::{
 };
 
 /// The permission category the profile changes need, which the `agent`
-/// group declares (`subagents.md` § Managing profiles, `permissions.md`
+/// group declares (`crates/agent-server/src/server/tree/profiles.rs`, `permissions.md`
 /// § Categories): its id, its action and what a grant allows. They change
 /// a setting every conversation of the user's reads.
 pub(super) const PROFILES_CATEGORY: (&str, &str, &str) = (

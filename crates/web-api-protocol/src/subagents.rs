@@ -21,7 +21,7 @@ pub struct SubagentSettings {
     /// The Subagents switch: true for a user who never turned it off.
     pub enabled: bool,
     /// Maximum subagents: how many subagents may be live at once across
-    /// all the user's conversations (`subagents.md` § Limits).
+    /// all the user's conversations (`crates/agent-server/src/server/tree/profiles.rs`).
     pub max_live: SubagentLimit,
     /// Maximum depth: how many levels of subagents a tree may have below
     /// its root.
@@ -30,7 +30,7 @@ pub struct SubagentSettings {
     pub profiles: Vec<SubagentProfile>,
 }
 
-/// A limit on a conversation's subagents (`subagents.md` § Limits): the
+/// A limit on a conversation's subagents (`crates/agent-server/src/server/tree/profiles.rs`): the
 /// whole number from 1 the user last set, which stays while the limit is
 /// lifted, so that choosing Limited again brings it back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
@@ -65,7 +65,7 @@ pub struct SubagentProfile {
     pub model: Option<ModelSettings>,
     /// The tokens of the profile's own Context, its model's full window or
     /// a limit the window offers, which its children use in place of the
-    /// user's limit (`subagents.md` § Profiles); null for the user's limit,
+    /// user's limit (`crates/agent-server/src/server/tree/profiles.rs`); null for the user's limit,
     /// and always null without a model of its own.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<u32>")]

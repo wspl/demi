@@ -146,7 +146,7 @@ These are the points where values enter, and what a failure does:
 | A row or JSON column read from a database | `backend-database` | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |
 | A sealed credential document | The vault | The error names the field path and the kind of failure, never the value ([Providers](../providers/providers.md)) |
 | Configuration from arguments and the environment | Each program's configuration, at startup | The program does not start, and the error names the variable |
-| A tool call's input from the model | The tool | The model receives the tool's error ([Tools](../agent/shell-tool.md#tools)) |
+| A tool call's input from the model | The tool | The model receives the tool's error (`crates/agent-tools/src/lib.rs`) |
 | A vendor API response | The provider crate's two-step decode | An unknown `type` is skipped; a known one with a malformed payload is a protocol failure that is never retried automatically ([Providers](../providers/providers.md)) |
 
 ## Generated TypeScript

@@ -11,8 +11,7 @@ import { compactAfterTurn } from './context-usage'
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
 /**
- * What a child's round runs on and how far it got, as its job says
- * (`subagents.md` § What an agent runs on).
+ * What a child's round runs on and how far it got, as its job says.
  */
 export interface AgentRun {
   /** The profile's name; null for the inherit profile. */
@@ -25,7 +24,7 @@ export interface AgentRun {
   phase: SubagentPhase
   startedAt: string
   endedAt?: string
-  /** Where its `shell` calls start now, on the primary Host (`subagents.md` § Working directory). */
+  /** Where its `shell` calls start now, on the primary Host (`crates/agent-server/src/node/mod.rs`). */
   cwd: string
 }
 
@@ -53,7 +52,7 @@ export interface SubagentRecord extends AgentRun {
   /**
    * The revision of its transcript as the last open's snapshot listed it,
    * which tells whether a finished child's held transcript is still
-   * current (`subagents.md` § Protocol); absent before a snapshot listed it.
+   * current (`crates/agent-server/src/server/tree.rs`); absent before a snapshot listed it.
    */
   revision?: number
   /** The calls this agent's model is writing (`rendering.md` § Calls being written). */
@@ -77,8 +76,8 @@ export interface SubagentRecord extends AgentRun {
  * Where a running child's context card stands on Compact: whether the child
  * compacts now, and why Compact cannot run apart from the usage. A running
  * turn compacts after it ends, while a child idle beside a command it left
- * running may compact. An ended child has no context card at all
- * (`subagents.md` § What an agent runs on); the backend refuses to compact
+ * running may compact. An ended child has no context card at all;
+ * the backend refuses to compact
  * its node.
  */
 export function agentCompaction(agent: SubagentRecord): { compacting: boolean, unavailableReason: string | null } {
@@ -115,8 +114,7 @@ export function subagentJobFields(job: Omit<SubagentJob, 'parentSessionId' | 're
 
 /**
  * The effort a child's round runs with, in the words the model menu shows:
- * *Medium*, *Thinking off*; null for a model without a thinking setting
- * (`subagents.md` § What an agent runs on).
+ * *Medium*, *Thinking off*; null for a model without a thinking setting.
  */
 export function runEffortWords(model: JobModel): string | null {
   if (model.effort === null) {
@@ -180,7 +178,7 @@ export function formatSubagentDuration(
 /**
  * A child's task brief, the `user` block its spawn or resume writes in the
  * child's transcript `node`: Markdown an agent wrote, which renders as an
- * answer does (`subagents.md` § Product rendering). Null for a `user` block
+ * answer does. Null for a `user` block
  * of the conversation's own transcript, which the user typed and which keeps
  * the user dialect, and for one that holds a file, which only a message the
  * user sent does.
@@ -200,7 +198,7 @@ export function childBrief(node: string | null, content: readonly MessageEditCon
 }
 
 /**
- * The dock's agents chip (`subagents.md` § Product rendering): the live
+ * The dock's agents chip: the live
  * children's count, and no chip while none runs, as the Running chip shows
  * only while a command runs. Finished children never count; they stay one
  * click away from their receipts and links.
@@ -214,7 +212,7 @@ export function agentsChipLabel(agents: readonly SubagentRecord[]): string | nul
 }
 
 /**
- * The panel's tabs (`subagents.md` § Product rendering): the running
+ * The panel's tabs: the running
  * children, and after them the finished one picked from Completed.
  */
 export function subagentPanelTabs(

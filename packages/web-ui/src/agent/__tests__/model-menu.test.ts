@@ -47,7 +47,7 @@ test('the profile menu offers the composer’s items for a model with Fast and c
   ])
 })
 
-// A profile's own Context (`subagents.md` § Profiles) offers the Context
+// A profile's own Context (`crates/agent-server/src/server/tree/profiles.rs`) offers the Context
 // row's windows after Default, which names the window the user's limit
 // gives; the full window is stored as its own size, never as null.
 test('a profile’s Context offers Default with the user’s window, then the model’s windows, and nothing for a small window', () => {

@@ -120,7 +120,7 @@ pub enum ClientFrame {
         subagent_id: NodeId,
     },
     /// The children whose transcripts this connection shows, the whole set
-    /// each time it changes (`subagents.md` § Protocol): a child it adds is
+    /// each time it changes (`crates/agent-server/src/server/tree.rs`): a child it adds is
     /// answered with its `subagent_transcript_reset`, and only the children
     /// it names stream their transcripts to it. Sent before `open`, it names
     /// the children the open's handshake sends.

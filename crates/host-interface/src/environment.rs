@@ -1,9 +1,8 @@
-//! The shell-environment contract behind the `shell` tool: a node's commands
-//! on one Host, each a job of its own that starts in the node's working
-//! directory there (`shell-tool.md` § Running shell tools), the
-//! model's status view of each (`shell-tool.md` § Tools), and the pages' view
-//! of each, which the environment reports to the node's feed (`shell-tool.md`
-//! § Live output).
+//! The shell-environment contract behind the `shell` tool: a node's commands on
+//! one Host, each a job of its own that starts in the node's working directory
+//! there, the model's status view of each (`crates/agent-tools/src/result.rs`),
+//! and the pages' view of each, which the environment reports to the node's
+//! feed (`crates/agent-server/src/server/tree/live.rs`).
 
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
@@ -50,13 +49,14 @@ pub trait ShellEnvironment {
     /// The command's status, with its output since the model last looked.
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
-    /// The title of the call that started the command, which its record
-    /// keeps from its start and its reports name (`shell-tool.md` § Command
-    /// reports); none for a command the environment does not hold.
+    /// The title of the call that started the command, which its record keeps
+    /// from its start and its reports name
+    /// (`crates/agent-session/src/reports.rs`); none for a command the
+    /// environment does not hold.
     fn title(&self, command: &CommandId) -> Option<String>;
 
     /// The media the command's job viewed, once it exited, which moves no
-    /// place in its output (`shell-tool.md` § What a result attaches).
+    /// place in its output (`crates/agent-tools/src/result.rs`).
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError>;
 
     /// How long the command has printed nothing, which moves no place in
@@ -65,7 +65,7 @@ pub trait ShellEnvironment {
 
     /// The command lines of the background tasks that keep `command`
     /// running once its script has ended, which moves no place in its
-    /// output (`shell-tool.md` § Results and previews); empty while its script
+    /// output (`crates/agent-tools/src/result.rs`); empty while its script
     /// runs, and for a command that ended or that the environment does not
     /// hold.
     fn outliving(&self, command: &CommandId) -> Vec<String>;
@@ -78,13 +78,13 @@ pub trait ShellEnvironment {
 
     /// How long the Host of `command`, which runs, has been unreachable as
     /// far as the environment knows, and how long its runner keeps it so
-    /// (`shell-tool.md` § Command reports); none while its connection serves
+    /// (`crates/agent-session/src/reports.rs`); none while its connection serves
     /// it, and for a command that ended or that the environment does not
     /// hold.
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable>;
 
     /// The kept output of a command that runs, as its Host holds it now
-    /// (`shell-tool.md` § The whole output).
+    /// (`crates/agent-server/src/server/shell_output.rs`).
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -141,7 +141,7 @@ pub trait Numbers {
 }
 
 /// Where a node's shell environments tell the pages of their commands
-/// (`shell-tool.md` § Live output), and learn whether a page watches.
+/// (`crates/agent-server/src/server/tree/live.rs`), and learn whether a page watches.
 pub trait PageFeed {
     /// The pages' view of the command `record` holds changed: the command
     /// started, its output grew, or it ended. An environment reports nothing
@@ -160,28 +160,25 @@ pub struct ExecRequest {
     pub script: String,
     /// The directory the job starts in: its node's working directory, or
     /// none for the conversation's, the Host's own
-    /// ([`Host::default_cwd`](crate::Host::default_cwd); `subagents.md`
-    /// § Working directory).
+    /// ([`Host::default_cwd`](crate::Host::default_cwd); `crates/agent-server/src/node/mod.rs`).
     pub cwd: Option<String>,
     /// The agent node the job's `rpc` calls act for, and its `shell` call
     /// that runs the script, which the pages' view of the command names.
     pub caller: JobCaller,
     /// The title of that call, its `description`, which the command's
-    /// record keeps and its reports name (`shell-tool.md` § Command reports).
+    /// record keeps and its reports name (`crates/agent-session/src/reports.rs`).
     pub title: String,
     /// How often the command reports while it runs, or only its end when
-    /// none, which its record keeps from its start (`shell-tool.md` § Command
-    /// reports).
+    /// none, which its record keeps from its start (`crates/agent-session/src/reports.rs`).
     pub interval_ms: Option<u32>,
     /// The media types the call's model reads in a tool result, which the
-    /// job may show it (`shell-tool.md` § What `demi file view` shows).
+    /// job may show it (`crates/command-package-file/src/files.rs`).
     pub viewable: Viewable,
 }
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
 /// (`sessions-and-targets.md` § Bind jobs to their caller), and the call of
-/// it that started the job, which a message the job sends comes from
-/// (`subagents.md` § Product rendering).
+/// it that started the job, which a message the job sends comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
@@ -248,7 +245,7 @@ pub struct CommandStatus {
     pub stderr: StreamView,
     pub output: OutputView,
     /// While the command runs, the bytes its Host holds beyond what the
-    /// views hold (`shell-tool.md` § Results and previews).
+    /// views hold (`crates/agent-tools/src/result.rs`).
     pub unreceived: u64,
     /// While the command runs, the newest bytes of each stream that grew
     /// beyond its start, as the runner last sent them.
@@ -295,7 +292,7 @@ pub enum CommandState {
     },
     /// It was stopped.
     Aborted,
-    /// Its Host lost it, for `reason` (`shell-tool.md` § Lost commands), with
+    /// Its Host lost it, for `reason` (`crates/agent-session/src/reports.rs`), with
     /// the media its declared commands returned to the job, which went with
     /// it.
     Lost {

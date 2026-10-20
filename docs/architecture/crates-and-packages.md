@@ -675,7 +675,7 @@ Each crate implements the provider contract for one vendor family.
     pages' view of it (`PageView`), and the feed through which an
     environment reports that view's changes and learns whether a page
     watches (`PageFeed`,
-    [Live output](../agent/shell-tool.md#live-output)); the reading of a
+    Live output (`crates/agent-server/src/server/tree/live.rs`)); the reading of a
     running command's kept output; a command's whole output
     (`WholeOutput`) and its lines of text (`OutputText`), which the result
     that reports a command's end and `demi shell output` read alike; where an
@@ -685,9 +685,9 @@ Each crate implements the provider contract for one vendor family.
     and the keeper to which an environment hands what a command leaves when it ends,
     its whole output, its media and its edit copies, which the product
     implements over its storage
-    ([The whole output](../agent/shell-tool.md#the-whole-output)); a command's
+    (`crates/agent-server/src/server/shell_output.rs`); a command's
     media as the backend holds them when it ended (`CommandMedium`,
-    [Media the model views](../agent/shell-tool.md#media-the-model-views)).
+    Media the model views (`crates/command-package-file/src/files.rs`)).
 - **Public boundary:** the items above; `host_interface::testing` supplies the Host
   conformance cases, an in-memory port for rpc handler tests
   (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
@@ -832,7 +832,7 @@ guide (`ServerDeps::guide`), the profiles, the
   Host and a tree store; the agent never knows which shell engine runs or
   which plugin a command, a text or a context source comes from.
   Behavior: [Agent runtime](../agent/runtime.md) and
-  [Subagents](../agent/subagents.md).
+  `crates/agent-server/src/server/tree/supervisor.rs`.
 - **Rules:** the node assembly is the one place that creates a node's session;
   the supervisor asks it for a child and never builds one. A session stores
   and reads media only through its tree store: the product's store decides

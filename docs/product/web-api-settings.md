@@ -193,7 +193,7 @@ take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
 device's menu, the profile editor's menu and `demi providers list` leave out
 the same entries and models
-([Managing profiles](../agent/subagents.md#managing-profiles)). A conversation
+(`crates/agent-server/src/server/tree/profiles.rs`). A conversation
 or a profile already on a hidden model keeps it; the menus no longer offer
 it, and a profile change through `demi agent profiles` refuses it. **What a new conversation starts with** is remembered per project, and once
 for all the conversations outside a project: the model settings and the
@@ -273,14 +273,14 @@ writes these overrides through its preference state adapter.
 The caller's subagent settings, which the settings page's Subagents section
 shows, are part of the product state, as `subagents`:
 `{ enabled, maxLive, maxDepth, profiles }`. `enabled` is the
-[Subagent switch](../agent/subagents.md#profiles), true for a user who never
+Subagent switch (`crates/agent-server/src/server/tree/profiles.rs`), true for a user who never
 turned it off. `maxLive` and `maxDepth` are the
-[limits](../agent/subagents.md#limits), Maximum subagents and Maximum depth,
+limits (`crates/agent-server/src/server/tree/profiles.rs`), Maximum subagents and Maximum depth,
 each `{ limit, unlimited }`: the whole number from 1 the user last set, kept
 while `unlimited` is true so that Limited brings it back; `{ limit: 10,
 unlimited: false }` and `{ limit: 1, unlimited: false }` for a user who never
 set them. `profiles` holds the caller's
-[subagent profiles](../agent/subagents.md#profiles), in name order, each
+subagent profiles (`crates/agent-server/src/server/tree/profiles.rs`), in name order, each
 `{ id, name, description, model, instructions, canSpawn, enabled }`:
 
 | Field | Value |
@@ -309,7 +309,7 @@ are whole values, and null returns either to the parent's.
 the caller's profiles answers 404 `profile_not_found`. The backend checks a
 body before it writes:
 
-- A name that breaks the [name rule](../agent/subagents.md#profiles),
+- A name that breaks the name rule (`crates/agent-server/src/server/tree/profiles.rs`),
   `default` included, a description that is blank, longer than 500
   characters or holds a line break, and instructions that are blank or longer
   than 65,536 characters answer 400 `invalid_body`.
@@ -326,7 +326,7 @@ body before it writes:
 Each change, to the switch or to a profile, reaches every page of the user as
 the `subagents` message of the [synchronization channel](web-api-sync.md#page-synchronization),
 and the next spawn of every conversation, an open one included
-([Profiles](../agent/subagents.md#profiles)). The settings are the user's in
+(`crates/agent-server/src/server/tree/profiles.rs`). The settings are the user's in
 both instance modes; on a shared instance a profile's model names one of the
 master's entries, as every model a user picks does.
 

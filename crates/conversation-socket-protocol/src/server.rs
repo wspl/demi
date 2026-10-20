@@ -1,6 +1,6 @@
-//! What the backend sends (`rendering.md` § Server frames, `subagents.md`
-//! § Protocol). A page accepts fields it does not know, so these types are
-//! tolerant.
+//! What the backend sends (`rendering.md` § Server frames,
+//! `crates/agent-server/src/server/tree.rs`). A page accepts fields it does not
+//! know, so these types are tolerant.
 
 use std::collections::BTreeMap;
 
@@ -226,7 +226,7 @@ pub enum ServerFrame {
         #[garde(dive)]
         result: AbortResult,
     },
-    /// A command's live view (`shell-tool.md` § Live output): the same for
+    /// A command's live view (`crates/agent-server/src/server/tree/live.rs`): the same for
     /// every page, whatever any page or the model read.
     ShellOutput {
         /// The subagent whose command it is; absent for the root's.
@@ -307,7 +307,7 @@ pub enum ServerFrame {
     },
     /// Every child of the tree, finished ones included, which the page
     /// takes whole: sent on each open, after the root's state
-    /// (`subagents.md` § Protocol).
+    /// (`crates/agent-server/src/server/tree.rs`).
     Subagents {
         #[garde(dive)]
         subagents: Vec<SubagentSummary>,
@@ -560,7 +560,7 @@ serde_plain::derive_fromstr_from_deserialize!(SubagentEvent);
 /// One child as an open's snapshot lists it: what a job says of it but its
 /// result, which the page reads with its transcript when it shows it, and
 /// the revision of its transcript, which tells the page whether the
-/// transcript it holds is still current (`subagents.md` § Protocol).
+/// transcript it holds is still current (`crates/agent-server/src/server/tree.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct SubagentSummary {
@@ -635,7 +635,7 @@ pub struct SubagentChild {
     #[garde(skip)]
     pub ended_at: Option<Timestamp>,
     /// Its working directory on the primary Host now, where its `shell`
-    /// calls start (`subagents.md` § Working directory); a `changed` frame
+    /// calls start (`crates/agent-server/src/node/mod.rs`); a `changed` frame
     /// tells a change while it runs.
     #[garde(length(min = 1))]
     pub cwd: String,
@@ -647,7 +647,7 @@ pub struct SubagentChild {
     pub on_path: bool,
 }
 
-/// What a child's round runs on (`subagents.md` § What an agent runs on),
+/// What a child's round runs on,
 /// in the words the model menu shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
@@ -724,7 +724,7 @@ pub enum ShellStatus {
         #[garde(dive)]
         command: CommandView,
     },
-    /// Its runner lost it (`shell-tool.md` § Lost commands).
+    /// Its runner lost it (`crates/agent-session/src/reports.rs`).
     Lost {
         #[serde(flatten)]
         #[garde(dive)]
@@ -746,8 +746,8 @@ impl ShellStatus {
     }
 }
 
-/// A command as the pages see it, whatever its status (`shell-tool.md`
-/// § Live output).
+/// A command as the pages see it, whatever its status
+/// (`crates/agent-server/src/server/tree/live.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandView {

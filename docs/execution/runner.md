@@ -1134,7 +1134,7 @@ Runner process
 
 Each job starts a fresh login shell in the directory its request names, which
 for a conversation's command on its primary Host is the working directory of
-the agent that ran it, and on an attached Host that Host's starting directory ([Running shell tools](../agent/shell-tool.md#running-shell-tools)).
+the agent that ran it, and on an attached Host that Host's starting directory (`crates/agent-tools/src/lib.rs`).
 Brush loads the system profile and first readable user login profile. The
 runner then restores its execution context and places command aliases first
 in PATH. Nothing of an earlier job carries over, neither its directory nor its
@@ -1268,7 +1268,7 @@ the dev server it started runs on, holding its port.
   leaves no process that no command stands for. `disown` succeeds and
   changes nothing else; `nohup` runs its command ignoring `HUP`, as GNU's
   does. A server meant to outlive a script runs as a command of its own,
-  with `intervalMs` null ([Tool input](../agent/shell-tool.md#tool-input)).
+  with `intervalMs` null (`crates/agent-tools/src/lib.rs`).
 - **`timeout DURATION COMMAND…`** runs COMMAND as `command` would, a builtin,
   a standard utility or a program, so its writes are tracked like any
   other, and stops it as `kill` stops a task once DURATION has passed. Its
@@ -1418,7 +1418,7 @@ input, which `demi shell input` feeds and which ends only with the job, or a
 finite one: a pipe, a file, a heredoc. For example, `demi file view` with no
 path reads a medium from a pipe in `convert … png:- | demi file view`, but
 run alone it would wait for the job to end, so there it refuses
-([Media the model views](../agent/shell-tool.md#what-demi-file-view-shows)).
+(`crates/command-package-file/src/files.rs`).
 
 Brush gives a builtin its descriptors as the shell has set them up for that
 call, after redirections, pipelines, command and process substitutions,
@@ -1496,7 +1496,7 @@ the Host log names the work it left behind, which ends by itself at its next
 check. For example, `find ~ -name AGENTS.md` blocked under
 `~/Library/Group Containers` behind an unanswered privacy prompt ends 6
 seconds after its stop, where it once ran until the prompt was answered
-([The `demi shell` commands](../agent/shell-tool.md#the-demi-shell-commands)). Before, a
+(`crates/agent-server/src/server/shell_output.rs`). Before, a
 stop went straight to `SIGKILL`, and a dev server killed that way left its
 backend running in a group of its own, holding its port.
 
@@ -1569,7 +1569,7 @@ bytes start in the stream (`offset`):
 - The first 8 KiB of each stream (`JOB_VIEW_BYTES`), as the runner reads
   them. The model's view of a running command comes from these and from the
   newest bytes below
-  ([Results and previews](../agent/shell-tool.md#results-and-previews)).
+  (`crates/agent-tools/src/result.rs`).
 - While the backend follows the job, the output beyond them: at most one
   message per stream every 250 ms (`JOB_LIVE_INTERVAL`), with the newest bytes
   read since the previous one, at most 16 KiB (`JOB_LIVE_BYTES`, which holds
@@ -1582,7 +1582,7 @@ bytes start in the stream (`offset`):
   (`JOB_GROWTH_INTERVAL`), with the stream's last 8 KiB beyond its first,
   which end at its length; the next message sends them again as far as they
   are still the newest. The model's idle time counts from these messages
-  ([Results and previews](../agent/shell-tool.md#results-and-previews)).
+  (`crates/agent-tools/src/result.rs`).
 - A job's last output leaves before `job_exit`: while followed, what the
   backend does not hold; otherwise each stream's newest bytes up to its end.
 - `job_exit` gives each stream's length. When a stream went beyond what the
@@ -1611,9 +1611,9 @@ makes up to 64 KiB at a time, so the bound holds nearly 16 MiB of output.
 `job_read { jobId }` streams the kept output, as it stands, through a pipe.
 The backend reads it when the job ends and a stream went beyond its first
 8 KiB, and while the job runs, for `demi shell output`
-([The whole output](../agent/shell-tool.md#the-whole-output)).
+(`crates/agent-server/src/server/shell_output.rs`).
 
-A job's **media** ([Media the model views](../agent/shell-tool.md#media-the-model-views))
+A job's **media** (`crates/command-package-file/src/files.rs`)
 are kept beside its output. They arrive as the medium records of the
 invocations of `demi file view`
 ([Response records and completion](native-runtime.md#response-records-and-completion)),
@@ -1666,7 +1666,7 @@ A job's directory lasts until the backend has what it needs of the job:
 
 The Host therefore keeps nothing of a command once it has ended: what Demi
 keeps of it, the backend has stored
-([The whole output](../agent/shell-tool.md#the-whole-output)).
+(`crates/agent-server/src/server/shell_output.rs`).
 
 On a paired device the job root is `jobs/` in the installation state, which is
 `~/.demi/instances/<backend>/` or the directory `DEMI_HOME` names
@@ -1678,9 +1678,9 @@ few busy jobs can outgrow `/run`'s memory
 
 A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the
 following; the backend follows a job while a page shows its conversation
-([Live output](../agent/shell-tool.md#live-output)). The model's `demi shell status`
+(`crates/agent-server/src/server/tree/live.rs`). The model's `demi shell status`
 shows the output since its previous look; `demi shell output` prints the whole
-output ([The whole output](../agent/shell-tool.md#the-whole-output)).
+output (`crates/agent-server/src/server/shell_output.rs`).
 
 The runner owns its HTTP pipe transfers; the backend's pipe broker owns their
 rendezvous and lifetime. Binary payloads remain bytes. EOF ends input, while

@@ -20,7 +20,7 @@ interface WorkflowPlace {
   /**
    * The conversation, once it has a record, whose host access reads them;
    * null for a new conversation before its first message, which reads them
-   * through the device (`subagents.md` § Workflows of a project).
+   * through the device (`crates/backend-user-shard/src/conversation/workflows.rs`).
    */
   conversationId: string | null
 }

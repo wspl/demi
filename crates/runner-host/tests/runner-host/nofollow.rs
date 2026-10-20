@@ -1,5 +1,5 @@
-//! A look within a directory follows no link below it (`subagents.md`
-//! § Workflows of a project).
+//! A look within a directory follows no link below it
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
 // Cost: a temporary directory; a few milliseconds.
 
 /// A project whose `.demi/workflows/review.yaml` is a file, beside a

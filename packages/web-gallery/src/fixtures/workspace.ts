@@ -24,7 +24,7 @@ export const WORKSPACE_ROOT = '/Users/alex/Projects/shop'
 
 /**
  * Another checkout of the project, where a child of the conversation works
- * (`subagents.md` § Working directory): it has files named as the
+ * (`crates/agent-server/src/node/mod.rs`): it has files named as the
  * conversation's own, with the contents of its own branch.
  */
 export const SLOT_ROOT = '/Users/alex/Projects/shop-slots/2'

@@ -1,5 +1,18 @@
-//! The `file.*` operations: showing the model a file, and creating, editing
-//! or patching files one mutation at a time.
+//! The `file.*` operations: showing the model a file, and creating, editing or
+//! patching files one mutation at a time.
+//!
+//! `demi file view` hands each file it names (or its stdin) to its job as one
+//! medium and writes nothing to its stdout: a medium goes to the model through
+//! the command that was asked to show it, never through where its bytes happen
+//! to flow, so a file a script only copies, pipes or saves never reaches the
+//! model and one it views always does, in a pipeline, a loop or a background
+//! task alike. Each file is read whole, and an image decoded whole, before its
+//! line is written, so a line a command prints stands for a picture the model
+//! will see and one cut short fails the command. The media types the model
+//! reads come with the job when the backend starts it; a job that `demi host
+//! shell` starts on another Host carries none, since its output is relayed and
+//! no result reports its end. Stdin that is the job's own input is never read,
+//! since it would wait for the job's end.
 
 use std::{
     fs,
@@ -192,7 +205,7 @@ pub fn failure(error: &FileError) -> Completion {
 }
 
 /// Shows the model each path, or stdin for `-` and when it names none, in
-/// order (`shell-tool.md` § What `demi file view` shows). One that fails writes
+/// order. One that fails writes
 /// `<command>: <path>: <reason>` to stderr, and the next one is viewed; the
 /// command prints nothing to stdout and exits 1 when any failed.
 async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Completion, ServiceError> {

@@ -12,9 +12,11 @@ import { provideBlockScope } from '../whole-blocks'
 
 /**
  * The ends a `wakeup` block reports, one notice row each where the block
- * lies (`shell-tool.md` § Command reports): a reply the agent writes after a
+ * lies (`crates/agent-session/src/reports.rs`): a reply the agent writes after a
  * command's end never appears without its cause. A report of progress shows
- * nothing; the agent's answer to it says what it learned. The notice names
+ * nothing, and a block of progress reports alone has no row: the agent's
+ * answer says what it learned, and a row for every interval would outnumber
+ * the answers it caused. The notice names
  * the call that started the command, which a click brings into view. The
  * pictures an end report carries stand in its row's line, as a call's do
  * (`file-previews.md` § Media a tool returned).

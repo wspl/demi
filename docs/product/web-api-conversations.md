@@ -128,12 +128,12 @@ hold answers 404 `block_not_found`.
 
 `GET /api/conversations/:id/subagents` answers `{ subagents }`, the job of
 each subagent the conversation has had, in the order they started, as the
-`subagent` frame gives it ([Protocol](../agent/subagents.md#protocol)). A
+`subagent` frame gives it (`crates/agent-server/src/server/tree.rs`). A
 page reads a subagent's transcript, by its pages, when it shows it.
 
 `GET /api/conversations/:id/commands/:commandId` answers where the `shell`
 call that started a command of the tree lies, which a report's title brings
-into view ([Command reports](../agent/shell-tool.md#command-reports)): `{
+into view (`crates/agent-session/src/reports.rs`): `{
 commandId, subagentId, blockId }`, `subagentId` null for the root's. The
 page then reads the page around `blockId` in that agent's transcript. A
 command the conversation does not hold answers 404 `not_found`.
@@ -458,7 +458,7 @@ for an allowance of a credential removed since, which the request lists with
 conversation's working directory, and `GET
 /api/devices/:deviceId/workflows?directory=<absolute path>` those of a
 directory on a device the user owns, for a new conversation before its
-record exists ([Workflows of a project](../agent/subagents.md#workflows-of-a-project)).
+record exists (`crates/backend-user-shard/src/conversation/workflows.rs`).
 Both answer `{ directory, unavailable, workflows, watch }`: the directory
 the workflows were found in, or null; `unavailable`, the reason the whole
 directory cannot be used, such as a link, or null; each workflow as
@@ -668,11 +668,11 @@ go idle ([A turn](../agent/runtime.md#a-turn)), so once a conversation no
 longer runs, its transcript route shows what the live tree showed. An open child counts
 whatever it is doing, a wait for its own commands included, because it
 resumes by itself and its close wakes its parent
-([Subagents](../agent/subagents.md#result)). A shell command that outlives its
+(`crates/agent-server/src/server/tree/supervisor.rs`). A shell command that outlives its
 turn does not count: until it reports, nothing works, and a resident one such
 as a dev server may never end; its report starts the agent again, as a
 message would, and the conversation runs again then
-([Command reports](../agent/shell-tool.md#command-reports)). For example, the root answers "two children are looking into it" and
+(`crates/agent-session/src/reports.rs`). For example, the root answers "two children are looking into it" and
 ends its turn: the conversation stays running until both children close and the
 root has answered their results. The root answers "the build has started" while
 `npm run build` still runs: the conversation is completed, and the command shows

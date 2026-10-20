@@ -66,7 +66,7 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
    waited goes on: the dispatch passes it to `plugin-skills`, which fetches
    the repository, records the source and turns the skill on.
 4. The command's end reports to the agent as any command's end does
-   ([Command reports](shell-tool.md#command-reports)), so the agent has the
+   (`crates/agent-session/src/reports.rs`), so the agent has the
    result without running the command again.
 5. Later in the same conversation, a subagent runs `demi skills enable
    vercel-labs/agent-skills --skill react-best-practices`. The grant covers
@@ -132,7 +132,7 @@ never sees a permission.
   command is a running command: the observation window, the turn, the
   Running window, Stop and the Host's idle rules are those of any running
   command. Its end, whichever way it comes, reports to the agent as any
-  command's end does ([Command reports](shell-tool.md#command-reports)):
+  command's end does (`crates/agent-session/src/reports.rs`):
   - **Allowed**: the call is dispatched as if the grant had been there, and
     ends as the command ends.
   - **Denied**: the call ends with exit status 1 and `<command>: the user
@@ -189,12 +189,10 @@ withdraws its requests; Fork copies none
 
 ### The decision's message
 
-A decision reaches the agent that asked as an [agent
-message](subagents.md#communication) from the user, admitted through the same
+A decision reaches the agent that asked as an `agent_message` (`crates/agent-session/src/input.rs`) from the user, admitted through the same
 entry as a subagent's message, so it follows the same delivery rules: it
 joins a running turn at its next continuation boundary, and otherwise wakes
-the agent with a continuation ([Delivery and
-scheduling](subagents.md#delivery-and-scheduling)). The user sees it as the
+the agent with a continuation (`crates/agent-session/src/input.rs`). The user sees it as the
 receipt row ([What the user sees](#what-the-user-sees)). Its event is
 `permission`, with the outcome `allowed` or `denied` and the actions of the
 request's categories, joined with "and", and its content one of:
@@ -297,8 +295,7 @@ Running window, and a new request lights the dot again
 conversation that failed ([Conversations and projects](../product/conversations.md#conversations-and-projects)).
 
 **The decision in the transcript.** The message an agent receives shows as a
-receipt row, as an agent message does ([Product
-rendering](subagents.md#product-rendering)): "You allowed this conversation to
+receipt row, as an agent message does (`packages/web-ui/src/agent/blocks/AgentReceiptBlock.vue`): "You allowed this conversation to
 manage skills"; it does not open, as no notice row does, since it says
 all there is.
 

@@ -44,8 +44,9 @@ async fn each_command_starts_in_its_hosts_directory_and_a_handle_answers_only_on
         );
 
         // The reader runs on Alice's Host; from Bob's, its handle is refused.
-        // Its live output goes at most every quarter second (`shell-tool.md`
-        // § Live output), so it may reach the page after the turn ended.
+        // Its live output goes at most every quarter second
+        // (`crates/agent-server/src/server/tree/live.rs`), so it may reach the
+        // page after the turn ended.
         let mut frames = turn(&mut client, "message-4", "Ask Alice for a name.").await;
         if !frames.iter().any(is_shell_output) {
             frames = client.next_until(is_shell_output).await;

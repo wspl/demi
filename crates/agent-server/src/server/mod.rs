@@ -71,7 +71,7 @@ pub trait ProviderResolver {
     /// infers with `model` use: the model's context window, or the limit
     /// the user set on it (`models.md` § Context limit); for a subagent
     /// whose profile chose a Context `own`, that one in place of the user's
-    /// (`subagents.md` § Profiles). Either applies while the window offers
+    /// (`crates/agent-server/src/server/tree/profiles.rs`). Either applies while the window offers
     /// it, and the full window otherwise.
     fn context_window<'a>(
         &'a self,
@@ -87,11 +87,12 @@ pub trait ProviderResolver {
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<String, ResolveError>>;
 
-    /// The model selection a child of a profile with the model settings
-    /// `model` infers with, built from the entry's current catalog as a
-    /// conversation's is on a model switch (`subagents.md` § An unavailable
-    /// profile); what is missing when the entry, the model, its effort or
-    /// its tier is gone. Nothing falls back.
+    /// The model selection a child of a profile with the model settings `model`
+    /// infers with, built from the entry's current catalog as a conversation's
+    /// is on a model switch
+    /// (`crates/agent-server/src/server/tree/profiles.rs`); what is missing
+    /// when the entry, the model, its effort or its tier is gone. Nothing falls
+    /// back.
     fn profile_selection<'a>(
         &'a self,
         model: &'a ProfileModel,
@@ -126,7 +127,7 @@ fn fork_store(error: StoreError) -> ForkError {
 /// A Fork's seed from the committed checkpoint of the stored node `source`,
 /// through the completed text `end` names (`conversation-fork.md` § The fork
 /// seed): a closed conversation's root, or an archived child
-/// (`subagents.md` § Fork).
+/// (`crates/agent-server/src/server/tree/supervisor.rs`).
 pub(crate) async fn stored_fork_seed(
     store: &dyn AgentTreeStore,
     source: &NodeId,
@@ -151,11 +152,11 @@ pub struct ServerConfig {
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
     /// The least interval a command reports at, in milliseconds
-    /// (`shell-tool.md` § Tool input): [`INTERVAL_FLOOR_MS`] in the product,
+    /// (`crates/agent-tools/src/lib.rs`): [`INTERVAL_FLOOR_MS`] in the product,
     /// which a test shortens to see reports within its time.
     pub interval_floor_ms: u32,
     /// The longest a `shell` call of a command with an interval watches it,
-    /// in milliseconds (`shell-tool.md` § Tool input): [`CALL_WINDOW_MS`] in the
+    /// in milliseconds (`crates/agent-tools/src/lib.rs`): [`CALL_WINDOW_MS`] in the
     /// product, which a test shortens to see a call return within its time.
     pub call_window_ms: u32,
 }
@@ -312,7 +313,7 @@ impl<H: HostResolver> AgentServer<H> {
 
     /// Takes up the command of the conversation `root`'s live tree whose
     /// job is `job`, as the job's `rpc` call asks once the tree is restored
-    /// (`shell-tool.md` § Command reports); why it could not be, when it could
+    /// (`crates/agent-session/src/reports.rs`); why it could not be, when it could
     /// not.
     pub async fn take_up_job(&self, root: &NodeId, job: &str) -> Result<(), String> {
         let unknown = || "rpc requires a live job dispatched to this device".to_owned();
@@ -524,7 +525,7 @@ impl<H: HostResolver> AgentServer<H> {
     /// The conversation `root` works elsewhere now, after a move or a
     /// switch of its Host: its live children's pages hear where each works,
     /// the conversation's new directory, which no write to the children
-    /// records (`subagents.md` § Working directory). Each child's next
+    /// records (`crates/agent-server/src/node/mod.rs`). Each child's next
     /// request learns it from its `working_directory` block.
     pub async fn placement_changed(&self, root: &NodeId) {
         if let Some(tree) = self.tree(root) {

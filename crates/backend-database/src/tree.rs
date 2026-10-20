@@ -2530,13 +2530,14 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
     Ok(nodes)
 }
 
-/// The call that started the command `command`, with the node that ran
-/// it, on whatever branch it is, since the command ran (`message-editing.md`
-/// § Versions): of the calls whose view names the command, the first, since a stored
-/// look at a command, from before such looks were removed, came after it;
-/// of calls equally early, the oldest agent's, since a fork's copy of its
-/// source's call keeps the call's time (`subagents.md` § Fork), and a side
-/// question's copy comes after every agent's.
+/// The call that started the command `command`, with the node that ran it, on
+/// whatever branch it is, since the command ran (`message-editing.md` §
+/// Versions): of the calls whose view names the command, the first, since a
+/// stored look at a command, from before such looks were removed, came after
+/// it; of calls equally early, the oldest agent's, since a fork's copy of its
+/// source's call keeps the call's time
+/// (`crates/agent-server/src/server/tree/supervisor.rs`), and a side question's
+/// copy comes after every agent's.
 pub fn command_call(
     connection: &Connection,
     command: &CommandId,
@@ -2799,9 +2800,9 @@ pub(crate) mod tests {
     }
 
     // A fork of a child copies the child's calls, with their times
-    // (`subagents.md` § Fork); the call that started a command is still the
-    // source's, also when the fork saved its copy before the source saved
-    // the call, as a fork of a running child can.
+    // (`crates/agent-server/src/server/tree/supervisor.rs`); the call that
+    // started a command is still the source's, also when the fork saved its
+    // copy before the source saved the call, as a fork of a running child can.
     #[tokio::test(flavor = "local")]
     async fn a_commands_call_is_its_source_agents_when_a_fork_holds_a_copy() {
         let (tree, stores, _data) = store().await;

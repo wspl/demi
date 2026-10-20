@@ -42,7 +42,7 @@ pub struct ConversationTuning {
     /// has passed.
     pub search_interval: Duration,
     /// The least interval a command reports at, in milliseconds
-    /// (`shell-tool.md` § Tool input): the product's, which a test shortens to
+    /// (`crates/agent-tools/src/lib.rs`): the product's, which a test shortens to
     /// see reports within its time.
     pub interval_floor_ms: u32,
 }

@@ -1,8 +1,9 @@
-//! A conversation's Workflow menu (`subagents.md` § Workflows of a
-//! project, `conversations.md` § A conversation's workflow): `GET
-//! /conversations/:id/workflows` lists the workflows of its working
-//! directory with what the page watches to hear of a change, and `GET
-//! /devices/:id/workflows?directory=` those of a new conversation's
+//! A conversation's Workflow menu
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`,
+//! `conversations.md` § A conversation's workflow):
+//! `GET /conversations/:id/workflows` lists the workflows of its working
+//! directory with what the page watches to hear of a change, and
+//! `GET /devices/:id/workflows?directory=` those of a new conversation's
 //! directory before its first message.
 
 use demi_runner_protocol::files::SubscriptionKind;

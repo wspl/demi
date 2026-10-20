@@ -54,7 +54,7 @@ says so ([Vendor quota](#vendor-quota)).
 | Field | Meaning |
 |---|---|
 | `user_id`, `conversation_id` | Whose call it was |
-| `agent` | The number of the session in the conversation's tree, 0 for the root ([Subagents](../agent/subagents.md)); null for a request outside a session, such as a title |
+| `agent` | The number of the session in the conversation's tree, 0 for the root (`crates/agent-server/src/node/mod.rs`); null for a request outside a session, such as a title |
 | `turn_id` | The turn the call belongs to: for a command's call, such as an image, the turn whose shell call started the command's job, even when the job outlives it; null outside a turn |
 | `purpose` | `turn`, `compaction`, `title`, `image` ([Image generation](../agent/images.md)), `video` ([Video generation](../agent/videos.md)) or `audio` ([Audio generation](../agent/audio.md)): what the call was for |
 | `provider_id`, `account_id`, `model_id` | The provider entry, its subscription account (null for an API key) and the model |
@@ -152,7 +152,7 @@ Cache hit rate  97%
   secondary color, the price row's total in the primary color.
 - **Profiles** is a sub-caption, in the caption's style, with the price
   of the subagents of each profile the conversation's workflow offers now
-  ([Workflows of a project](../agent/subagents.md#workflows-of-a-project)):
+  (`crates/backend-user-shard/src/conversation/workflows.rs`):
   a project workflow's profiles, or under Global Workflow the user's enabled
   profiles, none while the user has subagents turned off. The main conversation comes first for scale, then each such
   profile whose subagents made priced calls, each a row with its price and

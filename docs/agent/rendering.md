@@ -53,7 +53,7 @@ Live frames add to the transcript; they do not replace it:
 
 - `transcript_reset` and `transcript_patch` are the primary input.
 - `shell_output` adds a command's live output and status
-  ([Live output](shell-tool.md#live-output)). While the `shell` call that started the
+  (`crates/agent-server/src/server/tree/live.rs`). While the `shell` call that started the
   command runs, the page shows them under that call, which the frame names
   (`toolUseId`, in the subagent's transcript when `subagentId` is set). Once
   the call has returned, a command that still runs is one of the
@@ -121,9 +121,9 @@ commands*, and a click opens it to every step.
   page.
 - A step is a `thinking` or `redacted_thinking` block, a `tool_call` block, a call being written
   ([Calls being written](#calls-being-written)), a command's notice (a
-  `wakeup` that shows, [Command reports](shell-tool.md#command-reports)), or an agent's
+  `wakeup` that shows, Command reports (`crates/agent-session/src/reports.rs`)), or an agent's
   receipt (an `agent_message` from another agent: an update or a child's
-  end, [Product rendering](subagents.md#product-rendering)). A run is the
+  end). A run is the
   steps between two other blocks. A `resume` block ends no run, as it shows
   nothing: the work after a Continue, a Resume, or the system's own resume
   after a backend restart joins the run before it, which shows its steps as
@@ -219,7 +219,7 @@ commands*, and a click opens it to every step.
   each call shows its own.
 - A block brought into view inside a run, as a notice's call or a search
   result, marks its own row: a folded run opens for it and stays open
-  ([Command reports](shell-tool.md#command-reports)). Which runs are open is the
+  (`crates/agent-session/src/reports.rs`). Which runs are open is the
   transcript's, not each row's, so a run the reader opened is still open
   after it scrolls away and back.
 - A reader who opens or folds a row keeps it where it is: the rows after it
@@ -387,8 +387,8 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 | `send_queued_message { messageId }` | Send a queued message now ([Send now](runtime.md#send-now)) | `queue` |
 | `clear_message_queue` | Remove every queued message | `queue` |
 | `abort` | Stop one thing ([Stop](runtime.md#stop)) | `abort_result`, in request order |
-| `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents ([Abort](subagents.md#abort)) | `subagent` frames |
-| `show_subagents { ids }` | The children whose transcripts this connection shows ([Protocol](subagents.md#protocol)) | A `subagent_transcript_reset` for each child it adds |
+| `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents (`crates/agent-server/src/server/tree/supervisor.rs`) | `subagent` frames |
+| `show_subagents { ids }` | The children whose transcripts this connection shows (`crates/agent-server/src/server/tree.rs`) | A `subagent_transcript_reset` for each child it adds |
 | `retry`, `resume`, `compact` | Run the action; `compact` takes `node`, the root when absent, so a subagent's context card compacts that child | `rejected` when the session is busy |
 | `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_write_result` |
 | `shell_abort { commandId }` | Stop a running command | None; the command's `shell_output` shows its end |
@@ -414,7 +414,7 @@ and the session resolves an edit's kept files from the edited message
 
 `shell_write` and `shell_abort` reach the command through the shells of the
 node that runs it, the root or a live subagent, for the conversation's current
-Host, with the handle checks of [Running shell tools](shell-tool.md#running-shell-tools).
+Host, with the handle checks of Running shell tools (`crates/agent-tools/src/lib.rs`).
 
 ### Server frames
 
@@ -430,7 +430,7 @@ Host, with the handle checks of [Running shell tools](shell-tool.md#running-shel
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
-| `shell_output` | A command's live view ([Live output](shell-tool.md#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, its `title` and `script` as its record keeps them from its start, the `tail` and `chars` of the pages' view, and `runningMs` |
+| `shell_output` | A command's live view (`crates/agent-server/src/server/tree/live.rs`): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, its `title` and `script` as its record keeps them from its start, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
 | `remove_result` | The steer's or queued message's id and an `outcome`: `removed`, or `gone_on` when the turn had already taken it or the session never held it |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
@@ -438,7 +438,7 @@ Host, with the handle checks of [Running shell tools](shell-tool.md#running-shel
 | `waiting` | `waitedMs`, how long a node had waited for the model's answer when the frame left, or null when it waits for none, and `subagentId` when the node is a subagent: when a wait starts or ends, and on open for each node ([Waiting for the model](#waiting-for-the-model)) |
 | `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save; `requestId`, the socket's ([Request IDs and the server log](../backend/backend.md#request-ids-and-the-server-log)) |
 | `rejected` | The refused command, the reason's code and its values, and `requestId`, the socket's, as an `error` carries it |
-| `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
+| `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts (`crates/agent-server/src/server/tree.rs`) |
 | `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
 | `heartbeat` | Nothing: the connection sent no other frame for 30 seconds ([Order and delivery](#order-and-delivery)) |
 | `pong` | `id`: the page's `ping` it answers, at once and ahead of any other frame waiting ([A dropped connection](../product/web-application.md#liveness-and-reconnection)) |
@@ -450,7 +450,7 @@ messages and pending steers hold their media by blob reference, so no frame
 carries media bytes ([Media](transcript.md#media)).
 Every `shell_output` is a command's live view, the same for every page: it
 reports a change of a live command of any node of the tree, or answers an
-attach or a `sync_transcript` ([Live output](shell-tool.md#live-output)). No tool sends
+attach or a `sync_transcript` (`crates/agent-server/src/server/tree/live.rs`). No tool sends
 one, and no read moves the model's place. Besides their commands' output,
 child sessions send only their transcript frames. After a transcript reset,
 a live command's `shell_output` carries its current status, so a command that
@@ -479,7 +479,7 @@ page replaces its block 2,999 and adds the rest.
   start of the latest page.
 - A subagent's reset (`subagent_transcript_reset`) starts at the start of its
   latest page, as the page holds none of a subagent's blocks until it shows
-  it ([Protocol](subagents.md#protocol)).
+  it (`crates/agent-server/src/server/tree.rs`).
 
 The page applies a patch to the blocks it holds. A patch to a block the page
 does not hold, between two parts of the transcript it read, changes nothing
@@ -574,7 +574,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
 - An event goes to every attached connection: the transcript, phase, queue,
   pending-steer, retry and subagent frames, the `error` of a failed turn, save
   or subagent lifecycle, and every `shell_output` of a live command's change
-  ([Live output](shell-tool.md#live-output)). A reply goes only to the
+  (`crates/agent-server/src/server/tree/live.rs`). A reply goes only to the
   connection whose frame it answers: `rejected`, an `error` that refuses the
   frame, `steer_result`, `edit_result`, `abort_result`, `shell_write_result`,
   and the frames that answer `sync_transcript`.

@@ -1071,7 +1071,7 @@ pub enum Outbound {
     },
     /// The background tasks that keep a job running once its script has
     /// ended, each by its command line, cut to `JOB_TASK_LINE_BYTES`
-    /// (`shell-tool.md` § Results and previews): sent when the script ends
+    /// (`crates/agent-tools/src/result.rs`): sent when the script ends
     /// while tasks still run, and again each time one of them ends while
     /// others run on. The job's exit follows the last.
     JobOutliving {
@@ -1925,7 +1925,7 @@ pub struct LookPath {
     /// A directory `path` is under, below which nothing is followed: a
     /// symbolic link, or a junction on Windows, at `path` or at a directory
     /// between answers [`Looked::Link`], and nothing behind it is opened
-    /// (`subagents.md` § Workflows of a project). Absent, links are followed.
+    /// (`crates/backend-user-shard/src/conversation/workflows.rs`). Absent, links are followed.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

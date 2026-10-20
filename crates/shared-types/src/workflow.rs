@@ -1,6 +1,6 @@
-//! A conversation's choice in its Workflow menu (`subagents.md`
-//! § Workflows of a project), which the conversation keeps as it keeps its
-//! model.
+//! A conversation's choice in its Workflow menu
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`), which the
+//! conversation keeps as it keeps its model.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

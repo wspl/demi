@@ -1,10 +1,10 @@
-//! A node's shell environments (`shell-tool.md` § Running shell tools): one per
-//! Host the node used, keyed by the Host's key. Concurrent calls for one Host
-//! make one environment; a handle belongs to the environment that made it;
-//! and the repeat guard of identical `shell` scripts lives beside each
-//! environment. Beside them, what the node's command reports need to know
-//! of its commands' ends (`shell-tool.md` § Command reports): whose end a look
-//! showed the node, and who stopped one.
+//! A node's shell environments: one per Host the node used, keyed by the Host's
+//! key. Concurrent calls for one Host make one environment, and a handle
+//! belongs to the environment that made it, so a `commandId` of another Host's
+//! environment is refused. Beside them, what the node's command reports need to
+//! know of its commands' ends: whose end a look showed the node, who stopped
+//! one, and which commands a running look covers. The repeat guard keeps a
+//! model that loops on one call from running it again and again.
 
 use std::{
     cell::{Cell, RefCell},
@@ -34,7 +34,7 @@ pub struct Environments {
     /// The node's place in the output of each command it looked at through
     /// its whole output, the commands of other nodes among them; all of it
     /// for a command whose end a look showed the node, whose end tells it
-    /// nothing more (`shell-tool.md` § The `demi shell` commands).
+    /// nothing more (`crates/agent-server/src/server/shell_output.rs`).
     places: RefCell<HashMap<CommandId, Seen>>,
     /// Who stopped each command that was stopped, which its end's report
     /// names.
@@ -42,7 +42,7 @@ pub struct Environments {
     /// How many of the node's looks at each command run now, such as a
     /// `demi shell status --wait` that waits for its end: an end report of
     /// such a command ends no window, since the look shows the end itself
-    /// (`shell-tool.md` § Command reports).
+    /// (`crates/agent-session/src/reports.rs`).
     looks: RefCell<HashMap<CommandId, usize>>,
 }
 
@@ -219,7 +219,7 @@ impl Environments {
     /// forgets them, as [`end_all`](Self::end_all) does, so its disposal
     /// lets none of their commands go. Each command reads as stopping until
     /// its runner reports its end, which its environment then records
-    /// (`subagents.md` § Abort).
+    /// (`crates/agent-server/src/server/tree/supervisor.rs`).
     pub async fn stop_all(&self) -> Vec<Rc<dyn ShellEnvironment>> {
         let environments = self.forget_all();
         for environment in &environments {
