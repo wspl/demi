@@ -152,6 +152,7 @@ export {
   drawnFrame,
   observeSettledSize,
   scaledCorners,
+  drawnFramePictureClip,
   screenClip,
   screenPath,
   type CornerPoint,

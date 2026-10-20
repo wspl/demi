@@ -8,7 +8,11 @@
  *   with the screen's.
  * - A metal band with a lit edge runs along its outside.
  * - Each button is a short bar standing out of the side it is on.
- * - The screen's own shape, the same corners, clips its picture.
+ * - It lies over the picture, its screen a hole in its body. The picture
+ *   under it reaches halfway into the bezel, where the body is opaque, so
+ *   the hole's edge is the screen's one edge: a picture cut to the same
+ *   line would leave two antialiased edges there, the area's background
+ *   showing between them.
  *
  * Sizes are CSS pixels of the view.
  */
@@ -79,8 +83,9 @@ export const SQUARE_CORNERS: ScreenCorners = {
 export interface DrawnFrameShape {
   /** The bezel's width. */
   bezel: number
-  /** The body, an SVG path in the area's coordinates. */
+  /** The body, an SVG path in the area's coordinates, filled even-odd with `screen`, its hole. */
   body: string
+  screen: string
   /** The metal band along the body's outer edge: a line through its middle, and its width. */
   band: string
   bandWidth: number
@@ -169,6 +174,11 @@ export function screenClip(width: number, height: number, corners: ScreenCorners
   return `path('${screenPath({ left: 0, top: 0, width, height }, corners, offset)}')`
 }
 
+/** The CSS `clip-path` that bounds a `width` × `height` screen's picture under the drawn frame: halfway into its bezel. */
+export function drawnFramePictureClip(width: number, height: number, corners: ScreenCorners): string {
+  return screenClip(width, height, corners, drawnFrameBezel({ width, height }) / 2)
+}
+
 /** The silhouette around `screen`, concentric with its `corners`, with `buttons`. */
 export function drawnFrame(screen: FrameBox, corners: ScreenCorners, buttons: readonly FrameButton[]): DrawnFrameShape {
   const bezel = drawnFrameBezel(screen)
@@ -197,6 +207,7 @@ export function drawnFrame(screen: FrameBox, corners: ScreenCorners, buttons: re
   return {
     bezel,
     body: screenPath(screen, corners, bezel),
+    screen: screenPath(screen, corners),
     band: screenPath(screen, corners, bezel * (1 - BAND / 2)),
     bandWidth: bezel * BAND,
     edge: screenPath(screen, corners, bezel - EDGE / 2),

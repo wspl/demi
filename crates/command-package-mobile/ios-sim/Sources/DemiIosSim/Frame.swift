@@ -58,14 +58,15 @@ struct DeviceLooks {
   }
 }
 
-/// The frame, drawn: a PNG and where the screen sits in it, in its pixels.
+/// The frame, drawn: a PNG, where the screen sits in it, in its pixels, and
+/// the device's silhouette, which bounds the picture under it.
 struct DrawnFrame {
   let png: Data
+  /// A grey PNG of the frame's size, white where the picture may lie.
+  let silhouette: Data
   let width: Int
   let height: Int
   let screen: CGRect
-  /// The screen's corner, as its top left one, in the frame's pixels.
-  let corner: [CGPoint]
 }
 
 /// Draws the frame of `looks`'s chrome around a screen of `screenPoints`
@@ -93,27 +94,51 @@ func drawFrame(
   }
 
   // DeviceKit's layers: the buttons behind the bezel, the bezel, the
-  // screen in it, the buttons on top.
+  // screen in it, the buttons on top. The silhouette is read before the
+  // buttons on top, which lie outside the device.
   let context = try layout.canvas(backing: backing)
   layout.drawButtons(artwork, onTop: false, in: context)
   layout.drawFrame(artwork, in: context)
   layout.cutScreen(mask: looks.mask.flatMap(ScreenMask.init), screenPoints: screenPoints, in: context)
+  let shape = try silhouetteImage(context)
   layout.drawButtons(artwork, onTop: true, in: context)
   guard let image = context.makeImage() else { throw ChromeError.unreadable("the frame was not drawn") }
 
+  // The screen in the PNG's pixels.
+  let points = layout.screen.applying(layout.transform)
+  let screen = CGRect(
+    x: points.minX * backing, y: points.minY * backing, width: points.width * backing,
+    height: points.height * backing)
+  return DrawnFrame(
+    png: try encoded(image), silhouette: try encoded(shape), width: image.width, height: image.height,
+    screen: screen)
+}
+
+/// The silhouette of what `context`, an RGBA canvas, holds, as a grey image.
+private func silhouetteImage(_ context: CGContext) throws -> CGImage {
+  let (width, height, row) = (context.width, context.height, context.bytesPerRow)
+  guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else {
+    throw ChromeError.unreadable("the frame's canvas has no pixels")
+  }
+  // The canvas is premultiplied RGBA: alpha is each pixel's fourth byte.
+  let alpha = (0..<(width * height)).map { pixels[($0 / width) * row + ($0 % width) * 4 + 3] }
+  var shape = silhouette(alpha: alpha, width: width, height: height)
+  let image = shape.withUnsafeMutableBytes { bytes in
+    CGContext(
+      data: bytes.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)?.makeImage()
+  }
+  guard let image else { throw ChromeError.unreadable("the device's silhouette was not drawn") }
+  return image
+}
+
+/// `image` as a PNG.
+private func encoded(_ image: CGImage) throws -> Data {
   let png = NSMutableData()
   guard let destination = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil) else {
     throw ChromeError.unreadable("the frame's PNG could not be made")
   }
   CGImageDestinationAddImage(destination, image, nil)
   guard CGImageDestinationFinalize(destination) else { throw ChromeError.unreadable("the frame's PNG was not written") }
-  // The screen and its corners in the PNG's pixels.
-  let points = layout.screen.applying(layout.transform)
-  let screen = CGRect(
-    x: points.minX * backing, y: points.minY * backing, width: points.width * backing,
-    height: points.height * backing)
-  let upright = CGSize(width: layout.screen.width * backing, height: layout.screen.height * backing)
-  return DrawnFrame(
-    png: png as Data, width: image.width, height: image.height, screen: screen,
-    corner: looks.corner(pixels: upright, screenPoints: screenPoints, quarterTurns: quarterTurns))
+  return png as Data
 }

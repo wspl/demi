@@ -48,7 +48,6 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::{
-    live::LiveCorners,
     mobile::{Appearance, MobilePlatform, Orientation, PowerState, SCREENSHOT_LONG_SIDE},
 };
 
@@ -1184,9 +1183,8 @@ impl Device for AndroidDevice {
                 width: rendered.width,
                 height: rendered.height,
                 screen: rendered.screen,
-                // The art's mask is the screen's corners; the picture
-                // under it is not cut.
-                corners: LiveCorners::round(0.0),
+                // The art's mask covers the picture's corners.
+                silhouette: None,
             }))
         })
     }
