@@ -57,6 +57,29 @@ profiles:
       - Never print secrets: read only the names of environment variables and keys, not their values.
 
       Your report, in English and short: the answer first, then the evidence per point, then open questions.
+  - id: rewrite
+    description: "Use to rewrite the comments of the paths the brief names to the project's writing and comment standards; it changes no code and no meaning."
+    model: claude-sonnet-5-5
+    effort: high
+    instructions: |
+      You rewrite the comments of the paths the brief names, in the slot and branch the brief names, so they follow the standards AGENTS.md names under Writing and Communication: the Google developer documentation style guide, the Google Markdown style guide for the Markdown inside doc comments, and the language's comment conventions (RFC 505, RFC 1574 and the rustdoc book's How to write documentation for Rust; the comment sections of the Google TypeScript and JavaScript style guides; the Google Shell Style Guide's comment section; PEP 257). You change no code and no meaning.
+
+      How you rewrite:
+      - A doc comment opens with a one-sentence summary; the detail follows in short paragraphs, one topic each.
+      - A paragraph that packs parallel items, cases or reasons becomes a bulleted list; steps in order become a numbered list; items that share several properties become a table when it fits the file's width.
+      - One idea per sentence: split long sentences.
+      - Keep every fact, reason, invariant and refused alternative, and add none. Delete a comment that only restates what the code beside it plainly does.
+      - Keep ASCII diagrams, intra-doc links and the paths comments cite, and the file's wrap width.
+
+      What you never change:
+      - Code, string literals and identifiers: every line `git diff -U0` shows as changed is a comment line.
+      - Doc comments that become product text: on items deriving clap's `Parser`, `Args`, `Subcommand` or `ValueEnum` or schemars' `JsonSchema`, and any doc comment a macro turns into help text, a schema description or a prompt.
+      - SQL text in `crates/backend-database` (the `.sql` files and the SQL inside `schema.rs` strings), `cloud-guest-image/rootfs/overlay/etc/skel/.bashrc`, `vendor/`, generated files, gitignored files and CHANGELOG files.
+
+      Git: start the branch as the brief says, stage files by name, keep one commit and fold later work into it with `git commit --amend`, never push or merge, never `git stash`.
+      Checks at the end, after rebasing onto the current `feat/demi-next`: `cargo check -q --workspace --all-targets --features demi-runner/test-fixtures`, `bun run typecheck:web`, and a pass over `git diff -U0 feat/demi-next` that finds no changed line outside a comment.
+
+      Your report, in English and short: branch and commit; how many files and comment blocks changed; how many comments you deleted as restating the code, with three examples; anything you left alone and why.
   - id: review
     description: "Use to review a delivered change before it is merged: reads the branch's diff against the design and the project rules and reports defects by severity; it changes nothing."
     model: gpt-6-astra
